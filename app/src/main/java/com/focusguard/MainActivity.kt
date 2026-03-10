@@ -14,6 +14,7 @@ import androidx.viewpager2.widget.ViewPager2
 import com.google.android.material.tabs.TabLayout
 import com.google.android.material.tabs.TabLayoutMediator
 import com.focusguard.adapter.TabAdapter
+import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.database.AppDatabase
 
 class MainActivity : AppCompatActivity() {
@@ -21,8 +22,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var tabLayout: TabLayout
     private lateinit var viewPager: ViewPager2
     private lateinit var settingsButton: Button
+    private lateinit var deviceOwnerButton: Button
     private lateinit var database: AppDatabase
     private lateinit var accessibilityManager: AccessibilityManager
+    private lateinit var deviceOwnerManager: DeviceOwnerManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,10 +37,14 @@ class MainActivity : AppCompatActivity() {
         // Initialize accessibility manager
         accessibilityManager = getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
 
+        // Initialize Device Owner Manager
+        deviceOwnerManager = DeviceOwnerManager(this)
+
         // Initialize UI components
         tabLayout = findViewById(R.id.tabLayout)
         viewPager = findViewById(R.id.viewPager)
         settingsButton = findViewById(R.id.settingsButton)
+        deviceOwnerButton = findViewById(R.id.deviceOwnerButton)
 
         // Setup ViewPager2 with adapter
         val adapter = TabAdapter(this)
@@ -57,10 +64,18 @@ class MainActivity : AppCompatActivity() {
             openAccessibilitySettings()
         }
 
+        // Device Owner button click listener
+        deviceOwnerButton.setOnClickListener {
+            openDeviceOwnerSettings()
+        }
+
         // Check if accessibility service is enabled
         if (!isAccessibilityServiceEnabled()) {
             Toast.makeText(this, "Please enable FocusGuard in Accessibility Settings", Toast.LENGTH_LONG).show()
         }
+
+        // Update Device Owner button text based on status
+        updateDeviceOwnerButtonStatus()
     }
 
     /**
@@ -84,11 +99,40 @@ class MainActivity : AppCompatActivity() {
         startActivity(intent)
     }
 
+    /**
+     * Opens Device Owner settings/instructions
+     */
+    private fun openDeviceOwnerSettings() {
+        if (deviceOwnerManager.isDeviceOwnerActive()) {
+            Toast.makeText(this, "Device Owner Mode is Active", Toast.LENGTH_SHORT).show()
+        } else if (deviceOwnerManager.isDeviceAdminActive()) {
+            Toast.makeText(this, "Device Admin is Active. Use ADB to set as Device Owner.", Toast.LENGTH_LONG).show()
+            deviceOwnerManager.setAsDeviceOwner()
+        } else {
+            // Request device admin activation
+            deviceOwnerManager.requestDeviceAdmin()
+        }
+    }
+
+    /**
+     * Update Device Owner button status
+     */
+    private fun updateDeviceOwnerButtonStatus() {
+        val statusText = when {
+            deviceOwnerManager.isDeviceOwnerActive() -> "Device Owner: Active"
+            deviceOwnerManager.isDeviceAdminActive() -> "Device Admin: Active"
+            else -> "Enable Device Owner Mode"
+        }
+        deviceOwnerButton.text = statusText
+    }
+
     override fun onResume() {
         super.onResume()
         // Check accessibility service status on resume
         if (!isAccessibilityServiceEnabled()) {
             Toast.makeText(this, "FocusGuard accessibility service is not enabled", Toast.LENGTH_SHORT).show()
         }
+        // Update Device Owner button status
+        updateDeviceOwnerButtonStatus()
     }
 }

@@ -43,9 +43,14 @@ object WebsiteBlocker {
     /**
      * Checks if a string is a valid URL
      */
-    private fun isValidUrl(text: String): Boolean {
+    fun isValidUrl(text: String): Boolean {
         return try {
-            text.startsWith("http://") || text.startsWith("https://") || text.contains(".")
+            text.trim().let { trimmedText ->
+                (trimmedText.startsWith("http://") || 
+                 trimmedText.startsWith("https://") || 
+                 trimmedText.startsWith("www.") ||
+                 (trimmedText.contains(".") && !trimmedText.contains(" ")))
+            }
         } catch (e: Exception) {
             false
         }
@@ -56,12 +61,22 @@ object WebsiteBlocker {
      */
     fun extractDomain(url: String): String {
         return try {
-            val urlObj = URL(url)
-            urlObj.host ?: url
+            val cleanUrl = url.trim()
+            val urlObj = URL(if (cleanUrl.startsWith("http")) cleanUrl else "https://$cleanUrl")
+            urlObj.host?.removePrefix("www.") ?: cleanUrl
         } catch (e: Exception) {
             // If URL parsing fails, try simple string extraction
-            val domain = url.removePrefix("http://").removePrefix("https://").split("/")[0]
-            domain.removePrefix("www.")
+            try {
+                val domain = url.trim()
+                    .removePrefix("http://")
+                    .removePrefix("https://")
+                    .removePrefix("www.")
+                    .split("/")[0]
+                    .split("?")[0]
+                domain
+            } catch (e: Exception) {
+                url.trim()
+            }
         }
     }
 
@@ -71,7 +86,8 @@ object WebsiteBlocker {
     fun isUrlBlocked(url: String, blockedDomains: List<String>): Boolean {
         val domain = extractDomain(url)
         return blockedDomains.any { blockedDomain ->
-            domain.contains(blockedDomain) || blockedDomain.contains(domain)
+            domain.contains(blockedDomain, ignoreCase = true) || 
+            blockedDomain.contains(domain, ignoreCase = true)
         }
     }
 
@@ -85,8 +101,14 @@ object WebsiteBlocker {
         val addressBarIds = listOf(
             "com.android.chrome:id/url_bar",
             "com.android.chrome:id/search_box_text",
+            "com.android.chrome:id/url_bar_edit_text",
             "org.mozilla.firefox:id/mozac_browser_toolbar_url_view",
-            "com.opera.browser:id/url_field"
+            "org.mozilla.firefox:id/url_bar_title",
+            "com.opera.browser:id/url_field",
+            "com.microsoft.emmx:id/url_bar",
+            "com.sec.android.app.sbrowser:id/url_bar",
+            "com.brave.browser:id/url_bar",
+            "com.kiwibrowser.browser:id/url_bar"
         )
 
         for (id in addressBarIds) {
@@ -104,19 +126,23 @@ object WebsiteBlocker {
     private fun findNodeById(root: AccessibilityNodeInfo?, id: String): AccessibilityNodeInfo? {
         if (root == null) return null
 
-        if (root.viewIdResourceName == id) {
-            return root
-        }
-
-        for (i in 0 until root.childCount) {
-            val child = root.getChild(i)
-            if (child != null) {
-                val found = findNodeById(child, id)
-                if (found != null) {
-                    return found
-                }
-                child.recycle()
+        try {
+            if (root.viewIdResourceName == id) {
+                return root
             }
+
+            for (i in 0 until root.childCount) {
+                val child = root.getChild(i)
+                if (child != null) {
+                    val found = findNodeById(child, id)
+                    if (found != null) {
+                        return found
+                    }
+                    child.recycle()
+                }
+            }
+        } catch (e: Exception) {
+            // Handle exceptions silently
         }
 
         return null
@@ -128,22 +154,26 @@ object WebsiteBlocker {
     private fun findEditTextWithUrl(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
         if (root == null) return null
 
-        if (root.className == "android.widget.EditText" && root.text != null) {
-            val text = root.text.toString()
-            if (isValidUrl(text)) {
-                return root
-            }
-        }
-
-        for (i in 0 until root.childCount) {
-            val child = root.getChild(i)
-            if (child != null) {
-                val found = findEditTextWithUrl(child)
-                if (found != null) {
-                    return found
+        try {
+            if (root.className == "android.widget.EditText" && root.text != null) {
+                val text = root.text.toString()
+                if (isValidUrl(text)) {
+                    return root
                 }
-                child.recycle()
             }
+
+            for (i in 0 until root.childCount) {
+                val child = root.getChild(i)
+                if (child != null) {
+                    val found = findEditTextWithUrl(child)
+                    if (found != null) {
+                        return found
+                    }
+                    child.recycle()
+                }
+            }
+        } catch (e: Exception) {
+            // Handle exceptions silently
         }
 
         return null

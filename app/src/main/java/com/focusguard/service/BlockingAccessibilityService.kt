@@ -6,11 +6,13 @@ import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
 import com.focusguard.MainActivity
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.BlockedApp
 import com.focusguard.database.BlockedWebsite
+import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -22,6 +24,15 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var blockedApps = mutableListOf<BlockedApp>()
     private var blockedWebsites = mutableListOf<BlockedWebsite>()
     private val activityManager by lazy { getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager }
+    private val browserPackages = listOf(
+        "com.android.chrome",
+        "org.mozilla.firefox",
+        "com.opera.browser",
+        "com.microsoft.emmx",
+        "com.sec.android.app.sbrowser",
+        "com.brave.browser",
+        "com.kiwibrowser.browser"
+    )
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -32,7 +43,8 @@ class BlockingAccessibilityService : AccessibilityService() {
         val info = AccessibilityServiceInfo().apply {
             eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or 
                         AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
-                        AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
+                        AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED or
+                        AccessibilityEvent.TYPE_VIEW_FOCUSED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
                     AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
@@ -50,11 +62,10 @@ class BlockingAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
                 handleWindowStateChanged(event)
             }
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
-                handleWindowContentChanged(event)
-            }
-            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED -> {
-                handleViewTextChanged(event)
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_FOCUSED -> {
+                handleBrowserEvent(event)
             }
         }
     }
@@ -68,19 +79,14 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun handleWindowContentChanged(event: AccessibilityEvent) {
-        // Check for URL in browser address bar
+    private fun handleBrowserEvent(event: AccessibilityEvent) {
+        val packageName = event.packageName?.toString() ?: return
+        
+        // Check if it's a browser
+        if (!isBrowser(packageName)) return
+        
         val source = event.source ?: return
         checkAndBlockWebsite(source)
-    }
-
-    private fun handleViewTextChanged(event: AccessibilityEvent) {
-        // Additional check for website blocking
-        val packageName = event.packageName?.toString() ?: return
-        if (isBrowser(packageName)) {
-            val source = event.source ?: return
-            checkAndBlockWebsite(source)
-        }
     }
 
     private fun isAppBlocked(packageName: String): Boolean {
@@ -91,7 +97,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         // Open the home screen to prevent the app from launching
         val intent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         startActivity(intent)
         
@@ -100,51 +106,72 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun isBrowser(packageName: String): Boolean {
-        val browserPackages = listOf(
-            "com.android.chrome",
-            "org.mozilla.firefox",
-            "com.opera.browser",
-            "com.microsoft.emmx",
-            "com.sec.android.app.sbrowser"
-        )
         return browserPackages.contains(packageName)
     }
 
-    private fun checkAndBlockWebsite(source: android.view.accessibility.AccessibilityNodeInfo) {
-        // Traverse the accessibility tree to find URL text
+    private fun checkAndBlockWebsite(source: AccessibilityNodeInfo) {
+        // Find the address bar in the browser
+        val addressBarNode = WebsiteBlocker.findAddressBarNode(source)
+        
+        if (addressBarNode != null && addressBarNode.text != null) {
+            val url = addressBarNode.text.toString()
+            
+            if (url.isNotEmpty() && isWebsiteBlocked(url)) {
+                blockWebsite(url)
+                addressBarNode.recycle()
+                return
+            }
+            addressBarNode.recycle()
+        }
+        
+        // Fallback: traverse the entire tree to find URLs
         traverseAccessibilityTree(source)
     }
 
-    private fun traverseAccessibilityTree(node: android.view.accessibility.AccessibilityNodeInfo) {
-        if (node.text != null) {
-            val text = node.text.toString()
-            if (isWebsiteBlocked(text)) {
-                blockWebsite(text)
+    private fun traverseAccessibilityTree(node: AccessibilityNodeInfo) {
+        try {
+            if (node.text != null) {
+                val text = node.text.toString()
+                if (WebsiteBlocker.isValidUrl(text) && isWebsiteBlocked(text)) {
+                    blockWebsite(text)
+                    return
+                }
             }
-        }
 
-        for (i in 0 until node.childCount) {
-            val child = node.getChild(i)
-            if (child != null) {
-                traverseAccessibilityTree(child)
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i)
+                if (child != null) {
+                    traverseAccessibilityTree(child)
+                    child.recycle()
+                }
             }
+        } catch (e: Exception) {
+            // Silently handle exceptions
         }
     }
 
     private fun isWebsiteBlocked(url: String): Boolean {
-        return blockedWebsites.any { url.contains(it.domain) }
+        val domain = WebsiteBlocker.extractDomain(url)
+        return blockedWebsites.any { blockedSite ->
+            domain.contains(blockedSite.domain, ignoreCase = true) ||
+            blockedSite.domain.contains(domain, ignoreCase = true)
+        }
     }
 
     private fun blockWebsite(url: String) {
-        // Go back or close the browser tab
+        // Go back to prevent access to the blocked website
         performGlobalAction(GLOBAL_ACTION_BACK)
         Toast.makeText(this, "Website blocked by FocusGuard", Toast.LENGTH_SHORT).show()
     }
 
     private fun loadBlockedAppsAndWebsites() {
         scope.launch {
-            blockedApps = database.blockedAppDao().getAllBlockedApps().toMutableList()
-            blockedWebsites = database.blockedWebsiteDao().getAllBlockedWebsites().toMutableList()
+            try {
+                blockedApps = database.blockedAppDao().getAllBlockedApps().toMutableList()
+                blockedWebsites = database.blockedWebsiteDao().getAllBlockedWebsites().toMutableList()
+            } catch (e: Exception) {
+                // Handle database errors silently
+            }
         }
     }
 

@@ -9,6 +9,7 @@ FocusGuard é um aplicativo Android nativo desenvolvido em **Kotlin e Java** que
 - **Armazenamento Local**: Usa Room Database para armazenar apps e sites bloqueados
 - **Interface Simples**: Interface com abas para gerenciar apps e sites bloqueados
 - **Sem VPN**: Não requer VPN, usa APIs nativas do Android
+- **Device Owner Mode**: Suporte a modo dono do dispositivo para bloqueio robusto
 
 ## Tecnologias Utilizadas
 
@@ -128,6 +129,21 @@ Utilitário para:
 <uses-permission android:name="android.permission.INTERNET" />
 <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 ```
+
+## Device Owner Mode
+
+FocusGuard suporta **Device Owner Mode** para bloqueio mais robusto de aplicativos:
+
+- **Bloqueio em Nível de Sistema**: Bloqueia apps com enforço de sistema
+- **Controle de Políticas**: Controle total sobre políticas do dispositivo
+- **Segurança Aprimorada**: Impede desativação ou desinstalação do FocusGuard
+
+**Como Ativar:**
+1. Clique em "Enable Device Owner Mode" na aplicação
+2. Siga as instruções para ativar Device Admin
+3. Use ADB para definir como Device Owner (veja [DEVICE_OWNER_SETUP.md](DEVICE_OWNER_SETUP.md))
+
+Para instruções detalhadas, consulte [DEVICE_OWNER_SETUP.md](DEVICE_OWNER_SETUP.md).
 
 ## Próximas Melhorias
 
