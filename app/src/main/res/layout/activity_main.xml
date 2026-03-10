@@ -35,22 +35,45 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginTop="16dp"
-        android:spacing="8dp">
+        android:layout_marginTop="8dp"
+        android:spacing="4dp">
 
         <Button
             android:id="@+id/settingsButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="@string/settings_title" />
+            android:text="Settings" />
 
         <Button
             android:id="@+id/deviceOwnerButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Enable Device Owner Mode" />
+            android:text="Device Owner" />
+
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp"
+        android:spacing="4dp">
+
+        <Button
+            android:id="@+id/startBlockingButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Start Blocking" />
+
+        <Button
+            android:id="@+id/blockingStatusButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Blocking Status" />
 
     </LinearLayout>
 

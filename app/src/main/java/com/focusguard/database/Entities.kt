@@ -27,7 +27,11 @@ data class BlockedWebsite(
 data class BlockSession(
     @PrimaryKey(autoGenerate = true)
     val id: Int = 0,
-    val startTime: Long,
+    val startTime: Long = System.currentTimeMillis(),
     val endTime: Long? = null,
-    val isActive: Boolean = true
+    val durationDays: Int = 0,
+    val isActive: Boolean = true,
+    val blockedAppsCount: Int = 0,
+    val blockedWebsitesCount: Int = 0,
+    val createdAt: Long = System.currentTimeMillis()
 )

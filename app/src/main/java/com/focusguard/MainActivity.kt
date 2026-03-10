@@ -23,6 +23,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var viewPager: ViewPager2
     private lateinit var settingsButton: Button
     private lateinit var deviceOwnerButton: Button
+    private lateinit var startBlockingButton: Button
+    private lateinit var blockingStatusButton: Button
     private lateinit var database: AppDatabase
     private lateinit var accessibilityManager: AccessibilityManager
     private lateinit var deviceOwnerManager: DeviceOwnerManager
@@ -45,6 +47,8 @@ class MainActivity : AppCompatActivity() {
         viewPager = findViewById(R.id.viewPager)
         settingsButton = findViewById(R.id.settingsButton)
         deviceOwnerButton = findViewById(R.id.deviceOwnerButton)
+        startBlockingButton = findViewById(R.id.startBlockingButton)
+        blockingStatusButton = findViewById(R.id.blockingStatusButton)
 
         // Setup ViewPager2 with adapter
         val adapter = TabAdapter(this)
@@ -67,6 +71,16 @@ class MainActivity : AppCompatActivity() {
         // Device Owner button click listener
         deviceOwnerButton.setOnClickListener {
             openDeviceOwnerSettings()
+        }
+
+        // Start Blocking button click listener
+        startBlockingButton.setOnClickListener {
+            openStartBlockingSession()
+        }
+
+        // Blocking Status button click listener
+        blockingStatusButton.setOnClickListener {
+            openBlockingSessionStatus()
         }
 
         // Check if accessibility service is enabled
@@ -124,6 +138,28 @@ class MainActivity : AppCompatActivity() {
             else -> "Enable Device Owner Mode"
         }
         deviceOwnerButton.text = statusText
+    }
+
+    /**
+     * Opens the start blocking session fragment
+     */
+    private fun openStartBlockingSession() {
+        val fragment = StartBlockingSessionFragment()
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.viewPager, fragment)
+            .addToBackStack(null)
+            .commit()
+    }
+
+    /**
+     * Opens the blocking session status fragment
+     */
+    private fun openBlockingSessionStatus() {
+        val fragment = BlockingSessionStatusFragment()
+        supportFragmentManager.beginTransaction()
+            .replace(R.id.viewPager, fragment)
+            .addToBackStack(null)
+            .commit()
     }
 
     override fun onResume() {

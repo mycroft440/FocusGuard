@@ -11,4 +11,5 @@
     <color name="green">#FF00FF00</color>
     <color name="border">#FFCCCCCC</color>
     <color name="muted">#FF999999</color>
+    <color name="orange">#FFFFA500</color>
 </resources>

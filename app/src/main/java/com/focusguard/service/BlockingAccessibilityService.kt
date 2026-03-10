@@ -12,6 +12,7 @@ import com.focusguard.MainActivity
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.BlockedApp
 import com.focusguard.database.BlockedWebsite
+import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -20,9 +21,11 @@ import kotlinx.coroutines.launch
 class BlockingAccessibilityService : AccessibilityService() {
 
     private lateinit var database: AppDatabase
+    private lateinit var sessionManager: BlockingSessionManager
     private val scope = CoroutineScope(Dispatchers.Default)
     private var blockedApps = mutableListOf<BlockedApp>()
     private var blockedWebsites = mutableListOf<BlockedWebsite>()
+    private var isBlockingSessionActive = false
     private val activityManager by lazy { getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager }
     private val browserPackages = listOf(
         "com.android.chrome",
@@ -37,7 +40,9 @@ class BlockingAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         database = AppDatabase.getDatabase(this)
+        sessionManager = BlockingSessionManager(this)
         loadBlockedAppsAndWebsites()
+        checkBlockingSessionStatus()
         
         // Configure accessibility service
         val info = AccessibilityServiceInfo().apply {
@@ -73,6 +78,9 @@ class BlockingAccessibilityService : AccessibilityService() {
     private fun handleWindowStateChanged(event: AccessibilityEvent) {
         val packageName = event.packageName?.toString() ?: return
         
+        // Only block if there's an active blocking session
+        if (!isBlockingSessionActive) return
+        
         // Check if the app is in the blocked list
         if (isAppBlocked(packageName)) {
             blockApp(packageName)
@@ -81,6 +89,9 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun handleBrowserEvent(event: AccessibilityEvent) {
         val packageName = event.packageName?.toString() ?: return
+        
+        // Only block if there's an active blocking session
+        if (!isBlockingSessionActive) return
         
         // Check if it's a browser
         if (!isBrowser(packageName)) return
@@ -171,6 +182,16 @@ class BlockingAccessibilityService : AccessibilityService() {
                 blockedWebsites = database.blockedWebsiteDao().getAllBlockedWebsites().toMutableList()
             } catch (e: Exception) {
                 // Handle database errors silently
+            }
+        }
+    }
+
+    private fun checkBlockingSessionStatus() {
+        scope.launch {
+            try {
+                isBlockingSessionActive = sessionManager.isBlockingActive()
+            } catch (e: Exception) {
+                // Handle errors silently
             }
         }
     }

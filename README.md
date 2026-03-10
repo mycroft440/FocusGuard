@@ -145,6 +145,24 @@ FocusGuard suporta **Device Owner Mode** para bloqueio mais robusto de aplicativ
 
 Para instruções detalhadas, consulte [DEVICE_OWNER_SETUP.md](DEVICE_OWNER_SETUP.md).
 
+## Blocking Session (Modo de Bloqueio por Dias)
+
+FocusGuard oferece um **Blocking Session** poderoso que permite bloquear apps e websites por um período definido de dias:
+
+- **Contagem Regressiva**: Defina bloqueio de 1 a 30 dias
+- **Irrevogável**: Não pode desbloquear antes do tempo expirar
+- **Independente**: Bloqueio continua mesmo após renunciar Device Owner Mode
+- **Status em Tempo Real**: Visualize tempo restante e detalhes da sessão
+- **Botão de Abdicar**: Remova Device Owner Mode mantendo bloqueio ativo
+
+**Como Usar:**
+1. Adicione apps e websites à lista de bloqueados
+2. Clique em "Start Blocking" e selecione a duração
+3. Confirme o aviso (bloqueio é irrevogável)
+4. Monitore o status em "Blocking Status"
+
+Para guia completo, consulte [BLOCKING_SESSION_GUIDE.md](BLOCKING_SESSION_GUIDE.md).
+
 ## Próximas Melhorias
 
 - [ ] Interface de usuário aprimorada (conforme fornecido pelo usuário)

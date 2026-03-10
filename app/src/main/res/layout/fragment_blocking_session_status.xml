@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Blocking Session Status"
+        android:textSize="24sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="24dp" />
+
+    <TextView
+        android:id="@+id/statusTextView"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Loading..."
+        android:textSize="20sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:layout_marginBottom="16dp"
+        android:padding="16dp"
+        android:background="@drawable/item_background" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <TextView
+            android:id="@+id/detailsTextView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Loading details..."
+            android:textSize="14sp"
+            android:lineSpacingMultiplier="1.5"
+            android:padding="12dp" />
+
+    </ScrollView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="16dp"
+        android:spacing="8dp">
+
+        <Button
+            android:id="@+id/renounceButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Renounce Device Owner"
+            android:textColor="@color/white"
+            android:backgroundTint="@color/orange" />
+
+        <Button
+            android:id="@+id/closeButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Close" />
+
+    </LinearLayout>
+
+</LinearLayout>
