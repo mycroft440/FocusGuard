@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FocusGuard</string>
+    <string name="accessibility_service_description">FocusGuard Accessibility Service - Blocks distracting apps and websites</string>
+    <string name="home_title">FocusGuard</string>
+    <string name="blocked_apps_title">Blocked Apps</string>
+    <string name="blocked_websites_title">Blocked Websites</string>
+    <string name="add_app_button">Add App</string>
+    <string name="add_website_button">Add Website</string>
+    <string name="remove_button">Remove</string>
+    <string name="enable_accessibility_service">Please enable the Accessibility Service in Settings</string>
+    <string name="settings_title">Settings</string>
+    <string name="about_title">About</string>
+</resources>
