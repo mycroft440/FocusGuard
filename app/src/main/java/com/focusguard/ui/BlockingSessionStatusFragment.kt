@@ -87,9 +87,16 @@ class BlockingSessionStatusFragment : Fragment() {
 
                 detailsTextView.text = details
 
-                // Update button state
-                renounceButton.isEnabled = isBlocking
-                renounceButton.alpha = if (isBlocking) 1f else 0.5f
+                // Update button state: only enable when NO blocking is active
+                renounceButton.isEnabled = !isBlocking
+                renounceButton.alpha = if (!isBlocking) 1f else 0.5f
+                
+                // Update button text based on state
+                if (isBlocking) {
+                    renounceButton.text = "Cannot Renounce (Blocking Active)"
+                } else {
+                    renounceButton.text = "Renounce Device Owner"
+                }
             } catch (e: Exception) {
                 statusTextView.text = "Error: ${e.message}"
             }
@@ -100,11 +107,11 @@ class BlockingSessionStatusFragment : Fragment() {
         scope.launch {
             val isBlocking = sessionManager.isBlockingActive()
             
-            if (!isBlocking) {
+            if (isBlocking) {
                 Toast.makeText(
                     requireContext(),
-                    "No active blocking session",
-                    Toast.LENGTH_SHORT
+                    "Cannot renounce while blocking is active. Wait for countdown to end.",
+                    Toast.LENGTH_LONG
                 ).show()
                 return@launch
             }
@@ -116,9 +123,8 @@ class BlockingSessionStatusFragment : Fragment() {
                     "You are about to renounce Device Owner Mode.\n\n" +
                     "⚠️ IMPORTANT:\n" +
                     "• Device Owner Mode will be removed\n" +
-                    "• BUT the app will CONTINUE BLOCKING apps and websites\n" +
-                    "• The blocking will remain active until the countdown ends\n" +
-                    "• You CANNOT disable the blocking before the time expires\n\n" +
+                    "• No active blocking session\n" +
+                    "• You can start a new blocking session later\n\n" +
                     "Are you sure?"
                 )
                 .setPositiveButton("Yes, Renounce") { _, _ ->
