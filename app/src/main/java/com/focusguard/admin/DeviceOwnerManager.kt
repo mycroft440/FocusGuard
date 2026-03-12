@@ -7,6 +7,7 @@ import android.widget.Toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * Manager for Device Owner Mode functionality
@@ -40,13 +41,13 @@ class DeviceOwnerManager(private val context: Context) {
     }
 
     /**
-     * Block an application using Device Policy Manager
+     * Block applications using Device Policy Manager (setPackagesSuspended)
      */
-    fun blockApp(packageName: String) {
+    fun blockApps(packageNames: List<String>) {
         if (!isDeviceOwnerActive()) {
             Toast.makeText(
                 context,
-                "Device Owner Mode is required to block apps",
+                "Device Owner Mode is required to block apps via DPM",
                 Toast.LENGTH_SHORT
             ).show()
             return
@@ -54,71 +55,42 @@ class DeviceOwnerManager(private val context: Context) {
 
         scope.launch {
             try {
-                // Set app restrictions (if Device Owner)
-                val restrictions = android.os.Bundle()
-                restrictions.putBoolean("no_uninstall", true)
+                // Suspend packages (makes them grayed out and unlaunchable)
+                val failedPackages = dpm.setPackagesSuspended(componentName, packageNames.toTypedArray(), true)
                 
-                dpm.setApplicationRestrictions(componentName, packageName, restrictions)
-                
-                Toast.makeText(
-                    context,
-                    "App blocked: $packageName",
-                    Toast.LENGTH_SHORT
-                ).show()
+                withContext(Dispatchers.Main) {
+                    if (failedPackages.isEmpty()) {
+                        Toast.makeText(context, "${packageNames.size} apps blocked", Toast.LENGTH_SHORT).show()
+                    } else {
+                        Toast.makeText(context, "Blocked ${packageNames.size - failedPackages.size} apps, ${failedPackages.size} failed", Toast.LENGTH_SHORT).show()
+                    }
+                }
             } catch (e: Exception) {
-                Toast.makeText(
-                    context,
-                    "Failed to block app: ${e.message}",
-                    Toast.LENGTH_SHORT
-                ).show()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Failed to block apps: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
 
     /**
-     * Unblock an application
+     * Unblock applications
      */
-    fun unblockApp(packageName: String) {
+    fun unblockApps(packageNames: List<String>) {
         if (!isDeviceOwnerActive()) return
 
         scope.launch {
             try {
-                dpm.setApplicationRestrictions(componentName, packageName, android.os.Bundle())
+                dpm.setPackagesSuspended(componentName, packageNames.toTypedArray(), false)
                 
-                Toast.makeText(
-                    context,
-                    "App unblocked: $packageName",
-                    Toast.LENGTH_SHORT
-                ).show()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Apps unblocked", Toast.LENGTH_SHORT).show()
+                }
             } catch (e: Exception) {
-                Toast.makeText(
-                    context,
-                    "Failed to unblock app: ${e.message}",
-                    Toast.LENGTH_SHORT
-                ).show()
-            }
-        }
-    }
-
-    /**
-     * Get list of blocked apps
-     */
-    fun getBlockedApps(): List<String> {
-        if (!isDeviceOwnerActive()) return emptyList()
-
-        return try {
-            val pm = context.packageManager
-            val installedApps = pm.getInstalledApplications(0)
-            installedApps.mapNotNull { app ->
-                val restrictions = dpm.getApplicationRestrictions(componentName, app.packageName)
-                if (restrictions.getBoolean("no_uninstall", false)) {
-                    app.packageName
-                } else {
-                    null
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Failed to unblock apps: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
-        } catch (e: Exception) {
-            emptyList()
         }
     }
 
@@ -147,30 +119,6 @@ class DeviceOwnerManager(private val context: Context) {
     }
 
     /**
-     * Wipe device data (requires Device Owner)
-     */
-    fun wipeDeviceData() {
-        if (!isDeviceOwnerActive()) {
-            Toast.makeText(
-                context,
-                "Device Owner Mode is required",
-                Toast.LENGTH_SHORT
-            ).show()
-            return
-        }
-
-        try {
-            dpm.wipeData(0)
-        } catch (e: Exception) {
-            Toast.makeText(
-                context,
-                "Failed to wipe device: ${e.message}",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
-    }
-
-    /**
      * Set device owner (requires ADB or EMM)
      */
     fun setAsDeviceOwner() {
@@ -191,9 +139,6 @@ class DeviceOwnerManager(private val context: Context) {
         return buildString {
             appendLine("Device Admin Active: $isAdmin")
             appendLine("Device Owner Active: $isOwner")
-            if (isOwner) {
-                appendLine("Blocked Apps: ${getBlockedApps().size}")
-            }
         }
     }
 }

@@ -9,15 +9,15 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
-import androidx.fragment.app.Fragment
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.BlockingSessionManager
+import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 
-class BlockingSessionStatusFragment : Fragment() {
+class BlockingSessionStatusFragment : BottomSheetDialogFragment() {
 
     private lateinit var statusTextView: TextView
     private lateinit var detailsTextView: TextView
@@ -53,7 +53,7 @@ class BlockingSessionStatusFragment : Fragment() {
         }
 
         closeButton.setOnClickListener {
-            parentFragmentManager.popBackStack()
+            dismiss()
         }
 
         // Start updating status every second
@@ -63,8 +63,10 @@ class BlockingSessionStatusFragment : Fragment() {
     private fun startUpdatingStatus() {
         updateRunnable = object : Runnable {
             override fun run() {
-                updateStatus()
-                handler.postDelayed(this, 1000) // Update every second
+                if (isAdded) {
+                    updateStatus()
+                    handler.postDelayed(this, 1000) // Update every second
+                }
             }
         }
         handler.post(updateRunnable!!)
@@ -73,8 +75,9 @@ class BlockingSessionStatusFragment : Fragment() {
     private fun updateStatus() {
         scope.launch {
             try {
+                if (!isAdded) return@launch
+                
                 val isBlocking = sessionManager.isBlockingActive()
-                val remainingTime = sessionManager.getRemainingTimeFormatted()
                 val details = sessionManager.getSessionDetails()
 
                 if (isBlocking) {
@@ -138,12 +141,9 @@ class BlockingSessionStatusFragment : Fragment() {
     private fun performRenounce() {
         scope.launch {
             try {
-                // Remove Device Owner status
-                val command = "adb shell dpm remove-active-admin com.focusguard/.admin.FocusGuardDeviceAdminReceiver"
-                
                 Toast.makeText(
                     requireContext(),
-                    "Device Owner Mode renounced.\n\nBlocking will continue until countdown ends.",
+                    "To renounce, use ADB to remove admin or uninstall the app.\nFocusGuard is currently configured as Device Owner.",
                     Toast.LENGTH_LONG
                 ).show()
 
@@ -159,8 +159,8 @@ class BlockingSessionStatusFragment : Fragment() {
         }
     }
 
-    override fun onDestroy() {
-        super.onDestroy()
+    override fun onDestroyView() {
+        super.onDestroyView()
         if (updateRunnable != null) {
             handler.removeCallbacks(updateRunnable!!)
         }

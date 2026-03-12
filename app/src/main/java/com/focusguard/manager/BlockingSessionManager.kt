@@ -7,6 +7,7 @@ import com.focusguard.database.BlockSession
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
 /**
@@ -33,17 +34,21 @@ class BlockingSessionManager(private val context: Context) {
                 )
                 database.blockSessionDao().insertBlockSession(session)
                 
-                Toast.makeText(
-                    context,
-                    "Blocking session started for $durationDays days",
-                    Toast.LENGTH_SHORT
-                ).show()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        context,
+                        "Blocking session started for $durationDays days",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             } catch (e: Exception) {
-                Toast.makeText(
-                    context,
-                    "Failed to start blocking session: ${e.message}",
-                    Toast.LENGTH_SHORT
-                ).show()
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(
+                        context,
+                        "Failed to start blocking session: ${e.message}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
         }
     }
@@ -142,18 +147,22 @@ class BlockingSessionManager(private val context: Context) {
                     val endedSession = session.copy(isActive = false)
                     database.blockSessionDao().updateBlockSession(endedSession)
                     
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            context,
+                            "Blocking session ended",
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
                     Toast.makeText(
                         context,
-                        "Blocking session ended",
+                        "Failed to end blocking session: ${e.message}",
                         Toast.LENGTH_SHORT
                     ).show()
                 }
-            } catch (e: Exception) {
-                Toast.makeText(
-                    context,
-                    "Failed to end blocking session: ${e.message}",
-                    Toast.LENGTH_SHORT
-                ).show()
             }
         }
     }

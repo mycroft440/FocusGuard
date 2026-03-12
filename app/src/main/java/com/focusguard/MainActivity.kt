@@ -16,6 +16,8 @@ import com.google.android.material.tabs.TabLayoutMediator
 import com.focusguard.adapter.TabAdapter
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.database.AppDatabase
+import com.focusguard.ui.StartBlockingSessionFragment
+import com.focusguard.ui.BlockingSessionStatusFragment
 
 class MainActivity : AppCompatActivity() {
 
@@ -101,7 +103,7 @@ class MainActivity : AppCompatActivity() {
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
 
-        val serviceName = "${packageName}/.service.BlockingAccessibilityService"
+        val serviceName = "${packageName}/com.focusguard.service.BlockingAccessibilityService"
         return enabledServices.contains(serviceName)
     }
 
@@ -145,10 +147,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun openStartBlockingSession() {
         val fragment = StartBlockingSessionFragment()
-        supportFragmentManager.beginTransaction()
-            .replace(R.id.viewPager, fragment)
-            .addToBackStack(null)
-            .commit()
+        fragment.show(supportFragmentManager, "StartBlockingSession")
     }
 
     /**
@@ -156,10 +155,7 @@ class MainActivity : AppCompatActivity() {
      */
     private fun openBlockingSessionStatus() {
         val fragment = BlockingSessionStatusFragment()
-        supportFragmentManager.beginTransaction()
-            .replace(R.id.viewPager, fragment)
-            .addToBackStack(null)
-            .commit()
+        fragment.show(supportFragmentManager, "BlockingSessionStatus")
     }
 
     override fun onResume() {

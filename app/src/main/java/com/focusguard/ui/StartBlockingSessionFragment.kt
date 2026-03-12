@@ -5,20 +5,19 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
-import android.widget.EditText
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.Toast
-import androidx.fragment.app.Fragment
 import com.focusguard.R
 import com.focusguard.database.AppDatabase
 import com.focusguard.manager.BlockingSessionManager
+import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class StartBlockingSessionFragment : Fragment() {
+class StartBlockingSessionFragment : BottomSheetDialogFragment() {
 
     private lateinit var daysSeekBar: SeekBar
     private lateinit var daysTextView: TextView
@@ -54,7 +53,7 @@ class StartBlockingSessionFragment : Fragment() {
 
         daysSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
             override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                val days = maxOf(1, progress)
+                val days = if (progress < 1) 1 else progress
                 updateDaysText(days)
             }
 
@@ -67,7 +66,7 @@ class StartBlockingSessionFragment : Fragment() {
         }
 
         cancelButton.setOnClickListener {
-            parentFragmentManager.popBackStack()
+            dismiss()
         }
     }
 
@@ -78,7 +77,7 @@ class StartBlockingSessionFragment : Fragment() {
     private fun startBlockingSession() {
         scope.launch {
             try {
-                val days = daysSeekBar.progress
+                val days = if (daysSeekBar.progress < 1) 1 else daysSeekBar.progress
                 val blockedApps = withContext(Dispatchers.IO) {
                     database.blockedAppDao().getAllBlockedApps().size
                 }
@@ -97,13 +96,7 @@ class StartBlockingSessionFragment : Fragment() {
 
                 sessionManager.startBlockingSession(days, blockedApps, blockedWebsites)
                 
-                Toast.makeText(
-                    requireContext(),
-                    "Blocking session started for $days days!",
-                    Toast.LENGTH_LONG
-                ).show()
-
-                parentFragmentManager.popBackStack()
+                dismiss()
             } catch (e: Exception) {
                 Toast.makeText(
                     requireContext(),
