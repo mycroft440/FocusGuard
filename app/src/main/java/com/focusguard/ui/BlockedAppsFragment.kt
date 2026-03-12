@@ -1,5 +1,6 @@
 package com.focusguard.ui
 
+import android.app.AlertDialog
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Bundle
@@ -79,37 +80,51 @@ class BlockedAppsFragment : Fragment() {
     }
 
     private fun showAppSelectionDialog() {
-        val packageManager = requireContext().packageManager
-        val apps = mutableListOf<Pair<String, String>>()
-
-        val installedApps = packageManager.getInstalledApplications(PackageManager.GET_META_DATA)
-        for (app in installedApps) {
-            if (app.flags and ApplicationInfo.FLAG_SYSTEM == 0) {
-                val appName = packageManager.getApplicationLabel(app).toString()
-                apps.add(Pair(appName, app.packageName))
+        val pm = requireContext().packageManager
+        scope.launch {
+            val apps = withContext(Dispatchers.IO) {
+                val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                installedApps.filter { app ->
+                    (app.flags and ApplicationInfo.FLAG_SYSTEM == 0) && app.packageName != requireContext().packageName
+                }.map { app ->
+                    Pair(pm.getApplicationLabel(app).toString(), app.packageName)
+                }.sortedBy { it.first }
             }
-        }
 
-        // Simple dialog to select app (you can implement a proper dialog later)
-        if (apps.isNotEmpty()) {
-            val selectedApp = apps[0]
-            addBlockedApp(selectedApp.first, selectedApp.second)
+            if (apps.isEmpty()) {
+                Toast.makeText(requireContext(), "No apps found to block", Toast.LENGTH_SHORT).show()
+                return@launch
+            }
+
+            val appNames = apps.map { it.first }.toTypedArray()
+            
+            AlertDialog.Builder(requireContext())
+                .setTitle("Select App to Block")
+                .setItems(appNames) { _, index ->
+                    val selected = apps[index]
+                    addBlockedApp(selected.first, selected.second)
+                }
+                .setNegativeButton("Cancel", null)
+                .show()
         }
     }
 
     private fun addBlockedApp(appName: String, packageName: String) {
         scope.launch {
             withContext(Dispatchers.IO) {
-                database.blockedAppDao().insertBlockedApp(
-                    BlockedApp(
-                        packageName = packageName,
-                        appName = appName,
-                        isBlocked = true
+                val existing = database.blockedAppDao().getBlockedAppByPackage(packageName)
+                if (existing == null) {
+                    database.blockedAppDao().insertBlockedApp(
+                        BlockedApp(
+                            packageName = packageName,
+                            appName = appName,
+                            isBlocked = true
+                        )
                     )
-                )
+                }
             }
             loadBlockedApps()
-            Toast.makeText(requireContext(), "App blocked", Toast.LENGTH_SHORT).show()
+            Toast.makeText(requireContext(), "App blocked: $appName", Toast.LENGTH_SHORT).show()
         }
     }
 }

@@ -1,9 +1,12 @@
 package com.focusguard.admin
 
 import android.app.admin.DevicePolicyManager
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -45,30 +48,15 @@ class DeviceOwnerManager(private val context: Context) {
      */
     fun blockApps(packageNames: List<String>) {
         if (!isDeviceOwnerActive()) {
-            Toast.makeText(
-                context,
-                "Device Owner Mode is required to block apps via DPM",
-                Toast.LENGTH_SHORT
-            ).show()
             return
         }
 
         scope.launch {
             try {
                 // Suspend packages (makes them grayed out and unlaunchable)
-                val failedPackages = dpm.setPackagesSuspended(componentName, packageNames.toTypedArray(), true)
-                
-                withContext(Dispatchers.Main) {
-                    if (failedPackages.isEmpty()) {
-                        Toast.makeText(context, "${packageNames.size} apps blocked", Toast.LENGTH_SHORT).show()
-                    } else {
-                        Toast.makeText(context, "Blocked ${packageNames.size - failedPackages.size} apps, ${failedPackages.size} failed", Toast.LENGTH_SHORT).show()
-                    }
-                }
+                dpm.setPackagesSuspended(componentName, packageNames.toTypedArray(), true)
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Failed to block apps: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
+                // Handle error
             }
         }
     }
@@ -82,14 +70,8 @@ class DeviceOwnerManager(private val context: Context) {
         scope.launch {
             try {
                 dpm.setPackagesSuspended(componentName, packageNames.toTypedArray(), false)
-                
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Apps unblocked", Toast.LENGTH_SHORT).show()
-                }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Failed to unblock apps: ${e.message}", Toast.LENGTH_SHORT).show()
-                }
+                // Handle error
             }
         }
     }
@@ -98,35 +80,29 @@ class DeviceOwnerManager(private val context: Context) {
      * Lock the device
      */
     fun lockDevice() {
-        if (!isDeviceAdminActive()) {
-            Toast.makeText(
-                context,
-                "Device Admin is required",
-                Toast.LENGTH_SHORT
-            ).show()
-            return
-        }
-
+        if (!isDeviceAdminActive()) return
         try {
             dpm.lockNow()
-        } catch (e: Exception) {
-            Toast.makeText(
-                context,
-                "Failed to lock device: ${e.message}",
-                Toast.LENGTH_SHORT
-            ).show()
-        }
+        } catch (e: Exception) {}
     }
 
     /**
-     * Set device owner (requires ADB or EMM)
+     * Set device owner instructions
      */
     fun setAsDeviceOwner() {
-        Toast.makeText(
-            context,
-            "Use ADB command to set Device Owner:\nadb shell dpm set-device-owner com.focusguard/.admin.FocusGuardDeviceAdminReceiver",
-            Toast.LENGTH_LONG
-        ).show()
+        val adbCommand = "adb shell dpm set-device-owner com.focusguard/.admin.FocusGuardDeviceAdminReceiver"
+        
+        AlertDialog.Builder(context)
+            .setTitle("Set Device Owner Mode")
+            .setMessage("To enable advanced blocking, run this ADB command on your computer:\n\n$adbCommand")
+            .setPositiveButton("Copy Command") { _, _ ->
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val clip = ClipData.newPlainText("ADB Command", adbCommand)
+                clipboard.setPrimaryClip(clip)
+                Toast.makeText(context, "Command copied to clipboard", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Close", null)
+            .show()
     }
 
     /**

@@ -2,13 +2,11 @@ package com.focusguard.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
-import android.app.ActivityManager
 import android.content.Context
 import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
-import com.focusguard.MainActivity
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.BlockedApp
 import com.focusguard.database.BlockedWebsite
@@ -17,16 +15,20 @@ import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class BlockingAccessibilityService : AccessibilityService() {
 
     private lateinit var database: AppDatabase
     private lateinit var sessionManager: BlockingSessionManager
     private val scope = CoroutineScope(Dispatchers.Default)
-    private var blockedApps = mutableListOf<BlockedApp>()
-    private var blockedWebsites = mutableListOf<BlockedWebsite>()
+    
+    private var blockedApps = listOf<BlockedApp>()
+    private var blockedWebsites = listOf<BlockedWebsite>()
     private var isBlockingSessionActive = false
-    private val activityManager by lazy { getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager }
+    private var lastLoadTime = 0L
+    private val CACHE_TIMEOUT = 5000L // 5 seconds cache
+
     private val browserPackages = listOf(
         "com.android.chrome",
         "org.mozilla.firefox",
@@ -34,15 +36,16 @@ class BlockingAccessibilityService : AccessibilityService() {
         "com.microsoft.emmx",
         "com.sec.android.app.sbrowser",
         "com.brave.browser",
-        "com.kiwibrowser.browser"
+        "com.kiwibrowser.browser",
+        "com.duckduckgo.mobile.android"
     )
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         database = AppDatabase.getDatabase(this)
         sessionManager = BlockingSessionManager(this)
-        loadBlockedAppsAndWebsites()
-        checkBlockingSessionStatus()
+        
+        refreshData()
         
         // Configure accessibility service
         val info = AccessibilityServiceInfo().apply {
@@ -63,6 +66,13 @@ class BlockingAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
 
+        // Refresh data if cache expired
+        if (System.currentTimeMillis() - lastLoadTime > CACHE_TIMEOUT) {
+            refreshData()
+        }
+
+        if (!isBlockingSessionActive) return
+
         when (event.eventType) {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
                 handleWindowStateChanged(event)
@@ -75,13 +85,31 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun refreshData() {
+        scope.launch {
+            try {
+                val active = sessionManager.isBlockingActive()
+                val apps = database.blockedAppDao().getAllBlockedApps()
+                val websites = database.blockedWebsiteDao().getAllBlockedWebsites()
+                
+                withContext(Dispatchers.Main) {
+                    isBlockingSessionActive = active
+                    blockedApps = apps
+                    blockedWebsites = websites
+                    lastLoadTime = System.currentTimeMillis()
+                }
+            } catch (e: Exception) {
+                // Handle error
+            }
+        }
+    }
+
     private fun handleWindowStateChanged(event: AccessibilityEvent) {
         val packageName = event.packageName?.toString() ?: return
         
-        // Only block if there's an active blocking session
-        if (!isBlockingSessionActive) return
+        // Don't block our own app or the launcher
+        if (packageName == this.packageName) return
         
-        // Check if the app is in the blocked list
         if (isAppBlocked(packageName)) {
             blockApp(packageName)
         }
@@ -89,9 +117,6 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun handleBrowserEvent(event: AccessibilityEvent) {
         val packageName = event.packageName?.toString() ?: return
-        
-        // Only block if there's an active blocking session
-        if (!isBlockingSessionActive) return
         
         // Check if it's a browser
         if (!isBrowser(packageName)) return
@@ -101,11 +126,11 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun isAppBlocked(packageName: String): Boolean {
-        return blockedApps.any { it.packageName == packageName }
+        return blockedApps.any { it.packageName == packageName && it.isBlocked }
     }
 
     private fun blockApp(packageName: String) {
-        // Open the home screen to prevent the app from launching
+        // Open the home screen
         val intent = Intent(Intent.ACTION_MAIN).apply {
             addCategory(Intent.CATEGORY_HOME)
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -113,7 +138,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         startActivity(intent)
         
         // Show a toast notification
-        Toast.makeText(this, "App blocked by FocusGuard", Toast.LENGTH_SHORT).show()
+        scope.launch(Dispatchers.Main) {
+            Toast.makeText(this@BlockingAccessibilityService, "App blocked by FocusGuard", Toast.LENGTH_SHORT).show()
+        }
     }
 
     private fun isBrowser(packageName: String): Boolean {
@@ -121,7 +148,6 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun checkAndBlockWebsite(source: AccessibilityNodeInfo) {
-        // Find the address bar in the browser
         val addressBarNode = WebsiteBlocker.findAddressBarNode(source)
         
         if (addressBarNode != null && addressBarNode.text != null) {
@@ -135,7 +161,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             addressBarNode.recycle()
         }
         
-        // Fallback: traverse the entire tree to find URLs
+        // Deeper check if needed
         traverseAccessibilityTree(source)
     }
 
@@ -156,49 +182,27 @@ class BlockingAccessibilityService : AccessibilityService() {
                     child.recycle()
                 }
             }
-        } catch (e: Exception) {
-            // Silently handle exceptions
-        }
+        } catch (e: Exception) {}
     }
 
     private fun isWebsiteBlocked(url: String): Boolean {
         val domain = WebsiteBlocker.extractDomain(url)
         return blockedWebsites.any { blockedSite ->
-            domain.contains(blockedSite.domain, ignoreCase = true) ||
-            blockedSite.domain.contains(domain, ignoreCase = true)
+            blockedSite.isBlocked && (
+                domain.contains(blockedSite.domain, ignoreCase = true) ||
+                blockedSite.domain.contains(domain, ignoreCase = true)
+            )
         }
     }
 
     private fun blockWebsite(url: String) {
-        // Go back to prevent access to the blocked website
         performGlobalAction(GLOBAL_ACTION_BACK)
-        Toast.makeText(this, "Website blocked by FocusGuard", Toast.LENGTH_SHORT).show()
-    }
-
-    private fun loadBlockedAppsAndWebsites() {
-        scope.launch {
-            try {
-                blockedApps = database.blockedAppDao().getAllBlockedApps().toMutableList()
-                blockedWebsites = database.blockedWebsiteDao().getAllBlockedWebsites().toMutableList()
-            } catch (e: Exception) {
-                // Handle database errors silently
-            }
+        scope.launch(Dispatchers.Main) {
+            Toast.makeText(this@BlockingAccessibilityService, "Website blocked by FocusGuard", Toast.LENGTH_SHORT).show()
         }
     }
 
-    private fun checkBlockingSessionStatus() {
-        scope.launch {
-            try {
-                isBlockingSessionActive = sessionManager.isBlockingActive()
-            } catch (e: Exception) {
-                // Handle errors silently
-            }
-        }
-    }
-
-    override fun onInterrupt() {
-        // Called when the service is interrupted
-    }
+    override fun onInterrupt() {}
 
     override fun onDestroy() {
         super.onDestroy()
