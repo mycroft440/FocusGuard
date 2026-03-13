@@ -6,6 +6,15 @@
     android:padding="16dp">
 
     <Button
+        android:id="@+id/quickBlockButton"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="Quick Guard: Social Media & Games"
+        android:textColor="@color/white"
+        android:backgroundTint="#FF9800"
+        android:layout_marginBottom="8dp" />
+
+    <Button
         android:id="@+id/addAppButton"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"

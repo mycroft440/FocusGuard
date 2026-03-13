@@ -14,30 +14,38 @@
         android:gravity="center"
         android:layout_marginBottom="24dp" />
 
-    <TextView
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Select duration for blocking session:"
-        android:textSize="16sp"
-        android:layout_marginBottom="16dp" />
-
-    <TextView
-        android:id="@+id/daysTextView"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:text="Duration: 1 day"
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:gravity="center"
+        android:orientation="horizontal"
         android:layout_marginBottom="16dp"
-        android:padding="12dp"
-        android:background="@drawable/item_background" />
+        android:weightSum="2">
 
-    <SeekBar
-        android:id="@+id/daysSeekBar"
+        <Button
+            android:id="@+id/btnStartTime"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Set Start Time"
+            android:layout_marginEnd="4dp"/>
+
+        <Button
+            android:id="@+id/btnEndTime"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Set End Time"
+            android:layout_marginStart="4dp"/>
+    </LinearLayout>
+
+    <CheckBox
+        android:id="@+id/chkRecurring"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginBottom="24dp" />
+        android:text="Repeat Everyday (Recurring)"
+        android:textSize="16sp"
+        android:layout_marginBottom="24dp"
+        android:checked="false" />
 
     <TextView
         android:layout_width="match_parent"
@@ -50,7 +58,7 @@
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Once you start the blocking session:\n\n• Apps and websites will be blocked for the selected duration\n• You cannot unblock them before the time expires\n• Device Owner Mode can be removed, but blocking will continue\n• The app will continue to enforce blocking until the countdown ends"
+        android:text="Once you start the blocking session:\n\n• Apps and websites will be blocked between these hours\n• If recurring, it will repeat daily\n• Device Owner will enforce restrictions during the window"
         android:textSize="12sp"
         android:layout_marginBottom="24dp"
         android:padding="12dp"

@@ -78,21 +78,25 @@ class BlockingSessionStatusFragment : BottomSheetDialogFragment() {
                 if (!isAdded) return@launch
                 
                 val isBlocking = sessionManager.isBlockingActive()
+                val hasSession = sessionManager.hasRegisteredSession()
                 val details = sessionManager.getSessionDetails()
 
                 if (isBlocking) {
-                    statusTextView.text = "⏱️ Blocking Active"
+                    statusTextView.text = "⏱️ Blocking Active Now"
                     statusTextView.setTextColor(requireContext().getColor(android.R.color.holo_red_light))
+                } else if (hasSession) {
+                    statusTextView.text = "⏸️ Session Registered (Waiting for next window)"
+                    statusTextView.setTextColor(requireContext().getColor(android.R.color.holo_orange_light))
                 } else {
-                    statusTextView.text = "✓ No Active Blocking"
+                    statusTextView.text = "✓ No Active Sessions"
                     statusTextView.setTextColor(requireContext().getColor(android.R.color.holo_green_light))
                 }
 
                 detailsTextView.text = details
 
-                // Update button state: only enable when NO blocking is active
-                renounceButton.isEnabled = !isBlocking
-                renounceButton.alpha = if (!isBlocking) 1f else 0.5f
+                // You can only renounce if the time is totally up. If it's just paused (recurring), you CANNOT renounce
+                renounceButton.isEnabled = !hasSession
+                renounceButton.alpha = if (!hasSession) 1f else 0.5f
                 
                 // Update button text based on state
                 if (isBlocking) {
@@ -108,12 +112,12 @@ class BlockingSessionStatusFragment : BottomSheetDialogFragment() {
 
     private fun renounceDeviceOwner() {
         scope.launch {
-            val isBlocking = sessionManager.isBlockingActive()
+            val hasSession = sessionManager.hasRegisteredSession()
             
-            if (isBlocking) {
+            if (hasSession) {
                 Toast.makeText(
                     requireContext(),
-                    "Cannot renounce while blocking is active. Wait for countdown to end.",
+                    "Cannot renounce while a session is registered (even if it's currently outside the recurring blocking window).",
                     Toast.LENGTH_LONG
                 ).show()
                 return@launch

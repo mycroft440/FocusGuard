@@ -5,8 +5,11 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
-import android.widget.SeekBar
+import android.widget.CheckBox
 import android.widget.TextView
+import android.widget.Toast
+import android.app.TimePickerDialog
+import java.util.Calendar
 import android.widget.Toast
 import com.focusguard.R
 import com.focusguard.database.AppDatabase
@@ -19,8 +22,9 @@ import kotlinx.coroutines.withContext
 
 class StartBlockingSessionFragment : BottomSheetDialogFragment() {
 
-    private lateinit var daysSeekBar: SeekBar
-    private lateinit var daysTextView: TextView
+    private lateinit var btnStartTime: Button
+    private lateinit var btnEndTime: Button
+    private lateinit var chkRecurring: CheckBox
     private lateinit var startButton: Button
     private lateinit var cancelButton: Button
     private lateinit var database: AppDatabase
@@ -35,31 +39,47 @@ class StartBlockingSessionFragment : BottomSheetDialogFragment() {
         return inflater.inflate(R.layout.fragment_start_blocking_session, container, false)
     }
 
+    // Variables to store selected times
+    private var startHour = -1
+    private var startMinute = -1
+    private var endHour = -1
+    private var endMinute = -1
+
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
         database = AppDatabase.getDatabase(requireContext())
         sessionManager = BlockingSessionManager(requireContext())
 
-        daysSeekBar = view.findViewById(R.id.daysSeekBar)
-        daysTextView = view.findViewById(R.id.daysTextView)
+        btnStartTime = view.findViewById(R.id.btnStartTime)
+        btnEndTime = view.findViewById(R.id.btnEndTime)
+        chkRecurring = view.findViewById(R.id.chkRecurring)
         startButton = view.findViewById(R.id.startButton)
         cancelButton = view.findViewById(R.id.cancelButton)
 
-        // Setup SeekBar
-        daysSeekBar.max = 30 // Max 30 days
-        daysSeekBar.progress = 1
-        updateDaysText(1)
+        btnStartTime.setOnClickListener {
+            val calendar = Calendar.getInstance()
+            val currentHour = if(startHour != -1) startHour else calendar.get(Calendar.HOUR_OF_DAY)
+            val currentMinute = if(startMinute != -1) startMinute else calendar.get(Calendar.MINUTE)
 
-        daysSeekBar.setOnSeekBarChangeListener(object : SeekBar.OnSeekBarChangeListener {
-            override fun onProgressChanged(seekBar: SeekBar?, progress: Int, fromUser: Boolean) {
-                val days = if (progress < 1) 1 else progress
-                updateDaysText(days)
-            }
+            TimePickerDialog(requireContext(), { _, selectedHour, selectedMinute ->
+                startHour = selectedHour
+                startMinute = selectedMinute
+                btnStartTime.text = String.format("Start: %02d:%02d", startHour, startMinute)
+            }, currentHour, currentMinute, true).show()
+        }
 
-            override fun onStartTrackingTouch(seekBar: SeekBar?) {}
-            override fun onStopTrackingTouch(seekBar: SeekBar?) {}
-        })
+        btnEndTime.setOnClickListener {
+            val calendar = Calendar.getInstance()
+            val currentHour = if(endHour != -1) endHour else calendar.get(Calendar.HOUR_OF_DAY)
+            val currentMinute = if(endMinute != -1) endMinute else calendar.get(Calendar.MINUTE)
+
+            TimePickerDialog(requireContext(), { _, selectedHour, selectedMinute ->
+                endHour = selectedHour
+                endMinute = selectedMinute
+                btnEndTime.text = String.format("End: %02d:%02d", endHour, endMinute)
+            }, currentHour, currentMinute, true).show()
+        }
 
         startButton.setOnClickListener {
             startBlockingSession()
@@ -70,14 +90,13 @@ class StartBlockingSessionFragment : BottomSheetDialogFragment() {
         }
     }
 
-    private fun updateDaysText(days: Int) {
-        daysTextView.text = "Duration: $days day${if (days > 1) "s" else ""}"
-    }
-
     private fun startBlockingSession() {
         scope.launch {
             try {
-                val days = if (daysSeekBar.progress < 1) 1 else daysSeekBar.progress
+                if (startHour == -1 || endHour == -1) {
+                    Toast.makeText(requireContext(), "Please select both start and end times", Toast.LENGTH_SHORT).show()
+                    return@launch
+                }
                 val blockedApps = withContext(Dispatchers.IO) {
                     database.blockedAppDao().getAllBlockedApps().size
                 }
@@ -94,7 +113,16 @@ class StartBlockingSessionFragment : BottomSheetDialogFragment() {
                     return@launch
                 }
 
-                sessionManager.startBlockingSession(days, blockedApps, blockedWebsites)
+                val isRecurring = chkRecurring.isChecked
+                sessionManager.startBlockingSession(
+                    startHour = startHour,
+                    startMinute = startMinute,
+                    endHour = endHour,
+                    endMinute = endMinute,
+                    isRecurring = isRecurring,
+                    blockedAppsCount = blockedApps,
+                    blockedWebsitesCount = blockedWebsites
+                )
                 
                 dismiss()
             } catch (e: Exception) {

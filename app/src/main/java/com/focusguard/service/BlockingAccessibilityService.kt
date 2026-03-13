@@ -96,12 +96,14 @@ class BlockingAccessibilityService : AccessibilityService() {
     private fun refreshData() {
         scope.launch {
             try {
-                val active = sessionManager.isBlockingActive()
+                val hasSession = sessionManager.hasRegisteredSession()
+                val isWindowActive = sessionManager.isBlockingActive()
+                
                 val apps = database.blockedAppDao().getAllBlockedApps()
                 val websites = database.blockedWebsiteDao().getAllBlockedWebsites()
                 
                 withContext(Dispatchers.Main) {
-                    isBlockingSessionActive = active
+                    isBlockingSessionActive = isWindowActive
                     blockedApps = apps
                     blockedWebsites = websites
                     lastLoadTime = System.currentTimeMillis()

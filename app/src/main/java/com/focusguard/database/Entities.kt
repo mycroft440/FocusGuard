@@ -33,5 +33,11 @@ data class BlockSession(
     val isActive: Boolean = true,
     val blockedAppsCount: Int = 0,
     val blockedWebsitesCount: Int = 0,
-    val createdAt: Long = System.currentTimeMillis()
+    val createdAt: Long = System.currentTimeMillis(),
+    // Novas Colunas para Recorrência Diária
+    val isRecurring: Boolean = false,
+    val recurringStartHour: Int = 0,
+    val recurringStartMinute: Int = 0,
+    val recurringEndHour: Int = 0,
+    val recurringEndMinute: Int = 0
 )
