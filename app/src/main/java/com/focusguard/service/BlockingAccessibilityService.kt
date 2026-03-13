@@ -14,8 +14,8 @@ import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.util.Log
 
 class BlockingAccessibilityService : AccessibilityService() {
 
@@ -28,6 +28,9 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var isBlockingSessionActive = false
     private var lastLoadTime = 0L
     private val CACHE_TIMEOUT = 5000L // 5 seconds cache
+    
+    // NUCLEAR DEBUGGING - Tracking first 5 attempts
+    private var blockAttemptsLogged = 0
 
     private val browserPackages = listOf(
         "com.android.chrome",
@@ -61,27 +64,32 @@ class BlockingAccessibilityService : AccessibilityService() {
         setServiceInfo(info)
         
         Toast.makeText(this, "FocusGuard Accessibility Service Started", Toast.LENGTH_SHORT).show()
+        Log.e("NUCLEAR_DEBUG", "FocusGuard Accessibility Service Started Successfully")
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event == null) return
+        try {
+            if (event == null) return
 
-        // Refresh data if cache expired
-        if (System.currentTimeMillis() - lastLoadTime > CACHE_TIMEOUT) {
-            refreshData()
-        }
-
-        if (!isBlockingSessionActive) return
-
-        when (event.eventType) {
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
-                handleWindowStateChanged(event)
+            // Refresh data if cache expired
+            if (System.currentTimeMillis() - lastLoadTime > CACHE_TIMEOUT) {
+                refreshData()
             }
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
-            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
-            AccessibilityEvent.TYPE_VIEW_FOCUSED -> {
-                handleBrowserEvent(event)
+
+            if (!isBlockingSessionActive) return
+
+            when (event.eventType) {
+                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                    handleWindowStateChanged(event)
+                }
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+                AccessibilityEvent.TYPE_VIEW_FOCUSED -> {
+                    handleBrowserEvent(event)
+                }
             }
+        } catch (e: Exception) {
+            Log.e("NUCLEAR_DEBUG", "CRITICAL ERROR IN onAccessibilityEvent", e)
         }
     }
 
@@ -126,20 +134,37 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun isAppBlocked(packageName: String): Boolean {
-        return blockedApps.any { it.packageName == packageName && it.isBlocked }
+        try {
+            val isBlocked = blockedApps.any { it.packageName == packageName && it.isBlocked }
+            if (isBlocked && blockAttemptsLogged < 5) {
+                blockAttemptsLogged++
+                Log.e("NUCLEAR_DEBUG", "=== BLOCK ATTEMPT $blockAttemptsLogged (APP) ===")
+                Log.e("NUCLEAR_DEBUG", "Package: $packageName")
+                Log.e("NUCLEAR_DEBUG", "Time: ${System.currentTimeMillis()}")
+                Log.e("NUCLEAR_DEBUG", "=============================================")
+            }
+            return isBlocked
+        } catch (e: Exception) {
+            Log.e("NUCLEAR_DEBUG", "Error checking if app is blocked", e)
+            return false
+        }
     }
 
     private fun blockApp(packageName: String) {
-        // Open the home screen
-        val intent = Intent(Intent.ACTION_MAIN).apply {
-            addCategory(Intent.CATEGORY_HOME)
-            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-        }
-        startActivity(intent)
-        
-        // Show a toast notification
-        scope.launch(Dispatchers.Main) {
-            Toast.makeText(this@BlockingAccessibilityService, "App blocked by FocusGuard", Toast.LENGTH_SHORT).show()
+        try {
+            // Open the home screen
+            val intent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            startActivity(intent)
+            
+            // Show a toast notification
+            scope.launch(Dispatchers.Main) {
+                Toast.makeText(this@BlockingAccessibilityService, "App blocked by FocusGuard", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Log.e("NUCLEAR_DEBUG", "Failed to block app: $packageName", e)
         }
     }
 
@@ -148,21 +173,33 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun checkAndBlockWebsite(source: AccessibilityNodeInfo) {
-        val addressBarNode = WebsiteBlocker.findAddressBarNode(source)
-        
-        if (addressBarNode != null && addressBarNode.text != null) {
-            val url = addressBarNode.text.toString()
+        try {
+            val addressBarNode = WebsiteBlocker.findAddressBarNode(source)
             
-            if (url.isNotEmpty() && isWebsiteBlocked(url)) {
-                blockWebsite(url)
+            if (addressBarNode != null && addressBarNode.text != null) {
+                val url = addressBarNode.text.toString()
+                
+                if (url.isNotEmpty() && isWebsiteBlocked(url)) {
+                    if (blockAttemptsLogged < 5) {
+                        blockAttemptsLogged++
+                        Log.e("NUCLEAR_DEBUG", "=== BLOCK ATTEMPT $blockAttemptsLogged (WEBSITE) ===")
+                        Log.e("NUCLEAR_DEBUG", "URL: $url")
+                        Log.e("NUCLEAR_DEBUG", "Time: ${System.currentTimeMillis()}")
+                        Log.e("NUCLEAR_DEBUG", "Node Info: $addressBarNode")
+                        Log.e("NUCLEAR_DEBUG", "=================================================")
+                    }
+                    blockWebsite(url)
+                    addressBarNode.recycle()
+                    return
+                }
                 addressBarNode.recycle()
-                return
             }
-            addressBarNode.recycle()
+            
+            // Deeper check if needed
+            traverseAccessibilityTree(source)
+        } catch (e: Exception) {
+            Log.e("NUCLEAR_DEBUG", "Error in checkAndBlockWebsite", e)
         }
-        
-        // Deeper check if needed
-        traverseAccessibilityTree(source)
     }
 
     private fun traverseAccessibilityTree(node: AccessibilityNodeInfo) {
@@ -186,19 +223,28 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun isWebsiteBlocked(url: String): Boolean {
-        val domain = WebsiteBlocker.extractDomain(url)
-        return blockedWebsites.any { blockedSite ->
-            blockedSite.isBlocked && (
-                domain.contains(blockedSite.domain, ignoreCase = true) ||
-                blockedSite.domain.contains(domain, ignoreCase = true)
-            )
+        try {
+            val domain = WebsiteBlocker.extractDomain(url)
+            return blockedWebsites.any { blockedSite ->
+                blockedSite.isBlocked && (
+                    domain.contains(blockedSite.domain, ignoreCase = true) ||
+                    blockedSite.domain.contains(domain, ignoreCase = true)
+                )
+            }
+        } catch (e: Exception) {
+             Log.e("NUCLEAR_DEBUG", "Error checking if website is blocked", e)
+             return false
         }
     }
 
     private fun blockWebsite(url: String) {
-        performGlobalAction(GLOBAL_ACTION_BACK)
-        scope.launch(Dispatchers.Main) {
-            Toast.makeText(this@BlockingAccessibilityService, "Website blocked by FocusGuard", Toast.LENGTH_SHORT).show()
+        try {
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            scope.launch(Dispatchers.Main) {
+                Toast.makeText(this@BlockingAccessibilityService, "Website blocked by FocusGuard", Toast.LENGTH_SHORT).show()
+            }
+        } catch (e: Exception) {
+            Log.e("NUCLEAR_DEBUG", "Failed to block website: $url", e)
         }
     }
 

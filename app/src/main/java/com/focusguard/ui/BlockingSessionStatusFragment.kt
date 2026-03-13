@@ -123,11 +123,10 @@ class BlockingSessionStatusFragment : BottomSheetDialogFragment() {
             android.app.AlertDialog.Builder(requireContext())
                 .setTitle("Renounce Device Owner Mode?")
                 .setMessage(
-                    "You are about to renounce Device Owner Mode.\n\n" +
+                    "You are about to renounce Device Owner Mode natively.\n\n" +
                     "⚠️ IMPORTANT:\n" +
-                    "• Device Owner Mode will be removed\n" +
-                    "• No active blocking session\n" +
-                    "• You can start a new blocking session later\n\n" +
+                    "• FocusGuard will no longer be the Device Owner\n" +
+                    "• This is only possible because no block session is active.\n" +
                     "Are you sure?"
                 )
                 .setPositiveButton("Yes, Renounce") { _, _ ->
@@ -141,13 +140,15 @@ class BlockingSessionStatusFragment : BottomSheetDialogFragment() {
     private fun performRenounce() {
         scope.launch {
             try {
+                deviceOwnerManager.renounceDeviceOwner()
+                
                 Toast.makeText(
                     requireContext(),
-                    "To renounce, use ADB to remove admin or uninstall the app.\nFocusGuard is currently configured as Device Owner.",
+                    "Device Owner Mode renounced successfully.",
                     Toast.LENGTH_LONG
                 ).show()
 
-                // The blocking session continues independently
+                // The blocking session continues independently (though it should be empty here)
                 updateStatus()
             } catch (e: Exception) {
                 Toast.makeText(

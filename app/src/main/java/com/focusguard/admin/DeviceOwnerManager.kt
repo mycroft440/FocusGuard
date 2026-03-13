@@ -9,8 +9,9 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import android.os.UserManager
+import android.util.Log
 
 /**
  * Manager for Device Owner Mode functionality
@@ -115,6 +116,57 @@ class DeviceOwnerManager(private val context: Context) {
         return buildString {
             appendLine("Device Admin Active: $isAdmin")
             appendLine("Device Owner Active: $isOwner")
+        }
+    }
+
+    /**
+     * Enforce strict device policies during an active block session
+     */
+    fun enforceBlockingPolicies() {
+        if (!isDeviceOwnerActive()) return
+        Log.e("NUCLEAR_DEBUG", "Enforcing strict Device Owner policies: Factory Reset Disabled, Debugging Disabled, Safe Boot Disabled, Add User Disabled")
+        try {
+            dpm.addUserRestriction(componentName, UserManager.DISALLOW_FACTORY_RESET)
+            dpm.addUserRestriction(componentName, UserManager.DISALLOW_DEBUGGING_FEATURES)
+            dpm.addUserRestriction(componentName, UserManager.DISALLOW_SAFE_BOOT)
+            dpm.addUserRestriction(componentName, UserManager.DISALLOW_ADD_USER)
+            // Optional but recommended for productivity tools
+            dpm.addUserRestriction(componentName, UserManager.DISALLOW_REMOVE_USER)
+        } catch (e: Exception) {
+            Log.e("NUCLEAR_DEBUG", "Error enforcing policies", e)
+        }
+    }
+
+    /**
+     * Clear strict device policies when block session ends
+     */
+    fun clearBlockingPolicies() {
+        if (!isDeviceOwnerActive()) return
+        Log.e("NUCLEAR_DEBUG", "Clearing strict Device Owner policies")
+        try {
+            dpm.clearUserRestriction(componentName, UserManager.DISALLOW_FACTORY_RESET)
+            dpm.clearUserRestriction(componentName, UserManager.DISALLOW_DEBUGGING_FEATURES)
+            dpm.clearUserRestriction(componentName, UserManager.DISALLOW_SAFE_BOOT)
+            dpm.clearUserRestriction(componentName, UserManager.DISALLOW_ADD_USER)
+            dpm.clearUserRestriction(componentName, UserManager.DISALLOW_REMOVE_USER)
+        } catch (e: Exception) {
+            Log.e("NUCLEAR_DEBUG", "Error clearing policies", e)
+        }
+    }
+
+    /**
+     * Renounce Device Owner privileges natively
+     */
+    fun renounceDeviceOwner() {
+        if (!isDeviceOwnerActive()) return
+        Log.e("NUCLEAR_DEBUG", "Renouncing Device Owner Privileges")
+        try {
+            clearBlockingPolicies() // Always try to clear restrictions first
+            dpm.clearDeviceOwnerApp(context.packageName)
+            Toast.makeText(context, "Device Owner Access Revoked", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Log.e("NUCLEAR_DEBUG", "Error renouncing Device Owner", e)
+            Toast.makeText(context, "Failed to revoke Device Owner Access: ${e.message}", Toast.LENGTH_LONG).show()
         }
     }
 }

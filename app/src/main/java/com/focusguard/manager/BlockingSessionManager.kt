@@ -9,6 +9,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
+import com.focusguard.admin.DeviceOwnerManager
+import android.util.Log
 
 /**
  * Manager for blocking sessions with day-based countdown
@@ -34,6 +36,10 @@ class BlockingSessionManager(private val context: Context) {
                 )
                 database.blockSessionDao().insertBlockSession(session)
                 
+                // Enforce strict policies when starting a session
+                Log.e("NUCLEAR_DEBUG", "Starting blocking session for $durationDays days. Enforcing policies.")
+                DeviceOwnerManager(context).enforceBlockingPolicies()
+
                 withContext(Dispatchers.Main) {
                     Toast.makeText(
                         context,
@@ -62,9 +68,13 @@ class BlockingSessionManager(private val context: Context) {
             
             // Check if session has expired
             if (session != null && session.endTime != null && System.currentTimeMillis() >= session.endTime) {
+                Log.e("NUCLEAR_DEBUG", "Blocking session expired naturally. Clearing policies.")
                 // Session has expired, mark as inactive
                 val expiredSession = session.copy(isActive = false)
                 database.blockSessionDao().updateBlockSession(expiredSession)
+                
+                // Automatically clear policies since time is up
+                DeviceOwnerManager(context).clearBlockingPolicies()
                 null
             } else {
                 session
@@ -144,9 +154,13 @@ class BlockingSessionManager(private val context: Context) {
             try {
                 val session = getActiveSession()
                 if (session != null) {
+                    Log.e("NUCLEAR_DEBUG", "Manual/Programmatic end of blocking session. Clearing policies.")
                     val endedSession = session.copy(isActive = false)
                     database.blockSessionDao().updateBlockSession(endedSession)
                     
+                    // Clear policies when forcefully stopped
+                    DeviceOwnerManager(context).clearBlockingPolicies()
+
                     withContext(Dispatchers.Main) {
                         Toast.makeText(
                             context,
