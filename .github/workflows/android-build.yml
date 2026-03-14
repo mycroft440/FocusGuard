@@ -19,10 +19,14 @@ jobs:
       with:
         java-version: '17'
         distribution: 'temurin'
-        cache: gradle
+
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v4
+      with:
+        gradle-version: '8.4'
 
     - name: Build with Gradle
-      # Usamos a versão global do Gradle presente nos runners do GitHub já que o wrapper (gradlew) não existe no repo
+      # Usamos a versão global do Gradle após configurá-la especificamente com a action apropriada
       run: gradle assembleDebug
 
     - name: Upload APK
