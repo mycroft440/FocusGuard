@@ -9,14 +9,13 @@ import android.widget.Button
 import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import com.focusguard.admin.DeviceOwnerManager
-import com.object.android.material.card.MaterialCardView
-import com.google.android.material.card.MaterialCardView as GoogleMaterialCardView
+import com.google.android.material.card.MaterialCardView
 
 class MainActivity : AppCompatActivity() {
 
     private lateinit var permissionsBanner: LinearLayout
-    private lateinit var cardTimeSession: GoogleMaterialCardView
-    private lateinit var cardRecurringSession: GoogleMaterialCardView
+    private lateinit var cardTimeSession: MaterialCardView
+    private lateinit var cardRecurringSession: MaterialCardView
     private lateinit var btnActiveSessions: Button
     private lateinit var btnTheme: Button
     private lateinit var deviceOwnerManager: DeviceOwnerManager
