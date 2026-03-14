@@ -22,6 +22,9 @@ jobs:
           distribution: 'temurin'
           cache: gradle
 
+      - name: Criar Gradle Wrapper (já que não foi comitado no repositório)
+        run: gradle wrapper
+
       - name: Dar permissão de execução para o Gradle Wrapper
         run: chmod +x ./gradlew
 
