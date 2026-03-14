@@ -79,4 +79,18 @@
 
     </LinearLayout>
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_marginTop="8dp">
+
+        <Button
+            android:id="@+id/themeButton"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Alternar Tema Cinza" />
+
+    </LinearLayout>
+
 </LinearLayout>

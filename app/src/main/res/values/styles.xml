@@ -13,4 +13,13 @@
         <!-- Status bar color -->
         <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
     </style>
+
+    <!-- Gray Theme -->
+    <style name="Theme.FocusGuard.Gray" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <item name="colorPrimary">@color/gray_500</item>
+        <item name="colorPrimaryVariant">@color/gray_700</item>
+        <item name="colorSecondary">@color/gray_200</item>
+        <item name="colorSecondaryVariant">@color/gray_500</item>
+        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
+    </style>
 </resources>

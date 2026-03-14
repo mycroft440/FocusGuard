@@ -12,4 +12,7 @@
     <color name="border">#FFCCCCCC</color>
     <color name="muted">#FF999999</color>
     <color name="orange">#FFFFA500</color>
+    <color name="gray_200">#FFEEEEEE</color>
+    <color name="gray_500">#FF9E9E9E</color>
+    <color name="gray_700">#FF616161</color>
 </resources>

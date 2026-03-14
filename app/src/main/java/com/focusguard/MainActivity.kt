@@ -27,11 +27,18 @@ class MainActivity : AppCompatActivity() {
     private lateinit var deviceOwnerButton: Button
     private lateinit var startBlockingButton: Button
     private lateinit var blockingStatusButton: Button
+    private lateinit var themeButton: Button
     private lateinit var database: AppDatabase
     private lateinit var accessibilityManager: AccessibilityManager
     private lateinit var deviceOwnerManager: DeviceOwnerManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val sharedPrefs = getSharedPreferences("ThemePrefs", Context.MODE_PRIVATE)
+        val isGrayTheme = sharedPrefs.getBoolean("isGrayTheme", false)
+        if (isGrayTheme) {
+            setTheme(R.style.Theme_FocusGuard_Gray)
+        }
+
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
@@ -51,6 +58,7 @@ class MainActivity : AppCompatActivity() {
         deviceOwnerButton = findViewById(R.id.deviceOwnerButton)
         startBlockingButton = findViewById(R.id.startBlockingButton)
         blockingStatusButton = findViewById(R.id.blockingStatusButton)
+        themeButton = findViewById(R.id.themeButton)
 
         // Setup ViewPager2 with adapter
         val adapter = TabAdapter(this)
@@ -83,6 +91,14 @@ class MainActivity : AppCompatActivity() {
         // Blocking Status button click listener
         blockingStatusButton.setOnClickListener {
             openBlockingSessionStatus()
+        }
+
+        // Theme button click listener
+        themeButton.setOnClickListener {
+            val prefs = getSharedPreferences("ThemePrefs", Context.MODE_PRIVATE)
+            val isGray = prefs.getBoolean("isGrayTheme", false)
+            prefs.edit().putBoolean("isGrayTheme", !isGray).apply()
+            recreate()
         }
 
         // Check if accessibility service is enabled
