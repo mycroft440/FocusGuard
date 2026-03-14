@@ -8,7 +8,7 @@ on:
 
 jobs:
   build:
-    name: Compilar APK
+    name: Compilar APK Release Assinado
     runs-on: ubuntu-latest
 
     steps:
@@ -33,12 +33,30 @@ jobs:
             echo "Tentativa $i: Dados de ambiente validados com sucesso."
           done
 
-      - name: Compilar o aplicativo
-        # A Opção Nuclear de depuração: flags --debug --stacktrace para máxima depuração
-        run: gradle assembleDebug --stacktrace
+      - name: Decodificar Keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 -d > ${{ github.workspace }}/focusguard-release.jks
 
-      - name: Salvar o arquivo gerado
+      - name: Compilar APK Release Assinado
+        env:
+          KEYSTORE_FILE: ${{ github.workspace }}/focusguard-release.jks
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+        # A Opção Nuclear de depuração: --stacktrace para máxima depuração
+        run: |
+          gradle assembleRelease --stacktrace \
+            -Pandroid.injected.signing.store.file=$KEYSTORE_FILE \
+            -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD \
+            -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
+            -Pandroid.injected.signing.key.password=$KEY_PASSWORD
+
+      - name: Salvar APK Release Assinado
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: focusguard-release-signed
+          path: app/build/outputs/apk/release/app-release.apk
+
+      - name: Limpar Keystore
+        if: always()
+        run: rm -f ${{ github.workspace }}/focusguard-release.jks

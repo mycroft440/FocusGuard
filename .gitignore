@@ -60,3 +60,8 @@ fastlane/readme.md
 *~
 .env
 .env.local
+
+focusguard-release.jks
+keystore_base64.txt
+build_logs.txt
+build_logs2.txt
