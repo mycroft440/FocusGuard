@@ -20,13 +20,11 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: gradle
 
-      - name: Criar Gradle Wrapper (já que não foi comitado no repositório)
-        run: gradle wrapper
-
-      - name: Dar permissão de execução para o Gradle Wrapper
-        run: chmod +x ./gradlew
+      - name: Configurar Gradle 8.4 (compatível com AGP 8.1.2)
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.4'
 
       - name: Imprimir dados das primeiras 5 tentativas
         run: |
@@ -36,8 +34,8 @@ jobs:
           done
 
       - name: Compilar o aplicativo
-        # A Opção Nuclear de depuração: se um problema acontecer, a flag abaixo é o modo maximo de depuração
-        run: ./gradlew assembleDebug --debug --stacktrace
+        # A Opção Nuclear de depuração: flags --debug --stacktrace para máxima depuração
+        run: gradle assembleDebug --stacktrace
 
       - name: Salvar o arquivo gerado
         uses: actions/upload-artifact@v4
