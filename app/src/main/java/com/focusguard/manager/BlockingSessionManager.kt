@@ -19,6 +19,7 @@ import android.util.Log
 class BlockingSessionManager(private val context: Context) {
 
     private val database = AppDatabase.getDatabase(context)
+    private val deviceOwnerManager = DeviceOwnerManager(context)
     private val scope = CoroutineScope(Dispatchers.Default)
 
     /**
@@ -38,16 +39,13 @@ class BlockingSessionManager(private val context: Context) {
                     blockedAppsCount = blockedAppsCount,
                     blockedWebsitesCount = blockedWebsitesCount
                 )
-                // Usando o DAO para desativar as sessões antigas
-                val oldSessions = database.blockSessionDao().getAllSessions()
-                oldSessions.forEach { 
-                    database.blockSessionDao().updateBlockSession(it.copy(isActive = false))
-                }
+                // Desativar todas as sessões antigas de uma vez
+                database.blockSessionDao().deactivateAllSessions()
 
                 database.blockSessionDao().insertBlockSession(session)
                 
                 Log.e("NUCLEAR_DEBUG", "Starting timer session. Enforcing policies.")
-                DeviceOwnerManager(context).enforceBlockingPolicies()
+                deviceOwnerManager.enforceBlockingPolicies()
 
                 withContext(Dispatchers.Main) {
                     Toast.makeText(context, "Sessão de foco iniciada.", Toast.LENGTH_LONG).show()
@@ -95,19 +93,17 @@ class BlockingSessionManager(private val context: Context) {
                     blockedWebsitesCount = blockedWebsitesCount
                 )
                 
-                val oldSessions = database.blockSessionDao().getAllSessions()
-                oldSessions.forEach { 
-                    database.blockSessionDao().updateBlockSession(it.copy(isActive = false))
-                }
+                // Desativar todas as sessões antigas de uma vez
+                database.blockSessionDao().deactivateAllSessions()
 
                 database.blockSessionDao().insertBlockSession(session)
                 
                 if(isCurrentlyInBlockingWindow(session)) {
                     Log.e("NUCLEAR_DEBUG", "Starting recurring session inside window. Enforcing policies.")
-                    DeviceOwnerManager(context).enforceBlockingPolicies()
+                    deviceOwnerManager.enforceBlockingPolicies()
                 } else {
                     Log.e("NUCLEAR_DEBUG", "Starting recurring session outside window. Policies will enforce soon.")
-                    DeviceOwnerManager(context).clearBlockingPolicies() 
+                    deviceOwnerManager.clearBlockingPolicies() 
                 }
 
                 withContext(Dispatchers.Main) {
@@ -176,14 +172,14 @@ class BlockingSessionManager(private val context: Context) {
                 val expiredSession = session.copy(isActive = false)
                 database.blockSessionDao().updateBlockSession(expiredSession)
                 
-                DeviceOwnerManager(context).clearBlockingPolicies()
+                deviceOwnerManager.clearBlockingPolicies()
                 null
             } else if (session != null && session.isRecurring && session.endTime != null && System.currentTimeMillis() >= session.endTime) {
                  Log.e("NUCLEAR_DEBUG", "Recurring session expired its months. Clearing policies.")
                  val expiredSession = session.copy(isActive = false)
                  database.blockSessionDao().updateBlockSession(expiredSession)
                  
-                 DeviceOwnerManager(context).clearBlockingPolicies()
+                 deviceOwnerManager.clearBlockingPolicies()
                  null
             } else {
                 session
@@ -276,7 +272,7 @@ class BlockingSessionManager(private val context: Context) {
                     database.blockSessionDao().updateBlockSession(endedSession)
                     
                     // Clear policies when forcefully stopped
-                    DeviceOwnerManager(context).clearBlockingPolicies()
+                    deviceOwnerManager.clearBlockingPolicies()
 
                     withContext(Dispatchers.Main) {
                         Toast.makeText(

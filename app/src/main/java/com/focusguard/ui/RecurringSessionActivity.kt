@@ -1,6 +1,7 @@
 package com.focusguard.ui
 
 import android.app.TimePickerDialog
+import android.content.Intent
 import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
@@ -9,9 +10,12 @@ import android.widget.Toast
 import android.widget.ToggleButton
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
+import androidx.lifecycle.lifecycleScope
 import com.focusguard.R
+import com.focusguard.database.AppDatabase
 import com.focusguard.manager.BlockingSessionManager
 import java.util.Calendar
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -65,11 +69,11 @@ class RecurringSessionActivity : AppCompatActivity() {
         setupTimePickers()
 
         btnSelectApps.setOnClickListener {
-            startActivity(android.content.Intent(this, AppSelectionActivity::class.java))
+            startActivity(Intent(this, AppSelectionActivity::class.java))
         }
 
         btnSelectSites.setOnClickListener {
-            startActivity(android.content.Intent(this, WebsiteSelectionActivity::class.java))
+            startActivity(Intent(this, WebsiteSelectionActivity::class.java))
         }
 
         btnStartSession.setOnClickListener {
@@ -83,12 +87,12 @@ class RecurringSessionActivity : AppCompatActivity() {
     }
 
     private fun updateCounts() {
-        val db = com.focusguard.database.AppDatabase.getDatabase(this)
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
-            val appsCount = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        val db = AppDatabase.getDatabase(this)
+        lifecycleScope.launch {
+            val appsCount = withContext(Dispatchers.IO) {
                 db.blockedAppDao().getAllBlockedApps().size
             }
-            val sitesCount = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val sitesCount = withContext(Dispatchers.IO) {
                 db.blockedWebsiteDao().getAllBlockedWebsites().size
             }
             tvSelectedAppsCount.text = "$appsCount apps selecionados"
@@ -139,12 +143,12 @@ class RecurringSessionActivity : AppCompatActivity() {
 
         val daysString = selectedDays.joinToString(",")
 
-        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
-            val db = com.focusguard.database.AppDatabase.getDatabase(this@RecurringSessionActivity)
-            val appsCount = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+        lifecycleScope.launch {
+            val db = AppDatabase.getDatabase(this@RecurringSessionActivity)
+            val appsCount = withContext(Dispatchers.IO) {
                 db.blockedAppDao().getAllBlockedApps().size
             }
-            val sitesCount = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            val sitesCount = withContext(Dispatchers.IO) {
                 db.blockedWebsiteDao().getAllBlockedWebsites().size
             }
 

@@ -64,7 +64,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
         setServiceInfo(info)
         
-        Toast.makeText(this, "FocusGuard Accessibility Service Started", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Serviço de Acessibilidade FocusGuard Iniciado", Toast.LENGTH_SHORT).show()
         Log.e("NUCLEAR_DEBUG", "FocusGuard Accessibility Service Started Successfully")
     }
 
@@ -164,7 +164,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             
             // Show a toast notification
             scope.launch(Dispatchers.Main) {
-                Toast.makeText(this@BlockingAccessibilityService, "App blocked by FocusGuard", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@BlockingAccessibilityService, "App bloqueado pelo FocusGuard", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
             Log.e("NUCLEAR_DEBUG", "Failed to block app: $packageName", e)
@@ -242,9 +242,14 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun blockWebsite(url: String) {
         try {
-            performGlobalAction(GLOBAL_ACTION_BACK)
+            // Redireciona para home screen (mais robusto do que apenas pressionar Voltar)
+            val intent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            startActivity(intent)
             scope.launch(Dispatchers.Main) {
-                Toast.makeText(this@BlockingAccessibilityService, "Website blocked by FocusGuard", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this@BlockingAccessibilityService, "Site bloqueado pelo FocusGuard", Toast.LENGTH_SHORT).show()
             }
         } catch (e: Exception) {
             Log.e("NUCLEAR_DEBUG", "Failed to block website: $url", e)
@@ -255,6 +260,6 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
-        Toast.makeText(this, "FocusGuard Accessibility Service Stopped", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Serviço de Acessibilidade FocusGuard Parado", Toast.LENGTH_SHORT).show()
     }
 }

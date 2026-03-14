@@ -59,6 +59,9 @@ interface BlockSessionDao {
     @Query("SELECT * FROM block_sessions WHERE isActive = 1 ORDER BY startTime DESC LIMIT 1")
     suspend fun getActiveSession(): BlockSession?
 
+    @Query("UPDATE block_sessions SET isActive = 0 WHERE isActive = 1")
+    suspend fun deactivateAllSessions()
+
     @Query("SELECT * FROM block_sessions ORDER BY startTime DESC")
     suspend fun getAllSessions(): List<BlockSession>
 }
