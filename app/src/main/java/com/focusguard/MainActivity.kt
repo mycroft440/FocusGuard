@@ -1,38 +1,34 @@
 package com.focusguard
 
-import android.accessibilityservice.AccessibilityServiceInfo
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.view.accessibility.AccessibilityManager
+import android.view.View
 import android.widget.Button
-import android.widget.Toast
+import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
-import androidx.viewpager2.widget.ViewPager2
-import com.google.android.material.tabs.TabLayout
-import com.google.android.material.tabs.TabLayoutMediator
-import com.focusguard.adapter.TabAdapter
 import com.focusguard.admin.DeviceOwnerManager
-import com.focusguard.database.AppDatabase
-import com.focusguard.ui.StartBlockingSessionFragment
-import com.focusguard.ui.BlockingSessionStatusFragment
+import com.object.android.material.card.MaterialCardView
+import com.google.android.material.card.MaterialCardView as GoogleMaterialCardView
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var tabLayout: TabLayout
-    private lateinit var viewPager: ViewPager2
-    private lateinit var settingsButton: Button
-    private lateinit var deviceOwnerButton: Button
-    private lateinit var startBlockingButton: Button
-    private lateinit var blockingStatusButton: Button
-    private lateinit var themeButton: Button
-    private lateinit var database: AppDatabase
-    private lateinit var accessibilityManager: AccessibilityManager
+    private lateinit var permissionsBanner: LinearLayout
+    private lateinit var cardTimeSession: GoogleMaterialCardView
+    private lateinit var cardRecurringSession: GoogleMaterialCardView
+    private lateinit var btnActiveSessions: Button
+    private lateinit var btnTheme: Button
     private lateinit var deviceOwnerManager: DeviceOwnerManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        val prefs = getSharedPreferences("FocusGuardPrefs", Context.MODE_PRIVATE)
+        if (!prefs.getBoolean("hasSeenOnboarding", false)) {
+            startActivity(Intent(this, com.focusguard.ui.PermissionsActivity::class.java))
+            finish()
+            return
+        }
+
         val sharedPrefs = getSharedPreferences("ThemePrefs", Context.MODE_PRIVATE)
         val isGrayTheme = sharedPrefs.getBoolean("isGrayTheme", false)
         if (isGrayTheme) {
@@ -42,86 +38,68 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
-        // Initialize database
-        database = AppDatabase.getDatabase(this)
-
-        // Initialize accessibility manager
-        accessibilityManager = getSystemService(Context.ACCESSIBILITY_SERVICE) as AccessibilityManager
-
-        // Initialize Device Owner Manager
         deviceOwnerManager = DeviceOwnerManager(this)
 
-        // Initialize UI components
-        tabLayout = findViewById(R.id.tabLayout)
-        viewPager = findViewById(R.id.viewPager)
-        settingsButton = findViewById(R.id.settingsButton)
-        deviceOwnerButton = findViewById(R.id.deviceOwnerButton)
-        startBlockingButton = findViewById(R.id.startBlockingButton)
-        blockingStatusButton = findViewById(R.id.blockingStatusButton)
-        themeButton = findViewById(R.id.themeButton)
+        permissionsBanner = findViewById(R.id.permissionsBanner)
+        cardTimeSession = findViewById(R.id.cardTimeSession)
+        cardRecurringSession = findViewById(R.id.cardRecurringSession)
+        btnActiveSessions = findViewById(R.id.btnActiveSessions)
+        btnTheme = findViewById(R.id.btnTheme)
 
-        // Setup ViewPager2 with adapter
-        val adapter = TabAdapter(this)
-        viewPager.adapter = adapter
-
-        // Connect TabLayout with ViewPager2
-        TabLayoutMediator(tabLayout, viewPager) { tab, position ->
-            tab.text = when (position) {
-                0 -> "Blocked Apps"
-                1 -> "Blocked Websites"
-                else -> "Tab $position"
-            }
-        }.attach()
-
-        // Settings button click listener
-        settingsButton.setOnClickListener {
-            openAccessibilitySettings()
+        // Banner click redirects to Permissions
+        permissionsBanner.setOnClickListener {
+            startActivity(Intent(this, com.focusguard.ui.PermissionsActivity::class.java))
         }
 
-        // Device Owner button click listener
-        deviceOwnerButton.setOnClickListener {
-            openDeviceOwnerSettings()
+        // Time Session
+        cardTimeSession.setOnClickListener {
+            startActivity(Intent(this, com.focusguard.ui.TimeSessionActivity::class.java))
         }
 
-        // Start Blocking button click listener
-        startBlockingButton.setOnClickListener {
-            openStartBlockingSession()
+        // Recurring Session
+        cardRecurringSession.setOnClickListener {
+            startActivity(Intent(this, com.focusguard.ui.RecurringSessionActivity::class.java))
         }
 
-        // Blocking Status button click listener
-        blockingStatusButton.setOnClickListener {
-            openBlockingSessionStatus()
+        // Active Sessions (For now we can open the old fragment, or a new Activity)
+        btnActiveSessions.setOnClickListener {
+            val fragment = com.focusguard.ui.BlockingSessionStatusFragment()
+            fragment.show(supportFragmentManager, "BlockingSessionStatus")
         }
 
-        // Theme button click listener
-        themeButton.setOnClickListener {
-            val prefs = getSharedPreferences("ThemePrefs", Context.MODE_PRIVATE)
-            val isGray = prefs.getBoolean("isGrayTheme", false)
+        // Theme Toggle
+        btnTheme.setOnClickListener {
+            val themePrefs = getSharedPreferences("ThemePrefs", Context.MODE_PRIVATE)
+            val isGray = themePrefs.getBoolean("isGrayTheme", false)
             
-            // Imprimir os dados das primeiras 5 tentativas, sem exceção
-            val attempts = prefs.getInt("themeChangeAttempts", 0) + 1
-            prefs.edit().putInt("themeChangeAttempts", attempts).apply()
+            val attempts = themePrefs.getInt("themeChangeAttempts", 0) + 1
+            themePrefs.edit().putInt("themeChangeAttempts", attempts).apply()
             
             if (attempts <= 5) {
                 println("Tentativa $attempts de alternância do tema. Tema atual: ${if (isGray) "Cinza" else "Padrão"}. Alterando para: ${if (!isGray) "Cinza" else "Padrão"}.")
             }
 
-            prefs.edit().putBoolean("isGrayTheme", !isGray).apply()
+            themePrefs.edit().putBoolean("isGrayTheme", !isGray).apply()
             recreate()
         }
-
-        // Check if accessibility service is enabled
-        if (!isAccessibilityServiceEnabled()) {
-            Toast.makeText(this, "Please enable FocusGuard in Accessibility Settings", Toast.LENGTH_LONG).show()
-        }
-
-        // Update Device Owner button text based on status
-        updateDeviceOwnerButtonStatus()
     }
 
-    /**
-     * Checks if the FocusGuard accessibility service is enabled
-     */
+    override fun onResume() {
+        super.onResume()
+        checkPermissionsAndBanner()
+    }
+
+    private fun checkPermissionsAndBanner() {
+        val isA11yEnabled = isAccessibilityServiceEnabled()
+        val isAdminActive = deviceOwnerManager.isDeviceAdminActive() || deviceOwnerManager.isDeviceOwnerActive()
+
+        if (!isA11yEnabled || !isAdminActive) {
+            permissionsBanner.visibility = View.VISIBLE
+        } else {
+            permissionsBanner.visibility = View.GONE
+        }
+    }
+
     private fun isAccessibilityServiceEnabled(): Boolean {
         val enabledServices = Settings.Secure.getString(
             contentResolver,
@@ -130,66 +108,5 @@ class MainActivity : AppCompatActivity() {
 
         val serviceName = "${packageName}/com.focusguard.service.BlockingAccessibilityService"
         return enabledServices.contains(serviceName)
-    }
-
-    /**
-     * Opens the accessibility settings
-     */
-    private fun openAccessibilitySettings() {
-        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-        startActivity(intent)
-    }
-
-    /**
-     * Opens Device Owner settings/instructions
-     */
-    private fun openDeviceOwnerSettings() {
-        if (deviceOwnerManager.isDeviceOwnerActive()) {
-            Toast.makeText(this, "Device Owner Mode is Active", Toast.LENGTH_SHORT).show()
-        } else if (deviceOwnerManager.isDeviceAdminActive()) {
-            Toast.makeText(this, "Device Admin is Active. Use ADB to set as Device Owner.", Toast.LENGTH_LONG).show()
-            deviceOwnerManager.setAsDeviceOwner()
-        } else {
-            // Request device admin activation
-            deviceOwnerManager.requestDeviceAdmin()
-        }
-    }
-
-    /**
-     * Update Device Owner button status
-     */
-    private fun updateDeviceOwnerButtonStatus() {
-        val statusText = when {
-            deviceOwnerManager.isDeviceOwnerActive() -> "Device Owner: Active"
-            deviceOwnerManager.isDeviceAdminActive() -> "Device Admin: Active"
-            else -> "Enable Device Owner Mode"
-        }
-        deviceOwnerButton.text = statusText
-    }
-
-    /**
-     * Opens the start blocking session fragment
-     */
-    private fun openStartBlockingSession() {
-        val fragment = StartBlockingSessionFragment()
-        fragment.show(supportFragmentManager, "StartBlockingSession")
-    }
-
-    /**
-     * Opens the blocking session status fragment
-     */
-    private fun openBlockingSessionStatus() {
-        val fragment = BlockingSessionStatusFragment()
-        fragment.show(supportFragmentManager, "BlockingSessionStatus")
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // Check accessibility service status on resume
-        if (!isAccessibilityServiceEnabled()) {
-            Toast.makeText(this, "FocusGuard accessibility service is not enabled", Toast.LENGTH_SHORT).show()
-        }
-        // Update Device Owner button status
-        updateDeviceOwnerButtonStatus()
     }
 }

@@ -39,5 +39,7 @@ data class BlockSession(
     val recurringStartHour: Int = 0,
     val recurringStartMinute: Int = 0,
     val recurringEndHour: Int = 0,
-    val recurringEndMinute: Int = 0
+    val recurringEndMinute: Int = 0,
+    val recurringDaysOfWeek: String = "", // e.g., "1,2,3,4,5" for Mon-Fri
+    val recurringDurationMonths: Int = 1
 )

@@ -1,0 +1,166 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="?android:attr/colorBackground">
+
+    <com.google.android.material.appbar.AppBarLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content">
+        <androidx.appcompat.widget.Toolbar
+            android:id="@+id/toolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="?attr/colorPrimary"
+            android:theme="@style/ThemeOverlay.AppCompat.Dark.ActionBar" />
+    </com.google.android.material.appbar.AppBarLayout>
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:padding="16dp"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="1. Defina o Horário"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="16dp"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginBottom="16dp">
+
+                <Button
+                    android:id="@+id/btnStartTime"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:text="Início: --:--"
+                    android:layout_marginEnd="8dp"/>
+
+                <Button
+                    android:id="@+id/btnEndTime"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                    android:text="Fim: --:--"
+                    android:layout_marginStart="8dp"/>
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="2. Dias da Semana"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="16dp"
+                android:layout_marginTop="8dp"/>
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center"
+                android:layout_marginBottom="24dp">
+                
+                <ToggleButton android:id="@+id/btnSun" android:layout_width="40dp" android:layout_height="40dp" android:textOff="D" android:textOn="D" android:background="@drawable/toggle_bg" android:layout_margin="2dp" />
+                <ToggleButton android:id="@+id/btnMon" android:layout_width="40dp" android:layout_height="40dp" android:textOff="S" android:textOn="S" android:background="@drawable/toggle_bg" android:layout_margin="2dp" />
+                <ToggleButton android:id="@+id/btnTue" android:layout_width="40dp" android:layout_height="40dp" android:textOff="T" android:textOn="T" android:background="@drawable/toggle_bg" android:layout_margin="2dp" />
+                <ToggleButton android:id="@+id/btnWed" android:layout_width="40dp" android:layout_height="40dp" android:textOff="Q" android:textOn="Q" android:background="@drawable/toggle_bg" android:layout_margin="2dp" />
+                <ToggleButton android:id="@+id/btnThu" android:layout_width="40dp" android:layout_height="40dp" android:textOff="Q" android:textOn="Q" android:background="@drawable/toggle_bg" android:layout_margin="2dp" />
+                <ToggleButton android:id="@+id/btnFri" android:layout_width="40dp" android:layout_height="40dp" android:textOff="S" android:textOn="S" android:background="@drawable/toggle_bg" android:layout_margin="2dp" />
+                <ToggleButton android:id="@+id/btnSat" android:layout_width="40dp" android:layout_height="40dp" android:textOff="S" android:textOn="S" android:background="@drawable/toggle_bg" android:layout_margin="2dp" />
+            </LinearLayout>
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="3. Duração do Agendamento (Meses)"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="16dp"/>
+
+            <EditText
+                android:id="@+id/editDurationMonths"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:hint="Ex: 3"
+                android:inputType="number"
+                android:layout_marginBottom="24dp"/>
+
+            <View
+                android:layout_width="match_parent"
+                android:layout_height="1dp"
+                android:background="?android:attr/listDivider"
+                android:layout_marginBottom="24dp" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="4. Selecione o que bloquear"
+                android:textSize="18sp"
+                android:textStyle="bold"
+                android:layout_marginBottom="16dp"/>
+
+            <Button
+                android:id="@+id/btnSelectApps"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Selecionar Aplicativos"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_marginBottom="8dp"/>
+            
+            <TextView
+                android:id="@+id/tvSelectedAppsCount"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="0 apps selecionados"
+                android:layout_marginBottom="16dp"
+                android:gravity="center"/>
+
+            <Button
+                android:id="@+id/btnSelectSites"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Selecionar Sites"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_marginBottom="8dp"/>
+
+            <TextView
+                android:id="@+id/tvSelectedSitesCount"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="0 sites selecionados"
+                android:layout_marginBottom="24dp"
+                android:gravity="center"/>
+
+            <Space
+                android:layout_width="match_parent"
+                android:layout_height="0dp"
+                android:layout_weight="1" />
+
+            <Button
+                android:id="@+id/btnStartSession"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Agendar Bloqueio Recorrente"
+                android:layout_marginTop="16dp"
+                android:layout_marginBottom="16dp"/>
+
+        </LinearLayout>
+    </ScrollView>
+</LinearLayout>

@@ -33,6 +33,30 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".ui.PermissionsActivity"
+            android:exported="false" />
+
+        <activity
+            android:name=".ui.TimeSessionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.FocusGuard" />
+
+        <activity
+            android:name=".ui.RecurringSessionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.FocusGuard" />
+
+        <activity
+            android:name=".ui.AppSelectionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.FocusGuard" />
+
+        <activity
+            android:name=".ui.WebsiteSelectionActivity"
+            android:exported="false"
+            android:theme="@style/Theme.FocusGuard" />
+
         <!-- Device Admin Receiver for Device Owner Mode -->
         <receiver
             android:name=".admin.FocusGuardDeviceAdminReceiver"
