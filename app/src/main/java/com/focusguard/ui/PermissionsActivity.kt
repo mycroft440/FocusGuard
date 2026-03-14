@@ -1,8 +1,10 @@
 package com.focusguard.ui
 
+import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Process
 import android.provider.Settings
 import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
@@ -67,8 +69,19 @@ class PermissionsActivity : AppCompatActivity() {
         btnDeviceAdmin.text = if (isAdminActive) "Concedido" else "Conceder"
         btnDeviceAdmin.isEnabled = !isAdminActive
 
-        // Uso de dados não é estritamente validado aqui pro fluxo simplificado, 
-        // mas podemos checar AppOpsManager futuramente.
+        val isUsageAccessEnabled = isUsageAccessEnabled()
+        btnUsageAccess.text = if (isUsageAccessEnabled) "Concedido" else "Conceder"
+        btnUsageAccess.isEnabled = !isUsageAccessEnabled
+    }
+
+    private fun isUsageAccessEnabled(): Boolean {
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = appOps.unsafeCheckOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            Process.myUid(),
+            packageName
+        )
+        return mode == AppOpsManager.MODE_ALLOWED
     }
 
     private fun isAccessibilityServiceEnabled(): Boolean {

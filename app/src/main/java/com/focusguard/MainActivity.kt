@@ -1,23 +1,24 @@
 package com.focusguard
 
+import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.os.Process
 import android.provider.Settings
 import android.view.View
 import android.widget.Button
-import android.widget.LinearLayout
 import androidx.appcompat.app.AppCompatActivity
 import com.focusguard.admin.DeviceOwnerManager
+import com.google.android.material.button.MaterialButton
 import com.google.android.material.card.MaterialCardView
 
 class MainActivity : AppCompatActivity() {
 
-    private lateinit var permissionsBanner: LinearLayout
+    private lateinit var btnPendingPermissions: MaterialButton
     private lateinit var cardTimeSession: MaterialCardView
     private lateinit var cardRecurringSession: MaterialCardView
     private lateinit var btnActiveSessions: Button
-    private lateinit var btnTheme: Button
     private lateinit var deviceOwnerManager: DeviceOwnerManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -28,25 +29,20 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val sharedPrefs = getSharedPreferences("ThemePrefs", Context.MODE_PRIVATE)
-        val isGrayTheme = sharedPrefs.getBoolean("isGrayTheme", false)
-        if (isGrayTheme) {
-            setTheme(R.style.Theme_FocusGuard_Gray)
-        }
+
 
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
 
         deviceOwnerManager = DeviceOwnerManager(this)
 
-        permissionsBanner = findViewById(R.id.permissionsBanner)
+        btnPendingPermissions = findViewById(R.id.btnPendingPermissions)
         cardTimeSession = findViewById(R.id.cardTimeSession)
         cardRecurringSession = findViewById(R.id.cardRecurringSession)
         btnActiveSessions = findViewById(R.id.btnActiveSessions)
-        btnTheme = findViewById(R.id.btnTheme)
 
-        // Banner click redirects to Permissions
-        permissionsBanner.setOnClickListener {
+        // Botão vermelho redireciona para Permissions
+        btnPendingPermissions.setOnClickListener {
             startActivity(Intent(this, com.focusguard.ui.PermissionsActivity::class.java))
         }
 
@@ -66,21 +62,7 @@ class MainActivity : AppCompatActivity() {
             fragment.show(supportFragmentManager, "BlockingSessionStatus")
         }
 
-        // Theme Toggle
-        btnTheme.setOnClickListener {
-            val themePrefs = getSharedPreferences("ThemePrefs", Context.MODE_PRIVATE)
-            val isGray = themePrefs.getBoolean("isGrayTheme", false)
-            
-            val attempts = themePrefs.getInt("themeChangeAttempts", 0) + 1
-            themePrefs.edit().putInt("themeChangeAttempts", attempts).apply()
-            
-            if (attempts <= 5) {
-                println("Tentativa $attempts de alternância do tema. Tema atual: ${if (isGray) "Cinza" else "Padrão"}. Alterando para: ${if (!isGray) "Cinza" else "Padrão"}.")
-            }
 
-            themePrefs.edit().putBoolean("isGrayTheme", !isGray).apply()
-            recreate()
-        }
     }
 
     override fun onResume() {
@@ -91,11 +73,12 @@ class MainActivity : AppCompatActivity() {
     private fun checkPermissionsAndBanner() {
         val isA11yEnabled = isAccessibilityServiceEnabled()
         val isAdminActive = deviceOwnerManager.isDeviceAdminActive() || deviceOwnerManager.isDeviceOwnerActive()
+        val isUsageAccessEnabled = isUsageAccessEnabled()
 
-        if (!isA11yEnabled || !isAdminActive) {
-            permissionsBanner.visibility = View.VISIBLE
+        if (!isA11yEnabled || !isAdminActive || !isUsageAccessEnabled) {
+            btnPendingPermissions.visibility = View.VISIBLE
         } else {
-            permissionsBanner.visibility = View.GONE
+            btnPendingPermissions.visibility = View.GONE
         }
     }
 
@@ -107,5 +90,15 @@ class MainActivity : AppCompatActivity() {
 
         val serviceName = "${packageName}/com.focusguard.service.BlockingAccessibilityService"
         return enabledServices.contains(serviceName)
+    }
+
+    private fun isUsageAccessEnabled(): Boolean {
+        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
+        val mode = appOps.unsafeCheckOpNoThrow(
+            AppOpsManager.OPSTR_GET_USAGE_STATS,
+            Process.myUid(),
+            packageName
+        )
+        return mode == AppOpsManager.MODE_ALLOWED
     }
 }
