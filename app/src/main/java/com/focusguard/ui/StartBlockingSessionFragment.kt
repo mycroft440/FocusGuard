@@ -10,7 +10,6 @@ import android.widget.TextView
 import android.widget.Toast
 import android.app.TimePickerDialog
 import java.util.Calendar
-import android.widget.Toast
 import com.focusguard.R
 import com.focusguard.database.AppDatabase
 import com.focusguard.manager.BlockingSessionManager
