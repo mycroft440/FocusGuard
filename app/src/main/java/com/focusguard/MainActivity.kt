@@ -97,6 +97,15 @@ class MainActivity : AppCompatActivity() {
         themeButton.setOnClickListener {
             val prefs = getSharedPreferences("ThemePrefs", Context.MODE_PRIVATE)
             val isGray = prefs.getBoolean("isGrayTheme", false)
+            
+            // Imprimir os dados das primeiras 5 tentativas, sem exceção
+            val attempts = prefs.getInt("themeChangeAttempts", 0) + 1
+            prefs.edit().putInt("themeChangeAttempts", attempts).apply()
+            
+            if (attempts <= 5) {
+                println("Tentativa $attempts de alternância do tema. Tema atual: ${if (isGray) "Cinza" else "Padrão"}. Alterando para: ${if (!isGray) "Cinza" else "Padrão"}.")
+            }
+
             prefs.edit().putBoolean("isGrayTheme", !isGray).apply()
             recreate()
         }
