@@ -1,5 +1,19 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- Dark Theme Colors -->
+    <color name="dark_bg">#FF121212</color>
+    <color name="dark_surface">#FF1E1E1E</color>
+    <color name="dark_card">#FF2A2A2A</color>
+
+    <!-- Accent Colors -->
+    <color name="accent_cyan">#FF00BCD4</color>
+    <color name="accent_cyan_dark">#FF0097A7</color>
+
+    <!-- Text Colors -->
+    <color name="text_primary">#FFFAFAFA</color>
+    <color name="text_secondary">#FFB0B0B0</color>
+
+    <!-- Legacy (kept for compatibility) -->
     <color name="purple_200">#FFBB86FC</color>
     <color name="purple_500">#FF6200EE</color>
     <color name="purple_700">#FF3700B3</color>
@@ -9,8 +23,8 @@
     <color name="white">#FFFFFFFF</color>
     <color name="red">#FFFF0000</color>
     <color name="green">#FF00FF00</color>
-    <color name="border">#FFCCCCCC</color>
-    <color name="muted">#FF999999</color>
+    <color name="border">#FF333333</color>
+    <color name="muted">#FF666666</color>
     <color name="orange">#FFFFA500</color>
     <color name="gray_200">#FFEEEEEE</color>
     <color name="gray_500">#FF9E9E9E</color>
