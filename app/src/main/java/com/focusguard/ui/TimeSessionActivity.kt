@@ -64,13 +64,18 @@ class TimeSessionActivity : AppCompatActivity() {
                 return@setOnClickListener
             }
 
-            // O SessionManager precisará de adaptação para "dias e horas" exatas, 
-            // mas o conceito de duração já existe.
-            val totalMinutes = (days * 24 * 60) + (hours * 60)
-            
-            Toast.makeText(this, "Iniciando sessão com duração de $totalMinutes minutos.", Toast.LENGTH_LONG).show()
-            // Simulação de início - Lógica ideal entra no SessionManager
-            finish()
+            kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+                val db = com.focusguard.database.AppDatabase.getDatabase(this@TimeSessionActivity)
+                val appsCount = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    db.blockedAppDao().getAllBlockedApps().size
+                }
+                val sitesCount = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    db.blockedWebsiteDao().getAllBlockedWebsites().size
+                }
+
+                sessionManager.startTimerSession(days, hours, appsCount, sitesCount)
+                finish()
+            }
         }
     }
 

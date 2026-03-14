@@ -22,74 +22,100 @@ class BlockingSessionManager(private val context: Context) {
     private val scope = CoroutineScope(Dispatchers.Default)
 
     /**
-     * Start a new blocking session (Specific Hours or Recurring)
+     * Start a new timer-based blocking session (Countdown)
      */
-    fun startBlockingSession(
+    fun startTimerSession(days: Int, hours: Int, blockedAppsCount: Int, blockedWebsitesCount: Int) {
+        scope.launch {
+            try {
+                val startMillis = System.currentTimeMillis()
+                val endMillis = startMillis + TimeUnit.DAYS.toMillis(days.toLong()) + TimeUnit.HOURS.toMillis(hours.toLong())
+                
+                val session = BlockSession(
+                    startTime = startMillis,
+                    endTime = endMillis,
+                    isActive = true,
+                    isRecurring = false,
+                    blockedAppsCount = blockedAppsCount,
+                    blockedWebsitesCount = blockedWebsitesCount
+                )
+                // Usando o DAO para desativar as sessões antigas
+                val oldSessions = database.blockSessionDao().getAllSessions()
+                oldSessions.forEach { 
+                    database.blockSessionDao().updateBlockSession(it.copy(isActive = false))
+                }
+
+                database.blockSessionDao().insertBlockSession(session)
+                
+                Log.e("NUCLEAR_DEBUG", "Starting timer session. Enforcing policies.")
+                DeviceOwnerManager(context).enforceBlockingPolicies()
+
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Sessão de foco iniciada.", Toast.LENGTH_LONG).show()
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) {
+                    Toast.makeText(context, "Erro ao iniciar sessão: ${e.message}", Toast.LENGTH_SHORT).show()
+                }
+            }
+        }
+    }
+
+    /**
+     * Start a new recurring blocking session
+     */
+    fun startRecurringSession(
         startHour: Int,
         startMinute: Int,
         endHour: Int,
         endMinute: Int,
-        isRecurring: Boolean,
-        blockedAppsCount: Int, 
+        daysOfWeek: String,
+        durationMonths: Int,
+        blockedAppsCount: Int,
         blockedWebsitesCount: Int
     ) {
         scope.launch {
             try {
-                // Configurando Calendários para extrair timestamps iniciais
-                val startCal = Calendar.getInstance().apply {
-                    set(Calendar.HOUR_OF_DAY, startHour)
-                    set(Calendar.MINUTE, startMinute)
-                    set(Calendar.SECOND, 0)
-                }
-
-                val endCal = Calendar.getInstance().apply {
-                    set(Calendar.HOUR_OF_DAY, endHour)
-                    set(Calendar.MINUTE, endMinute)
-                    set(Calendar.SECOND, 0)
-                }
-                
-                // Se não for recorrente, e o endHour for menor, significa que termia amanhã
-                if (!isRecurring && endCal.before(startCal)) {
-                    endCal.add(Calendar.DAY_OF_YEAR, 1)
-                }
+                val startMillis = System.currentTimeMillis()
+                val cal = Calendar.getInstance()
+                cal.add(Calendar.MONTH, durationMonths)
+                val endMillis = cal.timeInMillis
 
                 val session = BlockSession(
-                    startTime = startCal.timeInMillis,
-                    endTime = if (isRecurring) null else endCal.timeInMillis,
+                    startTime = startMillis,
+                    endTime = endMillis,
                     isActive = true,
-                    isRecurring = isRecurring,
+                    isRecurring = true,
                     recurringStartHour = startHour,
                     recurringStartMinute = startMinute,
                     recurringEndHour = endHour,
                     recurringEndMinute = endMinute,
+                    recurringDaysOfWeek = daysOfWeek,
+                    recurringDurationMonths = durationMonths,
                     blockedAppsCount = blockedAppsCount,
                     blockedWebsitesCount = blockedWebsitesCount
                 )
+                
+                val oldSessions = database.blockSessionDao().getAllSessions()
+                oldSessions.forEach { 
+                    database.blockSessionDao().updateBlockSession(it.copy(isActive = false))
+                }
+
                 database.blockSessionDao().insertBlockSession(session)
                 
-                // Força policiamento imediatamente se o horário atual já estiver no período de bloqueio
                 if(isCurrentlyInBlockingWindow(session)) {
-                    Log.e("NUCLEAR_DEBUG", "Starting blocking session inside window. Enforcing policies.")
+                    Log.e("NUCLEAR_DEBUG", "Starting recurring session inside window. Enforcing policies.")
                     DeviceOwnerManager(context).enforceBlockingPolicies()
                 } else {
                     Log.e("NUCLEAR_DEBUG", "Starting recurring session outside window. Policies will enforce soon.")
+                    DeviceOwnerManager(context).clearBlockingPolicies() 
                 }
 
                 withContext(Dispatchers.Main) {
-                    val recText = if(isRecurring) " everyday." else "."
-                    Toast.makeText(
-                        context,
-                        "Blocking session started from $startHour:$startMinute to $endHour:$endMinute$recText",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    Toast.makeText(context, "Sessão recorrente agendada.", Toast.LENGTH_LONG).show()
                 }
             } catch (e: Exception) {
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(
-                        context,
-                        "Failed to start blocking session: ${e.message}",
-                        Toast.LENGTH_SHORT
-                    ).show()
+                    Toast.makeText(context, "Erro ao agendar sessão: ${e.message}", Toast.LENGTH_SHORT).show()
                 }
             }
         }
@@ -106,7 +132,20 @@ class BlockingSessionManager(private val context: Context) {
             // Sessão Simples
             return (session.endTime == null) || (now.timeInMillis < session.endTime)
         } else {
-            // Sessão Diária
+            // Expirou limite de meses da sessão recorrente
+            if (session.endTime != null && now.timeInMillis > session.endTime) {
+                return false
+            }
+
+            // Checa dia da semana
+            if (session.recurringDaysOfWeek.isNotEmpty()) {
+                val currentDayOfWeek = now.get(Calendar.DAY_OF_WEEK).toString()
+                if (!session.recurringDaysOfWeek.split(",").contains(currentDayOfWeek)) {
+                    return false
+                }
+            }
+
+            // Checa horário
             val nowHour = now.get(Calendar.HOUR_OF_DAY)
             val nowMin = now.get(Calendar.MINUTE)
             val currentTimeVal = nowHour * 60 + nowMin
@@ -131,7 +170,7 @@ class BlockingSessionManager(private val context: Context) {
         return try {
             val session = database.blockSessionDao().getActiveSession()
             
-            // Se for sessão de tempo fixo e já passou do Limite de Fim, inativa e retira o DeviceOwner
+            // Se for sessão de tempo fixo e já passou do Limite de Fim, inativa
             if (session != null && !session.isRecurring && session.endTime != null && System.currentTimeMillis() >= session.endTime) {
                 Log.e("NUCLEAR_DEBUG", "Blocking session expired naturally. Clearing policies.")
                 val expiredSession = session.copy(isActive = false)
@@ -139,8 +178,14 @@ class BlockingSessionManager(private val context: Context) {
                 
                 DeviceOwnerManager(context).clearBlockingPolicies()
                 null
+            } else if (session != null && session.isRecurring && session.endTime != null && System.currentTimeMillis() >= session.endTime) {
+                 Log.e("NUCLEAR_DEBUG", "Recurring session expired its months. Clearing policies.")
+                 val expiredSession = session.copy(isActive = false)
+                 database.blockSessionDao().updateBlockSession(expiredSession)
+                 
+                 DeviceOwnerManager(context).clearBlockingPolicies()
+                 null
             } else {
-                // Se for recorrente, ou ainda tiver tempo, manter a sessão viva
                 session
             }
         } catch (e: Exception) {

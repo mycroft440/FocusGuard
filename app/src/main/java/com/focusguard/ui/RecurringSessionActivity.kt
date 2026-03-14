@@ -139,9 +139,26 @@ class RecurringSessionActivity : AppCompatActivity() {
 
         val daysString = selectedDays.joinToString(",")
 
-        // TODO: Completar a integração real com SessionManager após criar fluxo de seleção de apps
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.Main).launch {
+            val db = com.focusguard.database.AppDatabase.getDatabase(this@RecurringSessionActivity)
+            val appsCount = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                db.blockedAppDao().getAllBlockedApps().size
+            }
+            val sitesCount = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                db.blockedWebsiteDao().getAllBlockedWebsites().size
+            }
 
-        Toast.makeText(this, "Sessão recorrente salva! (A lógica final depende da seleção)", Toast.LENGTH_LONG).show()
-        finish()
+            sessionManager.startRecurringSession(
+                startHour,
+                startMinute,
+                endHour,
+                endMinute,
+                daysString,
+                durationMonths,
+                appsCount,
+                sitesCount
+            )
+            finish()
+        }
     }
 }
