@@ -21,7 +21,7 @@ object PermissionUtils {
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
 
-        val serviceName = "${context.packageName}/com.focusguard.service.BlockingAccessibilityService"
+        val serviceName = "${context.packageName}/${context.packageName}.service.BlockingAccessibilityService"
         return enabledServices.contains(serviceName)
     }
 
