@@ -115,14 +115,24 @@ class DeviceOwnerManager(private val context: Context) {
 
         val adbCommand = "adb shell dpm set-device-owner com.focusguard/.admin.FocusGuardDeviceAdminReceiver"
 
+        val tutorialMessage = "Proteção Nuclear (Device Owner) impede a desinstalação burlando os bloqueios.\n\n" +
+                "Siga os passos abaixo no seu computador:\n\n" +
+                "1. Ative a 'Depuração USB' nas Opções de Desenvolvedor do Android.\n" +
+                "2. Conecte o celular via cabo USB ao PC.\n" +
+                "3. IMPORTANTE: Remova temporariamente TODAS as suas contas Google/Samsung logadas (Ajustes > Contas). Sem isso, o Android recusa o comando.\n" +
+                "4. Baixe ou abra o ADB (Terminal/CMD) no PC.\n" +
+                "5. Cole e rode o comando ADB copiado no botão abaixo.\n" +
+                "6. Se houver sucesso ('Success'), você pode logar nas suas contas novamente.\n\n" +
+                adbCommand
+
         AlertDialog.Builder(context)
-            .setTitle("Configurar Modo Device Owner")
-            .setMessage("Para habilitar bloqueio avançado, execute este comando ADB no seu computador:\n\n$adbCommand")
-            .setPositiveButton("Copiar Comando") { _, _ ->
+            .setTitle("Tutorial: Proteção Nuclear (ADB)")
+            .setMessage(tutorialMessage)
+            .setPositiveButton("Copiar Comando ADB") { _, _ ->
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 val clip = ClipData.newPlainText("ADB Command", adbCommand)
                 clipboard.setPrimaryClip(clip)
-                Toast.makeText(context, "Comando copiado", Toast.LENGTH_SHORT).show()
+                Toast.makeText(context, "Comando ADB copiado!", Toast.LENGTH_LONG).show()
             }
             .setNegativeButton("Fechar", null)
             .show()

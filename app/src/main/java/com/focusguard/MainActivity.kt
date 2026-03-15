@@ -21,6 +21,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var cardTimeSession: MaterialCardView
     private lateinit var cardRecurringSession: MaterialCardView
     private lateinit var btnActiveSessions: Button
+    private lateinit var btnDeviceOwnerTutorial: MaterialButton
     private lateinit var deviceOwnerManager: DeviceOwnerManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,6 +42,7 @@ class MainActivity : AppCompatActivity() {
         cardTimeSession = findViewById(R.id.cardTimeSession)
         cardRecurringSession = findViewById(R.id.cardRecurringSession)
         btnActiveSessions = findViewById(R.id.btnActiveSessions)
+        btnDeviceOwnerTutorial = findViewById(R.id.btnDeviceOwnerTutorial)
 
         btnPendingPermissions.setOnClickListener {
             startActivity(Intent(this, com.focusguard.ui.PermissionsActivity::class.java))
@@ -57,6 +59,10 @@ class MainActivity : AppCompatActivity() {
         btnActiveSessions.setOnClickListener {
             val fragment = com.focusguard.ui.BlockingSessionStatusFragment()
             fragment.show(supportFragmentManager, "BlockingSessionStatus")
+        }
+
+        btnDeviceOwnerTutorial.setOnClickListener {
+            deviceOwnerManager.setAsDeviceOwner()
         }
     }
 

@@ -139,6 +139,18 @@
                 style="@style/Widget.MaterialComponents.Button.OutlinedButton"
                 android:layout_marginBottom="16dp"/>
 
+            <!-- Botão de Tutorial ADB Device Owner -->
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnDeviceOwnerTutorial"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="Tutorial: Ativar Proteção Nuclear (ADB)"
+                style="@style/Widget.MaterialComponents.Button.TextButton"
+                android:textColor="#D32F2F"
+                app:icon="@android:drawable/ic_dialog_info"
+                app:iconTint="#D32F2F"
+                android:layout_marginBottom="16dp"/>
+
         </LinearLayout>
     </ScrollView>
 </LinearLayout>
