@@ -8,7 +8,6 @@ import android.os.Bundle
 import android.os.Process
 import android.provider.Settings
 import android.view.View
-import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.utils.PermissionUtils
@@ -20,7 +19,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var btnPendingPermissions: MaterialButton
     private lateinit var cardTimeSession: MaterialCardView
     private lateinit var cardRecurringSession: MaterialCardView
-    private lateinit var btnActiveSessions: Button
+    private lateinit var btnActiveSessions: MaterialButton
     private lateinit var btnDeviceOwnerTutorial: MaterialButton
     private lateinit var deviceOwnerManager: DeviceOwnerManager
 

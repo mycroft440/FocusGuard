@@ -4,153 +4,243 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="?android:attr/colorBackground">
+    android:background="@color/dark_bg">
 
     <!-- Botão de Permissões Pendentes (Invisível por padrão) -->
     <com.google.android.material.button.MaterialButton
         android:id="@+id/btnPendingPermissions"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_margin="16dp"
+        android:layout_marginStart="20dp"
+        android:layout_marginEnd="20dp"
+        android:layout_marginTop="12dp"
         android:text="Dê o restante das permissões aqui"
         android:textColor="@android:color/white"
         android:textStyle="bold"
-        app:backgroundTint="#D32F2F"
-        app:cornerRadius="12dp"
+        android:textSize="14sp"
+        android:background="@drawable/btn_danger_bg"
+        android:paddingTop="14dp"
+        android:paddingBottom="14dp"
         android:visibility="gone"
-        app:icon="@android:drawable/ic_dialog_alert"
-        app:iconTint="@android:color/white" />
+        android:stateListAnimator="@null"
+        app:backgroundTint="@null"
+        app:icon="@drawable/ic_warning"
+        app:iconTint="@android:color/white"
+        app:iconGravity="textStart"
+        app:cornerRadius="16dp" />
 
-    <ScrollView
+    <!-- MotionLayout para animação de revelação staggered -->
+    <androidx.constraintlayout.motion.widget.MotionLayout
+        android:id="@+id/motionLayout"
         android:layout_width="match_parent"
         android:layout_height="match_parent"
-        android:fillViewport="true">
+        app:layoutDescription="@xml/motion_scene_main"
+        app:showPaths="false">
 
-        <LinearLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:orientation="vertical"
-            android:padding="24dp"
-            android:gravity="center_horizontal">
+        <ScrollView
+            android:id="@+id/scrollView"
+            android:layout_width="0dp"
+            android:layout_height="0dp"
+            android:fillViewport="true"
+            android:scrollbars="none"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:text="FocusGuard"
-                android:textSize="28sp"
-                android:textStyle="bold"
-                android:layout_marginTop="16dp"
-                android:layout_marginBottom="32dp" />
-
-            <!-- Botão de Tutorial ADB Device Owner -->
-            <com.google.android.material.button.MaterialButton
-                android:id="@+id/btnDeviceOwnerTutorial"
+            <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="Tutorial: Ativar Proteção Nuclear (ADB)"
-                style="@style/Widget.MaterialComponents.Button.TextButton"
-                android:textColor="#D32F2F"
-                app:icon="@android:drawable/ic_dialog_info"
-                app:iconTint="#D32F2F"
-                android:layout_marginBottom="16dp"/>
+                android:orientation="vertical"
+                android:paddingStart="24dp"
+                android:paddingEnd="24dp"
+                android:paddingBottom="24dp"
+                android:gravity="center_horizontal">
 
-            <!-- Card: Sessão por Tempo -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardTimeSession"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="16dp"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="2dp"
-                app:cardBackgroundColor="@color/dark_card"
-                android:clickable="true"
-                android:focusable="true">
+                <!-- Header com escudo -->
+                <ImageView
+                    android:id="@+id/imgShield"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp"
+                    android:src="@drawable/ic_shield"
+                    android:layout_marginTop="32dp"
+                    android:layout_marginBottom="12dp"
+                    android:contentDescription="Ícone FocusGuard"
+                    android:importantForAccessibility="no" />
 
-                <LinearLayout
+                <TextView
+                    android:id="@+id/tvTitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="FocusGuard"
+                    android:textSize="32sp"
+                    android:textStyle="bold"
+                    android:textColor="@color/text_primary" />
+
+                <TextView
+                    android:id="@+id/tvSubtitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="Foco Total, Zero Distrações"
+                    android:textSize="14sp"
+                    android:textColor="@color/text_secondary"
+                    android:layout_marginTop="4dp"
+                    android:layout_marginBottom="32dp" />
+
+                <!-- Card: Sessão por Tempo -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardTimeSession"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="20dp"
-                    android:gravity="center">
+                    android:layout_marginBottom="16dp"
+                    style="@style/Widget.FocusGuard.Card"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?attr/selectableItemBackground">
 
-                    <ImageView
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
-                        android:src="@android:drawable/ic_menu_recent_history"
-                        app:tint="?attr/colorPrimary"
-                        android:layout_marginBottom="8dp"
-                        android:contentDescription="Ícone de sessão por tempo"
-                        android:importantForAccessibility="no" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Sessão de Bloqueio por Tempo"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
+                        android:orientation="horizontal"
+                        android:padding="20dp"
+                        android:gravity="center_vertical">
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Defina dias e horas para focar"
-                        android:textColor="?android:attr/textColorSecondary"
-                        android:layout_marginTop="4dp"/>
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
+                        <ImageView
+                            android:layout_width="52dp"
+                            android:layout_height="52dp"
+                            android:src="@drawable/ic_timer"
+                            android:layout_marginEnd="16dp"
+                            android:contentDescription="Ícone de sessão por tempo"
+                            android:importantForAccessibility="no" />
 
-            <!-- Card: Sessão Recorrente -->
-            <com.google.android.material.card.MaterialCardView
-                android:id="@+id/cardRecurringSession"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:layout_marginBottom="32dp"
-                app:cardCornerRadius="16dp"
-                app:cardElevation="2dp"
-                app:cardBackgroundColor="@color/dark_card"
-                android:clickable="true"
-                android:focusable="true">
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
 
-                <LinearLayout
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Sessão por Tempo"
+                                android:textSize="17sp"
+                                android:textStyle="bold"
+                                android:textColor="@color/text_primary" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Defina dias e horas para focar"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="13sp"
+                                android:layout_marginTop="4dp" />
+                        </LinearLayout>
+
+                        <ImageView
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:src="@android:drawable/ic_media_play"
+                            app:tint="@color/text_hint"
+                            android:contentDescription="Abrir"
+                            android:importantForAccessibility="no" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Card: Sessão Recorrente -->
+                <com.google.android.material.card.MaterialCardView
+                    android:id="@+id/cardRecurringSession"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="vertical"
-                    android:padding="20dp"
-                    android:gravity="center">
+                    android:layout_marginBottom="24dp"
+                    style="@style/Widget.FocusGuard.Card"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?attr/selectableItemBackground">
 
-                    <ImageView
-                        android:layout_width="48dp"
-                        android:layout_height="48dp"
-                        android:src="@android:drawable/ic_menu_my_calendar"
-                        app:tint="?attr/colorPrimary"
-                        android:layout_marginBottom="8dp"
-                        android:contentDescription="Ícone de sessão recorrente"
-                        android:importantForAccessibility="no" />
-
-                    <TextView
-                        android:layout_width="wrap_content"
+                    <LinearLayout
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:text="Sessão de Bloqueio Recorrente"
-                        android:textSize="18sp"
-                        android:textStyle="bold" />
+                        android:orientation="horizontal"
+                        android:padding="20dp"
+                        android:gravity="center_vertical">
 
-                    <TextView
-                        android:layout_width="wrap_content"
-                        android:layout_height="wrap_content"
-                        android:text="Agende horários fixos na semana"
-                        android:textColor="?android:attr/textColorSecondary"
-                        android:layout_marginTop="4dp"/>
-                </LinearLayout>
-            </com.google.android.material.card.MaterialCardView>
+                        <ImageView
+                            android:layout_width="52dp"
+                            android:layout_height="52dp"
+                            android:src="@drawable/ic_calendar"
+                            android:layout_marginEnd="16dp"
+                            android:contentDescription="Ícone de sessão recorrente"
+                            android:importantForAccessibility="no" />
 
-            <!-- Botão de Sessões Ativas -->
-            <Button
-                android:id="@+id/btnActiveSessions"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:text="Ver Sessões Ativas"
-                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
-                android:layout_marginBottom="16dp"/>
+                        <LinearLayout
+                            android:layout_width="0dp"
+                            android:layout_height="wrap_content"
+                            android:layout_weight="1"
+                            android:orientation="vertical">
 
-        </LinearLayout>
-    </ScrollView>
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Sessão Recorrente"
+                                android:textSize="17sp"
+                                android:textStyle="bold"
+                                android:textColor="@color/text_primary" />
+
+                            <TextView
+                                android:layout_width="wrap_content"
+                                android:layout_height="wrap_content"
+                                android:text="Agende horários fixos na semana"
+                                android:textColor="@color/text_secondary"
+                                android:textSize="13sp"
+                                android:layout_marginTop="4dp" />
+                        </LinearLayout>
+
+                        <ImageView
+                            android:layout_width="20dp"
+                            android:layout_height="20dp"
+                            android:src="@android:drawable/ic_media_play"
+                            app:tint="@color/text_hint"
+                            android:contentDescription="Abrir"
+                            android:importantForAccessibility="no" />
+                    </LinearLayout>
+                </com.google.android.material.card.MaterialCardView>
+
+                <!-- Divider -->
+                <View
+                    android:layout_width="match_parent"
+                    android:layout_height="1dp"
+                    android:background="@drawable/section_divider"
+                    android:layout_marginBottom="24dp" />
+
+                <!-- Botão de Sessões Ativas -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnActiveSessions"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Ver Sessões Ativas"
+                    android:textColor="@color/accent_cyan"
+                    style="@style/Widget.FocusGuard.Button.Outlined"
+                    app:icon="@drawable/ic_sessions"
+                    app:iconTint="@color/accent_cyan"
+                    app:iconGravity="textStart"
+                    android:layout_marginBottom="12dp" />
+
+                <!-- Botão de Tutorial ADB Device Owner -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnDeviceOwnerTutorial"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Tutorial: Proteção Nuclear (ADB)"
+                    style="@style/Widget.MaterialComponents.Button.TextButton"
+                    android:textColor="@color/text_hint"
+                    android:textSize="13sp"
+                    app:icon="@drawable/ic_info"
+                    app:iconTint="@color/text_hint"
+                    app:iconSize="18dp"
+                    android:layout_marginBottom="16dp" />
+
+            </LinearLayout>
+        </ScrollView>
+
+    </androidx.constraintlayout.motion.widget.MotionLayout>
 </LinearLayout>

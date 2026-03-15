@@ -8,11 +8,11 @@
         <!-- Primary accent: Cyan -->
         <item name="colorPrimary">@color/accent_cyan</item>
         <item name="colorPrimaryVariant">@color/accent_cyan_dark</item>
-        <!-- Secondary accent -->
-        <item name="colorSecondary">@color/accent_cyan</item>
-        <item name="colorSecondaryVariant">@color/accent_cyan_dark</item>
+        <!-- Secondary accent: Purple -->
+        <item name="colorSecondary">@color/accent_purple</item>
+        <item name="colorSecondaryVariant">@color/accent_purple_dark</item>
         <!-- On colors -->
-        <item name="colorOnPrimary">@color/dark_bg</item>
+        <item name="colorOnPrimary">@color/white</item>
         <item name="colorOnSurface">@color/text_primary</item>
         <item name="colorOnBackground">@color/text_primary</item>
         <!-- Text colors -->
@@ -22,9 +22,83 @@
         <item name="android:statusBarColor">@color/dark_bg</item>
         <item name="android:navigationBarColor">@color/dark_bg</item>
         <!-- EditText hint -->
-        <item name="android:textColorHint">@color/text_secondary</item>
+        <item name="android:textColorHint">@color/text_hint</item>
+        <!-- Ripple -->
+        <item name="android:colorControlHighlight">@color/ripple_light</item>
+        <!-- Window Animations -->
+        <item name="android:windowAnimationStyle">@style/FocusGuard.WindowAnimation</item>
     </style>
 
     <!-- Gray Theme (kept for compatibility) -->
     <style name="Theme.FocusGuard.Gray" parent="Theme.FocusGuard" />
+
+    <!-- Card Style -->
+    <style name="Widget.FocusGuard.Card" parent="Widget.MaterialComponents.CardView">
+        <item name="cardCornerRadius">20dp</item>
+        <item name="cardElevation">0dp</item>
+        <item name="cardBackgroundColor">@color/dark_card</item>
+        <item name="strokeWidth">1dp</item>
+        <item name="strokeColor">@color/card_border</item>
+    </style>
+
+    <!-- Primary Button (Gradient) -->
+    <style name="Widget.FocusGuard.Button.Primary" parent="Widget.MaterialComponents.Button">
+        <item name="android:background">@drawable/btn_primary_bg</item>
+        <item name="android:textColor">@color/white</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:paddingTop">14dp</item>
+        <item name="android:paddingBottom">14dp</item>
+        <item name="android:stateListAnimator">@null</item>
+        <item name="backgroundTint">@null</item>
+    </style>
+
+    <!-- Outlined Button -->
+    <style name="Widget.FocusGuard.Button.Outlined" parent="Widget.MaterialComponents.Button.OutlinedButton">
+        <item name="strokeColor">@color/accent_cyan</item>
+        <item name="strokeWidth">1.5dp</item>
+        <item name="cornerRadius">16dp</item>
+        <item name="android:textColor">@color/accent_cyan</item>
+    </style>
+
+    <!-- Danger Button -->
+    <style name="Widget.FocusGuard.Button.Danger" parent="Widget.MaterialComponents.Button">
+        <item name="android:background">@drawable/btn_danger_bg</item>
+        <item name="android:textColor">@color/white</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textSize">15sp</item>
+        <item name="android:paddingTop">14dp</item>
+        <item name="android:paddingBottom">14dp</item>
+        <item name="android:stateListAnimator">@null</item>
+        <item name="backgroundTint">@null</item>
+    </style>
+
+    <!-- Section Title -->
+    <style name="Widget.FocusGuard.SectionTitle">
+        <item name="android:textSize">18sp</item>
+        <item name="android:textStyle">bold</item>
+        <item name="android:textColor">@color/text_primary</item>
+        <item name="android:layout_marginBottom">16dp</item>
+    </style>
+
+    <!-- Subtitle -->
+    <style name="Widget.FocusGuard.Subtitle">
+        <item name="android:textSize">14sp</item>
+        <item name="android:textColor">@color/text_secondary</item>
+    </style>
+
+    <!-- Toolbar -->
+    <style name="Widget.FocusGuard.Toolbar" parent="Widget.MaterialComponents.Toolbar">
+        <item name="android:background">@color/dark_bg</item>
+        <item name="titleTextColor">@color/text_primary</item>
+    </style>
+
+    <!-- Window Animation Style -->
+    <style name="FocusGuard.WindowAnimation" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/slide_in_right</item>
+        <item name="android:activityOpenExitAnimation">@anim/slide_out_left</item>
+        <item name="android:activityCloseEnterAnimation">@anim/fade_in</item>
+        <item name="android:activityCloseExitAnimation">@anim/fade_out</item>
+    </style>
 </resources>
+

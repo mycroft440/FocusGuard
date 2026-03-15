@@ -1,35 +1,47 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="16dp">
+    android:padding="20dp"
+    android:background="@color/dark_surface">
 
     <TextView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Blocking Session Status"
-        android:textSize="24sp"
+        android:text="Sessões Ativas"
+        android:textSize="22sp"
         android:textStyle="bold"
+        android:textColor="@color/text_primary"
         android:gravity="center"
-        android:layout_marginBottom="24dp" />
+        android:layout_marginBottom="20dp" />
 
-    <TextView
-        android:id="@+id/statusTextView"
+    <!-- Status Badge -->
+    <com.google.android.material.card.MaterialCardView
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:text="Loading..."
-        android:textSize="20sp"
-        android:textStyle="bold"
-        android:gravity="center"
         android:layout_marginBottom="16dp"
-        android:padding="16dp"
-        android:background="@drawable/item_background" />
+        style="@style/Widget.FocusGuard.Card">
 
+        <TextView
+            android:id="@+id/statusTextView"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Loading..."
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textColor="@color/accent_cyan"
+            android:gravity="center"
+            android:padding="16dp" />
+    </com.google.android.material.card.MaterialCardView>
+
+    <!-- Details -->
     <ScrollView
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:layout_weight="1">
+        android:layout_weight="1"
+        android:scrollbars="none">
 
         <TextView
             android:id="@+id/detailsTextView"
@@ -37,33 +49,40 @@
             android:layout_height="wrap_content"
             android:text="Loading details..."
             android:textSize="14sp"
-            android:lineSpacingMultiplier="1.5"
+            android:textColor="@color/text_secondary"
+            android:lineSpacingMultiplier="1.6"
             android:padding="12dp" />
 
     </ScrollView>
 
+    <!-- Botões -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_marginTop="16dp"
-        android:spacing="8dp">
+        android:layout_marginTop="16dp">
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/renounceButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:text="Renounce Device Owner"
             android:textColor="@color/white"
-            android:backgroundTint="@color/orange" />
+            android:textSize="12sp"
+            android:background="@drawable/btn_danger_bg"
+            android:stateListAnimator="@null"
+            app:backgroundTint="@null"
+            android:layout_marginEnd="8dp" />
 
-        <Button
+        <com.google.android.material.button.MaterialButton
             android:id="@+id/closeButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Close" />
+            android:text="Fechar"
+            style="@style/Widget.FocusGuard.Button.Outlined"
+            android:layout_marginStart="8dp" />
 
     </LinearLayout>
 
