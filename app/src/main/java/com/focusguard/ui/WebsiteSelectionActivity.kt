@@ -11,13 +11,13 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.focusguard.R
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.BlockedWebsite
 import com.google.android.material.chip.Chip
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -29,7 +29,6 @@ class WebsiteSelectionActivity : AppCompatActivity() {
     private lateinit var recyclerView: RecyclerView
     private lateinit var adapter: WebsiteSelectionAdapter
     private lateinit var database: AppDatabase
-    private val scope = CoroutineScope(Dispatchers.Main)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,7 +52,7 @@ class WebsiteSelectionActivity : AppCompatActivity() {
         recyclerView.adapter = adapter
 
         setupChips()
-        
+
         btnAddSite.setOnClickListener {
             val url = editUrl.text.toString().trim()
             if (url.isNotEmpty()) {
@@ -78,7 +77,7 @@ class WebsiteSelectionActivity : AppCompatActivity() {
     }
 
     private fun loadSites() {
-        scope.launch {
+        lifecycleScope.launch {
             val sites = withContext(Dispatchers.IO) {
                 database.blockedWebsiteDao().getAllBlockedWebsites()
             }
@@ -86,26 +85,46 @@ class WebsiteSelectionActivity : AppCompatActivity() {
         }
     }
 
+    /**
+     * Clean domain: remove protocol, www, trailing slashes, port numbers, and paths.
+     */
+    private fun cleanDomain(input: String): String {
+        return input
+            .removePrefix("https://")
+            .removePrefix("http://")
+            .removePrefix("www.")
+            .split("/")[0]    // Remove path
+            .split("?")[0]    // Remove query
+            .split(":")[0]    // Remove port
+            .trim()
+            .lowercase()
+    }
+
     private fun addSite(domain: String) {
-        val cleanDomain = domain.replace("https://", "").replace("http://", "").replace("www.", "")
-        scope.launch {
+        val cleanedDomain = cleanDomain(domain)
+        if (cleanedDomain.isEmpty() || !cleanedDomain.contains(".")) {
+            Toast.makeText(this, "Domínio inválido", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        lifecycleScope.launch {
             withContext(Dispatchers.IO) {
-                val existing = database.blockedWebsiteDao().getBlockedWebsiteByDomain(cleanDomain)
+                val existing = database.blockedWebsiteDao().getBlockedWebsiteByDomain(cleanedDomain)
                 if (existing == null) {
                     val newSite = BlockedWebsite(
-                        domain = cleanDomain,
-                        url = "https://$cleanDomain",
+                        domain = cleanedDomain,
+                        url = "https://$cleanedDomain",
                         isBlocked = true
                     )
                     database.blockedWebsiteDao().insertBlockedWebsite(newSite)
                 }
             }
-            loadSites() // Recarrega a lista do banco
+            loadSites()
         }
     }
 
     private fun removeSite(site: BlockedWebsite) {
-        scope.launch {
+        lifecycleScope.launch {
             withContext(Dispatchers.IO) {
                 database.blockedWebsiteDao().deleteBlockedWebsite(site)
             }
@@ -114,7 +133,8 @@ class WebsiteSelectionActivity : AppCompatActivity() {
     }
 }
 
-class WebsiteSelectionAdapter(private val onRemoveClick: (BlockedWebsite) -> Unit) : RecyclerView.Adapter<WebsiteSelectionAdapter.ViewHolder>() {
+class WebsiteSelectionAdapter(private val onRemoveClick: (BlockedWebsite) -> Unit) :
+    RecyclerView.Adapter<WebsiteSelectionAdapter.ViewHolder>() {
 
     private var sites = mutableListOf<BlockedWebsite>()
 

@@ -1,6 +1,5 @@
 package com.focusguard.ui
 
-import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.os.Bundle
@@ -12,12 +11,12 @@ import android.widget.ImageView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
+import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.focusguard.R
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.BlockedApp
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -36,7 +35,6 @@ class AppSelectionActivity : AppCompatActivity() {
     private lateinit var progressBar: View
     private lateinit var adapter: AppSelectionAdapter
     private lateinit var database: AppDatabase
-    private val scope = CoroutineScope(Dispatchers.Main)
 
     private val suggestedAddictiveApps = listOf(
         Pair("com.google.android.youtube", "YouTube"),
@@ -71,28 +69,30 @@ class AppSelectionActivity : AppCompatActivity() {
 
     private fun loadApps() {
         progressBar.visibility = View.VISIBLE
-        scope.launch {
+        lifecycleScope.launch {
             val apps = withContext(Dispatchers.IO) {
                 val pm = packageManager
                 val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
                 val appList = mutableListOf<SelectableApp>()
-                
+
                 // Get already blocked apps to check them
                 val blockedApps = database.blockedAppDao().getAllBlockedApps()
                 val blockedPackageNames = blockedApps.map { it.packageName }.toSet()
 
-                // 1. Add Installed Apps
+                // 1. Add Installed Apps (only launchable ones)
                 for (info in installedApps) {
                     if (pm.getLaunchIntentForPackage(info.packageName) != null) {
                         val appName = info.loadLabel(pm).toString()
-                        val icon = info.loadIcon(pm)
-                        appList.add(SelectableApp(
-                            packageName = info.packageName,
-                            appName = appName,
-                            icon = icon,
-                            isSelected = blockedPackageNames.contains(info.packageName),
-                            isSuggested = false
-                        ))
+                        val icon = try { info.loadIcon(pm) } catch (_: Exception) { null }
+                        appList.add(
+                            SelectableApp(
+                                packageName = info.packageName,
+                                appName = appName,
+                                icon = icon,
+                                isSelected = blockedPackageNames.contains(info.packageName),
+                                isSuggested = false
+                            )
+                        )
                     }
                 }
 
@@ -100,13 +100,15 @@ class AppSelectionActivity : AppCompatActivity() {
                 val installedPackageNames = appList.map { it.packageName }.toSet()
                 for (suggested in suggestedAddictiveApps) {
                     if (!installedPackageNames.contains(suggested.first)) {
-                        appList.add(SelectableApp(
-                            packageName = suggested.first,
-                            appName = suggested.second + " (Não instalado)",
-                            icon = null,
-                            isSelected = blockedPackageNames.contains(suggested.first),
-                            isSuggested = true
-                        ))
+                        appList.add(
+                            SelectableApp(
+                                packageName = suggested.first,
+                                appName = suggested.second + " (Não instalado)",
+                                icon = null,
+                                isSelected = blockedPackageNames.contains(suggested.first),
+                                isSuggested = true
+                            )
+                        )
                     }
                 }
 
@@ -126,18 +128,30 @@ class AppSelectionActivity : AppCompatActivity() {
 
     private fun saveSelection() {
         val selectedApps = adapter.getSelectedApps()
-        scope.launch(Dispatchers.IO) {
-            val dao = database.blockedAppDao()
-            // Clean up old selection
-            val oldBlocks = dao.getAllBlockedApps()
-            oldBlocks.forEach { dao.deleteBlockedApp(it) }
+        val selectedPackageNames = selectedApps.map { it.packageName }.toSet()
 
-            // Insert new selection
-            selectedApps.forEach {
-                dao.insertBlockedApp(BlockedApp(
-                    packageName = it.packageName,
-                    appName = it.appName
-                ))
+        lifecycleScope.launch(Dispatchers.IO) {
+            val dao = database.blockedAppDao()
+            val existingBlocked = dao.getAllBlockedApps()
+            val existingPackageNames = existingBlocked.map { it.packageName }.toSet()
+
+            // Remove apps that were deselected
+            for (existing in existingBlocked) {
+                if (!selectedPackageNames.contains(existing.packageName)) {
+                    dao.deleteBlockedApp(existing)
+                }
+            }
+
+            // Add newly selected apps
+            for (app in selectedApps) {
+                if (!existingPackageNames.contains(app.packageName)) {
+                    dao.insertBlockedApp(
+                        BlockedApp(
+                            packageName = app.packageName,
+                            appName = app.appName
+                        )
+                    )
+                }
             }
         }
     }
@@ -163,14 +177,14 @@ class AppSelectionAdapter : RecyclerView.Adapter<AppSelectionAdapter.ViewHolder>
         val app = apps[position]
         holder.tvAppName.text = app.appName
         holder.tvAppPackage.text = app.packageName
-        
+
         if (app.icon != null) {
             holder.iconApp.setImageDrawable(app.icon)
         } else {
             holder.iconApp.setImageResource(android.R.drawable.sym_def_app_icon)
         }
 
-        // Remover listener para evitar triggers durante reciclagem
+        // Remove listener to avoid triggers during recycling
         holder.chkSelect.setOnCheckedChangeListener(null)
         holder.chkSelect.isChecked = app.isSelected
 

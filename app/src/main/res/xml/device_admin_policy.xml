@@ -1,17 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <device-admin xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-policies>
-        <!-- Permite bloquear aplicativos -->
+        <!-- Permite gerenciar políticas de senha -->
         <limit-password-length />
         <!-- Permite desabilitar câmera -->
         <disable-camera />
-        <!-- Permite desabilitar teclado -->
+        <!-- Permite desabilitar funcionalidades de tela de bloqueio -->
         <disable-keyguard-features />
-        <!-- Permite gerenciar aplicativos -->
-        <limit-password-length />
         <!-- Permite resetar senha -->
         <reset-password />
-        <!-- Permite gerenciar restrições de aplicativos -->
-        <limit-password-length />
     </uses-policies>
 </device-admin>

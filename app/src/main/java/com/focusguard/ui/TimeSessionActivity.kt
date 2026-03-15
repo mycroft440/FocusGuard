@@ -56,34 +56,46 @@ class TimeSessionActivity : AppCompatActivity() {
         }
 
         btnStartSession.setOnClickListener {
-            val daysStr = editDays.text.toString()
-            val hoursStr = editHours.text.toString()
+            startSession()
+        }
+    }
 
-            val days = if (daysStr.isNotEmpty()) daysStr.toInt() else 0
-            val hours = if (hoursStr.isNotEmpty()) hoursStr.toInt() else 0
+    private fun startSession() {
+        val daysStr = editDays.text.toString().trim()
+        val hoursStr = editHours.text.toString().trim()
 
-            if (days == 0 && hours == 0) {
-                Toast.makeText(this, "Defina pelo menos 1 hora ou dia", Toast.LENGTH_SHORT).show()
-                return@setOnClickListener
+        val days = daysStr.toIntOrNull() ?: 0
+        val hours = hoursStr.toIntOrNull() ?: 0
+
+        if (days < 0 || hours < 0) {
+            Toast.makeText(this, "Valores não podem ser negativos", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        if (days == 0 && hours == 0) {
+            Toast.makeText(this, "Defina pelo menos 1 hora ou dia", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        btnStartSession.isEnabled = false
+
+        lifecycleScope.launch {
+            val db = AppDatabase.getDatabase(this@TimeSessionActivity)
+            val appsCount = withContext(Dispatchers.IO) {
+                db.blockedAppDao().getAllBlockedApps().size
+            }
+            val sitesCount = withContext(Dispatchers.IO) {
+                db.blockedWebsiteDao().getAllBlockedWebsites().size
             }
 
-            lifecycleScope.launch {
-                val db = AppDatabase.getDatabase(this@TimeSessionActivity)
-                val appsCount = withContext(Dispatchers.IO) {
-                    db.blockedAppDao().getAllBlockedApps().size
-                }
-                val sitesCount = withContext(Dispatchers.IO) {
-                    db.blockedWebsiteDao().getAllBlockedWebsites().size
-                }
-
-                sessionManager.startTimerSession(days, hours, appsCount, sitesCount)
-                finish()
-            }
+            sessionManager.startTimerSession(days, hours, appsCount, sitesCount)
+            finish()
         }
     }
 
     override fun onResume() {
         super.onResume()
+        btnStartSession.isEnabled = true
         updateCounts()
     }
 

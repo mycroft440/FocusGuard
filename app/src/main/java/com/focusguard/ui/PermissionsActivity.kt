@@ -1,16 +1,15 @@
 package com.focusguard.ui
 
-import android.app.AppOpsManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
-import android.os.Process
 import android.provider.Settings
 import android.widget.Button
 import androidx.appcompat.app.AppCompatActivity
 import com.focusguard.MainActivity
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.utils.PermissionUtils
 
 class PermissionsActivity : AppCompatActivity() {
 
@@ -48,7 +47,7 @@ class PermissionsActivity : AppCompatActivity() {
         btnSkip.setOnClickListener {
             val prefs = getSharedPreferences("FocusGuardPrefs", Context.MODE_PRIVATE)
             prefs.edit().putBoolean("hasSeenOnboarding", true).apply()
-            
+
             val intent = Intent(this, MainActivity::class.java)
             startActivity(intent)
             finish()
@@ -61,7 +60,7 @@ class PermissionsActivity : AppCompatActivity() {
     }
 
     private fun updateButtons() {
-        val isA11yEnabled = isAccessibilityServiceEnabled()
+        val isA11yEnabled = PermissionUtils.isAccessibilityServiceEnabled(this)
         btnAccessibility.text = if (isA11yEnabled) "Concedido" else "Conceder"
         btnAccessibility.isEnabled = !isA11yEnabled
 
@@ -69,28 +68,8 @@ class PermissionsActivity : AppCompatActivity() {
         btnDeviceAdmin.text = if (isAdminActive) "Concedido" else "Conceder"
         btnDeviceAdmin.isEnabled = !isAdminActive
 
-        val isUsageAccessEnabled = isUsageAccessEnabled()
+        val isUsageAccessEnabled = PermissionUtils.isUsageAccessEnabled(this)
         btnUsageAccess.text = if (isUsageAccessEnabled) "Concedido" else "Conceder"
         btnUsageAccess.isEnabled = !isUsageAccessEnabled
-    }
-
-    private fun isUsageAccessEnabled(): Boolean {
-        val appOps = getSystemService(Context.APP_OPS_SERVICE) as AppOpsManager
-        val mode = appOps.unsafeCheckOpNoThrow(
-            AppOpsManager.OPSTR_GET_USAGE_STATS,
-            Process.myUid(),
-            packageName
-        )
-        return mode == AppOpsManager.MODE_ALLOWED
-    }
-
-    private fun isAccessibilityServiceEnabled(): Boolean {
-        val enabledServices = Settings.Secure.getString(
-            contentResolver,
-            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-        ) ?: return false
-
-        val serviceName = "${packageName}/com.focusguard.service.BlockingAccessibilityService"
-        return enabledServices.contains(serviceName)
     }
 }

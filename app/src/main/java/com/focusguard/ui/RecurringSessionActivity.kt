@@ -15,6 +15,7 @@ import com.focusguard.R
 import com.focusguard.database.AppDatabase
 import com.focusguard.manager.BlockingSessionManager
 import java.util.Calendar
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -83,6 +84,7 @@ class RecurringSessionActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        btnStartSession.isEnabled = true
         updateCounts()
     }
 
@@ -106,7 +108,7 @@ class RecurringSessionActivity : AppCompatActivity() {
             TimePickerDialog(this, { _, h, m ->
                 startHour = h
                 startMinute = m
-                btnStartTime.text = String.format("Início: %02d:%02d", h, m)
+                btnStartTime.text = String.format(Locale.getDefault(), "Início: %02d:%02d", h, m)
             }, calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE), true).show()
         }
 
@@ -115,7 +117,7 @@ class RecurringSessionActivity : AppCompatActivity() {
             TimePickerDialog(this, { _, h, m ->
                 endHour = h
                 endMinute = m
-                btnEndTime.text = String.format("Fim: %02d:%02d", h, m)
+                btnEndTime.text = String.format(Locale.getDefault(), "Fim: %02d:%02d", h, m)
             }, calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE), true).show()
         }
     }
@@ -126,13 +128,24 @@ class RecurringSessionActivity : AppCompatActivity() {
             return
         }
 
-        val monthsStr = editDurationMonths.text.toString()
-        val durationMonths = if (monthsStr.isNotEmpty()) monthsStr.toInt() else 1
+        if (startHour == endHour && startMinute == endMinute) {
+            Toast.makeText(this, "Horário de início e fim não podem ser iguais", Toast.LENGTH_SHORT).show()
+            return
+        }
 
+        val monthsStr = editDurationMonths.text.toString().trim()
+        val durationMonths = monthsStr.toIntOrNull() ?: 1
+        if (durationMonths <= 0) {
+            Toast.makeText(this, "Duração deve ser pelo menos 1 mês", Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        // Calendar.DAY_OF_WEEK: 1=Sunday, 2=Monday, ..., 7=Saturday
+        // toggleDays index: 0=Sun, 1=Mon, ..., 6=Sat
         val selectedDays = mutableListOf<Int>()
         toggleDays.forEachIndexed { index, toggleButton ->
             if (toggleButton.isChecked) {
-                selectedDays.add(index + 1) // 1=Sun, 2=Mon...
+                selectedDays.add(index + 1) // 1=Sun, 2=Mon, ..., 7=Sat
             }
         }
 
@@ -142,6 +155,8 @@ class RecurringSessionActivity : AppCompatActivity() {
         }
 
         val daysString = selectedDays.joinToString(",")
+
+        btnStartSession.isEnabled = false
 
         lifecycleScope.launch {
             val db = AppDatabase.getDatabase(this@RecurringSessionActivity)

@@ -15,6 +15,9 @@ import com.focusguard.manager.BlockingSessionManager
 import com.google.android.material.bottomsheet.BottomSheetDialogFragment
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 class BlockingSessionStatusFragment : BottomSheetDialogFragment() {
@@ -25,9 +28,12 @@ class BlockingSessionStatusFragment : BottomSheetDialogFragment() {
     private lateinit var closeButton: Button
     private lateinit var sessionManager: BlockingSessionManager
     private lateinit var deviceOwnerManager: DeviceOwnerManager
-    private val scope = CoroutineScope(Dispatchers.Main)
+
+    private val job = SupervisorJob()
+    private val scope = CoroutineScope(job + Dispatchers.Main)
     private val handler = Handler(Looper.getMainLooper())
     private var updateRunnable: Runnable? = null
+    private var currentUpdateJob: Job? = null
 
     override fun onCreateView(
         inflater: LayoutInflater,
@@ -56,7 +62,6 @@ class BlockingSessionStatusFragment : BottomSheetDialogFragment() {
             dismiss()
         }
 
-        // Start updating status every second
         startUpdatingStatus()
     }
 
@@ -65,7 +70,7 @@ class BlockingSessionStatusFragment : BottomSheetDialogFragment() {
             override fun run() {
                 if (isAdded) {
                     updateStatus()
-                    handler.postDelayed(this, 1000) // Update every second
+                    handler.postDelayed(this, 2000) // Update every 2 seconds (reduced from 1s)
                 }
             }
         }
@@ -73,39 +78,41 @@ class BlockingSessionStatusFragment : BottomSheetDialogFragment() {
     }
 
     private fun updateStatus() {
-        scope.launch {
+        // Cancel previous update if still running to prevent accumulation
+        currentUpdateJob?.cancel()
+        currentUpdateJob = scope.launch {
             try {
                 if (!isAdded) return@launch
-                
+
                 val isBlocking = sessionManager.isBlockingActive()
                 val hasSession = sessionManager.hasRegisteredSession()
                 val details = sessionManager.getSessionDetails()
 
                 if (isBlocking) {
-                    statusTextView.text = "⏱️ Blocking Active Now"
+                    statusTextView.text = "Bloqueio Ativo"
                     statusTextView.setTextColor(requireContext().getColor(android.R.color.holo_red_light))
                 } else if (hasSession) {
-                    statusTextView.text = "⏸️ Session Registered (Waiting for next window)"
+                    statusTextView.text = "Sessão Registrada (Aguardando janela)"
                     statusTextView.setTextColor(requireContext().getColor(android.R.color.holo_orange_light))
                 } else {
-                    statusTextView.text = "✓ No Active Sessions"
+                    statusTextView.text = "Nenhuma Sessão Ativa"
                     statusTextView.setTextColor(requireContext().getColor(android.R.color.holo_green_light))
                 }
 
                 detailsTextView.text = details
 
-                // You can only renounce if the time is totally up. If it's just paused (recurring), you CANNOT renounce
                 renounceButton.isEnabled = !hasSession
                 renounceButton.alpha = if (!hasSession) 1f else 0.5f
-                
-                // Update button text based on state
-                if (isBlocking) {
-                    renounceButton.text = "Cannot Renounce (Blocking Active)"
+
+                renounceButton.text = if (isBlocking) {
+                    "Não é possível revogar (Bloqueio ativo)"
                 } else {
-                    renounceButton.text = "Renounce Device Owner"
+                    "Revogar Device Owner"
                 }
             } catch (e: Exception) {
-                statusTextView.text = "Error: ${e.message}"
+                if (isAdded) {
+                    statusTextView.text = "Erro: ${e.message}"
+                }
             }
         }
     }
@@ -113,30 +120,29 @@ class BlockingSessionStatusFragment : BottomSheetDialogFragment() {
     private fun renounceDeviceOwner() {
         scope.launch {
             val hasSession = sessionManager.hasRegisteredSession()
-            
+
             if (hasSession) {
                 Toast.makeText(
                     requireContext(),
-                    "Cannot renounce while a session is registered (even if it's currently outside the recurring blocking window).",
+                    "Não é possível revogar enquanto uma sessão está registrada.",
                     Toast.LENGTH_LONG
                 ).show()
                 return@launch
             }
 
-            // Show warning
             android.app.AlertDialog.Builder(requireContext())
-                .setTitle("Renounce Device Owner Mode?")
+                .setTitle("Revogar Modo Device Owner?")
                 .setMessage(
-                    "You are about to renounce Device Owner Mode natively.\n\n" +
-                    "⚠️ IMPORTANT:\n" +
-                    "• FocusGuard will no longer be the Device Owner\n" +
-                    "• This is only possible because no block session is active.\n" +
-                    "Are you sure?"
+                    "Você está prestes a revogar o Modo Device Owner.\n\n" +
+                            "IMPORTANTE:\n" +
+                            "- FocusGuard não será mais o Device Owner\n" +
+                            "- Isso só é possível porque nenhuma sessão está ativa.\n" +
+                            "Tem certeza?"
                 )
-                .setPositiveButton("Yes, Renounce") { _, _ ->
+                .setPositiveButton("Sim, Revogar") { _, _ ->
                     performRenounce()
                 }
-                .setNegativeButton("Cancel", null)
+                .setNegativeButton("Cancelar", null)
                 .show()
         }
     }
@@ -145,29 +151,31 @@ class BlockingSessionStatusFragment : BottomSheetDialogFragment() {
         scope.launch {
             try {
                 deviceOwnerManager.renounceDeviceOwner()
-                
-                Toast.makeText(
-                    requireContext(),
-                    "Device Owner Mode renounced successfully.",
-                    Toast.LENGTH_LONG
-                ).show()
 
-                // The blocking session continues independently (though it should be empty here)
-                updateStatus()
+                if (isAdded) {
+                    Toast.makeText(
+                        requireContext(),
+                        "Modo Device Owner revogado com sucesso.",
+                        Toast.LENGTH_LONG
+                    ).show()
+                    updateStatus()
+                }
             } catch (e: Exception) {
-                Toast.makeText(
-                    requireContext(),
-                    "Error: ${e.message}",
-                    Toast.LENGTH_SHORT
-                ).show()
+                if (isAdded) {
+                    Toast.makeText(
+                        requireContext(),
+                        "Erro: ${e.message}",
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
             }
         }
     }
 
     override fun onDestroyView() {
         super.onDestroyView()
-        if (updateRunnable != null) {
-            handler.removeCallbacks(updateRunnable!!)
-        }
+        updateRunnable?.let { handler.removeCallbacks(it) }
+        currentUpdateJob?.cancel()
+        job.cancel()
     }
 }

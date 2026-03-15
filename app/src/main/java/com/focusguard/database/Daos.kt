@@ -3,12 +3,13 @@ package com.focusguard.database
 import androidx.room.Dao
 import androidx.room.Delete
 import androidx.room.Insert
+import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 
 @Dao
 interface BlockedAppDao {
-    @Insert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBlockedApp(app: BlockedApp)
 
     @Update
@@ -29,7 +30,7 @@ interface BlockedAppDao {
 
 @Dao
 interface BlockedWebsiteDao {
-    @Insert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBlockedWebsite(website: BlockedWebsite)
 
     @Update
@@ -50,7 +51,7 @@ interface BlockedWebsiteDao {
 
 @Dao
 interface BlockSessionDao {
-    @Insert
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertBlockSession(session: BlockSession)
 
     @Update
@@ -58,6 +59,9 @@ interface BlockSessionDao {
 
     @Query("SELECT * FROM block_sessions WHERE isActive = 1 ORDER BY startTime DESC LIMIT 1")
     suspend fun getActiveSession(): BlockSession?
+
+    @Query("SELECT * FROM block_sessions WHERE isActive = 1 AND isRecurring = 1 ORDER BY startTime DESC LIMIT 1")
+    suspend fun getActiveRecurringSession(): BlockSession?
 
     @Query("UPDATE block_sessions SET isActive = 0 WHERE isActive = 1")
     suspend fun deactivateAllSessions()

@@ -65,3 +65,10 @@ focusguard-release.jks
 keystore_base64.txt
 build_logs.txt
 build_logs2.txt
+build_logs3.txt
+
+# Test files
+test_archive.zip
+folder_archive.zip
+test_folder/
+test.txt

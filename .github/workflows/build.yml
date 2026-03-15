@@ -20,18 +20,13 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+          cache: gradle
 
-      - name: Configurar Gradle 8.4 (compatível com AGP 8.1.2)
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '8.4'
+      - name: Conceder permissão de execução ao gradlew
+        run: chmod +x gradlew
 
-      - name: Imprimir dados das primeiras 5 tentativas
-        run: |
-          echo "Verificando consistência..."
-          for i in {1..5}; do
-            echo "Tentativa $i: Dados de ambiente validados com sucesso."
-          done
+      - name: Validar Gradle Wrapper
+        uses: gradle/actions/wrapper-validation@v4
 
       - name: Decodificar Keystore
         run: |
@@ -43,9 +38,8 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        # A Opção Nuclear de depuração: --stacktrace para máxima depuração
         run: |
-          gradle assembleRelease --stacktrace \
+          ./gradlew assembleRelease --no-daemon --stacktrace \
             -Pandroid.injected.signing.store.file=$KEYSTORE_FILE \
             -Pandroid.injected.signing.store.password=$KEYSTORE_PASSWORD \
             -Pandroid.injected.signing.key.alias=$KEY_ALIAS \
