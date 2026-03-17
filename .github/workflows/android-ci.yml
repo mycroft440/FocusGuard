@@ -42,13 +42,11 @@ jobs:
           name: focusguard-debug-apk
           path: app/build/outputs/apk/debug/*.apk
 
-      - name: Preparar Keystore de Release (Se configurado)
+      - name: Preparar Keystore de Release Seguro
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
         if: env.KEYSTORE_BASE64 != ''
         run: |
-          # [CRÍTICO] O comando tr remove quebras de linha/caracteres ocultos que o GitHub injeta, 
-          # evitando que o ficheiro .jks fique corrompido.
           echo "$KEYSTORE_BASE64" | tr -d '\n' | tr -d '\r' | base64 -d > ${{ github.workspace }}/release.jks
 
       - name: Compilar APK Release
@@ -67,4 +65,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: focusguard-release-apk
-          path: app/build/outputs/apk/release/**/*.apk
+          path: app/build/outputs/apk/release/*.apk
