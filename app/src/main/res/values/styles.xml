@@ -32,6 +32,9 @@
     <!-- Gray Theme (kept for compatibility) -->
     <style name="Theme.FocusGuard.Gray" parent="Theme.FocusGuard" />
 
+    <!-- Base Style for FocusGuard Widgets -->
+    <style name="Widget.FocusGuard" />
+
     <!-- Card Style -->
     <style name="Widget.FocusGuard.Card" parent="Widget.MaterialComponents.CardView">
         <item name="cardCornerRadius">20dp</item>
