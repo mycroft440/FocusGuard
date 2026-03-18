@@ -1,191 +1,30 @@
-# FocusGuard - App and Website Blocker
+# FocusGuard
 
-FocusGuard é um aplicativo Android nativo desenvolvido em **Kotlin e Java** que ajuda os usuários a manter o foco bloqueando aplicativos e sites distraentes, **sem usar VPN**.
+FocusGuard é um aplicativo Android focado em aumentar a produtividade, bloqueando aplicativos e sites distrativos rigorosamente.
 
-## Características Principais
+## Guia de Instalação e Atualização (Atenção: Erro "App não instalado")
 
-- **Bloqueio de Aplicativos**: Detecta e bloqueia aplicativos específicos usando `AccessibilityService`
-- **Bloqueio de Websites**: Monitora URLs em navegadores e bloqueia sites bloqueados
-- **Armazenamento Local**: Usa Room Database para armazenar apps e sites bloqueados
-- **Interface Simples**: Interface com abas para gerenciar apps e sites bloqueados
-- **Sem VPN**: Não requer VPN, usa APIs nativas do Android
-- **Device Owner Mode**: Suporte a modo dono do dispositivo para bloqueio robusto
+Devido às pesadas permissões de **Device Admin** (Administrador do Dispositivo) e **Device Owner** (Opção Nuclear), o Android possui uma forte trava de segurança contra alterações no app.
 
-## Tecnologias Utilizadas
+**SE VOCÊ RECEBER O ERRO "App não instalado" AO TENTAR ATUALIZAR:**
 
-- **Linguagem**: Kotlin e Java
-- **API Level**: 21+ (Android 5.0+)
-- **Banco de Dados**: Room Database
-- **Acessibilidade**: AccessibilityService
-- **UI**: Material Design 3, RecyclerView, ViewPager2
+Isso ocorre porque:
+1. O app antigo ainda está ativo como Administrador do Dispositivo (Device Admin / Owner).
+2. Há um conflito entre a assinatura do APK instalado (ex: via cabo USB/Android Studio) e o APK baixado do GitHub Actions.
 
-## Estrutura do Projeto
+### Como desinstalar completamente a versão antiga (Obrigatório)
 
-```
-FocusGuard/
-├── app/
-│   ├── src/
-│   │   ├── main/
-│   │   │   ├── java/com/focusguard/
-│   │   │   │   ├── MainActivity.kt
-│   │   │   │   ├── adapter/
-│   │   │   │   │   ├── TabAdapter.kt
-│   │   │   │   │   ├── BlockedAppsAdapter.kt
-│   │   │   │   │   └── BlockedWebsitesAdapter.kt
-│   │   │   │   ├── database/
-│   │   │   │   │   ├── AppDatabase.kt
-│   │   │   │   │   ├── Daos.kt
-│   │   │   │   │   └── Entities.kt
-│   │   │   │   ├── service/
-│   │   │   │   │   └── BlockingAccessibilityService.kt
-│   │   │   │   ├── ui/
-│   │   │   │   │   ├── BlockedAppsFragment.kt
-│   │   │   │   │   └── BlockedWebsitesFragment.kt
-│   │   │   │   └── utils/
-│   │   │   │       └── WebsiteBlocker.kt
-│   │   │   ├── res/
-│   │   │   │   ├── layout/
-│   │   │   │   ├── values/
-│   │   │   │   ├── drawable/
-│   │   │   │   └── xml/
-│   │   │   └── AndroidManifest.xml
-│   │   ├── test/
-│   │   └── androidTest/
-│   └── build.gradle
-├── build.gradle
-├── settings.gradle
-└── gradle.properties
-```
-
-## Como Usar
-
-### 1. Clonar o Repositório
+Você não conseguirá arrastar o app para a lixeira se ele for "Device Admin".
+Conecte o celular ao computador via cabo USB, abra o terminal e execute:
 
 ```bash
-git clone https://github.com/mycroft440/FocusGuard.git
-cd FocusGuard
+# 1. Comando obrigatório para remover as credenciais de Admin:
+adb shell dpm remove-active-admin com.focusguard.v2/.admin.FocusGuardDeviceAdminReceiver
+
+# 2. Comando para desinstalar o app por completo:
+adb uninstall com.focusguard.v2
 ```
 
-### 2. Abrir no Android Studio
+*(Nota: o comando acima usa `com.focusguard.v2`. Se o seu app antigo usava `com.focusguard`, troque o nome do pacote no comando).*
 
-1. Abra o Android Studio
-2. Selecione "Open an Existing Project"
-3. Navegue até a pasta `FocusGuard`
-4. Clique em "Open"
-
-### 3. Compilar e Executar
-
-```bash
-./gradlew build
-./gradlew installDebug
-```
-
-### 4. Ativar o Serviço de Acessibilidade
-
-1. Abra as Configurações do Android
-2. Vá para **Acessibilidade**
-3. Procure por **FocusGuard**
-4. Ative o serviço
-
-### 5. Adicionar Apps e Websites Bloqueados
-
-1. Abra o FocusGuard
-2. Vá para a aba **Blocked Apps** e clique em "Add App"
-3. Vá para a aba **Blocked Websites** e insira o domínio (ex: facebook.com)
-
-## Componentes Principais
-
-### BlockingAccessibilityService
-
-O serviço de acessibilidade que monitora eventos do sistema e detecta quando um app ou website bloqueado está sendo acessado.
-
-**Funcionalidades:**
-- Detecta mudanças de janela (`TYPE_WINDOW_STATE_CHANGED`)
-- Monitora conteúdo de janelas (`TYPE_WINDOW_CONTENT_CHANGED`)
-- Detecta mudanças de texto (`TYPE_VIEW_TEXT_CHANGED`)
-- Bloqueia apps redirecionando para a home
-- Bloqueia websites voltando para a tela anterior
-
-### Room Database
-
-Armazena de forma persistente:
-- Apps bloqueados (`BlockedApp`)
-- Websites bloqueados (`BlockedWebsite`)
-- Sessões de bloqueio (`BlockSession`)
-
-### WebsiteBlocker Utility
-
-Utilitário para:
-- Extrair URLs da árvore de acessibilidade
-- Validar URLs
-- Extrair domínios de URLs
-- Encontrar a barra de endereço do navegador
-
-## Permissões Necessárias
-
-```xml
-<uses-permission android:name="android.permission.PACKAGE_USAGE_STATS" />
-<uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
-<uses-permission android:name="android.permission.INTERNET" />
-<uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-```
-
-## Device Owner Mode
-
-FocusGuard suporta **Device Owner Mode** para bloqueio mais robusto de aplicativos:
-
-- **Bloqueio em Nível de Sistema**: Bloqueia apps com enforço de sistema
-- **Controle de Políticas**: Controle total sobre políticas do dispositivo
-- **Segurança Aprimorada**: Impede desativação ou desinstalação do FocusGuard
-
-**Como Ativar:**
-1. Clique em "Enable Device Owner Mode" na aplicação
-2. Siga as instruções para ativar Device Admin
-3. Use ADB para definir como Device Owner (veja [DEVICE_OWNER_SETUP.md](DEVICE_OWNER_SETUP.md))
-
-Para instruções detalhadas, consulte [DEVICE_OWNER_SETUP.md](DEVICE_OWNER_SETUP.md).
-
-## Blocking Session (Modo de Bloqueio por Dias)
-
-FocusGuard oferece um **Blocking Session** poderoso que permite bloquear apps e websites por um período definido de dias:
-
-- **Contagem Regressiva**: Defina bloqueio de 1 a 30 dias
-- **Irrevogável**: Não pode desbloquear antes do tempo expirar
-- **Independente**: Bloqueio continua mesmo após renunciar Device Owner Mode
-- **Status em Tempo Real**: Visualize tempo restante e detalhes da sessão
-- **Botão de Abdicar**: Remova Device Owner Mode mantendo bloqueio ativo
-
-**Como Usar:**
-1. Adicione apps e websites à lista de bloqueados
-2. Clique em "Start Blocking" e selecione a duração
-3. Confirme o aviso (bloqueio é irrevogável)
-4. Monitore o status em "Blocking Status"
-
-Para guia completo, consulte [BLOCKING_SESSION_GUIDE.md](BLOCKING_SESSION_GUIDE.md).
-
-## Próximas Melhorias
-
-- [ ] Interface de usuário aprimorada (conforme fornecido pelo usuário)
-- [ ] Agendamento de bloqueios por horário
-- [ ] Estatísticas de uso
-- [ ] Bloqueio de notificações
-- [ ] Modo de foco com timer
-- [ ] Sincronização em nuvem (opcional)
-
-## Requisitos do Sistema
-
-- Android 5.0 (API 21) ou superior
-- Mínimo 50MB de espaço livre
-- Acesso a Configurações de Acessibilidade
-
-## Licença
-
-Este projeto está sob a licença MIT.
-
-## Contato
-
-Para dúvidas ou sugestões, entre em contato através do repositório GitHub.
-
----
-
-**Desenvolvido com ❤️ para ajudar você a manter o foco.**
+Após essas etapas, você poderá instalar o APK baixado sem nenhum problema!

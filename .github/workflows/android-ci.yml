@@ -43,12 +43,14 @@ jobs:
           name: focusguard-debug-apk
           path: app/build/outputs/apk/debug/*.apk
 
-      - name: Preparar Keystore de Release Seguro
+      - name: Preparar Keystore de Release Secure
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
-        if: env.KEYSTORE_BASE64 != ''
         run: |
-          # Remove quebras de linha introduzidas pelo GitHub Secrets antes de converter
+          if [ -z "$KEYSTORE_BASE64" ]; then
+            echo "::error::KEYSTORE_BASE64 secret is missing! O build não pode gerar APK Release seguro. Abortando para evitar a geração de APKs unsigned (Armadilha)."
+            exit 1
+          fi
           echo "$KEYSTORE_BASE64" | tr -d '\n' | tr -d '\r' | base64 -d > ${{ github.workspace }}/release.jks
 
       - name: Compilar APK Release
