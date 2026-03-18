@@ -52,7 +52,7 @@ class RecurringSessionActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         
         // VERIFICAÇÃO DE SEGURANÇA
-        val sessionCheckManager = BlockingSessionManager(this)
+        val sessionCheckManager = BlockingSessionManager.getInstance(this)
         kotlinx.coroutines.runBlocking {
             if (sessionCheckManager.hasRegisteredSession()) {
                 Toast.makeText(this@RecurringSessionActivity, "Acesso negado: Há uma sessão ativa.", Toast.LENGTH_LONG).show()
@@ -76,7 +76,7 @@ class RecurringSessionActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         toolbar.setNavigationOnClickListener { finish() }
 
-        sessionManager = BlockingSessionManager(this)
+        sessionManager = BlockingSessionManager.getInstance(this)
 
         btnStartTime = findViewById(R.id.btnStartTime)
         btnEndTime = findViewById(R.id.btnEndTime)
@@ -95,6 +95,14 @@ class RecurringSessionActivity : AppCompatActivity() {
             findViewById(R.id.btnThu), findViewById(R.id.btnFri),
             findViewById(R.id.btnSat)
         )
+
+        // Restaura os dias selecionados para não sofrer amnésia (Process Death do Android)
+        if (savedInstanceState != null) {
+            val daysChecked = savedInstanceState.getBooleanArray("toggleDaysChecked")
+            if (daysChecked != null && daysChecked.size == 7) {
+                toggleDays.forEachIndexed { i, btn -> btn.isChecked = daysChecked[i] }
+            }
+        }
 
         setupTimePickers()
 
@@ -281,5 +289,10 @@ class RecurringSessionActivity : AppCompatActivity() {
         outState.putInt("startMinute", startMinute)
         outState.putInt("endHour", endHour)
         outState.putInt("endMinute", endMinute)
+        
+        if (::toggleDays.isInitialized) {
+            val daysChecked = BooleanArray(7) { i -> toggleDays[i].isChecked }
+            outState.putBooleanArray("toggleDaysChecked", daysChecked)
+        }
     }
 }

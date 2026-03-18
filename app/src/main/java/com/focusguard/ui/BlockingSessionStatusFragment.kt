@@ -46,7 +46,7 @@ class BlockingSessionStatusFragment : BottomSheetDialogFragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
 
-        sessionManager = BlockingSessionManager(requireContext())
+        sessionManager = BlockingSessionManager.getInstance(requireContext())
         deviceOwnerManager = DeviceOwnerManager(requireContext())
 
         statusTextView = view.findViewById(R.id.statusTextView)

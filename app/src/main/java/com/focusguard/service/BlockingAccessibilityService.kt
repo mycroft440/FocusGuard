@@ -27,13 +27,14 @@ class BlockingAccessibilityService : AccessibilityService() {
     private lateinit var database: AppDatabase
     private lateinit var sessionManager: BlockingSessionManager
     private val job = SupervisorJob()
-    private val scope = CoroutineScope(job + Dispatchers.Default)
+    private val scope = CoroutineScope(job + Dispatchers.IO)
 
     private var blockedApps = listOf<BlockedApp>()
     private var blockedWebsites = listOf<BlockedWebsite>()
     private var isBlockingSessionActive = false
     private var lastLoadTime = 0L
-    private val CACHE_TIMEOUT = 5000L // 5 seconds cache
+    private val CACHE_TIMEOUT = 1000L // 1 second cache
+    private var lastScrollCheck = 0L // Debounce for content change
 
     private val browserPackages = setOf(
         "com.android.chrome",
@@ -53,7 +54,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         database = AppDatabase.getDatabase(this)
-        sessionManager = BlockingSessionManager(this)
+        sessionManager = BlockingSessionManager.getInstance(this)
 
         refreshData()
 
@@ -84,7 +85,11 @@ class BlockingAccessibilityService : AccessibilityService() {
                     handleWindowStateChanged(event)
                 }
                 AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
-                    handleBrowserEvent(event)
+                    val now = System.currentTimeMillis()
+                    if (now - lastScrollCheck > 500) {
+                        lastScrollCheck = now
+                        handleBrowserEvent(event)
+                    }
                 }
             }
         } catch (_: Exception) {
@@ -119,6 +124,10 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun handleWindowStateChanged(event: AccessibilityEvent) {
         val packageName = event.packageName?.toString() ?: return
+        val className = event.className?.toString() ?: ""
+
+        // Ignora Toasts e Menus do sistema ou sobreposições ingênuas (Falso/Positivo)
+        if (className.contains("Toast") || className.contains("PopupWindow")) return
 
         // Proteção dinâmica contra loop infinito no Launcher
         val defaultLauncher = getDefaultLauncherPackage()
@@ -149,11 +158,8 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun blockApp(packageName: String) {
         try {
-            val intent = Intent(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_HOME)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-            startActivity(intent)
+            // Em vez de Intent home que falha no Split-Screen, usa ação global raiz
+            performGlobalAction(GLOBAL_ACTION_HOME)
 
             scope.launch(Dispatchers.Main) {
                 Toast.makeText(this@BlockingAccessibilityService, "App bloqueado pelo FocusGuard", Toast.LENGTH_SHORT).show()
@@ -206,11 +212,8 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun blockWebsite() {
         try {
-            val intent = Intent(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_HOME)
-                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-            }
-            startActivity(intent)
+            performGlobalAction(GLOBAL_ACTION_HOME)
+
             scope.launch(Dispatchers.Main) {
                 Toast.makeText(this@BlockingAccessibilityService, "Site bloqueado pelo FocusGuard", Toast.LENGTH_SHORT).show()
             }

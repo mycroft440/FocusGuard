@@ -9,10 +9,7 @@ import java.net.URL
  */
 object WebsiteBlocker {
 
-    // Regex for basic URL validation - must have at least one dot and a valid TLD-like suffix
-    private val URL_PATTERN = Regex(
-        """^(https?://)?([a-zA-Z0-9]([a-zA-Z0-9\-]*[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}(/.*)?$"""
-    )
+    // Não estático customizado para evitar vulnerabilidade ReDoS. Usaremos Patterns nativo.
 
     /**
      * Checks if a string looks like a valid URL or domain.
@@ -20,9 +17,8 @@ object WebsiteBlocker {
      */
     fun isValidUrl(text: String): Boolean {
         val trimmed = text.trim()
-        if (trimmed.isEmpty() || trimmed.length < 4) return false
-        if (trimmed.contains(" ")) return false
-        return URL_PATTERN.matches(trimmed)
+        if (trimmed.isEmpty() || trimmed.length < 4 || trimmed.contains(" ")) return false
+        return android.util.Patterns.WEB_URL.matcher(trimmed).matches()
     }
 
     /**

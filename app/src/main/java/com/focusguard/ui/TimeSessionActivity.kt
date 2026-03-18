@@ -40,7 +40,7 @@ class TimeSessionActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         
         // VERIFICAÇÃO DE SEGURANÇA
-        val sessionCheckManager = BlockingSessionManager(this)
+        val sessionCheckManager = BlockingSessionManager.getInstance(this)
         kotlinx.coroutines.runBlocking {
             if (sessionCheckManager.hasRegisteredSession()) {
                 Toast.makeText(this@TimeSessionActivity, "Acesso negado: Há uma sessão ativa.", Toast.LENGTH_LONG).show()
@@ -57,7 +57,7 @@ class TimeSessionActivity : AppCompatActivity() {
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
         toolbar.setNavigationOnClickListener { finish() }
 
-        sessionManager = BlockingSessionManager(this)
+        sessionManager = BlockingSessionManager.getInstance(this)
 
         editDays = findViewById(R.id.editDays)
         editHours = findViewById(R.id.editHours)
@@ -97,8 +97,9 @@ class TimeSessionActivity : AppCompatActivity() {
         val daysStr = editDays.text.toString().trim()
         val hoursStr = editHours.text.toString().trim()
 
-        val days = daysStr.toIntOrNull() ?: 0
-        val hours = hoursStr.toIntOrNull() ?: 0
+        // Pega os 4 primeiros digitos limitando Int Overflow gigantes via usuário zoador
+        val days = daysStr.take(4).toIntOrNull() ?: 0
+        val hours = hoursStr.take(4).toIntOrNull() ?: 0
 
         if (days < 0 || hours < 0) {
             Toast.makeText(this, "Valores não podem ser negativos", Toast.LENGTH_SHORT).show()

@@ -10,6 +10,7 @@ import android.view.ViewGroup
 import android.widget.Button
 import android.widget.TextView
 import android.widget.Toast
+import androidx.appcompat.app.AlertDialog
 import androidx.fragment.app.Fragment
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
@@ -43,7 +44,13 @@ class DeviceOwnerInstructionsFragment : Fragment() {
         updateStatus()
 
         copyCommandButton.setOnClickListener {
-            copyAdbCommand()
+            AlertDialog.Builder(requireContext())
+                .setTitle("Atenção - Remoção de Contas")
+                .setMessage("O modo Device Owner falhará silenciosamente se você tiver contas Google/Samsung ativas no aparelho.\n\nVocê confirma que já EXCLUIU temporariamente todas as contas nas Configurações do Android?")
+                .setPositiveButton("Sim, Contas Removidas") { _, _ -> copyAdbCommand() }
+                .setNegativeButton("Cancelar", null)
+                .setCancelable(false)
+                .show()
         }
 
         closeButton.setOnClickListener {

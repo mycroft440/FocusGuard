@@ -18,11 +18,22 @@ import com.focusguard.admin.DeviceOwnerManager
  * Manager for blocking sessions with day-based countdown.
  * Handles both timer-based and recurring sessions.
  */
-class BlockingSessionManager(private val context: Context) {
+class BlockingSessionManager private constructor(private val context: Context) {
+
+    companion object {
+        @Volatile
+        private var instance: BlockingSessionManager? = null
+
+        fun getInstance(context: Context): BlockingSessionManager {
+            return instance ?: synchronized(this) {
+                instance ?: BlockingSessionManager(context.applicationContext).also { instance = it }
+            }
+        }
+    }
 
     private val database = AppDatabase.getDatabase(context)
     private val deviceOwnerManager = DeviceOwnerManager(context)
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     /**
      * Start a new timer-based blocking session (Countdown).
@@ -45,9 +56,8 @@ class BlockingSessionManager(private val context: Context) {
                     blockedAppsCount = blockedAppsCount,
                     blockedWebsitesCount = blockedWebsitesCount
                 )
-                // Deactivate all old sessions first
-                database.blockSessionDao().deactivateAllSessions()
-                database.blockSessionDao().insertBlockSession(session)
+                // Usar @Transaction atômica no DB
+                database.blockSessionDao().replaceActiveSession(session)
                 
                 val appsToBlock = database.blockedAppDao().getAllBlockedApps().map { it.packageName }
                 deviceOwnerManager.blockApps(appsToBlock)
@@ -108,9 +118,8 @@ class BlockingSessionManager(private val context: Context) {
                     blockedWebsitesCount = blockedWebsitesCount
                 )
 
-                // Deactivate all old sessions first
-                database.blockSessionDao().deactivateAllSessions()
-                database.blockSessionDao().insertBlockSession(session)
+                // Usar @Transaction atômica no DB
+                database.blockSessionDao().replaceActiveSession(session)
 
                 if (isCurrentlyInBlockingWindow(session)) {
                     val appsToBlock = database.blockedAppDao().getAllBlockedApps().map { it.packageName }

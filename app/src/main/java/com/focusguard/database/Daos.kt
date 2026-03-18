@@ -5,6 +5,7 @@ import androidx.room.Delete
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Transaction
 import androidx.room.Update
 
 @Dao
@@ -71,6 +72,17 @@ interface BlockSessionDao {
 
     @Query("UPDATE block_sessions SET isActive = 0 WHERE isActive = 1")
     suspend fun deactivateAllSessions()
+
+    @Query("DELETE FROM block_sessions WHERE isActive = 0 AND endTime < :threshold")
+    suspend fun deleteOldInactiveSessions(threshold: Long)
+
+    @Transaction
+    suspend fun replaceActiveSession(session: BlockSession) {
+        deactivateAllSessions()
+        // Limpa lixo do DB que já expirou há mais de 30 dias (Trash Cleanup)
+        deleteOldInactiveSessions(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000)
+        insertBlockSession(session)
+    }
 
     @Query("SELECT * FROM block_sessions ORDER BY startTime DESC")
     suspend fun getAllSessions(): List<BlockSession>

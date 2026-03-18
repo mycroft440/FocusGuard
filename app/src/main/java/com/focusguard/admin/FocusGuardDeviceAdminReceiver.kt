@@ -23,6 +23,10 @@ class FocusGuardDeviceAdminReceiver : DeviceAdminReceiver() {
         Toast.makeText(context, "FocusGuard Device Admin desabilitado", Toast.LENGTH_SHORT).show()
     }
 
+    override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
+        return "Se você desativar o Administrador na Força, a Sessão de Foco em andamento se romperá e o FocusGuard e toda sua disciplina de bloqueio serão neutralizados. Tem absoluta certeza disso?"
+    }
+
     companion object {
         /**
          * Get the component name for this device admin receiver.
