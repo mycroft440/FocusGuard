@@ -48,6 +48,9 @@ class BlockingSessionManager(private val context: Context) {
                 // Deactivate all old sessions first
                 database.blockSessionDao().deactivateAllSessions()
                 database.blockSessionDao().insertBlockSession(session)
+                
+                val appsToBlock = database.blockedAppDao().getAllBlockedApps().map { it.packageName }
+                deviceOwnerManager.blockApps(appsToBlock)
 
                 deviceOwnerManager.enforceBlockingPolicies()
 
@@ -110,8 +113,12 @@ class BlockingSessionManager(private val context: Context) {
                 database.blockSessionDao().insertBlockSession(session)
 
                 if (isCurrentlyInBlockingWindow(session)) {
+                    val appsToBlock = database.blockedAppDao().getAllBlockedApps().map { it.packageName }
+                    deviceOwnerManager.blockApps(appsToBlock)
                     deviceOwnerManager.enforceBlockingPolicies()
                 } else {
+                    val appsToUnblock = database.blockedAppDao().getAllBlockedApps().map { it.packageName }
+                    deviceOwnerManager.unblockApps(appsToUnblock)
                     deviceOwnerManager.clearBlockingPolicies()
                 }
 
@@ -144,14 +151,6 @@ class BlockingSessionManager(private val context: Context) {
                 return false
             }
 
-            // Check day of week
-            if (session.recurringDaysOfWeek.isNotEmpty()) {
-                val currentDayOfWeek = now.get(Calendar.DAY_OF_WEEK).toString()
-                if (!session.recurringDaysOfWeek.split(",").map { it.trim() }.contains(currentDayOfWeek)) {
-                    return false
-                }
-            }
-
             // Check time window
             val nowHour = now.get(Calendar.HOUR_OF_DAY)
             val nowMin = now.get(Calendar.MINUTE)
@@ -159,6 +158,22 @@ class BlockingSessionManager(private val context: Context) {
 
             val startVal = session.recurringStartHour * 60 + session.recurringStartMinute
             val endVal = session.recurringEndHour * 60 + session.recurringEndMinute
+
+            val isOvernight = startVal > endVal
+            val isAfterMidnightBeforeEnd = isOvernight && currentTimeVal < endVal
+
+            // Se passou da meia-noite num bloqueio overnight, consideramos o dia lógico como "ontem"
+            val logicalDayCal = now.clone() as Calendar
+            if (isAfterMidnightBeforeEnd) {
+                logicalDayCal.add(Calendar.DAY_OF_YEAR, -1)
+            }
+
+            if (session.recurringDaysOfWeek.isNotEmpty()) {
+                val logicalDayOfWeek = logicalDayCal.get(Calendar.DAY_OF_WEEK).toString()
+                if (!session.recurringDaysOfWeek.split(",").map { it.trim() }.contains(logicalDayOfWeek)) {
+                    return false
+                }
+            }
 
             return if (startVal <= endVal) {
                 // e.g., 10:00 to 18:00
@@ -182,6 +197,9 @@ class BlockingSessionManager(private val context: Context) {
                 // Session has expired (both timer and recurring month limit)
                 val expiredSession = session.copy(isActive = false)
                 database.blockSessionDao().updateBlockSession(expiredSession)
+                
+                val appsToUnblock = database.blockedAppDao().getAllBlockedApps().map { it.packageName }
+                deviceOwnerManager.unblockApps(appsToUnblock)
                 deviceOwnerManager.clearBlockingPolicies()
                 null
             } else {
@@ -275,6 +293,9 @@ class BlockingSessionManager(private val context: Context) {
                 if (session != null) {
                     val endedSession = session.copy(isActive = false)
                     database.blockSessionDao().updateBlockSession(endedSession)
+                    
+                    val appsToUnblock = database.blockedAppDao().getAllBlockedApps().map { it.packageName }
+                    deviceOwnerManager.unblockApps(appsToUnblock)
                     deviceOwnerManager.clearBlockingPolicies()
 
                     withContext(Dispatchers.Main) {

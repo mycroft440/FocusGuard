@@ -130,7 +130,7 @@ class AppSelectionActivity : AppCompatActivity() {
         val selectedApps = adapter.getSelectedApps()
         val selectedPackageNames = selectedApps.map { it.packageName }.toSet()
 
-        lifecycleScope.launch(Dispatchers.IO) {
+        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
             val dao = database.blockedAppDao()
             val existingBlocked = dao.getAllBlockedApps()
             val existingPackageNames = existingBlocked.map { it.packageName }.toSet()

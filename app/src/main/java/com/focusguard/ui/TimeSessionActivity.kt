@@ -38,6 +38,17 @@ class TimeSessionActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // VERIFICAÇÃO DE SEGURANÇA
+        val sessionCheckManager = BlockingSessionManager(this)
+        kotlinx.coroutines.runBlocking {
+            if (sessionCheckManager.hasRegisteredSession()) {
+                Toast.makeText(this@TimeSessionActivity, "Acesso negado: Há uma sessão ativa.", Toast.LENGTH_LONG).show()
+                finish()
+                return@runBlocking
+            }
+        }
+
         setContentView(R.layout.activity_time_session)
 
         val toolbar = findViewById<Toolbar>(R.id.toolbar)
