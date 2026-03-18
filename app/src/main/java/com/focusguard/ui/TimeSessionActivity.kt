@@ -112,17 +112,16 @@ class TimeSessionActivity : AppCompatActivity() {
 
         btnStartSession.isEnabled = false
 
-        lifecycleScope.launch {
+        lifecycleScope.launch(Dispatchers.IO) {
             val db = AppDatabase.getDatabase(this@TimeSessionActivity)
-            val appsCount = withContext(Dispatchers.IO) {
-                db.blockedAppDao().getAllBlockedApps().size
-            }
-            val sitesCount = withContext(Dispatchers.IO) {
-                db.blockedWebsiteDao().getAllBlockedWebsites().size
-            }
+            val appsCount = db.blockedAppDao().getAllBlockedApps().size
+            val sitesCount = db.blockedWebsiteDao().getAllBlockedWebsites().size
 
             sessionManager.startTimerSession(days, hours, appsCount, sitesCount)
-            finish()
+            
+            withContext(Dispatchers.Main) {
+                finish()
+            }
         }
     }
 
@@ -134,19 +133,25 @@ class TimeSessionActivity : AppCompatActivity() {
 
     private fun updateCounts() {
         val db = AppDatabase.getDatabase(this)
+        val pm = packageManager
+
         lifecycleScope.launch {
-            val apps = withContext(Dispatchers.IO) {
-                db.blockedAppDao().getAllBlockedApps()
+            val appsData = withContext(Dispatchers.IO) {
+                val appsList = db.blockedAppDao().getAllBlockedApps()
+                appsList.map { app ->
+                    val icon = try { pm.getApplicationIcon(app.packageName) } catch (_: Exception) { null }
+                    Pair(app, icon)
+                }
             }
             val sites = withContext(Dispatchers.IO) {
                 db.blockedWebsiteDao().getAllBlockedWebsites()
             }
-            tvSelectedAppsCount.text = "${apps.size} apps selecionados"
+            
+            tvSelectedAppsCount.text = "${appsData.size} apps selecionados"
             tvSelectedSitesCount.text = "${sites.size} sites selecionados"
 
             // Mostrar ícones dos apps selecionados
             layoutSelectedApps.removeAllViews()
-            val pm = packageManager
             val iconSizePx = TypedValue.applyDimension(
                 TypedValue.COMPLEX_UNIT_DIP, 36f, resources.displayMetrics
             ).toInt()
@@ -154,9 +159,8 @@ class TimeSessionActivity : AppCompatActivity() {
                 TypedValue.COMPLEX_UNIT_DIP, 4f, resources.displayMetrics
             ).toInt()
 
-            for (app in apps) {
-                try {
-                    val icon = pm.getApplicationIcon(app.packageName)
+            for ((app, icon) in appsData) {
+                if (icon != null) {
                     val imageView = ImageView(this@TimeSessionActivity).apply {
                         setImageDrawable(icon)
                         layoutParams = LinearLayout.LayoutParams(iconSizePx, iconSizePx).apply {
@@ -165,8 +169,6 @@ class TimeSessionActivity : AppCompatActivity() {
                         contentDescription = app.appName
                     }
                     layoutSelectedApps.addView(imageView)
-                } catch (_: PackageManager.NameNotFoundException) {
-                    // App não encontrado no dispositivo
                 }
             }
 

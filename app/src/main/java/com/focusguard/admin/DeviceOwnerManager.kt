@@ -161,6 +161,7 @@ class DeviceOwnerManager(private val context: Context) {
             dpm.addUserRestriction(componentName, UserManager.DISALLOW_SAFE_BOOT)
             dpm.addUserRestriction(componentName, UserManager.DISALLOW_ADD_USER)
             dpm.addUserRestriction(componentName, UserManager.DISALLOW_REMOVE_USER)
+            dpm.addUserRestriction(componentName, UserManager.DISALLOW_CONFIG_DATE_TIME)
         } catch (_: Exception) {
             // Handle error
         }
@@ -176,6 +177,7 @@ class DeviceOwnerManager(private val context: Context) {
             dpm.clearUserRestriction(componentName, UserManager.DISALLOW_SAFE_BOOT)
             dpm.clearUserRestriction(componentName, UserManager.DISALLOW_ADD_USER)
             dpm.clearUserRestriction(componentName, UserManager.DISALLOW_REMOVE_USER)
+            dpm.clearUserRestriction(componentName, UserManager.DISALLOW_CONFIG_DATE_TIME)
         } catch (_: Exception) {
             // Handle error
         }
