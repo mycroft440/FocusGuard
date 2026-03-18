@@ -89,15 +89,13 @@ class WebsiteSelectionActivity : AppCompatActivity() {
      * Clean domain: remove protocol, www, trailing slashes, port numbers, and paths.
      */
     private fun cleanDomain(input: String): String {
-        return input
+        return input.trim().lowercase()
             .removePrefix("https://")
             .removePrefix("http://")
             .removePrefix("www.")
             .split("/")[0]    // Remove path
             .split("?")[0]    // Remove query
             .split(":")[0]    // Remove port
-            .trim()
-            .lowercase()
     }
 
     private fun addSite(domain: String) {

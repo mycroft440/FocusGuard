@@ -111,6 +111,11 @@ class TimeSessionActivity : AppCompatActivity() {
             return
         }
 
+        if (days > 90) {
+            Toast.makeText(this, "O bloqueio máximo permitido é de 90 dias", Toast.LENGTH_SHORT).show()
+            return
+        }
+
         btnStartSession.isEnabled = false
 
         lifecycleScope.launch(Dispatchers.IO) {

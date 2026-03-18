@@ -240,8 +240,8 @@ class RecurringSessionActivity : AppCompatActivity() {
 
         val monthsStr = editDurationMonths.text.toString().trim()
         val durationMonths = monthsStr.toIntOrNull() ?: 1
-        if (durationMonths <= 0) {
-            Toast.makeText(this, "Duração deve ser pelo menos 1 mês", Toast.LENGTH_SHORT).show()
+        if (durationMonths <= 0 || durationMonths > 36) {
+            Toast.makeText(this, "Duração deve ser definida entre 1 e 36 meses", Toast.LENGTH_SHORT).show()
             return
         }
 

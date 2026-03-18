@@ -84,15 +84,15 @@ class DeviceOwnerInstructionsFragment : Fragment() {
                 appendLine("- Android Debug Bridge (ADB) installed on your computer")
                 appendLine("- USB debugging enabled on your device")
                 appendLine("- Device connected via USB\n")
-                appendLine("Instructions:")
-                appendLine("1. Connect your device to a computer via USB")
-                appendLine("2. Enable USB Debugging (Settings > Developer Options)")
-                appendLine("3. Open a terminal/command prompt on your computer")
-                appendLine("4. Run the following command:\n")
-                appendLine("adb shell dpm set-device-owner ${requireContext().packageName}/com.focusguard.admin.FocusGuardDeviceAdminReceiver\n")
-                appendLine("5. Wait for confirmation message")
-                appendLine("6. Restart FocusGuard app\n")
-                appendLine("Note: This command must be run on a fresh device or after factory reset.")
+                appendLine("Instruções:")
+                appendLine("1. Conecte o celular ao Computador via USB")
+                appendLine("2. Habilite Depuração USB nas Opções de Desenvolvedor")
+                appendLine("3. Abra o Terminal CMD ou PowerShell no seu Computador")
+                appendLine("4. Execute o comando Nuclear (Obrigatório --user 0 na Samsung/Xiaomi):\n")
+                appendLine("adb shell dpm set-device-owner --user 0 ${requireContext().packageName}/com.focusguard.admin.FocusGuardDeviceAdminReceiver\n")
+                appendLine("5. Aguarde o aviso de Sucesso (Success)")
+                appendLine("6. Reinicie o FocusGuard\n")
+                appendLine("Atenção: A ativação falhará se você tiver contas ou perfis de trabalho não removidos.")
             } else {
                 appendLine("Step 1: Enable Device Admin\n")
                 appendLine("1. Click 'Enable Device Owner Mode' button in the app")
@@ -102,14 +102,14 @@ class DeviceOwnerInstructionsFragment : Fragment() {
                 appendLine("- Android Debug Bridge (ADB) installed on your computer")
                 appendLine("- USB debugging enabled on your device")
                 appendLine("- Device connected via USB\n")
-                appendLine("Instructions:")
-                appendLine("1. Connect your device to a computer via USB")
-                appendLine("2. Enable USB Debugging (Settings > Developer Options)")
-                appendLine("3. Open a terminal/command prompt on your computer")
-                appendLine("4. Run the following command:\n")
-                appendLine("adb shell dpm set-device-owner ${requireContext().packageName}/com.focusguard.admin.FocusGuardDeviceAdminReceiver\n")
-                appendLine("5. Wait for confirmation message")
-                appendLine("6. Restart FocusGuard app")
+                appendLine("Instruções:")
+                appendLine("1. Conecte o celular ao Computador via USB")
+                appendLine("2. Habilite Depuração USB nas Opções de Desenvolvedor")
+                appendLine("3. Abra o Terminal no seu Computador")
+                appendLine("4. Execute o comando Nuclear (Obrigatório --user 0 na Samsung/Xiaomi):\n")
+                appendLine("adb shell dpm set-device-owner --user 0 ${requireContext().packageName}/com.focusguard.admin.FocusGuardDeviceAdminReceiver\n")
+                appendLine("5. Aguarde o Success Message")
+                appendLine("6. Reinicie o App FocusGuard")
             }
         }
 
@@ -117,7 +117,7 @@ class DeviceOwnerInstructionsFragment : Fragment() {
     }
 
     private fun copyAdbCommand() {
-        val command = "adb shell dpm set-device-owner ${requireContext().packageName}/com.focusguard.admin.FocusGuardDeviceAdminReceiver"
+        val command = "adb shell dpm set-device-owner --user 0 ${requireContext().packageName}/com.focusguard.admin.FocusGuardDeviceAdminReceiver"
         val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText("ADB Command", command)
         clipboard.setPrimaryClip(clip)

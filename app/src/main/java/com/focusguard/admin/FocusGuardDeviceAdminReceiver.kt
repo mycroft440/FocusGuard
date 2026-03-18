@@ -61,7 +61,9 @@ class FocusGuardDeviceAdminReceiver : DeviceAdminReceiver() {
                     DevicePolicyManager.EXTRA_ADD_EXPLANATION,
                     "FocusGuard precisa de permissão de administrador para bloquear apps e sites"
                 )
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            if (context !is android.app.Activity) {
+                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
             context.startActivity(intent)
         }

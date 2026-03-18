@@ -14,11 +14,11 @@ import com.google.android.material.card.MaterialCardView
 
 class MainHomeFragment : Fragment() {
 
-    private lateinit var btnPendingPermissions: MaterialButton
-    private lateinit var cardTimeSession: MaterialCardView
-    private lateinit var cardRecurringSession: MaterialCardView
-    private lateinit var btnActiveSessions: MaterialButton
-    private lateinit var btnDeviceOwnerTutorial: MaterialButton
+    private var btnPendingPermissions: MaterialButton? = null
+    private var cardTimeSession: MaterialCardView? = null
+    private var cardRecurringSession: MaterialCardView? = null
+    private var btnActiveSessions: MaterialButton? = null
+    private var btnDeviceOwnerTutorial: MaterialButton? = null
     private lateinit var deviceOwnerManager: DeviceOwnerManager
 
     override fun onCreateView(
@@ -40,26 +40,35 @@ class MainHomeFragment : Fragment() {
         btnActiveSessions = view.findViewById(R.id.btnActiveSessions)
         btnDeviceOwnerTutorial = view.findViewById(R.id.btnDeviceOwnerTutorial)
 
-        btnPendingPermissions.setOnClickListener {
+        btnPendingPermissions?.setOnClickListener {
             startActivity(Intent(requireContext(), PermissionsActivity::class.java))
         }
 
-        cardTimeSession.setOnClickListener {
+        cardTimeSession?.setOnClickListener {
             startActivity(Intent(requireContext(), TimeSessionActivity::class.java))
         }
 
-        cardRecurringSession.setOnClickListener {
+        cardRecurringSession?.setOnClickListener {
             startActivity(Intent(requireContext(), RecurringSessionActivity::class.java))
         }
 
-        btnActiveSessions.setOnClickListener {
+        btnActiveSessions?.setOnClickListener {
             val fragment = BlockingSessionStatusFragment()
             fragment.show(parentFragmentManager, "BlockingSessionStatus")
         }
 
-        btnDeviceOwnerTutorial.setOnClickListener {
+        btnDeviceOwnerTutorial?.setOnClickListener {
             deviceOwnerManager.setAsDeviceOwner()
         }
+    }
+
+    override fun onDestroyView() {
+        super.onDestroyView()
+        btnPendingPermissions = null
+        cardTimeSession = null
+        cardRecurringSession = null
+        btnActiveSessions = null
+        btnDeviceOwnerTutorial = null
     }
 
     override fun onResume() {
@@ -74,9 +83,9 @@ class MainHomeFragment : Fragment() {
         val isUsageAccessEnabled = PermissionUtils.isUsageAccessEnabled(ctx)
 
         if (!isA11yEnabled || !isAdminActive || !isUsageAccessEnabled) {
-            btnPendingPermissions.visibility = View.VISIBLE
+            btnPendingPermissions?.visibility = View.VISIBLE
         } else {
-            btnPendingPermissions.visibility = View.GONE
+            btnPendingPermissions?.visibility = View.GONE
         }
     }
 }

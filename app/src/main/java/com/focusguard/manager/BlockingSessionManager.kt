@@ -243,7 +243,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
             val endTime = session.endTime ?: return 0
             val remainingMillis = endTime - System.currentTimeMillis()
             if (remainingMillis <= 0) return 0
-            TimeUnit.MILLISECONDS.toHours(remainingMillis).toInt()
+            TimeUnit.MILLISECONDS.toHours(remainingMillis).toInt() % 24
         } catch (e: Exception) {
             0
         }

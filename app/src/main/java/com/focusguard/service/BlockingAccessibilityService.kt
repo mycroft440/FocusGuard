@@ -35,8 +35,10 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var lastLoadTime = 0L
     private val CACHE_TIMEOUT = 1000L // 1 second cache
     private var lastScrollCheck = 0L // Debounce for content change
+    private var lastToastTime = 0L // Anti-Spam for Android 11+ rate limits
 
-    private val browserPackages = setOf(
+    private var browserPackages: Set<String> = setOf()
+    private val browserPackagesOriginal = setOf(
         "com.android.chrome",
         "org.mozilla.firefox",
         "org.mozilla.firefox_beta",
@@ -104,10 +106,16 @@ class BlockingAccessibilityService : AccessibilityService() {
                 val apps = database.blockedAppDao().getAllBlockedApps()
                 val websites = database.blockedWebsiteDao().getAllBlockedWebsites()
 
+                // Dynamically find alternative browser packages (e.g., Yandex, Ghostery) preventing blind spots
+                val browserIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("http://www.google.com"))
+                val dynamicBrowsers = packageManager.queryIntentActivities(browserIntent, android.content.pm.PackageManager.MATCH_ALL)
+                    .mapNotNull { it.activityInfo?.packageName }.toSet()
+
                 withContext(Dispatchers.Main) {
                     isBlockingSessionActive = isWindowActive
                     blockedApps = apps
                     blockedWebsites = websites
+                    browserPackages = browserPackagesOriginal + dynamicBrowsers
                     lastLoadTime = System.currentTimeMillis()
                 }
             } catch (_: Exception) {
@@ -161,8 +169,12 @@ class BlockingAccessibilityService : AccessibilityService() {
             // Em vez de Intent home que falha no Split-Screen, usa ação global raiz
             performGlobalAction(GLOBAL_ACTION_HOME)
 
-            scope.launch(Dispatchers.Main) {
-                Toast.makeText(this@BlockingAccessibilityService, "App bloqueado pelo FocusGuard", Toast.LENGTH_SHORT).show()
+            val now = System.currentTimeMillis()
+            if (now - lastToastTime > 3000) {
+                lastToastTime = now
+                scope.launch(Dispatchers.Main) {
+                    Toast.makeText(this@BlockingAccessibilityService, "App bloqueado pelo FocusGuard", Toast.LENGTH_SHORT).show()
+                }
             }
         } catch (_: Exception) {
             // Failed to redirect to home
@@ -214,8 +226,12 @@ class BlockingAccessibilityService : AccessibilityService() {
         try {
             performGlobalAction(GLOBAL_ACTION_HOME)
 
-            scope.launch(Dispatchers.Main) {
-                Toast.makeText(this@BlockingAccessibilityService, "Site bloqueado pelo FocusGuard", Toast.LENGTH_SHORT).show()
+            val now = System.currentTimeMillis()
+            if (now - lastToastTime > 3000) {
+                lastToastTime = now
+                scope.launch(Dispatchers.Main) {
+                    Toast.makeText(this@BlockingAccessibilityService, "Site bloqueado pelo FocusGuard", Toast.LENGTH_SHORT).show()
+                }
             }
         } catch (_: Exception) {
             // Failed to redirect to home

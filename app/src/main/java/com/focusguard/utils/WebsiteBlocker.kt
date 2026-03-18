@@ -56,7 +56,7 @@ object WebsiteBlocker {
 
         return blockedDomains.any { blockedDomain ->
             val blocked = blockedDomain.lowercase()
-            domain == blocked || domain.endsWith(".$blocked")
+            domain == blocked || domain.endsWith(".$blocked") || blocked.endsWith(".$domain")
         }
     }
 
