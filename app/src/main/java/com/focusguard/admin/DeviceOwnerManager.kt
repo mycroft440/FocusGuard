@@ -113,7 +113,7 @@ class DeviceOwnerManager(private val context: Context) {
     fun setAsDeviceOwner() {
         if (context !is Activity) return
 
-        val adbCommand = "adb shell dpm set-device-owner com.focusguard/.admin.FocusGuardDeviceAdminReceiver"
+        val adbCommand = "adb shell dpm set-device-owner ${context.packageName}/.admin.FocusGuardDeviceAdminReceiver"
 
         val tutorialMessage = "Proteção Nuclear (Device Owner) impede a desinstalação burlando os bloqueios.\n\n" +
                 "Siga os passos abaixo no seu computador:\n\n" +

@@ -102,8 +102,8 @@ class WebsiteSelectionActivity : AppCompatActivity() {
 
     private fun addSite(domain: String) {
         val cleanedDomain = cleanDomain(domain)
-        if (cleanedDomain.isEmpty() || !cleanedDomain.contains(".")) {
-            Toast.makeText(this, "Domínio inválido", Toast.LENGTH_SHORT).show()
+        if (cleanedDomain.isEmpty() || !cleanedDomain.contains(".") || cleanedDomain.length <= 4) {
+            Toast.makeText(this, "Domínio inválido ou muito curto", Toast.LENGTH_SHORT).show()
             return
         }
 

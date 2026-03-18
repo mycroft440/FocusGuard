@@ -82,7 +82,7 @@ class DeviceOwnerInstructionsFragment : Fragment() {
                 appendLine("2. Enable USB Debugging (Settings > Developer Options)")
                 appendLine("3. Open a terminal/command prompt on your computer")
                 appendLine("4. Run the following command:\n")
-                appendLine("adb shell dpm set-device-owner com.focusguard/.admin.FocusGuardDeviceAdminReceiver\n")
+                appendLine("adb shell dpm set-device-owner ${requireContext().packageName}/.admin.FocusGuardDeviceAdminReceiver\n")
                 appendLine("5. Wait for confirmation message")
                 appendLine("6. Restart FocusGuard app\n")
                 appendLine("Note: This command must be run on a fresh device or after factory reset.")
@@ -100,7 +100,7 @@ class DeviceOwnerInstructionsFragment : Fragment() {
                 appendLine("2. Enable USB Debugging (Settings > Developer Options)")
                 appendLine("3. Open a terminal/command prompt on your computer")
                 appendLine("4. Run the following command:\n")
-                appendLine("adb shell dpm set-device-owner com.focusguard/.admin.FocusGuardDeviceAdminReceiver\n")
+                appendLine("adb shell dpm set-device-owner ${requireContext().packageName}/.admin.FocusGuardDeviceAdminReceiver\n")
                 appendLine("5. Wait for confirmation message")
                 appendLine("6. Restart FocusGuard app")
             }
@@ -110,7 +110,7 @@ class DeviceOwnerInstructionsFragment : Fragment() {
     }
 
     private fun copyAdbCommand() {
-        val command = "adb shell dpm set-device-owner com.focusguard/.admin.FocusGuardDeviceAdminReceiver"
+        val command = "adb shell dpm set-device-owner ${requireContext().packageName}/.admin.FocusGuardDeviceAdminReceiver"
         val clipboard = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         val clip = ClipData.newPlainText("ADB Command", command)
         clipboard.setPrimaryClip(clip)
