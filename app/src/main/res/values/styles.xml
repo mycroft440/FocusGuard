@@ -33,7 +33,7 @@
     <style name="Theme.FocusGuard.Gray" parent="Theme.FocusGuard" />
 
     <!-- Base Style for FocusGuard Widgets -->
-    <style name="Widget.FocusGuard" />
+    <style name="Widget.FocusGuard" parent="" />
 
     <!-- Card Style -->
     <style name="Widget.FocusGuard.Card" parent="Widget.MaterialComponents.CardView">
