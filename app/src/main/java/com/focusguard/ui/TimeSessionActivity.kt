@@ -1,9 +1,16 @@
 package com.focusguard.ui
 
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.graphics.Color
+import android.graphics.Typeface
 import android.os.Bundle
+import android.util.TypedValue
+import android.view.Gravity
 import android.widget.Button
 import android.widget.EditText
+import android.widget.ImageView
+import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -25,6 +32,8 @@ class TimeSessionActivity : AppCompatActivity() {
     private lateinit var tvSelectedAppsCount: TextView
     private lateinit var tvSelectedSitesCount: TextView
     private lateinit var btnStartSession: Button
+    private lateinit var layoutSelectedApps: LinearLayout
+    private lateinit var layoutSelectedSites: LinearLayout
     private lateinit var sessionManager: BlockingSessionManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -45,6 +54,8 @@ class TimeSessionActivity : AppCompatActivity() {
         btnSelectSites = findViewById(R.id.btnSelectSites)
         tvSelectedAppsCount = findViewById(R.id.tvSelectedAppsCount)
         tvSelectedSitesCount = findViewById(R.id.tvSelectedSitesCount)
+        layoutSelectedApps = findViewById(R.id.layoutSelectedApps)
+        layoutSelectedSites = findViewById(R.id.layoutSelectedSites)
         btnStartSession = findViewById(R.id.btnStartSession)
 
         btnSelectApps.setOnClickListener {
@@ -64,7 +75,7 @@ class TimeSessionActivity : AppCompatActivity() {
             val db = AppDatabase.getDatabase(this@TimeSessionActivity)
             db.blockedAppDao().deleteAllBlockedApps()
             db.blockedWebsiteDao().deleteAllBlockedWebsites()
-            
+
             withContext(Dispatchers.Main) {
                 updateCounts()
             }
@@ -113,14 +124,68 @@ class TimeSessionActivity : AppCompatActivity() {
     private fun updateCounts() {
         val db = AppDatabase.getDatabase(this)
         lifecycleScope.launch {
-            val appsCount = withContext(Dispatchers.IO) {
-                db.blockedAppDao().getAllBlockedApps().size
+            val apps = withContext(Dispatchers.IO) {
+                db.blockedAppDao().getAllBlockedApps()
             }
-            val sitesCount = withContext(Dispatchers.IO) {
-                db.blockedWebsiteDao().getAllBlockedWebsites().size
+            val sites = withContext(Dispatchers.IO) {
+                db.blockedWebsiteDao().getAllBlockedWebsites()
             }
-            tvSelectedAppsCount.text = "$appsCount apps selecionados"
-            tvSelectedSitesCount.text = "$sitesCount sites selecionados"
+            tvSelectedAppsCount.text = "${apps.size} apps selecionados"
+            tvSelectedSitesCount.text = "${sites.size} sites selecionados"
+
+            // Mostrar ícones dos apps selecionados
+            layoutSelectedApps.removeAllViews()
+            val pm = packageManager
+            val iconSizePx = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, 36f, resources.displayMetrics
+            ).toInt()
+            val marginPx = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, 4f, resources.displayMetrics
+            ).toInt()
+
+            for (app in apps) {
+                try {
+                    val icon = pm.getApplicationIcon(app.packageName)
+                    val imageView = ImageView(this@TimeSessionActivity).apply {
+                        setImageDrawable(icon)
+                        layoutParams = LinearLayout.LayoutParams(iconSizePx, iconSizePx).apply {
+                            setMargins(marginPx, 0, marginPx, 0)
+                        }
+                        contentDescription = app.appName
+                    }
+                    layoutSelectedApps.addView(imageView)
+                } catch (_: PackageManager.NameNotFoundException) {
+                    // App não encontrado no dispositivo
+                }
+            }
+
+            // Mostrar labels dos sites selecionados
+            layoutSelectedSites.removeAllViews()
+            val badgePaddingH = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, 10f, resources.displayMetrics
+            ).toInt()
+            val badgePaddingV = TypedValue.applyDimension(
+                TypedValue.COMPLEX_UNIT_DIP, 4f, resources.displayMetrics
+            ).toInt()
+
+            for (site in sites) {
+                val badge = TextView(this@TimeSessionActivity).apply {
+                    text = site.domain
+                    setTextColor(Color.parseColor("#FF00BCD4"))
+                    textSize = 11f
+                    setTypeface(null, Typeface.BOLD)
+                    setBackgroundResource(R.drawable.toggle_bg)
+                    setPadding(badgePaddingH, badgePaddingV, badgePaddingH, badgePaddingV)
+                    layoutParams = LinearLayout.LayoutParams(
+                        LinearLayout.LayoutParams.WRAP_CONTENT,
+                        LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        setMargins(marginPx, 0, marginPx, 0)
+                    }
+                    gravity = Gravity.CENTER
+                }
+                layoutSelectedSites.addView(badge)
+            }
         }
     }
 }

@@ -205,8 +205,22 @@
                         android:text="0 apps selecionados"
                         android:textColor="@color/text_secondary"
                         android:textSize="13sp"
-                        android:layout_marginBottom="16dp"
+                        android:layout_marginBottom="4dp"
                         android:gravity="center" />
+
+                    <HorizontalScrollView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:scrollbars="none"
+                        android:layout_marginBottom="16dp">
+
+                        <LinearLayout
+                            android:id="@+id/layoutSelectedApps"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical" />
+                    </HorizontalScrollView>
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnSelectSites"
@@ -223,7 +237,21 @@
                         android:text="0 sites selecionados"
                         android:textColor="@color/text_secondary"
                         android:textSize="13sp"
+                        android:layout_marginBottom="4dp"
                         android:gravity="center" />
+
+                    <HorizontalScrollView
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:scrollbars="none">
+
+                        <LinearLayout
+                            android:id="@+id/layoutSelectedSites"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:gravity="center_vertical" />
+                    </HorizontalScrollView>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

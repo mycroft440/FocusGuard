@@ -1,7 +1,10 @@
 package com.focusguard.ui
 
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Button
@@ -31,7 +34,12 @@ class PermissionsActivity : AppCompatActivity() {
         btnSkip = findViewById(R.id.btnSkip)
 
         btnAccessibility.setOnClickListener {
-            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                // Android 13+: orientar sobre permissões restritas
+                showRestrictedPermissionGuide()
+            } else {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
         }
 
         btnUsageAccess.setOnClickListener {
@@ -52,6 +60,30 @@ class PermissionsActivity : AppCompatActivity() {
             startActivity(intent)
             finish()
         }
+    }
+
+    private fun showRestrictedPermissionGuide() {
+        AlertDialog.Builder(this)
+            .setTitle("Permissão Restrita (Android 13+)")
+            .setMessage(
+                "O Android 13+ restringe a acessibilidade para apps instalados fora da Play Store.\n\n" +
+                "Siga estes passos:\n\n" +
+                "1. Toque em \"Abrir Config. do App\" abaixo\n" +
+                "2. Toque nos 3 pontos (⋮) no canto superior direito\n" +
+                "3. Selecione \"Permitir configurações restritas\"\n" +
+                "4. Volte aqui e toque novamente em \"Conceder\" para abrir as configurações de acessibilidade"
+            )
+            .setPositiveButton("Abrir Config. do App") { _, _ ->
+                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+                startActivity(intent)
+            }
+            .setNeutralButton("Ir para Acessibilidade") { _, _ ->
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
+            .setNegativeButton("Cancelar", null)
+            .show()
     }
 
     override fun onResume() {
