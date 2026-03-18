@@ -28,68 +28,68 @@
                 motion:motionTarget="@id/tvTitle"
                 motion:framePosition="0"
                 android:alpha="0"
-                android:translationY="20" />
+                android:translationY="20dp" />
             <KeyAttribute
                 motion:motionTarget="@id/tvTitle"
                 motion:framePosition="30"
                 android:alpha="0"
-                android:translationY="20" />
+                android:translationY="20dp" />
             <KeyAttribute
                 motion:motionTarget="@id/tvTitle"
                 motion:framePosition="55"
                 android:alpha="1"
-                android:translationY="0" />
+                android:translationY="0dp" />
 
             <!-- Subtitle: fade in after title -->
             <KeyAttribute
                 motion:motionTarget="@id/tvSubtitle"
                 motion:framePosition="0"
                 android:alpha="0"
-                android:translationY="15" />
+                android:translationY="15dp" />
             <KeyAttribute
                 motion:motionTarget="@id/tvSubtitle"
                 motion:framePosition="40"
                 android:alpha="0"
-                android:translationY="15" />
+                android:translationY="15dp" />
             <KeyAttribute
                 motion:motionTarget="@id/tvSubtitle"
                 motion:framePosition="65"
                 android:alpha="1"
-                android:translationY="0" />
+                android:translationY="0dp" />
 
             <!-- Card 1: slide up + fade in -->
             <KeyAttribute
                 motion:motionTarget="@id/cardTimeSession"
                 motion:framePosition="0"
                 android:alpha="0"
-                android:translationY="40" />
+                android:translationY="40dp" />
             <KeyAttribute
                 motion:motionTarget="@id/cardTimeSession"
                 motion:framePosition="50"
                 android:alpha="0"
-                android:translationY="40" />
+                android:translationY="40dp" />
             <KeyAttribute
                 motion:motionTarget="@id/cardTimeSession"
                 motion:framePosition="75"
                 android:alpha="1"
-                android:translationY="0" />
+                android:translationY="0dp" />
 
             <!-- Card 2: slide up + fade in -->
             <KeyAttribute
                 motion:motionTarget="@id/cardRecurringSession"
                 motion:framePosition="0"
                 android:alpha="0"
-                android:translationY="40" />
+                android:translationY="40dp" />
             <KeyAttribute
                 motion:motionTarget="@id/cardRecurringSession"
                 motion:framePosition="60"
                 android:alpha="0"
-                android:translationY="40" />
+                android:translationY="40dp" />
             <KeyAttribute
                 motion:motionTarget="@id/cardRecurringSession"
                 motion:framePosition="85"
                 android:alpha="1"
-                android:translationY="0" />
+                android:translationY="0dp" />
 
             <!-- Botão sessões ativas -->
             <KeyAttribute
