@@ -63,6 +63,13 @@ class RecurringSessionActivity : AppCompatActivity() {
 
         setContentView(R.layout.activity_recurring_session)
 
+        if (savedInstanceState != null) {
+            startHour = savedInstanceState.getInt("startHour", -1)
+            startMinute = savedInstanceState.getInt("startMinute", -1)
+            endHour = savedInstanceState.getInt("endHour", -1)
+            endMinute = savedInstanceState.getInt("endMinute", -1)
+        }
+
         val toolbar = findViewById<Toolbar>(R.id.toolbar)
         toolbar.title = "Sessão Recorrente"
         setSupportActionBar(toolbar)
@@ -264,5 +271,13 @@ class RecurringSessionActivity : AppCompatActivity() {
             )
             finish()
         }
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putInt("startHour", startHour)
+        outState.putInt("startMinute", startMinute)
+        outState.putInt("endHour", endHour)
+        outState.putInt("endMinute", endMinute)
     }
 }

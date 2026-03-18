@@ -111,12 +111,18 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun getDefaultLauncherPackage(): String? {
+        val intent = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_HOME) }
+        val resolveInfo = packageManager.resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+        return resolveInfo?.activityInfo?.packageName
+    }
+
     private fun handleWindowStateChanged(event: AccessibilityEvent) {
         val packageName = event.packageName?.toString() ?: return
 
-        // Don't block our own app or the system launcher
-        if (packageName == this.packageName) return
-        if (packageName == "com.android.launcher3" || packageName == "com.google.android.apps.nexuslauncher") return
+        // Proteção dinâmica contra loop infinito no Launcher
+        val defaultLauncher = getDefaultLauncherPackage()
+        if (packageName == this.packageName || packageName == defaultLauncher) return
 
         if (isAppBlocked(packageName)) {
             blockApp(packageName)
