@@ -80,6 +80,17 @@ class RecurringSessionActivity : AppCompatActivity() {
         btnStartSession.setOnClickListener {
             saveRecurringSession()
         }
+
+        // Limpa seleções de sessões anteriores ao abrir
+        lifecycleScope.launch(Dispatchers.IO) {
+            val db = AppDatabase.getDatabase(this@RecurringSessionActivity)
+            db.blockedAppDao().deleteAllBlockedApps()
+            db.blockedWebsiteDao().deleteAllBlockedWebsites()
+
+            withContext(Dispatchers.Main) {
+                updateCounts()
+            }
+        }
     }
 
     override fun onResume() {

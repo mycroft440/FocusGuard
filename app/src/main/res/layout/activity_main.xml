@@ -225,21 +225,34 @@
                     app:iconGravity="textStart"
                     android:layout_marginBottom="12dp" />
 
-                <!-- Botão de Tutorial ADB Device Owner -->
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnDeviceOwnerTutorial"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:text="Tutorial: Proteção Nuclear (ADB)"
-                    style="@style/Widget.MaterialComponents.Button.TextButton"
-                    android:textColor="@color/text_hint"
-                    android:textSize="13sp"
-                    app:icon="@drawable/ic_info"
-                    app:iconTint="@color/text_hint"
-                    app:iconSize="18dp"
-                    android:layout_marginBottom="16dp" />
+                    android:orientation="vertical"
+                    android:layout_marginBottom="16dp"
+                    android:gravity="center">
 
-            </LinearLayout>
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnDeviceOwnerTutorial"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="PROTEÇÃO NUCLEAR"
+                        style="@style/Widget.FocusGuard.Button.Danger"
+                        android:paddingStart="32dp"
+                        android:paddingEnd="32dp"
+                        app:icon="@drawable/ic_warning"
+                        app:iconTint="@android:color/white"
+                        app:iconSize="20dp"
+                        android:layout_marginBottom="4dp" />
+
+                    <TextView
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:text="Ative para que o bloqueio seja impossivel de burlar!!"
+                        android:textColor="@color/text_secondary"
+                        android:textSize="12sp"
+                        android:textAlignment="center" />
+                </LinearLayout>
         </ScrollView>
 
     </androidx.constraintlayout.motion.widget.MotionLayout>

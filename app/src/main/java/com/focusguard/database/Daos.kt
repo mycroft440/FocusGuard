@@ -26,6 +26,9 @@ interface BlockedAppDao {
 
     @Query("DELETE FROM blocked_apps WHERE packageName = :packageName")
     suspend fun deleteBlockedAppByPackage(packageName: String)
+
+    @Query("DELETE FROM blocked_apps")
+    suspend fun deleteAllBlockedApps()
 }
 
 @Dao
@@ -47,6 +50,9 @@ interface BlockedWebsiteDao {
 
     @Query("DELETE FROM blocked_websites WHERE domain = :domain")
     suspend fun deleteBlockedWebsiteByDomain(domain: String)
+
+    @Query("DELETE FROM blocked_websites")
+    suspend fun deleteAllBlockedWebsites()
 }
 
 @Dao

@@ -58,6 +58,17 @@ class TimeSessionActivity : AppCompatActivity() {
         btnStartSession.setOnClickListener {
             startSession()
         }
+
+        // Limpa seleções de sessões anteriores ao abrir
+        lifecycleScope.launch(Dispatchers.IO) {
+            val db = AppDatabase.getDatabase(this@TimeSessionActivity)
+            db.blockedAppDao().deleteAllBlockedApps()
+            db.blockedWebsiteDao().deleteAllBlockedWebsites()
+            
+            withContext(Dispatchers.Main) {
+                updateCounts()
+            }
+        }
     }
 
     private fun startSession() {
