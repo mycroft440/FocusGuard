@@ -46,6 +46,8 @@ android {
                     storePassword keystorePassword
                     keyAlias keyAliasEnv
                     keyPassword keyPasswordEnv
+                    v1SigningEnabled true
+                    v2SigningEnabled true
                 }
             }
         }
@@ -63,6 +65,9 @@ android {
             def keystoreFile = System.getenv("KEYSTORE_FILE")
             if (keystoreFile != null && !keystoreFile.trim().isEmpty() && new File(keystoreFile).exists()) {
                 signingConfig signingConfigs.release
+            } else {
+                // CORREÇÃO: Usa a chave de debug para assinar o release quando compilado localmente
+                signingConfig signingConfigs.debug
             }
         }
     }
