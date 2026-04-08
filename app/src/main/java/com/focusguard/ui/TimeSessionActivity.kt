@@ -1,44 +1,28 @@
 package com.focusguard.ui
 
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.graphics.Color
-import android.graphics.Typeface
 import android.os.Bundle
-import android.util.TypedValue
-import android.view.Gravity
-import android.widget.Button
-import android.widget.EditText
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.Toolbar
-import androidx.lifecycle.lifecycleScope
-import com.focusguard.R
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.*
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import com.focusguard.database.AppDatabase
+import com.focusguard.database.BlockedApp
+import com.focusguard.database.BlockedWebsite
 import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.ui.compose.screens.TimeSessionScreen
+import com.focusguard.ui.compose.theme.FocusGuardTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class TimeSessionActivity : AppCompatActivity() {
-
-    private lateinit var editDays: EditText
-    private lateinit var editHours: EditText
-    private lateinit var btnSelectApps: Button
-    private lateinit var btnSelectSites: Button
-    private lateinit var tvSelectedAppsCount: TextView
-    private lateinit var tvSelectedSitesCount: TextView
-    private lateinit var btnStartSession: Button
-    private lateinit var layoutSelectedApps: LinearLayout
-    private lateinit var layoutSelectedSites: LinearLayout
-    private lateinit var sessionManager: BlockingSessionManager
+class TimeSessionActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         // VERIFICAÇÃO DE SEGURANÇA
         val sessionCheckManager = BlockingSessionManager.getInstance(this)
         kotlinx.coroutines.runBlocking {
@@ -49,161 +33,88 @@ class TimeSessionActivity : AppCompatActivity() {
             }
         }
 
-        setContentView(R.layout.activity_time_session)
-
-        val toolbar = findViewById<Toolbar>(R.id.toolbar)
-        toolbar.title = "Sessão por Tempo"
-        setSupportActionBar(toolbar)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        toolbar.setNavigationOnClickListener { finish() }
-
-        sessionManager = BlockingSessionManager.getInstance(this)
-
-        editDays = findViewById(R.id.editDays)
-        editHours = findViewById(R.id.editHours)
-        btnSelectApps = findViewById(R.id.btnSelectApps)
-        btnSelectSites = findViewById(R.id.btnSelectSites)
-        tvSelectedAppsCount = findViewById(R.id.tvSelectedAppsCount)
-        tvSelectedSitesCount = findViewById(R.id.tvSelectedSitesCount)
-        layoutSelectedApps = findViewById(R.id.layoutSelectedApps)
-        layoutSelectedSites = findViewById(R.id.layoutSelectedSites)
-        btnStartSession = findViewById(R.id.btnStartSession)
-
-        btnSelectApps.setOnClickListener {
-            startActivity(Intent(this, AppSelectionActivity::class.java))
-        }
-
-        btnSelectSites.setOnClickListener {
-            startActivity(Intent(this, WebsiteSelectionActivity::class.java))
-        }
-
-        btnStartSession.setOnClickListener {
-            startSession()
-        }
-
-        // Limpa seleções de sessões anteriores ao abrir
-        lifecycleScope.launch(Dispatchers.IO) {
-            val db = AppDatabase.getDatabase(this@TimeSessionActivity)
-            db.blockedAppDao().deleteAllBlockedApps()
-            db.blockedWebsiteDao().deleteAllBlockedWebsites()
-
-            withContext(Dispatchers.Main) {
-                updateCounts()
-            }
-        }
-    }
-
-    private fun startSession() {
-        val daysStr = editDays.text.toString().trim()
-        val hoursStr = editHours.text.toString().trim()
-
-        // Pega os 4 primeiros digitos limitando Int Overflow gigantes via usuário zoador
-        val days = daysStr.take(4).toIntOrNull() ?: 0
-        val hours = hoursStr.take(4).toIntOrNull() ?: 0
-
-        if (days < 0 || hours < 0) {
-            Toast.makeText(this, "Valores não podem ser negativos", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        if (days == 0 && hours == 0) {
-            Toast.makeText(this, "Defina pelo menos 1 hora ou dia", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        if (days > 90) {
-            Toast.makeText(this, "O bloqueio máximo permitido é de 90 dias", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        btnStartSession.isEnabled = false
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            val db = AppDatabase.getDatabase(this@TimeSessionActivity)
-            val appsCount = db.blockedAppDao().getAllBlockedApps().size
-            val sitesCount = db.blockedWebsiteDao().getAllBlockedWebsites().size
-
-            sessionManager.startTimerSession(days, hours, appsCount, sitesCount)
-            
-            withContext(Dispatchers.Main) {
-                finish()
-            }
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        btnStartSession.isEnabled = true
-        updateCounts()
-    }
-
-    private fun updateCounts() {
-        val db = AppDatabase.getDatabase(this)
+        val sessionManager = BlockingSessionManager.getInstance(this)
+        val database = AppDatabase.getDatabase(this)
         val pm = packageManager
+        val activity = this
 
-        lifecycleScope.launch {
-            val appsData = withContext(Dispatchers.IO) {
-                val appsList = db.blockedAppDao().getAllBlockedApps()
-                appsList.map { app ->
-                    val icon = try { pm.getApplicationIcon(app.packageName) } catch (_: Exception) { null }
-                    Pair(app, icon)
+        setContent {
+            FocusGuardTheme {
+                var appsCount by remember { mutableIntStateOf(0) }
+                var sitesCount by remember { mutableIntStateOf(0) }
+                var selectedApps by remember { mutableStateOf<List<Pair<BlockedApp, android.graphics.drawable.Drawable?>>>(emptyList()) }
+                var selectedSites by remember { mutableStateOf<List<BlockedWebsite>>(emptyList()) }
+                var resumeKey by remember { mutableIntStateOf(0) }
+
+                val scope = rememberCoroutineScope()
+
+                // Clear previous selections on first load
+                LaunchedEffect(Unit) {
+                    withContext(Dispatchers.IO) {
+                        database.blockedAppDao().deleteAllBlockedApps()
+                        database.blockedWebsiteDao().deleteAllBlockedWebsites()
+                    }
                 }
-            }
-            val sites = withContext(Dispatchers.IO) {
-                db.blockedWebsiteDao().getAllBlockedWebsites()
-            }
-            
-            tvSelectedAppsCount.text = "${appsData.size} apps selecionados"
-            tvSelectedSitesCount.text = "${sites.size} sites selecionados"
 
-            // Mostrar ícones dos apps selecionados
-            layoutSelectedApps.removeAllViews()
-            val iconSizePx = TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, 36f, resources.displayMetrics
-            ).toInt()
-            val marginPx = TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, 4f, resources.displayMetrics
-            ).toInt()
-
-            for ((app, icon) in appsData) {
-                if (icon != null) {
-                    val imageView = ImageView(this@TimeSessionActivity).apply {
-                        setImageDrawable(icon)
-                        layoutParams = LinearLayout.LayoutParams(iconSizePx, iconSizePx).apply {
-                            setMargins(marginPx, 0, marginPx, 0)
+                // Refresh counts on resume
+                LaunchedEffect(resumeKey) {
+                    withContext(Dispatchers.IO) {
+                        val apps = database.blockedAppDao().getAllBlockedApps()
+                        val sites = database.blockedWebsiteDao().getAllBlockedWebsites()
+                        val appsWithIcons = apps.map { app ->
+                            val icon = try { pm.getApplicationIcon(app.packageName) } catch (_: Exception) { null }
+                            Pair(app, icon)
                         }
-                        contentDescription = app.appName
+                        withContext(Dispatchers.Main) {
+                            appsCount = apps.size
+                            sitesCount = sites.size
+                            selectedApps = appsWithIcons
+                            selectedSites = sites
+                        }
                     }
-                    layoutSelectedApps.addView(imageView)
                 }
-            }
 
-            // Mostrar labels dos sites selecionados
-            layoutSelectedSites.removeAllViews()
-            val badgePaddingH = TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, 10f, resources.displayMetrics
-            ).toInt()
-            val badgePaddingV = TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, 4f, resources.displayMetrics
-            ).toInt()
-
-            for (site in sites) {
-                val badge = TextView(this@TimeSessionActivity).apply {
-                    text = site.domain
-                    setTextColor(Color.parseColor("#FF00BCD4"))
-                    textSize = 11f
-                    setTypeface(null, Typeface.BOLD)
-                    setBackgroundResource(R.drawable.toggle_bg)
-                    setPadding(badgePaddingH, badgePaddingV, badgePaddingH, badgePaddingV)
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        setMargins(marginPx, 0, marginPx, 0)
+                DisposableEffect(Unit) {
+                    val callback = object : DefaultLifecycleObserver {
+                        override fun onResume(owner: LifecycleOwner) { resumeKey++ }
                     }
-                    gravity = Gravity.CENTER
+                    activity.lifecycle.addObserver(callback)
+                    onDispose { activity.lifecycle.removeObserver(callback) }
                 }
-                layoutSelectedSites.addView(badge)
+
+                TimeSessionScreen(
+                    appsCount = appsCount,
+                    sitesCount = sitesCount,
+                    selectedApps = selectedApps,
+                    selectedSites = selectedSites,
+                    onSelectApps = {
+                        startActivity(Intent(activity, AppSelectionActivity::class.java))
+                    },
+                    onSelectSites = {
+                        startActivity(Intent(activity, WebsiteSelectionActivity::class.java))
+                    },
+                    onStartSession = { days, hours ->
+                        if (days < 0 || hours < 0) {
+                            Toast.makeText(activity, "Valores não podem ser negativos", Toast.LENGTH_SHORT).show()
+                            return@TimeSessionScreen
+                        }
+                        if (days == 0 && hours == 0) {
+                            Toast.makeText(activity, "Defina pelo menos 1 hora ou dia", Toast.LENGTH_SHORT).show()
+                            return@TimeSessionScreen
+                        }
+                        if (days > 90) {
+                            Toast.makeText(activity, "O bloqueio máximo permitido é de 90 dias", Toast.LENGTH_SHORT).show()
+                            return@TimeSessionScreen
+                        }
+                        scope.launch(Dispatchers.IO) {
+                            val ac = database.blockedAppDao().getAllBlockedApps().size
+                            val sc = database.blockedWebsiteDao().getAllBlockedWebsites().size
+                            sessionManager.startTimerSession(days, hours, ac, sc)
+                            withContext(Dispatchers.Main) { finish() }
+                        }
+                    },
+                    onBack = { finish() }
+                )
             }
         }
     }

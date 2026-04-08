@@ -1,56 +1,28 @@
 package com.focusguard.ui
 
-import android.app.TimePickerDialog
 import android.content.Intent
-import android.content.pm.PackageManager
-import android.graphics.Color
-import android.graphics.Typeface
 import android.os.Bundle
-import android.util.TypedValue
-import android.view.Gravity
-import android.widget.Button
-import android.widget.EditText
-import android.widget.ImageView
-import android.widget.LinearLayout
-import android.widget.TextView
 import android.widget.Toast
-import android.widget.ToggleButton
-import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.Toolbar
-import androidx.lifecycle.lifecycleScope
-import com.focusguard.R
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.*
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import com.focusguard.database.AppDatabase
+import com.focusguard.database.BlockedApp
+import com.focusguard.database.BlockedWebsite
 import com.focusguard.manager.BlockingSessionManager
-import java.util.Calendar
-import java.util.Locale
+import com.focusguard.ui.compose.screens.RecurringSessionScreen
+import com.focusguard.ui.compose.theme.FocusGuardTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class RecurringSessionActivity : AppCompatActivity() {
-
-    private lateinit var btnStartTime: Button
-    private lateinit var btnEndTime: Button
-    private lateinit var toggleDays: List<ToggleButton>
-    private lateinit var editDurationMonths: EditText
-    private lateinit var btnSelectApps: Button
-    private lateinit var btnSelectSites: Button
-    private lateinit var tvSelectedAppsCount: TextView
-    private lateinit var tvSelectedSitesCount: TextView
-    private lateinit var layoutSelectedApps: LinearLayout
-    private lateinit var layoutSelectedSites: LinearLayout
-    private lateinit var btnStartSession: Button
-
-    private lateinit var sessionManager: BlockingSessionManager
-
-    private var startHour = -1
-    private var startMinute = -1
-    private var endHour = -1
-    private var endMinute = -1
+class RecurringSessionActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         // VERIFICAÇÃO DE SEGURANÇA
         val sessionCheckManager = BlockingSessionManager.getInstance(this)
         kotlinx.coroutines.runBlocking {
@@ -61,238 +33,93 @@ class RecurringSessionActivity : AppCompatActivity() {
             }
         }
 
-        setContentView(R.layout.activity_recurring_session)
-
-        if (savedInstanceState != null) {
-            startHour = savedInstanceState.getInt("startHour", -1)
-            startMinute = savedInstanceState.getInt("startMinute", -1)
-            endHour = savedInstanceState.getInt("endHour", -1)
-            endMinute = savedInstanceState.getInt("endMinute", -1)
-        }
-
-        val toolbar = findViewById<Toolbar>(R.id.toolbar)
-        toolbar.title = "Sessão Recorrente"
-        setSupportActionBar(toolbar)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        toolbar.setNavigationOnClickListener { finish() }
-
-        sessionManager = BlockingSessionManager.getInstance(this)
-
-        btnStartTime = findViewById(R.id.btnStartTime)
-        btnEndTime = findViewById(R.id.btnEndTime)
-        editDurationMonths = findViewById(R.id.editDurationMonths)
-        btnSelectApps = findViewById(R.id.btnSelectApps)
-        btnSelectSites = findViewById(R.id.btnSelectSites)
-        tvSelectedAppsCount = findViewById(R.id.tvSelectedAppsCount)
-        tvSelectedSitesCount = findViewById(R.id.tvSelectedSitesCount)
-        layoutSelectedApps = findViewById(R.id.layoutSelectedApps)
-        layoutSelectedSites = findViewById(R.id.layoutSelectedSites)
-        btnStartSession = findViewById(R.id.btnStartSession)
-
-        toggleDays = listOf(
-            findViewById(R.id.btnSun), findViewById(R.id.btnMon),
-            findViewById(R.id.btnTue), findViewById(R.id.btnWed),
-            findViewById(R.id.btnThu), findViewById(R.id.btnFri),
-            findViewById(R.id.btnSat)
-        )
-
-        // Restaura os dias selecionados para não sofrer amnésia (Process Death do Android)
-        if (savedInstanceState != null) {
-            val daysChecked = savedInstanceState.getBooleanArray("toggleDaysChecked")
-            if (daysChecked != null && daysChecked.size == 7) {
-                toggleDays.forEachIndexed { i, btn -> btn.isChecked = daysChecked[i] }
-            }
-        }
-
-        setupTimePickers()
-
-        btnSelectApps.setOnClickListener {
-            startActivity(Intent(this, AppSelectionActivity::class.java))
-        }
-
-        btnSelectSites.setOnClickListener {
-            startActivity(Intent(this, WebsiteSelectionActivity::class.java))
-        }
-
-        btnStartSession.setOnClickListener {
-            saveRecurringSession()
-        }
-
-        // Limpa seleções de sessões anteriores ao abrir
-        lifecycleScope.launch(Dispatchers.IO) {
-            val db = AppDatabase.getDatabase(this@RecurringSessionActivity)
-            db.blockedAppDao().deleteAllBlockedApps()
-            db.blockedWebsiteDao().deleteAllBlockedWebsites()
-
-            withContext(Dispatchers.Main) {
-                updateCounts()
-            }
-        }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        btnStartSession.isEnabled = true
-        updateCounts()
-    }
-
-    private fun updateCounts() {
-        val db = AppDatabase.getDatabase(this)
+        val sessionManager = BlockingSessionManager.getInstance(this)
+        val database = AppDatabase.getDatabase(this)
         val pm = packageManager
+        val activity = this
 
-        lifecycleScope.launch {
-            val appsData = withContext(Dispatchers.IO) {
-                val appsList = db.blockedAppDao().getAllBlockedApps()
-                appsList.map { app ->
-                    val icon = try { pm.getApplicationIcon(app.packageName) } catch (_: Exception) { null }
-                    Pair(app, icon)
+        setContent {
+            FocusGuardTheme {
+                var appsCount by remember { mutableIntStateOf(0) }
+                var sitesCount by remember { mutableIntStateOf(0) }
+                var selectedApps by remember { mutableStateOf<List<Pair<BlockedApp, android.graphics.drawable.Drawable?>>>(emptyList()) }
+                var selectedSites by remember { mutableStateOf<List<BlockedWebsite>>(emptyList()) }
+                var resumeKey by remember { mutableIntStateOf(0) }
+
+                val scope = rememberCoroutineScope()
+
+                // Clear previous selections on first load
+                LaunchedEffect(Unit) {
+                    withContext(Dispatchers.IO) {
+                        database.blockedAppDao().deleteAllBlockedApps()
+                        database.blockedWebsiteDao().deleteAllBlockedWebsites()
+                    }
                 }
-            }
-            val sites = withContext(Dispatchers.IO) {
-                db.blockedWebsiteDao().getAllBlockedWebsites()
-            }
-            
-            tvSelectedAppsCount.text = "${appsData.size} apps selecionados"
-            tvSelectedSitesCount.text = "${sites.size} sites selecionados"
 
-            // Mostrar ícones dos apps selecionados
-            layoutSelectedApps.removeAllViews()
-            val iconSizePx = TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, 36f, resources.displayMetrics
-            ).toInt()
-            val marginPx = TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, 4f, resources.displayMetrics
-            ).toInt()
-
-            for ((app, icon) in appsData) {
-                if (icon != null) {
-                    val imageView = ImageView(this@RecurringSessionActivity).apply {
-                        setImageDrawable(icon)
-                        layoutParams = LinearLayout.LayoutParams(iconSizePx, iconSizePx).apply {
-                            setMargins(marginPx, 0, marginPx, 0)
+                // Refresh counts on resume
+                LaunchedEffect(resumeKey) {
+                    withContext(Dispatchers.IO) {
+                        val apps = database.blockedAppDao().getAllBlockedApps()
+                        val sites = database.blockedWebsiteDao().getAllBlockedWebsites()
+                        val appsWithIcons = apps.map { app ->
+                            val icon = try { pm.getApplicationIcon(app.packageName) } catch (_: Exception) { null }
+                            Pair(app, icon)
                         }
-                        contentDescription = app.appName
+                        withContext(Dispatchers.Main) {
+                            appsCount = apps.size
+                            sitesCount = sites.size
+                            selectedApps = appsWithIcons
+                            selectedSites = sites
+                        }
                     }
-                    layoutSelectedApps.addView(imageView)
                 }
-            }
 
-            // Mostrar labels dos sites selecionados
-            layoutSelectedSites.removeAllViews()
-            val badgePaddingH = TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, 10f, resources.displayMetrics
-            ).toInt()
-            val badgePaddingV = TypedValue.applyDimension(
-                TypedValue.COMPLEX_UNIT_DIP, 4f, resources.displayMetrics
-            ).toInt()
-
-            for (site in sites) {
-                val badge = TextView(this@RecurringSessionActivity).apply {
-                    text = site.domain
-                    setTextColor(Color.parseColor("#FF00BCD4"))
-                    textSize = 11f
-                    setTypeface(null, Typeface.BOLD)
-                    setBackgroundResource(R.drawable.toggle_bg)
-                    setPadding(badgePaddingH, badgePaddingV, badgePaddingH, badgePaddingV)
-                    layoutParams = LinearLayout.LayoutParams(
-                        LinearLayout.LayoutParams.WRAP_CONTENT,
-                        LinearLayout.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        setMargins(marginPx, 0, marginPx, 0)
+                DisposableEffect(Unit) {
+                    val callback = object : DefaultLifecycleObserver {
+                        override fun onResume(owner: LifecycleOwner) { resumeKey++ }
                     }
-                    gravity = Gravity.CENTER
+                    activity.lifecycle.addObserver(callback)
+                    onDispose { activity.lifecycle.removeObserver(callback) }
                 }
-                layoutSelectedSites.addView(badge)
+
+                RecurringSessionScreen(
+                    appsCount = appsCount,
+                    sitesCount = sitesCount,
+                    selectedApps = selectedApps,
+                    selectedSites = selectedSites,
+                    onSelectApps = {
+                        startActivity(Intent(activity, AppSelectionActivity::class.java))
+                    },
+                    onSelectSites = {
+                        startActivity(Intent(activity, WebsiteSelectionActivity::class.java))
+                    },
+                    onStartSession = { startH, startM, endH, endM, days, months ->
+                        if (startH == -1 || endH == -1) {
+                            Toast.makeText(activity, "Defina os horários de início e fim", Toast.LENGTH_SHORT).show()
+                            return@RecurringSessionScreen
+                        }
+                        if (startH == endH && startM == endM) {
+                            Toast.makeText(activity, "Horário de início e fim não podem ser iguais", Toast.LENGTH_SHORT).show()
+                            return@RecurringSessionScreen
+                        }
+                        if (months <= 0 || months > 36) {
+                            Toast.makeText(activity, "Duração deve ser definida entre 1 e 36 meses", Toast.LENGTH_SHORT).show()
+                            return@RecurringSessionScreen
+                        }
+                        if (days.isEmpty()) {
+                            Toast.makeText(activity, "Selecione pelo menos um dia da semana", Toast.LENGTH_SHORT).show()
+                            return@RecurringSessionScreen
+                        }
+                        scope.launch(Dispatchers.IO) {
+                            val ac = database.blockedAppDao().getAllBlockedApps().size
+                            val sc = database.blockedWebsiteDao().getAllBlockedWebsites().size
+                            sessionManager.startRecurringSession(startH, startM, endH, endM, days, months, ac, sc)
+                            withContext(Dispatchers.Main) { finish() }
+                        }
+                    },
+                    onBack = { finish() }
+                )
             }
-        }
-    }
-
-    private fun setupTimePickers() {
-        btnStartTime.setOnClickListener {
-            val calendar = Calendar.getInstance()
-            TimePickerDialog(this, { _, h, m ->
-                startHour = h
-                startMinute = m
-                btnStartTime.text = String.format(Locale.getDefault(), "Início: %02d:%02d", h, m)
-            }, calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE), true).show()
-        }
-
-        btnEndTime.setOnClickListener {
-            val calendar = Calendar.getInstance()
-            TimePickerDialog(this, { _, h, m ->
-                endHour = h
-                endMinute = m
-                btnEndTime.text = String.format(Locale.getDefault(), "Fim: %02d:%02d", h, m)
-            }, calendar.get(Calendar.HOUR_OF_DAY), calendar.get(Calendar.MINUTE), true).show()
-        }
-    }
-
-    private fun saveRecurringSession() {
-        if (startHour == -1 || endHour == -1) {
-            Toast.makeText(this, "Defina os horários de início e fim", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        if (startHour == endHour && startMinute == endMinute) {
-            Toast.makeText(this, "Horário de início e fim não podem ser iguais", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val monthsStr = editDurationMonths.text.toString().trim()
-        val durationMonths = monthsStr.toIntOrNull() ?: 1
-        if (durationMonths <= 0 || durationMonths > 36) {
-            Toast.makeText(this, "Duração deve ser definida entre 1 e 36 meses", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val selectedDays = mutableListOf<Int>()
-        toggleDays.forEachIndexed { index, toggleButton ->
-            if (toggleButton.isChecked) {
-                selectedDays.add(index + 1)
-            }
-        }
-
-        if (selectedDays.isEmpty()) {
-            Toast.makeText(this, "Selecione pelo menos um dia da semana", Toast.LENGTH_SHORT).show()
-            return
-        }
-
-        val daysString = selectedDays.joinToString(",")
-
-        btnStartSession.isEnabled = false
-
-        lifecycleScope.launch(Dispatchers.IO) {
-            val db = AppDatabase.getDatabase(this@RecurringSessionActivity)
-            val appsCount = db.blockedAppDao().getAllBlockedApps().size
-            val sitesCount = db.blockedWebsiteDao().getAllBlockedWebsites().size
-
-            sessionManager.startRecurringSession(
-                startHour,
-                startMinute,
-                endHour,
-                endMinute,
-                daysString,
-                durationMonths,
-                appsCount,
-                sitesCount
-            )
-            
-            withContext(Dispatchers.Main) {
-                finish()
-            }
-        }
-    }
-
-    override fun onSaveInstanceState(outState: Bundle) {
-        super.onSaveInstanceState(outState)
-        outState.putInt("startHour", startHour)
-        outState.putInt("startMinute", startMinute)
-        outState.putInt("endHour", endHour)
-        outState.putInt("endMinute", endMinute)
-        
-        if (::toggleDays.isInitialized) {
-            val daysChecked = BooleanArray(7) { i -> toggleDays[i].isChecked }
-            outState.putBooleanArray("toggleDaysChecked", daysChecked)
         }
     }
 }

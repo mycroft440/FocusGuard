@@ -7,58 +7,77 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import android.widget.Button
-import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.*
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import com.focusguard.MainActivity
-import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.ui.compose.screens.PermissionState
+import com.focusguard.ui.compose.screens.PermissionsScreen
+import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.utils.PermissionUtils
 
-class PermissionsActivity : AppCompatActivity() {
+class PermissionsActivity : ComponentActivity() {
 
-    private lateinit var btnAccessibility: Button
-    private lateinit var btnUsageAccess: Button
-    private lateinit var btnDeviceAdmin: Button
-    private lateinit var btnSkip: Button
     private lateinit var deviceOwnerManager: DeviceOwnerManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_permissions)
 
         deviceOwnerManager = DeviceOwnerManager(this)
 
-        btnAccessibility = findViewById(R.id.btnAccessibility)
-        btnUsageAccess = findViewById(R.id.btnUsageAccess)
-        btnDeviceAdmin = findViewById(R.id.btnDeviceAdmin)
-        btnSkip = findViewById(R.id.btnSkip)
+        setContent {
+            FocusGuardTheme {
+                val activity = this@PermissionsActivity
 
-        btnAccessibility.setOnClickListener {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                // Android 13+: orientar sobre permissões restritas
-                showRestrictedPermissionGuide()
-            } else {
-                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                var permState by remember { mutableStateOf(PermissionState()) }
+                var resumeKey by remember { mutableIntStateOf(0) }
+
+                LaunchedEffect(resumeKey) {
+                    permState = PermissionState(
+                        accessibility = PermissionUtils.isAccessibilityServiceEnabled(activity),
+                        usageAccess = PermissionUtils.isUsageAccessEnabled(activity),
+                        deviceAdmin = deviceOwnerManager.isDeviceAdminActive() || deviceOwnerManager.isDeviceOwnerActive()
+                    )
+                }
+
+                DisposableEffect(Unit) {
+                    val callback = object : DefaultLifecycleObserver {
+                        override fun onResume(owner: LifecycleOwner) {
+                            resumeKey++
+                        }
+                    }
+                    activity.lifecycle.addObserver(callback)
+                    onDispose { activity.lifecycle.removeObserver(callback) }
+                }
+
+                PermissionsScreen(
+                    permissionState = permState,
+                    onAccessibilityClick = {
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            showRestrictedPermissionGuide()
+                        } else {
+                            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        }
+                    },
+                    onUsageAccessClick = {
+                        startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                    },
+                    onDeviceAdminClick = {
+                        if (!deviceOwnerManager.isDeviceAdminActive()) {
+                            deviceOwnerManager.requestDeviceAdmin()
+                        }
+                    },
+                    onSkipClick = {
+                        val prefs = getSharedPreferences("FocusGuardPrefs", Context.MODE_PRIVATE)
+                        prefs.edit().putBoolean("hasSeenOnboarding", true).apply()
+                        startActivity(Intent(activity, MainActivity::class.java))
+                        finish()
+                    }
+                )
             }
-        }
-
-        btnUsageAccess.setOnClickListener {
-            startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-        }
-
-        btnDeviceAdmin.setOnClickListener {
-            if (!deviceOwnerManager.isDeviceAdminActive()) {
-                deviceOwnerManager.requestDeviceAdmin()
-            }
-        }
-
-        btnSkip.setOnClickListener {
-            val prefs = getSharedPreferences("FocusGuardPrefs", Context.MODE_PRIVATE)
-            prefs.edit().putBoolean("hasSeenOnboarding", true).apply()
-
-            val intent = Intent(this, MainActivity::class.java)
-            startActivity(intent)
-            finish()
         }
     }
 
@@ -84,24 +103,5 @@ class PermissionsActivity : AppCompatActivity() {
             }
             .setNegativeButton("Cancelar", null)
             .show()
-    }
-
-    override fun onResume() {
-        super.onResume()
-        updateButtons()
-    }
-
-    private fun updateButtons() {
-        val isA11yEnabled = PermissionUtils.isAccessibilityServiceEnabled(this)
-        btnAccessibility.text = if (isA11yEnabled) "Concedido" else "Conceder"
-        btnAccessibility.isEnabled = !isA11yEnabled
-
-        val isAdminActive = deviceOwnerManager.isDeviceAdminActive() || deviceOwnerManager.isDeviceOwnerActive()
-        btnDeviceAdmin.text = if (isAdminActive) "Concedido" else "Conceder"
-        btnDeviceAdmin.isEnabled = !isAdminActive
-
-        val isUsageAccessEnabled = PermissionUtils.isUsageAccessEnabled(this)
-        btnUsageAccess.text = if (isUsageAccessEnabled) "Concedido" else "Conceder"
-        btnUsageAccess.isEnabled = !isUsageAccessEnabled
     }
 }

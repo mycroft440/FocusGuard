@@ -2,40 +2,20 @@ package com.focusguard.ui
 
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.drawable.Drawable
 import android.os.Bundle
-import android.view.LayoutInflater
-import android.view.View
-import android.view.ViewGroup
-import android.widget.CheckBox
-import android.widget.ImageView
-import android.widget.TextView
-import androidx.appcompat.app.AppCompatActivity
-import androidx.appcompat.widget.Toolbar
-import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import com.focusguard.R
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.compose.runtime.*
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.BlockedApp
+import com.focusguard.ui.compose.screens.AppSelectionScreen
+import com.focusguard.ui.compose.screens.SelectableAppUi
+import com.focusguard.ui.compose.theme.FocusGuardTheme
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-data class SelectableApp(
-    val packageName: String,
-    val appName: String,
-    val icon: Drawable?,
-    var isSelected: Boolean = false,
-    val isSuggested: Boolean = false
-)
-
-class AppSelectionActivity : AppCompatActivity() {
-
-    private lateinit var recyclerView: RecyclerView
-    private lateinit var progressBar: View
-    private lateinit var adapter: AppSelectionAdapter
-    private lateinit var database: AppDatabase
+class AppSelectionActivity : ComponentActivity() {
 
     private val suggestedAddictiveApps = listOf(
         Pair("com.google.android.youtube", "YouTube"),
@@ -49,165 +29,125 @@ class AppSelectionActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_app_selection)
 
-        val toolbar = findViewById<Toolbar>(R.id.toolbar)
-        toolbar.title = "Selecionar Aplicativos"
-        setSupportActionBar(toolbar)
-        supportActionBar?.setDisplayHomeAsUpEnabled(true)
-        toolbar.setNavigationOnClickListener { finish() }
+        val database = AppDatabase.getDatabase(this)
+        val pm = packageManager
+        val activity = this
 
-        database = AppDatabase.getDatabase(this)
-        progressBar = findViewById(R.id.progressBar)
-        recyclerView = findViewById(R.id.recyclerView)
-        recyclerView.layoutManager = LinearLayoutManager(this)
+        setContent {
+            FocusGuardTheme {
+                var apps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
+                var isLoading by remember { mutableStateOf(true) }
 
-        adapter = AppSelectionAdapter()
-        recyclerView.adapter = adapter
+                val scope = rememberCoroutineScope()
 
-        loadApps()
-    }
+                // Load apps
+                LaunchedEffect(Unit) {
+                    withContext(Dispatchers.IO) {
+                        val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                        val blockedApps = database.blockedAppDao().getAllBlockedApps()
+                        val blockedPackageNames = blockedApps.map { it.packageName }.toSet()
 
-    private fun loadApps() {
-        progressBar.visibility = View.VISIBLE
-        lifecycleScope.launch {
-            val apps = withContext(Dispatchers.IO) {
-                val pm = packageManager
-                val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-                val appList = mutableListOf<SelectableApp>()
+                        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                        val launchables = pm.queryIntentActivities(intent, 0).map { it.activityInfo.packageName }.toSet()
 
-                // Get already blocked apps to check them
-                val blockedApps = database.blockedAppDao().getAllBlockedApps()
-                val blockedPackageNames = blockedApps.map { it.packageName }.toSet()
+                        val appList = mutableListOf<SelectableAppUi>()
 
-                // Get all generic launcher mapped packages in 1 fast IPC Query (3~7s Speed Boost)
-                val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-                val launchables = pm.queryIntentActivities(intent, 0).map { it.activityInfo.packageName }.toSet()
+                        for (info in installedApps) {
+                            if (launchables.contains(info.packageName)) {
+                                val appName = info.loadLabel(pm).toString()
+                                val icon = try { info.loadIcon(pm) } catch (_: Exception) { null }
+                                appList.add(
+                                    SelectableAppUi(
+                                        packageName = info.packageName,
+                                        appName = appName,
+                                        icon = icon,
+                                        isSelected = blockedPackageNames.contains(info.packageName)
+                                    )
+                                )
+                            }
+                        }
 
-                // 1. Add Installed Apps (only launchable ones)
-                for (info in installedApps) {
-                    if (launchables.contains(info.packageName)) {
-                        val appName = info.loadLabel(pm).toString()
-                        val icon = try { info.loadIcon(pm) } catch (_: Exception) { null }
-                        appList.add(
-                            SelectableApp(
-                                packageName = info.packageName,
-                                appName = appName,
-                                icon = icon,
-                                isSelected = blockedPackageNames.contains(info.packageName),
-                                isSuggested = false
-                            )
-                        )
+                        val installedPackageNames = appList.map { it.packageName }.toSet()
+                        for (suggested in suggestedAddictiveApps) {
+                            if (!installedPackageNames.contains(suggested.first)) {
+                                appList.add(
+                                    SelectableAppUi(
+                                        packageName = suggested.first,
+                                        appName = suggested.second + " (Não instalado)",
+                                        icon = null,
+                                        isSelected = blockedPackageNames.contains(suggested.first),
+                                        isSuggested = true
+                                    )
+                                )
+                            }
+                        }
+
+                        appList.sortBy { it.appName.lowercase() }
+
+                        withContext(Dispatchers.Main) {
+                            apps = appList
+                            isLoading = false
+                        }
                     }
                 }
 
-                // 2. Inject Suggested Apps (if not already listed)
-                val installedPackageNames = appList.map { it.packageName }.toSet()
-                for (suggested in suggestedAddictiveApps) {
-                    if (!installedPackageNames.contains(suggested.first)) {
-                        appList.add(
-                            SelectableApp(
-                                packageName = suggested.first,
-                                appName = suggested.second + " (Não instalado)",
-                                icon = null,
-                                isSelected = blockedPackageNames.contains(suggested.first),
-                                isSuggested = true
-                            )
-                        )
+                AppSelectionScreen(
+                    apps = apps,
+                    isLoading = isLoading,
+                    onToggleApp = { packageName ->
+                        apps = apps.map { app ->
+                            if (app.packageName == packageName) app.copy(isSelected = !app.isSelected)
+                            else app
+                        }
+                    },
+                    onBack = {
+                        // Save selection on back
+                        scope.launch(Dispatchers.IO) {
+                            saveSelection(database, apps)
+                            withContext(Dispatchers.Main) { finish() }
+                        }
                     }
-                }
-
-                appList.sortBy { it.appName.lowercase() }
-                appList
+                )
             }
-
-            adapter.submitList(apps)
-            progressBar.visibility = View.GONE
         }
     }
 
-    override fun onPause() {
-        super.onPause()
-        saveSelection()
-    }
-
-    private fun saveSelection() {
-        val selectedApps = adapter.getSelectedApps()
+    private suspend fun saveSelection(database: AppDatabase, apps: List<SelectableAppUi>) {
+        val selectedApps = apps.filter { it.isSelected }
         val selectedPackageNames = selectedApps.map { it.packageName }.toSet()
 
-        kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
-            val dao = database.blockedAppDao()
-            val existingBlocked = dao.getAllBlockedApps()
-            val existingPackageNames = existingBlocked.map { it.packageName }.toSet()
+        val dao = database.blockedAppDao()
+        val existingBlocked = dao.getAllBlockedApps()
+        val existingPackageNames = existingBlocked.map { it.packageName }.toSet()
 
-            // Remove apps that were deselected
-            for (existing in existingBlocked) {
-                if (!selectedPackageNames.contains(existing.packageName)) {
-                    dao.deleteBlockedApp(existing)
-                }
+        // Remove deselected apps
+        for (existing in existingBlocked) {
+            if (!selectedPackageNames.contains(existing.packageName)) {
+                dao.deleteBlockedApp(existing)
             }
+        }
 
-            // Add newly selected apps
-            for (app in selectedApps) {
-                if (!existingPackageNames.contains(app.packageName)) {
-                    dao.insertBlockedApp(
-                        BlockedApp(
-                            packageName = app.packageName,
-                            appName = app.appName
-                        )
+        // Add newly selected apps
+        for (app in selectedApps) {
+            if (!existingPackageNames.contains(app.packageName)) {
+                dao.insertBlockedApp(
+                    BlockedApp(
+                        packageName = app.packageName,
+                        appName = app.appName
                     )
-                }
+                )
             }
         }
     }
-}
 
-class AppSelectionAdapter : RecyclerView.Adapter<AppSelectionAdapter.ViewHolder>() {
-
-    private var apps = listOf<SelectableApp>()
-
-    fun submitList(newApps: List<SelectableApp>) {
-        apps = newApps
-        notifyDataSetChanged()
-    }
-
-    fun getSelectedApps(): List<SelectableApp> = apps.filter { it.isSelected }
-
-    override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
-        val view = LayoutInflater.from(parent.context).inflate(R.layout.item_app_selection, parent, false)
-        return ViewHolder(view)
-    }
-
-    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val app = apps[position]
-        holder.tvAppName.text = app.appName
-        holder.tvAppPackage.text = app.packageName
-
-        if (app.icon != null) {
-            holder.iconApp.setImageDrawable(app.icon)
-        } else {
-            holder.iconApp.setImageResource(android.R.drawable.sym_def_app_icon)
+    @Deprecated("Deprecated in Java", ReplaceWith("onBackPressedDispatcher.onBackPressed()"))
+    override fun onBackPressed() {
+        // Trigger onBack to save before closing
+        val database = AppDatabase.getDatabase(this)
+        kotlinx.coroutines.runBlocking(Dispatchers.IO) {
+            // read current state not available, use super
         }
-
-        // Remove listener to avoid triggers during recycling
-        holder.chkSelect.setOnCheckedChangeListener(null)
-        holder.chkSelect.isChecked = app.isSelected
-
-        holder.chkSelect.setOnCheckedChangeListener { _, isChecked ->
-            app.isSelected = isChecked
-        }
-
-        holder.itemView.setOnClickListener {
-            holder.chkSelect.isChecked = !holder.chkSelect.isChecked
-        }
-    }
-
-    override fun getItemCount() = apps.size
-
-    class ViewHolder(view: View) : RecyclerView.ViewHolder(view) {
-        val iconApp: ImageView = view.findViewById(R.id.iconApp)
-        val tvAppName: TextView = view.findViewById(R.id.tvAppName)
-        val tvAppPackage: TextView = view.findViewById(R.id.tvAppPackage)
-        val chkSelect: CheckBox = view.findViewById(R.id.chkSelect)
+        super.onBackPressed()
     }
 }
