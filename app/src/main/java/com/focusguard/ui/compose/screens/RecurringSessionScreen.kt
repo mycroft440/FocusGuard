@@ -199,7 +199,7 @@ fun RecurringSessionScreen(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-            HorizontalDivider(color = Divider, thickness = 1.dp)
+            Divider(color = Divider, thickness = 1.dp)
             Spacer(modifier = Modifier.height(16.dp))
 
             // Apps/Sites card

@@ -116,14 +116,13 @@ fun WebsiteSelectionScreen(
                             labelColor = AccentCyan
                         ),
                         border = SuggestionChipDefaults.suggestionChipBorder(
-                            enabled = true,
                             borderColor = CardBorder
                         )
                     )
                 }
             }
 
-            HorizontalDivider(color = Divider, thickness = 1.dp)
+            Divider(color = Divider, thickness = 1.dp)
 
             Spacer(modifier = Modifier.height(16.dp))
 

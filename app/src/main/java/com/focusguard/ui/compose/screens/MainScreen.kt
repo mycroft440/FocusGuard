@@ -218,7 +218,7 @@ fun HomeContent(
         Spacer(modifier = Modifier.height(24.dp))
 
         // Divider
-        HorizontalDivider(
+        Divider(
             color = Divider,
             thickness = 1.dp
         )
@@ -299,6 +299,7 @@ fun HomeContent(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionCard(
     icon: ImageVector,
