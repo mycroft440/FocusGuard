@@ -17,10 +17,11 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Accessibility Service that monitors and blocks distracting apps and websites.
- * Uses accessibility events to detect app launches and browser URL changes.
+ * Utilizes highly optimized caching mechanisms and Atomic concurrency guards.
  */
 class BlockingAccessibilityService : AccessibilityService() {
 
@@ -29,13 +30,18 @@ class BlockingAccessibilityService : AccessibilityService() {
     private val job = SupervisorJob()
     private val scope = CoroutineScope(job + Dispatchers.IO)
 
-    private var blockedApps = listOf<BlockedApp>()
-    private var blockedWebsites = listOf<BlockedWebsite>()
+    // O(1) Lookup sets manually populated
+    private var blockedAppsSet: Set<String> = setOf()
+    private var blockedWebsitesDomainSet: Set<String> = setOf()
+    
     private var isBlockingSessionActive = false
     private var lastLoadTime = 0L
-    private val CACHE_TIMEOUT = 1000L // 1 second cache
-    private var lastScrollCheck = 0L // Debounce for content change
-    private var lastToastTime = 0L // Anti-Spam for Android 11+ rate limits
+    private val CACHE_TIMEOUT = 2000L // 2 seconds cache to reduce DB load
+    private var lastScrollCheck = 0L
+    private var lastToastTime = 0L
+
+    // Guard Lock against Coroutine Flood
+    private val isRefreshing = AtomicBoolean(false)
 
     private var browserPackages: Set<String> = setOf()
     private val browserPackagesOriginal = setOf(
@@ -53,10 +59,16 @@ class BlockingAccessibilityService : AccessibilityService() {
         "com.UCMobile.intl"
     )
 
+    private var defaultLauncherPackage: String? = null
+
     override fun onServiceConnected() {
         super.onServiceConnected()
         database = AppDatabase.getDatabase(this)
         sessionManager = BlockingSessionManager.getInstance(this)
+
+        // Cache persistent components once
+        defaultLauncherPackage = calculateDefaultLauncher()
+        calculateBrowserPackages()
 
         refreshData()
 
@@ -66,16 +78,34 @@ class BlockingAccessibilityService : AccessibilityService() {
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
                     AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-            notificationTimeout = 300 // 300ms - balanced between responsiveness and battery
+            notificationTimeout = 300
         }
         setServiceInfo(info)
+    }
+
+    private fun calculateBrowserPackages() {
+        try {
+            val browserIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("http://www.google.com"))
+            val dynamicBrowsers = packageManager.queryIntentActivities(browserIntent, android.content.pm.PackageManager.MATCH_ALL)
+                .mapNotNull { it.activityInfo?.packageName }.toSet()
+            browserPackages = browserPackagesOriginal + dynamicBrowsers
+        } catch (_: Exception) {
+            browserPackages = browserPackagesOriginal
+        }
+    }
+
+    private fun calculateDefaultLauncher(): String? {
+        return try {
+            val intent = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_HOME) }
+            val resolveInfo = packageManager.resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
+            resolveInfo?.activityInfo?.packageName
+        } catch (_: Exception) { null }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         try {
             if (event == null) return
 
-            // Refresh data if cache expired
             if (System.currentTimeMillis() - lastLoadTime > CACHE_TIMEOUT) {
                 refreshData()
             }
@@ -94,54 +124,45 @@ class BlockingAccessibilityService : AccessibilityService() {
                     }
                 }
             }
-        } catch (_: Exception) {
-            // Silently handle to prevent service crash
-        }
+        } catch (_: Exception) {}
     }
 
     private fun refreshData() {
+        // Prevent concurrent identical DB polling requests
+        if (!isRefreshing.compareAndSet(false, true)) return
+
         scope.launch {
             try {
                 val isWindowActive = sessionManager.isBlockingActive()
                 val apps = database.blockedAppDao().getAllBlockedApps()
                 val websites = database.blockedWebsiteDao().getAllBlockedWebsites()
 
-                // Dynamically find alternative browser packages (e.g., Yandex, Ghostery) preventing blind spots
-                val browserIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("http://www.google.com"))
-                val dynamicBrowsers = packageManager.queryIntentActivities(browserIntent, android.content.pm.PackageManager.MATCH_ALL)
-                    .mapNotNull { it.activityInfo?.packageName }.toSet()
+                // O(1) Pre-computations on background thread
+                val activeAppPackages = apps.filter { it.isBlocked }.map { it.packageName }.toSet()
+                val activeWebsiteDomains = websites.filter { it.isBlocked }.map { WebsiteBlocker.extractDomain(it.domain).lowercase() }.toSet()
 
                 withContext(Dispatchers.Main) {
                     isBlockingSessionActive = isWindowActive
-                    blockedApps = apps
-                    blockedWebsites = websites
-                    browserPackages = browserPackagesOriginal + dynamicBrowsers
+                    blockedAppsSet = activeAppPackages
+                    blockedWebsitesDomainSet = activeWebsiteDomains
                     lastLoadTime = System.currentTimeMillis()
                 }
             } catch (_: Exception) {
-                // Handle error silently
+            } finally {
+                isRefreshing.set(false)
             }
         }
-    }
-
-    private fun getDefaultLauncherPackage(): String? {
-        val intent = Intent(Intent.ACTION_MAIN).apply { addCategory(Intent.CATEGORY_HOME) }
-        val resolveInfo = packageManager.resolveActivity(intent, android.content.pm.PackageManager.MATCH_DEFAULT_ONLY)
-        return resolveInfo?.activityInfo?.packageName
     }
 
     private fun handleWindowStateChanged(event: AccessibilityEvent) {
         val packageName = event.packageName?.toString() ?: return
         val className = event.className?.toString() ?: ""
 
-        // Ignora Toasts e Menus do sistema ou sobreposições ingênuas (Falso/Positivo)
         if (className.contains("Toast") || className.contains("PopupWindow")) return
 
-        // Proteção dinâmica contra loop infinito no Launcher
-        val defaultLauncher = getDefaultLauncherPackage()
-        if (packageName == this.packageName || packageName == defaultLauncher) return
+        if (packageName == this.packageName || packageName == defaultLauncherPackage) return
 
-        if (isAppBlocked(packageName)) {
+        if (blockedAppsSet.contains(packageName)) {
             blockApp(packageName)
         }
     }
@@ -149,8 +170,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private fun handleBrowserEvent(event: AccessibilityEvent) {
         val packageName = event.packageName?.toString() ?: return
 
-        // Check if it's a browser
-        if (!isBrowser(packageName)) return
+        if (!browserPackages.contains(packageName)) return
 
         val source = event.source ?: return
         try {
@@ -160,29 +180,11 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun isAppBlocked(packageName: String): Boolean {
-        return blockedApps.any { it.packageName == packageName && it.isBlocked }
-    }
-
     private fun blockApp(packageName: String) {
         try {
-            // Em vez de Intent home que falha no Split-Screen, usa ação global raiz
             performGlobalAction(GLOBAL_ACTION_HOME)
-
-            val now = System.currentTimeMillis()
-            if (now - lastToastTime > 3000) {
-                lastToastTime = now
-                scope.launch(Dispatchers.Main) {
-                    Toast.makeText(this@BlockingAccessibilityService, "App bloqueado pelo FocusGuard", Toast.LENGTH_SHORT).show()
-                }
-            }
-        } catch (_: Exception) {
-            // Failed to redirect to home
-        }
-    }
-
-    private fun isBrowser(packageName: String): Boolean {
-        return browserPackages.contains(packageName)
+            showToastThrottled("App bloqueado pelo FocusGuard")
+        } catch (_: Exception) {}
     }
 
     private fun checkAndBlockWebsite(source: AccessibilityNodeInfo) {
@@ -199,56 +201,57 @@ class BlockingAccessibilityService : AccessibilityService() {
                 }
                 addressBarNode.recycle()
             }
-        } catch (_: Exception) {
-            // Handle error silently
-        }
+        } catch (_: Exception) {}
     }
 
     private fun isWebsiteBlocked(url: String): Boolean {
-        return try {
+        try {
             val domain = WebsiteBlocker.extractDomain(url).lowercase()
-            if (domain.length < 4) return false // Avoid matching very short strings
+            if (domain.length < 4) return false
 
-            blockedWebsites.any { blockedSite ->
-                if (!blockedSite.isBlocked) return@any false
-                val blockedDomain = blockedSite.domain.lowercase()
-                // Match: domain ends with blocked domain or vice versa
-                domain == blockedDomain ||
-                        domain.endsWith(".$blockedDomain") ||
-                        blockedDomain.endsWith(".$domain")
+            if (blockedWebsitesDomainSet.contains(domain)) return true
+
+            // Domain walking for parent domain block checking (e.g. m.facebook.com matches facebook.com)
+            var currentDomain = domain
+            while (currentDomain.contains(".")) {
+                val firstDotIndex = currentDomain.indexOf('.')
+                if (firstDotIndex == -1 || firstDotIndex == currentDomain.lastIndex) break
+                currentDomain = currentDomain.substring(firstDotIndex + 1)
+                if (blockedWebsitesDomainSet.contains(currentDomain)) return true
             }
+
+            return false
         } catch (_: Exception) {
-            false
+            return false
         }
     }
 
     private fun blockWebsite() {
         try {
             performGlobalAction(GLOBAL_ACTION_HOME)
-
-            val now = System.currentTimeMillis()
-            if (now - lastToastTime > 3000) {
-                lastToastTime = now
-                scope.launch(Dispatchers.Main) {
-                    Toast.makeText(this@BlockingAccessibilityService, "Site bloqueado pelo FocusGuard", Toast.LENGTH_SHORT).show()
-                }
+            showToastThrottled("Site bloqueado pelo FocusGuard")
+        } catch (_: Exception) {}
+    }
+    
+    private fun showToastThrottled(message: String) {
+        val now = System.currentTimeMillis()
+        if (now - lastToastTime > 3000) {
+            lastToastTime = now
+            scope.launch(Dispatchers.Main) {
+                try {
+                    Toast.makeText(this@BlockingAccessibilityService, message, Toast.LENGTH_SHORT).show()
+                } catch (_: Exception) {}
             }
-        } catch (_: Exception) {
-            // Failed to redirect to home
         }
     }
 
-    override fun onInterrupt() {
-        // Service interrupted - nothing to clean up
-    }
+    override fun onInterrupt() {}
 
     override fun onDestroy() {
         super.onDestroy()
         job.cancel()
         try {
             Toast.makeText(this, "Serviço FocusGuard parado", Toast.LENGTH_SHORT).show()
-        } catch (_: Exception) {
-            // Context may be invalid during destruction
-        }
+        } catch (_: Exception) {}
     }
 }
