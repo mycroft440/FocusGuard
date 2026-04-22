@@ -23,15 +23,7 @@ class TimeSessionActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // VERIFICAÇÃO DE SEGURANÇA
-        val sessionCheckManager = BlockingSessionManager.getInstance(this)
-        kotlinx.coroutines.runBlocking {
-            if (sessionCheckManager.hasRegisteredSession()) {
-                Toast.makeText(this@TimeSessionActivity, "Acesso negado: Há uma sessão ativa.", Toast.LENGTH_LONG).show()
-                finish()
-                return@runBlocking
-            }
-        }
+        // VERIFICAÇÃO DE SEGURANÇA REMOVIDA (Multi-Session Permitido)
 
         val sessionManager = BlockingSessionManager.getInstance(this)
         val database = AppDatabase.getDatabase(this)

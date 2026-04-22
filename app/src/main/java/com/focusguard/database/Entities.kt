@@ -43,3 +43,15 @@ data class BlockSession(
     val recurringDaysOfWeek: String = "", // e.g., "1,2,3,4,5" for Mon-Fri
     val recurringDurationMonths: Int = 1
 )
+
+@Entity(tableName = "session_app_cross_ref", primaryKeys = ["sessionId", "packageName"])
+data class SessionAppCrossRef(
+    val sessionId: Int,
+    val packageName: String
+)
+
+@Entity(tableName = "session_website_cross_ref", primaryKeys = ["sessionId", "domain"])
+data class SessionWebsiteCrossRef(
+    val sessionId: Int,
+    val domain: String
+)

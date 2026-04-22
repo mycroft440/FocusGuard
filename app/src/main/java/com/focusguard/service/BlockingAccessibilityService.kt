@@ -117,6 +117,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                     handleWindowStateChanged(event)
                 }
                 AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
+                    val packageName = event.packageName?.toString() ?: return
+                    if (!browserPackages.contains(packageName)) return
+                    
                     val now = System.currentTimeMillis()
                     if (now - lastScrollCheck > 500) {
                         lastScrollCheck = now
@@ -133,16 +136,16 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         scope.launch {
             try {
-                val isWindowActive = sessionManager.isBlockingActive()
-                val apps = database.blockedAppDao().getAllBlockedApps()
-                val websites = database.blockedWebsiteDao().getAllBlockedWebsites()
+                val activeSessions = database.blockSessionDao().getAllActiveSessions()
+                val enforcingSessions = activeSessions.filter { sessionManager.isCurrentlyInBlockingWindow(it) }
+                val enforcingIds = enforcingSessions.map { it.id }
 
-                // O(1) Pre-computations on background thread
-                val activeAppPackages = apps.filter { it.isBlocked }.map { it.packageName }.toSet()
-                val activeWebsiteDomains = websites.filter { it.isBlocked }.map { WebsiteBlocker.extractDomain(it.domain).lowercase() }.toSet()
+                val activeAppPackages = database.sessionAppCrossRefDao().getAppsForSessions(enforcingIds).toSet()
+                val activeWebsiteDomains = database.sessionWebsiteCrossRefDao().getWebsitesForSessions(enforcingIds)
+                    .map { WebsiteBlocker.extractDomain(it).lowercase() }.toSet()
 
                 withContext(Dispatchers.Main) {
-                    isBlockingSessionActive = isWindowActive
+                    isBlockingSessionActive = enforcingSessions.isNotEmpty()
                     blockedAppsSet = activeAppPackages
                     blockedWebsitesDomainSet = activeWebsiteDomains
                     lastLoadTime = System.currentTimeMillis()
@@ -164,6 +167,8 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         if (blockedAppsSet.contains(packageName)) {
             blockApp(packageName)
+        } else if (browserPackages.contains(packageName)) {
+            handleBrowserEvent(event) // Anti-Bypass imediato
         }
     }
 

@@ -59,31 +59,51 @@ interface BlockedWebsiteDao {
 @Dao
 interface BlockSessionDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertBlockSession(session: BlockSession)
+    suspend fun insertBlockSession(session: BlockSession): Long
 
     @Update
     suspend fun updateBlockSession(session: BlockSession)
 
+    @Query("SELECT * FROM block_sessions WHERE isActive = 1")
+    suspend fun getAllActiveSessions(): List<BlockSession>
+
     @Query("SELECT * FROM block_sessions WHERE isActive = 1 ORDER BY startTime DESC LIMIT 1")
     suspend fun getActiveSession(): BlockSession?
-
-    @Query("SELECT * FROM block_sessions WHERE isActive = 1 AND isRecurring = 1 ORDER BY startTime DESC LIMIT 1")
-    suspend fun getActiveRecurringSession(): BlockSession?
-
-    @Query("UPDATE block_sessions SET isActive = 0 WHERE isActive = 1")
-    suspend fun deactivateAllSessions()
 
     @Query("DELETE FROM block_sessions WHERE isActive = 0 AND endTime < :threshold")
     suspend fun deleteOldInactiveSessions(threshold: Long)
 
     @Transaction
-    suspend fun replaceActiveSession(session: BlockSession) {
-        deactivateAllSessions()
+    suspend fun insertNewSession(session: BlockSession): Long {
         // Limpa lixo do DB que já expirou há mais de 30 dias (Trash Cleanup)
         deleteOldInactiveSessions(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000)
-        insertBlockSession(session)
+        return insertBlockSession(session)
     }
 
     @Query("SELECT * FROM block_sessions ORDER BY startTime DESC")
     suspend fun getAllSessions(): List<BlockSession>
+}
+
+@Dao
+interface SessionAppCrossRefDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(crossRef: SessionAppCrossRef)
+
+    @Query("SELECT packageName FROM session_app_cross_ref WHERE sessionId IN (:sessionIds)")
+    suspend fun getAppsForSessions(sessionIds: List<Int>): List<String>
+
+    @Query("DELETE FROM session_app_cross_ref WHERE sessionId = :sessionId")
+    suspend fun deleteForSession(sessionId: Int)
+}
+
+@Dao
+interface SessionWebsiteCrossRefDao {
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insert(crossRef: SessionWebsiteCrossRef)
+
+    @Query("SELECT domain FROM session_website_cross_ref WHERE sessionId IN (:sessionIds)")
+    suspend fun getWebsitesForSessions(sessionIds: List<Int>): List<String>
+
+    @Query("DELETE FROM session_website_cross_ref WHERE sessionId = :sessionId")
+    suspend fun deleteForSession(sessionId: Int)
 }

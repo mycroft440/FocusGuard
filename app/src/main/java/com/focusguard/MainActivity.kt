@@ -22,17 +22,20 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-class MainActivity : ComponentActivity() {
+import androidx.fragment.app.FragmentActivity
+import com.focusguard.security.AuthManager
+
+class MainActivity : FragmentActivity() {
 
     private lateinit var deviceOwnerManager: DeviceOwnerManager
     private lateinit var sessionManager: BlockingSessionManager
+    private lateinit var authManager: AuthManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         val prefs = getSharedPreferences("FocusGuardPrefs", Context.MODE_PRIVATE)
 
-        // REGRA NUCLEAR: Imprimir os dados das primeiras 5 tentativas, sem exceção.
         val attemptCount = prefs.getInt("launchAttemptCount", 0) + 1
         prefs.edit().putInt("launchAttemptCount", attemptCount).apply()
 
@@ -52,13 +55,15 @@ class MainActivity : ComponentActivity() {
 
         deviceOwnerManager = DeviceOwnerManager(this)
         sessionManager = BlockingSessionManager.getInstance(this)
+        authManager = AuthManager(this)
 
         setContent {
             FocusGuardTheme {
                 MainActivityContent(
                     activity = this,
                     deviceOwnerManager = deviceOwnerManager,
-                    sessionManager = sessionManager
+                    sessionManager = sessionManager,
+                    authManager = authManager
                 )
             }
         }
@@ -68,17 +73,28 @@ class MainActivity : ComponentActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainActivityContent(
-    activity: ComponentActivity,
+    activity: FragmentActivity,
     deviceOwnerManager: DeviceOwnerManager,
-    sessionManager: BlockingSessionManager
+    sessionManager: BlockingSessionManager,
+    authManager: AuthManager
 ) {
+    var isUnlocked by remember { mutableStateOf(!authManager.isAppLocked()) }
+
+    if (!isUnlocked) {
+        com.focusguard.ui.compose.screens.AuthScreen(
+            authManager = authManager,
+            activity = activity,
+            onUnlock = { isUnlocked = true }
+        )
+        return
+    }
+
     var permissionsVisible by remember { mutableStateOf(false) }
     var showSessionSheet by remember { mutableStateOf(false) }
     var isBlocking by remember { mutableStateOf(false) }
     var hasSession by remember { mutableStateOf(false) }
     var sessionDetails by remember { mutableStateOf("") }
 
-    // Refresh permission state on resume
     var resumeKey by remember { mutableIntStateOf(0) }
     LaunchedEffect(resumeKey) {
         withContext(Dispatchers.IO) {
@@ -92,7 +108,6 @@ fun MainActivityContent(
         }
     }
 
-    // Auto-refresh when returning to activity
     DisposableEffect(Unit) {
         val callback = object : androidx.lifecycle.DefaultLifecycleObserver {
             override fun onResume(owner: androidx.lifecycle.LifecycleOwner) {
@@ -103,7 +118,6 @@ fun MainActivityContent(
         onDispose { activity.lifecycle.removeObserver(callback) }
     }
 
-    // Session sheet auto-update
     LaunchedEffect(showSessionSheet) {
         while (showSessionSheet) {
             withContext(Dispatchers.IO) {
@@ -132,10 +146,10 @@ fun MainActivityContent(
         onDeviceOwnerClick = {
             deviceOwnerManager.setAsDeviceOwner()
         },
+        authManager = authManager,
         usageStatsContent = { UsageStatsScreen() }
     )
 
-    // Session Status Bottom Sheet
     if (showSessionSheet) {
         ModalBottomSheet(
             onDismissRequest = { showSessionSheet = false },
