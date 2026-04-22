@@ -22,7 +22,8 @@ import com.focusguard.ui.compose.theme.*
 data class PermissionState(
     val accessibility: Boolean = false,
     val usageAccess: Boolean = false,
-    val deviceAdmin: Boolean = false
+    val deviceAdmin: Boolean = false,
+    val batteryOptimization: Boolean = false
 )
 
 @Composable
@@ -31,6 +32,7 @@ fun PermissionsScreen(
     onAccessibilityClick: () -> Unit,
     onUsageAccessClick: () -> Unit,
     onDeviceAdminClick: () -> Unit,
+    onBatteryClick: () -> Unit,
     onSkipClick: () -> Unit
 ) {
     Column(
@@ -104,6 +106,17 @@ fun PermissionsScreen(
                 description = "Proteção contra desinstalação",
                 isGranted = permissionState.deviceAdmin,
                 onClick = onDeviceAdminClick
+            )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Permission 4: Battery
+            PermissionCard(
+                number = 4,
+                title = "Bateria Irrestrita",
+                description = "Impede o sistema de encerrar o bloqueio",
+                isGranted = permissionState.batteryOptimization,
+                onClick = onBatteryClick
             )
         }
 

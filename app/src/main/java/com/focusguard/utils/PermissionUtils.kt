@@ -51,4 +51,16 @@ object PermissionUtils {
             false
         }
     }
+
+    /**
+     * Check if the app is exempt from battery optimizations.
+     */
+    fun isBatteryOptimizationIgnored(context: Context): Boolean {
+        return try {
+            val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            powerManager.isIgnoringBatteryOptimizations(context.packageName)
+        } catch (e: Exception) {
+            true // Fallback to true if unsupported so UX doesn't break
+        }
+    }
 }

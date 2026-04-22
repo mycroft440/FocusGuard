@@ -39,7 +39,8 @@ class PermissionsActivity : ComponentActivity() {
                     permState = PermissionState(
                         accessibility = PermissionUtils.isAccessibilityServiceEnabled(activity),
                         usageAccess = PermissionUtils.isUsageAccessEnabled(activity),
-                        deviceAdmin = deviceOwnerManager.isDeviceAdminActive() || deviceOwnerManager.isDeviceOwnerActive()
+                        deviceAdmin = deviceOwnerManager.isDeviceAdminActive() || deviceOwnerManager.isDeviceOwnerActive(),
+                        batteryOptimization = PermissionUtils.isBatteryOptimizationIgnored(activity)
                     )
                 }
 
@@ -68,6 +69,16 @@ class PermissionsActivity : ComponentActivity() {
                     onDeviceAdminClick = {
                         if (!deviceOwnerManager.isDeviceAdminActive()) {
                             deviceOwnerManager.requestDeviceAdmin()
+                        }
+                    },
+                    onBatteryClick = {
+                        try {
+                            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                data = Uri.parse("package:$packageName")
+                            }
+                            startActivity(intent)
+                        } catch (e: Exception) {
+                            startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
                         }
                     },
                     onSkipClick = {
