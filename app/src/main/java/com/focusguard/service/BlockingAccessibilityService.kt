@@ -10,6 +10,7 @@ import com.focusguard.database.AppDatabase
 import com.focusguard.database.BlockedApp
 import com.focusguard.database.BlockedWebsite
 import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +28,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private lateinit var database: AppDatabase
     private lateinit var sessionManager: BlockingSessionManager
+    private lateinit var deviceOwnerManager: DeviceOwnerManager
     private val job = SupervisorJob()
     private val scope = CoroutineScope(job + Dispatchers.IO)
 
@@ -65,6 +67,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         database = AppDatabase.getDatabase(this)
         sessionManager = BlockingSessionManager.getInstance(this)
+        deviceOwnerManager = DeviceOwnerManager(this)
 
         // Cache persistent components once
         defaultLauncherPackage = calculateDefaultLauncher()
@@ -121,7 +124,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                     if (!browserPackages.contains(packageName)) return
                     
                     // SOTA Optimization: Skip UI scraping for Enterprise Managed Browsers
-                    if (packageName == "com.android.chrome" || packageName == "com.microsoft.emmx") return
+                    if (deviceOwnerManager.isDeviceOwnerActive()) {
+                        if (packageName == "com.android.chrome" || packageName == "com.microsoft.emmx") return
+                    }
                     
                     val now = System.currentTimeMillis()
                     if (now - lastScrollCheck > 500) {
@@ -181,7 +186,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         if (!browserPackages.contains(packageName)) return
         
         // SOTA Optimization: Skip UI scraping for Enterprise Managed Browsers
-        if (packageName == "com.android.chrome" || packageName == "com.microsoft.emmx") return
+        if (deviceOwnerManager.isDeviceOwnerActive()) {
+            if (packageName == "com.android.chrome" || packageName == "com.microsoft.emmx") return
+        }
 
         val source = event.source ?: return
         try {

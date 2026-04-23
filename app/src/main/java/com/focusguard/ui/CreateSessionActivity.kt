@@ -266,9 +266,31 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
                     OutlinedTextField(value = daysOfWeek, onValueChange = { daysOfWeek = it }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary))
                     
                     Row(modifier = Modifier.fillMaxWidth()) {
-                        OutlinedTextField(value = startHour, onValueChange = { startHour = it }, label = { Text("Hora Inicial") }, modifier = Modifier.weight(1f), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary))
+                        OutlinedButton(
+                            onClick = {
+                                android.app.TimePickerDialog(context, { _, h, m ->
+                                    startHour = h.toString().padStart(2, '0')
+                                    startMin = m.toString().padStart(2, '0')
+                                }, startHour.toIntOrNull() ?: 8, startMin.toIntOrNull() ?: 0, true).show()
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Início: $startHour:$startMin", color = TextPrimary)
+                        }
                         Spacer(modifier = Modifier.width(8.dp))
-                        OutlinedTextField(value = endHour, onValueChange = { endHour = it }, label = { Text("Hora Final") }, modifier = Modifier.weight(1f), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary))
+                        OutlinedButton(
+                            onClick = {
+                                android.app.TimePickerDialog(context, { _, h, m ->
+                                    endHour = h.toString().padStart(2, '0')
+                                    endMin = m.toString().padStart(2, '0')
+                                }, endHour.toIntOrNull() ?: 18, endMin.toIntOrNull() ?: 0, true).show()
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Fim: $endHour:$endMin", color = TextPrimary)
+                        }
                     }
                 }
             } else {
@@ -296,9 +318,31 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
                     OutlinedTextField(value = daysOfWeek, onValueChange = { daysOfWeek = it }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary))
                     
                     Row(modifier = Modifier.fillMaxWidth()) {
-                        OutlinedTextField(value = startHour, onValueChange = { startHour = it }, label = { Text("Hora Inicial") }, modifier = Modifier.weight(1f), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary))
+                        OutlinedButton(
+                            onClick = {
+                                android.app.TimePickerDialog(context, { _, h, m ->
+                                    startHour = h.toString().padStart(2, '0')
+                                    startMin = m.toString().padStart(2, '0')
+                                }, startHour.toIntOrNull() ?: 8, startMin.toIntOrNull() ?: 0, true).show()
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Início: $startHour:$startMin", color = TextPrimary)
+                        }
                         Spacer(modifier = Modifier.width(8.dp))
-                        OutlinedTextField(value = endHour, onValueChange = { endHour = it }, label = { Text("Hora Final") }, modifier = Modifier.weight(1f), colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary))
+                        OutlinedButton(
+                            onClick = {
+                                android.app.TimePickerDialog(context, { _, h, m ->
+                                    endHour = h.toString().padStart(2, '0')
+                                    endMin = m.toString().padStart(2, '0')
+                                }, endHour.toIntOrNull() ?: 18, endMin.toIntOrNull() ?: 0, true).show()
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text("Fim: $endHour:$endMin", color = TextPrimary)
+                        }
                     }
                 }
                 
