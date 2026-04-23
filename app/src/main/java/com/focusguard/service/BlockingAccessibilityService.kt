@@ -120,6 +120,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                     val packageName = event.packageName?.toString() ?: return
                     if (!browserPackages.contains(packageName)) return
                     
+                    // SOTA Optimization: Skip UI scraping for Enterprise Managed Browsers
+                    if (packageName == "com.android.chrome" || packageName == "com.microsoft.emmx") return
+                    
                     val now = System.currentTimeMillis()
                     if (now - lastScrollCheck > 500) {
                         lastScrollCheck = now
@@ -176,6 +179,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         val packageName = event.packageName?.toString() ?: return
 
         if (!browserPackages.contains(packageName)) return
+        
+        // SOTA Optimization: Skip UI scraping for Enterprise Managed Browsers
+        if (packageName == "com.android.chrome" || packageName == "com.microsoft.emmx") return
 
         val source = event.source ?: return
         try {

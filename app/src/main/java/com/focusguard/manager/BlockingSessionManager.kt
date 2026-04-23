@@ -162,10 +162,13 @@ class BlockingSessionManager private constructor(private val context: Context) {
             val allActiveApps = database.sessionAppCrossRefDao().getAppsForSessions(sessions.map { it.id })
             deviceOwnerManager.unblockApps(allActiveApps)
             deviceOwnerManager.clearBlockingPolicies()
+            deviceOwnerManager.clearWebsiteRestrictions()
         } else {
             val enforcingIds = enforcingSessions.map { it.id }
             val appsToBlock = database.sessionAppCrossRefDao().getAppsForSessions(enforcingIds)
+            val sitesToBlock = database.sessionWebsiteCrossRefDao().getWebsitesForSessions(enforcingIds)
             deviceOwnerManager.blockApps(appsToBlock)
+            deviceOwnerManager.enforceWebsiteRestrictions(sitesToBlock)
             deviceOwnerManager.enforceBlockingPolicies()
         }
     }

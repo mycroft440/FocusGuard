@@ -12,7 +12,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import android.os.Bundle
 import android.os.UserManager
+import android.util.Log
+import org.json.JSONArray
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Manager for Device Owner Mode functionality.
@@ -23,6 +27,10 @@ class DeviceOwnerManager(private val context: Context) {
     private val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
     private val componentName = FocusGuardDeviceAdminReceiver.getComponentName(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    companion object {
+        private val sotaAttempts = AtomicInteger(0)
+    }
 
     /**
      * Check if Device Owner Mode is active.
@@ -180,6 +188,52 @@ class DeviceOwnerManager(private val context: Context) {
             dpm.clearUserRestriction(componentName, UserManager.DISALLOW_CONFIG_DATE_TIME)
         } catch (_: Exception) {
             // Handle error
+        }
+    }
+
+    /**
+     * Enforce SOTA Website Blocking via Managed Configurations (URLBlocklist)
+     * Applies to Chrome and Edge natively.
+     */
+    fun enforceWebsiteRestrictions(domains: List<String>) {
+        if (!isDeviceOwnerActive()) return
+        
+        scope.launch {
+            try {
+                val restrictions = Bundle()
+                val jsonArray = JSONArray(domains).toString()
+                restrictions.putString("URLBlocklist", jsonArray)
+
+                val attempt = sotaAttempts.incrementAndGet()
+                if (attempt <= 5) {
+                    Log.d("FocusGuardNuclear", "Tentativa SOTA (Managed Config) $attempt: $jsonArray")
+                }
+
+                // Apply to Google Chrome
+                dpm.setApplicationRestrictions(componentName, "com.android.chrome", restrictions)
+                // Apply to Microsoft Edge
+                dpm.setApplicationRestrictions(componentName, "com.microsoft.emmx", restrictions)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+    }
+
+    /**
+     * Clear SOTA Website Blocking via Managed Configurations
+     */
+    fun clearWebsiteRestrictions() {
+        if (!isDeviceOwnerActive()) return
+        
+        scope.launch {
+            try {
+                val emptyRestrictions = Bundle()
+                // Passing an empty bundle clears the restrictions
+                dpm.setApplicationRestrictions(componentName, "com.android.chrome", emptyRestrictions)
+                dpm.setApplicationRestrictions(componentName, "com.microsoft.emmx", emptyRestrictions)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
