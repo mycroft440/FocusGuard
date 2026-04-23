@@ -29,7 +29,9 @@ data class SelectableAppUi(
     val appName: String,
     val icon: Drawable?,
     val isSelected: Boolean,
-    val isSuggested: Boolean = false
+    val isSuggested: Boolean = false,
+    val isInstalled: Boolean = true,
+    val category: String = ""
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -41,6 +43,7 @@ fun AppSelectionScreen(
     onBack: () -> Unit
 ) {
     var searchQuery by remember { mutableStateOf("") }
+    var expandUninstalled by remember { mutableStateOf(false) }
 
     val filteredApps = remember(apps, searchQuery) {
         if (searchQuery.isBlank()) apps
@@ -49,6 +52,9 @@ fun AppSelectionScreen(
             it.packageName.contains(searchQuery, ignoreCase = true)
         }
     }
+
+    val installedApps = remember(filteredApps) { filteredApps.filter { it.isInstalled } }
+    val uninstalledApps = remember(filteredApps) { filteredApps.filter { !it.isInstalled } }
 
     Scaffold(
         topBar = {
@@ -102,7 +108,60 @@ fun AppSelectionScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                 ) {
-                    items(filteredApps, key = { it.packageName }) { app ->
+                    if (uninstalledApps.isNotEmpty()) {
+                        item {
+                            Text(
+                                text = "Bloqueio Preventivo (Não Instalados)",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = AccentCyan,
+                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
+                            )
+                        }
+                        
+                        val visibleUninstalled = if (expandUninstalled || searchQuery.isNotBlank()) uninstalledApps else uninstalledApps.take(3)
+                        
+                        items(visibleUninstalled, key = { it.packageName }) { app ->
+                            AppSelectionItem(app = app, onToggle = { onToggleApp(app.packageName) })
+                        }
+                        
+                        if (!expandUninstalled && searchQuery.isBlank() && uninstalledApps.size > 3) {
+                            item {
+                                TextButton(
+                                    onClick = { expandUninstalled = true },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Mostrar Mais (+${uninstalledApps.size - 3} apps)", color = AccentCyan)
+                                }
+                            }
+                        }
+                        
+                        if (expandUninstalled && searchQuery.isBlank()) {
+                            item {
+                                TextButton(
+                                    onClick = { expandUninstalled = false },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Mostrar Menos", color = AccentCyan)
+                                }
+                            }
+                        }
+                        
+                        item {
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Divider(color = CardBorder, thickness = 1.dp)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = "Aplicativos Instalados",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
+                            )
+                        }
+                    }
+
+                    items(installedApps, key = { it.packageName }) { app ->
                         AppSelectionItem(
                             app = app,
                             onToggle = { onToggleApp(app.packageName) }
@@ -150,10 +209,10 @@ fun AppSelectionItem(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(DarkCardElevated),
+                        .background(if (app.isInstalled) DarkCardElevated else AccentCyan.copy(alpha = 0.2f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text("📱", fontSize = 18.sp)
+                    Text(if (app.isInstalled) "📱" else "☁️", fontSize = 18.sp)
                 }
             }
 
@@ -168,7 +227,7 @@ fun AppSelectionItem(
                     maxLines = 1
                 )
                 Text(
-                    text = app.packageName,
+                    text = if (app.isInstalled) app.packageName else app.category,
                     fontSize = 11.sp,
                     color = TextHint,
                     maxLines = 1

@@ -95,16 +95,36 @@ fun AppSelectionStep(onNext: (List<SelectableAppUi>) -> Unit, onBack: () -> Unit
             val launchables = pm.queryIntentActivities(intent, 0).map { it.activityInfo.packageName }.toSet()
 
             val appList = mutableListOf<SelectableAppUi>()
+            val installedPackageNames = mutableSetOf<String>()
+
             for (info in installedApps) {
                 if (launchables.contains(info.packageName)) {
+                    installedPackageNames.add(info.packageName)
                     val appName = info.loadLabel(pm).toString()
                     val icon = try { info.loadIcon(pm) } catch (_: Exception) { null }
-                    appList.add(SelectableAppUi(packageName = info.packageName, appName = appName, icon = icon, isSelected = false))
+                    appList.add(SelectableAppUi(packageName = info.packageName, appName = appName, icon = icon, isSelected = false, isInstalled = true))
                 }
             }
             appList.sortBy { it.appName.lowercase() }
+
+            // Add predefined apps that are NOT installed
+            val uninstalledPredefined = com.focusguard.data.PredefinedApps.PREVENTIVE_APPS.filter { 
+                !installedPackageNames.contains(it.packageName) 
+            }.map {
+                SelectableAppUi(
+                    packageName = it.packageName,
+                    appName = it.appName,
+                    icon = null,
+                    isSelected = false,
+                    isInstalled = false,
+                    category = it.category
+                )
+            }
+
+            val finalAppList = uninstalledPredefined + appList
+
             withContext(Dispatchers.Main) {
-                apps = appList
+                apps = finalAppList
                 isLoading = false
             }
         }
