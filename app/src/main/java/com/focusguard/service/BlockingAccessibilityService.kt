@@ -63,11 +63,15 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private var defaultLauncherPackage: String? = null
 
-    override fun onServiceConnected() {
-        super.onServiceConnected()
+    override fun onCreate() {
+        super.onCreate()
         database = AppDatabase.getDatabase(this)
         sessionManager = BlockingSessionManager.getInstance(this)
         deviceOwnerManager = DeviceOwnerManager(this)
+    }
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
 
         // Cache persistent components once
         defaultLauncherPackage = calculateDefaultLauncher()
@@ -124,7 +128,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                     if (!browserPackages.contains(packageName)) return
                     
                     // SOTA Optimization: Skip UI scraping for Enterprise Managed Browsers
-                    if (deviceOwnerManager.isDeviceOwnerActive()) {
+                    if (::deviceOwnerManager.isInitialized && deviceOwnerManager.isDeviceOwnerActive()) {
                         if (packageName == "com.android.chrome" || packageName == "com.microsoft.emmx") return
                     }
                     
@@ -186,7 +190,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         if (!browserPackages.contains(packageName)) return
         
         // SOTA Optimization: Skip UI scraping for Enterprise Managed Browsers
-        if (deviceOwnerManager.isDeviceOwnerActive()) {
+        if (::deviceOwnerManager.isInitialized && deviceOwnerManager.isDeviceOwnerActive()) {
             if (packageName == "com.android.chrome" || packageName == "com.microsoft.emmx") return
         }
 

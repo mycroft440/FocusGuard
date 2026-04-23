@@ -64,7 +64,14 @@ class PermissionsActivity : ComponentActivity() {
                         }
                     },
                     onUsageAccessClick = {
-                        startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                        try {
+                            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+                                data = Uri.parse("package:$packageName")
+                            }
+                            startActivity(intent)
+                        } catch (e: Exception) {
+                            startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                        }
                     },
                     onDeviceAdminClick = {
                         if (!deviceOwnerManager.isDeviceAdminActive()) {
