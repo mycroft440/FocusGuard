@@ -20,7 +20,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-import androidx.fragment.app.FragmentActivity
 import androidx.appcompat.app.AppCompatActivity
 import com.focusguard.security.AuthManager
 
@@ -72,7 +71,7 @@ class MainActivity : AppCompatActivity() {
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainActivityContent(
-    activity: FragmentActivity,
+    activity: AppCompatActivity,
     deviceOwnerManager: DeviceOwnerManager,
     sessionManager: BlockingSessionManager,
     authManager: AuthManager
