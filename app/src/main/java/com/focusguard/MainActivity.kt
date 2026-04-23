@@ -11,8 +11,6 @@ import androidx.compose.runtime.*
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.ui.PermissionsActivity
-import com.focusguard.ui.RecurringSessionActivity
-import com.focusguard.ui.TimeSessionActivity
 import com.focusguard.ui.compose.screens.BlockingSessionStatusSheet
 import com.focusguard.ui.compose.screens.MainScreen
 import com.focusguard.ui.compose.screens.UsageStatsScreen
@@ -134,11 +132,15 @@ fun MainActivityContent(
         onPermissionsClick = {
             activity.startActivity(Intent(activity, PermissionsActivity::class.java))
         },
-        onTimeSessionClick = {
-            activity.startActivity(Intent(activity, TimeSessionActivity::class.java))
+        onPasswordSessionClick = {
+            val intent = Intent(activity, com.focusguard.ui.CreateSessionActivity::class.java)
+            intent.putExtra("SESSION_TYPE", "PASSWORD")
+            activity.startActivity(intent)
         },
-        onRecurringSessionClick = {
-            activity.startActivity(Intent(activity, RecurringSessionActivity::class.java))
+        onTimeSessionClick = {
+            val intent = Intent(activity, com.focusguard.ui.CreateSessionActivity::class.java)
+            intent.putExtra("SESSION_TYPE", "TIME")
+            activity.startActivity(intent)
         },
         onActiveSessionsClick = {
             showSessionSheet = true

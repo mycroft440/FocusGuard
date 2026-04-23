@@ -40,22 +40,7 @@
             android:exported="false" />
 
         <activity
-            android:name=".ui.TimeSessionActivity"
-            android:exported="false"
-            android:theme="@style/Theme.FocusGuard" />
-
-        <activity
-            android:name=".ui.RecurringSessionActivity"
-            android:exported="false"
-            android:theme="@style/Theme.FocusGuard" />
-
-        <activity
-            android:name=".ui.AppSelectionActivity"
-            android:exported="false"
-            android:theme="@style/Theme.FocusGuard" />
-
-        <activity
-            android:name=".ui.WebsiteSelectionActivity"
+            android:name=".ui.CreateSessionActivity"
             android:exported="false"
             android:theme="@style/Theme.FocusGuard" />
 

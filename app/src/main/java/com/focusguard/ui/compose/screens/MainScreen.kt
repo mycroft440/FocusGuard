@@ -38,8 +38,8 @@ import kotlinx.coroutines.launch
 fun MainScreen(
     permissionsVisible: Boolean,
     onPermissionsClick: () -> Unit,
+    onPasswordSessionClick: () -> Unit,
     onTimeSessionClick: () -> Unit,
-    onRecurringSessionClick: () -> Unit,
     onActiveSessionsClick: () -> Unit,
     onDeviceOwnerClick: () -> Unit,
     authManager: AuthManager,
@@ -58,7 +58,7 @@ fun MainScreen(
         AlertDialog(
             onDismissRequest = { showPasswordDialog = false },
             containerColor = DarkSurface,
-            title = { Text("Alterar Senha do App", color = TextPrimary) },
+            title = { Text("Gerenciar Senhas", color = TextPrimary) },
             text = {
                 Column {
                     if (authManager.hasPasswordSet()) {
@@ -96,7 +96,7 @@ fun MainScreen(
                             dialogError = "A senha não pode ser vazia."
                             return@Button
                         }
-                        authManager.setPassword(newPassword)
+                        authManager.addPassword(newPassword)
                         showPasswordDialog = false
                         Toast.makeText(context, "Senha atualizada com sucesso!", Toast.LENGTH_SHORT).show()
                     },
@@ -140,7 +140,7 @@ fun MainScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 NavigationDrawerItem(
-                    label = { Text("Alterar Senha do App", color = TextPrimary) },
+                    label = { Text("Gerenciar Senhas do App", color = TextPrimary) },
                     selected = false,
                     onClick = { 
                         oldPassword = ""
@@ -189,8 +189,8 @@ fun MainScreen(
                         0 -> HomeContent(
                             permissionsVisible = permissionsVisible,
                             onPermissionsClick = onPermissionsClick,
+                            onPasswordSessionClick = onPasswordSessionClick,
                             onTimeSessionClick = onTimeSessionClick,
-                            onRecurringSessionClick = onRecurringSessionClick,
                             onActiveSessionsClick = onActiveSessionsClick,
                             pagerHint = true
                         )
@@ -224,8 +224,8 @@ fun MainScreen(
 fun HomeContent(
     permissionsVisible: Boolean,
     onPermissionsClick: () -> Unit,
+    onPasswordSessionClick: () -> Unit,
     onTimeSessionClick: () -> Unit,
-    onRecurringSessionClick: () -> Unit,
     onActiveSessionsClick: () -> Unit,
     pagerHint: Boolean
 ) {
@@ -294,10 +294,10 @@ fun HomeContent(
             enter = fadeIn(animationSpec = tween(500, delayMillis = 300)) + slideInVertically(animationSpec = tween(500, delayMillis = 300)) { it / 3 }
         ) {
             SessionCard(
-                icon = Icons.Outlined.Timer,
-                title = "Sessão por Tempo",
-                subtitle = "Defina dias e horas para focar",
-                onClick = onTimeSessionClick
+                icon = Icons.Outlined.Lock,
+                title = "Bloqueio por Senha",
+                subtitle = "Fixo ou Período (Requer senha para alterar)",
+                onClick = onPasswordSessionClick
             )
         }
 
@@ -308,10 +308,10 @@ fun HomeContent(
             enter = fadeIn(animationSpec = tween(500, delayMillis = 400)) + slideInVertically(animationSpec = tween(500, delayMillis = 400)) { it / 3 }
         ) {
             SessionCard(
-                icon = Icons.Outlined.CalendarMonth,
-                title = "Sessão Recorrente",
-                subtitle = "Agende horários fixos na semana",
-                onClick = onRecurringSessionClick
+                icon = Icons.Outlined.Timer,
+                title = "Bloqueio por Tempo",
+                subtitle = "Dias e Horas (Impossível cancelar)",
+                onClick = onTimeSessionClick
             )
         }
 

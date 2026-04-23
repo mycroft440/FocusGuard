@@ -12,28 +12,49 @@ class AuthManager(private val context: Context) {
 
     private val prefs: SharedPreferences = context.getSharedPreferences("FocusGuardAuth", Context.MODE_PRIVATE)
 
+    init {
+        // Migration from single password to multiple passwords
+        val oldPassword = prefs.getString("app_password_hash", null)
+        if (oldPassword != null) {
+            val hashes = getPasswordHashes().toMutableSet()
+            hashes.add(oldPassword)
+            prefs.edit().putStringSet("app_password_hashes", hashes).remove("app_password_hash").apply()
+        }
+    }
+
     fun isAppLocked(): Boolean {
-        // App is locked if a password is set OR if biometrics are enabled as a requirement
         return hasPasswordSet()
     }
 
     fun hasPasswordSet(): Boolean {
-        return prefs.getString("app_password_hash", null) != null
+        return getPasswordHashes().isNotEmpty()
     }
 
-    fun setPassword(newPassword: String) {
+    private fun getPasswordHashes(): Set<String> {
+        return prefs.getStringSet("app_password_hashes", emptySet()) ?: emptySet()
+    }
+
+    fun addPassword(newPassword: String) {
         val hash = hashPassword(newPassword)
-        prefs.edit().putString("app_password_hash", hash).apply()
+        val currentHashes = getPasswordHashes().toMutableSet()
+        currentHashes.add(hash)
+        prefs.edit().putStringSet("app_password_hashes", currentHashes).apply()
     }
 
     fun verifyPassword(password: String): Boolean {
         val hash = hashPassword(password)
-        val storedHash = prefs.getString("app_password_hash", null)
-        return storedHash == hash
+        return getPasswordHashes().contains(hash)
     }
-    
-    fun removePassword() {
-        prefs.edit().remove("app_password_hash").apply()
+
+    fun removePassword(passwordToRemove: String) {
+        val hash = hashPassword(passwordToRemove)
+        val currentHashes = getPasswordHashes().toMutableSet()
+        currentHashes.remove(hash)
+        prefs.edit().putStringSet("app_password_hashes", currentHashes).apply()
+    }
+
+    fun removeAllPasswords() {
+        prefs.edit().remove("app_password_hashes").apply()
     }
 
     private fun hashPassword(password: String): String {
@@ -79,7 +100,6 @@ class AuthManager(private val context: Context) {
                 biometricPrompt.authenticate(promptInfo)
             }
             else -> {
-                // Biometria não disponível no dispositivo, deve cair para verificação de Senha Padrão
                 onError("Biometria indisponível. Use a senha.")
             }
         }
