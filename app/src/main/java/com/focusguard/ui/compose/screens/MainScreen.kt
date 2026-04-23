@@ -22,6 +22,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -42,6 +43,9 @@ fun MainScreen(
     onTimeSessionClick: () -> Unit,
     onActiveSessionsClick: () -> Unit,
     onDeviceOwnerClick: () -> Unit,
+    onLimitsClick: () -> Unit,
+    onIntruderLogClick: () -> Unit,
+    onLanguageClick: () -> Unit,
     authManager: AuthManager,
     usageStatsContent: @Composable () -> Unit
 ) {
@@ -58,14 +62,14 @@ fun MainScreen(
         AlertDialog(
             onDismissRequest = { showPasswordDialog = false },
             containerColor = DarkSurface,
-            title = { Text("Gerenciar Senhas", color = TextPrimary) },
+            title = { Text(stringResource(id = R.string.manage_passwords), color = TextPrimary) },
             text = {
                 Column {
                     if (authManager.hasPasswordSet()) {
                         OutlinedTextField(
                             value = oldPassword,
                             onValueChange = { oldPassword = it },
-                            label = { Text("Senha Antiga", color = TextHint) },
+                            label = { Text(stringResource(id = R.string.old_password), color = TextHint) },
                             visualTransformation = PasswordVisualTransformation(),
                             singleLine = true,
                             colors = TextFieldDefaults.outlinedTextFieldColors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
@@ -75,7 +79,7 @@ fun MainScreen(
                     OutlinedTextField(
                         value = newPassword,
                         onValueChange = { newPassword = it },
-                        label = { Text("Nova Senha", color = TextHint) },
+                        label = { Text(stringResource(id = R.string.new_password), color = TextHint) },
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true,
                         colors = TextFieldDefaults.outlinedTextFieldColors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
@@ -101,10 +105,10 @@ fun MainScreen(
                         Toast.makeText(context, "Senha atualizada com sucesso!", Toast.LENGTH_SHORT).show()
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-                ) { Text("Salvar", color = DarkBg, fontWeight = FontWeight.Bold) }
+                ) { Text(stringResource(id = R.string.save), color = DarkBg, fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
-                TextButton(onClick = { showPasswordDialog = false }) { Text("Cancelar", color = TextHint) }
+                TextButton(onClick = { showPasswordDialog = false }) { Text(stringResource(id = R.string.cancel), color = TextHint) }
             }
         )
     }
@@ -126,7 +130,7 @@ fun MainScreen(
                 Spacer(modifier = Modifier.height(16.dp))
 
                 NavigationDrawerItem(
-                    label = { Text("Proteção Nuclear", fontWeight = FontWeight.Bold, color = DangerRed) },
+                    label = { Text(stringResource(id = R.string.nuclear_protection), fontWeight = FontWeight.Bold, color = DangerRed) },
                     selected = false,
                     onClick = { 
                         onDeviceOwnerClick()
@@ -140,7 +144,7 @@ fun MainScreen(
                 Spacer(modifier = Modifier.height(8.dp))
 
                 NavigationDrawerItem(
-                    label = { Text("Gerenciar Senhas do App", color = TextPrimary) },
+                    label = { Text(stringResource(id = R.string.manage_passwords), color = TextPrimary) },
                     selected = false,
                     onClick = { 
                         oldPassword = ""
@@ -150,6 +154,38 @@ fun MainScreen(
                         scope.launch { drawerState.close() }
                     },
                     icon = { Icon(Icons.Default.Lock, contentDescription = null, tint = AccentCyan) },
+                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent),
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+                
+                Spacer(modifier = Modifier.height(8.dp))
+
+                NavigationDrawerItem(
+                    label = { Text(stringResource(id = R.string.limits_and_security), color = TextPrimary) },
+                    selected = false,
+                    onClick = onLimitsClick,
+                    icon = { Icon(Icons.Default.Security, contentDescription = null, tint = AccentCyan) },
+                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent),
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                NavigationDrawerItem(
+                    label = { Text(stringResource(id = R.string.intruder_log), color = TextPrimary) },
+                    selected = false,
+                    onClick = onIntruderLogClick,
+                    icon = { Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = AccentCyan) },
+                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent),
+                    modifier = Modifier.padding(horizontal = 12.dp)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+
+                NavigationDrawerItem(
+                    label = { Text(stringResource(id = R.string.language_settings), color = TextPrimary) },
+                    selected = false,
+                    onClick = onLanguageClick,
+                    icon = { Icon(Icons.Default.Language, contentDescription = null, tint = AccentCyan) },
                     colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent),
                     modifier = Modifier.padding(horizontal = 12.dp)
                 )
@@ -255,7 +291,7 @@ fun HomeContent(
             ) {
                 Icon(Icons.Filled.Warning, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Dê o restante das permissões aqui", fontWeight = FontWeight.Bold, fontSize = 14.sp)
+                Text(stringResource(id = R.string.give_permissions), fontWeight = FontWeight.Bold, fontSize = 14.sp)
             }
         }
 
@@ -286,7 +322,7 @@ fun HomeContent(
             visible = visible,
             enter = fadeIn(animationSpec = tween(600, delayMillis = 200)) + slideInVertically(animationSpec = tween(600, delayMillis = 200)) { it / 2 }
         ) {
-            Text("Foco Total, Zero Distrações", fontSize = 14.sp, color = TextSecondary, modifier = Modifier.padding(top = 4.dp, bottom = 32.dp))
+            Text(stringResource(id = R.string.focus_subtitle), fontSize = 14.sp, color = TextSecondary, modifier = Modifier.padding(top = 4.dp, bottom = 32.dp))
         }
 
         AnimatedVisibility(
@@ -295,8 +331,8 @@ fun HomeContent(
         ) {
             SessionCard(
                 icon = Icons.Outlined.Lock,
-                title = "Bloqueio por Senha",
-                subtitle = "Fixo ou Período (Requer senha para alterar)",
+                title = stringResource(id = R.string.password_block),
+                subtitle = stringResource(id = R.string.password_block_sub),
                 onClick = onPasswordSessionClick
             )
         }
@@ -309,8 +345,8 @@ fun HomeContent(
         ) {
             SessionCard(
                 icon = Icons.Outlined.Timer,
-                title = "Bloqueio por Tempo",
-                subtitle = "Dias e Horas (Impossível cancelar)",
+                title = stringResource(id = R.string.time_block),
+                subtitle = stringResource(id = R.string.time_block_sub),
                 onClick = onTimeSessionClick
             )
         }
@@ -334,14 +370,14 @@ fun HomeContent(
             ) {
                 Icon(Icons.Outlined.PlaylistAddCheck, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Ver Sessões Ativas", fontWeight = FontWeight.Bold)
+                Text(stringResource(id = R.string.view_active_sessions), fontWeight = FontWeight.Bold)
             }
         }
 
         Spacer(modifier = Modifier.height(32.dp))
 
         if (pagerHint) {
-            Text("← Deslize para ver estatísticas →", fontSize = 12.sp, color = TextHint, modifier = Modifier.padding(top = 8.dp, bottom = 24.dp))
+            Text(stringResource(id = R.string.swipe_hint), fontSize = 12.sp, color = TextHint, modifier = Modifier.padding(top = 8.dp, bottom = 24.dp))
         }
     }
 }

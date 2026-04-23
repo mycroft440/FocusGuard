@@ -30,6 +30,36 @@ class AuthManager(private val context: Context) {
         return getPasswordHashes().isNotEmpty()
     }
 
+    fun getMaxPasswordAttempts(): Int {
+        return prefs.getInt("max_password_attempts", 0) // 0 means no limit
+    }
+
+    fun setMaxPasswordAttempts(limit: Int) {
+        prefs.edit().putInt("max_password_attempts", limit).apply()
+    }
+
+    fun isPhotoCaptureEnabled(): Boolean {
+        return prefs.getBoolean("photo_capture_enabled", false)
+    }
+
+    fun setPhotoCaptureEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("photo_capture_enabled", enabled).apply()
+    }
+
+    fun getFailedAttempts(): Int {
+        return prefs.getInt("failed_password_attempts", 0)
+    }
+
+    fun incrementFailedAttempts(): Int {
+        val count = getFailedAttempts() + 1
+        prefs.edit().putInt("failed_password_attempts", count).apply()
+        return count
+    }
+
+    fun resetFailedAttempts() {
+        prefs.edit().putInt("failed_password_attempts", 0).apply()
+    }
+
     private fun getPasswordHashes(): Set<String> {
         return prefs.getStringSet("app_password_hashes", emptySet()) ?: emptySet()
     }
@@ -43,7 +73,11 @@ class AuthManager(private val context: Context) {
 
     fun verifyPassword(password: String): Boolean {
         val hash = hashPassword(password)
-        return getPasswordHashes().contains(hash)
+        val isValid = getPasswordHashes().contains(hash)
+        if (isValid) {
+            resetFailedAttempts()
+        }
+        return isValid
     }
 
     fun removePassword(passwordToRemove: String) {

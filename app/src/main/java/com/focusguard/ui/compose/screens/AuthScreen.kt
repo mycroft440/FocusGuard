@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import com.focusguard.security.AuthManager
+import com.focusguard.security.CameraManager
 import com.focusguard.ui.compose.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -105,7 +106,22 @@ fun AuthScreen(
                 if (authManager.verifyPassword(passwordInput)) {
                     onUnlock()
                 } else {
-                    errorMessage = "Senha incorreta."
+                    val failed = authManager.incrementFailedAttempts()
+                    val limit = authManager.getMaxPasswordAttempts()
+                    
+                    if (limit > 0 && failed >= limit) {
+                        errorMessage = "Senha incorreta! Limite de tentativas excedido."
+                        if (authManager.isPhotoCaptureEnabled()) {
+                            val cameraManager = CameraManager(activity)
+                            cameraManager.setupAndCaptureSilent(activity) { file ->
+                                // Photo saved silently.
+                            }
+                        }
+                    } else if (limit > 0) {
+                        errorMessage = "Senha incorreta. Tentativa $failed de $limit"
+                    } else {
+                        errorMessage = "Senha incorreta."
+                    }
                 }
             },
             modifier = Modifier.fillMaxWidth().height(50.dp),

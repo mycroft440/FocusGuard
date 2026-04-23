@@ -20,10 +20,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
-import androidx.fragment.app.FragmentActivity
+import androidx.appcompat.app.AppCompatActivity
 import com.focusguard.security.AuthManager
 
-class MainActivity : FragmentActivity() {
+class MainActivity : AppCompatActivity() {
 
     private lateinit var deviceOwnerManager: DeviceOwnerManager
     private lateinit var sessionManager: BlockingSessionManager
@@ -87,6 +87,8 @@ fun MainActivityContent(
         return
     }
 
+    var currentRoute by remember { mutableStateOf("HOME") }
+
     var permissionsVisible by remember { mutableStateOf(false) }
     var showSessionSheet by remember { mutableStateOf(false) }
     var isBlocking by remember { mutableStateOf(false) }
@@ -127,50 +129,68 @@ fun MainActivityContent(
         }
     }
 
-    MainScreen(
-        permissionsVisible = permissionsVisible,
-        onPermissionsClick = {
-            activity.startActivity(Intent(activity, PermissionsActivity::class.java))
-        },
-        onPasswordSessionClick = {
-            val intent = Intent(activity, com.focusguard.ui.CreateSessionActivity::class.java)
-            intent.putExtra("SESSION_TYPE", "PASSWORD")
-            activity.startActivity(intent)
-        },
-        onTimeSessionClick = {
-            val intent = Intent(activity, com.focusguard.ui.CreateSessionActivity::class.java)
-            intent.putExtra("SESSION_TYPE", "TIME")
-            activity.startActivity(intent)
-        },
-        onActiveSessionsClick = {
-            showSessionSheet = true
-        },
-        onDeviceOwnerClick = {
-            deviceOwnerManager.setAsDeviceOwner()
-        },
-        authManager = authManager,
-        usageStatsContent = { UsageStatsScreen() }
-    )
+    if (currentRoute == "HOME") {
+        MainScreen(
+            permissionsVisible = permissionsVisible,
+            onPermissionsClick = {
+                activity.startActivity(Intent(activity, PermissionsActivity::class.java))
+            },
+            onPasswordSessionClick = {
+                val intent = Intent(activity, com.focusguard.ui.CreateSessionActivity::class.java)
+                intent.putExtra("SESSION_TYPE", "PASSWORD")
+                activity.startActivity(intent)
+            },
+            onTimeSessionClick = {
+                val intent = Intent(activity, com.focusguard.ui.CreateSessionActivity::class.java)
+                intent.putExtra("SESSION_TYPE", "TIME")
+                activity.startActivity(intent)
+            },
+            onActiveSessionsClick = {
+                showSessionSheet = true
+            },
+            onDeviceOwnerClick = {
+                deviceOwnerManager.setAsDeviceOwner()
+            },
+            onLimitsClick = { currentRoute = "LIMITS" },
+            onIntruderLogClick = { currentRoute = "INTRUDER_LOG" },
+            onLanguageClick = { currentRoute = "LANGUAGE" },
+            authManager = authManager,
+            usageStatsContent = { UsageStatsScreen() }
+        )
 
-    if (showSessionSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showSessionSheet = false },
-            containerColor = com.focusguard.ui.compose.theme.DarkSurface,
-            dragHandle = { BottomSheetDefaults.DragHandle(color = com.focusguard.ui.compose.theme.TextHint) }
-        ) {
-            BlockingSessionStatusSheet(
-                isBlocking = isBlocking,
-                hasSession = hasSession,
-                details = sessionDetails,
-                onRenounce = {
-                    if (!hasSession) {
-                        try {
-                            deviceOwnerManager.renounceDeviceOwner()
-                        } catch (_: Exception) {}
-                    }
-                },
-                onDismiss = { showSessionSheet = false }
-            )
+        if (showSessionSheet) {
+            ModalBottomSheet(
+                onDismissRequest = { showSessionSheet = false },
+                containerColor = com.focusguard.ui.compose.theme.DarkSurface,
+                dragHandle = { BottomSheetDefaults.DragHandle(color = com.focusguard.ui.compose.theme.TextHint) }
+            ) {
+                BlockingSessionStatusSheet(
+                    isBlocking = isBlocking,
+                    hasSession = hasSession,
+                    details = sessionDetails,
+                    onRenounce = {
+                        if (!hasSession) {
+                            try {
+                                deviceOwnerManager.renounceDeviceOwner()
+                            } catch (_: Exception) {}
+                        }
+                    },
+                    onDismiss = { showSessionSheet = false }
+                )
+            }
         }
+    } else if (currentRoute == "LIMITS") {
+        com.focusguard.ui.compose.screens.LimitsSecurityScreen(
+            authManager = authManager,
+            onBack = { currentRoute = "HOME" }
+        )
+    } else if (currentRoute == "INTRUDER_LOG") {
+        com.focusguard.ui.compose.screens.IntruderLogScreen(
+            onBack = { currentRoute = "HOME" }
+        )
+    } else if (currentRoute == "LANGUAGE") {
+        com.focusguard.ui.compose.screens.LanguageScreen(
+            onBack = { currentRoute = "HOME" }
+        )
     }
 }
