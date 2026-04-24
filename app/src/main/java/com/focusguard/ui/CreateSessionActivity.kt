@@ -4,7 +4,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Toast
-import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -32,7 +32,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-class CreateSessionActivity : AppCompatActivity() {
+class CreateSessionActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val sessionType = intent.getStringExtra("SESSION_TYPE") ?: "PASSWORD"
@@ -235,10 +235,17 @@ fun SiteSelectionStep(initialSites: List<String>, onNext: (List<String>) -> Unit
     }
 }
 
+fun android.content.Context.findActivity(): android.app.Activity? = when (this) {
+    is android.app.Activity -> this
+    is android.content.ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<String>, onFinish: () -> Unit, onBack: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val activityContext = context.findActivity() ?: context
     val sessionManager = remember { BlockingSessionManager.getInstance(context) }
     
     var isFixed24h by remember { mutableStateOf(true) }
@@ -288,7 +295,7 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
                     Row(modifier = Modifier.fillMaxWidth()) {
                         OutlinedButton(
                             onClick = {
-                                android.app.TimePickerDialog(context, { _, h, m ->
+                                android.app.TimePickerDialog(activityContext, { _, h, m ->
                                     startHour = h.toString().padStart(2, '0')
                                     startMin = m.toString().padStart(2, '0')
                                 }, startHour.toIntOrNull() ?: 8, startMin.toIntOrNull() ?: 0, true).show()
@@ -301,7 +308,7 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
                         Spacer(modifier = Modifier.width(8.dp))
                         OutlinedButton(
                             onClick = {
-                                android.app.TimePickerDialog(context, { _, h, m ->
+                                android.app.TimePickerDialog(activityContext, { _, h, m ->
                                     endHour = h.toString().padStart(2, '0')
                                     endMin = m.toString().padStart(2, '0')
                                 }, endHour.toIntOrNull() ?: 18, endMin.toIntOrNull() ?: 0, true).show()
@@ -353,7 +360,7 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
                         Spacer(modifier = Modifier.width(8.dp))
                         OutlinedButton(
                             onClick = {
-                                android.app.TimePickerDialog(context, { _, h, m ->
+                                android.app.TimePickerDialog(activityContext, { _, h, m ->
                                     endHour = h.toString().padStart(2, '0')
                                     endMin = m.toString().padStart(2, '0')
                                 }, endHour.toIntOrNull() ?: 18, endMin.toIntOrNull() ?: 0, true).show()

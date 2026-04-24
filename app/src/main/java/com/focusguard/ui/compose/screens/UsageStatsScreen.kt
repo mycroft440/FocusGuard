@@ -1,5 +1,6 @@
 package com.focusguard.ui.compose.screens
 
+import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.pm.PackageManager
@@ -7,17 +8,21 @@ import android.graphics.drawable.Drawable
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -38,7 +43,8 @@ data class AppUsageInfo(
     val packageName: String,
     val appName: String,
     val icon: Drawable?,
-    val usageTimeMs: Long
+    val usageTimeMs: Long,
+    val launchCount: Int = 0
 )
 
 data class MonthlyUsage(
@@ -51,9 +57,15 @@ fun UsageStatsScreen() {
     val context = LocalContext.current
 
     var topApps by remember { mutableStateOf<List<AppUsageInfo>>(emptyList()) }
+    var topLaunched by remember { mutableStateOf<List<AppUsageInfo>>(emptyList()) }
     var monthlyData by remember { mutableStateOf<List<MonthlyUsage>>(emptyList()) }
     var trendText by remember { mutableStateOf("Média diária de uso do telefone") }
     var noData by remember { mutableStateOf(false) }
+
+    // Summary metrics
+    var totalScreenTimeToday by remember { mutableStateOf(0L) }
+    var totalAppsUsedToday by remember { mutableStateOf(0) }
+    var totalLaunchesToday by remember { mutableStateOf(0) }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -61,7 +73,41 @@ fun UsageStatsScreen() {
                 val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
                 val pm = context.packageManager
 
-                // Load top 5 apps
+                // ========================================
+                // 1. TODAY'S SUMMARY
+                // ========================================
+                val todayCal = Calendar.getInstance()
+                todayCal.set(Calendar.HOUR_OF_DAY, 0)
+                todayCal.set(Calendar.MINUTE, 0)
+                todayCal.set(Calendar.SECOND, 0)
+                todayCal.set(Calendar.MILLISECOND, 0)
+                val todayStart = todayCal.timeInMillis
+                val now = System.currentTimeMillis()
+
+                val todayStats = usageStatsManager.queryUsageStats(
+                    UsageStatsManager.INTERVAL_DAILY, todayStart, now
+                )
+
+                if (todayStats != null) {
+                    var totalTimeToday = 0L
+                    val appsUsedToday = mutableSetOf<String>()
+                    for (stat in todayStats) {
+                        if (stat.totalTimeInForeground > 0 && stat.packageName != context.packageName) {
+                            totalTimeToday += stat.totalTimeInForeground
+                            appsUsedToday.add(stat.packageName)
+                        }
+                    }
+                    totalScreenTimeToday = totalTimeToday
+                    totalAppsUsedToday = appsUsedToday.size
+                }
+
+                // Count today's app launches via UsageEvents
+                val todayLaunchCounts = countAppLaunches(usageStatsManager, todayStart, now, context.packageName)
+                totalLaunchesToday = todayLaunchCounts.values.sum()
+
+                // ========================================
+                // 2. TOP 5 APPS BY SCREEN TIME (7 days)
+                // ========================================
                 val calendar = Calendar.getInstance()
                 val endTime = calendar.timeInMillis
                 calendar.add(Calendar.DAY_OF_YEAR, -7)
@@ -97,6 +143,9 @@ fun UsageStatsScreen() {
                     return@withContext
                 }
 
+                // Get launch counts for 7 days
+                val weekLaunchCounts = countAppLaunches(usageStatsManager, startTime, endTime, context.packageName)
+
                 topApps = top5.map { entry ->
                     val appName = try {
                         pm.getApplicationLabel(pm.getApplicationInfo(entry.key, 0)).toString()
@@ -104,10 +153,31 @@ fun UsageStatsScreen() {
                         entry.key.substringAfterLast(".")
                     }
                     val icon = try { pm.getApplicationIcon(entry.key) } catch (_: Exception) { null }
-                    AppUsageInfo(entry.key, appName, icon, entry.value)
+                    AppUsageInfo(entry.key, appName, icon, entry.value, weekLaunchCounts[entry.key] ?: 0)
                 }
 
-                // Load monthly chart
+                // ========================================
+                // 3. TOP 10 MOST LAUNCHED APPS (7 days)
+                // ========================================
+                val topLaunchedEntries = weekLaunchCounts.entries
+                    .filter { it.value > 0 && !it.key.contains("launcher") && it.key != "com.android.settings" }
+                    .sortedByDescending { it.value }
+                    .take(10)
+
+                topLaunched = topLaunchedEntries.map { entry ->
+                    val appName = try {
+                        pm.getApplicationLabel(pm.getApplicationInfo(entry.key, 0)).toString()
+                    } catch (_: PackageManager.NameNotFoundException) {
+                        entry.key.substringAfterLast(".")
+                    }
+                    val icon = try { pm.getApplicationIcon(entry.key) } catch (_: Exception) { null }
+                    val usageTime = filteredMap[entry.key] ?: 0L
+                    AppUsageInfo(entry.key, appName, icon, usageTime, entry.value)
+                }
+
+                // ========================================
+                // 4. MONTHLY TREND CHART (6 months)
+                // ========================================
                 val entries = mutableListOf<MonthlyUsage>()
                 val monthNames = arrayOf("Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez")
 
@@ -179,97 +249,142 @@ fun UsageStatsScreen() {
             .fillMaxSize()
             .background(DarkBg)
             .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 32.dp)
+            .padding(horizontal = 20.dp, vertical = 24.dp)
     ) {
         Text(
-            text = "📊  Estatísticas de Uso",
+            text = "Estatísticas de Uso",
             fontSize = 26.sp,
             fontWeight = FontWeight.Bold,
             color = TextPrimary,
-            modifier = Modifier.padding(bottom = 8.dp)
+            modifier = Modifier.padding(bottom = 4.dp)
         )
         Text(
-            text = "Acompanhe seu tempo de tela",
+            text = "Acompanhe seu tempo de tela e aberturas",
             fontSize = 14.sp,
             color = TextSecondary,
-            modifier = Modifier.padding(bottom = 24.dp)
+            modifier = Modifier.padding(bottom = 20.dp)
         )
 
-        // Top 5 Apps Card
+        // ========================================
+        // TODAY'S SUMMARY CARDS
+        // ========================================
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            SummaryMetricCard(
+                icon = Icons.Default.PhoneAndroid,
+                label = "Tempo de tela",
+                value = formatDuration(totalScreenTimeToday),
+                accentColor = AccentCyan,
+                modifier = Modifier.weight(1f)
+            )
+            SummaryMetricCard(
+                icon = Icons.Default.Apps,
+                label = "Apps usados",
+                value = "$totalAppsUsedToday",
+                accentColor = AccentPurple,
+                modifier = Modifier.weight(1f)
+            )
+            SummaryMetricCard(
+                icon = Icons.Default.TouchApp,
+                label = "Aberturas",
+                value = "$totalLaunchesToday",
+                accentColor = WarningAmber,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(20.dp))
+
+        // ========================================
+        // TOP 5 APPS BY SCREEN TIME
+        // ========================================
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = DarkCard),
             border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
-                Text(
-                    text = "🔥  Top 5 Apps (7 dias)",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Timer, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Top 5 por Tempo (7 dias)", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                }
+                Spacer(modifier = Modifier.height(16.dp))
 
                 if (noData || topApps.isEmpty()) {
                     Text(
                         text = "Sem dados de uso disponíveis.\nConceda a permissão de Acesso ao Uso.",
-                        fontSize = 13.sp,
-                        color = TextHint,
-                        modifier = Modifier.padding(16.dp)
+                        fontSize = 13.sp, color = TextHint, modifier = Modifier.padding(16.dp)
                     )
                 } else {
                     val maxUsage = topApps.maxOf { it.usageTimeMs }.toFloat()
                     topApps.forEachIndexed { index, app ->
-                        AppUsageItem(
-                            rank = index + 1,
-                            app = app,
-                            maxUsage = maxUsage
-                        )
-                        if (index < topApps.lastIndex) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                        }
+                        AppUsageItem(rank = index + 1, app = app, maxUsage = maxUsage, showLaunches = true)
+                        if (index < topApps.lastIndex) Spacer(modifier = Modifier.height(10.dp))
                     }
                 }
             }
         }
 
-        // Monthly Chart Card
+        // ========================================
+        // RANKING: MOST LAUNCHED APPS
+        // ========================================
+        if (topLaunched.isNotEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = DarkCard),
+                border = BorderStroke(1.dp, CardBorder)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(Icons.Default.TouchApp, contentDescription = null, tint = WarningAmber, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Ranking de Aberturas (7 dias)", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Text("Quantas vezes cada app foi aberto/fechado", fontSize = 12.sp, color = TextSecondary)
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    val maxLaunches = topLaunched.maxOf { it.launchCount }.toFloat()
+                    topLaunched.forEachIndexed { index, app ->
+                        LaunchRankItem(rank = index + 1, app = app, maxLaunches = maxLaunches)
+                        if (index < topLaunched.lastIndex) Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
+            }
+        }
+
+        // ========================================
+        // MONTHLY TREND CHART
+        // ========================================
         Card(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(bottom = 16.dp),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
             shape = RoundedCornerShape(20.dp),
             colors = CardDefaults.cardColors(containerColor = DarkCard),
             border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(modifier = Modifier.padding(20.dp)) {
-                Text(
-                    text = "📈  Tendência de Uso (6 meses)",
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                    modifier = Modifier.padding(bottom = 4.dp)
-                )
-                Text(
-                    text = trendText,
-                    fontSize = 12.sp,
-                    color = TextSecondary,
-                    modifier = Modifier.padding(bottom = 16.dp)
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.ShowChart, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(20.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Tendência (6 meses)", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                }
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(trendText, fontSize = 12.sp, color = TextSecondary)
+                Spacer(modifier = Modifier.height(16.dp))
 
                 if (monthlyData.isNotEmpty()) {
                     AndroidView(
                         factory = { ctx ->
                             LineChart(ctx).apply {
-                                val entries = monthlyData.mapIndexed { i, m ->
-                                    Entry(i.toFloat(), m.avgHoursPerDay)
-                                }
+                                val chartEntries = monthlyData.mapIndexed { i, m -> Entry(i.toFloat(), m.avgHoursPerDay) }
                                 val labels = monthlyData.map { it.label }
 
-                                val dataSet = LineDataSet(entries, "Horas/dia").apply {
+                                val dataSet = LineDataSet(chartEntries, "Horas/dia").apply {
                                     color = AccentCyan.toArgb()
                                     setCircleColor(AccentCyan.toArgb())
                                     lineWidth = 2.5f
@@ -319,9 +434,7 @@ fun UsageStatsScreen() {
                                 invalidate()
                             }
                         },
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(220.dp)
+                        modifier = Modifier.fillMaxWidth().height(220.dp)
                     )
                 }
             }
@@ -329,83 +442,169 @@ fun UsageStatsScreen() {
     }
 }
 
+// ========================================
+// COMPOSABLE COMPONENTS
+// ========================================
+
 @Composable
-fun AppUsageItem(rank: Int, app: AppUsageInfo, maxUsage: Float) {
+fun SummaryMetricCard(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    accentColor: androidx.compose.ui.graphics.Color,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = DarkCard),
+        border = BorderStroke(1.dp, CardBorder)
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(accentColor.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = accentColor, modifier = Modifier.size(20.dp))
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(value, fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text(label, fontSize = 10.sp, color = TextHint, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+fun AppUsageItem(rank: Int, app: AppUsageInfo, maxUsage: Float, showLaunches: Boolean = false) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        // Rank
+        // Medal rank
+        val rankColor = when (rank) {
+            1 -> WarningAmber
+            2 -> TextSecondary
+            3 -> Color(0xFFCD7F32)
+            else -> TextHint
+        }
         Text(
-            text = "$rank",
-            color = AccentCyan,
-            fontSize = 16.sp,
+            text = "#$rank",
+            color = rankColor,
+            fontSize = 14.sp,
             fontWeight = FontWeight.Bold,
-            modifier = Modifier.width(28.dp)
+            modifier = Modifier.width(32.dp)
         )
 
         // Icon
         if (app.icon != null) {
-            val bitmap = remember(app.packageName) {
-                app.icon.toBitmap(80, 80).asImageBitmap()
-            }
+            val bitmap = remember(app.packageName) { app.icon.toBitmap(80, 80).asImageBitmap() }
             Image(
-                bitmap = bitmap,
-                contentDescription = app.appName,
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                bitmap = bitmap, contentDescription = app.appName,
+                modifier = Modifier.size(38.dp).clip(RoundedCornerShape(10.dp))
             )
         } else {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(DarkCardElevated)
-            )
+            Box(modifier = Modifier.size(38.dp).clip(RoundedCornerShape(10.dp)).background(DarkCardElevated))
         }
 
-        Spacer(modifier = Modifier.width(8.dp))
+        Spacer(modifier = Modifier.width(10.dp))
 
-        // Info
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = app.appName,
-                color = TextPrimary,
-                fontSize = 14.sp,
-                maxLines = 1
-            )
-            Text(
-                text = formatDuration(app.usageTimeMs),
-                color = TextSecondary,
-                fontSize = 12.sp
-            )
+            Text(app.appName, color = TextPrimary, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Row {
+                Text(formatDuration(app.usageTimeMs), color = TextSecondary, fontSize = 11.sp)
+                if (showLaunches && app.launchCount > 0) {
+                    Text(" · ${app.launchCount}x aberto", color = TextHint, fontSize = 11.sp)
+                }
+            }
             // Progress bar
             val ratio = (app.usageTimeMs.toFloat() / maxUsage).coerceIn(0f, 1f)
             Spacer(modifier = Modifier.height(4.dp))
             Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(Border)
+                modifier = Modifier.fillMaxWidth().height(5.dp).clip(RoundedCornerShape(3.dp)).background(Border)
             ) {
                 Box(
-                    modifier = Modifier
-                        .fillMaxWidth(ratio)
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(
-                            Brush.horizontalGradient(
-                                colors = listOf(AccentCyan, AccentPurple)
-                            )
-                        )
+                    modifier = Modifier.fillMaxWidth(ratio).fillMaxHeight().clip(RoundedCornerShape(3.dp))
+                        .background(Brush.horizontalGradient(listOf(AccentCyan, AccentPurple)))
                 )
             }
         }
     }
+}
+
+@Composable
+fun LaunchRankItem(rank: Int, app: AppUsageInfo, maxLaunches: Float) {
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        val rankColor = when (rank) {
+            1 -> WarningAmber
+            2 -> TextSecondary
+            3 -> Color(0xFFCD7F32)
+            else -> TextHint
+        }
+        Text("#$rank", color = rankColor, fontSize = 13.sp, fontWeight = FontWeight.Bold, modifier = Modifier.width(32.dp))
+
+        if (app.icon != null) {
+            val bitmap = remember(app.packageName) { app.icon.toBitmap(64, 64).asImageBitmap() }
+            Image(bitmap = bitmap, contentDescription = app.appName, modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)))
+        } else {
+            Box(modifier = Modifier.size(32.dp).clip(RoundedCornerShape(8.dp)).background(DarkCardElevated))
+        }
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(app.appName, color = TextPrimary, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+                Text("${app.launchCount}x", color = WarningAmber, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(modifier = Modifier.height(3.dp))
+            val ratio = (app.launchCount.toFloat() / maxLaunches).coerceIn(0f, 1f)
+            Box(modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)).background(Border)) {
+                Box(
+                    modifier = Modifier.fillMaxWidth(ratio).fillMaxHeight().clip(RoundedCornerShape(2.dp))
+                        .background(Brush.horizontalGradient(listOf(WarningAmber, DangerRed)))
+                )
+            }
+        }
+    }
+}
+
+// ========================================
+// UTILITY FUNCTIONS
+// ========================================
+
+private fun countAppLaunches(
+    usageStatsManager: UsageStatsManager,
+    startTime: Long,
+    endTime: Long,
+    ownPackage: String
+): Map<String, Int> {
+    val launchCounts = mutableMapOf<String, Int>()
+    try {
+        val events = usageStatsManager.queryEvents(startTime, endTime)
+        val event = UsageEvents.Event()
+        while (events.hasNextEvent()) {
+            events.getNextEvent(event)
+            // ACTIVITY_RESUMED = app was brought to foreground = "opened"
+            if (event.eventType == UsageEvents.Event.ACTIVITY_RESUMED) {
+                val pkg = event.packageName
+                if (pkg != ownPackage && !pkg.contains("launcher") && pkg != "com.android.settings") {
+                    launchCounts[pkg] = (launchCounts[pkg] ?: 0) + 1
+                }
+            }
+        }
+    } catch (_: Exception) {
+        // UsageEvents may not be available on some devices
+    }
+    return launchCounts
 }
 
 private fun formatDuration(millis: Long): String {
