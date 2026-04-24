@@ -29,6 +29,9 @@ fun AuthScreen(
 ) {
     var passwordInput by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf("") }
+    
+    // CameraManager singleton para evitar race conditions de instâncias múltiplas
+    val cameraManager = remember { CameraManager(activity) }
 
     // Tenta biometria automaticamente
     LaunchedEffect(Unit) {
@@ -112,8 +115,8 @@ fun AuthScreen(
                     if (limit > 0 && failed >= limit) {
                         errorMessage = "Senha incorreta! Limite de tentativas excedido."
                         if (authManager.isPhotoCaptureEnabled()) {
-                            val cameraManager = CameraManager(activity)
-                            cameraManager.setupAndCaptureSilent(activity) { file ->
+                            // Reutiliza a mesma instância de CameraManager para evitar race conditions
+                            cameraManager.setupAndCaptureSilent(activity) { _ ->
                                 // Photo saved silently.
                             }
                         }

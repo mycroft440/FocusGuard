@@ -1,6 +1,5 @@
 package com.focusguard.ui.compose.screens
 
-import android.os.LocaleList
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*

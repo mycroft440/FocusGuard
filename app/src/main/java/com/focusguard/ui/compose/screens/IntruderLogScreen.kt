@@ -15,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -80,8 +81,31 @@ fun IntruderLogScreen(onBack: () -> Unit) {
 
 @Composable
 fun IntruderPhotoCard(file: File) {
-    val bitmap = remember(file.absolutePath) {
-        BitmapFactory.decodeFile(file.absolutePath)?.asImageBitmap()
+    // BUG FIX: Decode bitmap off the main thread using produceState
+    val bitmapState = produceState<ImageBitmap?>(initialValue = null, key1 = file.absolutePath) {
+        value = withContext(Dispatchers.IO) {
+            try {
+                // Decode with downsampling to prevent OOM
+                val options = BitmapFactory.Options().apply {
+                    inJustDecodeBounds = true
+                }
+                BitmapFactory.decodeFile(file.absolutePath, options)
+                
+                // Calculate sample size targeting ~512px max dimension
+                val maxDim = maxOf(options.outWidth, options.outHeight)
+                var sampleSize = 1
+                while (maxDim / sampleSize > 512) {
+                    sampleSize *= 2
+                }
+                
+                val decodeOptions = BitmapFactory.Options().apply {
+                    inSampleSize = sampleSize
+                }
+                BitmapFactory.decodeFile(file.absolutePath, decodeOptions)?.asImageBitmap()
+            } catch (_: Exception) {
+                null
+            }
+        }
     }
 
     Card(
@@ -90,15 +114,17 @@ fun IntruderPhotoCard(file: File) {
         modifier = Modifier.fillMaxWidth().aspectRatio(0.75f)
     ) {
         Column {
-            if (bitmap != null) {
+            if (bitmapState.value != null) {
                 Image(
-                    bitmap = bitmap,
+                    bitmap = bitmapState.value!!,
                     contentDescription = "Intruso",
                     contentScale = ContentScale.Crop,
                     modifier = Modifier.weight(1f).fillMaxWidth().clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
                 )
             } else {
-                Box(modifier = Modifier.weight(1f).fillMaxWidth().background(DarkCardElevated))
+                Box(modifier = Modifier.weight(1f).fillMaxWidth().background(DarkCardElevated), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = AccentCyan, modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
+                }
             }
             Box(
                 modifier = Modifier.fillMaxWidth().padding(8.dp),

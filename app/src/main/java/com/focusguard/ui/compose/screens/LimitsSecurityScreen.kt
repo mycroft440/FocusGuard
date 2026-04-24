@@ -25,8 +25,15 @@ import com.focusguard.ui.compose.theme.*
 @Composable
 fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
     val context = LocalContext.current
-    var limit by remember { mutableStateOf(authManager.getMaxPasswordAttempts().toString()) }
+    var limitText by remember { mutableStateOf(authManager.getMaxPasswordAttempts().toString()) }
     var photoEnabled by remember { mutableStateOf(authManager.isPhotoCaptureEnabled()) }
+
+    // Save only when the user leaves the screen (via onBack)
+    val saveLimitOnBack = {
+        val num = limitText.toIntOrNull() ?: 0
+        authManager.setMaxPasswordAttempts(num)
+        onBack()
+    }
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -47,7 +54,7 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
             TopAppBar(
                 title = { Text("Limites e Segurança", color = TextPrimary) },
                 navigationIcon = {
-                    IconButton(onClick = onBack) {
+                    IconButton(onClick = saveLimitOnBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = "Voltar", tint = TextPrimary)
                     }
                 },
@@ -80,11 +87,12 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
             Spacer(modifier = Modifier.height(32.dp))
 
             OutlinedTextField(
-                value = limit,
-                onValueChange = { 
-                    limit = it
-                    val num = it.toIntOrNull() ?: 0
-                    authManager.setMaxPasswordAttempts(num)
+                value = limitText,
+                onValueChange = { newValue ->
+                    // Only accept numeric input
+                    if (newValue.isEmpty() || newValue.all { it.isDigit() }) {
+                        limitText = newValue
+                    }
                 },
                 label = { Text("Limite de Tentativas de Senha (0 para infinito)", color = TextHint) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
