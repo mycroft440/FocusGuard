@@ -83,10 +83,12 @@ class AuthManager(private val context: Context) {
 
     private fun savePasswordEntries(entries: List<Pair<String, String>>) {
         val indexed = entries.mapIndexed { index, (label, hash) -> "$index:$label|$hash" }.toSet()
-        prefs.edit().putStringSet("app_password_entries", indexed).apply()
-        // Also keep the legacy hash set in sync for verifyPassword()
         val hashes = entries.map { it.second }.toSet()
-        prefs.edit().putStringSet("app_password_hashes", hashes).apply()
+        // Single atomic transaction to keep both stores in sync
+        prefs.edit()
+            .putStringSet("app_password_entries", indexed)
+            .putStringSet("app_password_hashes", hashes)
+            .apply()
     }
 
     fun addPasswordWithLabel(password: String, label: String) {
@@ -110,15 +112,10 @@ class AuthManager(private val context: Context) {
 
     fun addPassword(newPassword: String) {
         val hash = hashPassword(newPassword)
-        val currentHashes = getPasswordHashes().toMutableSet()
-        currentHashes.add(hash)
-        prefs.edit().putStringSet("app_password_hashes", currentHashes).apply()
-        // Also add to entries with default label
         val entries = getPasswordEntries().toMutableList()
         val label = "Senha ${entries.size + 1}"
         entries.add(label to hash)
-        val indexed = entries.mapIndexed { index, (l, h) -> "$index:$l|$h" }.toSet()
-        prefs.edit().putStringSet("app_password_entries", indexed).apply()
+        savePasswordEntries(entries)
     }
 
     fun verifyPassword(password: String): Boolean {
