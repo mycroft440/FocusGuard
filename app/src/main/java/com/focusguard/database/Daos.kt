@@ -73,10 +73,18 @@ interface BlockSessionDao {
     @Query("DELETE FROM block_sessions WHERE isActive = 0 AND endTime < :threshold")
     suspend fun deleteOldInactiveSessions(threshold: Long)
 
+    @Query("DELETE FROM session_app_cross_ref WHERE sessionId NOT IN (SELECT id FROM block_sessions)")
+    suspend fun cleanOrphanApps()
+
+    @Query("DELETE FROM session_website_cross_ref WHERE sessionId NOT IN (SELECT id FROM block_sessions)")
+    suspend fun cleanOrphanWebsites()
+
     @Transaction
     suspend fun insertNewSession(session: BlockSession): Long {
         // Limpa lixo do DB que já expirou há mais de 30 dias (Trash Cleanup)
         deleteOldInactiveSessions(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000)
+        cleanOrphanApps()
+        cleanOrphanWebsites()
         return insertBlockSession(session)
     }
 
