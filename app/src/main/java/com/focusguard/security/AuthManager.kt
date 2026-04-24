@@ -64,11 +64,61 @@ class AuthManager(private val context: Context) {
         return prefs.getStringSet("app_password_hashes", emptySet()) ?: emptySet()
     }
 
+    // --- Labeled password storage (ordered list) ---
+    // Format: "label|hash" stored as ordered entries in a StringSet with index prefix
+    // e.g. "0:Senha Principal|abc123...", "1:Senha Backup|def456..."
+    
+    private fun getPasswordEntries(): List<Pair<String, String>> {
+        val entries = prefs.getStringSet("app_password_entries", emptySet()) ?: emptySet()
+        return entries.sortedBy { 
+            val idx = it.substringBefore(":").toIntOrNull() ?: 0
+            idx
+        }.map { entry ->
+            val withoutIndex = entry.substringAfter(":")
+            val label = withoutIndex.substringBefore("|")
+            val hash = withoutIndex.substringAfter("|")
+            label to hash
+        }
+    }
+
+    private fun savePasswordEntries(entries: List<Pair<String, String>>) {
+        val indexed = entries.mapIndexed { index, (label, hash) -> "$index:$label|$hash" }.toSet()
+        prefs.edit().putStringSet("app_password_entries", indexed).apply()
+        // Also keep the legacy hash set in sync for verifyPassword()
+        val hashes = entries.map { it.second }.toSet()
+        prefs.edit().putStringSet("app_password_hashes", hashes).apply()
+    }
+
+    fun addPasswordWithLabel(password: String, label: String) {
+        val hash = hashPassword(password)
+        val current = getPasswordEntries().toMutableList()
+        current.add(label to hash)
+        savePasswordEntries(current)
+    }
+
+    fun getStoredPasswordLabels(): List<String> {
+        return getPasswordEntries().map { it.first }
+    }
+
+    fun removePasswordByIndex(index: Int) {
+        val current = getPasswordEntries().toMutableList()
+        if (index in current.indices) {
+            current.removeAt(index)
+            savePasswordEntries(current)
+        }
+    }
+
     fun addPassword(newPassword: String) {
         val hash = hashPassword(newPassword)
         val currentHashes = getPasswordHashes().toMutableSet()
         currentHashes.add(hash)
         prefs.edit().putStringSet("app_password_hashes", currentHashes).apply()
+        // Also add to entries with default label
+        val entries = getPasswordEntries().toMutableList()
+        val label = "Senha ${entries.size + 1}"
+        entries.add(label to hash)
+        val indexed = entries.mapIndexed { index, (l, h) -> "$index:$l|$h" }.toSet()
+        prefs.edit().putStringSet("app_password_entries", indexed).apply()
     }
 
     fun verifyPassword(password: String): Boolean {
@@ -88,7 +138,7 @@ class AuthManager(private val context: Context) {
     }
 
     fun removeAllPasswords() {
-        prefs.edit().remove("app_password_hashes").apply()
+        prefs.edit().remove("app_password_hashes").remove("app_password_entries").apply()
     }
 
     private fun hashPassword(password: String): String {

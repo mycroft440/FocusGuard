@@ -13,8 +13,8 @@ android {
         applicationId "com.focusguard.v2"
         minSdk 21
         targetSdk 34
-        versionCode 6
-        versionName "2.2.0-nuclear"
+        versionCode 7
+        versionName "2.3.0-nuclear"
 
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
     }

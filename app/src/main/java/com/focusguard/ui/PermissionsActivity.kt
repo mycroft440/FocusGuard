@@ -97,35 +97,58 @@ class PermissionsActivity : AppCompatActivity() {
 
     private fun handleAccessibilityPermission() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            // Android 13+: First try to allow restricted settings, then open accessibility
-            AlertDialog.Builder(this)
-                .setTitle("Ativar Acessibilidade")
-                .setMessage(
-                    "Para funcionar corretamente, o FocusGuard precisa da permissão de Acessibilidade.\n\n" +
-                    "No Android 13+, apps instalados fora da Play Store podem precisar de uma etapa extra:\n\n" +
-                    "1. Primeiro toque em \"Liberar Restrição\" para abrir as configurações do app\n" +
-                    "2. Procure a opção \"Permitir configurações restritas\" (pode estar no menu ⋮ ou na própria tela)\n" +
-                    "3. Depois toque em \"Ativar Acessibilidade\" para encontrar o FocusGuard na lista\n\n" +
-                    "Se não encontrar a opção de restrição, vá direto para Acessibilidade."
-                )
-                .setPositiveButton("Ativar Acessibilidade") { _, _ ->
-                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                }
-                .setNeutralButton("Liberar Restrição") { _, _ ->
-                    try {
-                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                            data = Uri.parse("package:$packageName")
-                        }
-                        startActivity(intent)
-                    } catch (_: Exception) {
+            val isRestricted = isAccessibilityServiceRestricted()
+
+            if (isRestricted) {
+                AlertDialog.Builder(this)
+                    .setTitle("Ativar Acessibilidade")
+                    .setMessage(
+                        "O FocusGuard precisa da permissão de Acessibilidade, mas o Android detectou uma restrição.\n\n" +
+                        "Siga estes passos:\n\n" +
+                        "1. Toque em \"Liberar Restrição\" abaixo\n" +
+                        "2. Procure a opção \"Permitir configurações restritas\"\n" +
+                        "3. Volte e toque em \"Ativar Acessibilidade\""
+                    )
+                    .setPositiveButton("Ativar Acessibilidade") { _, _ ->
                         startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                     }
-                }
-                .setNegativeButton("Cancelar", null)
-                .show()
+                    .setNeutralButton("Liberar Restrição") { _, _ ->
+                        try {
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.parse("package:$packageName")
+                            }
+                            startActivity(intent)
+                        } catch (_: Exception) {
+                            startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        }
+                    }
+                    .setNegativeButton("Cancelar", null)
+                    .show()
+            } else {
+                // No restriction — go directly to accessibility settings
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+            }
         } else {
-            // Android 12 and below: Go directly to accessibility settings
             startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+        }
+    }
+
+    private fun isAccessibilityServiceRestricted(): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                val appOps = getSystemService(android.app.AppOpsManager::class.java)
+                val mode = appOps.noteOpNoThrow(
+                    "android:access_restricted_settings",
+                    android.os.Process.myUid(),
+                    packageName
+                )
+                mode != android.app.AppOpsManager.MODE_ALLOWED
+            } else {
+                false
+            }
+        } catch (_: Exception) {
+            // If check fails, assume restricted on Android 13+ sideloaded apps
+            true
         }
     }
 }

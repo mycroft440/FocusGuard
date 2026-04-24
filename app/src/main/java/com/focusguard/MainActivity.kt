@@ -154,6 +154,7 @@ fun MainActivityContent(
             onLimitsClick = { currentRoute = "LIMITS" },
             onIntruderLogClick = { currentRoute = "INTRUDER_LOG" },
             onLanguageClick = { currentRoute = "LANGUAGE" },
+            onPasswordManagementClick = { currentRoute = "PASSWORD_MANAGEMENT" },
             authManager = authManager,
             usageStatsContent = { UsageStatsScreen() }
         )
@@ -190,6 +191,11 @@ fun MainActivityContent(
         )
     } else if (currentRoute == "LANGUAGE") {
         com.focusguard.ui.compose.screens.LanguageScreen(
+            onBack = { currentRoute = "HOME" }
+        )
+    } else if (currentRoute == "PASSWORD_MANAGEMENT") {
+        com.focusguard.ui.compose.screens.PasswordManagementScreen(
+            authManager = authManager,
             onBack = { currentRoute = "HOME" }
         )
     }

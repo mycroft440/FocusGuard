@@ -46,148 +46,101 @@ fun MainScreen(
     onLimitsClick: () -> Unit,
     onIntruderLogClick: () -> Unit,
     onLanguageClick: () -> Unit,
+    onPasswordManagementClick: () -> Unit,
     authManager: AuthManager,
     usageStatsContent: @Composable () -> Unit
 ) {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scope = rememberCoroutineScope()
-    var showPasswordDialog by remember { mutableStateOf(false) }
-    val context = LocalContext.current
-
-    var oldPassword by remember { mutableStateOf("") }
-    var newPassword by remember { mutableStateOf("") }
-    var dialogError by remember { mutableStateOf("") }
-
-    if (showPasswordDialog) {
-        AlertDialog(
-            onDismissRequest = { showPasswordDialog = false },
-            containerColor = DarkSurface,
-            title = { Text(stringResource(id = R.string.manage_passwords), color = TextPrimary) },
-            text = {
-                Column {
-                    if (authManager.hasPasswordSet()) {
-                        OutlinedTextField(
-                            value = oldPassword,
-                            onValueChange = { oldPassword = it },
-                            label = { Text(stringResource(id = R.string.old_password), color = TextHint) },
-                            visualTransformation = PasswordVisualTransformation(),
-                            singleLine = true,
-                            colors = TextFieldDefaults.outlinedTextFieldColors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                    }
-                    OutlinedTextField(
-                        value = newPassword,
-                        onValueChange = { newPassword = it },
-                        label = { Text(stringResource(id = R.string.new_password), color = TextHint) },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true,
-                        colors = TextFieldDefaults.outlinedTextFieldColors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary)
-                    )
-                    if (dialogError.isNotEmpty()) {
-                        Text(dialogError, color = DangerRed, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        if (authManager.hasPasswordSet() && !authManager.verifyPassword(oldPassword)) {
-                            dialogError = "Senha antiga incorreta."
-                            return@Button
-                        }
-                        if (newPassword.isBlank()) {
-                            dialogError = "A senha não pode ser vazia."
-                            return@Button
-                        }
-                        authManager.addPassword(newPassword)
-                        showPasswordDialog = false
-                        Toast.makeText(context, "Senha atualizada com sucesso!", Toast.LENGTH_SHORT).show()
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-                ) { Text(stringResource(id = R.string.save), color = DarkBg, fontWeight = FontWeight.Bold) }
-            },
-            dismissButton = {
-                TextButton(onClick = { showPasswordDialog = false }) { Text(stringResource(id = R.string.cancel), color = TextHint) }
-            }
-        )
-    }
 
     ModalNavigationDrawer(
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet(
                 drawerContainerColor = DarkSurface,
-                modifier = Modifier.width(280.dp)
+                modifier = Modifier.width(300.dp)
             ) {
+                // Header
                 Spacer(modifier = Modifier.height(24.dp))
-                Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Icon(painter = painterResource(id = R.drawable.ic_shield), contentDescription = null, tint = AccentCyan, modifier = Modifier.size(32.dp))
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text("FocusGuard", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Row(
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(
+                                Brush.linearGradient(
+                                    listOf(AccentCyan.copy(alpha = 0.2f), AccentPurple.copy(alpha = 0.2f))
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(painter = painterResource(id = R.drawable.ic_shield), contentDescription = null, tint = AccentCyan, modifier = Modifier.size(28.dp))
+                    }
+                    Spacer(modifier = Modifier.width(14.dp))
+                    Column {
+                        Text("FocusGuard", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Text("Proteção Digital", fontSize = 12.sp, color = TextHint)
+                    }
                 }
-                Divider(color = Divider)
+                Spacer(modifier = Modifier.height(8.dp))
+                Divider(color = CardBorder, modifier = Modifier.padding(horizontal = 20.dp))
                 Spacer(modifier = Modifier.height(16.dp))
 
-                NavigationDrawerItem(
-                    label = { Text(stringResource(id = R.string.nuclear_protection), fontWeight = FontWeight.Bold, color = DangerRed) },
-                    selected = false,
-                    onClick = { 
+                // Menu Items
+                DrawerMenuButton(
+                    icon = Icons.Default.Lock,
+                    label = stringResource(id = R.string.manage_passwords),
+                    iconTint = AccentCyan,
+                    onClick = {
+                        onPasswordManagementClick()
+                        scope.launch { drawerState.close() }
+                    }
+                )
+                DrawerMenuButton(
+                    icon = Icons.Default.Security,
+                    label = stringResource(id = R.string.limits_and_security),
+                    iconTint = AccentCyan,
+                    onClick = {
+                        onLimitsClick()
+                        scope.launch { drawerState.close() }
+                    }
+                )
+                DrawerMenuButton(
+                    icon = Icons.Default.PhotoCamera,
+                    label = stringResource(id = R.string.intruder_log),
+                    iconTint = AccentCyan,
+                    onClick = {
+                        onIntruderLogClick()
+                        scope.launch { drawerState.close() }
+                    }
+                )
+                DrawerMenuButton(
+                    icon = Icons.Default.Language,
+                    label = stringResource(id = R.string.language_settings),
+                    iconTint = AccentCyan,
+                    onClick = {
+                        onLanguageClick()
+                        scope.launch { drawerState.close() }
+                    }
+                )
+
+                Spacer(modifier = Modifier.height(12.dp))
+                Divider(color = CardBorder, modifier = Modifier.padding(horizontal = 20.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                DrawerMenuButton(
+                    icon = Icons.Default.Warning,
+                    label = stringResource(id = R.string.nuclear_protection),
+                    iconTint = DangerRed,
+                    labelColor = DangerRed,
+                    bgColor = DangerRed.copy(alpha = 0.08f),
+                    onClick = {
                         onDeviceOwnerClick()
                         scope.launch { drawerState.close() }
-                    },
-                    icon = { Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed) },
-                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent),
-                    modifier = Modifier.padding(horizontal = 12.dp)
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                NavigationDrawerItem(
-                    label = { Text(stringResource(id = R.string.manage_passwords), color = TextPrimary) },
-                    selected = false,
-                    onClick = { 
-                        oldPassword = ""
-                        newPassword = ""
-                        dialogError = ""
-                        showPasswordDialog = true
-                        scope.launch { drawerState.close() }
-                    },
-                    icon = { Icon(Icons.Default.Lock, contentDescription = null, tint = AccentCyan) },
-                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent),
-                    modifier = Modifier.padding(horizontal = 12.dp)
-                )
-                
-                Spacer(modifier = Modifier.height(8.dp))
-
-                NavigationDrawerItem(
-                    label = { Text(stringResource(id = R.string.limits_and_security), color = TextPrimary) },
-                    selected = false,
-                    onClick = onLimitsClick,
-                    icon = { Icon(Icons.Default.Security, contentDescription = null, tint = AccentCyan) },
-                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent),
-                    modifier = Modifier.padding(horizontal = 12.dp)
-                )
-
-                Spacer(modifier = Modifier.height(8.dp))
-
-                NavigationDrawerItem(
-                    label = { Text(stringResource(id = R.string.intruder_log), color = TextPrimary) },
-                    selected = false,
-                    onClick = onIntruderLogClick,
-                    icon = { Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = AccentCyan) },
-                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent),
-                    modifier = Modifier.padding(horizontal = 12.dp)
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-
-                NavigationDrawerItem(
-                    label = { Text(stringResource(id = R.string.language_settings), color = TextPrimary) },
-                    selected = false,
-                    onClick = onLanguageClick,
-                    icon = { Icon(Icons.Default.Language, contentDescription = null, tint = AccentCyan) },
-                    colors = NavigationDrawerItemDefaults.colors(unselectedContainerColor = Color.Transparent),
-                    modifier = Modifier.padding(horizontal = 12.dp)
+                    }
                 )
             }
         }
@@ -252,6 +205,48 @@ fun MainScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun DrawerMenuButton(
+    icon: ImageVector,
+    label: String,
+    iconTint: Color = AccentCyan,
+    labelColor: Color = TextPrimary,
+    bgColor: Color = DarkCard,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = bgColor),
+        border = BorderStroke(1.dp, CardBorder)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(iconTint.copy(alpha = 0.12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
+            }
+            Spacer(modifier = Modifier.width(14.dp))
+            Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = labelColor)
+            Spacer(modifier = Modifier.weight(1f))
+            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextHint, modifier = Modifier.size(18.dp))
         }
     }
 }
