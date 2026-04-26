@@ -154,7 +154,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
         }
     }
 
-    private suspend fun checkAndEnforce() {
+    suspend fun checkAndEnforce() {
         val sessions = database.blockSessionDao().getAllActiveSessions()
         val enforcingSessions = sessions.filter { isCurrentlyInBlockingWindow(it) }
 
@@ -195,19 +195,27 @@ class BlockingSessionManager private constructor(private val context: Context) {
         val isOvernight = startVal > endVal
         val isAfterMidnightBeforeEnd = isOvernight && currentTimeVal < endVal
 
-        val logicalDayCal = now.clone() as Calendar
-        if (isAfterMidnightBeforeEnd) logicalDayCal.add(Calendar.DAY_OF_YEAR, -1)
-
-        if (session.recurringDaysOfWeek.isNotEmpty()) {
-            val logicalDayOfWeek = logicalDayCal.get(Calendar.DAY_OF_WEEK).toString()
-            if (!session.recurringDaysOfWeek.split(",").map { it.trim() }.contains(logicalDayOfWeek)) return false
-        }
-
-        return if (startVal <= endVal) {
+        val isInTimeRange = if (startVal <= endVal) {
             currentTimeVal in startVal until endVal
         } else {
             currentTimeVal >= startVal || currentTimeVal < endVal
         }
+
+        if (!isInTimeRange) return false
+
+        // Day of week check: if it's "overnight" and we are after midnight, 
+        // the "logical day" for the block is actually yesterday.
+        if (session.recurringDaysOfWeek.isNotEmpty()) {
+            val logicalDayCal = now.clone() as Calendar
+            if (isAfterMidnightBeforeEnd) {
+                logicalDayCal.add(Calendar.DAY_OF_YEAR, -1)
+            }
+            val logicalDayOfWeek = logicalDayCal.get(Calendar.DAY_OF_WEEK).toString()
+            val allowedDays = session.recurringDaysOfWeek.split(",").map { it.trim() }
+            if (!allowedDays.contains(logicalDayOfWeek)) return false
+        }
+
+        return true
     }
 
     suspend fun getActiveSessions(): List<BlockSession> {

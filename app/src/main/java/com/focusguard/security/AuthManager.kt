@@ -129,9 +129,9 @@ class AuthManager(private val context: Context) {
 
     fun removePassword(passwordToRemove: String) {
         val hash = hashPassword(passwordToRemove)
-        val currentHashes = getPasswordHashes().toMutableSet()
-        currentHashes.remove(hash)
-        prefs.edit().putStringSet("app_password_hashes", currentHashes).apply()
+        val current = getPasswordEntries().toMutableList()
+        val updated = current.filter { it.second != hash }
+        savePasswordEntries(updated)
     }
 
     fun removeAllPasswords() {
@@ -139,7 +139,10 @@ class AuthManager(private val context: Context) {
     }
 
     private fun hashPassword(password: String): String {
-        val bytes = password.toByteArray()
+        // Simple static salt for basic protection against rainbow tables
+        // In a full implementation, a per-user random salt would be better
+        val salt = "FocusGuard_Static_Salt_2024"
+        val bytes = (password + salt).toByteArray()
         val md = MessageDigest.getInstance("SHA-256")
         val digest = md.digest(bytes)
         return digest.fold("") { str, it -> str + "%02x".format(it) }

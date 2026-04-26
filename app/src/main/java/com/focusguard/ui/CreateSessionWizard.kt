@@ -364,8 +364,25 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
             
             Spacer(modifier = Modifier.weight(1f))
             
+            val canStart = remember(apps, sites, timeDays, timeHours, sessionType) {
+                val hasItems = apps.isNotEmpty() || sites.isNotEmpty()
+                if (sessionType == "TIME") {
+                    val days = timeDays.toIntOrNull() ?: 0
+                    val hours = timeHours.toIntOrNull() ?: 0
+                    hasItems && (days > 0 || hours > 0)
+                } else {
+                    hasItems
+                }
+            }
+
             Button(
                 onClick = {
+                    if (!canStart) {
+                        val msg = if (apps.isEmpty() && sites.isEmpty()) "Selecione ao menos um app ou site."
+                                 else "Defina um tempo de bloqueio válido."
+                        android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
                     if (sessionType == "PASSWORD") {
                         sessionManager.startPasswordSession(
                             isFixed24h = isFixed24h,
@@ -393,6 +410,7 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
                     }
                     onFinish()
                 },
+                enabled = canStart,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
             ) {

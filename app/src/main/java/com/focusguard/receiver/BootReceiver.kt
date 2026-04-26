@@ -16,8 +16,8 @@ class BootReceiver : BroadcastReceiver() {
             kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                 try {
                     val sessionManager = BlockingSessionManager.getInstance(context)
-                    val isActive = sessionManager.isBlockingActive()
-                    Log.d("FocusGuardBoot", "Estado da sessão durante Boot: Active=\$isActive")
+                    sessionManager.checkAndEnforce()
+                    Log.d("FocusGuardBoot", "Bloqueios restaurados com sucesso após Boot.")
                 } catch (e: Exception) {
                     Log.e("FocusGuardBoot", "Falha ao reagendar FocusGuard após o Boot", e)
                 }

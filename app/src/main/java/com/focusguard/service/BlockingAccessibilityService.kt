@@ -33,10 +33,9 @@ class BlockingAccessibilityService : AccessibilityService() {
     private val scope = CoroutineScope(job + Dispatchers.IO)
 
     // O(1) Lookup sets manually populated
-    private var blockedAppsSet: Set<String> = setOf()
-    private var blockedWebsitesDomainSet: Set<String> = setOf()
-    
-    private var isBlockingSessionActive = false
+    @Volatile private var blockedAppsSet: Set<String> = setOf()
+    @Volatile private var blockedWebsitesDomainSet: Set<String> = setOf()
+    @Volatile private var isBlockingSessionActive = false
     private var lastLoadTime = 0L
     private val CACHE_TIMEOUT = 2000L // 2 seconds cache to reduce DB load
     private var lastScrollCheck = 0L
@@ -156,12 +155,11 @@ class BlockingAccessibilityService : AccessibilityService() {
                 val activeWebsiteDomains = database.sessionWebsiteCrossRefDao().getWebsitesForSessions(enforcingIds)
                     .map { WebsiteBlocker.extractDomain(it).lowercase() }.toSet()
 
-                withContext(Dispatchers.Main) {
-                    isBlockingSessionActive = enforcingSessions.isNotEmpty()
-                    blockedAppsSet = activeAppPackages
-                    blockedWebsitesDomainSet = activeWebsiteDomains
-                    lastLoadTime = System.currentTimeMillis()
-                }
+                // Update volatile state atomically from background
+                isBlockingSessionActive = enforcingSessions.isNotEmpty()
+                blockedAppsSet = activeAppPackages
+                blockedWebsitesDomainSet = activeWebsiteDomains
+                lastLoadTime = System.currentTimeMillis()
             } catch (_: Exception) {
             } finally {
                 isRefreshing.set(false)
@@ -210,20 +208,20 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun checkAndBlockWebsite(source: AccessibilityNodeInfo) {
+        var addressBarNode: AccessibilityNodeInfo? = null
         try {
-            val addressBarNode = WebsiteBlocker.findAddressBarNode(source)
+            addressBarNode = WebsiteBlocker.findAddressBarNode(source)
 
-            if (addressBarNode != null && addressBarNode.text != null) {
+            if (addressBarNode?.text != null) {
                 val url = addressBarNode.text.toString()
-
                 if (url.isNotEmpty() && isWebsiteBlocked(url)) {
                     blockWebsite()
-                    addressBarNode.recycle()
-                    return
                 }
-                addressBarNode.recycle()
             }
-        } catch (_: Exception) {}
+        } catch (_: Exception) {
+        } finally {
+            addressBarNode?.recycle()
+        }
     }
 
     private fun isWebsiteBlocked(url: String): Boolean {

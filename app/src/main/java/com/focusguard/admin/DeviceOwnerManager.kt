@@ -80,9 +80,14 @@ class DeviceOwnerManager(private val context: Context) {
 
         scope.launch {
             try {
-                dpm.setPackagesSuspended(componentName, packageNames.toTypedArray(), true)
-            } catch (_: Exception) {
-                // Handle error
+                // Filter out current app to avoid self-locking
+                val filtered = packageNames.filter { it != context.packageName }
+                if (filtered.isNotEmpty()) {
+                    dpm.setPackagesSuspended(componentName, filtered.toTypedArray(), true)
+                    Log.d("FocusGuardAdmin", "Apps suspensos: ${filtered.size}")
+                }
+            } catch (e: Exception) {
+                Log.e("FocusGuardAdmin", "Falha ao suspender apps", e)
             }
         }
     }
@@ -165,13 +170,19 @@ class DeviceOwnerManager(private val context: Context) {
     fun enforceBlockingPolicies() {
         if (!isDeviceOwnerActive()) return
         try {
-            dpm.addUserRestriction(componentName, UserManager.DISALLOW_FACTORY_RESET)
-            dpm.addUserRestriction(componentName, UserManager.DISALLOW_SAFE_BOOT)
-            dpm.addUserRestriction(componentName, UserManager.DISALLOW_ADD_USER)
-            dpm.addUserRestriction(componentName, UserManager.DISALLOW_REMOVE_USER)
-            dpm.addUserRestriction(componentName, UserManager.DISALLOW_CONFIG_DATE_TIME)
-        } catch (_: Exception) {
-            // Handle error
+            val restrictions = arrayOf(
+                UserManager.DISALLOW_FACTORY_RESET,
+                UserManager.DISALLOW_SAFE_BOOT,
+                UserManager.DISALLOW_ADD_USER,
+                UserManager.DISALLOW_REMOVE_USER,
+                UserManager.DISALLOW_CONFIG_DATE_TIME,
+                UserManager.DISALLOW_APPS_CONTROL, // Previne desinstalação manual
+                UserManager.DISALLOW_UNINSTALL_APPS
+            )
+            restrictions.forEach { dpm.addUserRestriction(componentName, it) }
+            Log.d("FocusGuardAdmin", "Políticas de restrição aplicadas")
+        } catch (e: Exception) {
+            Log.e("FocusGuardAdmin", "Falha ao aplicar políticas", e)
         }
     }
 
