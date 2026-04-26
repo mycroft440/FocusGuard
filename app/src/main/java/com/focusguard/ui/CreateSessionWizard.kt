@@ -378,6 +378,7 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
             Button(
                 onClick = {
                     if (canStart) {
+                        com.focusguard.utils.FocusGuardLogger.log("UI", "Usuário clicou para criar sessão do tipo: $sessionType")
                         if (sessionType == "PASSWORD") {
                         sessionManager.startPasswordSession(
                             isFixed24h = isFixed24h,

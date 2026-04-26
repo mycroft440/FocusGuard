@@ -11,6 +11,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.graphics.drawable.toBitmap
+import android.content.pm.PackageManager
 import com.focusguard.ui.compose.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -19,9 +24,12 @@ fun BlockingSessionStatusSheet(
     isBlocking: Boolean,
     hasSession: Boolean,
     details: String,
+    apps: List<String>,
+    sites: List<String>,
     onRenounce: () -> Unit,
     onDismiss: () -> Unit
 ) {
+    val context = LocalContext.current
     val statusText: String
     val statusColor: androidx.compose.ui.graphics.Color
 
@@ -80,6 +88,103 @@ fun BlockingSessionStatusSheet(
                 modifier = Modifier.padding(16.dp),
                 lineHeight = 20.sp
             )
+        }
+
+        if (apps.isNotEmpty() || sites.isNotEmpty()) {
+            Text(
+                text = "Itens Bloqueados (${apps.size + sites.size})",
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
+
+            // Horizontal list of icons and domains
+            androidx.compose.foundation.lazy.LazyRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                // Apps
+                items(apps.size) { index ->
+                    val pkg = apps[index]
+                    var iconBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+                    var appName by remember { mutableStateOf(pkg) }
+
+                    LaunchedEffect(pkg) {
+                        try {
+                            val pm = context.packageManager
+                            val info = pm.getApplicationInfo(pkg, 0)
+                            appName = pm.getApplicationLabel(info).toString()
+                            val drawable = pm.getApplicationIcon(info)
+                            iconBmp = drawable.toBitmap(80, 80).asImageBitmap()
+                        } catch (e: Exception) {
+                            // Leave default values
+                        }
+                    }
+
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.width(64.dp)
+                    ) {
+                        if (iconBmp != null) {
+                            Image(
+                                bitmap = iconBmp!!,
+                                contentDescription = appName,
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                            )
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .size(48.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(DarkCardElevated),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text("📱", fontSize = 20.sp)
+                            }
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = appName,
+                            fontSize = 10.sp,
+                            color = TextSecondary,
+                            maxLines = 1,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+
+                // Sites
+                items(sites.size) { index ->
+                    val site = sites[index]
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        modifier = Modifier.width(64.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(AccentCyan.copy(alpha = 0.2f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text("🌐", fontSize = 20.sp)
+                        }
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = site,
+                            fontSize = 10.sp,
+                            color = TextSecondary,
+                            maxLines = 1,
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
+            }
         }
 
         // Renounce button

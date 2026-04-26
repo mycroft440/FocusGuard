@@ -47,6 +47,7 @@ fun MainScreen(
     onIntruderLogClick: () -> Unit,
     onLanguageClick: () -> Unit,
     onPasswordManagementClick: () -> Unit,
+    onAppUsageLimitsClick: () -> Unit,
     authManager: AuthManager,
     usageStatsContent: @Composable () -> Unit
 ) {
@@ -105,6 +106,15 @@ fun MainScreen(
                     iconTint = AccentCyan,
                     onClick = {
                         onLimitsClick()
+                        scope.launch { drawerState.close() }
+                    }
+                )
+                DrawerMenuButton(
+                    icon = Icons.Default.Timer,
+                    label = "Limites de Uso de Apps",
+                    iconTint = AccentCyan,
+                    onClick = {
+                        onAppUsageLimitsClick()
                         scope.launch { drawerState.close() }
                     }
                 )

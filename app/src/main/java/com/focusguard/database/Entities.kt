@@ -57,3 +57,12 @@ data class SessionWebsiteCrossRef(
     val sessionId: Int,
     val domain: String
 )
+
+@Entity(tableName = "app_usage_limits")
+data class AppUsageLimit(
+    @PrimaryKey
+    val packageName: String,
+    val appName: String,
+    val dailyLimitMinutes: Int,
+    val isEnabled: Boolean = true
+)

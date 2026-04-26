@@ -60,8 +60,10 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 sites.forEach { database.sessionWebsiteCrossRefDao().insert(SessionWebsiteCrossRef(sessionId, it)) }
 
                 checkAndEnforce()
+                com.focusguard.utils.FocusGuardLogger.log("SessionManager", "Sessão por senha criada. Apps: ${apps.size}, Sites: ${sites.size}")
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Bloqueio por Senha iniciado.", Toast.LENGTH_LONG).show() }
             } catch (e: Exception) {
+                com.focusguard.utils.FocusGuardLogger.logError("SessionManager", "Erro ao criar sessão por senha", e)
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Erro: ${e.message}", Toast.LENGTH_SHORT).show() }
             }
         }
@@ -98,8 +100,10 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 sites.forEach { database.sessionWebsiteCrossRefDao().insert(SessionWebsiteCrossRef(sessionId, it)) }
 
                 checkAndEnforce()
+                com.focusguard.utils.FocusGuardLogger.log("SessionManager", "Sessão de tempo criada: $days dias, $hours horas. Apps: ${apps.size}, Sites: ${sites.size}")
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Bloqueio por Tempo iniciado.", Toast.LENGTH_LONG).show() }
             } catch (e: Exception) {
+                com.focusguard.utils.FocusGuardLogger.logError("SessionManager", "Erro ao criar sessão de tempo", e)
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Erro: ${e.message}", Toast.LENGTH_SHORT).show() }
             }
         }
@@ -134,6 +138,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 additionalSites.forEach { database.sessionWebsiteCrossRefDao().insert(SessionWebsiteCrossRef(session.id, it)) }
 
                 checkAndEnforce()
+                com.focusguard.utils.FocusGuardLogger.log("SessionManager", "Tempo e/ou apps adicionados à sessão. Adicionado: $addedDays dias, $addedHours horas")
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Tempo e/ou apps adicionados.", Toast.LENGTH_LONG).show() }
             }
         }
@@ -147,8 +152,10 @@ class BlockingSessionManager private constructor(private val context: Context) {
                     database.blockSessionDao().updateBlockSession(session.copy(isActive = false))
                 }
                 checkAndEnforce()
+                com.focusguard.utils.FocusGuardLogger.log("SessionManager", "Bloqueios por Senha encerrados manualmente")
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Bloqueios por Senha encerrados", Toast.LENGTH_SHORT).show() }
             } catch (e: Exception) {
+                com.focusguard.utils.FocusGuardLogger.logError("SessionManager", "Erro ao encerrar bloqueios por senha", e)
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Falha: ${e.message}", Toast.LENGTH_SHORT).show() }
             }
         }

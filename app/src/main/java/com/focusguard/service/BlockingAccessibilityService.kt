@@ -16,6 +16,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.atomic.AtomicBoolean
@@ -33,13 +35,16 @@ class BlockingAccessibilityService : AccessibilityService() {
     private val scope = CoroutineScope(job + Dispatchers.IO)
 
     // O(1) Lookup sets manually populated
-    @Volatile private var blockedAppsSet: Set<String> = setOf()
-    @Volatile private var blockedWebsitesDomainSet: Set<String> = setOf()
+    @Volatile private var blockedAppsSet: Set<String> = emptySet()
+    @Volatile private var blockedWebsitesDomainSet: Set<String> = emptySet()
     @Volatile private var isBlockingSessionActive = false
     private var lastLoadTime = 0L
     private val CACHE_TIMEOUT = 2000L // 2 seconds cache to reduce DB load
     private var lastScrollCheck = 0L
     private var lastToastTime = 0L
+
+    private var appUsageLimits: Map<String, Int> = emptyMap()
+    private val usageExceededApps = mutableSetOf<String>()
 
     // Guard Lock against Coroutine Flood
     private val isRefreshing = AtomicBoolean(false)
@@ -64,9 +69,13 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     override fun onCreate() {
         super.onCreate()
+        com.focusguard.utils.FocusGuardLogger.init(applicationContext)
+        com.focusguard.utils.FocusGuardLogger.log("BlockingService", "Acessibility Service Criado")
         database = AppDatabase.getDatabase(this)
         sessionManager = BlockingSessionManager.getInstance(this)
         deviceOwnerManager = DeviceOwnerManager(this)
+        
+        startUsageLimitMonitor()
     }
 
     override fun onServiceConnected() {
@@ -116,6 +125,15 @@ class BlockingAccessibilityService : AccessibilityService() {
                 refreshData()
             }
 
+            val packageName = event.packageName?.toString()
+
+            // 3. Verificar limite de tempo de uso diário
+            if (packageName != null && usageExceededApps.contains(packageName)) {
+                blockApp(packageName)
+                return
+            }
+
+            // 4. Bloqueio de Sessão Padrão (FocusGuard)
             if (!isBlockingSessionActive) return
 
             when (event.eventType) {
@@ -123,8 +141,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                     handleWindowStateChanged(event)
                 }
                 AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
-                    val packageName = event.packageName?.toString() ?: return
-                    if (!browserPackages.contains(packageName)) return
+                    if (packageName == null || !browserPackages.contains(packageName)) return
                     
                     // SOTA Optimization: Skip UI scraping for Enterprise Managed Browsers
                     if (::deviceOwnerManager.isInitialized && deviceOwnerManager.isDeviceOwnerActive()) {
@@ -160,9 +177,53 @@ class BlockingAccessibilityService : AccessibilityService() {
                 blockedAppsSet = activeAppPackages
                 blockedWebsitesDomainSet = activeWebsiteDomains
                 lastLoadTime = System.currentTimeMillis()
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                com.focusguard.utils.FocusGuardLogger.logError("BlockingService", "Erro ao atualizar dados do banco", e)
             } finally {
                 isRefreshing.set(false)
+            }
+        }
+    }
+
+    private fun startUsageLimitMonitor() {
+        scope.launch {
+            while (isActive) {
+                checkUsageLimits()
+                delay(60_000) // Verifica a cada 1 minuto
+            }
+        }
+    }
+
+    private suspend fun checkUsageLimits() {
+        kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+            try {
+                appUsageLimits = database.appUsageLimitDao().getAllEnabled().associate { it.packageName to it.dailyLimitMinutes }
+                if (appUsageLimits.isEmpty()) return@withContext
+
+                val usageStatsManager = getSystemService(android.content.Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
+                val calendar = java.util.Calendar.getInstance()
+                calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                calendar.set(java.util.Calendar.MINUTE, 0)
+                calendar.set(java.util.Calendar.SECOND, 0)
+                val startTime = calendar.timeInMillis
+                val endTime = System.currentTimeMillis()
+
+                val stats = usageStatsManager.queryAndAggregateUsageStats(startTime, endTime)
+                for ((packageName, limitMinutes) in appUsageLimits) {
+                    val limitMillis = limitMinutes * 60 * 1000L
+                    val usage = stats[packageName]?.totalTimeInForeground ?: 0L
+                    
+                    if (usage >= limitMillis) {
+                        if (!usageExceededApps.contains(packageName)) {
+                            usageExceededApps.add(packageName)
+                            com.focusguard.utils.FocusGuardLogger.log("Limits", "App $packageName excedeu o limite diário de $limitMinutes min")
+                        }
+                    } else {
+                        usageExceededApps.remove(packageName)
+                    }
+                }
+            } catch (e: Exception) {
+                com.focusguard.utils.FocusGuardLogger.logError("BlockingService", "Erro ao verificar limites de uso", e)
             }
         }
     }
@@ -202,9 +263,12 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun blockApp(packageName: String) {
         try {
+            com.focusguard.utils.FocusGuardLogger.log("BlockingService", "App bloqueado: $packageName")
             performGlobalAction(GLOBAL_ACTION_HOME)
             showToastThrottled("App bloqueado pelo FocusGuard")
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            com.focusguard.utils.FocusGuardLogger.logError("BlockingService", "Erro ao bloquear app: $packageName", e)
+        }
     }
 
     private fun checkAndBlockWebsite(source: AccessibilityNodeInfo) {
@@ -269,6 +333,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        com.focusguard.utils.FocusGuardLogger.log("BlockingService", "Acessibility Service Destruído")
         job.cancel()
         try {
             Toast.makeText(this, "Serviço FocusGuard parado", Toast.LENGTH_SHORT).show()

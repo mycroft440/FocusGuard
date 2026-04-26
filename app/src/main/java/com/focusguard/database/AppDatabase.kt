@@ -9,8 +9,15 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [BlockedApp::class, BlockedWebsite::class, BlockSession::class, SessionAppCrossRef::class, SessionWebsiteCrossRef::class],
-    version = 5,
+    entities = [
+        BlockedApp::class,
+        BlockedWebsite::class,
+        BlockSession::class,
+        SessionAppCrossRef::class,
+        SessionWebsiteCrossRef::class,
+        AppUsageLimit::class
+    ],
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -19,6 +26,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun blockSessionDao(): BlockSessionDao
     abstract fun sessionAppCrossRefDao(): SessionAppCrossRefDao
     abstract fun sessionWebsiteCrossRefDao(): SessionWebsiteCrossRefDao
+    abstract fun appUsageLimitDao(): AppUsageLimitDao
 
     companion object {
         @Volatile
@@ -62,7 +70,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "focusguard_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
                 instance

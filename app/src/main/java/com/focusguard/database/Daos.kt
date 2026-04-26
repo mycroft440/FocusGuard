@@ -115,3 +115,21 @@ interface SessionWebsiteCrossRefDao {
     @Query("DELETE FROM session_website_cross_ref WHERE sessionId = :sessionId")
     suspend fun deleteForSession(sessionId: Int)
 }
+
+@Dao
+interface AppUsageLimitDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(limit: AppUsageLimit)
+
+    @Delete
+    suspend fun delete(limit: AppUsageLimit)
+
+    @Query("SELECT * FROM app_usage_limits")
+    suspend fun getAll(): List<AppUsageLimit>
+
+    @Query("SELECT * FROM app_usage_limits WHERE isEnabled = 1")
+    suspend fun getAllEnabled(): List<AppUsageLimit>
+
+    @Query("SELECT * FROM app_usage_limits WHERE packageName = :packageName LIMIT 1")
+    suspend fun getByPackageName(packageName: String): AppUsageLimit?
+}

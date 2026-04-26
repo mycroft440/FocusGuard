@@ -13,6 +13,7 @@ import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.utils.PermissionUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import androidx.appcompat.app.AppCompatActivity
 import com.focusguard.security.AuthManager
@@ -25,6 +26,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        com.focusguard.utils.FocusGuardLogger.init(applicationContext)
+        com.focusguard.utils.FocusGuardLogger.log("MainActivity", "App iniciado")
 
         val prefs = getSharedPreferences("FocusGuardPrefs", Context.MODE_PRIVATE)
         deviceOwnerManager = DeviceOwnerManager(this)
@@ -129,6 +132,11 @@ fun MainActivityContent(
                 onBack = { onNavigate("HOME") }
             )
         }
+        "APP_USAGE_LIMITS" -> {
+            com.focusguard.ui.compose.screens.UsageLimitsScreen(
+                onBack = { onNavigate("HOME") }
+            )
+        }
     }
 }
 
@@ -144,9 +152,13 @@ fun HomeScreen(
 ) {
     var permissionsVisible by remember { mutableStateOf(false) }
     var showSessionSheet by remember { mutableStateOf(false) }
+    var showTimeSessionAlert by remember { mutableStateOf(false) }
     var isBlocking by remember { mutableStateOf(false) }
     var hasSession by remember { mutableStateOf(false) }
     var sessionDetails by remember { mutableStateOf("") }
+    var sessionApps by remember { mutableStateOf<List<String>>(emptyList()) }
+    var sessionSites by remember { mutableStateOf<List<String>>(emptyList()) }
+    val scope = rememberCoroutineScope()
 
     var resumeKey by remember { mutableIntStateOf(0) }
     
@@ -178,6 +190,19 @@ fun HomeScreen(
                 isBlocking = sessionManager.isBlockingActive()
                 hasSession = sessionManager.hasRegisteredSession()
                 sessionDetails = sessionManager.getSessionDetails()
+                
+                val sessions = sessionManager.getActiveSessions()
+                val sessionIds = sessions.map { it.id }
+                if (sessionIds.isNotEmpty()) {
+                    val db = com.focusguard.database.AppDatabase.getDatabase(activity)
+                    val apps = db.sessionAppCrossRefDao().getAppsForSessions(sessionIds).distinct()
+                    val sites = db.sessionWebsiteCrossRefDao().getWebsitesForSessions(sessionIds).distinct()
+                    sessionApps = apps
+                    sessionSites = sites
+                } else {
+                    sessionApps = emptyList()
+                    sessionSites = emptyList()
+                }
             }
             delay(2000)
         }
@@ -187,13 +212,26 @@ fun HomeScreen(
         permissionsVisible = permissionsVisible,
         onPermissionsClick = { onNavigate("PERMISSIONS") },
         onPasswordSessionClick = { onStartCreateSession("PASSWORD") },
-        onTimeSessionClick = { onStartCreateSession("TIME") },
+        onTimeSessionClick = {
+            scope.launch(Dispatchers.IO) {
+                val hasTimeSession = sessionManager.hasTimeSession()
+                withContext(Dispatchers.Main) {
+                    if (hasTimeSession) {
+                        showTimeSessionAlert = true
+                        com.focusguard.utils.FocusGuardLogger.log("HomeScreen", "Criação de bloqueio por tempo abortada: já existe sessão ativa")
+                    } else {
+                        onStartCreateSession("TIME")
+                    }
+                }
+            }
+        },
         onActiveSessionsClick = { showSessionSheet = true },
         onDeviceOwnerClick = { deviceOwnerManager.setAsDeviceOwner() },
         onLimitsClick = { onNavigate("LIMITS") },
         onIntruderLogClick = { onNavigate("INTRUDER_LOG") },
         onLanguageClick = { onNavigate("LANGUAGE") },
         onPasswordManagementClick = { onNavigate("PASSWORD_MANAGEMENT") },
+        onAppUsageLimitsClick = { onNavigate("APP_USAGE_LIMITS") },
         authManager = authManager,
         usageStatsContent = { UsageStatsScreen() }
     )
@@ -208,6 +246,8 @@ fun HomeScreen(
                 isBlocking = isBlocking,
                 hasSession = hasSession,
                 details = sessionDetails,
+                apps = sessionApps,
+                sites = sessionSites,
                 onRenounce = {
                     if (!hasSession) {
                         try {
@@ -218,5 +258,19 @@ fun HomeScreen(
                 onDismiss = { showSessionSheet = false }
             )
         }
+    }
+
+    if (showTimeSessionAlert) {
+        AlertDialog(
+            onDismissRequest = { showTimeSessionAlert = false },
+            title = { Text("Acesso Negado", color = com.focusguard.ui.compose.theme.TextPrimary, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) },
+            text = { Text("Você já tem um bloqueio por tempo ativo. Aguarde o término da sessão atual para configurar um novo limite.", color = com.focusguard.ui.compose.theme.TextSecondary) },
+            confirmButton = {
+                TextButton(onClick = { showTimeSessionAlert = false }) {
+                    Text("OK", color = com.focusguard.ui.compose.theme.AccentCyan)
+                }
+            },
+            containerColor = com.focusguard.ui.compose.theme.DarkSurface
+        )
     }
 }
