@@ -2,23 +2,16 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
-    <!-- Permissions for app usage stats and accessibility -->
     <uses-permission android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES"
         tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
-
-
-    <!-- Anti-Kill & Boot Surge Shielding -->
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
-
-    <!-- Camera Permission for Intruder Selfie -->
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-feature android:name="android.hardware.camera" android:required="false" />
-    <uses-feature android:name="android.hardware.camera.front" android:required="false" />
 
     <application
         android:allowBackup="true"
@@ -28,29 +21,18 @@
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.FocusGuard"
-        android:networkSecurityConfig="@xml/network_security_config"
-        android:localeConfig="@xml/locales_config"
-        android:usesCleartextTraffic="false">
+        android:networkSecurityConfig="@xml/network_security_config">
 
         <activity
             android:name=".MainActivity"
-            android:exported="true">
+            android:exported="true"
+            android:windowSoftInputMode="adjustResize">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
 
-        <activity
-            android:name=".ui.PermissionsActivity"
-            android:exported="false" />
-
-        <activity
-            android:name=".ui.CreateSessionActivity"
-            android:exported="false"
-            android:theme="@style/Theme.FocusGuard" />
-
-        <!-- Device Admin Receiver for Device Owner Mode -->
         <receiver
             android:name=".admin.FocusGuardDeviceAdminReceiver"
             android:permission="android.permission.BIND_DEVICE_ADMIN"
@@ -63,7 +45,6 @@
                 android:resource="@xml/device_admin_policy" />
         </receiver>
         
-        <!-- Boot Receiver for Auto-Start Restoring -->
         <receiver
             android:name=".receiver.BootReceiver"
             android:exported="true">
@@ -73,7 +54,6 @@
             </intent-filter>
         </receiver>
 
-        <!-- Accessibility Service for blocking apps and websites -->
         <service
             android:name=".service.BlockingAccessibilityService"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE"
@@ -84,16 +64,6 @@
             <meta-data
                 android:name="android.accessibilityservice"
                 android:resource="@xml/accessibility_service_config" />
-        </service>
-
-        <!-- AppLocales Support for Android 12 and below -->
-        <service
-            android:name="androidx.appcompat.app.AppLocalesMetadataHolderService"
-            android:enabled="false"
-            android:exported="false">
-            <meta-data
-                android:name="autoStoreLocales"
-                android:value="true" />
         </service>
 
     </application>

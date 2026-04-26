@@ -7,8 +7,7 @@ import android.os.Process
 import android.provider.Settings
 
 /**
- * Utility class for permission checks shared across Activities.
- * Eliminates code duplication between MainActivity and PermissionsActivity.
+ * Utility class for permission checks.
  */
 object PermissionUtils {
 

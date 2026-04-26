@@ -2,10 +2,6 @@ package com.focusguard.ui
 
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.os.Bundle
-import android.widget.Toast
-import androidx.activity.ComponentActivity
-import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -20,33 +16,16 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.focusguard.database.AppDatabase
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.ui.compose.screens.AppSelectionScreen
 import com.focusguard.ui.compose.screens.SelectableAppUi
 import com.focusguard.ui.compose.theme.*
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-class CreateSessionActivity : ComponentActivity() {
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        val sessionType = intent.getStringExtra("SESSION_TYPE") ?: "PASSWORD"
-        
-        setContent {
-            FocusGuardTheme {
-                CreateSessionWizard(
-                    sessionType = sessionType,
-                    onFinish = { finish() }
-                )
-            }
-        }
-    }
-}
 
 @Composable
 fun CreateSessionWizard(sessionType: String, onFinish: () -> Unit) {
@@ -84,7 +63,8 @@ fun CreateSessionWizard(sessionType: String, onFinish: () -> Unit) {
 
 @Composable
 fun AppSelectionStep(onNext: (List<SelectableAppUi>) -> Unit, onBack: () -> Unit) {
-    val pm = androidx.compose.ui.platform.LocalContext.current.packageManager
+    val context = LocalContext.current
+    val pm = context.packageManager
     var apps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
@@ -244,7 +224,7 @@ fun android.content.Context.findActivity(): android.app.Activity? = when (this) 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<String>, onFinish: () -> Unit, onBack: () -> Unit) {
-    val context = androidx.compose.ui.platform.LocalContext.current
+    val context = LocalContext.current
     val activityContext = context.findActivity() ?: context
     val sessionManager = remember { BlockingSessionManager.getInstance(context) }
     
@@ -273,7 +253,6 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
         containerColor = DarkBg
     ) { padding ->
         Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
-            
             if (sessionType == "PASSWORD") {
                 Text("Configuração de Bloqueio por Senha", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(16.dp))
@@ -347,7 +326,7 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
                     Row(modifier = Modifier.fillMaxWidth()) {
                         OutlinedButton(
                             onClick = {
-                                android.app.TimePickerDialog(context, { _, h, m ->
+                                android.app.TimePickerDialog(activityContext, { _, h, m ->
                                     startHour = h.toString().padStart(2, '0')
                                     startMin = m.toString().padStart(2, '0')
                                 }, startHour.toIntOrNull() ?: 8, startMin.toIntOrNull() ?: 0, true).show()
