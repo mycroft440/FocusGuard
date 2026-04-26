@@ -377,13 +377,8 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
 
             Button(
                 onClick = {
-                    if (!canStart) {
-                        val msg = if (apps.isEmpty() && sites.isEmpty()) "Selecione ao menos um app ou site."
-                                 else "Defina um tempo de bloqueio válido."
-                        android.widget.Toast.makeText(context, msg, android.widget.Toast.LENGTH_SHORT).show()
-                        return@Button
-                    }
-                    if (sessionType == "PASSWORD") {
+                    if (canStart) {
+                        if (sessionType == "PASSWORD") {
                         sessionManager.startPasswordSession(
                             isFixed24h = isFixed24h,
                             startHour = startHour.toIntOrNull() ?: 0,
@@ -408,7 +403,8 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
                             sites = sites
                         )
                     }
-                    onFinish()
+                        onFinish()
+                    }
                 },
                 enabled = canStart,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
