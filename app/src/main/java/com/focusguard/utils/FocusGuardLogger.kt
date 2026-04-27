@@ -1,108 +1,148 @@
 package com.focusguard.utils
 
 import android.content.Context
+import android.os.Build
 import android.os.Environment
 import android.util.Log
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.File
 import java.io.FileOutputStream
-import java.io.OutputStreamWriter
 import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
+import java.util.*
+import java.util.concurrent.ConcurrentLinkedQueue
 
 object FocusGuardLogger {
-
     private const val TAG = "FocusGuardLogger"
     private val mutex = Mutex()
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var isInitialized = false
     private var logFile: File? = null
-    private val dateFormat = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault())
+    
+    // Breadcrumbs: Rastro das últimas ações do usuário
+    private val breadcrumbs = ConcurrentLinkedQueue<String>()
+    private const val MAX_BREADCRUMBS = 50
+
+    private val scope = CoroutineScope(Dispatchers.IO + SupervisorJob())
 
     fun init(context: Context) {
         if (isInitialized) return
-
-        try {
-            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            val fgFolder = File(downloadsDir, "FocusGuardLogs")
-            if (!fgFolder.exists()) {
-                fgFolder.mkdirs()
-            }
-
-            val dateString = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
-            logFile = File(fgFolder, "log_$dateString.txt")
-
-            setupCrashInterceptor()
-            isInitialized = true
-
-            log("System", "Logger Inicializado com sucesso. Caminho: ${logFile?.absolutePath}")
-        } catch (e: Exception) {
-            Log.e(TAG, "Falha ao inicializar o FocusGuardLogger", e)
-        }
-    }
-
-    private fun setupCrashInterceptor() {
-        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            val stackTrace = Log.getStackTraceString(throwable)
-            // Usa chamada síncrona/direta para garantir que escreve antes do Android matar o processo
-            writeSync("CRASH_FATAL", "Crash na thread ${thread.name}: ${throwable.message}\n$stackTrace")
-            
-            defaultHandler?.uncaughtException(thread, throwable)
-        }
-    }
-
-    fun log(tag: String, message: String, isError: Boolean = false) {
-        val level = if (isError) "ERROR" else "INFO"
-        val threadName = Thread.currentThread().name
-        val time = dateFormat.format(Date())
-        val logLine = "[$time] [$level] [$tag] ($threadName) -> $message\n"
         
-        if (isError) {
-            Log.e(tag, message)
-        } else {
-            Log.i(tag, message)
-        }
+        try {
+            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            val focusGuardDir = File(downloadDir, "FocusGuardLogs")
+            if (!focusGuardDir.exists()) focusGuardDir.mkdirs()
 
-        scope.launch {
-            mutex.withLock {
-                writeToFile(logLine)
+            val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
+            logFile = File(focusGuardDir, "log_$dateStr.txt")
+
+            // Configura o interceptor de crashes globais
+            val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+            Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+                logFatal(thread.name, throwable)
+                defaultHandler?.uncaughtException(thread, throwable)
             }
+
+            isInitialized = true
+            log("System", "Logger Inicializado. Versão: ${Build.DISPLAY} | API: ${Build.VERSION.SDK_INT}")
+            logDeviceInfo(context)
+            cleanOldLogs(focusGuardDir)
+        } catch (e: Exception) {
+            Log.e(TAG, "Falha ao iniciar logger", e)
+        }
+    }
+
+    fun log(tag: String, message: String) {
+        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault()).format(Date())
+        val formattedMsg = "[$timestamp] [INFO] [$tag] -> $message"
+        addBreadcrumb("$tag: $message")
+        writeToDisk(formattedMsg)
+        Log.i(TAG, formattedMsg)
+    }
+
+    fun addBreadcrumb(action: String) {
+        breadcrumbs.add("${SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())}: $action")
+        while (breadcrumbs.size > MAX_BREADCRUMBS) {
+            breadcrumbs.poll()
         }
     }
 
     fun logError(tag: String, message: String, throwable: Throwable? = null) {
-        val fullMessage = if (throwable != null) {
-            "$message\n${Log.getStackTraceString(throwable)}"
-        } else {
-            message
-        }
-        log(tag, fullMessage, isError = true)
+        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault()).format(Date())
+        val errorMsg = "[$timestamp] [ERROR] [$tag] -> $message | Error: ${throwable?.message}"
+        val stackTrace = throwable?.let { Log.getStackTraceString(it) } ?: "Sem stacktrace"
+        
+        writeToDisk("$errorMsg\nSTACKTRACE:\n$stackTrace")
+        Log.e(TAG, errorMsg, throwable)
     }
 
-    private fun writeSync(tag: String, message: String) {
-        val time = dateFormat.format(Date())
-        val logLine = "[$time] [FATAL] [$tag] -> $message\n"
-        Log.e(tag, logLine)
-        writeToFile(logLine) // Escreve direto na thread atual (usado para crashes)
-    }
-
-    private fun writeToFile(logLine: String) {
-        if (logFile == null) return
-        try {
-            FileOutputStream(logFile!!, true).use { fos ->
-                OutputStreamWriter(fos, Charsets.UTF_8).use { writer ->
-                    writer.append(logLine)
+    private fun logFatal(threadName: String, throwable: Throwable) {
+        val timestamp = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault()).format(Date())
+        val fatalHeader = "\n" + "=".repeat(50) + "\n" +
+                "[$timestamp] [FATAL] [CRASH] -> Thread: $threadName\n" +
+                "ERRO: ${throwable.javaClass.simpleName}: ${throwable.message}\n" +
+                "BREADCRUMBS (Últimas ações):\n" +
+                breadcrumbs.joinToString("\n") + "\n" +
+                "=".repeat(50)
+        
+        val stackTrace = Log.getStackTraceString(throwable)
+        
+        // Operação bloqueante proposital para garantir escrita antes do app fechar
+        runBlocking {
+            mutex.withLock {
+                try {
+                    logFile?.let { file ->
+                        FileOutputStream(file, true).use { stream ->
+                            stream.write("$fatalHeader\nSTACKTRACE:\n$stackTrace\n".toByteArray())
+                            stream.flush()
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Erro ao gravar crash fatal", e)
                 }
             }
-        } catch (e: Exception) {
-            Log.e(TAG, "Erro ao escrever no arquivo de log: ${e.message}")
+        }
+    }
+
+    private fun logDeviceInfo(context: Context) {
+        val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as? android.app.ActivityManager
+        val memoryInfo = android.app.ActivityManager.MemoryInfo()
+        activityManager?.getMemoryInfo(memoryInfo)
+
+        val info = """
+            [DEVICE INFO]
+            Model: ${Build.MANUFACTURER} ${Build.MODEL}
+            Android Version: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})
+            RAM: ${memoryInfo.availMem / 1024 / 1024}MB livres de ${memoryInfo.totalMem / 1024 / 1024}MB
+            Storage: ${logFile?.parentFile?.usableSpace?.div(1024 * 1024) ?: "N/A"}MB disponíveis
+            --------------------------------------------------
+        """.trimIndent()
+        writeToDisk(info)
+    }
+
+    private fun writeToDisk(message: String) {
+        scope.launch {
+            mutex.withLock {
+                try {
+                    logFile?.let { file ->
+                        FileOutputStream(file, true).use { it.write("$message\n".toByteArray()) }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "Erro ao escrever log no disco", e)
+                }
+            }
+        }
+    }
+
+    private fun cleanOldLogs(dir: File) {
+        scope.launch {
+            val files = dir.listFiles() ?: return@launch
+            val sevenDaysAgo = System.currentTimeMillis() - (7 * 24 * 60 * 60 * 1000L)
+            files.forEach { file ->
+                if (file.lastModified() < sevenDaysAgo) {
+                    file.delete()
+                }
+            }
         }
     }
 }

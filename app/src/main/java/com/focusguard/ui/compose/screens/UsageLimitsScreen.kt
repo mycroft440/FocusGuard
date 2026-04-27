@@ -109,6 +109,10 @@ fun AppLimitsTab() {
     var selectedApp by remember { mutableStateOf<UsageLimitAppUi?>(null) }
     var showDialog by remember { mutableStateOf(false) }
 
+    LaunchedEffect(Unit) {
+        com.focusguard.utils.FocusGuardLogger.addBreadcrumb("Abriu aba: Limites de Apps")
+    }
+
     val filteredApps = remember(apps, searchQuery) {
         if (searchQuery.isBlank()) apps
         else apps.filter {
@@ -247,6 +251,10 @@ fun WebsiteLimitsTab() {
     var showAddDialog by remember { mutableStateOf(false) }
     var selectedSite by remember { mutableStateOf<WebsiteLimitUi?>(null) }
     var showEditDialog by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        com.focusguard.utils.FocusGuardLogger.addBreadcrumb("Abriu aba: Limites de Sites")
+    }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
