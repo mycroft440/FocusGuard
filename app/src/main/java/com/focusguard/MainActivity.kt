@@ -134,6 +134,7 @@ fun MainActivityContent(
         }
         "APP_USAGE_LIMITS" -> {
             com.focusguard.ui.compose.screens.UsageLimitsScreen(
+                authManager = authManager,
                 onBack = { onNavigate("HOME") }
             )
         }

@@ -166,3 +166,16 @@ interface DailyUsageStatDao {
     @Query("DELETE FROM daily_usage_stats WHERE date < :date")
     suspend fun deleteOldStats(date: String)
 }
+
+@Dao
+interface UsageLimitsLockDao {
+    @Query("SELECT * FROM usage_limits_lock WHERE id = 1")
+    suspend fun getLock(): UsageLimitsLock?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(lock: UsageLimitsLock)
+
+    @Query("DELETE FROM usage_limits_lock WHERE id = 1")
+    suspend fun delete()
+}
+

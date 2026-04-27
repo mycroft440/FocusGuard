@@ -110,15 +110,6 @@ fun MainScreen(
                     }
                 )
                 DrawerMenuButton(
-                    icon = Icons.Default.Timer,
-                    label = "Limites de Uso de Apps",
-                    iconTint = AccentCyan,
-                    onClick = {
-                        onAppUsageLimitsClick()
-                        scope.launch { drawerState.close() }
-                    }
-                )
-                DrawerMenuButton(
                     icon = Icons.Default.PhotoCamera,
                     label = stringResource(id = R.string.intruder_log),
                     iconTint = AccentCyan,

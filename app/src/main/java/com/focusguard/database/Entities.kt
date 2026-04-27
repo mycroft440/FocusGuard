@@ -82,3 +82,10 @@ data class DailyUsageStat(
     val type: String,       // "APP" ou "WEBSITE"
     var timeSpentMs: Long
 )
+
+@Entity(tableName = "usage_limits_lock")
+data class UsageLimitsLock(
+    @PrimaryKey val id: Int = 1,
+    val lockedUntilTimestamp: Long,
+    val isPasswordRequired: Boolean = true
+)

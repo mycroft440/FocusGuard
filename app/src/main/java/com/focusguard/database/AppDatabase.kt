@@ -17,9 +17,10 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         SessionWebsiteCrossRef::class,
         AppUsageLimit::class,
         WebsiteUsageLimit::class,
-        DailyUsageStat::class
+        DailyUsageStat::class,
+        UsageLimitsLock::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -31,6 +32,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun appUsageLimitDao(): AppUsageLimitDao
     abstract fun websiteUsageLimitDao(): WebsiteUsageLimitDao
     abstract fun dailyUsageStatDao(): DailyUsageStatDao
+    abstract fun usageLimitsLockDao(): UsageLimitsLockDao
 
     companion object {
         @Volatile
@@ -79,6 +81,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("CREATE TABLE IF NOT EXISTS `usage_limits_lock` (`id` INTEGER NOT NULL, `lockedUntilTimestamp` INTEGER NOT NULL, `isPasswordRequired` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`id`))")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -86,7 +94,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "focusguard_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_6_7, MIGRATION_7_8)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance
