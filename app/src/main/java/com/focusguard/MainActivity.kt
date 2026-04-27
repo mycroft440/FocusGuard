@@ -36,10 +36,24 @@ class MainActivity : AppCompatActivity() {
 
         setContent {
             FocusGuardTheme {
-                var currentRoute by remember { 
-                    mutableStateOf(if (prefs.getBoolean("hasSeenOnboarding", false)) "HOME" else "PERMISSIONS") 
+                var routeStack by remember { 
+                    mutableStateOf(listOf(if (prefs.getBoolean("hasSeenOnboarding", false)) "HOME" else "PERMISSIONS")) 
                 }
                 var sessionTypeToCreate by remember { mutableStateOf("PASSWORD") }
+
+                val currentRoute = routeStack.last()
+
+                val onNavigate = { route: String -> 
+                    routeStack = routeStack + route 
+                }
+
+                val onBack = {
+                    if (routeStack.size > 1) {
+                        routeStack = routeStack.dropLast(1)
+                    } else {
+                        finish()
+                    }
+                }
 
                 MainActivityContent(
                     activity = this,
@@ -47,10 +61,11 @@ class MainActivity : AppCompatActivity() {
                     sessionManager = sessionManager,
                     authManager = authManager,
                     currentRoute = currentRoute,
-                    onNavigate = { route -> currentRoute = route },
+                    onNavigate = onNavigate,
+                    onBack = onBack,
                     onStartCreateSession = { type -> 
                         sessionTypeToCreate = type
-                        currentRoute = "CREATE_SESSION"
+                        onNavigate("CREATE_SESSION")
                     },
                     sessionTypeToCreate = sessionTypeToCreate
                 )
@@ -68,10 +83,15 @@ fun MainActivityContent(
     authManager: AuthManager,
     currentRoute: String,
     onNavigate: (String) -> Unit,
+    onBack: () -> Unit,
     onStartCreateSession: (String) -> Unit,
     sessionTypeToCreate: String
 ) {
     var isUnlocked by remember { mutableStateOf(!authManager.isAppLocked()) }
+
+    androidx.activity.compose.BackHandler(enabled = true) {
+        onBack()
+    }
 
     // Auth Guard
     if (!isUnlocked && currentRoute != "PERMISSIONS") {
@@ -107,35 +127,100 @@ fun MainActivityContent(
         "CREATE_SESSION" -> {
             com.focusguard.ui.CreateSessionWizard(
                 sessionType = sessionTypeToCreate,
-                onFinish = { onNavigate("HOME") }
+                onFinish = onBack
             )
         }
         "LIMITS" -> {
             LimitsSecurityScreen(
                 authManager = authManager,
-                onBack = { onNavigate("HOME") }
+                onBack = onBack
             )
         }
         "INTRUDER_LOG" -> {
             IntruderLogScreen(
-                onBack = { onNavigate("HOME") }
+                onBack = onBack
             )
         }
         "LANGUAGE" -> {
             LanguageScreen(
-                onBack = { onNavigate("HOME") }
+                onBack = onBack
             )
         }
         "PASSWORD_MANAGEMENT" -> {
             PasswordManagementScreen(
                 authManager = authManager,
-                onBack = { onNavigate("HOME") }
+                onBack = onBack
             )
         }
         "APP_USAGE_LIMITS" -> {
             com.focusguard.ui.compose.screens.UsageLimitsScreen(
                 authManager = authManager,
-                onBack = { onNavigate("HOME") }
+                onBack = onBack
+            )
+        }
+        "BLOCK_CUSTOMIZATION" -> {
+            com.focusguard.ui.compose.screens.BlockCustomizationScreen(
+                onBack = onBack
+            )
+        }
+        "ACTIVE_SESSIONS" -> {
+            var isBlocking by remember { mutableStateOf(false) }
+            var hasSession by remember { mutableStateOf(false) }
+            var sessionDetails by remember { mutableStateOf("") }
+            var sessionApps by remember { mutableStateOf<List<String>>(emptyList()) }
+            var sessionSites by remember { mutableStateOf<List<String>>(emptyList()) }
+
+            LaunchedEffect(Unit) {
+                while (true) {
+                    withContext(Dispatchers.IO) {
+                        isBlocking = sessionManager.isBlockingActive()
+                        hasSession = sessionManager.hasRegisteredSession()
+                        sessionDetails = sessionManager.getSessionDetails()
+                        
+                        val sessions = sessionManager.getActiveSessions()
+                        val sessionIds = sessions.map { it.id }
+                        if (sessionIds.isNotEmpty()) {
+                            val db = com.focusguard.database.AppDatabase.getDatabase(activity)
+                            val apps = db.sessionAppCrossRefDao().getAppsForSessions(sessionIds).distinct()
+                            val sites = db.sessionWebsiteCrossRefDao().getWebsitesForSessions(sessionIds).distinct()
+                            sessionApps = apps
+                            sessionSites = sites
+                        } else {
+                            sessionApps = emptyList()
+                            sessionSites = emptyList()
+                        }
+                    }
+                    kotlinx.coroutines.delay(2000)
+                }
+            }
+
+            // OPÇÃO NUCLEAR: Log das primeiras 5 tentativas
+            LaunchedEffect(Unit) {
+                withContext(Dispatchers.IO) {
+                    val db = com.focusguard.database.AppDatabase.getDatabase(activity)
+                    val sessions = db.blockSessionDao().getAllSessions()
+                    com.focusguard.utils.FocusGuardLogger.log("NUCLEAR_OPTION", "--- INÍCIO DOS DADOS (Primeiras 5 Sessões/Tentativas) ---")
+                    sessions.take(5).forEachIndexed { index, session ->
+                        com.focusguard.utils.FocusGuardLogger.log("NUCLEAR_OPTION", "Sessão #${index + 1}: ID=${session.id}, Tipo=${session.sessionType}, Ativa=${session.isActive}")
+                    }
+                    com.focusguard.utils.FocusGuardLogger.log("NUCLEAR_OPTION", "--- FIM DOS DADOS ---")
+                }
+            }
+            
+            ActiveSessionsScreen(
+                isBlocking = isBlocking,
+                hasSession = hasSession,
+                details = sessionDetails,
+                apps = sessionApps,
+                sites = sessionSites,
+                onRenounce = {
+                    if (!hasSession) {
+                        try {
+                            deviceOwnerManager.renounceDeviceOwner()
+                        } catch (_: Exception) {}
+                    }
+                },
+                onBack = onBack
             )
         }
     }
@@ -152,13 +237,7 @@ fun HomeScreen(
     onStartCreateSession: (String) -> Unit
 ) {
     var permissionsVisible by remember { mutableStateOf(false) }
-    var showSessionSheet by remember { mutableStateOf(false) }
     var showTimeSessionAlert by remember { mutableStateOf(false) }
-    var isBlocking by remember { mutableStateOf(false) }
-    var hasSession by remember { mutableStateOf(false) }
-    var sessionDetails by remember { mutableStateOf("") }
-    var sessionApps by remember { mutableStateOf<List<String>>(emptyList()) }
-    var sessionSites by remember { mutableStateOf<List<String>>(emptyList()) }
     val scope = rememberCoroutineScope()
 
     var resumeKey by remember { mutableIntStateOf(0) }
@@ -185,30 +264,6 @@ fun HomeScreen(
         onDispose { activity.lifecycle.removeObserver(callback) }
     }
 
-    LaunchedEffect(showSessionSheet) {
-        while (showSessionSheet) {
-            withContext(Dispatchers.IO) {
-                isBlocking = sessionManager.isBlockingActive()
-                hasSession = sessionManager.hasRegisteredSession()
-                sessionDetails = sessionManager.getSessionDetails()
-                
-                val sessions = sessionManager.getActiveSessions()
-                val sessionIds = sessions.map { it.id }
-                if (sessionIds.isNotEmpty()) {
-                    val db = com.focusguard.database.AppDatabase.getDatabase(activity)
-                    val apps = db.sessionAppCrossRefDao().getAppsForSessions(sessionIds).distinct()
-                    val sites = db.sessionWebsiteCrossRefDao().getWebsitesForSessions(sessionIds).distinct()
-                    sessionApps = apps
-                    sessionSites = sites
-                } else {
-                    sessionApps = emptyList()
-                    sessionSites = emptyList()
-                }
-            }
-            delay(2000)
-        }
-    }
-
     MainScreen(
         permissionsVisible = permissionsVisible,
         onPermissionsClick = { onNavigate("PERMISSIONS") },
@@ -226,40 +281,17 @@ fun HomeScreen(
                 }
             }
         },
-        onActiveSessionsClick = { showSessionSheet = true },
+        onActiveSessionsClick = { onNavigate("ACTIVE_SESSIONS") },
         onDeviceOwnerClick = { deviceOwnerManager.setAsDeviceOwner() },
         onLimitsClick = { onNavigate("LIMITS") },
         onIntruderLogClick = { onNavigate("INTRUDER_LOG") },
         onLanguageClick = { onNavigate("LANGUAGE") },
         onPasswordManagementClick = { onNavigate("PASSWORD_MANAGEMENT") },
+        onBlockCustomizationClick = { onNavigate("BLOCK_CUSTOMIZATION") },
         onAppUsageLimitsClick = { onNavigate("APP_USAGE_LIMITS") },
         authManager = authManager,
         usageStatsContent = { UsageStatsScreen() }
     )
-
-    if (showSessionSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showSessionSheet = false },
-            containerColor = com.focusguard.ui.compose.theme.DarkSurface,
-            dragHandle = { BottomSheetDefaults.DragHandle(color = com.focusguard.ui.compose.theme.TextHint) }
-        ) {
-            BlockingSessionStatusSheet(
-                isBlocking = isBlocking,
-                hasSession = hasSession,
-                details = sessionDetails,
-                apps = sessionApps,
-                sites = sessionSites,
-                onRenounce = {
-                    if (!hasSession) {
-                        try {
-                            deviceOwnerManager.renounceDeviceOwner()
-                        } catch (_: Exception) {}
-                    }
-                },
-                onDismiss = { showSessionSheet = false }
-            )
-        }
-    }
 
     if (showTimeSessionAlert) {
         AlertDialog(

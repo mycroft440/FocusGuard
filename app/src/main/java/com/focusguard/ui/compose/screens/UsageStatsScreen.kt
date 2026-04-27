@@ -57,6 +57,7 @@ fun UsageStatsScreen() {
     val context = LocalContext.current
 
     var topApps by remember { mutableStateOf<List<AppUsageInfo>>(emptyList()) }
+    var allApps by remember { mutableStateOf<List<AppUsageInfo>>(emptyList()) }
     var topLaunched by remember { mutableStateOf<List<AppUsageInfo>>(emptyList()) }
     var monthlyData by remember { mutableStateOf<List<MonthlyUsage>>(emptyList()) }
     var trendText by remember { mutableStateOf("Média diária de uso do telefone") }
@@ -137,6 +138,7 @@ fun UsageStatsScreen() {
                 }
 
                 val top5 = filteredMap.entries.sortedByDescending { it.value }.take(5)
+                val allFiltered = filteredMap.entries.sortedByDescending { it.value }
 
                 if (top5.isEmpty()) {
                     noData = true
@@ -147,6 +149,16 @@ fun UsageStatsScreen() {
                 val weekLaunchCounts = countAppLaunches(usageStatsManager, startTime, endTime, context.packageName)
 
                 topApps = top5.map { entry ->
+                    val appName = try {
+                        pm.getApplicationLabel(pm.getApplicationInfo(entry.key, 0)).toString()
+                    } catch (_: PackageManager.NameNotFoundException) {
+                        entry.key.substringAfterLast(".")
+                    }
+                    val icon = try { pm.getApplicationIcon(entry.key) } catch (_: Exception) { null }
+                    AppUsageInfo(entry.key, appName, icon, entry.value, weekLaunchCounts[entry.key] ?: 0)
+                }
+
+                allApps = allFiltered.map { entry ->
                     val appName = try {
                         pm.getApplicationLabel(pm.getApplicationInfo(entry.key, 0)).toString()
                     } catch (_: PackageManager.NameNotFoundException) {
@@ -324,6 +336,38 @@ fun UsageStatsScreen() {
                     topApps.forEachIndexed { index, app ->
                         AppUsageItem(rank = index + 1, app = app, maxUsage = maxUsage, showLaunches = true)
                         if (index < topApps.lastIndex) Spacer(modifier = Modifier.height(10.dp))
+                    }
+                }
+            }
+        }
+
+        // ========================================
+        // ALL APPS (EXPANDABLE)
+        // ========================================
+        var expandedAllApps by remember { mutableStateOf(false) }
+        
+        if (allApps.isNotEmpty()) {
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).clickable { expandedAllApps = !expandedAllApps },
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = DarkCard),
+                border = BorderStroke(1.dp, CardBorder)
+            ) {
+                Column(modifier = Modifier.padding(20.dp).fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                        Icon(Icons.Default.List, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Ver Todos os Aplicativos (${allApps.size})", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.weight(1f))
+                        Icon(if (expandedAllApps) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, contentDescription = null, tint = TextPrimary)
+                    }
+                    
+                    if (expandedAllApps) {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        val maxUsageAll = allApps.maxOf { it.usageTimeMs }.toFloat()
+                        allApps.forEachIndexed { index, app ->
+                            AppUsageItem(rank = index + 1, app = app, maxUsage = maxUsageAll, showLaunches = true)
+                            if (index < allApps.lastIndex) Spacer(modifier = Modifier.height(10.dp))
+                        }
                     }
                 }
             }

@@ -33,6 +33,13 @@
             </intent-filter>
         </activity>
 
+        <activity
+            android:name=".BlockScreenActivity"
+            android:exported="false"
+            android:theme="@style/Theme.FocusGuard"
+            android:launchMode="singleTask"
+            android:excludeFromRecents="true" />
+
         <receiver
             android:name=".admin.FocusGuardDeviceAdminReceiver"
             android:permission="android.permission.BIND_DEVICE_ADMIN"

@@ -26,6 +26,7 @@ import com.focusguard.ui.compose.screens.SelectableAppUi
 import com.focusguard.ui.compose.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 
 @Composable
 fun CreateSessionWizard(sessionType: String, onFinish: () -> Unit) {
@@ -36,181 +37,204 @@ fun CreateSessionWizard(sessionType: String, onFinish: () -> Unit) {
     var selectedSites by remember { mutableStateOf<List<String>>(emptyList()) }
 
     when (step) {
-        1 -> AppSelectionStep(
-            onNext = { apps ->
+        1 -> SelectionStep(
+            initialApps = selectedApps,
+            initialSites = selectedSites,
+            onNext = { apps, sites ->
                 selectedApps = apps
+                selectedSites = sites
                 step = 2
             },
             onBack = onFinish
         )
-        2 -> SiteSelectionStep(
-            initialSites = selectedSites,
-            onNext = { sites ->
-                selectedSites = sites
-                step = 3
-            },
-            onBack = { step = 1 }
-        )
-        3 -> ConfigSessionStep(
+        2 -> ConfigSessionStep(
             sessionType = sessionType,
             apps = selectedApps.map { it.packageName },
             sites = selectedSites,
             onFinish = onFinish,
-            onBack = { step = 2 }
+            onBack = { step = 1 }
         )
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppSelectionStep(onNext: (List<SelectableAppUi>) -> Unit, onBack: () -> Unit) {
+fun SelectionStep(
+    initialApps: List<SelectableAppUi>,
+    initialSites: List<String>,
+    onNext: (List<SelectableAppUi>, List<String>) -> Unit,
+    onBack: () -> Unit
+) {
+    var selectedTabIndex by remember { mutableStateOf(0) }
+    val tabs = listOf("Aplicativos", "Sites")
+
     val context = LocalContext.current
     val pm = context.packageManager
-    var apps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    
+    // Apps State
+    var apps by remember { mutableStateOf<List<SelectableAppUi>>(initialApps) }
+    var isLoadingApps by remember { mutableStateOf(true) }
+    
+    // Sites State
+    var sites by remember { mutableStateOf(initialSites) }
+    var urlInput by remember { mutableStateOf("") }
 
+    // Load Apps
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
-            val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-            val launchables = pm.queryIntentActivities(intent, 0).map { it.activityInfo.packageName }.toSet()
+        if (apps.isEmpty()) {
+            withContext(Dispatchers.IO) {
+                val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+                val launchables = pm.queryIntentActivities(intent, 0).map { it.activityInfo.packageName }.toSet()
 
-            val appList = mutableListOf<SelectableAppUi>()
-            val installedPackageNames = mutableSetOf<String>()
+                val appList = mutableListOf<SelectableAppUi>()
+                val installedPackageNames = mutableSetOf<String>()
 
-            for (info in installedApps) {
-                if (launchables.contains(info.packageName)) {
-                    installedPackageNames.add(info.packageName)
-                    val appName = info.loadLabel(pm).toString()
-                    val icon = try { info.loadIcon(pm) } catch (_: Exception) { null }
-                    appList.add(SelectableAppUi(packageName = info.packageName, appName = appName, icon = icon, isSelected = false, isInstalled = true))
+                for (info in installedApps) {
+                    if (launchables.contains(info.packageName)) {
+                        installedPackageNames.add(info.packageName)
+                        val appName = info.loadLabel(pm).toString()
+                        val icon = try { info.loadIcon(pm) } catch (_: Exception) { null }
+                        appList.add(SelectableAppUi(packageName = info.packageName, appName = appName, icon = icon, isSelected = false, isInstalled = true))
+                    }
+                }
+                appList.sortBy { it.appName.lowercase() }
+
+                val uninstalledPredefined = com.focusguard.data.PredefinedApps.PREVENTIVE_APPS.filter { 
+                    !installedPackageNames.contains(it.packageName) 
+                }.map {
+                    SelectableAppUi(
+                        packageName = it.packageName,
+                        appName = it.appName,
+                        icon = null,
+                        isSelected = false,
+                        isInstalled = false,
+                        category = it.category
+                    )
+                }
+
+                val finalAppList = uninstalledPredefined + appList
+                withContext(Dispatchers.Main) {
+                    apps = finalAppList
+                    isLoadingApps = false
                 }
             }
-            appList.sortBy { it.appName.lowercase() }
-
-            // Add predefined apps that are NOT installed
-            val uninstalledPredefined = com.focusguard.data.PredefinedApps.PREVENTIVE_APPS.filter { 
-                !installedPackageNames.contains(it.packageName) 
-            }.map {
-                SelectableAppUi(
-                    packageName = it.packageName,
-                    appName = it.appName,
-                    icon = null,
-                    isSelected = false,
-                    isInstalled = false,
-                    category = it.category
-                )
-            }
-
-            val finalAppList = uninstalledPredefined + appList
-
-            withContext(Dispatchers.Main) {
-                apps = finalAppList
-                isLoading = false
-            }
+        } else {
+            isLoadingApps = false
         }
     }
 
     Column(modifier = Modifier.fillMaxSize()) {
+        TabRow(
+            selectedTabIndex = selectedTabIndex,
+            containerColor = DarkBg,
+            contentColor = AccentCyan,
+            indicator = { tabPositions ->
+                TabRowDefaults.Indicator(
+                    modifier = Modifier.tabIndicatorOffset(tabPositions[selectedTabIndex]),
+                    color = AccentCyan
+                )
+            }
+        ) {
+            tabs.forEachIndexed { index, title ->
+                Tab(
+                    selected = selectedTabIndex == index,
+                    onClick = { selectedTabIndex = index },
+                    text = { Text(title, color = if (selectedTabIndex == index) AccentCyan else TextSecondary) }
+                )
+            }
+        }
+
         Box(modifier = Modifier.weight(1f)) {
-            AppSelectionScreen(
-                apps = apps,
-                isLoading = isLoading,
-                onToggleApp = { pkg ->
-                    apps = apps.map { if (it.packageName == pkg) it.copy(isSelected = !it.isSelected) else it }
-                },
-                onBack = onBack
-            )
+            if (selectedTabIndex == 0) {
+                // APPS TAB
+                AppSelectionScreen(
+                    apps = apps,
+                    isLoading = isLoadingApps,
+                    onToggleApp = { pkg ->
+                        apps = apps.map { if (it.packageName == pkg) it.copy(isSelected = !it.isSelected) else it }
+                    },
+                    onBack = onBack
+                )
+            } else {
+                // SITES TAB
+                Scaffold(
+                    topBar = {
+                        TopAppBar(
+                            title = { Text("Adicionar Sites", color = TextPrimary) },
+                            navigationIcon = {
+                                IconButton(onClick = onBack) {
+                                    Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", tint = TextPrimary)
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBg)
+                        )
+                    },
+                    containerColor = DarkBg
+                ) { padding ->
+                    Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+                        Text("Quais sites você deseja bloquear nesta sessão?", color = TextSecondary)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = urlInput,
+                                onValueChange = { urlInput = it },
+                                placeholder = { Text("Ex: facebook.com", color = TextHint) },
+                                modifier = Modifier.weight(1f),
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedTextColor = TextPrimary,
+                                    unfocusedTextColor = TextPrimary,
+                                    focusedBorderColor = AccentCyan
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            IconButton(
+                                onClick = {
+                                    if (urlInput.isNotBlank() && !sites.contains(urlInput.trim())) {
+                                        sites = sites + urlInput.trim()
+                                        urlInput = ""
+                                    }
+                                },
+                                modifier = Modifier.background(AccentCyan, RoundedCornerShape(12.dp))
+                            ) {
+                                Icon(Icons.Default.Add, contentDescription = "Adicionar", tint = DarkBg)
+                            }
+                        }
+                        
+                        Spacer(modifier = Modifier.height(24.dp))
+                        
+                        androidx.compose.foundation.lazy.LazyColumn(modifier = Modifier.weight(1f)) {
+                            items(sites) { site ->
+                                Card(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    colors = CardDefaults.cardColors(containerColor = DarkCard),
+                                    border = BorderStroke(1.dp, CardBorder)
+                                ) {
+                                    Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text(site, color = TextPrimary, modifier = Modifier.weight(1f))
+                                        IconButton(onClick = { sites = sites - site }) {
+                                            Icon(Icons.Default.Delete, "Remover", tint = DangerRed)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
         }
         
         Button(
-            onClick = { onNext(apps.filter { it.isSelected }) },
+            onClick = { onNext(apps.filter { it.isSelected }, sites) },
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
                 .height(50.dp),
             colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
         ) {
-            Text("Confirmar Apps e Prosseguir", color = DarkBg, fontWeight = FontWeight.Bold)
-        }
-    }
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SiteSelectionStep(initialSites: List<String>, onNext: (List<String>) -> Unit, onBack: () -> Unit) {
-    var sites by remember { mutableStateOf(initialSites) }
-    var urlInput by remember { mutableStateOf("") }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Adicionar Sites", color = TextPrimary) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", tint = TextPrimary)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBg)
-            )
-        },
-        containerColor = DarkBg
-    ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
-            Text("Quais sites você deseja bloquear nesta sessão?", color = TextSecondary)
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = urlInput,
-                    onValueChange = { urlInput = it },
-                    placeholder = { Text("Ex: facebook.com", color = TextHint) },
-                    modifier = Modifier.weight(1f),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary,
-                        focusedBorderColor = AccentCyan
-                    )
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                IconButton(
-                    onClick = {
-                        if (urlInput.isNotBlank() && !sites.contains(urlInput.trim())) {
-                            sites = sites + urlInput.trim()
-                            urlInput = ""
-                        }
-                    },
-                    modifier = Modifier.background(AccentCyan, RoundedCornerShape(12.dp))
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Adicionar", tint = DarkBg)
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            LazyColumn(modifier = Modifier.weight(1f)) {
-                items(sites) { site ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        colors = CardDefaults.cardColors(containerColor = DarkCard),
-                        border = BorderStroke(1.dp, CardBorder)
-                    ) {
-                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(site, color = TextPrimary, modifier = Modifier.weight(1f))
-                            IconButton(onClick = { sites = sites - site }) {
-                                Icon(Icons.Default.Delete, "Remover", tint = DangerRed)
-                            }
-                        }
-                    }
-                }
-            }
-            
-            Button(
-                onClick = { onNext(sites) },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-            ) {
-                Text("Confirmar Sites e Prosseguir", color = DarkBg, fontWeight = FontWeight.Bold)
-            }
+            val totalSelected = apps.count { it.isSelected } + sites.size
+            Text("Confirmar ($totalSelected itens) e Prosseguir", color = DarkBg, fontWeight = FontWeight.Bold)
         }
     }
 }

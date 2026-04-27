@@ -48,14 +48,20 @@ data class UsageLimitAppUi(
     val icon: android.graphics.drawable.Drawable?,
     val currentLimitMinutes: Int?,
     val isEnabled: Boolean,
-    val usageMs: Long = 0
+    val usageMs: Long = 0,
+    val lockMode: String = "NONE",
+    val lockPasswordHash: String? = null,
+    val lockUntilTimestamp: Long? = null
 )
 
 data class WebsiteLimitUi(
     val domain: String,
     val dailyLimitMinutes: Int?,
     val isEnabled: Boolean,
-    val usageMs: Long = 0
+    val usageMs: Long = 0,
+    val lockMode: String = "NONE",
+    val lockPasswordHash: String? = null,
+    val lockUntilTimestamp: Long? = null
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -85,22 +91,10 @@ fun UsageLimitsScreen(authManager: AuthManager, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { 
-                    Column {
-                        Text("Limites de Uso", color = TextPrimary, fontSize = 18.sp)
-                        if (isLockedByTime) {
-                            Text("Blindado: faltam $lockTimeRemaining", color = DangerRed, fontSize = 11.sp)
-                        }
-                    }
-                },
+                title = { Text("Limites de Uso", color = TextPrimary, fontSize = 18.sp) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", tint = TextPrimary)
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showSecurityDialog = true }) {
-                        Icon(Icons.Default.Security, "Segurança", tint = if (isLockedByTime) DangerRed else AccentCyan)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBg)
@@ -127,34 +121,15 @@ fun UsageLimitsScreen(authManager: AuthManager, onBack: () -> Unit) {
             }
 
             when (selectedTab) {
-                0 -> AppLimitsTab(authManager, isLockedByTime)
-                1 -> WebsiteLimitsTab(authManager, isLockedByTime)
+                0 -> AppLimitsTab()
+                1 -> WebsiteLimitsTab()
             }
         }
-    }
-
-    if (showSecurityDialog) {
-        UsageSecurityDialog(
-            authManager = authManager,
-            isLocked = isLockedByTime,
-            onDismiss = { showSecurityDialog = false },
-            onLock = { days ->
-                scope.launch(Dispatchers.IO) {
-                    val db = AppDatabase.getDatabase(context).usageLimitsLockDao()
-                    val until = System.currentTimeMillis() + TimeUnit.DAYS.toMillis(days.toLong())
-                    db.insert(UsageLimitsLock(lockedUntilTimestamp = until))
-                    withContext(Dispatchers.Main) {
-                        isLockedByTime = true
-                        showSecurityDialog = false
-                    }
-                }
-            }
-        )
     }
 }
 
 @Composable
-fun AppLimitsTab(authManager: AuthManager, isLockedByTime: Boolean) {
+fun AppLimitsTab() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var apps by remember { mutableStateOf<List<UsageLimitAppUi>>(emptyList()) }
@@ -163,6 +138,7 @@ fun AppLimitsTab(authManager: AuthManager, isLockedByTime: Boolean) {
     var selectedApp by remember { mutableStateOf<UsageLimitAppUi?>(null) }
     var showDialog by remember { mutableStateOf(false) }
     var showPasswordConfirm by remember { mutableStateOf(false) }
+    var showTimeLockedAlert by remember { mutableStateOf(false) }
     var pendingAction: (() -> Unit)? by remember { mutableStateOf(null) }
 
     LaunchedEffect(Unit) {
@@ -183,7 +159,11 @@ fun AppLimitsTab(authManager: AuthManager, isLockedByTime: Boolean) {
                 val appName = info.loadLabel(pm).toString()
                 val icon = try { info.loadIcon(pm) } catch (_: Exception) { null }
                 val limit = existingLimits[packageName]
-                UsageLimitAppUi(packageName, appName, icon, limit?.dailyLimitMinutes, limit?.isEnabled ?: false, stats[packageName]?.totalTimeInForeground ?: 0L)
+                UsageLimitAppUi(
+                    packageName, appName, icon, limit?.dailyLimitMinutes, limit?.isEnabled ?: false, 
+                    stats[packageName]?.totalTimeInForeground ?: 0L,
+                    limit?.lockMode ?: "NONE", limit?.lockPasswordHash, limit?.lockUntilTimestamp
+                )
             }.sortedBy { it.appName }
 
             withContext(Dispatchers.Main) { apps = loadedApps; isLoading = false }
@@ -213,15 +193,17 @@ fun AppLimitsTab(authManager: AuthManager, isLockedByTime: Boolean) {
                     item { Text("Aplicativos com Limite", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = AccentCyan, modifier = Modifier.padding(vertical = 8.dp)) }
                     items(configuredApps, key = { it.packageName }) { app ->
                         UsageLimitItem(app) { 
-                            if (isLockedByTime) {
-                                pendingAction = { selectedApp = app; showDialog = true; showPasswordConfirm = true }
+                            if (app.lockMode == "TIME" && app.lockUntilTimestamp != null && System.currentTimeMillis() < app.lockUntilTimestamp) {
+                                showTimeLockedAlert = true
+                            } else if (app.lockMode == "PASSWORD") {
+                                pendingAction = { selectedApp = app; showDialog = true }
                                 showPasswordConfirm = true
                             } else {
                                 selectedApp = app; showDialog = true 
                             }
                         }
                     }
-                    item { Spacer(Modifier.height(16.dp)); Divider(color = CardBorder); Spacer(Modifier.height(16.dp)) }
+                    item { Spacer(Modifier.height(16.dp)); HorizontalDivider(color = CardBorder); Spacer(Modifier.height(16.dp)) }
                 }
                 item { Text("Todos os Aplicativos", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.padding(vertical = 8.dp)) }
                 items(unconfiguredApps, key = { it.packageName }) { app ->
@@ -235,39 +217,28 @@ fun AppLimitsTab(authManager: AuthManager, isLockedByTime: Boolean) {
         AppLimitDialog(
             app = selectedApp!!,
             onDismiss = { showDialog = false },
-            onSave = { minutes, enabled ->
-                val action = {
-                    scope.launch(Dispatchers.IO) {
-                        val db = AppDatabase.getDatabase(context).appUsageLimitDao()
-                        if (minutes != null && minutes > 0) {
-                            db.insert(AppUsageLimit(selectedApp!!.packageName, selectedApp!!.appName, minutes, enabled))
-                            val updated = selectedApp!!.copy(currentLimitMinutes = minutes, isEnabled = enabled)
-                            apps = apps.map { if (it.packageName == updated.packageName) updated else it }
-                        } else {
-                            db.delete(AppUsageLimit(selectedApp!!.packageName, selectedApp!!.appName, selectedApp!!.currentLimitMinutes ?: 0))
-                            val updated = selectedApp!!.copy(currentLimitMinutes = null, isEnabled = false)
-                            apps = apps.map { if (it.packageName == updated.packageName) updated else it }
-                        }
-                        withContext(Dispatchers.Main) { showDialog = false }
+            onSave = { minutes, enabled, lockMode, lockPassword, lockUntil ->
+                scope.launch(Dispatchers.IO) {
+                    val db = AppDatabase.getDatabase(context).appUsageLimitDao()
+                    if (minutes != null && minutes > 0) {
+                        db.insert(AppUsageLimit(selectedApp!!.packageName, selectedApp!!.appName, minutes, enabled, lockMode, lockPassword, lockUntil))
+                        val updated = selectedApp!!.copy(currentLimitMinutes = minutes, isEnabled = enabled, lockMode = lockMode, lockPasswordHash = lockPassword, lockUntilTimestamp = lockUntil)
+                        apps = apps.map { if (it.packageName == updated.packageName) updated else it }
+                    } else {
+                        val existing = db.getAll().find { it.packageName == selectedApp!!.packageName }
+                        if (existing != null) db.delete(existing)
+                        val updated = selectedApp!!.copy(currentLimitMinutes = null, isEnabled = false, lockMode = "NONE", lockPasswordHash = null, lockUntilTimestamp = null)
+                        apps = apps.map { if (it.packageName == updated.packageName) updated else it }
                     }
-                    Unit
-                }
-                
-                // Se estiver tentando desativar ou aumentar o tempo enquanto bloqueado, pede senha
-                val isRelaxing = !enabled || (minutes ?: 0) > (selectedApp!!.currentLimitMinutes ?: 0)
-                if (isLockedByTime || (isRelaxing && selectedApp!!.currentLimitMinutes != null)) {
-                    pendingAction = action
-                    showPasswordConfirm = true
-                } else {
-                    action()
+                    withContext(Dispatchers.Main) { showDialog = false }
                 }
             }
         )
     }
 
-    if (showPasswordConfirm) {
-        ConfirmPasswordDialog(
-            authManager = authManager,
+    if (showPasswordConfirm && selectedApp != null) {
+        ConfirmLimitPasswordDialog(
+            expectedHash = selectedApp?.lockPasswordHash ?: "",
             onDismiss = { showPasswordConfirm = false },
             onConfirm = { 
                 showPasswordConfirm = false
@@ -276,10 +247,20 @@ fun AppLimitsTab(authManager: AuthManager, isLockedByTime: Boolean) {
             }
         )
     }
+
+    if (showTimeLockedAlert) {
+        AlertDialog(
+            onDismissRequest = { showTimeLockedAlert = false },
+            title = { Text("Limite Blindado", color = DangerRed) },
+            text = { Text("Este limite está blindado por tempo e não pode ser alterado até o fim do prazo.", color = TextPrimary) },
+            confirmButton = { TextButton({ showTimeLockedAlert = false }) { Text("OK", color = AccentCyan) } },
+            containerColor = DarkSurface
+        )
+    }
 }
 
 @Composable
-fun WebsiteLimitsTab(authManager: AuthManager, isLockedByTime: Boolean) {
+fun WebsiteLimitsTab() {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var sites by remember { mutableStateOf<List<WebsiteLimitUi>>(emptyList()) }
@@ -288,6 +269,7 @@ fun WebsiteLimitsTab(authManager: AuthManager, isLockedByTime: Boolean) {
     var selectedSite by remember { mutableStateOf<WebsiteLimitUi?>(null) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showPasswordConfirm by remember { mutableStateOf(false) }
+    var showTimeLockedAlert by remember { mutableStateOf(false) }
     var pendingAction: (() -> Unit)? by remember { mutableStateOf(null) }
 
     LaunchedEffect(Unit) {
@@ -296,7 +278,7 @@ fun WebsiteLimitsTab(authManager: AuthManager, isLockedByTime: Boolean) {
             val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
             val allLimits = db.websiteUsageLimitDao().getAll()
             val usageStats = db.dailyUsageStatDao().getStatsForDate(today).associate { it.identifier to it.timeSpentMs }
-            sites = allLimits.map { WebsiteLimitUi(it.domain, it.dailyLimitMinutes, it.isEnabled, usageStats[it.domain] ?: 0L) }
+            sites = allLimits.map { WebsiteLimitUi(it.domain, it.dailyLimitMinutes, it.isEnabled, usageStats[it.domain] ?: 0L, it.lockMode, it.lockPasswordHash, it.lockUntilTimestamp) }
             withContext(Dispatchers.Main) { isLoading = false }
         }
     }
@@ -321,24 +303,36 @@ fun WebsiteLimitsTab(authManager: AuthManager, isLockedByTime: Boolean) {
                     WebsiteLimitItem(
                         site = site,
                         onClick = {
-                            if (isLockedByTime) {
-                                    pendingAction = { selectedSite = site; showEditDialog = true }
+                            if (site.lockMode == "TIME" && site.lockUntilTimestamp != null && System.currentTimeMillis() < site.lockUntilTimestamp) {
+                                showTimeLockedAlert = true
+                            } else if (site.lockMode == "PASSWORD") {
+                                pendingAction = { selectedSite = site; showEditDialog = true }
                                 showPasswordConfirm = true
                             } else {
                                 selectedSite = site; showEditDialog = true 
                             }
                         },
                         onDelete = {
-                            val action = {
-                                scope.launch(Dispatchers.IO) {
-                                    val db = AppDatabase.getDatabase(context).websiteUsageLimitDao()
-                                    db.delete(WebsiteUsageLimit(site.domain, site.dailyLimitMinutes ?: 0, site.isEnabled))
-                                    withContext(Dispatchers.Main) { sites = sites.filter { it.domain != site.domain } }
+                            if (site.lockMode == "TIME" && site.lockUntilTimestamp != null && System.currentTimeMillis() < site.lockUntilTimestamp) {
+                                showTimeLockedAlert = true
+                            } else {
+                                val action = {
+                                    scope.launch(Dispatchers.IO) {
+                                        val db = AppDatabase.getDatabase(context).websiteUsageLimitDao()
+                                        val existing = db.getAll().find { it.domain == site.domain }
+                                        if (existing != null) db.delete(existing)
+                                        withContext(Dispatchers.Main) { sites = sites.filter { it.domain != site.domain } }
+                                    }
+                                    Unit
                                 }
-                                Unit
+                                if (site.lockMode == "PASSWORD") {
+                                    selectedSite = site
+                                    pendingAction = action
+                                    showPasswordConfirm = true
+                                } else {
+                                    action()
+                                }
                             }
-                            pendingAction = action
-                            showPasswordConfirm = true
                         }
                     )
                 }
@@ -347,43 +341,49 @@ fun WebsiteLimitsTab(authManager: AuthManager, isLockedByTime: Boolean) {
     }
 
     if (showAddDialog) {
-        AddWebsiteLimitDialog(onDismiss = { showAddDialog = false }, onSave = { domain, minutes ->
+        AddWebsiteLimitDialog(onDismiss = { showAddDialog = false }, onSave = { domain, minutes, lockMode, lockPassword, lockUntil ->
             scope.launch(Dispatchers.IO) {
                 val db = AppDatabase.getDatabase(context).websiteUsageLimitDao()
                 val clean = domain.trim().lowercase().removePrefix("http://").removePrefix("https://").removePrefix("www.").trimEnd('/')
-                db.insert(WebsiteUsageLimit(clean, minutes, true))
-                withContext(Dispatchers.Main) { sites = sites + WebsiteLimitUi(clean, minutes, true); showAddDialog = false }
+                db.insert(WebsiteUsageLimit(clean, minutes, true, lockMode, lockPassword, lockUntil))
+                withContext(Dispatchers.Main) { sites = sites + WebsiteLimitUi(clean, minutes, true, 0L, lockMode, lockPassword, lockUntil); showAddDialog = false }
             }
         })
     }
 
     if (showEditDialog && selectedSite != null) {
-        EditWebsiteLimitDialog(site = selectedSite!!, onDismiss = { showEditDialog = false }, onSave = { minutes, enabled ->
-            val action = {
-                scope.launch(Dispatchers.IO) {
-                    val db = AppDatabase.getDatabase(context).websiteUsageLimitDao()
-                    db.insert(WebsiteUsageLimit(selectedSite!!.domain, minutes, enabled))
-                    withContext(Dispatchers.Main) {
-                        sites = sites.map { if (it.domain == selectedSite!!.domain) it.copy(dailyLimitMinutes = minutes, isEnabled = enabled) else it }
-                        showEditDialog = false
-                    }
+        EditWebsiteLimitDialog(site = selectedSite!!, onDismiss = { showEditDialog = false }, onSave = { minutes, enabled, lockMode, lockPassword, lockUntil ->
+            scope.launch(Dispatchers.IO) {
+                val db = AppDatabase.getDatabase(context).websiteUsageLimitDao()
+                db.insert(WebsiteUsageLimit(selectedSite!!.domain, minutes, enabled, lockMode, lockPassword, lockUntil))
+                withContext(Dispatchers.Main) {
+                    sites = sites.map { if (it.domain == selectedSite!!.domain) it.copy(dailyLimitMinutes = minutes, isEnabled = enabled, lockMode = lockMode, lockPasswordHash = lockPassword, lockUntilTimestamp = lockUntil) else it }
+                    showEditDialog = false
                 }
-                Unit
-            }
-            val isRelaxing = !enabled || minutes > (selectedSite!!.dailyLimitMinutes ?: 0)
-            if (isLockedByTime || isRelaxing) {
-                pendingAction = action
-                showPasswordConfirm = true
-            } else {
-                action()
             }
         })
     }
 
-    if (showPasswordConfirm) {
-        ConfirmPasswordDialog(authManager, { showPasswordConfirm = false }, { 
-            showPasswordConfirm = false; pendingAction?.invoke(); pendingAction = null 
-        })
+    if (showPasswordConfirm && selectedSite != null) {
+        ConfirmLimitPasswordDialog(
+            expectedHash = selectedSite?.lockPasswordHash ?: "",
+            onDismiss = { showPasswordConfirm = false },
+            onConfirm = { 
+                showPasswordConfirm = false
+                pendingAction?.invoke()
+                pendingAction = null
+            }
+        )
+    }
+
+    if (showTimeLockedAlert) {
+        AlertDialog(
+            onDismissRequest = { showTimeLockedAlert = false },
+            title = { Text("Limite Blindado", color = DangerRed) },
+            text = { Text("Este limite está blindado por tempo e não pode ser alterado até o fim do prazo.", color = TextPrimary) },
+            confirmButton = { TextButton({ showTimeLockedAlert = false }) { Text("OK", color = AccentCyan) } },
+            containerColor = DarkSurface
+        )
     }
 }
 
@@ -540,16 +540,93 @@ fun ConfirmPasswordDialog(authManager: AuthManager, onDismiss: () -> Unit, onCon
 }
 
 @Composable
-fun AppLimitDialog(app: UsageLimitAppUi, onDismiss: () -> Unit, onSave: (Int?, Boolean) -> Unit) {
+fun ConfirmLimitPasswordDialog(expectedHash: String, onDismiss: () -> Unit, onConfirm: () -> Unit) {
+    var password by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Confirmar Senha", color = TextPrimary, fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Text("Digite a senha configurada para este limite.", color = TextSecondary, fontSize = 14.sp)
+                Spacer(Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it; error = false },
+                    label = { Text("Senha", color = if (error) DangerRed else TextHint) },
+                    visualTransformation = PasswordVisualTransformation(),
+                    isError = error,
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AccentCyan, unfocusedTextColor = TextPrimary, focusedTextColor = TextPrimary),
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                val hash = java.security.MessageDigest.getInstance("SHA-256").digest(password.toByteArray()).joinToString("") { "%02x".format(it) }
+                if (hash == expectedHash || expectedHash.isEmpty()) onConfirm() else error = true
+            }) { Text("Confirmar", color = AccentCyan) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar", color = TextHint) } },
+        containerColor = DarkSurface
+    )
+}
+
+@Composable
+fun LimitSecuritySection(
+    lockMode: String,
+    onLockModeChange: (String) -> Unit,
+    password: String,
+    onPasswordChange: (String) -> Unit,
+    days: String,
+    onDaysChange: (String) -> Unit
+) {
+    Column {
+        Text("Modo de Segurança", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 14.sp)
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            listOf("NONE" to "Sem Proteção", "PASSWORD" to "Senha", "TIME" to "Blindagem").forEach { (mode, label) ->
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onLockModeChange(mode) }) {
+                    RadioButton(selected = lockMode == mode, onClick = { onLockModeChange(mode) }, colors = RadioButtonDefaults.colors(selectedColor = AccentCyan))
+                    Text(label, color = TextPrimary, fontSize = 12.sp)
+                }
+            }
+        }
+        if (lockMode == "PASSWORD") {
+            OutlinedTextField(
+                value = password,
+                onValueChange = onPasswordChange,
+                label = { Text("Senha para alterar/remover") },
+                visualTransformation = PasswordVisualTransformation(),
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AccentCyan, unfocusedTextColor = TextPrimary, focusedTextColor = TextPrimary)
+            )
+        } else if (lockMode == "TIME") {
+            OutlinedTextField(
+                value = days,
+                onValueChange = { if (it.all { c -> c.isDigit() }) onDaysChange(it) },
+                label = { Text("Dias de blindagem") },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AccentCyan, unfocusedTextColor = TextPrimary, focusedTextColor = TextPrimary)
+            )
+        }
+    }
+}
+
+@Composable
+fun AppLimitDialog(app: UsageLimitAppUi, onDismiss: () -> Unit, onSave: (Int?, Boolean, String, String?, Long?) -> Unit) {
     var minutesText by remember { mutableStateOf(app.currentLimitMinutes?.toString() ?: "") }
     var isEnabled by remember { mutableStateOf(app.isEnabled || app.currentLimitMinutes == null) }
+    var lockMode by remember { mutableStateOf(app.lockMode) }
+    var password by remember { mutableStateOf("") }
+    var days by remember { mutableStateOf("") }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Configurar Limite", color = TextPrimary, fontWeight = FontWeight.Bold) },
         text = {
             Column {
-                Text("Defina o limite diário para ${app.appName}.", color = TextSecondary, fontSize = 14.sp)
-                Spacer(Modifier.height(16.dp))
                 OutlinedTextField(
                     value = minutesText,
                     onValueChange = { if (it.isEmpty() || it.all { c -> c.isDigit() }) minutesText = it },
@@ -558,53 +635,84 @@ fun AppLimitDialog(app: UsageLimitAppUi, onDismiss: () -> Unit, onSave: (Int?, B
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AccentCyan, unfocusedTextColor = TextPrimary, focusedTextColor = TextPrimary),
                     modifier = Modifier.fillMaxWidth()
                 )
-                Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(isEnabled, { isEnabled = it }, colors = CheckboxDefaults.colors(AccentCyan, DarkBg))
                     Text("Ativar este limite", color = TextPrimary, fontSize = 14.sp)
                 }
+                Spacer(Modifier.height(16.dp))
+                LimitSecuritySection(lockMode, { lockMode = it }, password, { password = it }, days, { days = it })
             }
         },
-        confirmButton = { TextButton(onClick = { onSave(minutesText.toIntOrNull(), isEnabled) }) { Text("Salvar", color = AccentCyan) } },
+        confirmButton = { 
+            TextButton(onClick = { 
+                val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) java.security.MessageDigest.getInstance("SHA-256").digest(password.toByteArray()).joinToString("") { "%02x".format(it) } else app.lockPasswordHash
+                val until = if (lockMode == "TIME" && days.isNotEmpty()) System.currentTimeMillis() + TimeUnit.DAYS.toMillis(days.toLong()) else app.lockUntilTimestamp
+                onSave(minutesText.toIntOrNull(), isEnabled, lockMode, hash, until) 
+            }) { Text("Salvar", color = AccentCyan) } 
+        },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar", color = TextHint) } },
         containerColor = DarkSurface
     )
 }
 
 @Composable
-fun AddWebsiteLimitDialog(onDismiss: () -> Unit, onSave: (String, Int) -> Unit) {
+fun AddWebsiteLimitDialog(onDismiss: () -> Unit, onSave: (String, Int, String, String?, Long?) -> Unit) {
     var domain by remember { mutableStateOf("") }
     var minutesText by remember { mutableStateOf("") }
+    var lockMode by remember { mutableStateOf("NONE") }
+    var password by remember { mutableStateOf("") }
+    var days by remember { mutableStateOf("") }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Adicionar Site", color = TextPrimary, fontWeight = FontWeight.Bold) },
         text = {
             Column {
                 OutlinedTextField(domain, { domain = it }, label = { Text("Domínio") }, modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(12.dp))
                 OutlinedTextField(minutesText, { if (it.all { c -> c.isDigit() }) minutesText = it }, label = { Text("Minutos") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(16.dp))
+                LimitSecuritySection(lockMode, { lockMode = it }, password, { password = it }, days, { days = it })
             }
         },
-        confirmButton = { TextButton({ if (domain.isNotBlank()) onSave(domain, minutesText.toIntOrNull() ?: 0) }) { Text("Salvar", color = AccentCyan) } },
+        confirmButton = { 
+            TextButton({ 
+                if (domain.isNotBlank()) {
+                    val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) java.security.MessageDigest.getInstance("SHA-256").digest(password.toByteArray()).joinToString("") { "%02x".format(it) } else null
+                    val until = if (lockMode == "TIME" && days.isNotEmpty()) System.currentTimeMillis() + TimeUnit.DAYS.toMillis(days.toLong()) else null
+                    onSave(domain, minutesText.toIntOrNull() ?: 0, lockMode, hash, until)
+                }
+            }) { Text("Salvar", color = AccentCyan) } 
+        },
         containerColor = DarkSurface
     )
 }
 
 @Composable
-fun EditWebsiteLimitDialog(site: WebsiteLimitUi, onDismiss: () -> Unit, onSave: (Int, Boolean) -> Unit) {
+fun EditWebsiteLimitDialog(site: WebsiteLimitUi, onDismiss: () -> Unit, onSave: (Int, Boolean, String, String?, Long?) -> Unit) {
     var minutesText by remember { mutableStateOf(site.dailyLimitMinutes?.toString() ?: "") }
     var isEnabled by remember { mutableStateOf(site.isEnabled) }
+    var lockMode by remember { mutableStateOf(site.lockMode) }
+    var password by remember { mutableStateOf("") }
+    var days by remember { mutableStateOf("") }
+
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Editar Limite", color = TextPrimary, fontWeight = FontWeight.Bold) },
         text = {
             Column {
                 OutlinedTextField(minutesText, { if (it.all { c -> c.isDigit() }) minutesText = it }, label = { Text("Minutos") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(12.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(isEnabled, { isEnabled = it }); Text("Ativar") }
+                Spacer(Modifier.height(16.dp))
+                LimitSecuritySection(lockMode, { lockMode = it }, password, { password = it }, days, { days = it })
             }
         },
-        confirmButton = { TextButton({ onSave(minutesText.toIntOrNull() ?: 0, isEnabled) }) { Text("Salvar", color = AccentCyan) } },
+        confirmButton = { 
+            TextButton({ 
+                val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) java.security.MessageDigest.getInstance("SHA-256").digest(password.toByteArray()).joinToString("") { "%02x".format(it) } else site.lockPasswordHash
+                val until = if (lockMode == "TIME" && days.isNotEmpty()) System.currentTimeMillis() + TimeUnit.DAYS.toMillis(days.toLong()) else site.lockUntilTimestamp
+                onSave(minutesText.toIntOrNull() ?: 0, isEnabled, lockMode, hash, until) 
+            }) { Text("Salvar", color = AccentCyan) } 
+        },
         containerColor = DarkSurface
     )
 }

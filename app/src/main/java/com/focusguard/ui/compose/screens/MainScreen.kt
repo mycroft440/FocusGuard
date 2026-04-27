@@ -4,6 +4,7 @@ import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
@@ -47,6 +48,7 @@ fun MainScreen(
     onIntruderLogClick: () -> Unit,
     onLanguageClick: () -> Unit,
     onPasswordManagementClick: () -> Unit,
+    onBlockCustomizationClick: () -> Unit,
     onAppUsageLimitsClick: () -> Unit,
     authManager: AuthManager,
     usageStatsContent: @Composable () -> Unit
@@ -127,6 +129,24 @@ fun MainScreen(
                         scope.launch { drawerState.close() }
                     }
                 )
+                DrawerMenuButton(
+                    icon = Icons.Default.Palette,
+                    label = "Personalizar Bloqueio",
+                    iconTint = AccentCyan,
+                    onClick = {
+                        onBlockCustomizationClick()
+                        scope.launch { drawerState.close() }
+                    }
+                )
+                DrawerMenuButton(
+                    icon = Icons.Default.DataUsage,
+                    label = "Limites de Uso",
+                    iconTint = AccentCyan,
+                    onClick = {
+                        onAppUsageLimitsClick()
+                        scope.launch { drawerState.close() }
+                    }
+                )
 
                 Spacer(modifier = Modifier.height(12.dp))
                 Divider(color = CardBorder, modifier = Modifier.padding(horizontal = 20.dp))
@@ -182,7 +202,6 @@ fun MainScreen(
                             onPasswordSessionClick = onPasswordSessionClick,
                             onTimeSessionClick = onTimeSessionClick,
                             onActiveSessionsClick = onActiveSessionsClick,
-                            onAppUsageLimitsClick = onAppUsageLimitsClick,
                             pagerHint = true
                         )
                         1 -> usageStatsContent()
@@ -260,7 +279,6 @@ fun HomeContent(
     onPasswordSessionClick: () -> Unit,
     onTimeSessionClick: () -> Unit,
     onActiveSessionsClick: () -> Unit,
-    onAppUsageLimitsClick: () -> Unit,
     pagerHint: Boolean
 ) {
     var visible by remember { mutableStateOf(false) }
@@ -351,17 +369,6 @@ fun HomeContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        AnimatedVisibility(
-            visible = visible,
-            enter = fadeIn(animationSpec = tween(500, delayMillis = 500)) + slideInVertically(animationSpec = tween(500, delayMillis = 500)) { it / 3 }
-        ) {
-            SessionCard(
-                icon = Icons.Outlined.DataUsage,
-                title = "Limites de Uso",
-                subtitle = "Defina tempo máximo diário para apps e sites",
-                onClick = onAppUsageLimitsClick
-            )
-        }
 
         Spacer(modifier = Modifier.height(24.dp))
 

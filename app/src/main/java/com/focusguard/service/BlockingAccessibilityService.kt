@@ -280,10 +280,34 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun launchBlockScreen(blockedName: String) {
+        performGlobalAction(GLOBAL_ACTION_HOME)
+        val intent = android.content.Intent(this, com.focusguard.BlockScreenActivity::class.java).apply {
+            putExtra("BLOCKED_NAME", blockedName)
+            flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+        }
+        try {
+            startActivity(intent)
+        } catch (e: Exception) {
+            FocusGuardLogger.logError("BlockingService", "Erro ao iniciar tela de bloqueio", e)
+        }
+    }
+
+    private fun blockWebsite(domain: String? = null) {
+        val blockedName = domain ?: "Este site"
+        launchBlockScreen(blockedName)
+    }
+
     private fun blockApp(packageName: String) {
         FocusGuardLogger.log("BlockingService", "App bloqueado: $packageName")
-        performGlobalAction(GLOBAL_ACTION_HOME)
-        showToastThrottled("App bloqueado pelo FocusGuard")
+        val appName = try {
+            val pm = packageManager
+            val info = pm.getApplicationInfo(packageName, 0)
+            pm.getApplicationLabel(info).toString()
+        } catch (e: Exception) {
+            packageName
+        }
+        launchBlockScreen(appName)
     }
 
     private fun checkAndBlockWebsite(source: AccessibilityNodeInfo) {
@@ -293,7 +317,8 @@ class BlockingAccessibilityService : AccessibilityService() {
             if (addressBarNode?.text != null) {
                 val url = addressBarNode.text.toString()
                 if (url.isNotEmpty() && isWebsiteBlocked(url)) {
-                    blockWebsite()
+                    val domain = WebsiteBlocker.extractDomain(url).lowercase()
+                    blockWebsite(domain)
                 }
             }
         } catch (_: Exception) {} finally {
@@ -312,7 +337,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                     val matchedDomain = findMatchingLimitedDomain(domain)
                     if (matchedDomain != null) {
                         if (websiteExceededDomains.contains(matchedDomain)) {
-                            blockWebsite()
+                            blockWebsite(matchedDomain)
                             addressBarNode.recycle()
                             source.recycle()
                             return
@@ -388,11 +413,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         } catch (_: Exception) { return false }
     }
 
-    private fun blockWebsite() {
-        performGlobalAction(GLOBAL_ACTION_HOME)
-        showToastThrottled("Site bloqueado pelo FocusGuard")
-    }
-    
     private fun showToastThrottled(message: String) {
         val now = System.currentTimeMillis()
         if (now - lastToastTime > 3000) {
