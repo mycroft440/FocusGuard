@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FocusGuard</string>
+    <string name="accessibility_service_description">Service d\'accessibilité FocusGuard - Bloque les applications et les sites Web distrayants</string>
+    <string name="home_title">FocusGuard</string>
+    <string name="blocked_apps_title">Applications bloquées</string>
+    <string name="blocked_websites_title">Sites Web bloqués</string>
+    <string name="add_app_button">Ajouter une application</string>
+    <string name="add_website_button">Ajouter un site Web</string>
+    <string name="remove_button">Supprimer</string>
+    <string name="enable_accessibility_service">Veuillez activer le service d\'accessibilité dans les paramètres</string>
+    <string name="settings_title">Paramètres</string>
+    <string name="about_title">À propos</string>
+    <string name="manage_passwords">Gérer les mots de passe de l\'application</string>
+    <string name="old_password">Ancien mot de passe</string>
+    <string name="new_password">Nouveau mot de passe</string>
+    <string name="save">Sauvegarder</string>
+    <string name="cancel">Annuler</string>
+    <string name="nuclear_protection">Protection nucléaire</string>
+    <string name="give_permissions">Accordez les autorisations restantes ici</string>
+    <string name="focus_subtitle">Concentration totale, zéro distraction</string>
+    <string name="password_block">Blocage par mot de passe</string>
+    <string name="password_block_sub">Fixe ou période (Nécessite un mot de passe pour changer)</string>
+    <string name="time_block">Blocage temporel</string>
+    <string name="time_block_sub">Jours et heures (Impossible à annuler)</string>
+    <string name="view_active_sessions">Voir les sessions actives</string>
+    <string name="swipe_hint">← Balayez pour voir les statistiques →</string>
+    
+    <!-- Éléments du menu -->
+    <string name="limits_and_security">Limites et sécurité</string>
+    <string name="intruder_log">Journal des intrus</string>
+    <string name="language_settings">Langue</string>
+</resources>

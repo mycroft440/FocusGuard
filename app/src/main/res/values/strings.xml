@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">FocusGuard</string>
-    <string name="accessibility_service_description">FocusGuard Accessibility Service - Blocks distracting apps and websites</string>
+    <string name="accessibility_service_description">Serviço de Acessibilidade FocusGuard - Bloqueia apps e sites que distraem</string>
     <string name="home_title">FocusGuard</string>
-    <string name="blocked_apps_title">Blocked Apps</string>
-    <string name="blocked_websites_title">Blocked Websites</string>
-    <string name="add_app_button">Add App</string>
-    <string name="add_website_button">Add Website</string>
-    <string name="remove_button">Remove</string>
-    <string name="enable_accessibility_service">Please enable the Accessibility Service in Settings</string>
-    <string name="settings_title">Settings</string>
-    <string name="about_title">About</string>
+    <string name="blocked_apps_title">Apps Bloqueados</string>
+    <string name="blocked_websites_title">Sites Bloqueados</string>
+    <string name="add_app_button">Adicionar App</string>
+    <string name="add_website_button">Adicionar Site</string>
+    <string name="remove_button">Remover</string>
+    <string name="enable_accessibility_service">Por favor, ative o Serviço de Acessibilidade nas Configurações</string>
+    <string name="settings_title">Configurações</string>
+    <string name="about_title">Sobre</string>
     <string name="manage_passwords">Gerenciar Senhas do App</string>
     <string name="old_password">Senha Antiga</string>
     <string name="new_password">Nova Senha</string>
@@ -26,7 +26,7 @@
     <string name="view_active_sessions">Ver Sessões Ativas</string>
     <string name="swipe_hint">← Deslize para ver estatísticas →</string>
     
-    <!-- New Hamburger Menu Items -->
+    <!-- Itens do Menu -->
     <string name="limits_and_security">Limites e Segurança</string>
     <string name="intruder_log">Registro de Intrusos</string>
     <string name="language_settings">Idioma</string>

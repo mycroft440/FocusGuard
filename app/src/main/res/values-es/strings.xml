@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">FocusGuard</string>
-    <string name="accessibility_service_description">FocusGuard Accessibility Service - Blocks distracting apps and websites</string>
+    <string name="accessibility_service_description">Servicio de Accesibilidad FocusGuard - Bloquea apps e sitios que distraen</string>
     <string name="home_title">FocusGuard</string>
-    <string name="blocked_apps_title">Blocked Apps</string>
-    <string name="blocked_websites_title">Blocked Websites</string>
-    <string name="add_app_button">Add App</string>
-    <string name="add_website_button">Add Website</string>
-    <string name="remove_button">Remove</string>
-    <string name="enable_accessibility_service">Please enable the Accessibility Service in Settings</string>
-    <string name="settings_title">Settings</string>
-    <string name="about_title">About</string>
+    <string name="blocked_apps_title">Apps Bloqueadas</string>
+    <string name="blocked_websites_title">Sitios Bloqueados</string>
+    <string name="add_app_button">Añadir App</string>
+    <string name="add_website_button">Añadir Sitio</string>
+    <string name="remove_button">Eliminar</string>
+    <string name="enable_accessibility_service">Por favor, active el Servicio de Accesibilidad en los Ajustes</string>
+    <string name="settings_title">Ajustes</string>
+    <string name="about_title">Acerca de</string>
     <string name="manage_passwords">Gestionar Contraseñas</string>
     <string name="old_password">Contraseña Antigua</string>
     <string name="new_password">Nueva Contraseña</string>
@@ -20,13 +20,13 @@
     <string name="give_permissions">Otorga el resto de permisos aquí</string>
     <string name="focus_subtitle">Enfoque Total, Cero Distracciones</string>
     <string name="password_block">Bloqueo por Contraseña</string>
-    <string name="password_block_sub">Fijo o Periodo (Requiere contraseña para cambiar)</string>
+    <string name="password_block_sub">Fijo o Período (Requiere contraseña para cambiar)</string>
     <string name="time_block">Bloqueo por Tiempo</string>
     <string name="time_block_sub">Días y Horas (Imposible de cancelar)</string>
     <string name="view_active_sessions">Ver Sesiones Activas</string>
     <string name="swipe_hint">← Desliza para ver estadísticas →</string>
     
-    <!-- New Hamburger Menu Items -->
+    <!-- Itens do Menu -->
     <string name="limits_and_security">Límites y Seguridad</string>
     <string name="intruder_log">Registro de Intrusos</string>
     <string name="language_settings">Idioma</string>
