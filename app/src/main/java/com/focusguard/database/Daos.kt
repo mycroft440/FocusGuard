@@ -151,3 +151,18 @@ interface WebsiteUsageLimitDao {
     @Query("SELECT * FROM website_usage_limits WHERE domain = :domain LIMIT 1")
     suspend fun getByDomain(domain: String): WebsiteUsageLimit?
 }
+
+@Dao
+interface DailyUsageStatDao {
+    @Query("SELECT * FROM daily_usage_stats WHERE identifier = :identifier AND date = :date")
+    suspend fun getStat(identifier: String, date: String): DailyUsageStat?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(stat: DailyUsageStat)
+
+    @Query("SELECT * FROM daily_usage_stats WHERE date = :date")
+    suspend fun getStatsForDate(date: String): List<DailyUsageStat>
+
+    @Query("DELETE FROM daily_usage_stats WHERE date < :date")
+    suspend fun deleteOldStats(date: String)
+}

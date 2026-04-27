@@ -40,13 +40,15 @@ data class UsageLimitAppUi(
     val appName: String,
     val icon: android.graphics.drawable.Drawable?,
     val currentLimitMinutes: Int?,
-    val isEnabled: Boolean
+    val isEnabled: Boolean,
+    val usageMs: Long = 0
 )
 
 data class WebsiteLimitUi(
     val domain: String,
     val dailyLimitMinutes: Int?,
-    val isEnabled: Boolean
+    val isEnabled: Boolean,
+    val usageMs: Long = 0
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -127,8 +129,17 @@ fun AppLimitsTab() {
             val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER)
             val resolveInfos = pm.queryIntentActivities(intent, 0)
 
-            val db = AppDatabase.getDatabase(context).appUsageLimitDao()
-            val existingLimits = db.getAll().associateBy { it.packageName }
+            val db = AppDatabase.getDatabase(context)
+            val limitDao = db.appUsageLimitDao()
+            val existingLimits = limitDao.getAll().associateBy { it.packageName }
+            
+            // Carregar uso real (via UsageStatsManager para apps por ser mais preciso que o nosso DB interno para apps)
+            val usageStatsManager = context.getSystemService(android.content.Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
+            val cal = java.util.Calendar.getInstance()
+            cal.set(java.util.Calendar.HOUR_OF_DAY, 0)
+            cal.set(java.util.Calendar.MINUTE, 0)
+            cal.set(java.util.Calendar.SECOND, 0)
+            val stats = usageStatsManager.queryAndAggregateUsageStats(cal.timeInMillis, System.currentTimeMillis())
 
             val loadedApps = resolveInfos.mapNotNull { info ->
                 val packageName = info.activityInfo.packageName
@@ -141,7 +152,8 @@ fun AppLimitsTab() {
                     appName = appName,
                     icon = icon,
                     currentLimitMinutes = limit?.dailyLimitMinutes,
-                    isEnabled = limit?.isEnabled ?: false
+                    isEnabled = limit?.isEnabled ?: false,
+                    usageMs = stats[packageName]?.totalTimeInForeground ?: 0L
                 )
             }.sortedBy { it.appName }
 
@@ -258,11 +270,24 @@ fun WebsiteLimitsTab() {
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            val db = AppDatabase.getDatabase(context).websiteUsageLimitDao()
-            val allLimits = db.getAll()
-            val loaded = allLimits.map { WebsiteLimitUi(it.domain, it.dailyLimitMinutes, it.isEnabled) }
+            val db = AppDatabase.getDatabase(context)
+            val limitDao = db.websiteUsageLimitDao()
+            val statDao = db.dailyUsageStatDao()
+            val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+            
+            val allLimits = limitDao.getAll()
+            val usageStats = statDao.getStatsForDate(today).associate { it.identifier to it.timeSpentMs }
+
+            val loadedSites = allLimits.map { limit ->
+                WebsiteLimitUi(
+                    domain = limit.domain,
+                    dailyLimitMinutes = limit.dailyLimitMinutes,
+                    isEnabled = limit.isEnabled,
+                    usageMs = usageStats[limit.domain] ?: 0L
+                )
+            }
             withContext(Dispatchers.Main) {
-                sites = loaded
+                sites = loadedSites
                 isLoading = false
             }
         }
@@ -389,7 +414,21 @@ fun UsageLimitItem(app: UsageLimitAppUi, onClick: () -> Unit) {
                 Text(app.appName, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
                 if (app.currentLimitMinutes != null) {
                     val status = if (app.isEnabled) "Ativo" else "Desativado"
-                    Text("Limite: ${app.currentLimitMinutes} min/dia ($status)", fontSize = 12.sp, color = if (app.isEnabled) AccentCyan else TextHint)
+                    val usedMin = app.usageMs / 60000
+                    val progress = if (app.currentLimitMinutes > 0) (usedMin.toFloat() / app.currentLimitMinutes).coerceIn(0f, 1f) else 0f
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("$usedMin / ${app.currentLimitMinutes} min", fontSize = 12.sp, color = if (app.isEnabled) AccentCyan else TextHint)
+                        Spacer(modifier = Modifier.weight(1f))
+                        Text(status, fontSize = 11.sp, color = if (app.isEnabled) AccentCyan else TextHint)
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LinearProgressIndicator(
+                        progress = progress,
+                        modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                        color = if (progress >= 0.9f) DangerRed else AccentCyan,
+                        trackColor = DarkCardElevated
+                    )
                 } else {
                     Text("Sem limite configurado", fontSize = 12.sp, color = TextHint)
                 }
@@ -418,7 +457,21 @@ fun WebsiteLimitItem(site: WebsiteLimitUi, onClick: () -> Unit, onDelete: () -> 
                 Text(site.domain, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
                 if (site.dailyLimitMinutes != null) {
                     val status = if (site.isEnabled) "Ativo" else "Desativado"
-                    Text("Limite: ${site.dailyLimitMinutes} min/dia ($status)", fontSize = 12.sp, color = if (site.isEnabled) AccentCyan else TextHint)
+                    val usedMin = site.usageMs / 60000
+                    val progress = if (site.dailyLimitMinutes > 0) (usedMin.toFloat() / site.dailyLimitMinutes).coerceIn(0f, 1f) else 0f
+
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("$usedMin / ${site.dailyLimitMinutes} min", fontSize = 12.sp, color = if (site.isEnabled) AccentCyan else TextHint)
+                        Spacer(modifier = Modifier.weight(1f))
+                        Text(status, fontSize = 11.sp, color = if (site.isEnabled) AccentCyan else TextHint)
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LinearProgressIndicator(
+                        progress = progress,
+                        modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+                        color = if (progress >= 0.9f) DangerRed else AccentCyan,
+                        trackColor = DarkCardElevated
+                    )
                 }
             }
             IconButton(onClick = onDelete) {

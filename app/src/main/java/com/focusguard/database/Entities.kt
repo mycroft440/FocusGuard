@@ -74,3 +74,11 @@ data class WebsiteUsageLimit(
     val dailyLimitMinutes: Int,
     val isEnabled: Boolean = true
 )
+
+@Entity(tableName = "daily_usage_stats", primaryKeys = ["identifier", "date"])
+data class DailyUsageStat(
+    val identifier: String, // PackageName ou Domain
+    val date: String,       // Formato yyyy-MM-dd
+    val type: String,       // "APP" ou "WEBSITE"
+    var timeSpentMs: Long
+)
