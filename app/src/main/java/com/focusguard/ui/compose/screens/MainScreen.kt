@@ -191,6 +191,7 @@ fun MainScreen(
                             onPasswordSessionClick = onPasswordSessionClick,
                             onTimeSessionClick = onTimeSessionClick,
                             onActiveSessionsClick = onActiveSessionsClick,
+                            onAppUsageLimitsClick = onAppUsageLimitsClick,
                             pagerHint = true
                         )
                         1 -> usageStatsContent()
@@ -268,6 +269,7 @@ fun HomeContent(
     onPasswordSessionClick: () -> Unit,
     onTimeSessionClick: () -> Unit,
     onActiveSessionsClick: () -> Unit,
+    onAppUsageLimitsClick: () -> Unit,
     pagerHint: Boolean
 ) {
     var visible by remember { mutableStateOf(false) }
@@ -353,6 +355,20 @@ fun HomeContent(
                 title = stringResource(id = R.string.time_block),
                 subtitle = stringResource(id = R.string.time_block_sub),
                 onClick = onTimeSessionClick
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(animationSpec = tween(500, delayMillis = 500)) + slideInVertically(animationSpec = tween(500, delayMillis = 500)) { it / 3 }
+        ) {
+            SessionCard(
+                icon = Icons.Outlined.DataUsage,
+                title = "Limites de Uso",
+                subtitle = "Defina tempo máximo diário para apps e sites",
+                onClick = onAppUsageLimitsClick
             )
         }
 

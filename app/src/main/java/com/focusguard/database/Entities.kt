@@ -66,3 +66,11 @@ data class AppUsageLimit(
     val dailyLimitMinutes: Int,
     val isEnabled: Boolean = true
 )
+
+@Entity(tableName = "website_usage_limits")
+data class WebsiteUsageLimit(
+    @PrimaryKey
+    val domain: String,
+    val dailyLimitMinutes: Int,
+    val isEnabled: Boolean = true
+)

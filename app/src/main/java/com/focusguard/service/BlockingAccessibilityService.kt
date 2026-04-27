@@ -46,6 +46,13 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var appUsageLimits: Map<String, Int> = emptyMap()
     private val usageExceededApps = mutableSetOf<String>()
 
+    // Website usage limit tracking
+    private var websiteUsageLimits: Map<String, Int> = emptyMap()
+    private val websiteExceededDomains = mutableSetOf<String>()
+    private val websiteDailyUsageMs = mutableMapOf<String, Long>()
+    private var currentBrowsingDomain: String? = null
+    private var currentBrowsingStartMs: Long = 0L
+
     // Guard Lock against Coroutine Flood
     private val isRefreshing = AtomicBoolean(false)
 
@@ -133,11 +140,15 @@ class BlockingAccessibilityService : AccessibilityService() {
                 return
             }
 
-            // 4. Bloqueio de Sessão Padrão (FocusGuard)
-            if (!isBlockingSessionActive) return
-
+            // 4. Bloqueio de Sessão Padrão ou Limite de Sites
             when (event.eventType) {
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                    // Se saiu do browser, finaliza tracking de tempo do site
+                    if (packageName != null && !browserPackages.contains(packageName)) {
+                        flushBrowsingTime()
+                    }
+
+                    if (!isBlockingSessionActive) return
                     handleWindowStateChanged(event)
                 }
                 AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
@@ -145,13 +156,19 @@ class BlockingAccessibilityService : AccessibilityService() {
                     
                     // SOTA Optimization: Skip UI scraping for Enterprise Managed Browsers
                     if (::deviceOwnerManager.isInitialized && deviceOwnerManager.isDeviceOwnerActive()) {
-                        if (packageName == "com.android.chrome" || packageName == "com.microsoft.emmx") return
+                        if (packageName == "com.android.chrome" || packageName == "com.microsoft.emmx") {
+                            if (isBlockingSessionActive) return
+                        }
                     }
                     
                     val now = System.currentTimeMillis()
                     if (now - lastScrollCheck > 500) {
                         lastScrollCheck = now
-                        handleBrowserEvent(event)
+                        // Tracking de tempo do site atual + verificação de limites
+                        trackAndCheckWebsiteUsage(event)
+                        if (isBlockingSessionActive) {
+                            handleBrowserEvent(event)
+                        }
                     }
                 }
             }
@@ -197,30 +214,59 @@ class BlockingAccessibilityService : AccessibilityService() {
     private suspend fun checkUsageLimits() {
         kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
             try {
+                // App limits
                 appUsageLimits = database.appUsageLimitDao().getAllEnabled().associate { it.packageName to it.dailyLimitMinutes }
-                if (appUsageLimits.isEmpty()) return@withContext
+                
+                if (appUsageLimits.isNotEmpty()) {
+                    val usageStatsManager = getSystemService(android.content.Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
+                    val calendar = java.util.Calendar.getInstance()
+                    calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+                    calendar.set(java.util.Calendar.MINUTE, 0)
+                    calendar.set(java.util.Calendar.SECOND, 0)
+                    val startTime = calendar.timeInMillis
+                    val endTime = System.currentTimeMillis()
 
-                val usageStatsManager = getSystemService(android.content.Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
-                val calendar = java.util.Calendar.getInstance()
-                calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
-                calendar.set(java.util.Calendar.MINUTE, 0)
-                calendar.set(java.util.Calendar.SECOND, 0)
-                val startTime = calendar.timeInMillis
-                val endTime = System.currentTimeMillis()
-
-                val stats = usageStatsManager.queryAndAggregateUsageStats(startTime, endTime)
-                for ((packageName, limitMinutes) in appUsageLimits) {
-                    val limitMillis = limitMinutes * 60 * 1000L
-                    val usage = stats[packageName]?.totalTimeInForeground ?: 0L
-                    
-                    if (usage >= limitMillis) {
-                        if (!usageExceededApps.contains(packageName)) {
-                            usageExceededApps.add(packageName)
-                            com.focusguard.utils.FocusGuardLogger.log("Limits", "App $packageName excedeu o limite diário de $limitMinutes min")
+                    val stats = usageStatsManager.queryAndAggregateUsageStats(startTime, endTime)
+                    for ((packageName, limitMinutes) in appUsageLimits) {
+                        val limitMillis = limitMinutes * 60 * 1000L
+                        val usage = stats[packageName]?.totalTimeInForeground ?: 0L
+                        
+                        if (usage >= limitMillis) {
+                            if (!usageExceededApps.contains(packageName)) {
+                                usageExceededApps.add(packageName)
+                                com.focusguard.utils.FocusGuardLogger.log("Limits", "App $packageName excedeu o limite diário de $limitMinutes min")
+                            }
+                        } else {
+                            usageExceededApps.remove(packageName)
                         }
-                    } else {
-                        usageExceededApps.remove(packageName)
                     }
+                }
+
+                // Website limits
+                websiteUsageLimits = database.websiteUsageLimitDao().getAllEnabled().associate { it.domain to it.dailyLimitMinutes }
+                
+                if (websiteUsageLimits.isNotEmpty()) {
+                    for ((domain, limitMinutes) in websiteUsageLimits) {
+                        val limitMillis = limitMinutes * 60 * 1000L
+                        val usage = websiteDailyUsageMs[domain] ?: 0L
+                        
+                        if (usage >= limitMillis) {
+                            if (!websiteExceededDomains.contains(domain)) {
+                                websiteExceededDomains.add(domain)
+                                com.focusguard.utils.FocusGuardLogger.log("Limits", "Site $domain excedeu o limite diário de $limitMinutes min (${usage / 60000}min usados)")
+                            }
+                        } else {
+                            websiteExceededDomains.remove(domain)
+                        }
+                    }
+                }
+
+                // Reset diário à meia-noite
+                val cal = java.util.Calendar.getInstance()
+                if (cal.get(java.util.Calendar.HOUR_OF_DAY) == 0 && cal.get(java.util.Calendar.MINUTE) < 2) {
+                    websiteDailyUsageMs.clear()
+                    websiteExceededDomains.clear()
+                    usageExceededApps.clear()
                 }
             } catch (e: Exception) {
                 com.focusguard.utils.FocusGuardLogger.logError("BlockingService", "Erro ao verificar limites de uso", e)
@@ -286,6 +332,70 @@ class BlockingAccessibilityService : AccessibilityService() {
         } finally {
             addressBarNode?.recycle()
         }
+    }
+
+    private fun trackAndCheckWebsiteUsage(event: AccessibilityEvent) {
+        if (websiteUsageLimits.isEmpty()) return
+        val source = event.source ?: return
+        try {
+            val addressBarNode = WebsiteBlocker.findAddressBarNode(source)
+            if (addressBarNode?.text != null) {
+                val url = addressBarNode.text.toString()
+                val domain = WebsiteBlocker.extractDomain(url).lowercase()
+                if (domain.length >= 4) {
+                    // Encontrar qual domínio limitado corresponde
+                    val matchedDomain = findMatchingLimitedDomain(domain)
+                    if (matchedDomain != null) {
+                        // Verificar se já excedeu
+                        if (websiteExceededDomains.contains(matchedDomain)) {
+                            blockWebsite()
+                            addressBarNode.recycle()
+                            source.recycle()
+                            return
+                        }
+                        // Tracking de tempo
+                        if (currentBrowsingDomain == matchedDomain) {
+                            // Continua no mesmo domínio, nada a fazer
+                        } else {
+                            // Mudou de domínio, salvar tempo anterior
+                            flushBrowsingTime()
+                            currentBrowsingDomain = matchedDomain
+                            currentBrowsingStartMs = System.currentTimeMillis()
+                        }
+                    } else {
+                        flushBrowsingTime()
+                    }
+                }
+            }
+            addressBarNode?.recycle()
+        } catch (_: Exception) {
+        } finally {
+            source.recycle()
+        }
+    }
+
+    private fun findMatchingLimitedDomain(domain: String): String? {
+        if (websiteUsageLimits.containsKey(domain)) return domain
+        var current = domain
+        while (current.contains(".")) {
+            val firstDot = current.indexOf('.')
+            if (firstDot == -1 || firstDot == current.lastIndex) break
+            current = current.substring(firstDot + 1)
+            if (websiteUsageLimits.containsKey(current)) return current
+        }
+        return null
+    }
+
+    private fun flushBrowsingTime() {
+        val domain = currentBrowsingDomain ?: return
+        if (currentBrowsingStartMs > 0) {
+            val elapsed = System.currentTimeMillis() - currentBrowsingStartMs
+            if (elapsed in 1..600_000) { // Máximo 10 min por flush para evitar drift
+                websiteDailyUsageMs[domain] = (websiteDailyUsageMs[domain] ?: 0L) + elapsed
+            }
+        }
+        currentBrowsingDomain = null
+        currentBrowsingStartMs = 0L
     }
 
     private fun isWebsiteBlocked(url: String): Boolean {

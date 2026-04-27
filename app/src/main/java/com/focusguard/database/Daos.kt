@@ -133,3 +133,21 @@ interface AppUsageLimitDao {
     @Query("SELECT * FROM app_usage_limits WHERE packageName = :packageName LIMIT 1")
     suspend fun getByPackageName(packageName: String): AppUsageLimit?
 }
+
+@Dao
+interface WebsiteUsageLimitDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(limit: WebsiteUsageLimit)
+
+    @Delete
+    suspend fun delete(limit: WebsiteUsageLimit)
+
+    @Query("SELECT * FROM website_usage_limits")
+    suspend fun getAll(): List<WebsiteUsageLimit>
+
+    @Query("SELECT * FROM website_usage_limits WHERE isEnabled = 1")
+    suspend fun getAllEnabled(): List<WebsiteUsageLimit>
+
+    @Query("SELECT * FROM website_usage_limits WHERE domain = :domain LIMIT 1")
+    suspend fun getByDomain(domain: String): WebsiteUsageLimit?
+}
