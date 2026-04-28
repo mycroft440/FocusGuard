@@ -27,6 +27,17 @@ class CameraManager(private val context: Context) {
             onComplete(null)
             return
         }
+
+        // Safety timeout: reset flag after 5 seconds if no callback is received
+        val timeoutHandler = android.os.Handler(android.os.Looper.getMainLooper())
+        val timeoutRunnable = Runnable {
+            if (isCapturing.get()) {
+                Log.w("CameraManager", "Capture timeout reached, resetting flag")
+                isCapturing.set(false)
+                onComplete(null)
+            }
+        }
+        timeoutHandler.postDelayed(timeoutRunnable, 5000)
         
         val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
 
@@ -60,6 +71,9 @@ class CameraManager(private val context: Context) {
                 )
 
                 takePhoto { file ->
+                    // Cancel timeout as we got a response
+                    timeoutHandler.removeCallbacks(timeoutRunnable)
+                    
                     // Unbind after capture to release camera resources
                     try {
                         cameraProvider.unbindAll()
@@ -69,6 +83,7 @@ class CameraManager(private val context: Context) {
                 }
 
             } catch (exc: Exception) {
+                timeoutHandler.removeCallbacks(timeoutRunnable)
                 Log.e("CameraManager", "Use case binding failed", exc)
                 isCapturing.set(false)
                 onComplete(null)

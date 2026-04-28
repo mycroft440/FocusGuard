@@ -18,12 +18,17 @@ class SessionExpirationReceiver : BroadcastReceiver() {
             val sessionId = intent.getIntExtra("SESSION_ID", -1)
             FocusGuardLogger.log("ExpirationReceiver", "Alarme recebido para expiração da sessão: $sessionId")
             
+            val pendingResult = goAsync()
             // Ativamos o gatilho de limpeza no SessionManager
             scope.launch {
-                val sessionManager = BlockingSessionManager.getInstance(context)
-                // getActiveSessions já contém a lógica de detectar expirações e chamar checkAndEnforce
-                sessionManager.getActiveSessions()
-                FocusGuardLogger.log("ExpirationReceiver", "Limpeza de estado executada para sessão $sessionId")
+                try {
+                    val sessionManager = BlockingSessionManager.getInstance(context)
+                    // getActiveSessions já contém a lógica de detectar expirações e chamar checkAndEnforce
+                    sessionManager.getActiveSessions()
+                    FocusGuardLogger.log("ExpirationReceiver", "Limpeza de estado executada para sessão $sessionId")
+                } finally {
+                    pendingResult.finish()
+                }
             }
         }
     }

@@ -7,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface BlockedAppDao {
@@ -70,6 +71,9 @@ interface BlockSessionDao {
     @Query("SELECT * FROM block_sessions WHERE isActive = 1 ORDER BY startTime DESC LIMIT 1")
     suspend fun getActiveSession(): BlockSession?
 
+    @Query("SELECT * FROM block_sessions WHERE isActive = 1")
+    fun getAllActiveSessionsFlow(): Flow<List<BlockSession>>
+
     @Query("DELETE FROM block_sessions WHERE isActive = 0 AND endTime < :threshold")
     suspend fun deleteOldInactiveSessions(threshold: Long)
 
@@ -103,6 +107,9 @@ interface SessionAppCrossRefDao {
     @Query("SELECT packageName FROM session_app_cross_ref WHERE sessionId IN (:sessionIds)")
     suspend fun getAppsForSessions(sessionIds: List<Int>): List<String>
 
+    @Query("SELECT packageName FROM session_app_cross_ref WHERE sessionId IN (SELECT id FROM block_sessions WHERE isActive = 1)")
+    fun getAppsForActiveSessionsFlow(): Flow<List<String>>
+
     @Query("DELETE FROM session_app_cross_ref WHERE sessionId = :sessionId")
     suspend fun deleteForSession(sessionId: Int)
 }
@@ -114,6 +121,9 @@ interface SessionWebsiteCrossRefDao {
 
     @Query("SELECT domain FROM session_website_cross_ref WHERE sessionId IN (:sessionIds)")
     suspend fun getWebsitesForSessions(sessionIds: List<Int>): List<String>
+
+    @Query("SELECT domain FROM session_website_cross_ref WHERE sessionId IN (SELECT id FROM block_sessions WHERE isActive = 1)")
+    fun getWebsitesForActiveSessionsFlow(): Flow<List<String>>
 
     @Query("DELETE FROM session_website_cross_ref WHERE sessionId = :sessionId")
     suspend fun deleteForSession(sessionId: Int)

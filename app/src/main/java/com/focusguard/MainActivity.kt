@@ -179,33 +179,35 @@ fun MainActivityContent(
             )
         }
         "ACTIVE_SESSIONS" -> {
-            var isBlocking by remember { mutableStateOf(false) }
-            var hasSession by remember { mutableStateOf(false) }
-            var sessionDetails by remember { mutableStateOf("") }
-            var sessionApps by remember { mutableStateOf<List<String>>(emptyList()) }
-            var sessionSites by remember { mutableStateOf<List<String>>(emptyList()) }
+            val sessions by sessionManager.getActiveSessionsFlow().collectAsState(initial = emptyList())
+            val sessionApps by sessionManager.getBlockedAppsFlow().collectAsState(initial = emptyList())
+            val sessionSites by sessionManager.getBlockedWebsitesFlow().collectAsState(initial = emptyList())
+            
+            val isBlocking = remember(sessions) {
+                sessions.any { sessionManager.isCurrentlyInBlockingWindow(it) }
+            }
+            val hasSession = sessions.isNotEmpty()
+            
+            // Detalhes formatados (recalculados quando as sessões mudam)
+            val sessionDetails = remember(sessions) {
+                if (sessions.isEmpty()) return@remember "Nenhuma sessão ativa"
+                val dateFormatter = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", java.util.Locale.getDefault())
 
-            LaunchedEffect(Unit) {
-                while (true) {
-                    withContext(Dispatchers.IO) {
-                        isBlocking = sessionManager.isBlockingActive()
-                        hasSession = sessionManager.hasRegisteredSession()
-                        sessionDetails = sessionManager.getSessionDetails()
-                        
-                        val sessions = sessionManager.getActiveSessions()
-                        val sessionIds = sessions.map { it.id }
-                        if (sessionIds.isNotEmpty()) {
-                            val db = com.focusguard.database.AppDatabase.getDatabase(activity)
-                            val apps = db.sessionAppCrossRefDao().getAppsForSessions(sessionIds).distinct()
-                            val sites = db.sessionWebsiteCrossRefDao().getWebsitesForSessions(sessionIds).distinct()
-                            sessionApps = apps
-                            sessionSites = sites
+                buildString {
+                    appendLine("=== Sessões Ativas (${sessions.size}) ===")
+                    sessions.forEachIndexed { index, session ->
+                        appendLine("Sessão #${index + 1} (${session.sessionType})")
+                        if (session.isFixed24h) {
+                            appendLine("Modo: FIXO 24H")
                         } else {
-                            sessionApps = emptyList()
-                            sessionSites = emptyList()
+                            appendLine("Modo: AGENDADO")
+                            appendLine("Entre: ${String.format(java.util.Locale.getDefault(), "%02d:%02d", session.recurringStartHour, session.recurringStartMinute)} e ${String.format(java.util.Locale.getDefault(), "%02d:%02d", session.recurringEndHour, session.recurringEndMinute)}")
                         }
+                        if (session.sessionType == "TIME" && session.endTime != null) {
+                            appendLine("Término do Tempo: ${dateFormatter.format(session.endTime)}")
+                        }
+                        appendLine("---")
                     }
-                    kotlinx.coroutines.delay(2000)
                 }
             }
 

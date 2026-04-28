@@ -11,6 +11,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.Flow
 import java.util.concurrent.TimeUnit
 import java.util.Calendar
 import java.util.Locale
@@ -319,6 +320,18 @@ class BlockingSessionManager private constructor(private val context: Context) {
         } catch (e: Exception) {
             "Erro ao recuperar detalhes"
         }
+    }
+
+    fun getActiveSessionsFlow(): Flow<List<BlockSession>> {
+        return database.blockSessionDao().getAllActiveSessionsFlow()
+    }
+
+    fun getBlockedAppsFlow(): Flow<List<String>> {
+        return database.sessionAppCrossRefDao().getAppsForActiveSessionsFlow()
+    }
+
+    fun getBlockedWebsitesFlow(): Flow<List<String>> {
+        return database.sessionWebsiteCrossRefDao().getWebsitesForActiveSessionsFlow()
     }
 
     private fun scheduleExpirationAlarm(sessionId: Int, endTime: Long) {

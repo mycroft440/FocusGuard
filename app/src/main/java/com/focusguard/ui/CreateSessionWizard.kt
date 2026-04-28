@@ -262,6 +262,10 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
     
     var timeDays by remember { mutableStateOf("0") }
     var timeHours by remember { mutableStateOf("2") }
+    
+    // States for TimePickers
+    var showStartTimePicker by remember { mutableStateOf(false) }
+    var showEndTimePicker by remember { mutableStateOf(false) }
 
     val deviceOwnerManager = remember { com.focusguard.admin.DeviceOwnerManager(context) }
     var permissionsMissing by remember { mutableStateOf(false) }
@@ -312,12 +316,7 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
                     
                     Row(modifier = Modifier.fillMaxWidth()) {
                         OutlinedButton(
-                            onClick = {
-                                android.app.TimePickerDialog(activityContext, { _, h, m ->
-                                    startHour = h.toString().padStart(2, '0')
-                                    startMin = m.toString().padStart(2, '0')
-                                }, startHour.toIntOrNull() ?: 8, startMin.toIntOrNull() ?: 0, true).show()
-                            },
+                            onClick = { showStartTimePicker = true },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp)
                         ) {
@@ -325,12 +324,7 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         OutlinedButton(
-                            onClick = {
-                                android.app.TimePickerDialog(activityContext, { _, h, m ->
-                                    endHour = h.toString().padStart(2, '0')
-                                    endMin = m.toString().padStart(2, '0')
-                                }, endHour.toIntOrNull() ?: 18, endMin.toIntOrNull() ?: 0, true).show()
-                            },
+                            onClick = { showEndTimePicker = true },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp)
                         ) {
@@ -472,6 +466,57 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
             ) {
                 Text("Iniciar Sessão", color = DarkBg, fontWeight = FontWeight.Bold)
             }
+        }
+    }
+
+    // Modal TimePickers
+    if (showStartTimePicker) {
+        TimePickerWrapper(
+            initialHour = startHour.toIntOrNull() ?: 8,
+            initialMin = startMin.toIntOrNull() ?: 0,
+            onDismiss = { showStartTimePicker = false },
+            onTimeSelected = { h, m ->
+                startHour = h.toString().padStart(2, '0')
+                startMin = m.toString().padStart(2, '0')
+                showStartTimePicker = false
+            }
+        )
+    }
+
+    if (showEndTimePicker) {
+        TimePickerWrapper(
+            initialHour = endHour.toIntOrNull() ?: 18,
+            initialMin = endMin.toIntOrNull() ?: 0,
+            onDismiss = { showEndTimePicker = false },
+            onTimeSelected = { h, m ->
+                endHour = h.toString().padStart(2, '0')
+                endMin = m.toString().padStart(2, '0')
+                showEndTimePicker = false
+            }
+        )
+    }
+}
+
+@Composable
+fun TimePickerWrapper(
+    initialHour: Int,
+    initialMin: Int,
+    onDismiss: () -> Unit,
+    onTimeSelected: (Int, Int) -> Unit
+) {
+    val context = LocalContext.current
+    val activityContext = context.findActivity() ?: context
+    
+    DisposableEffect(Unit) {
+        val dialog = android.app.TimePickerDialog(activityContext, { _, h, m ->
+            onTimeSelected(h, m)
+        }, initialHour, initialMin, true)
+        
+        dialog.setOnDismissListener { onDismiss() }
+        dialog.show()
+        
+        onDispose {
+            if (dialog.isShowing) dialog.dismiss()
         }
     }
 }
