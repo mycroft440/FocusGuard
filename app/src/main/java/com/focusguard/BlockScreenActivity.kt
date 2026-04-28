@@ -2,7 +2,7 @@ package com.focusguard
 
 import android.content.Context
 import android.os.Bundle
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -12,6 +12,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
@@ -29,21 +30,31 @@ import com.focusguard.ui.compose.theme.*
 
 import androidx.compose.runtime.*
 import android.content.Intent
+import com.focusguard.security.AuthManager
+import com.focusguard.manager.BlockingSessionManager
+import kotlinx.coroutines.launch
 
-class BlockScreenActivity : ComponentActivity() {
+class BlockScreenActivity : FragmentActivity() {
     private var blockedNameState = mutableStateOf("Este aplicativo")
+    private var isPasswordSessionState = mutableStateOf(false)
+    private lateinit var authManager: AuthManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        authManager = AuthManager(this)
         
         blockedNameState.value = intent.getStringExtra("BLOCKED_NAME") ?: "Este aplicativo"
+        isPasswordSessionState.value = intent.getBooleanExtra("IS_PASSWORD_SESSION", false)
 
         setContent {
             FocusGuardTheme {
                 val currentBlockedName by blockedNameState
+                val isPasswordSession by isPasswordSessionState
                 BlockScreenContent(
                     blockedName = currentBlockedName,
+                    isPasswordSession = isPasswordSession,
                     onClose = { finish() },
+                    authManager = authManager,
                     context = this
                 )
             }
@@ -54,16 +65,26 @@ class BlockScreenActivity : ComponentActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         val newName = intent?.getStringExtra("BLOCKED_NAME") ?: "Este aplicativo"
+        val isPassword = intent?.getBooleanExtra("IS_PASSWORD_SESSION", false) ?: false
         blockedNameState.value = newName
-        android.util.Log.d("BlockScreen", "onNewIntent recebido: Atualizando para $newName")
+        isPasswordSessionState.value = isPassword
+        android.util.Log.d("BlockScreen", "onNewIntent recebido: Atualizando para $newName (Senha: $isPassword)")
     }
 }
 
 @Composable
-fun BlockScreenContent(blockedName: String, onClose: () -> Unit, context: Context) {
+fun BlockScreenContent(
+    blockedName: String, 
+    isPasswordSession: Boolean,
+    onClose: () -> Unit, 
+    authManager: AuthManager,
+    context: Context
+) {
     val prefs = remember { context.getSharedPreferences("FocusGuardBlockCustom", Context.MODE_PRIVATE) }
     val customText = prefs.getString("block_text", "Você é mais forte que sua distração!") ?: "Você é mais forte que sua distração!"
     val imageUriString = prefs.getString("block_image_uri", "") ?: ""
+    val scope = rememberCoroutineScope()
+    var showPasswordDialog by remember { mutableStateOf(false) }
 
     Box(
         modifier = Modifier
@@ -133,6 +154,40 @@ fun BlockScreenContent(blockedName: String, onClose: () -> Unit, context: Contex
             
             Spacer(modifier = Modifier.height(48.dp))
             
+            if (isPasswordSession) {
+                Button(
+                    onClick = {
+                        authManager.showBiometricPrompt(
+                            activity = context as androidx.fragment.app.FragmentActivity,
+                            title = "Desbloquear Sessão",
+                            subtitle = "Use sua digital para encerrar o bloqueio",
+                            onSuccess = {
+                                BlockingSessionManager.getInstance(context).endPasswordSessions()
+                                onClose()
+                            },
+                            onError = { _, _ ->
+                                showPasswordDialog = true
+                            }
+                        )
+                    },
+                    modifier = Modifier.fillMaxWidth().height(50.dp).padding(horizontal = 16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Icon(Icons.Default.Fingerprint, contentDescription = null, tint = DarkBg)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Desbloquear com Digital", color = DarkBg, fontWeight = FontWeight.Bold)
+                }
+                
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                TextButton(onClick = { showPasswordDialog = true }) {
+                    Text("Usar Senha Alternativa", color = AccentCyan)
+                }
+                
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+            
             Button(
                 onClick = onClose,
                 modifier = Modifier.height(50.dp),
@@ -145,5 +200,58 @@ fun BlockScreenContent(blockedName: String, onClose: () -> Unit, context: Contex
                 Text("Entendi, vou focar", color = TextPrimary)
             }
         }
+    }
+
+    if (showPasswordDialog) {
+        var password by remember { mutableStateOf("") }
+        var isError by remember { mutableStateOf(false) }
+        
+        AlertDialog(
+            onDismissRequest = { showPasswordDialog = false },
+            title = { Text("Confirmar Senha", color = TextPrimary) },
+            text = {
+                Column {
+                    Text("Digite sua senha para encerrar o bloqueio por senha.", color = TextSecondary)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = { password = it; isError = false },
+                        label = { Text("Senha") },
+                        visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                        isError = isError,
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = AccentCyan,
+                            unfocusedTextColor = TextPrimary,
+                            focusedTextColor = TextPrimary
+                        )
+                    )
+                    if (isError) {
+                        Text("Senha incorreta", color = DangerRed, fontSize = 12.sp)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        if (authManager.verifyPassword(password)) {
+                            BlockingSessionManager.getInstance(context).endPasswordSessions()
+                            showPasswordDialog = false
+                            onClose()
+                        } else {
+                            isError = true
+                        }
+                    }
+                }) {
+                    Text("Desbloquear", color = AccentCyan)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showPasswordDialog = false }) {
+                    Text("Cancelar", color = TextHint)
+                }
+            },
+            containerColor = DarkSurface
+        )
     }
 }

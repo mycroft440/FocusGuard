@@ -169,8 +169,10 @@ class AuthManager(private val context: Context) {
 
     fun showBiometricPrompt(
         activity: FragmentActivity,
+        title: String = "Desbloquear FocusGuard",
+        subtitle: String = "Confirme sua identidade para acessar o app",
         onSuccess: () -> Unit,
-        onError: (String) -> Unit
+        onError: (Int, String) -> Unit
     ) {
         val biometricManager = BiometricManager.from(context)
         when (biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)) {
@@ -180,7 +182,7 @@ class AuthManager(private val context: Context) {
                     object : BiometricPrompt.AuthenticationCallback() {
                         override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                             super.onAuthenticationError(errorCode, errString)
-                            onError(errString.toString())
+                            onError(errorCode, errString.toString())
                         }
 
                         override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
@@ -190,20 +192,20 @@ class AuthManager(private val context: Context) {
 
                         override fun onAuthenticationFailed() {
                             super.onAuthenticationFailed()
-                            onError("Falha na autenticação biométrica.")
+                            onError(-1, "Falha na autenticação biométrica.")
                         }
                     })
 
                 val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                    .setTitle("Desbloquear FocusGuard")
-                    .setSubtitle("Confirme sua identidade para acessar o app")
+                    .setTitle(title)
+                    .setSubtitle(subtitle)
                     .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
                     .build()
 
                 biometricPrompt.authenticate(promptInfo)
             }
             else -> {
-                onError("Biometria indisponível. Use a senha.")
+                onError(-2, "Biometria indisponível. Use a senha.")
             }
         }
     }

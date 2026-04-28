@@ -30,6 +30,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     @Volatile private var blockedAppsSet: Set<String> = emptySet()
     @Volatile private var blockedWebsitesDomainSet: Set<String> = emptySet()
     @Volatile private var isBlockingSessionActive = false
+    @Volatile private var hasActivePasswordSession = false
     private var lastLoadTime = 0L
     private val CACHE_TIMEOUT = 2000L
     private var lastScrollCheck = 0L
@@ -176,6 +177,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                     .map { WebsiteBlocker.extractDomain(it).lowercase() }.toSet()
 
                 isBlockingSessionActive = enforcingSessions.isNotEmpty()
+                hasActivePasswordSession = enforcingSessions.any { it.sessionType == "PASSWORD" }
                 blockedAppsSet = activeAppPackages
                 blockedWebsitesDomainSet = activeWebsiteDomains
                 lastLoadTime = System.currentTimeMillis()
@@ -284,10 +286,11 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun launchBlockScreen(blockedName: String) {
+    private fun launchBlockScreen(blockedName: String, isPasswordSession: Boolean) {
         performGlobalAction(GLOBAL_ACTION_HOME)
         val intent = android.content.Intent(this, com.focusguard.BlockScreenActivity::class.java).apply {
             putExtra("BLOCKED_NAME", blockedName)
+            putExtra("IS_PASSWORD_SESSION", isPasswordSession)
             flags = android.content.Intent.FLAG_ACTIVITY_NEW_TASK or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
         }
         try {
@@ -299,7 +302,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun blockWebsite(domain: String? = null) {
         val blockedName = domain ?: "Este site"
-        launchBlockScreen(blockedName)
+        launchBlockScreen(blockedName, hasActivePasswordSession)
     }
 
     private fun blockApp(packageName: String) {
@@ -311,7 +314,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             packageName
         }
-        launchBlockScreen(appName)
+        launchBlockScreen(appName, hasActivePasswordSession)
     }
 
     private fun checkAndBlockWebsite(source: AccessibilityNodeInfo) {

@@ -39,7 +39,7 @@ fun AuthScreen(
             authManager.showBiometricPrompt(
                 activity = activity,
                 onSuccess = onUnlock,
-                onError = { errorMessage = it }
+                onError = { _, msg -> errorMessage = msg }
             )
         }
     }
@@ -141,7 +141,7 @@ fun AuthScreen(
                 authManager.showBiometricPrompt(
                     activity = activity,
                     onSuccess = onUnlock,
-                    onError = { errorMessage = it }
+                    onError = { _, msg -> errorMessage = msg }
                 )
             },
             modifier = Modifier.fillMaxWidth().height(50.dp),
