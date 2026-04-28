@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -74,6 +75,8 @@ fun UsageLimitsScreen(authManager: AuthManager, onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
 
+    var permissionsMissing by remember { mutableStateOf(false) }
+
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             val db = AppDatabase.getDatabase(context).usageLimitsLockDao()
@@ -85,6 +88,13 @@ fun UsageLimitsScreen(authManager: AuthManager, onBack: () -> Unit) {
                 val hours = TimeUnit.MILLISECONDS.toHours(diff) % 24
                 lockTimeRemaining = if (days > 0) "$days dias e $hours h" else "$hours horas"
             }
+
+            val deviceOwnerManager = com.focusguard.admin.DeviceOwnerManager(context)
+            val isA11yEnabled = com.focusguard.utils.PermissionUtils.isAccessibilityServiceEnabled(context)
+            val isAdminActive = deviceOwnerManager.isDeviceAdminActive() || deviceOwnerManager.isDeviceOwnerActive()
+            val isUsageAccessEnabled = com.focusguard.utils.PermissionUtils.isUsageAccessEnabled(context)
+            val isBatteryIgnored = com.focusguard.utils.PermissionUtils.isBatteryOptimizationIgnored(context)
+            permissionsMissing = !isA11yEnabled || !isAdminActive || !isUsageAccessEnabled || !isBatteryIgnored
         }
     }
 
@@ -121,15 +131,15 @@ fun UsageLimitsScreen(authManager: AuthManager, onBack: () -> Unit) {
             }
 
             when (selectedTab) {
-                0 -> AppLimitsTab()
-                1 -> WebsiteLimitsTab()
+                0 -> AppLimitsTab(permissionsMissing)
+                1 -> WebsiteLimitsTab(permissionsMissing)
             }
         }
     }
 }
 
 @Composable
-fun AppLimitsTab() {
+fun AppLimitsTab(permissionsMissing: Boolean) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var apps by remember { mutableStateOf<List<UsageLimitAppUi>>(emptyList()) }
@@ -216,6 +226,7 @@ fun AppLimitsTab() {
     if (showDialog && selectedApp != null) {
         AppLimitDialog(
             app = selectedApp!!,
+            permissionsMissing = permissionsMissing,
             onDismiss = { showDialog = false },
             onSave = { minutes, enabled, lockMode, lockPassword, lockUntil ->
                 scope.launch(Dispatchers.IO) {
@@ -260,7 +271,7 @@ fun AppLimitsTab() {
 }
 
 @Composable
-fun WebsiteLimitsTab() {
+fun WebsiteLimitsTab(permissionsMissing: Boolean) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var sites by remember { mutableStateOf<List<WebsiteLimitUi>>(emptyList()) }
@@ -341,7 +352,7 @@ fun WebsiteLimitsTab() {
     }
 
     if (showAddDialog) {
-        AddWebsiteLimitDialog(onDismiss = { showAddDialog = false }, onSave = { domain, minutes, lockMode, lockPassword, lockUntil ->
+        AddWebsiteLimitDialog(permissionsMissing = permissionsMissing, onDismiss = { showAddDialog = false }, onSave = { domain, minutes, lockMode, lockPassword, lockUntil ->
             scope.launch(Dispatchers.IO) {
                 val db = AppDatabase.getDatabase(context).websiteUsageLimitDao()
                 val clean = domain.trim().lowercase().removePrefix("http://").removePrefix("https://").removePrefix("www.").trimEnd('/')
@@ -352,7 +363,7 @@ fun WebsiteLimitsTab() {
     }
 
     if (showEditDialog && selectedSite != null) {
-        EditWebsiteLimitDialog(site = selectedSite!!, onDismiss = { showEditDialog = false }, onSave = { minutes, enabled, lockMode, lockPassword, lockUntil ->
+        EditWebsiteLimitDialog(site = selectedSite!!, permissionsMissing = permissionsMissing, onDismiss = { showEditDialog = false }, onSave = { minutes, enabled, lockMode, lockPassword, lockUntil ->
             scope.launch(Dispatchers.IO) {
                 val db = AppDatabase.getDatabase(context).websiteUsageLimitDao()
                 db.insert(WebsiteUsageLimit(selectedSite!!.domain, minutes, enabled, lockMode, lockPassword, lockUntil))
@@ -615,7 +626,7 @@ fun LimitSecuritySection(
 }
 
 @Composable
-fun AppLimitDialog(app: UsageLimitAppUi, onDismiss: () -> Unit, onSave: (Int?, Boolean, String, String?, Long?) -> Unit) {
+fun AppLimitDialog(app: UsageLimitAppUi, permissionsMissing: Boolean, onDismiss: () -> Unit, onSave: (Int?, Boolean, String, String?, Long?) -> Unit) {
     var minutesText by remember { mutableStateOf(app.currentLimitMinutes?.toString() ?: "") }
     var isEnabled by remember { mutableStateOf(app.isEnabled || app.currentLimitMinutes == null) }
     var lockMode by remember { mutableStateOf(app.lockMode) }
@@ -627,6 +638,25 @@ fun AppLimitDialog(app: UsageLimitAppUi, onDismiss: () -> Unit, onSave: (Int?, B
         title = { Text("Configurar Limite", color = TextPrimary, fontWeight = FontWeight.Bold) },
         text = {
             Column {
+                if (permissionsMissing) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = DangerRed.copy(alpha = 0.1f)),
+                        border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.5f)),
+                        modifier = Modifier.padding(bottom = 16.dp).fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = androidx.compose.ui.res.stringResource(id = com.focusguard.R.string.permissions_warning_new),
+                                color = DangerRed,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = minutesText,
                     onValueChange = { if (it.isEmpty() || it.all { c -> c.isDigit() }) minutesText = it },
@@ -656,7 +686,7 @@ fun AppLimitDialog(app: UsageLimitAppUi, onDismiss: () -> Unit, onSave: (Int?, B
 }
 
 @Composable
-fun AddWebsiteLimitDialog(onDismiss: () -> Unit, onSave: (String, Int, String, String?, Long?) -> Unit) {
+fun AddWebsiteLimitDialog(permissionsMissing: Boolean, onDismiss: () -> Unit, onSave: (String, Int, String, String?, Long?) -> Unit) {
     var domain by remember { mutableStateOf("") }
     var minutesText by remember { mutableStateOf("") }
     var lockMode by remember { mutableStateOf("NONE") }
@@ -668,6 +698,25 @@ fun AddWebsiteLimitDialog(onDismiss: () -> Unit, onSave: (String, Int, String, S
         title = { Text("Adicionar Site", color = TextPrimary, fontWeight = FontWeight.Bold) },
         text = {
             Column {
+                if (permissionsMissing) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = DangerRed.copy(alpha = 0.1f)),
+                        border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.5f)),
+                        modifier = Modifier.padding(bottom = 16.dp).fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = androidx.compose.ui.res.stringResource(id = com.focusguard.R.string.permissions_warning_new),
+                                color = DangerRed,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
                 OutlinedTextField(domain, { domain = it }, label = { Text("Domínio") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(minutesText, { if (it.all { c -> c.isDigit() }) minutesText = it }, label = { Text("Minutos") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(16.dp))
@@ -688,7 +737,7 @@ fun AddWebsiteLimitDialog(onDismiss: () -> Unit, onSave: (String, Int, String, S
 }
 
 @Composable
-fun EditWebsiteLimitDialog(site: WebsiteLimitUi, onDismiss: () -> Unit, onSave: (Int, Boolean, String, String?, Long?) -> Unit) {
+fun EditWebsiteLimitDialog(site: WebsiteLimitUi, permissionsMissing: Boolean, onDismiss: () -> Unit, onSave: (Int, Boolean, String, String?, Long?) -> Unit) {
     var minutesText by remember { mutableStateOf(site.dailyLimitMinutes?.toString() ?: "") }
     var isEnabled by remember { mutableStateOf(site.isEnabled) }
     var lockMode by remember { mutableStateOf(site.lockMode) }
@@ -700,6 +749,25 @@ fun EditWebsiteLimitDialog(site: WebsiteLimitUi, onDismiss: () -> Unit, onSave: 
         title = { Text("Editar Limite", color = TextPrimary, fontWeight = FontWeight.Bold) },
         text = {
             Column {
+                if (permissionsMissing) {
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = DangerRed.copy(alpha = 0.1f)),
+                        border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.5f)),
+                        modifier = Modifier.padding(bottom = 16.dp).fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(20.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = androidx.compose.ui.res.stringResource(id = com.focusguard.R.string.permissions_warning_new),
+                                color = DangerRed,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
                 OutlinedTextField(minutesText, { if (it.all { c -> c.isDigit() }) minutesText = it }, label = { Text("Minutos") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
                 Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(isEnabled, { isEnabled = it }); Text("Ativar") }
                 Spacer(Modifier.height(16.dp))

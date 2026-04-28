@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -262,6 +263,20 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
     var timeDays by remember { mutableStateOf("0") }
     var timeHours by remember { mutableStateOf("2") }
 
+    val deviceOwnerManager = remember { com.focusguard.admin.DeviceOwnerManager(context) }
+    var permissionsMissing by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            val isA11yEnabled = com.focusguard.utils.PermissionUtils.isAccessibilityServiceEnabled(context)
+            val isAdminActive = deviceOwnerManager.isDeviceAdminActive() || deviceOwnerManager.isDeviceOwnerActive()
+            val isUsageAccessEnabled = com.focusguard.utils.PermissionUtils.isUsageAccessEnabled(context)
+            val isBatteryIgnored = com.focusguard.utils.PermissionUtils.isBatteryOptimizationIgnored(context)
+            
+            permissionsMissing = !isA11yEnabled || !isAdminActive || !isUsageAccessEnabled || !isBatteryIgnored
+        }
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
@@ -387,6 +402,26 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
             }
             
             Spacer(modifier = Modifier.weight(1f))
+
+            if (permissionsMissing) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = DangerRed.copy(alpha = 0.1f)),
+                    border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.5f)),
+                    modifier = Modifier.padding(bottom = 16.dp).fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                ) {
+                    Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Icon(androidx.compose.material.icons.Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(20.dp))
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Text(
+                            text = androidx.compose.ui.res.stringResource(id = com.focusguard.R.string.permissions_warning_new),
+                            color = DangerRed,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
+                }
+            }
             
             val canStart = remember(apps, sites, timeDays, timeHours, sessionType) {
                 val hasItems = apps.isNotEmpty() || sites.isNotEmpty()

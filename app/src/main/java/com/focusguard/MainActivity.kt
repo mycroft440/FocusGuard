@@ -40,6 +40,7 @@ class MainActivity : AppCompatActivity() {
                     mutableStateOf(listOf(if (prefs.getBoolean("hasSeenOnboarding", false)) "HOME" else "PERMISSIONS")) 
                 }
                 var sessionTypeToCreate by remember { mutableStateOf("PASSWORD") }
+                var sessionTypeForDetail by remember { mutableStateOf("PASSWORD") }
 
                 val currentRoute = routeStack.last()
 
@@ -67,7 +68,9 @@ class MainActivity : AppCompatActivity() {
                         sessionTypeToCreate = type
                         onNavigate("CREATE_SESSION")
                     },
-                    sessionTypeToCreate = sessionTypeToCreate
+                    sessionTypeToCreate = sessionTypeToCreate,
+                    sessionTypeForDetail = sessionTypeForDetail,
+                    onSetSessionTypeForDetail = { sessionTypeForDetail = it }
                 )
             }
         }
@@ -85,7 +88,9 @@ fun MainActivityContent(
     onNavigate: (String) -> Unit,
     onBack: () -> Unit,
     onStartCreateSession: (String) -> Unit,
-    sessionTypeToCreate: String
+    sessionTypeToCreate: String,
+    sessionTypeForDetail: String,
+    onSetSessionTypeForDetail: (String) -> Unit
 ) {
     var isUnlocked by remember { mutableStateOf(!authManager.isAppLocked()) }
 
@@ -121,7 +126,8 @@ fun MainActivityContent(
                 sessionManager = sessionManager,
                 authManager = authManager,
                 onNavigate = onNavigate,
-                onStartCreateSession = onStartCreateSession
+                onStartCreateSession = onStartCreateSession,
+                onSetSessionTypeForDetail = onSetSessionTypeForDetail
             )
         }
         "CREATE_SESSION" -> {
@@ -161,6 +167,15 @@ fun MainActivityContent(
         "BLOCK_CUSTOMIZATION" -> {
             com.focusguard.ui.compose.screens.BlockCustomizationScreen(
                 onBack = onBack
+            )
+        }
+        "SESSION_DETAIL" -> {
+            com.focusguard.ui.compose.screens.SessionDetailScreen(
+                sessionType = sessionTypeForDetail,
+                onBack = onBack,
+                onAddNewBlock = {
+                    onStartCreateSession(sessionTypeForDetail)
+                }
             )
         }
         "ACTIVE_SESSIONS" -> {
@@ -204,6 +219,18 @@ fun MainActivityContent(
                         com.focusguard.utils.FocusGuardLogger.log("NUCLEAR_OPTION", "Sessão #${index + 1}: ID=${session.id}, Tipo=${session.sessionType}, Ativa=${session.isActive}")
                     }
                     
+                    val appLimits = db.appUsageLimitDao().getAll().take(5)
+                    com.focusguard.utils.FocusGuardLogger.log("NUCLEAR_OPTION", "--- LIMITES DE APPS (Primeiros 5) ---")
+                    appLimits.forEach { limit ->
+                        com.focusguard.utils.FocusGuardLogger.log("NUCLEAR_OPTION", "App: ${limit.packageName}, Limite: ${limit.dailyLimitMinutes}min, Ativo=${limit.isEnabled}")
+                    }
+
+                    val siteLimits = db.websiteUsageLimitDao().getAll().take(5)
+                    com.focusguard.utils.FocusGuardLogger.log("NUCLEAR_OPTION", "--- LIMITES DE SITES (Primeiros 5) ---")
+                    siteLimits.forEach { limit ->
+                        com.focusguard.utils.FocusGuardLogger.log("NUCLEAR_OPTION", "Site: ${limit.domain}, Limite: ${limit.dailyLimitMinutes}min, Ativo=${limit.isEnabled}")
+                    }
+
                     val inactive = sessions.filter { !it.isActive }.takeLast(5)
                     if (inactive.isNotEmpty()) {
                         com.focusguard.utils.FocusGuardLogger.log("NUCLEAR_OPTION", "--- SESSÕES INATIVAS RECENTES (Auditoria de Expiração) ---")
@@ -242,7 +269,8 @@ fun HomeScreen(
     sessionManager: BlockingSessionManager,
     authManager: AuthManager,
     onNavigate: (String) -> Unit,
-    onStartCreateSession: (String) -> Unit
+    onStartCreateSession: (String) -> Unit,
+    onSetSessionTypeForDetail: (String) -> Unit
 ) {
     var permissionsVisible by remember { mutableStateOf(false) }
     var showTimeSessionAlert by remember { mutableStateOf(false) }
@@ -275,19 +303,13 @@ fun HomeScreen(
     MainScreen(
         permissionsVisible = permissionsVisible,
         onPermissionsClick = { onNavigate("PERMISSIONS") },
-        onPasswordSessionClick = { onStartCreateSession("PASSWORD") },
+        onPasswordSessionClick = { 
+            onSetSessionTypeForDetail("PASSWORD")
+            onNavigate("SESSION_DETAIL")
+        },
         onTimeSessionClick = {
-            scope.launch(Dispatchers.IO) {
-                val hasTimeSession = sessionManager.hasTimeSession()
-                withContext(Dispatchers.Main) {
-                    if (hasTimeSession) {
-                        showTimeSessionAlert = true
-                        com.focusguard.utils.FocusGuardLogger.log("HomeScreen", "Criação de bloqueio por tempo abortada: já existe sessão ativa")
-                    } else {
-                        onStartCreateSession("TIME")
-                    }
-                }
-            }
+            onSetSessionTypeForDetail("TIME")
+            onNavigate("SESSION_DETAIL")
         },
         onActiveSessionsClick = { onNavigate("ACTIVE_SESSIONS") },
         onDeviceOwnerClick = { deviceOwnerManager.setAsDeviceOwner() },

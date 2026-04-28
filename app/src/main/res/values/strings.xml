@@ -17,7 +17,9 @@
     <string name="save">Salvar</string>
     <string name="cancel">Cancelar</string>
     <string name="nuclear_protection">Proteção Nuclear</string>
-    <string name="give_permissions">Dê o restante das permissões aqui</string>
+    <string name="give_permissions">De o restante das permissões aqui</string>
+    <string name="permissions_warning_new">O bloqueio somente irá funcionar caso dê todas as permissões ao app</string>
+
     <string name="focus_subtitle">Foco Total, Zero Distrações</string>
     <string name="password_block">Bloqueio por Senha</string>
     <string name="password_block_sub">Fixo ou Período (Requer senha para alterar)</string>
@@ -25,6 +27,9 @@
     <string name="time_block_sub">Dias e Horas (Impossível cancelar)</string>
     <string name="view_active_sessions">Ver Sessões Ativas</string>
     <string name="swipe_hint">← Deslize para ver estatísticas →</string>
+    <string name="usage_limits">Limites de Uso</string>
+    <string name="usage_limits_sub">Controle o tempo diário de apps e sites</string>
+
     
     <!-- Itens do Menu -->
     <string name="limits_and_security">Limites e Segurança</string>

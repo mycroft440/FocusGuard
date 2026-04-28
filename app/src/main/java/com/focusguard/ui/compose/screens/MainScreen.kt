@@ -201,6 +201,7 @@ fun MainScreen(
                             onPermissionsClick = onPermissionsClick,
                             onPasswordSessionClick = onPasswordSessionClick,
                             onTimeSessionClick = onTimeSessionClick,
+                            onAppUsageLimitsClick = onAppUsageLimitsClick,
                             onActiveSessionsClick = onActiveSessionsClick,
                             pagerHint = true
                         )
@@ -278,6 +279,7 @@ fun HomeContent(
     onPermissionsClick: () -> Unit,
     onPasswordSessionClick: () -> Unit,
     onTimeSessionClick: () -> Unit,
+    onAppUsageLimitsClick: () -> Unit,
     onActiveSessionsClick: () -> Unit,
     pagerHint: Boolean
 ) {
@@ -294,23 +296,6 @@ fun HomeContent(
             .padding(horizontal = 24.dp, vertical = 0.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        AnimatedVisibility(
-            visible = permissionsVisible,
-            enter = fadeIn() + slideInVertically(),
-            exit = fadeOut() + slideOutVertically()
-        ) {
-            Button(
-                onClick = onPermissionsClick,
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Icon(Icons.Filled.Warning, contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(id = R.string.give_permissions), fontWeight = FontWeight.Bold, fontSize = 14.sp)
-            }
-        }
-
         Spacer(modifier = Modifier.height(32.dp))
 
         AnimatedVisibility(
@@ -369,6 +354,17 @@ fun HomeContent(
 
         Spacer(modifier = Modifier.height(16.dp))
 
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(animationSpec = tween(500, delayMillis = 450)) + slideInVertically(animationSpec = tween(500, delayMillis = 450)) { it / 3 }
+        ) {
+            SessionCard(
+                icon = Icons.Outlined.HourglassEmpty,
+                title = stringResource(id = R.string.usage_limits),
+                subtitle = stringResource(id = R.string.usage_limits_sub),
+                onClick = onAppUsageLimitsClick
+            )
+        }
 
         Spacer(modifier = Modifier.height(24.dp))
 
