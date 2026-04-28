@@ -165,7 +165,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         if (!isRefreshing.compareAndSet(false, true)) return
         scope.launch {
             try {
-                val activeSessions = database.blockSessionDao().getAllActiveSessions()
+                // Ao usar getActiveSessions() em vez de consultar o DAO diretamente,
+                // forçamos o processamento de expirações e a limpeza do Device Owner.
+                val activeSessions = sessionManager.getActiveSessions()
                 val enforcingSessions = activeSessions.filter { sessionManager.isCurrentlyInBlockingWindow(it) }
                 val enforcingIds = enforcingSessions.map { it.id }
 

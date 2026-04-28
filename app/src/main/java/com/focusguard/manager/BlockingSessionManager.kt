@@ -15,6 +15,10 @@ import java.util.concurrent.TimeUnit
 import java.util.Calendar
 import java.util.Locale
 import com.focusguard.admin.DeviceOwnerManager
+import android.app.AlarmManager
+import android.app.PendingIntent
+import android.content.Intent
+import com.focusguard.receiver.SessionExpirationReceiver
 
 class BlockingSessionManager private constructor(private val context: Context) {
 
@@ -100,6 +104,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 sites.forEach { database.sessionWebsiteCrossRefDao().insert(SessionWebsiteCrossRef(sessionId, it)) }
 
                 checkAndEnforce()
+                scheduleExpirationAlarm(sessionId, endMillis)
                 com.focusguard.utils.FocusGuardLogger.log("SessionManager", "Sessão de tempo criada: $days dias, $hours horas. Apps: ${apps.size}, Sites: ${sites.size}")
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Bloqueio por Tempo iniciado.", Toast.LENGTH_LONG).show() }
             } catch (e: Exception) {
@@ -138,6 +143,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 additionalSites.forEach { database.sessionWebsiteCrossRefDao().insert(SessionWebsiteCrossRef(session.id, it)) }
 
                 checkAndEnforce()
+                scheduleExpirationAlarm(session.id, newEndTime)
                 com.focusguard.utils.FocusGuardLogger.log("SessionManager", "Tempo e/ou apps adicionados à sessão. Adicionado: $addedDays dias, $addedHours horas")
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Tempo e/ou apps adicionados.", Toast.LENGTH_LONG).show() }
             }
@@ -312,6 +318,32 @@ class BlockingSessionManager private constructor(private val context: Context) {
             }
         } catch (e: Exception) {
             "Erro ao recuperar detalhes"
+        }
+    }
+
+    private fun scheduleExpirationAlarm(sessionId: Int, endTime: Long) {
+        try {
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+            val intent = Intent(context, SessionExpirationReceiver::class.java).apply {
+                action = "com.focusguard.ACTION_SESSION_EXPIRED"
+                putExtra("SESSION_ID", sessionId)
+            }
+            
+            val pendingIntent = PendingIntent.getBroadcast(
+                context, 
+                sessionId, 
+                intent, 
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            
+            alarmManager.setExactAndAllowWhileIdle(
+                AlarmManager.RTC_WAKEUP,
+                endTime,
+                pendingIntent
+            )
+            com.focusguard.utils.FocusGuardLogger.log("SessionManager", "Alarme de expiração agendado para a sessão $sessionId em $endTime")
+        } catch (e: Exception) {
+            com.focusguard.utils.FocusGuardLogger.logError("SessionManager", "Falha ao agendar alarme", e)
         }
     }
 }
