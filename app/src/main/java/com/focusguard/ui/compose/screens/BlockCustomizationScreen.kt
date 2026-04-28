@@ -42,13 +42,18 @@ fun BlockCustomizationScreen(onBack: () -> Unit) {
     var imageUriString by remember { mutableStateOf(prefs.getString("block_image_uri", "") ?: "") }
     
     val imagePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
+        contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let {
-            // Persist permission for the URI if it's a content URI
             try {
-                context.contentResolver.takePersistableUriPermission(it, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
-            } catch (e: Exception) {}
+                // Solicita permissão persistente de leitura para que a imagem continue acessível após o reboot
+                context.contentResolver.takePersistableUriPermission(
+                    it, 
+                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            } catch (e: Exception) {
+                com.focusguard.utils.FocusGuardLogger.logError("Customization", "Erro ao persistir permissão de URI", e)
+            }
             imageUriString = it.toString()
         }
     }
@@ -129,7 +134,7 @@ fun BlockCustomizationScreen(onBack: () -> Unit) {
                     .fillMaxWidth()
                     .height(200.dp)
                     .clip(RoundedCornerShape(20.dp))
-                    .clickable { imagePickerLauncher.launch("image/*") },
+                    .clickable { imagePickerLauncher.launch(arrayOf("image/*")) },
                 colors = CardDefaults.cardColors(containerColor = DarkCard),
                 border = BorderStroke(1.dp, CardBorder)
             ) {

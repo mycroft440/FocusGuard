@@ -81,11 +81,14 @@ interface BlockSessionDao {
 
     @Transaction
     suspend fun insertNewSession(session: BlockSession): Long {
-        // Limpa lixo do DB que já expirou há mais de 30 dias (Trash Cleanup)
+        return insertBlockSession(session)
+    }
+
+    @Transaction
+    suspend fun performMaintenance() {
         deleteOldInactiveSessions(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000)
         cleanOrphanApps()
         cleanOrphanWebsites()
-        return insertBlockSession(session)
     }
 
     @Query("SELECT * FROM block_sessions ORDER BY startTime DESC")

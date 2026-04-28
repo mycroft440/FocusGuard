@@ -24,7 +24,15 @@ class FocusGuardDeviceAdminReceiver : DeviceAdminReceiver() {
     }
 
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
-        return "Se você desativar o Administrador na Força, a Sessão de Foco em andamento se romperá e o FocusGuard e toda sua disciplina de bloqueio serão neutralizados. Tem absoluta certeza disso?"
+        // Ação defensiva: Bloqueia o dispositivo imediatamente para impedir o clique acidental/impulsivo em 'Desativar'
+        try {
+            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            if (dpm.isAdminActive(getComponentName(context))) {
+                dpm.lockNow()
+            }
+        } catch (_: Exception) {}
+        
+        return "Se você desativar o Administrador, o FocusGuard perderá o controle sobre os bloqueios e sua disciplina será rompida. O dispositivo foi bloqueado para sua proteção!"
     }
 
     companion object {

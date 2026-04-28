@@ -27,21 +27,33 @@ import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import com.focusguard.ui.compose.theme.*
 
+import androidx.compose.runtime.*
+import android.content.Intent
+
 class BlockScreenActivity : ComponentActivity() {
+    private var blockedNameState = mutableStateOf("Este aplicativo")
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         
-        val blockedAppOrSite = intent.getStringExtra("BLOCKED_NAME") ?: "Este aplicativo"
+        blockedNameState.value = intent.getStringExtra("BLOCKED_NAME") ?: "Este aplicativo"
 
         setContent {
             FocusGuardTheme {
+                val currentBlockedName by blockedNameState
                 BlockScreenContent(
-                    blockedName = blockedAppOrSite,
+                    blockedName = currentBlockedName,
                     onClose = { finish() },
                     context = this
                 )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent?) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        blockedNameState.value = intent?.getStringExtra("BLOCKED_NAME") ?: "Este aplicativo"
     }
 }
 
