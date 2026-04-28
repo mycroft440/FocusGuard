@@ -30,6 +30,17 @@ class DeviceOwnerManager(private val context: Context) {
 
     companion object {
         private val sotaAttempts = AtomicInteger(0)
+        private const val MAX_SOTA_DOMAINS = 500
+        private val SACRED_WHITELIST = setOf(
+            "com.android.systemui",
+            "com.android.settings",
+            "com.android.phone",
+            "com.android.server.telecom",
+            "com.google.android.packageinstaller",
+            "com.android.packageinstaller",
+            "com.google.android.gms",
+            "com.android.vending" // Play Store (essencial para correções)
+        )
     }
 
     /**
@@ -80,9 +91,28 @@ class DeviceOwnerManager(private val context: Context) {
 
         scope.launch {
             try {
-                // Extreme safety: always filter self out from any blocking list
                 val myPkg = context.packageName
-                val filtered = packageNames.filter { it != myPkg && it != "com.focusguard" && it != "com.focusguard.v2" }
+                val pm = context.packageManager
+                
+                val filtered = packageNames.filter { pkg ->
+                    // 1. Never block self
+                    if (pkg == myPkg || pkg == "com.focusguard") return@filter false
+                    
+                    // 2. Never block sacred system apps
+                    if (SACRED_WHITELIST.contains(pkg)) return@filter false
+                    
+                    // 3. Prevent blocking critical system apps via FLAG_SYSTEM
+                    try {
+                        val appInfo = pm.getApplicationInfo(pkg, 0)
+                        if ((appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0) {
+                            // Extra check: allow blocking known common bloatware/distractions even if system
+                            // But for absolute safety, we follow the technical review: FLAG_SYSTEM = No Block
+                            return@filter false
+                        }
+                    } catch (_: Exception) {}
+                    
+                    true
+                }
                 
                 if (filtered.isNotEmpty()) {
                     dpm.setPackagesSuspended(componentName, filtered.toTypedArray(), true)
@@ -225,8 +255,15 @@ class DeviceOwnerManager(private val context: Context) {
         
         scope.launch {
             try {
+                val limitedDomains = if (domains.size > MAX_SOTA_DOMAINS) {
+                    Log.w("FocusGuardNuclear", "Aviso: Lista de domínios excedeu o limite Binder ($MAX_SOTA_DOMAINS). Truncando.")
+                    domains.take(MAX_SOTA_DOMAINS)
+                } else {
+                    domains
+                }
+
                 val restrictions = Bundle()
-                val jsonArray = JSONArray(domains).toString()
+                val jsonArray = JSONArray(limitedDomains).toString()
                 restrictions.putString("URLBlocklist", jsonArray)
 
                 val attempt = sotaAttempts.incrementAndGet()

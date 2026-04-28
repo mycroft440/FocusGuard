@@ -15,7 +15,9 @@ import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.*
 import java.text.SimpleDateFormat
 import java.util.*
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 class BlockingAccessibilityService : AccessibilityService() {
 
@@ -34,15 +36,15 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var lastToastTime = 0L
 
     private var appUsageLimits: Map<String, Int> = emptyMap()
-    private val usageExceededApps = mutableSetOf<String>()
+    private val usageExceededApps = ConcurrentHashMap.newKeySet<String>()
 
     private var websiteUsageLimits: Map<String, Int> = emptyMap()
-    private val websiteExceededDomains = mutableSetOf<String>()
+    private val websiteExceededDomains = ConcurrentHashMap.newKeySet<String>()
     
-    // Cache em memória do uso diário (sincronizado com DB)
-    private val websiteDailyUsageMs = mutableMapOf<String, Long>()
+    // Cache em memória do uso diário (seguro para concorrência)
+    private val websiteDailyUsageMs = ConcurrentHashMap<String, Long>()
     private var currentBrowsingDomain: String? = null
-    private var lastTickMs: Long = 0L
+    private val lastTickMs = AtomicLong(0L)
 
     private val isRefreshing = AtomicBoolean(false)
     private var browserPackages: Set<String> = setOf()
@@ -356,22 +358,25 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun updateBrowsingTick(domain: String) {
         val now = System.currentTimeMillis()
+        val lastTick = lastTickMs.get()
+        
         if (currentBrowsingDomain == domain) {
-            val elapsed = now - lastTickMs
+            val elapsed = now - lastTick
             if (elapsed in 1..10000) { // Proteção contra saltos de tempo
-                val newTotal = (websiteDailyUsageMs[domain] ?: 0L) + elapsed
+                val currentTotal = websiteDailyUsageMs[domain] ?: 0L
+                val newTotal = currentTotal + elapsed
                 websiteDailyUsageMs[domain] = newTotal
                 saveStatToDb(domain, newTotal)
             }
         } else {
             currentBrowsingDomain = domain
         }
-        lastTickMs = now
+        lastTickMs.set(now)
     }
 
     private fun stopBrowsingTick() {
         currentBrowsingDomain = null
-        lastTickMs = 0L
+        lastTickMs.set(0L)
     }
 
     private fun saveStatToDb(identifier: String, timeMs: Long) {
@@ -398,19 +403,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun isWebsiteBlocked(url: String): Boolean {
-        try {
-            val domain = WebsiteBlocker.extractDomain(url).lowercase()
-            if (domain.length < 4) return false
-            if (blockedWebsitesDomainSet.contains(domain)) return true
-            var currentDomain = domain
-            while (currentDomain.contains(".")) {
-                val firstDotIndex = currentDomain.indexOf('.')
-                if (firstDotIndex == -1 || firstDotIndex == currentDomain.lastIndex) break
-                currentDomain = currentDomain.substring(firstDotIndex + 1)
-                if (blockedWebsitesDomainSet.contains(currentDomain)) return true
-            }
-            return false
-        } catch (_: Exception) { return false }
+        return WebsiteBlocker.isUrlBlocked(url, blockedWebsitesDomainSet.toList())
     }
 
     private fun showToastThrottled(message: String) {

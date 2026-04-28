@@ -94,14 +94,22 @@ object WebsiteBlocker {
         }
 
         // Fallback: look for EditText with URL-like content
-        return findEditTextWithUrl(root, 0)
+        val startTime = System.currentTimeMillis()
+        val result = findEditTextWithUrl(root, 0)
+        val duration = System.currentTimeMillis() - startTime
+        
+        if (duration > 50) {
+            FocusGuardLogger.log("Performance", "findEditTextWithUrl demorou ${duration}ms")
+        }
+        
+        return result
     }
 
     /**
      * Finds an EditText node that contains URL-like content.
-     * Limited to MAX_DEPTH to prevent StackOverflowError.
+     * Limited to MAX_DEPTH to prevent performance issues and StackOverflowError.
      */
-    private const val MAX_DEPTH = 10
+    private const val MAX_DEPTH = 6
 
     private fun findEditTextWithUrl(root: AccessibilityNodeInfo?, depth: Int): AccessibilityNodeInfo? {
         if (root == null || depth > MAX_DEPTH) return null

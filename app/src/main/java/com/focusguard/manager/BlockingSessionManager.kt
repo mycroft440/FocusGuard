@@ -161,19 +161,31 @@ class BlockingSessionManager private constructor(private val context: Context) {
         }
     }
 
-    suspend fun checkAndEnforce() {
+    suspend fun checkAndEnforce(appsToForceUnblock: List<String> = emptyList()) {
         val sessions = database.blockSessionDao().getAllActiveSessions()
         val enforcingSessions = sessions.filter { isCurrentlyInBlockingWindow(it) }
 
         if (enforcingSessions.isEmpty()) {
             val allActiveApps = database.sessionAppCrossRefDao().getAppsForSessions(sessions.map { it.id })
-            deviceOwnerManager.unblockApps(allActiveApps)
+            // Combine apps from active but not enforcing sessions with apps we were told to unblock
+            val toUnblock = (allActiveApps + appsToForceUnblock).toSet().toList()
+            deviceOwnerManager.unblockApps(toUnblock)
             deviceOwnerManager.clearBlockingPolicies()
             deviceOwnerManager.clearWebsiteRestrictions()
         } else {
             val enforcingIds = enforcingSessions.map { it.id }
             val appsToBlock = database.sessionAppCrossRefDao().getAppsForSessions(enforcingIds)
             val sitesToBlock = database.sessionWebsiteCrossRefDao().getWebsitesForSessions(enforcingIds)
+            
+            // Even if some sessions expired, we only unblock apps that aren't in ANY enforcing session
+            if (appsToForceUnblock.isNotEmpty()) {
+                val stillBlocked = appsToBlock.toSet()
+                val actuallyUnblock = appsToForceUnblock.filter { !stillBlocked.contains(it) }
+                if (actuallyUnblock.isNotEmpty()) {
+                    deviceOwnerManager.unblockApps(actuallyUnblock)
+                }
+            }
+            
             deviceOwnerManager.blockApps(appsToBlock)
             deviceOwnerManager.enforceWebsiteRestrictions(sitesToBlock)
             deviceOwnerManager.enforceBlockingPolicies()
@@ -202,10 +214,14 @@ class BlockingSessionManager private constructor(private val context: Context) {
         val isOvernight = startVal > endVal
         val isAfterMidnightBeforeEnd = isOvernight && currentTimeVal < endVal
 
-        val isInTimeRange = if (startVal <= endVal) {
+        val isInTimeRange = if (startVal < endVal) {
             currentTimeVal in startVal until endVal
-        } else {
+        } else if (startVal > endVal) {
             currentTimeVal >= startVal || currentTimeVal < endVal
+        } else {
+            // startVal == endVal: Se não for Fixed24h, mas os horários forem iguais,
+            // tratamos como um bloqueio de 24h para aquele dia.
+            true
         }
 
         if (!isInTimeRange) return false
@@ -228,26 +244,37 @@ class BlockingSessionManager private constructor(private val context: Context) {
     suspend fun getActiveSessions(): List<BlockSession> {
         return try {
             val sessions = database.blockSessionDao().getAllActiveSessions()
+            val expiredSessions = mutableListOf<BlockSession>()
             val validSessions = mutableListOf<BlockSession>()
-
-            var expiredTimeSession = false
 
             for (session in sessions) {
                 if (session.sessionType == "TIME" && session.endTime != null && System.currentTimeMillis() >= session.endTime) {
-                    val expiredSession = session.copy(isActive = false)
-                    database.blockSessionDao().updateBlockSession(expiredSession)
-                    expiredTimeSession = true
+                    expiredSessions.add(session)
                 } else {
                     validSessions.add(session)
                 }
             }
 
-            if (expiredTimeSession) {
-                checkAndEnforce()
+            if (expiredSessions.isNotEmpty()) {
+                // ATOMICIDADE: Primeiro coletamos os apps que devem ser desbloqueados
+                val expiredIds = expiredSessions.map { it.id }
+                val appsFromExpired = database.sessionAppCrossRefDao().getAppsForSessions(expiredIds)
+                
+                // Forçamos o checkAndEnforce a considerar esses apps para desbloqueio
+                // ANTES de marcar como inativo no DB (para que checkAndEnforce os veja se necessário)
+                // Na verdade, passamos explicitamente para garantir que unblockApps seja chamado.
+                checkAndEnforce(appsFromExpired)
+
+                // Somente após o comando de unblock (enviado via checkAndEnforce), atualizamos o DB
+                for (session in expiredSessions) {
+                    database.blockSessionDao().updateBlockSession(session.copy(isActive = false))
+                }
+                com.focusguard.utils.FocusGuardLogger.log("SessionManager", "${expiredSessions.size} sessões expiradas processadas atomicamente.")
             }
 
             validSessions
         } catch (e: Exception) {
+            com.focusguard.utils.FocusGuardLogger.logError("SessionManager", "Erro em getActiveSessions", e)
             emptyList()
         }
     }

@@ -203,6 +203,14 @@ fun MainActivityContent(
                     sessions.take(5).forEachIndexed { index, session ->
                         com.focusguard.utils.FocusGuardLogger.log("NUCLEAR_OPTION", "Sessão #${index + 1}: ID=${session.id}, Tipo=${session.sessionType}, Ativa=${session.isActive}")
                     }
+                    
+                    val inactive = sessions.filter { !it.isActive }.takeLast(5)
+                    if (inactive.isNotEmpty()) {
+                        com.focusguard.utils.FocusGuardLogger.log("NUCLEAR_OPTION", "--- SESSÕES INATIVAS RECENTES (Auditoria de Expiração) ---")
+                        inactive.forEach { session ->
+                            com.focusguard.utils.FocusGuardLogger.log("NUCLEAR_OPTION", "Inativa: ID=${session.id}, Tipo=${session.sessionType}")
+                        }
+                    }
                     com.focusguard.utils.FocusGuardLogger.log("NUCLEAR_OPTION", "--- FIM DOS DADOS ---")
                 }
             }
