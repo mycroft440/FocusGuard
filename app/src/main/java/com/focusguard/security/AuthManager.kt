@@ -119,11 +119,30 @@ class AuthManager(private val context: Context) {
     }
 
     fun verifyPassword(password: String): Boolean {
+        val limit = getMaxPasswordAttempts()
+        val currentFailed = getFailedAttempts()
+        
+        // Regra do Usuário: Imprimir dados das primeiras 5 tentativas
+        if (currentFailed < 5) {
+            android.util.Log.d("NuclearOption", "Tentativa de Senha #${currentFailed + 1}: Limite=$limit, Atual=$currentFailed")
+        }
+
+        if (limit > 0 && currentFailed >= limit) {
+            android.util.Log.w("NuclearOption", "Limite de tentativas atingido ($limit). Acesso negado.")
+            return false
+        }
+        
         val hash = hashPassword(password)
         val isValid = getPasswordHashes().contains(hash)
+        
         if (isValid) {
             resetFailedAttempts()
+            android.util.Log.d("NuclearOption", "Senha correta. Contador resetado.")
+        } else {
+            val newCount = incrementFailedAttempts()
+            android.util.Log.w("NuclearOption", "Senha incorreta. Novo contador: $newCount")
         }
+        
         return isValid
     }
 

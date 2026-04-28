@@ -53,7 +53,9 @@ class BlockScreenActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent?) {
         super.onNewIntent(intent)
         setIntent(intent)
-        blockedNameState.value = intent?.getStringExtra("BLOCKED_NAME") ?: "Este aplicativo"
+        val newName = intent?.getStringExtra("BLOCKED_NAME") ?: "Este aplicativo"
+        blockedNameState.value = newName
+        android.util.Log.d("BlockScreen", "onNewIntent recebido: Atualizando para $newName")
     }
 }
 

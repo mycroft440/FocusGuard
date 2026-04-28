@@ -83,10 +83,8 @@ interface BlockSessionDao {
     @Query("DELETE FROM session_website_cross_ref WHERE sessionId NOT IN (SELECT id FROM block_sessions)")
     suspend fun cleanOrphanWebsites()
 
-    @Transaction
-    suspend fun insertNewSession(session: BlockSession): Long {
-        return insertBlockSession(session)
-    }
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertNewSession(session: BlockSession): Long
 
     @Transaction
     suspend fun performMaintenance() {
@@ -104,6 +102,9 @@ interface SessionAppCrossRefDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(crossRef: SessionAppCrossRef)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(crossRefs: List<SessionAppCrossRef>)
+
     @Query("SELECT packageName FROM session_app_cross_ref WHERE sessionId IN (:sessionIds)")
     suspend fun getAppsForSessions(sessionIds: List<Int>): List<String>
 
@@ -118,6 +119,9 @@ interface SessionAppCrossRefDao {
 interface SessionWebsiteCrossRefDao {
     @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insert(crossRef: SessionWebsiteCrossRef)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertAll(crossRefs: List<SessionWebsiteCrossRef>)
 
     @Query("SELECT domain FROM session_website_cross_ref WHERE sessionId IN (:sessionIds)")
     suspend fun getWebsitesForSessions(sessionIds: List<Int>): List<String>

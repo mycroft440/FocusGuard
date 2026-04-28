@@ -358,12 +358,7 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
                     
                     Row(modifier = Modifier.fillMaxWidth()) {
                         OutlinedButton(
-                            onClick = {
-                                android.app.TimePickerDialog(activityContext, { _, h, m ->
-                                    startHour = h.toString().padStart(2, '0')
-                                    startMin = m.toString().padStart(2, '0')
-                                }, startHour.toIntOrNull() ?: 8, startMin.toIntOrNull() ?: 0, true).show()
-                            },
+                            onClick = { showStartTimePicker = true },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp)
                         ) {
@@ -371,12 +366,7 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
                         }
                         Spacer(modifier = Modifier.width(8.dp))
                         OutlinedButton(
-                            onClick = {
-                                android.app.TimePickerDialog(activityContext, { _, h, m ->
-                                    endHour = h.toString().padStart(2, '0')
-                                    endMin = m.toString().padStart(2, '0')
-                                }, endHour.toIntOrNull() ?: 18, endMin.toIntOrNull() ?: 0, true).show()
-                            },
+                            onClick = { showEndTimePicker = true },
                             modifier = Modifier.weight(1f),
                             shape = RoundedCornerShape(8.dp)
                         ) {

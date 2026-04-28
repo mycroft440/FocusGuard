@@ -12,6 +12,7 @@ class BootReceiver : BroadcastReceiver() {
         if (intent.action == Intent.ACTION_BOOT_COMPLETED || intent.action == Intent.ACTION_LOCKED_BOOT_COMPLETED) {
             Log.d("FocusGuardBoot", "Dispositivo foi reiniciado. Acordando o FocusGuard...")
             
+            val pendingResult = goAsync()
             // Reativa sessões programadas/vivas
             kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
                 try {
@@ -20,6 +21,8 @@ class BootReceiver : BroadcastReceiver() {
                     Log.d("FocusGuardBoot", "Bloqueios restaurados com sucesso após Boot.")
                 } catch (e: Exception) {
                     Log.e("FocusGuardBoot", "Falha ao reagendar FocusGuard após o Boot", e)
+                } finally {
+                    pendingResult.finish()
                 }
             }
         }

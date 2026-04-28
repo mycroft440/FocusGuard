@@ -61,8 +61,8 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 )
 
                 val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
-                apps.forEach { database.sessionAppCrossRefDao().insert(SessionAppCrossRef(sessionId, it)) }
-                sites.forEach { database.sessionWebsiteCrossRefDao().insert(SessionWebsiteCrossRef(sessionId, it)) }
+                database.sessionAppCrossRefDao().insertAll(apps.map { SessionAppCrossRef(sessionId, it) })
+                database.sessionWebsiteCrossRefDao().insertAll(sites.map { SessionWebsiteCrossRef(sessionId, it) })
 
                 checkAndEnforce()
                 com.focusguard.utils.FocusGuardLogger.log("SessionManager", "Sessão por senha criada. Apps: ${apps.size}, Sites: ${sites.size}")
@@ -101,8 +101,8 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 )
 
                 val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
-                apps.forEach { database.sessionAppCrossRefDao().insert(SessionAppCrossRef(sessionId, it)) }
-                sites.forEach { database.sessionWebsiteCrossRefDao().insert(SessionWebsiteCrossRef(sessionId, it)) }
+                database.sessionAppCrossRefDao().insertAll(apps.map { SessionAppCrossRef(sessionId, it) })
+                database.sessionWebsiteCrossRefDao().insertAll(sites.map { SessionWebsiteCrossRef(sessionId, it) })
 
                 checkAndEnforce()
                 scheduleExpirationAlarm(sessionId, endMillis)
