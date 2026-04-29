@@ -4,6 +4,7 @@ import android.Manifest
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -97,15 +98,13 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                 label = { Text("Limite de Tentativas de Senha (0 para infinito)", color = TextHint) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
-                colors = TextFieldDefaults.outlinedTextFieldColors(
+                colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = TextPrimary,
                     unfocusedTextColor = TextPrimary,
                     focusedBorderColor = AccentCyan
                 ),
                 modifier = Modifier.fillMaxWidth()
             )
-            
-            Spacer(modifier = Modifier.height(32.dp))
             
             Spacer(modifier = Modifier.height(32.dp))
             
