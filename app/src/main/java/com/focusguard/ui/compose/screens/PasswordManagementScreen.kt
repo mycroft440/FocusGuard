@@ -240,7 +240,8 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                 }
             },
             confirmButton = {
-                val activity = LocalContext.current as? androidx.fragment.app.FragmentActivity
+                val context = LocalContext.current
+                val activity = context as? androidx.fragment.app.FragmentActivity
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     if (activity != null) {
                         IconButton(onClick = {
