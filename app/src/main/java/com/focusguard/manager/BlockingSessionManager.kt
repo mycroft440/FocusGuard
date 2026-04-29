@@ -187,54 +187,58 @@ class BlockingSessionManager private constructor(private val context: Context) {
     }
 
     suspend fun checkAndEnforce() {
-        val sessions = database.blockSessionDao().getAllActiveSessions().first()
-        val enforcingSessions = sessions.filter { isCurrentlyInBlockingWindow(it) }
+        try {
+            val sessions = database.blockSessionDao().getAllActiveSessions().first()
+            val enforcingSessions = sessions.filter { isCurrentlyInBlockingWindow(it) }
 
-        val enforcingIds = enforcingSessions.map { it.id }
-        val sessionAppsToBlock = database.sessionAppCrossRefDao().getAppsForSessions(enforcingIds)
-        val sitesToBlock = database.sessionWebsiteCrossRefDao().getWebsitesForSessions(enforcingIds)
+            val enforcingIds = enforcingSessions.map { it.id }
+            val sessionAppsToBlock = database.sessionAppCrossRefDao().getAppsForSessions(enforcingIds)
+            val sitesToBlock = database.sessionWebsiteCrossRefDao().getWebsitesForSessions(enforcingIds)
 
-        // New: Check Daily Usage Limits
-        val limitAppsToBlock = mutableListOf<String>()
-        val activeLimits = database.appUsageLimitDao().getAllActiveLimits().first()
-        
-        if (activeLimits.isNotEmpty()) {
-            val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? android.app.usage.UsageStatsManager
-            if (usageStatsManager != null) {
-                val cal = Calendar.getInstance()
-                cal.set(Calendar.HOUR_OF_DAY, 0)
-                cal.set(Calendar.MINUTE, 0)
-                cal.set(Calendar.SECOND, 0)
-                val startOfDay = cal.timeInMillis
-                
-                val stats = usageStatsManager.queryUsageStats(android.app.usage.UsageStatsManager.INTERVAL_DAILY, startOfDay, System.currentTimeMillis())
-                
-                activeLimits.forEach { limit ->
-                    val stat = stats.find { it.packageName == limit.packageName }
-                    val usageMinutes = (stat?.totalTimeInForeground ?: 0L) / 1000 / 60
-                    if (usageMinutes >= limit.dailyLimitMinutes) {
-                        limitAppsToBlock.add(limit.packageName)
+            // New: Check Daily Usage Limits
+            val limitAppsToBlock = mutableListOf<String>()
+            val activeLimits = database.appUsageLimitDao().getAllActiveLimits().first()
+            
+            if (activeLimits.isNotEmpty()) {
+                val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? android.app.usage.UsageStatsManager
+                if (usageStatsManager != null) {
+                    val cal = Calendar.getInstance()
+                    cal.set(Calendar.HOUR_OF_DAY, 0)
+                    cal.set(Calendar.MINUTE, 0)
+                    cal.set(Calendar.SECOND, 0)
+                    val startOfDay = cal.timeInMillis
+                    
+                    val stats = usageStatsManager.queryUsageStats(android.app.usage.UsageStatsManager.INTERVAL_DAILY, startOfDay, System.currentTimeMillis())
+                    
+                    activeLimits.forEach { limit ->
+                        val stat = stats.find { it.packageName == limit.packageName }
+                        val usageMinutes = (stat?.totalTimeInForeground ?: 0L) / 1000 / 60
+                        if (usageMinutes >= limit.dailyLimitMinutes) {
+                            limitAppsToBlock.add(limit.packageName)
+                        }
                     }
                 }
             }
-        }
 
-        val allAppsToBlock = (sessionAppsToBlock + limitAppsToBlock).toSet().toList()
+            val allAppsToBlock = (sessionAppsToBlock + limitAppsToBlock).toSet().toList()
 
-        if (allAppsToBlock.isEmpty() && sitesToBlock.isEmpty()) {
-            deviceOwnerManager.unblockApps(database.sessionAppCrossRefDao().getAppsForSessions(sessions.map { it.id }))
-            deviceOwnerManager.clearBlockingPolicies()
-            deviceOwnerManager.clearWebsiteRestrictions()
-        } else {
-            deviceOwnerManager.blockApps(allAppsToBlock)
-            deviceOwnerManager.enforceWebsiteRestrictions(sitesToBlock)
-            deviceOwnerManager.enforceBlockingPolicies()
+            if (allAppsToBlock.isEmpty() && sitesToBlock.isEmpty()) {
+                deviceOwnerManager.unblockApps(database.sessionAppCrossRefDao().getAppsForSessions(sessions.map { it.id }))
+                deviceOwnerManager.clearBlockingPolicies()
+                deviceOwnerManager.clearWebsiteRestrictions()
+            } else {
+                deviceOwnerManager.blockApps(allAppsToBlock)
+                deviceOwnerManager.enforceWebsiteRestrictions(sitesToBlock)
+                deviceOwnerManager.enforceBlockingPolicies()
+            }
+            
+            // Notify Accessibility Service to update immediately
+            val intent = android.content.Intent("com.focusguard.ACTION_REFRESH_BLOCKING")
+            intent.setPackage(context.packageName)
+            context.sendBroadcast(intent)
+        } catch (e: Exception) {
+            com.focusguard.utils.FocusGuardLogger.log("Manager", "Erro no checkAndEnforce: ${e.message}")
         }
-        
-        // Notify Accessibility Service to update immediately
-        val intent = android.content.Intent("com.focusguard.ACTION_REFRESH_BLOCKING")
-        intent.setPackage(context.packageName)
-        context.sendBroadcast(intent)
     }
 
     fun isCurrentlyInBlockingWindow(session: BlockSession?): Boolean {

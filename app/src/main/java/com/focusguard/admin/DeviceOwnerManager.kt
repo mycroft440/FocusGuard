@@ -133,8 +133,8 @@ class DeviceOwnerManager(private val context: Context) {
         scope.launch {
             try {
                 dpm.setPackagesSuspended(componentName, packageNames.toTypedArray(), false)
-            } catch (_: Exception) {
-                // Handle error
+            } catch (e: Exception) {
+                com.focusguard.utils.FocusGuardLogger.log("Admin", "Erro ao desbloquear apps: ${e.message}")
             }
         }
     }
@@ -146,8 +146,8 @@ class DeviceOwnerManager(private val context: Context) {
         if (!isDeviceAdminActive()) return
         try {
             dpm.lockNow()
-        } catch (_: Exception) {
-            // Handle error
+        } catch (e: Exception) {
+            com.focusguard.utils.FocusGuardLogger.log("Admin", "Erro ao travar dispositivo: ${e.message}")
         }
     }
 
