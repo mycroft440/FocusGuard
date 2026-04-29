@@ -63,14 +63,12 @@ class AuthManager(private val context: Context) {
         }
     }
 
-    fun isAppLocked(): Boolean {
+    suspend fun isAppLocked(): Boolean {
         return hasPasswordSet()
     }
 
-    fun hasPasswordSet(): Boolean {
-        return runBlocking(Dispatchers.IO) {
-            passwordDao.getAllStatic().isNotEmpty()
-        }
+    suspend fun hasPasswordSet(): Boolean {
+        return passwordDao.getAllStatic().isNotEmpty()
     }
 
     fun getMaxPasswordAttempts(): Int {
@@ -111,10 +109,8 @@ class AuthManager(private val context: Context) {
         securePrefs.putInt("failed_password_attempts", 0)
     }
 
-    fun getStoredPasswordLabels(): List<String> {
-        return runBlocking(Dispatchers.IO) {
-            passwordDao.getAllStatic().map { it.label }
-        }
+    suspend fun getStoredPasswordLabels(): List<String> {
+        return passwordDao.getAllStatic().map { it.label }
     }
 
     fun addPasswordWithLabel(password: String, label: String) {
@@ -134,38 +130,34 @@ class AuthManager(private val context: Context) {
         }
     }
 
-    fun verifyAndRemovePasswordByIndex(index: Int, passwordAttempt: String): Boolean {
-        return runBlocking(Dispatchers.IO) {
-            val entries = passwordDao.getAllStatic()
-            if (index in entries.indices) {
-                val entry = entries[index]
-                val hash = if (entry.salt != null) hashPasswordWithSalt(passwordAttempt, entry.salt) else hashPasswordLegacy(passwordAttempt)
-                if (hash == entry.passwordHash) {
-                    passwordDao.delete(entry)
-                    resetFailedAttempts()
-                    return@runBlocking true
-                }
+    suspend fun verifyAndRemovePasswordByIndex(index: Int, passwordAttempt: String): Boolean {
+        val entries = passwordDao.getAllStatic()
+        if (index in entries.indices) {
+            val entry = entries[index]
+            val hash = if (entry.salt != null) hashPasswordWithSalt(passwordAttempt, entry.salt) else hashPasswordLegacy(passwordAttempt)
+            if (hash == entry.passwordHash) {
+                passwordDao.delete(entry)
+                resetFailedAttempts()
+                return true
             }
-            false
         }
+        return false
     }
 
-    fun verifyAndUpdatePasswordByIndex(index: Int, passwordAttempt: String, newPassword: String, label: String): Boolean {
-        return runBlocking(Dispatchers.IO) {
-            val entries = passwordDao.getAllStatic()
-            if (index in entries.indices) {
-                val entry = entries[index]
-                val hash = if (entry.salt != null) hashPasswordWithSalt(passwordAttempt, entry.salt) else hashPasswordLegacy(passwordAttempt)
-                if (hash == entry.passwordHash) {
-                    val newSalt = generateSalt()
-                    val newHash = hashPasswordWithSalt(newPassword, newSalt)
-                    passwordDao.update(entry.copy(label = label, passwordHash = newHash, salt = newSalt))
-                    resetFailedAttempts()
-                    return@runBlocking true
-                }
+    suspend fun verifyAndUpdatePasswordByIndex(index: Int, passwordAttempt: String, newPassword: String, label: String): Boolean {
+        val entries = passwordDao.getAllStatic()
+        if (index in entries.indices) {
+            val entry = entries[index]
+            val hash = if (entry.salt != null) hashPasswordWithSalt(passwordAttempt, entry.salt) else hashPasswordLegacy(passwordAttempt)
+            if (hash == entry.passwordHash) {
+                val newSalt = generateSalt()
+                val newHash = hashPasswordWithSalt(newPassword, newSalt)
+                passwordDao.update(entry.copy(label = label, passwordHash = newHash, salt = newSalt))
+                resetFailedAttempts()
+                return true
             }
-            false
         }
+        return false
     }
 
     fun addPassword(newPassword: String) {
@@ -176,18 +168,16 @@ class AuthManager(private val context: Context) {
         }
     }
 
-    fun verifyPassword(passwordAttempt: String): Boolean {
-        return runBlocking(Dispatchers.IO) {
-            val entries = passwordDao.getAllStatic()
-            for (entry in entries) {
-                val hash = if (entry.salt != null) hashPasswordWithSalt(passwordAttempt, entry.salt) else hashPasswordLegacy(passwordAttempt)
-                if (hash == entry.passwordHash) {
-                    resetFailedAttempts()
-                    return@runBlocking true
-                }
+    suspend fun verifyPassword(passwordAttempt: String): Boolean {
+        val entries = passwordDao.getAllStatic()
+        for (entry in entries) {
+            val hash = if (entry.salt != null) hashPasswordWithSalt(passwordAttempt, entry.salt) else hashPasswordLegacy(passwordAttempt)
+            if (hash == entry.passwordHash) {
+                resetFailedAttempts()
+                return true
             }
-            false
         }
+        return false
     }
 
     fun removeAllPasswords() {

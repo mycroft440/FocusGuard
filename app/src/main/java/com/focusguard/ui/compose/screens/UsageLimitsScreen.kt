@@ -265,7 +265,7 @@ fun AppLimitsTab(permissionsMissing: Boolean) {
         AlertDialog(
             onDismissRequest = { showTimeLockedAlert = false },
             title = { Text("Limite Blindado", color = DangerRed) },
-            text = { Text("Este limite estÃ¡ blindado por tempo e nÃ£o pode ser alterado atÃ© o fim do prazo.", color = TextPrimary) },
+            text = { Text("Este limite está blindado por tempo e não pode ser alterado até o fim do prazo.", color = TextPrimary) },
             confirmButton = { TextButton({ showTimeLockedAlert = false }) { Text("OK", color = AccentCyan) } },
             containerColor = DarkSurface
         )
@@ -530,12 +530,12 @@ fun LimitSecuritySection(
     var allowPasswordUnlock by remember { mutableStateOf(lockMode == "PASSWORD") }
 
     Column {
-        Text("Modo de SeguranÃ§a", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 14.sp)
+        Text("Modo de Segurança", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 14.sp)
         Spacer(Modifier.height(8.dp))
         
         Column(modifier = Modifier.fillMaxWidth().background(DarkCardElevated, RoundedCornerShape(12.dp)).padding(12.dp)) {
             Text("Impedir que o app seja aberto depois que o tempo acabar", color = TextPrimary, fontSize = 13.sp)
-            Text("Aviso: quando o tempo acabar nÃ£o serÃ¡ possÃ­vel desbloquear o app nem com senha.", color = DangerRed, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+            Text("Aviso: quando o tempo acabar não será possível desbloquear o app nem com senha.", color = DangerRed, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
             
             Spacer(Modifier.height(16.dp))
             
@@ -560,7 +560,7 @@ fun LimitSecuritySection(
                         allowPasswordUnlock = false
                         onLockModeChange("TIME")
                     }, colors = RadioButtonDefaults.colors(selectedColor = AccentCyan))
-                    Text("NÃ£o", color = TextPrimary, fontSize = 14.sp)
+                    Text("Não", color = TextPrimary, fontSize = 14.sp)
                 }
                 Spacer(Modifier.width(20.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { 
@@ -592,8 +592,8 @@ fun LimitSecuritySection(
                     border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.3f))
                 ) {
                     Column(Modifier.padding(8.dp)) {
-                        Text("AtenÃ§Ã£o: caso o bloqueio seja sem senha o app serÃ¡ impossÃ­vel de desbloquear atÃ© o dia seguinte ou fim dos dias bloqueio.", color = DangerRed, fontSize = 11.sp)
-                        Text("VocÃª concorda?", color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+                        Text("Atenção: caso o bloqueio seja sem senha o app será impossível de desbloquear até o dia seguinte ou fim dos dias bloqueio.", color = DangerRed, fontSize = 11.sp)
+                        Text("Você concorda?", color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
                         Spacer(Modifier.height(8.dp))
                         OutlinedTextField(
                             value = agreeText,
@@ -623,7 +623,7 @@ fun AppLimitDialog(app: UsageLimitAppUi, permissionsMissing: Boolean, onDismiss:
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Definir qual o tempo mÃ¡ximo por dia vocÃª quer usar o ${app.appName}?", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+        title = { Text("Definir qual o tempo máximo por dia você quer usar o ${app.appName}?", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 if (permissionsMissing) {
@@ -637,7 +637,7 @@ fun AppLimitDialog(app: UsageLimitAppUi, permissionsMissing: Boolean, onDismiss:
                             Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = "PermissÃµes necessÃ¡rias para bloqueio",
+                                text = "Permissões necessárias para bloqueio",
                                 color = DangerRed, fontSize = 12.sp, fontWeight = FontWeight.SemiBold
                             )
                         }
@@ -646,7 +646,7 @@ fun AppLimitDialog(app: UsageLimitAppUi, permissionsMissing: Boolean, onDismiss:
                 OutlinedTextField(
                     value = hoursText,
                     onValueChange = { if (it.isEmpty() || it.replace(",", ".").toDoubleOrNull() != null || it == ".") hoursText = it },
-                    label = { Text("Limite diÃ¡rio em horas", color = TextHint) },
+                    label = { Text("Limite diário em horas", color = TextHint) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AccentCyan, unfocusedTextColor = TextPrimary, focusedTextColor = TextPrimary),
                     modifier = Modifier.fillMaxWidth()
@@ -687,9 +687,9 @@ fun AddWebsiteLimitDialog(permissionsMissing: Boolean, onDismiss: () -> Unit, on
         title = { Text("Adicionar Site", color = TextPrimary, fontWeight = FontWeight.Bold) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                OutlinedTextField(domain, { domain = it }, label = { Text("DomÃ­nio") }, modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(domain, { domain = it }, label = { Text("Domínio") }, modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(8.dp))
-                OutlinedTextField(hoursText, { if (it.isEmpty() || it.replace(",", ".").toDoubleOrNull() != null) hoursText = it }, label = { Text("Limite diÃ¡rio em horas") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(hoursText, { if (it.isEmpty() || it.replace(",", ".").toDoubleOrNull() != null) hoursText = it }, label = { Text("Limite diário em horas") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(16.dp))
                 LimitSecuritySection(lockMode, { lockMode = it }, password, { password = it }, days, { days = it }, { isConfirmed = it })
             }
@@ -725,7 +725,7 @@ fun EditWebsiteLimitDialog(site: WebsiteLimitUi, permissionsMissing: Boolean, on
         title = { Text("Editar Limite de Site", color = TextPrimary, fontWeight = FontWeight.Bold) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                OutlinedTextField(hoursText, { if (it.isEmpty() || it.replace(",", ".").toDoubleOrNull() != null) hoursText = it }, label = { Text("Limite diÃ¡rio em horas") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
+                OutlinedTextField(hoursText, { if (it.isEmpty() || it.replace(",", ".").toDoubleOrNull() != null) hoursText = it }, label = { Text("Limite diário em horas") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(16.dp))
                 LimitSecuritySection(lockMode, { lockMode = it }, password, { password = it }, days, { days = it }, { isConfirmed = it })
             }

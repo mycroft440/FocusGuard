@@ -66,7 +66,10 @@ fun MainActivityContent(
     sessionManager: BlockingSessionManager,
     authManager: AuthManager
 ) {
-    var isUnlocked by remember { mutableStateOf(!authManager.isAppLocked()) }
+    var isUnlocked by remember { mutableStateOf(true) } // Assume unlocked initially to prevent flicker, or false for security
+    LaunchedEffect(Unit) {
+        isUnlocked = !authManager.isAppLocked()
+    }
 
     if (!isUnlocked) {
         AuthScreen(

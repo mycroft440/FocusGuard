@@ -44,13 +44,13 @@ class BlockingSessionManager private constructor(private val context: Context) {
     val hasRegisteredSessionFlow: Flow<Boolean> = activeSessionsFlow.map { it.isNotEmpty() }
 
     val sessionDetailsFlow: Flow<String> = activeSessionsFlow.map { sessions ->
-        if (sessions.isEmpty()) return@map "Nenhuma sessÃ£o ativa"
+        if (sessions.isEmpty()) return@map "Nenhuma sessão ativa"
         val dateFormatter = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
 
         buildString {
-            appendLine("=== SessÃµes Ativas (${sessions.size}) ===")
+            appendLine("=== Sessões Ativas (${sessions.size}) ===")
             sessions.forEachIndexed { index, session ->
-                appendLine("SessÃ£o #${index + 1} (${session.sessionType})")
+                appendLine("Sessão #${index + 1} (${session.sessionType})")
                 if (session.isFixed24h) {
                     appendLine("Modo: FIXO 24H")
                 } else {
@@ -58,7 +58,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
                     appendLine("Entre: ${String.format(Locale.getDefault(), "%02d:%02d", session.recurringStartHour, session.recurringStartMinute)} e ${String.format(Locale.getDefault(), "%02d:%02d", session.recurringEndHour, session.recurringEndMinute)}")
                 }
                 if (session.sessionType == "TIME" && session.endTime != null) {
-                    appendLine("TÃ©rmino do Tempo: ${dateFormatter.format(session.endTime)}")
+                    appendLine("Término do Tempo: ${dateFormatter.format(session.endTime)}")
                 }
                 appendLine("---")
             }
@@ -230,6 +230,11 @@ class BlockingSessionManager private constructor(private val context: Context) {
             deviceOwnerManager.enforceWebsiteRestrictions(sitesToBlock)
             deviceOwnerManager.enforceBlockingPolicies()
         }
+        
+        // Notify Accessibility Service to update immediately
+        val intent = android.content.Intent("com.focusguard.ACTION_REFRESH_BLOCKING")
+        intent.setPackage(context.packageName)
+        context.sendBroadcast(intent)
     }
 
     fun isCurrentlyInBlockingWindow(session: BlockSession?): Boolean {
@@ -308,13 +313,13 @@ class BlockingSessionManager private constructor(private val context: Context) {
     suspend fun getSessionDetails(): String {
         return try {
             val sessions = getActiveSessions()
-            if (sessions.isEmpty()) return "Nenhuma sessÃ£o ativa"
+            if (sessions.isEmpty()) return "Nenhuma sessão ativa"
             val dateFormatter = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
 
             buildString {
-                appendLine("=== SessÃµes Ativas (${sessions.size}) ===")
+                appendLine("=== Sessões Ativas (${sessions.size}) ===")
                 sessions.forEachIndexed { index, session ->
-                    appendLine("SessÃ£o #${index + 1} (${session.sessionType})")
+                    appendLine("Sessão #${index + 1} (${session.sessionType})")
                     if (session.isFixed24h) {
                         appendLine("Modo: FIXO 24H")
                     } else {
@@ -322,7 +327,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
                         appendLine("Entre: ${String.format(Locale.getDefault(), "%02d:%02d", session.recurringStartHour, session.recurringStartMinute)} e ${String.format(Locale.getDefault(), "%02d:%02d", session.recurringEndHour, session.recurringEndMinute)}")
                     }
                     if (session.sessionType == "TIME" && session.endTime != null) {
-                        appendLine("TÃ©rmino do Tempo: ${dateFormatter.format(session.endTime)}")
+                        appendLine("Término do Tempo: ${dateFormatter.format(session.endTime)}")
                     }
                     appendLine("---")
                 }

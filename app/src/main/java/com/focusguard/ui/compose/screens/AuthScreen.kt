@@ -16,6 +16,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
+import kotlinx.coroutines.launch
 import com.focusguard.security.AuthManager
 import com.focusguard.security.CameraManager
 import com.focusguard.ui.compose.theme.*
@@ -104,8 +105,11 @@ fun AuthScreen(
         
         Spacer(modifier = Modifier.height(24.dp))
         
-        Button(
-            onClick = {
+    val scope = rememberCoroutineScope()
+    
+    Button(
+        onClick = {
+            scope.launch {
                 if (authManager.verifyPassword(passwordInput)) {
                     onUnlock()
                 } else {
@@ -126,7 +130,8 @@ fun AuthScreen(
                         errorMessage = "Senha incorreta."
                     }
                 }
-            },
+            }
+        },
             modifier = Modifier.fillMaxWidth().height(50.dp),
             colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
             shape = RoundedCornerShape(16.dp)

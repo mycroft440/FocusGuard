@@ -90,6 +90,9 @@ class BlockingAccessibilityService : AccessibilityService() {
             addDataScheme("package")
         }
         registerReceiver(packageReceiver, filter)
+        
+        val refreshFilter = android.content.IntentFilter("com.focusguard.ACTION_REFRESH_BLOCKING")
+        registerReceiver(refreshReceiver, refreshFilter, android.content.Context.RECEIVER_NOT_EXPORTED)
     }
 
     override fun onServiceConnected() {
@@ -161,7 +164,16 @@ class BlockingAccessibilityService : AccessibilityService() {
                     }
                 }
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            com.focusguard.utils.FocusGuardLogger.log("A11y", "Erro no onAccessibilityEvent: ${e.message}")
+        }
+    }
+
+    private val refreshReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: android.content.Context?, intent: android.content.Intent?) {
+            lastLoadTime = 0 // Force refresh
+            refreshData()
+        }
     }
 
     private fun refreshData() {
@@ -272,7 +284,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         try {
             performGlobalAction(GLOBAL_ACTION_HOME)
             showToastThrottled("App bloqueado pelo FocusGuard")
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            com.focusguard.utils.FocusGuardLogger.log("A11y", "Erro no refreshData: ${e.message}")
+        }
     }
 
     private fun checkAndBlockWebsite(source: AccessibilityNodeInfo) {
@@ -289,7 +303,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                 }
                 addressBarNode.recycle()
             }
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            com.focusguard.utils.FocusGuardLogger.log("A11y", "Erro ao fechar app: ${e.message}")
+        }
     }
 
     private fun isWebsiteBlocked(url: String): Boolean {
@@ -345,7 +361,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         try {
             performGlobalAction(GLOBAL_ACTION_HOME)
             showToastThrottled("Site bloqueado pelo FocusGuard")
-        } catch (_: Exception) {}
+        } catch (e: Exception) {
+            com.focusguard.utils.FocusGuardLogger.log("A11y", "Erro ao bloquear browser: ${e.message}")
+        }
     }
     
     private fun showToastThrottled(message: String) {
@@ -365,9 +383,12 @@ class BlockingAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         super.onDestroy()
         unregisterReceiver(packageReceiver)
+        unregisterReceiver(refreshReceiver)
         job.cancel()
         try {
-            Toast.makeText(this, "ServiÃƒÂ§o FocusGuard parado", Toast.LENGTH_SHORT).show()
-        } catch (_: Exception) {}
+            Toast.makeText(this, "Serviço FocusGuard parado", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            com.focusguard.utils.FocusGuardLogger.log("A11y", "Erro no onDestroy: ${e.message}")
+        }
     }
 }

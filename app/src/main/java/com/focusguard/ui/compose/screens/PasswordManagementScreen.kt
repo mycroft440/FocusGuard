@@ -1,4 +1,4 @@
-﻿package com.focusguard.ui.compose.screens
+package com.focusguard.ui.compose.screens
 
 import android.widget.Toast
 import androidx.compose.animation.*
@@ -23,19 +23,27 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.launch
 import com.focusguard.security.AuthManager
 import com.focusguard.ui.compose.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
-    val hasPasswords = authManager.hasPasswordSet()
-    var isAuthenticated by remember { mutableStateOf(!hasPasswords) }
+    var hasPasswords by remember { mutableStateOf(false) }
+    var isAuthenticated by remember { mutableStateOf(true) } // Temporarily true to avoid flicker if no passwords
     var authInput by remember { mutableStateOf("") }
     var authError by remember { mutableStateOf("") }
-
+    
     // Password list state
-    var passwords by remember { mutableStateOf(authManager.getStoredPasswordLabels()) }
+    var passwords by remember { mutableStateOf<List<String>>(emptyList()) }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        hasPasswords = authManager.hasPasswordSet()
+        isAuthenticated = !hasPasswords
+        passwords = authManager.getStoredPasswordLabels()
+    }
     var showAddDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf<Int?>(null) }
     var showDeleteAuthDialog by remember { mutableStateOf<Int?>(null) }
@@ -116,32 +124,29 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
             confirmButton = {
                 Button(
                     onClick = {
-                        if (tempPassword.isBlank()) {
-                            actionError = "A senha não pode ser vazia."
-                            return@Button
-                        }
-                        
-                        if (isEditing) {
-                            if (authManager.verifyAndUpdatePasswordByIndex(showEditDialog!!, currentPasswordForEdit, tempPassword, tempPasswordLabel)) {
-                                // Success
+                        scope.launch {
+                            if (isEditing) {
+                                if (authManager.verifyAndUpdatePasswordByIndex(showEditDialog!!, currentPasswordForEdit, tempPassword, tempPasswordLabel)) {
+                                    // Success
+                                } else {
+                                    actionError = "Senha atual incorreta."
+                                    return@launch
+                                }
                             } else {
-                                actionError = "Senha atual incorreta."
-                                return@Button
+                                val label = tempPasswordLabel.ifBlank { "Senha ${passwords.size + 1}" }
+                                authManager.addPasswordWithLabel(tempPassword, label)
                             }
-                        } else {
-                            val label = tempPasswordLabel.ifBlank { "Senha ${passwords.size + 1}" }
-                            authManager.addPasswordWithLabel(tempPassword, label)
+                            
+                            Toast.makeText(context, "Bloqueio configurado com sucesso!", Toast.LENGTH_SHORT).show()
+                            
+                            passwords = authManager.getStoredPasswordLabels()
+                            tempPassword = ""
+                            tempPasswordLabel = ""
+                            currentPasswordForEdit = ""
+                            actionError = ""
+                            showAddDialog = false
+                            showEditDialog = null
                         }
-                        
-                        Toast.makeText(context, "Bloqueio configurado com sucesso!", Toast.LENGTH_SHORT).show()
-                        
-                        passwords = authManager.getStoredPasswordLabels()
-                        tempPassword = ""
-                        tempPasswordLabel = ""
-                        currentPasswordForEdit = ""
-                        actionError = ""
-                        showAddDialog = false
-                        showEditDialog = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                     shape = RoundedCornerShape(12.dp)
@@ -194,11 +199,13 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
             confirmButton = {
                 Button(
                     onClick = {
-                        if (authManager.verifyAndRemovePasswordByIndex(showDeleteAuthDialog!!, deleteAuthInput)) {
-                            passwords = authManager.getStoredPasswordLabels()
-                            showDeleteAuthDialog = null
-                        } else {
-                            deleteAuthError = "Senha incorreta."
+                        scope.launch {
+                            if (authManager.verifyAndRemovePasswordByIndex(showDeleteAuthDialog!!, deleteAuthInput)) {
+                                passwords = authManager.getStoredPasswordLabels()
+                                showDeleteAuthDialog = null
+                            } else {
+                                deleteAuthError = "Senha incorreta."
+                            }
                         }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
@@ -308,11 +315,13 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
 
                 Button(
                     onClick = {
-                        if (authManager.verifyPassword(authInput)) {
-                            isAuthenticated = true
-                            authError = ""
-                        } else {
-                            authError = "Senha incorreta."
+                        scope.launch {
+                            if (authManager.verifyPassword(authInput)) {
+                                isAuthenticated = true
+                                authError = ""
+                            } else {
+                                authError = "Senha incorreta."
+                            }
                         }
                     },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
