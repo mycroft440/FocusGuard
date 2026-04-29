@@ -12,6 +12,10 @@ class PermissionsActivity : ComponentActivity() {
         setContent {
             FocusGuardTheme {
                 PermissionsScreen(onFinish = {
+                    val prefs = getSharedPreferences("FocusGuardPrefs", android.content.Context.MODE_PRIVATE)
+                    prefs.edit().putBoolean("hasSeenOnboarding", true).apply()
+                    
+                    startActivity(android.content.Intent(this, com.focusguard.MainActivity::class.java))
                     finish()
                 })
             }

@@ -29,9 +29,17 @@ object FocusGuardLogger {
         if (isInitialized) return
         
         try {
-            val downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            val focusGuardDir = File(downloadDir, "FocusGuardLogs")
-            if (!focusGuardDir.exists()) focusGuardDir.mkdirs()
+            var downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            var focusGuardDir = File(downloadDir, "FocusGuardLogs")
+            
+            if (!focusGuardDir.exists()) {
+                val success = focusGuardDir.mkdirs()
+                if (!success) {
+                    // Fallback para armazenamento interno se falhar no Downloads
+                    focusGuardDir = File(context.getExternalFilesDir(null), "FocusGuardLogs")
+                    if (!focusGuardDir.exists()) focusGuardDir.mkdirs()
+                }
+            }
 
             val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())
             logFile = File(focusGuardDir, "log_$dateStr.txt")
@@ -44,7 +52,7 @@ object FocusGuardLogger {
             }
 
             isInitialized = true
-            log("System", "Logger Inicializado. Versão: ${Build.DISPLAY} | API: ${Build.VERSION.SDK_INT}")
+            log("System", "Logger Inicializado. Local: ${focusGuardDir.absolutePath}")
             logDeviceInfo(context)
             cleanOldLogs(focusGuardDir)
         } catch (e: Exception) {
