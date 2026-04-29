@@ -149,7 +149,7 @@ fun AppSelectionScreen(
                         
                         item {
                             Spacer(modifier = Modifier.height(16.dp))
-                            Divider(color = CardBorder, thickness = 1.dp)
+                            HorizontalDivider(color = CardBorder, thickness = 1.dp)
                             Spacer(modifier = Modifier.height(16.dp))
                             Text(
                                 text = "Aplicativos Instalados",

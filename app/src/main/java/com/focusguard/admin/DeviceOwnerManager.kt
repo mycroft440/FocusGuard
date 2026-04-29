@@ -266,12 +266,12 @@ class DeviceOwnerManager(private val context: Context) {
                 }
 
                 val restrictions = Bundle()
-                val jsonArray = JSONArray(limitedDomains).toString()
-                restrictions.putString("URLBlocklist", jsonArray)
+                // Native URLBlocklist for Chrome/Edge expects a String Array
+                restrictions.putStringArray("URLBlocklist", limitedDomains.toTypedArray())
 
                 val attempt = sotaAttempts.incrementAndGet()
                 if (attempt <= 5) {
-                    Log.d("FocusGuardNuclear", "Tentativa SOTA (Managed Config) $attempt: $jsonArray")
+                    Log.d("FocusGuardNuclear", "Tentativa SOTA (Managed Config) $attempt: ${limitedDomains.size} domínios")
                 }
 
                 // Apply to Google Chrome
