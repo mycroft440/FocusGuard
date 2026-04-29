@@ -176,7 +176,7 @@ fun SessionsListScreen(
     }
 
     if (showAppPickerForSession != null) {
-        AppPickerSheet(
+        ContentPickerSheet(
             session = showAppPickerForSession!!,
             onDismiss = { showAppPickerForSession = null }
         )
@@ -280,17 +280,12 @@ fun SessionDetailsSheet(
                                 Text(appName, color = TextPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
                                 IconButton(onClick = {
                                     scope.launch {
-                                        // Logic to remove single app (needs a new Dao method or simple query)
-                                        database.runInTransaction {
-                                            // Since we don't have a direct delete by pkg in Daos.kt for sessions, 
-                                            // we might need a custom query. But I can't add to Daos.kt easily now.
-                                            // Wait, I can! I'll add it to my next edit if needed.
-                                        }
-                                        // For now, let's skip individual removal or just use the clear all logic.
+                                        database.sessionAppCrossRefDao().deleteSpecificApp(session.id, pkg)
+                                        BlockingSessionManager.getInstance(context).checkAndEnforce()
+                                        refresh()
                                     }
                                 }) {
-                                    // User didn't explicitly ask for individual removal in details, 
-                                    // but it's good to have. He asked for "remover todos" and "+".
+                                    Icon(Icons.Default.RemoveCircleOutline, "Remover", tint = DangerRed.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
                                 }
                             }
                         }
@@ -306,6 +301,15 @@ fun SessionDetailsSheet(
                                 Icon(Icons.Default.Language, null, tint = TextHint, modifier = Modifier.size(20.dp))
                                 Spacer(Modifier.width(12.dp))
                                 Text(site, color = TextPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                                IconButton(onClick = {
+                                    scope.launch {
+                                        database.sessionWebsiteCrossRefDao().deleteSpecificWebsite(session.id, site)
+                                        BlockingSessionManager.getInstance(context).checkAndEnforce()
+                                        refresh()
+                                    }
+                                }) {
+                                    Icon(Icons.Default.RemoveCircleOutline, "Remover", tint = DangerRed.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
+                                }
                             }
                         }
                     }
@@ -332,13 +336,21 @@ fun SessionDetailsSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun AppPickerSheet(session: BlockSession, onDismiss: () -> Unit) {
+fun ContentPickerSheet(session: BlockSession, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val pm = context.packageManager
-    var apps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
     val scope = rememberCoroutineScope()
     val database = remember { com.focusguard.database.AppDatabase.getDatabase(context) }
+
+    var selectedTab by remember { mutableStateOf(0) } // 0 = Apps, 1 = Sites
+    
+    // App State
+    var apps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
+    var isLoadingApps by remember { mutableStateOf(true) }
+    
+    // Site State
+    var sites by remember { mutableStateOf<List<String>>(emptyList()) }
+    var siteInput by remember { mutableStateOf("") }
 
     LaunchedEffect(Unit) {
         scope.launch(Dispatchers.IO) {
@@ -350,7 +362,7 @@ fun AppPickerSheet(session: BlockSession, onDismiss: () -> Unit) {
             
             withContext(Dispatchers.Main) {
                 apps = appList
-                isLoading = false
+                isLoadingApps = false
             }
         }
     }
@@ -359,44 +371,104 @@ fun AppPickerSheet(session: BlockSession, onDismiss: () -> Unit) {
         onDismissRequest = onDismiss,
         containerColor = DarkSurface
     ) {
-        Column(modifier = Modifier.fillMaxHeight(0.8f).padding(16.dp)) {
-            Text("Adicionar Apps ao Bloqueio", style = MaterialTheme.typography.titleLarge, color = TextPrimary)
+        Column(modifier = Modifier.fillMaxHeight(0.85f).padding(16.dp)) {
+            Text("Adicionar Conteúdo", style = MaterialTheme.typography.titleLarge, color = TextPrimary, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(16.dp))
             
-            if (isLoading) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally), color = AccentCyan)
-            } else {
-                LazyColumn(modifier = Modifier.weight(1f)) {
-                    items(apps) { app ->
-                        Row(
-                            modifier = Modifier.fillMaxWidth().clickable {
-                                apps = apps.map { if (it.packageName == app.packageName) it.copy(isSelected = !it.isSelected) else it }
-                            }.padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Checkbox(checked = app.isSelected, onCheckedChange = null, colors = CheckboxDefaults.colors(checkedColor = AccentCyan))
-                            Spacer(Modifier.width(12.dp))
-                            Text(app.appName, color = TextPrimary)
+            TabRow(
+                selectedTabIndex = selectedTab,
+                containerColor = Color.Transparent,
+                contentColor = AccentCyan,
+                divider = {}
+            ) {
+                Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }) {
+                    Text("Aplicativos", modifier = Modifier.padding(12.dp), color = if (selectedTab == 0) AccentCyan else TextHint)
+                }
+                Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }) {
+                    Text("Websites", modifier = Modifier.padding(12.dp), color = if (selectedTab == 1) AccentCyan else TextHint)
+                }
+            }
+            
+            Spacer(Modifier.height(16.dp))
+
+            Box(modifier = Modifier.weight(1f)) {
+                if (selectedTab == 0) {
+                    if (isLoadingApps) {
+                        CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = AccentCyan)
+                    } else {
+                        LazyColumn {
+                            items(apps) { app ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().clickable {
+                                        apps = apps.map { if (it.packageName == app.packageName) it.copy(isSelected = !it.isSelected) else it }
+                                    }.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Checkbox(checked = app.isSelected, onCheckedChange = null, colors = CheckboxDefaults.colors(checkedColor = AccentCyan))
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(app.appName, color = TextPrimary)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Column {
+                        OutlinedTextField(
+                            value = siteInput,
+                            onValueChange = { siteInput = it },
+                            placeholder = { Text("Ex: site.com", color = TextHint) },
+                            modifier = Modifier.fillMaxWidth(),
+                            trailingIcon = {
+                                TextButton(onClick = {
+                                    if (siteInput.isNotBlank() && !sites.contains(siteInput.trim())) {
+                                        sites = sites + siteInput.trim()
+                                        siteInput = ""
+                                    }
+                                }) {
+                                    Text("ADD +", color = AccentCyan)
+                                }
+                            },
+                            colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = AccentCyan)
+                        )
+                        
+                        Spacer(Modifier.height(16.dp))
+                        
+                        LazyColumn(modifier = Modifier.weight(1f)) {
+                            items(sites) { site ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().background(DarkCard, RoundedCornerShape(12.dp)).padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(site, color = TextPrimary, modifier = Modifier.weight(1f))
+                                    IconButton(onClick = { sites = sites - site }) {
+                                        Icon(Icons.Default.Close, null, tint = DangerRed)
+                                    }
+                                }
+                                Spacer(Modifier.height(8.dp))
+                            }
                         }
                     }
                 }
-                
-                Button(
-                    onClick = {
-                        scope.launch {
-                            val selected = apps.filter { it.isSelected }.map { it.packageName }
-                            selected.forEach { pkg ->
-                                database.sessionAppCrossRefDao().insert(com.focusguard.database.SessionAppCrossRef(session.id, pkg))
-                            }
-                            BlockingSessionManager.getInstance(context).checkAndEnforce()
-                            onDismiss()
+            }
+            
+            Button(
+                onClick = {
+                    scope.launch {
+                        val selectedApps = apps.filter { it.isSelected }.map { it.packageName }
+                        selectedApps.forEach { pkg ->
+                            database.sessionAppCrossRefDao().insert(com.focusguard.database.SessionAppCrossRef(session.id, pkg))
                         }
-                    },
-                    modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-                ) {
-                    Text("Salvar Seleção", color = DarkBg)
-                }
+                        sites.forEach { domain ->
+                            database.sessionWebsiteCrossRefDao().insert(com.focusguard.database.SessionWebsiteCrossRef(session.id, domain))
+                        }
+                        BlockingSessionManager.getInstance(context).checkAndEnforce()
+                        onDismiss()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+            ) {
+                Text("Salvar Conteúdo", color = DarkBg, fontWeight = FontWeight.Bold)
             }
         }
     }

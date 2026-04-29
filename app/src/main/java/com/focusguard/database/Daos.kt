@@ -105,6 +105,9 @@ interface SessionAppCrossRefDao {
 
     @Query("DELETE FROM session_app_cross_ref WHERE sessionId = :sessionId")
     suspend fun deleteForSession(sessionId: Int)
+
+    @Query("DELETE FROM session_app_cross_ref WHERE sessionId = :sessionId AND packageName = :packageName")
+    suspend fun deleteSpecificApp(sessionId: Int, packageName: String)
 }
 
 @Dao
@@ -117,6 +120,9 @@ interface SessionWebsiteCrossRefDao {
 
     @Query("DELETE FROM session_website_cross_ref WHERE sessionId = :sessionId")
     suspend fun deleteForSession(sessionId: Int)
+
+    @Query("DELETE FROM session_website_cross_ref WHERE sessionId = :sessionId AND domain = :domain")
+    suspend fun deleteSpecificWebsite(sessionId: Int, domain: String)
 }
 
 @Dao
