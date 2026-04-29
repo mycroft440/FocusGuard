@@ -476,7 +476,22 @@ fun ContentPickerSheet(session: BlockSession, onDismiss: () -> Unit) {
 
 @Composable
 fun PasswordPromptDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    val context = LocalContext.current
+    val activity = context as? androidx.fragment.app.FragmentActivity
+    val authManager = remember { AuthManager(context) }
     var password by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    
+    LaunchedEffect(Unit) {
+        if (activity != null) {
+            authManager.showBiometricPrompt(
+                activity = activity,
+                onSuccess = { onConfirm("") },
+                onError = { /* Let user use password */ }
+            )
+        }
+    }
     
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -487,16 +502,49 @@ fun PasswordPromptDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedTextField(
                     value = password,
-                    onValueChange = { password = it },
-                    label = { Text("Senha") },
-                    modifier = Modifier.fillMaxWidth(),
+                    onValueChange = { password = it; error = null },
+                    placeholder = { Text("Senha", color = TextHint) },
                     visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    isError = error != null,
+                    modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = AccentCyan)
                 )
+                if (error != null) {
+                    Text(error!!, color = DangerRed, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                }
+                
+                if (activity != null) {
+                    Spacer(Modifier.height(16.dp))
+                    TextButton(
+                        onClick = {
+                            authManager.showBiometricPrompt(
+                                activity = activity,
+                                onSuccess = { onConfirm("") },
+                                onError = { error = it }
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Fingerprint, null, tint = AccentCyan)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Usar Digital", color = AccentCyan)
+                    }
+                }
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(password) }, colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)) {
+            Button(
+                onClick = {
+                    scope.launch {
+                        if (authManager.verifyPassword(password)) {
+                            onConfirm(password)
+                        } else {
+                            error = "Senha incorreta"
+                        }
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+            ) {
                 Text("Confirmar", color = DarkBg)
             }
         },

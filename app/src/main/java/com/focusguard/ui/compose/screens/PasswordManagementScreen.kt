@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
 import com.focusguard.security.AuthManager
 import com.focusguard.ui.compose.theme.*
+import androidx.compose.foundation.BorderStroke
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -122,35 +123,77 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        scope.launch {
-                            if (isEditing) {
-                                if (authManager.verifyAndUpdatePasswordByIndex(showEditDialog!!, currentPasswordForEdit, tempPassword, tempPasswordLabel)) {
-                                    // Success
-                                } else {
-                                    actionError = "Senha atual incorreta."
-                                    return@launch
-                                }
-                            } else {
-                                val label = tempPasswordLabel.ifBlank { "Senha ${passwords.size + 1}" }
-                                authManager.addPasswordWithLabel(tempPassword, label)
-                            }
-                            
-                            Toast.makeText(context, "Bloqueio configurado com sucesso!", Toast.LENGTH_SHORT).show()
-                            
-                            passwords = authManager.getStoredPasswordLabels()
-                            tempPassword = ""
-                            tempPasswordLabel = ""
-                            currentPasswordForEdit = ""
-                            actionError = ""
-                            showAddDialog = false
-                            showEditDialog = null
+                val activity = LocalContext.current as? androidx.fragment.app.FragmentActivity
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (isEditing && activity != null) {
+                        IconButton(onClick = {
+                            authManager.showBiometricPrompt(
+                                activity = activity,
+                                onSuccess = {
+                                    scope.launch {
+                                        // When using biometric to edit, we need a special method that doesn't check old password
+                                        // or we can just bypass the check since biometric is strong.
+                                        // For now, let's assume we need to update the password Dao directly.
+                                        // I'll add a new method to AuthManager or just use a flag.
+                                        // Actually, let's just use the verified state.
+                                        val entries = authManager.getStoredPasswordLabels()
+                                        if (showEditDialog!! in entries.indices) {
+                                            // Update logic moved here
+                                            val currentEntries = com.focusguard.database.AppDatabase.getDatabase(context).appPasswordDao().getAllStatic()
+                                            val entry = currentEntries[showEditDialog!!]
+                                            val newSalt = AuthManager.generateSalt()
+                                            val newHash = AuthManager.hashPasswordWithSalt(tempPassword, newSalt)
+                                            com.focusguard.database.AppDatabase.getDatabase(context).appPasswordDao().update(entry.copy(label = tempPasswordLabel, passwordHash = newHash, salt = newSalt))
+                                            
+                                            passwords = authManager.getStoredPasswordLabels()
+                                            tempPassword = ""
+                                            tempPasswordLabel = ""
+                                            currentPasswordForEdit = ""
+                                            actionError = ""
+                                            showAddDialog = false
+                                            showEditDialog = null
+                                            Toast.makeText(context, "Senha atualizada com sucesso!", Toast.LENGTH_SHORT).show()
+                                        }
+                                    }
+                                },
+                                onError = { actionError = it }
+                            )
+                        }) {
+                            Icon(Icons.Default.Fingerprint, null, tint = AccentCyan)
                         }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-                    shape = RoundedCornerShape(12.dp)
-                ) { Text("Salvar", color = DarkBg, fontWeight = FontWeight.Bold) }
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                if (isEditing) {
+                                    if (authManager.verifyAndUpdatePasswordByIndex(showEditDialog!!, currentPasswordForEdit, tempPassword, tempPasswordLabel)) {
+                                        // Success
+                                    } else {
+                                        actionError = "Senha atual incorreta."
+                                        return@launch
+                                    }
+                                } else {
+                                    val label = tempPasswordLabel.ifBlank { "Senha ${passwords.size + 1}" }
+                                    authManager.addPasswordWithLabel(tempPassword, label)
+                                }
+                                
+                                Toast.makeText(context, "Salvo com sucesso!", Toast.LENGTH_SHORT).show()
+                                
+                                passwords = authManager.getStoredPasswordLabels()
+                                tempPassword = ""
+                                tempPasswordLabel = ""
+                                currentPasswordForEdit = ""
+                                actionError = ""
+                                showAddDialog = false
+                                showEditDialog = null
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text("Salvar", color = DarkBg, fontWeight = FontWeight.Bold) }
+                }
             },
             dismissButton = {
                 TextButton(onClick = { 
@@ -197,20 +240,45 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                 }
             },
             confirmButton = {
-                Button(
-                    onClick = {
-                        scope.launch {
-                            if (authManager.verifyAndRemovePasswordByIndex(showDeleteAuthDialog!!, deleteAuthInput)) {
-                                passwords = authManager.getStoredPasswordLabels()
-                                showDeleteAuthDialog = null
-                            } else {
-                                deleteAuthError = "Senha incorreta."
-                            }
+                val activity = LocalContext.current as? androidx.fragment.app.FragmentActivity
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (activity != null) {
+                        IconButton(onClick = {
+                            authManager.showBiometricPrompt(
+                                activity = activity,
+                                onSuccess = {
+                                    scope.launch {
+                                        val currentEntries = com.focusguard.database.AppDatabase.getDatabase(context).appPasswordDao().getAllStatic()
+                                        if (showDeleteAuthDialog!! in currentEntries.indices) {
+                                            com.focusguard.database.AppDatabase.getDatabase(context).appPasswordDao().delete(currentEntries[showDeleteAuthDialog!!])
+                                            passwords = authManager.getStoredPasswordLabels()
+                                            showDeleteAuthDialog = null
+                                        }
+                                    }
+                                },
+                                onError = { deleteAuthError = it }
+                            )
+                        }) {
+                            Icon(Icons.Default.Fingerprint, null, tint = AccentCyan)
                         }
-                    },
-                    colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
-                    shape = RoundedCornerShape(12.dp)
-                ) { Text("Excluir", color = TextPrimary, fontWeight = FontWeight.Bold) }
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    
+                    Button(
+                        onClick = {
+                            scope.launch {
+                                if (authManager.verifyAndRemovePasswordByIndex(showDeleteAuthDialog!!, deleteAuthInput)) {
+                                    passwords = authManager.getStoredPasswordLabels()
+                                    showDeleteAuthDialog = null
+                                } else {
+                                    deleteAuthError = "Senha incorreta."
+                                }
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
+                        shape = RoundedCornerShape(12.dp)
+                    ) { Text("Excluir", color = TextPrimary, fontWeight = FontWeight.Bold) }
+                }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteAuthDialog = null }) {
@@ -312,6 +380,27 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
+
+                val activity = LocalContext.current as? androidx.fragment.app.FragmentActivity
+                if (activity != null) {
+                    Button(
+                        onClick = {
+                            authManager.showBiometricPrompt(
+                                activity = activity,
+                                onSuccess = { isAuthenticated = true; authError = "" },
+                                onError = { authError = it }
+                            )
+                        },
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = DarkSurface),
+                        border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.5f)),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Icon(Icons.Default.Fingerprint, null, tint = AccentCyan)
+                        Spacer(Modifier.width(8.dp))
+                        Text("Usar Digital", color = TextPrimary)
+                    }
+                }
 
                 Button(
                     onClick = {
