@@ -1,6 +1,7 @@
 package com.focusguard.ui.compose.screens
 
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
