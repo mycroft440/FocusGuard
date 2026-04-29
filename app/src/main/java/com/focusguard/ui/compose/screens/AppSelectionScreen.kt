@@ -44,6 +44,8 @@ fun AppSelectionScreen(
 ) {
     var searchQuery by remember { mutableStateOf("") }
     var expandUninstalled by remember { mutableStateOf(false) }
+    var expandInstalled by remember { mutableStateOf(false) }
+    val scope = rememberCoroutineScope()
 
     val filteredApps = remember(apps, searchQuery) {
         if (searchQuery.isBlank()) apps
@@ -159,13 +161,73 @@ fun AppSelectionScreen(
                                 modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
                             )
                         }
-                    }
-
-                    items(installedApps, key = { it.packageName }) { app ->
-                        AppSelectionItem(
-                            app = app,
-                            onToggle = { onToggleApp(app.packageName) }
-                        )
+                        
+                        val visibleInstalled = if (expandInstalled || searchQuery.isNotBlank()) installedApps else installedApps.take(3)
+                        
+                        items(visibleInstalled, key = { it.packageName }) { app ->
+                            AppSelectionItem(app = app, onToggle = { onToggleApp(app.packageName) })
+                        }
+                        
+                        if (!expandInstalled && searchQuery.isBlank() && installedApps.size > 3) {
+                            item {
+                                TextButton(
+                                    onClick = { expandInstalled = true },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Mostrar Mais (+${installedApps.size - 3} apps)", color = TextPrimary.copy(alpha = 0.7f))
+                                }
+                            }
+                        }
+                        
+                        if (expandInstalled && searchQuery.isBlank()) {
+                            item {
+                                TextButton(
+                                    onClick = { expandInstalled = false },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Mostrar Menos", color = TextPrimary.copy(alpha = 0.7f))
+                                }
+                            }
+                        }
+                    } else {
+                        // If no uninstalled apps (rare), just show installed list
+                        item {
+                            Text(
+                                text = "Aplicativos Instalados",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
+                            )
+                        }
+                        
+                        val visibleInstalled = if (expandInstalled || searchQuery.isNotBlank()) installedApps else installedApps.take(3)
+                        
+                        items(visibleInstalled, key = { it.packageName }) { app ->
+                            AppSelectionItem(app = app, onToggle = { onToggleApp(app.packageName) })
+                        }
+                        
+                        if (!expandInstalled && searchQuery.isBlank() && installedApps.size > 3) {
+                            item {
+                                TextButton(
+                                    onClick = { expandInstalled = true },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Mostrar Mais (+${installedApps.size - 3} apps)", color = TextPrimary.copy(alpha = 0.7f))
+                                }
+                            }
+                        }
+                        
+                        if (expandInstalled && searchQuery.isBlank()) {
+                            item {
+                                TextButton(
+                                    onClick = { expandInstalled = false },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text("Mostrar Menos", color = TextPrimary.copy(alpha = 0.7f))
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -205,14 +267,44 @@ fun AppSelectionItem(
                         .clip(RoundedCornerShape(10.dp))
                 )
             } else {
+                val brandColor = remember(app.packageName) {
+                    when {
+                        app.packageName.contains("instagram") -> Color(0xFFE4405F)
+                        app.packageName.contains("facebook") -> Color(0xFF1877F2)
+                        app.packageName.contains("youtube") -> Color(0xFFFF0000)
+                        app.packageName.contains("tiktok") -> Color(0xFF000000)
+                        app.packageName.contains("twitter") || app.packageName.contains("x.android") -> Color(0xFF1DA1F2)
+                        app.packageName.contains("netflix") -> Color(0xFFE50914)
+                        app.packageName.contains("spotify") -> Color(0xFF1DB954)
+                        app.packageName.contains("whatsapp") -> Color(0xFF25D366)
+                        app.packageName.contains("tinder") -> Color(0xFFFE3C72)
+                        app.packageName.contains("twitch") -> Color(0xFF9146FF)
+                        app.packageName.contains("discord") -> Color(0xFF5865F2)
+                        else -> Color(app.packageName.hashCode()).copy(alpha = 1.0f).let { 
+                            // Ensure color is not too dark or too light for the letter
+                            it
+                        }
+                    }
+                }
                 Box(
                     modifier = Modifier
                         .size(40.dp)
                         .clip(RoundedCornerShape(10.dp))
-                        .background(if (app.isInstalled) DarkCardElevated else AccentCyan.copy(alpha = 0.2f)),
+                        .background(brandColor),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(if (app.isInstalled) "📱" else "☁️", fontSize = 18.sp)
+                    Text(
+                        text = app.appName.take(1).uppercase(),
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    // Add a subtle overlay for uninstalled apps to indicate "cloud" but still look premium
+                    if (!app.isInstalled) {
+                        Box(
+                            modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.1f))
+                        )
+                    }
                 }
             }
 
