@@ -44,7 +44,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     
     private var isBlockingSessionActive = false
     private var lastLoadTime = 0L
-    private val CACHE_TIMEOUT = 2000L // 2 seconds cache to reduce DB load
+    private val CACHE_TIMEOUT = 5000L // 5 seconds cache to reduce DB load
     private var lastScrollCheck = 0L
     private var lastToastTime = 0L
 

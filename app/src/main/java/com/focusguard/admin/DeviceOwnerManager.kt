@@ -39,7 +39,15 @@ class DeviceOwnerManager(private val context: Context) {
             "com.google.android.packageinstaller",
             "com.android.packageinstaller",
             "com.google.android.gms",
-            "com.android.vending" // Play Store (essencial para correções)
+            "com.android.vending"
+        )
+
+        private val BLOCKING_RESTRICTIONS = listOf(
+            UserManager.DISALLOW_FACTORY_RESET,
+            UserManager.DISALLOW_SAFE_BOOT,
+            UserManager.DISALLOW_ADD_USER,
+            UserManager.DISALLOW_REMOVE_USER,
+            UserManager.DISALLOW_CONFIG_DATE_TIME
         )
     }
 
@@ -202,23 +210,15 @@ class DeviceOwnerManager(private val context: Context) {
     fun enforceBlockingPolicies() {
         if (!isDeviceOwnerActive()) return
         try {
-            val restrictions = mutableListOf(
-                UserManager.DISALLOW_FACTORY_RESET,
-                UserManager.DISALLOW_SAFE_BOOT,
-                UserManager.DISALLOW_ADD_USER,
-                UserManager.DISALLOW_REMOVE_USER,
-                UserManager.DISALLOW_CONFIG_DATE_TIME
-            )
-            
-            // Add these only if SDK version supports them to avoid potential crashes
+            val currentRestrictions = BLOCKING_RESTRICTIONS.toMutableList()
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                restrictions.add(UserManager.DISALLOW_APPS_CONTROL)
-                restrictions.add(UserManager.DISALLOW_UNINSTALL_APPS)
+                currentRestrictions.add(UserManager.DISALLOW_APPS_CONTROL)
+                currentRestrictions.add(UserManager.DISALLOW_UNINSTALL_APPS)
             }
-            restrictions.forEach { dpm.addUserRestriction(componentName, it) }
+            currentRestrictions.forEach { dpm.addUserRestriction(componentName, it) }
             Log.d("FocusGuardAdmin", "Políticas de restrição aplicadas")
         } catch (e: Exception) {
-            Log.e("FocusGuardAdmin", "Falha ao aplicar políticas", e)
+            com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Falha ao aplicar políticas", e)
         }
     }
 
@@ -228,21 +228,15 @@ class DeviceOwnerManager(private val context: Context) {
     fun clearBlockingPolicies() {
         if (!isDeviceOwnerActive()) return
         try {
-            val restrictions = mutableListOf(
-                UserManager.DISALLOW_FACTORY_RESET,
-                UserManager.DISALLOW_SAFE_BOOT,
-                UserManager.DISALLOW_ADD_USER,
-                UserManager.DISALLOW_REMOVE_USER,
-                UserManager.DISALLOW_CONFIG_DATE_TIME
-            )
+            val currentRestrictions = BLOCKING_RESTRICTIONS.toMutableList()
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                restrictions.add(UserManager.DISALLOW_APPS_CONTROL)
-                restrictions.add(UserManager.DISALLOW_UNINSTALL_APPS)
+                currentRestrictions.add(UserManager.DISALLOW_APPS_CONTROL)
+                currentRestrictions.add(UserManager.DISALLOW_UNINSTALL_APPS)
             }
-            restrictions.forEach { dpm.clearUserRestriction(componentName, it) }
+            currentRestrictions.forEach { dpm.clearUserRestriction(componentName, it) }
             Log.d("FocusGuardAdmin", "Políticas de restrição removidas")
         } catch (e: Exception) {
-            Log.e("FocusGuardAdmin", "Falha ao remover políticas", e)
+            com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Falha ao remover políticas", e)
         }
     }
 

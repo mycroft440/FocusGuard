@@ -200,10 +200,17 @@ class AuthManager(context: Context) {
     }
 
     private fun hashPasswordWithSalt(password: String, salt: String): String {
+        val iterations = 5000
+        var hash = salt.toByteArray()
         val md = MessageDigest.getInstance("SHA-256")
-        md.update(salt.toByteArray())
-        val digest = md.digest(password.toByteArray())
-        return digest.joinToString("") { "%02x".format(it) }
+        
+        // PBKDF2-style stretching
+        repeat(iterations) {
+            md.update(hash)
+            hash = md.digest(password.toByteArray())
+        }
+        
+        return hash.joinToString("") { "%02x".format(it) }
     }
 
     private fun hashPasswordLegacy(password: String): String {

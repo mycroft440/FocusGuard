@@ -12,6 +12,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.room.withTransaction
 import java.util.concurrent.TimeUnit
 import java.util.Calendar
 import java.util.Locale
@@ -74,27 +75,30 @@ class BlockingSessionManager private constructor(private val context: Context) {
     ) {
         scope.launch {
             try {
-                val startMillis = System.currentTimeMillis()
-                val session = BlockSession(
-                    startTime = startMillis, 
-                    isActive = true, 
-                    isRecurring = !isFixed24h,
-                    recurringStartHour = startHour, recurringStartMinute = startMinute,
-                    recurringEndHour = endHour, recurringEndMinute = endMinute,
-                    recurringDaysOfWeek = daysOfWeek, 
-                    blockedAppsCount = apps.size, blockedWebsitesCount = sites.size,
-                    sessionType = "PASSWORD",
-                    isFixed24h = isFixed24h
-                )
+                database.withTransaction {
+                    val startMillis = System.currentTimeMillis()
+                    val session = BlockSession(
+                        startTime = startMillis, 
+                        isActive = true, 
+                        isRecurring = !isFixed24h,
+                        recurringStartHour = startHour, recurringStartMinute = startMinute,
+                        recurringEndHour = endHour, recurringEndMinute = endMinute,
+                        recurringDaysOfWeek = daysOfWeek, 
+                        blockedAppsCount = apps.size, blockedWebsitesCount = sites.size,
+                        sessionType = "PASSWORD",
+                        isFixed24h = isFixed24h
+                    )
 
-                val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
-                apps.forEach { database.sessionAppCrossRefDao().insert(SessionAppCrossRef(sessionId, it)) }
-                sites.forEach { database.sessionWebsiteCrossRefDao().insert(SessionWebsiteCrossRef(sessionId, it)) }
+                    val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
+                    apps.forEach { database.sessionAppCrossRefDao().insert(SessionAppCrossRef(sessionId, it)) }
+                    sites.forEach { database.sessionWebsiteCrossRefDao().insert(SessionWebsiteCrossRef(sessionId, it)) }
+                }
 
                 checkAndEnforce()
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Bloqueio por Senha iniciado.", Toast.LENGTH_LONG).show() }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { Toast.makeText(context, "Erro: ${e.message}", Toast.LENGTH_SHORT).show() }
+                com.focusguard.utils.FocusGuardLogger.logError("Manager", "Erro ao iniciar sessão", e)
+                withContext(Dispatchers.Main) { Toast.makeText(context, "Erro ao iniciar sessão", Toast.LENGTH_SHORT).show() }
             }
         }
     }
@@ -109,30 +113,33 @@ class BlockingSessionManager private constructor(private val context: Context) {
     ) {
         scope.launch {
             try {
-                val startMillis = System.currentTimeMillis()
-                val endMillis = startMillis + TimeUnit.DAYS.toMillis(days.toLong()) + TimeUnit.HOURS.toMillis(hours.toLong())
+                database.withTransaction {
+                    val startMillis = System.currentTimeMillis()
+                    val endMillis = startMillis + TimeUnit.DAYS.toMillis(days.toLong()) + TimeUnit.HOURS.toMillis(hours.toLong())
 
-                val session = BlockSession(
-                    startTime = startMillis, 
-                    endTime = endMillis, 
-                    isActive = true, 
-                    isRecurring = !isFixed24h,
-                    recurringStartHour = startHour, recurringStartMinute = startMinute,
-                    recurringEndHour = endHour, recurringEndMinute = endMinute,
-                    recurringDaysOfWeek = daysOfWeek,
-                    blockedAppsCount = apps.size, blockedWebsitesCount = sites.size,
-                    sessionType = "TIME",
-                    isFixed24h = isFixed24h
-                )
+                    val session = BlockSession(
+                        startTime = startMillis, 
+                        endTime = endMillis, 
+                        isActive = true, 
+                        isRecurring = !isFixed24h,
+                        recurringStartHour = startHour, recurringStartMinute = startMinute,
+                        recurringEndHour = endHour, recurringEndMinute = endMinute,
+                        recurringDaysOfWeek = daysOfWeek,
+                        blockedAppsCount = apps.size, blockedWebsitesCount = sites.size,
+                        sessionType = "TIME",
+                        isFixed24h = isFixed24h
+                    )
 
-                val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
-                apps.forEach { database.sessionAppCrossRefDao().insert(SessionAppCrossRef(sessionId, it)) }
-                sites.forEach { database.sessionWebsiteCrossRefDao().insert(SessionWebsiteCrossRef(sessionId, it)) }
+                    val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
+                    apps.forEach { database.sessionAppCrossRefDao().insert(SessionAppCrossRef(sessionId, it)) }
+                    sites.forEach { database.sessionWebsiteCrossRefDao().insert(SessionWebsiteCrossRef(sessionId, it)) }
+                }
 
                 checkAndEnforce()
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Bloqueio por Tempo iniciado.", Toast.LENGTH_LONG).show() }
             } catch (e: Exception) {
-                withContext(Dispatchers.Main) { Toast.makeText(context, "Erro: ${e.message}", Toast.LENGTH_SHORT).show() }
+                com.focusguard.utils.FocusGuardLogger.logError("Manager", "Erro ao iniciar sessão tempo", e)
+                withContext(Dispatchers.Main) { Toast.makeText(context, "Erro ao iniciar sessão", Toast.LENGTH_SHORT).show() }
             }
         }
     }

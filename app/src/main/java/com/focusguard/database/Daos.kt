@@ -85,7 +85,6 @@ interface BlockSessionDao {
 
     @Transaction
     suspend fun insertNewSession(session: BlockSession): Long {
-        // Limpa lixo do DB que já expirou há mais de 30 dias (Trash Cleanup)
         deleteOldInactiveSessions(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000)
         cleanOrphanApps()
         cleanOrphanWebsites()
