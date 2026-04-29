@@ -11,11 +11,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.core.graphics.drawable.toBitmap
-import android.content.pm.PackageManager
 import com.focusguard.ui.compose.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -24,14 +19,15 @@ fun BlockingSessionStatusSheet(
     isBlocking: Boolean,
     hasSession: Boolean,
     details: String,
-    apps: List<String>,
-    sites: List<String>,
     onRenounce: () -> Unit,
-    onDismiss: () -> Unit
+    onEndSessions: () -> Unit,
+    onDismiss: () -> Unit,
+    authManager: com.focusguard.security.AuthManager
 ) {
-    val context = LocalContext.current
     val statusText: String
     val statusColor: androidx.compose.ui.graphics.Color
+    
+    val isSafetyMode = authManager.isSafetyModeEnabled()
 
     when {
         isBlocking -> {
@@ -76,7 +72,7 @@ fun BlockingSessionStatusSheet(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(bottom = 16.dp),
+                .padding(bottom = 24.dp),
             shape = RoundedCornerShape(16.dp),
             colors = CardDefaults.cardColors(containerColor = DarkCardElevated),
             border = BorderStroke(1.dp, CardBorder)
@@ -90,99 +86,28 @@ fun BlockingSessionStatusSheet(
             )
         }
 
-        if (apps.isNotEmpty() || sites.isNotEmpty()) {
-            Text(
-                text = "Itens Bloqueados (${apps.size + sites.size})",
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary,
-                modifier = Modifier.padding(bottom = 8.dp)
-            )
-
-            // Horizontal list of icons and domains
-            androidx.compose.foundation.lazy.LazyRow(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                // Apps
-                items(apps.size) { index ->
-                    val pkg = apps[index]
-                    var iconBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
-                    var appName by remember { mutableStateOf(pkg) }
-
-                    LaunchedEffect(pkg) {
-                        try {
-                            val pm = context.packageManager
-                            val info = pm.getApplicationInfo(pkg, 0)
-                            appName = pm.getApplicationLabel(info).toString()
-                            val drawable = pm.getApplicationIcon(info)
-                            iconBmp = drawable.toBitmap(80, 80).asImageBitmap()
-                        } catch (e: Exception) {
-                            // Leave default values
-                        }
-                    }
-
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.width(64.dp)
-                    ) {
-                        if (iconBmp != null) {
-                            Image(
-                                bitmap = iconBmp!!,
-                                contentDescription = appName,
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                            )
-                        } else {
-                            Box(
-                                modifier = Modifier
-                                    .size(48.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(DarkCardElevated),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text("📱", fontSize = 20.sp)
-                            }
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = appName,
-                            fontSize = 10.sp,
-                            color = TextSecondary,
-                            maxLines = 1,
-                            textAlign = TextAlign.Center
-                        )
-                    }
+        if (hasSession) {
+            if (isSafetyMode) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = DangerRed.copy(alpha = 0.1f)),
+                    border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.3f)),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                ) {
+                    Text(
+                        "O modo segurança está ativo, não é possível burlar ou alterar configurações de limite.",
+                        color = DangerRed, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(12.dp)
+                    )
                 }
-
-                // Sites
-                items(sites.size) { index ->
-                    val site = sites[index]
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        modifier = Modifier.width(64.dp)
-                    ) {
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(AccentCyan.copy(alpha = 0.2f)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text("🌐", fontSize = 20.sp)
-                        }
-                        Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = site,
-                            fontSize = 10.sp,
-                            color = TextSecondary,
-                            maxLines = 1,
-                            textAlign = TextAlign.Center
-                        )
-                    }
+            } else {
+                Button(
+                    onClick = onEndSessions,
+                    modifier = Modifier.fillMaxWidth().height(50.dp).padding(bottom = 16.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                ) {
+                    Text("Encerrar Bloqueio por Senha", color = DarkBg, fontWeight = FontWeight.Bold)
                 }
             }
         }

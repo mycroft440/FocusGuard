@@ -11,15 +11,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlinx.coroutines.flow.Flow
 import java.util.concurrent.TimeUnit
 import java.util.Calendar
 import java.util.Locale
 import com.focusguard.admin.DeviceOwnerManager
-import android.app.AlarmManager
-import android.app.PendingIntent
-import android.content.Intent
-import com.focusguard.receiver.SessionExpirationReceiver
 
 class BlockingSessionManager private constructor(private val context: Context) {
 
@@ -61,14 +56,12 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 )
 
                 val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
-                database.sessionAppCrossRefDao().insertAll(apps.map { SessionAppCrossRef(sessionId, it) })
-                database.sessionWebsiteCrossRefDao().insertAll(sites.map { SessionWebsiteCrossRef(sessionId, it) })
+                apps.forEach { database.sessionAppCrossRefDao().insert(SessionAppCrossRef(sessionId, it)) }
+                sites.forEach { database.sessionWebsiteCrossRefDao().insert(SessionWebsiteCrossRef(sessionId, it)) }
 
                 checkAndEnforce()
-                com.focusguard.utils.FocusGuardLogger.log("SessionManager", "Sessão por senha criada. Apps: ${apps.size}, Sites: ${sites.size}")
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Bloqueio por Senha iniciado.", Toast.LENGTH_LONG).show() }
             } catch (e: Exception) {
-                com.focusguard.utils.FocusGuardLogger.logError("SessionManager", "Erro ao criar sessão por senha", e)
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Erro: ${e.message}", Toast.LENGTH_SHORT).show() }
             }
         }
@@ -101,15 +94,12 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 )
 
                 val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
-                database.sessionAppCrossRefDao().insertAll(apps.map { SessionAppCrossRef(sessionId, it) })
-                database.sessionWebsiteCrossRefDao().insertAll(sites.map { SessionWebsiteCrossRef(sessionId, it) })
+                apps.forEach { database.sessionAppCrossRefDao().insert(SessionAppCrossRef(sessionId, it)) }
+                sites.forEach { database.sessionWebsiteCrossRefDao().insert(SessionWebsiteCrossRef(sessionId, it)) }
 
                 checkAndEnforce()
-                scheduleExpirationAlarm(sessionId, endMillis)
-                com.focusguard.utils.FocusGuardLogger.log("SessionManager", "Sessão de tempo criada: $days dias, $hours horas. Apps: ${apps.size}, Sites: ${sites.size}")
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Bloqueio por Tempo iniciado.", Toast.LENGTH_LONG).show() }
             } catch (e: Exception) {
-                com.focusguard.utils.FocusGuardLogger.logError("SessionManager", "Erro ao criar sessão de tempo", e)
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Erro: ${e.message}", Toast.LENGTH_SHORT).show() }
             }
         }
@@ -144,8 +134,6 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 additionalSites.forEach { database.sessionWebsiteCrossRefDao().insert(SessionWebsiteCrossRef(session.id, it)) }
 
                 checkAndEnforce()
-                scheduleExpirationAlarm(session.id, newEndTime)
-                com.focusguard.utils.FocusGuardLogger.log("SessionManager", "Tempo e/ou apps adicionados à sessão. Adicionado: $addedDays dias, $addedHours horas")
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Tempo e/ou apps adicionados.", Toast.LENGTH_LONG).show() }
             }
         }
@@ -159,41 +147,54 @@ class BlockingSessionManager private constructor(private val context: Context) {
                     database.blockSessionDao().updateBlockSession(session.copy(isActive = false))
                 }
                 checkAndEnforce()
-                com.focusguard.utils.FocusGuardLogger.log("SessionManager", "Bloqueios por Senha encerrados manualmente")
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Bloqueios por Senha encerrados", Toast.LENGTH_SHORT).show() }
             } catch (e: Exception) {
-                com.focusguard.utils.FocusGuardLogger.logError("SessionManager", "Erro ao encerrar bloqueios por senha", e)
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Falha: ${e.message}", Toast.LENGTH_SHORT).show() }
             }
         }
     }
 
-    suspend fun checkAndEnforce(appsToForceUnblock: List<String> = emptyList()) {
+    private suspend fun checkAndEnforce() {
         val sessions = database.blockSessionDao().getAllActiveSessions()
         val enforcingSessions = sessions.filter { isCurrentlyInBlockingWindow(it) }
 
-        if (enforcingSessions.isEmpty()) {
-            val allActiveApps = database.sessionAppCrossRefDao().getAppsForSessions(sessions.map { it.id })
-            // Combine apps from active but not enforcing sessions with apps we were told to unblock
-            val toUnblock = (allActiveApps + appsToForceUnblock).toSet().toList()
-            deviceOwnerManager.unblockApps(toUnblock)
+        val enforcingIds = enforcingSessions.map { it.id }
+        val sessionAppsToBlock = database.sessionAppCrossRefDao().getAppsForSessions(enforcingIds)
+        val sitesToBlock = database.sessionWebsiteCrossRefDao().getWebsitesForSessions(enforcingIds)
+
+        // New: Check Daily Usage Limits
+        val limitAppsToBlock = mutableListOf<String>()
+        val activeLimits = database.appUsageLimitDao().getAllActiveLimits()
+        
+        if (activeLimits.isNotEmpty()) {
+            val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? android.app.usage.UsageStatsManager
+            if (usageStatsManager != null) {
+                val cal = Calendar.getInstance()
+                cal.set(Calendar.HOUR_OF_DAY, 0)
+                cal.set(Calendar.MINUTE, 0)
+                cal.set(Calendar.SECOND, 0)
+                val startOfDay = cal.timeInMillis
+                
+                val stats = usageStatsManager.queryUsageStats(android.app.usage.UsageStatsManager.INTERVAL_DAILY, startOfDay, System.currentTimeMillis())
+                
+                activeLimits.forEach { limit ->
+                    val stat = stats.find { it.packageName == limit.packageName }
+                    val usageMinutes = (stat?.totalTimeInForeground ?: 0L) / 1000 / 60
+                    if (usageMinutes >= limit.limitMinutesPerDay) {
+                        limitAppsToBlock.add(limit.packageName)
+                    }
+                }
+            }
+        }
+
+        val allAppsToBlock = (sessionAppsToBlock + limitAppsToBlock).toSet().toList()
+
+        if (allAppsToBlock.isEmpty() && sitesToBlock.isEmpty()) {
+            deviceOwnerManager.unblockApps(database.sessionAppCrossRefDao().getAppsForSessions(sessions.map { it.id }))
             deviceOwnerManager.clearBlockingPolicies()
             deviceOwnerManager.clearWebsiteRestrictions()
         } else {
-            val enforcingIds = enforcingSessions.map { it.id }
-            val appsToBlock = database.sessionAppCrossRefDao().getAppsForSessions(enforcingIds)
-            val sitesToBlock = database.sessionWebsiteCrossRefDao().getWebsitesForSessions(enforcingIds)
-            
-            // Even if some sessions expired, we only unblock apps that aren't in ANY enforcing session
-            if (appsToForceUnblock.isNotEmpty()) {
-                val stillBlocked = appsToBlock.toSet()
-                val actuallyUnblock = appsToForceUnblock.filter { !stillBlocked.contains(it) }
-                if (actuallyUnblock.isNotEmpty()) {
-                    deviceOwnerManager.unblockApps(actuallyUnblock)
-                }
-            }
-            
-            deviceOwnerManager.blockApps(appsToBlock)
+            deviceOwnerManager.blockApps(allAppsToBlock)
             deviceOwnerManager.enforceWebsiteRestrictions(sitesToBlock)
             deviceOwnerManager.enforceBlockingPolicies()
         }
@@ -221,67 +222,44 @@ class BlockingSessionManager private constructor(private val context: Context) {
         val isOvernight = startVal > endVal
         val isAfterMidnightBeforeEnd = isOvernight && currentTimeVal < endVal
 
-        val isInTimeRange = if (startVal < endVal) {
-            currentTimeVal in startVal until endVal
-        } else if (startVal > endVal) {
-            currentTimeVal >= startVal || currentTimeVal < endVal
-        } else {
-            // startVal == endVal: Se não for Fixed24h, mas os horários forem iguais,
-            // tratamos como um bloqueio de 24h para aquele dia.
-            true
-        }
+        val logicalDayCal = now.clone() as Calendar
+        if (isAfterMidnightBeforeEnd) logicalDayCal.add(Calendar.DAY_OF_YEAR, -1)
 
-        if (!isInTimeRange) return false
-
-        // Day of week check: if it's "overnight" and we are after midnight, 
-        // the "logical day" for the block is actually yesterday.
         if (session.recurringDaysOfWeek.isNotEmpty()) {
-            val logicalDayCal = now.clone() as Calendar
-            if (isAfterMidnightBeforeEnd) {
-                logicalDayCal.add(Calendar.DAY_OF_YEAR, -1)
-            }
             val logicalDayOfWeek = logicalDayCal.get(Calendar.DAY_OF_WEEK).toString()
-            val allowedDays = session.recurringDaysOfWeek.split(",").map { it.trim() }
-            if (!allowedDays.contains(logicalDayOfWeek)) return false
+            if (!session.recurringDaysOfWeek.split(",").map { it.trim() }.contains(logicalDayOfWeek)) return false
         }
 
-        return true
+        return if (startVal <= endVal) {
+            currentTimeVal in startVal until endVal
+        } else {
+            currentTimeVal >= startVal || currentTimeVal < endVal
+        }
     }
 
     suspend fun getActiveSessions(): List<BlockSession> {
         return try {
             val sessions = database.blockSessionDao().getAllActiveSessions()
-            val expiredSessions = mutableListOf<BlockSession>()
             val validSessions = mutableListOf<BlockSession>()
+
+            var expiredTimeSession = false
 
             for (session in sessions) {
                 if (session.sessionType == "TIME" && session.endTime != null && System.currentTimeMillis() >= session.endTime) {
-                    expiredSessions.add(session)
+                    val expiredSession = session.copy(isActive = false)
+                    database.blockSessionDao().updateBlockSession(expiredSession)
+                    expiredTimeSession = true
                 } else {
                     validSessions.add(session)
                 }
             }
 
-            if (expiredSessions.isNotEmpty()) {
-                // ATOMICIDADE: Primeiro coletamos os apps que devem ser desbloqueados
-                val expiredIds = expiredSessions.map { it.id }
-                val appsFromExpired = database.sessionAppCrossRefDao().getAppsForSessions(expiredIds)
-                
-                // Forçamos o checkAndEnforce a considerar esses apps para desbloqueio
-                // ANTES de marcar como inativo no DB (para que checkAndEnforce os veja se necessário)
-                // Na verdade, passamos explicitamente para garantir que unblockApps seja chamado.
-                checkAndEnforce(appsFromExpired)
-
-                // Somente após o comando de unblock (enviado via checkAndEnforce), atualizamos o DB
-                for (session in expiredSessions) {
-                    database.blockSessionDao().updateBlockSession(session.copy(isActive = false))
-                }
-                com.focusguard.utils.FocusGuardLogger.log("SessionManager", "${expiredSessions.size} sessões expiradas processadas atomicamente.")
+            if (expiredTimeSession) {
+                checkAndEnforce()
             }
 
             validSessions
         } catch (e: Exception) {
-            com.focusguard.utils.FocusGuardLogger.logError("SessionManager", "Erro em getActiveSessions", e)
             emptyList()
         }
     }
@@ -319,44 +297,6 @@ class BlockingSessionManager private constructor(private val context: Context) {
             }
         } catch (e: Exception) {
             "Erro ao recuperar detalhes"
-        }
-    }
-
-    fun getActiveSessionsFlow(): Flow<List<BlockSession>> {
-        return database.blockSessionDao().getAllActiveSessionsFlow()
-    }
-
-    fun getBlockedAppsFlow(): Flow<List<String>> {
-        return database.sessionAppCrossRefDao().getAppsForActiveSessionsFlow()
-    }
-
-    fun getBlockedWebsitesFlow(): Flow<List<String>> {
-        return database.sessionWebsiteCrossRefDao().getWebsitesForActiveSessionsFlow()
-    }
-
-    private fun scheduleExpirationAlarm(sessionId: Int, endTime: Long) {
-        try {
-            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-            val intent = Intent(context, SessionExpirationReceiver::class.java).apply {
-                action = "com.focusguard.ACTION_SESSION_EXPIRED"
-                putExtra("SESSION_ID", sessionId)
-            }
-            
-            val pendingIntent = PendingIntent.getBroadcast(
-                context, 
-                sessionId, 
-                intent, 
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            
-            alarmManager.setExactAndAllowWhileIdle(
-                AlarmManager.RTC_WAKEUP,
-                endTime,
-                pendingIntent
-            )
-            com.focusguard.utils.FocusGuardLogger.log("SessionManager", "Alarme de expiração agendado para a sessão $sessionId em $endTime")
-        } catch (e: Exception) {
-            com.focusguard.utils.FocusGuardLogger.logError("SessionManager", "Falha ao agendar alarme", e)
         }
     }
 }

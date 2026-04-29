@@ -9,18 +9,8 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [
-        BlockedApp::class,
-        BlockedWebsite::class,
-        BlockSession::class,
-        SessionAppCrossRef::class,
-        SessionWebsiteCrossRef::class,
-        AppUsageLimit::class,
-        WebsiteUsageLimit::class,
-        DailyUsageStat::class,
-        UsageLimitsLock::class
-    ],
-    version = 10,
+    entities = [BlockedApp::class, BlockedWebsite::class, BlockSession::class, SessionAppCrossRef::class, SessionWebsiteCrossRef::class, AppUsageLimit::class],
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -30,9 +20,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun sessionAppCrossRefDao(): SessionAppCrossRefDao
     abstract fun sessionWebsiteCrossRefDao(): SessionWebsiteCrossRefDao
     abstract fun appUsageLimitDao(): AppUsageLimitDao
-    abstract fun websiteUsageLimitDao(): WebsiteUsageLimitDao
-    abstract fun dailyUsageStatDao(): DailyUsageStatDao
-    abstract fun usageLimitsLockDao(): UsageLimitsLockDao
 
     companion object {
         @Volatile
@@ -71,38 +58,7 @@ abstract class AppDatabase : RoomDatabase() {
 
         val MIGRATION_5_6 = object : Migration(5, 6) {
             override fun migrate(database: SupportSQLiteDatabase) {
-                // Versão 5 -> 6 foi uma atualização interna sem mudanças de esquema, 
-                // mas necessária para o Room encontrar o caminho de migração.
-            }
-        }
-
-        val MIGRATION_6_7 = object : Migration(6, 7) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("CREATE TABLE IF NOT EXISTS `website_usage_limits` (`domain` TEXT NOT NULL, `dailyLimitMinutes` INTEGER NOT NULL, `isEnabled` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`domain`))")
-            }
-        }
-
-        val MIGRATION_7_8 = object : Migration(7, 8) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("CREATE TABLE IF NOT EXISTS `daily_usage_stats` (`identifier` TEXT NOT NULL, `date` TEXT NOT NULL, `type` TEXT NOT NULL, `timeSpentMs` INTEGER NOT NULL, PRIMARY KEY(`identifier`, `date`))")
-            }
-        }
-
-        val MIGRATION_8_9 = object : Migration(8, 9) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("CREATE TABLE IF NOT EXISTS `usage_limits_lock` (`id` INTEGER NOT NULL, `lockedUntilTimestamp` INTEGER NOT NULL, `isPasswordRequired` INTEGER NOT NULL DEFAULT 1, PRIMARY KEY(`id`))")
-            }
-        }
-
-        val MIGRATION_9_10 = object : Migration(9, 10) {
-            override fun migrate(database: SupportSQLiteDatabase) {
-                database.execSQL("ALTER TABLE app_usage_limits ADD COLUMN lockMode TEXT NOT NULL DEFAULT 'NONE'")
-                database.execSQL("ALTER TABLE app_usage_limits ADD COLUMN lockPasswordHash TEXT")
-                database.execSQL("ALTER TABLE app_usage_limits ADD COLUMN lockUntilTimestamp INTEGER")
-                
-                database.execSQL("ALTER TABLE website_usage_limits ADD COLUMN lockMode TEXT NOT NULL DEFAULT 'NONE'")
-                database.execSQL("ALTER TABLE website_usage_limits ADD COLUMN lockPasswordHash TEXT")
-                database.execSQL("ALTER TABLE website_usage_limits ADD COLUMN lockUntilTimestamp INTEGER")
+                database.execSQL("CREATE TABLE IF NOT EXISTS `app_usage_limits` (`packageName` TEXT NOT NULL, `appName` TEXT NOT NULL, `limitMinutesPerDay` INTEGER NOT NULL, `isActive` INTEGER NOT NULL DEFAULT 1, `securityMode` INTEGER NOT NULL DEFAULT 0, `lockAfterLimit` INTEGER NOT NULL DEFAULT 1, `durationDays` INTEGER NOT NULL DEFAULT 1, `createdAt` INTEGER NOT NULL, `lastResetDate` INTEGER NOT NULL, PRIMARY KEY(`packageName`))")
             }
         }
 
@@ -113,9 +69,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "focusguard_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
-                .fallbackToDestructiveMigration()
-
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .build()
                 INSTANCE = instance
                 instance

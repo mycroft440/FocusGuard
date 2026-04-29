@@ -34,6 +34,7 @@ import com.github.mikephil.charting.data.Entry
 import com.github.mikephil.charting.data.LineData
 import com.github.mikephil.charting.data.LineDataSet
 import com.github.mikephil.charting.formatter.IndexAxisValueFormatter
+import com.focusguard.manager.UsageLimitManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Calendar
@@ -55,13 +56,112 @@ data class MonthlyUsage(
 @Composable
 fun UsageStatsScreen() {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val limitManager = remember { UsageLimitManager.getInstance(context) }
 
     var topApps by remember { mutableStateOf<List<AppUsageInfo>>(emptyList()) }
-    var allApps by remember { mutableStateOf<List<AppUsageInfo>>(emptyList()) }
     var topLaunched by remember { mutableStateOf<List<AppUsageInfo>>(emptyList()) }
     var monthlyData by remember { mutableStateOf<List<MonthlyUsage>>(emptyList()) }
     var trendText by remember { mutableStateOf("Média diária de uso do telefone") }
     var noData by remember { mutableStateOf(false) }
+
+    // Dialog State
+    var selectedAppForLimit by remember { mutableStateOf<AppUsageInfo?>(null) }
+    var limitHours by remember { mutableStateOf("1") }
+    var limitMinutes by remember { mutableStateOf("0") }
+
+    val authManager = remember { com.focusguard.security.AuthManager(context) }
+    val isSafetyMode = authManager.isSafetyModeEnabled()
+
+    if (selectedAppForLimit != null) {
+        AlertDialog(
+            onDismissRequest = { selectedAppForLimit = null },
+            containerColor = DarkSurface,
+            title = { Text("Configurar Limite", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text(
+                        "Definir qual o tempo máximo por dia você quer usar o ${selectedAppForLimit?.appName}?",
+                        color = TextSecondary, fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    if (isSafetyMode) {
+                        Card(
+                            colors = CardDefaults.cardColors(containerColor = DangerRed.copy(alpha = 0.1f)),
+                            border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.3f)),
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+                        ) {
+                            Text(
+                                "O modo segurança está ativo, não é possível burlar ou alterar configurações de limite.",
+                                color = DangerRed, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                                modifier = Modifier.padding(12.dp),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    } else {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            OutlinedTextField(
+                                value = limitHours,
+                                onValueChange = { limitHours = it },
+                                label = { Text("Horas", color = TextHint) },
+                                modifier = Modifier.weight(1f),
+                                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = AccentCyan)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            OutlinedTextField(
+                                value = limitMinutes,
+                                onValueChange = { limitMinutes = it },
+                                label = { Text("Minutos", color = TextHint) },
+                                modifier = Modifier.weight(1f),
+                                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = AccentCyan)
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                if (!isSafetyMode) {
+                    Row {
+                        TextButton(
+                            onClick = {
+                                scope.launch {
+                                    limitManager.removeLimit(selectedAppForLimit!!.packageName)
+                                    withContext(Dispatchers.Main) {
+                                        android.widget.Toast.makeText(context, "Limite removido", android.widget.Toast.LENGTH_SHORT).show()
+                                        selectedAppForLimit = null
+                                    }
+                                }
+                            }
+                        ) { Text("Remover", color = DangerRed) }
+                        
+                        Spacer(modifier = Modifier.width(8.dp))
+                        
+                        Button(
+                            onClick = {
+                                val h = limitHours.toIntOrNull() ?: 0
+                                val m = limitMinutes.toIntOrNull() ?: 0
+                                val totalMin = h * 60 + m
+                                if (totalMin > 0) {
+                                    scope.launch {
+                                        limitManager.setLimit(selectedAppForLimit!!.packageName, selectedAppForLimit!!.appName, totalMin)
+                                        withContext(Dispatchers.Main) {
+                                            android.widget.Toast.makeText(context, "Limite de $h h $m min definido para ${selectedAppForLimit?.appName}", android.widget.Toast.LENGTH_SHORT).show()
+                                            selectedAppForLimit = null
+                                        }
+                                    }
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                        ) { Text("Salvar", color = DarkBg, fontWeight = FontWeight.Bold) }
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { selectedAppForLimit = null }) { Text(if (isSafetyMode) "Fechar" else "Cancelar", color = TextHint) }
+            }
+        )
+    }
 
     // Summary metrics
     var totalScreenTimeToday by remember { mutableStateOf(0L) }
@@ -138,7 +238,6 @@ fun UsageStatsScreen() {
                 }
 
                 val top5 = filteredMap.entries.sortedByDescending { it.value }.take(5)
-                val allFiltered = filteredMap.entries.sortedByDescending { it.value }
 
                 if (top5.isEmpty()) {
                     noData = true
@@ -149,16 +248,6 @@ fun UsageStatsScreen() {
                 val weekLaunchCounts = countAppLaunches(usageStatsManager, startTime, endTime, context.packageName)
 
                 topApps = top5.map { entry ->
-                    val appName = try {
-                        pm.getApplicationLabel(pm.getApplicationInfo(entry.key, 0)).toString()
-                    } catch (_: PackageManager.NameNotFoundException) {
-                        entry.key.substringAfterLast(".")
-                    }
-                    val icon = try { pm.getApplicationIcon(entry.key) } catch (_: Exception) { null }
-                    AppUsageInfo(entry.key, appName, icon, entry.value, weekLaunchCounts[entry.key] ?: 0)
-                }
-
-                allApps = allFiltered.map { entry ->
                     val appName = try {
                         pm.getApplicationLabel(pm.getApplicationInfo(entry.key, 0)).toString()
                     } catch (_: PackageManager.NameNotFoundException) {
@@ -334,40 +423,11 @@ fun UsageStatsScreen() {
                 } else {
                     val maxUsage = topApps.maxOf { it.usageTimeMs }.toFloat()
                     topApps.forEachIndexed { index, app ->
-                        AppUsageItem(rank = index + 1, app = app, maxUsage = maxUsage, showLaunches = true)
+                        AppUsageItem(
+                            rank = index + 1, app = app, maxUsage = maxUsage, showLaunches = true,
+                            onClick = { selectedAppForLimit = it }
+                        )
                         if (index < topApps.lastIndex) Spacer(modifier = Modifier.height(10.dp))
-                    }
-                }
-            }
-        }
-
-        // ========================================
-        // ALL APPS (EXPANDABLE)
-        // ========================================
-        var expandedAllApps by remember { mutableStateOf(false) }
-        
-        if (allApps.isNotEmpty()) {
-            Card(
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp).clickable { expandedAllApps = !expandedAllApps },
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(containerColor = DarkCard),
-                border = BorderStroke(1.dp, CardBorder)
-            ) {
-                Column(modifier = Modifier.padding(20.dp).fillMaxWidth()) {
-                    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                        Icon(Icons.Default.List, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(20.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text("Ver Todos os Aplicativos (${allApps.size})", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.weight(1f))
-                        Icon(if (expandedAllApps) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, contentDescription = null, tint = TextPrimary)
-                    }
-                    
-                    if (expandedAllApps) {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        val maxUsageAll = allApps.maxOf { it.usageTimeMs }.toFloat()
-                        allApps.forEachIndexed { index, app ->
-                            AppUsageItem(rank = index + 1, app = app, maxUsage = maxUsageAll, showLaunches = true)
-                            if (index < allApps.lastIndex) Spacer(modifier = Modifier.height(10.dp))
-                        }
                     }
                 }
             }
@@ -395,7 +455,10 @@ fun UsageStatsScreen() {
 
                     val maxLaunches = topLaunched.maxOf { it.launchCount }.toFloat()
                     topLaunched.forEachIndexed { index, app ->
-                        LaunchRankItem(rank = index + 1, app = app, maxLaunches = maxLaunches)
+                        LaunchRankItem(
+                            rank = index + 1, app = app, maxLaunches = maxLaunches,
+                            onClick = { selectedAppForLimit = it }
+                        )
                         if (index < topLaunched.lastIndex) Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
@@ -525,9 +588,12 @@ fun SummaryMetricCard(
 }
 
 @Composable
-fun AppUsageItem(rank: Int, app: AppUsageInfo, maxUsage: Float, showLaunches: Boolean = false) {
+fun AppUsageItem(rank: Int, app: AppUsageInfo, maxUsage: Float, showLaunches: Boolean = false, onClick: (AppUsageInfo) -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick(app) }
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         // Medal rank
@@ -582,9 +648,12 @@ fun AppUsageItem(rank: Int, app: AppUsageInfo, maxUsage: Float, showLaunches: Bo
 }
 
 @Composable
-fun LaunchRankItem(rank: Int, app: AppUsageInfo, maxLaunches: Float) {
+fun LaunchRankItem(rank: Int, app: AppUsageInfo, maxLaunches: Float, onClick: (AppUsageInfo) -> Unit) {
     Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 3.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick(app) }
+            .padding(vertical = 3.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         val rankColor = when (rank) {

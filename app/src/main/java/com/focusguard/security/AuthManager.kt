@@ -46,6 +46,14 @@ class AuthManager(private val context: Context) {
         prefs.edit().putBoolean("photo_capture_enabled", enabled).apply()
     }
 
+    fun isSafetyModeEnabled(): Boolean {
+        return prefs.getBoolean("safety_mode_enabled", false)
+    }
+
+    fun setSafetyModeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("safety_mode_enabled", enabled).apply()
+    }
+
     fun getFailedAttempts(): Int {
         return prefs.getInt("failed_password_attempts", 0)
     }
@@ -110,6 +118,31 @@ class AuthManager(private val context: Context) {
         }
     }
 
+    fun verifyAndRemovePasswordByIndex(index: Int, passwordAttempt: String): Boolean {
+        if (verifyPassword(passwordAttempt)) {
+            removePasswordByIndex(index)
+            return true
+        }
+        return false
+    }
+
+    fun updatePasswordByIndex(index: Int, newPassword: String, label: String) {
+        val current = getPasswordEntries().toMutableList()
+        if (index in current.indices) {
+            current[index] = label to hashPassword(newPassword)
+            savePasswordEntries(current)
+        }
+    }
+
+    // --- Authentication Type Management ---
+    fun getPreferredAuthType(): String {
+        return prefs.getString("preferred_auth_type", "NUMERIC") ?: "NUMERIC"
+    }
+
+    fun setPreferredAuthType(type: String) {
+        prefs.edit().putString("preferred_auth_type", type).apply()
+    }
+
     fun addPassword(newPassword: String) {
         val hash = hashPassword(newPassword)
         val entries = getPasswordEntries().toMutableList()
@@ -119,38 +152,19 @@ class AuthManager(private val context: Context) {
     }
 
     fun verifyPassword(password: String): Boolean {
-        val limit = getMaxPasswordAttempts()
-        val currentFailed = getFailedAttempts()
-        
-        // Regra do Usuário: Imprimir dados das primeiras 5 tentativas
-        if (currentFailed < 5) {
-            android.util.Log.d("NuclearOption", "Tentativa de Senha #${currentFailed + 1}: Limite=$limit, Atual=$currentFailed")
-        }
-
-        if (limit > 0 && currentFailed >= limit) {
-            android.util.Log.w("NuclearOption", "Limite de tentativas atingido ($limit). Acesso negado.")
-            return false
-        }
-        
         val hash = hashPassword(password)
         val isValid = getPasswordHashes().contains(hash)
-        
         if (isValid) {
             resetFailedAttempts()
-            android.util.Log.d("NuclearOption", "Senha correta. Contador resetado.")
-        } else {
-            val newCount = incrementFailedAttempts()
-            android.util.Log.w("NuclearOption", "Senha incorreta. Novo contador: $newCount")
         }
-        
         return isValid
     }
 
     fun removePassword(passwordToRemove: String) {
         val hash = hashPassword(passwordToRemove)
-        val current = getPasswordEntries().toMutableList()
-        val updated = current.filter { it.second != hash }
-        savePasswordEntries(updated)
+        val currentHashes = getPasswordHashes().toMutableSet()
+        currentHashes.remove(hash)
+        prefs.edit().putStringSet("app_password_hashes", currentHashes).apply()
     }
 
     fun removeAllPasswords() {
@@ -158,10 +172,7 @@ class AuthManager(private val context: Context) {
     }
 
     private fun hashPassword(password: String): String {
-        // Simple static salt for basic protection against rainbow tables
-        // In a full implementation, a per-user random salt would be better
-        val salt = "FocusGuard_Static_Salt_2024"
-        val bytes = (password + salt).toByteArray()
+        val bytes = password.toByteArray()
         val md = MessageDigest.getInstance("SHA-256")
         val digest = md.digest(bytes)
         return digest.fold("") { str, it -> str + "%02x".format(it) }
@@ -169,10 +180,8 @@ class AuthManager(private val context: Context) {
 
     fun showBiometricPrompt(
         activity: FragmentActivity,
-        title: String = "Desbloquear FocusGuard",
-        subtitle: String = "Confirme sua identidade para acessar o app",
         onSuccess: () -> Unit,
-        onError: (Int, String) -> Unit
+        onError: (String) -> Unit
     ) {
         val biometricManager = BiometricManager.from(context)
         when (biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)) {
@@ -182,7 +191,7 @@ class AuthManager(private val context: Context) {
                     object : BiometricPrompt.AuthenticationCallback() {
                         override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
                             super.onAuthenticationError(errorCode, errString)
-                            onError(errorCode, errString.toString())
+                            onError(errString.toString())
                         }
 
                         override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
@@ -192,20 +201,20 @@ class AuthManager(private val context: Context) {
 
                         override fun onAuthenticationFailed() {
                             super.onAuthenticationFailed()
-                            onError(-1, "Falha na autenticação biométrica.")
+                            onError("Falha na autenticação biométrica.")
                         }
                     })
 
                 val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                    .setTitle(title)
-                    .setSubtitle(subtitle)
+                    .setTitle("Desbloquear FocusGuard")
+                    .setSubtitle("Confirme sua identidade para acessar o app")
                     .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
                     .build()
 
                 biometricPrompt.authenticate(promptInfo)
             }
             else -> {
-                onError(-2, "Biometria indisponível. Use a senha.")
+                onError("Biometria indisponível. Use a senha.")
             }
         }
     }

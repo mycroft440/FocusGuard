@@ -63,35 +63,11 @@ data class AppUsageLimit(
     @PrimaryKey
     val packageName: String,
     val appName: String,
-    val dailyLimitMinutes: Int,
-    val isEnabled: Boolean = true,
-    val lockMode: String = "NONE", // "NONE", "PASSWORD", "TIME"
-    val lockPasswordHash: String? = null,
-    val lockUntilTimestamp: Long? = null
-)
-
-@Entity(tableName = "website_usage_limits")
-data class WebsiteUsageLimit(
-    @PrimaryKey
-    val domain: String,
-    val dailyLimitMinutes: Int,
-    val isEnabled: Boolean = true,
-    val lockMode: String = "NONE",
-    val lockPasswordHash: String? = null,
-    val lockUntilTimestamp: Long? = null
-)
-
-@Entity(tableName = "daily_usage_stats", primaryKeys = ["identifier", "date"])
-data class DailyUsageStat(
-    val identifier: String, // PackageName ou Domain
-    val date: String,       // Formato yyyy-MM-dd
-    val type: String,       // "APP" ou "WEBSITE"
-    var timeSpentMs: Long
-)
-
-@Entity(tableName = "usage_limits_lock")
-data class UsageLimitsLock(
-    @PrimaryKey val id: Int = 1,
-    val lockedUntilTimestamp: Long,
-    val isPasswordRequired: Boolean = true
+    val limitMinutesPerDay: Int,
+    val isActive: Boolean = true,
+    val securityMode: Boolean = false, // true = no password unlock
+    val lockAfterLimit: Boolean = true,
+    val durationDays: Int = 1,
+    val createdAt: Long = System.currentTimeMillis(),
+    val lastResetDate: Long = 0 // Used to reset daily usage
 )

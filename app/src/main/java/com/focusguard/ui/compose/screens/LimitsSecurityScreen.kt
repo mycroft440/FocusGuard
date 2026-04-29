@@ -79,7 +79,7 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
             Spacer(modifier = Modifier.height(8.dp))
             
             Text(
-                text = "Configure o que acontece quando alguém erra a senha do aplicativo repetidamente.",
+                text = "Configure o que acontece when someone misses the app password repeatedly.",
                 fontSize = 14.sp,
                 color = TextSecondary
             )
@@ -107,6 +107,8 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
             
             Spacer(modifier = Modifier.height(32.dp))
             
+            Spacer(modifier = Modifier.height(32.dp))
+            
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -130,6 +132,86 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = DarkBg,
                         checkedTrackColor = AccentCyan
+                    )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+            HorizontalDivider(color = Border, thickness = 1.dp)
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // SAFETY MODE
+            var safetyModeEnabled by remember { mutableStateOf(authManager.isSafetyModeEnabled()) }
+            var showSafetyDialog by remember { mutableStateOf(false) }
+            var safetyInput by remember { mutableStateOf("") }
+
+            if (showSafetyDialog) {
+                AlertDialog(
+                    onDismissRequest = { showSafetyDialog = false },
+                    containerColor = DarkSurface,
+                    title = { Text("Ativar Modo Segurança?", color = DangerRed, fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column {
+                            Text(
+                                "Ao ativar, você NÃO poderá remover limites de uso ou sessões de tempo usando sua senha. O bloqueio será absoluto até o fim do tempo definido.",
+                                color = TextSecondary, fontSize = 14.sp
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Para confirmar, digite 'sim' abaixo:", color = TextPrimary, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = safetyInput,
+                                onValueChange = { safetyInput = it },
+                                placeholder = { Text("digite sim", color = TextHint) },
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = DangerRed),
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                if (safetyInput.lowercase().trim() == "sim") {
+                                    safetyModeEnabled = true
+                                    authManager.setSafetyModeEnabled(true)
+                                    showSafetyDialog = false
+                                    safetyInput = ""
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
+                            enabled = safetyInput.lowercase().trim() == "sim"
+                        ) { Text("Confirmar", color = TextPrimary) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showSafetyDialog = false; safetyInput = "" }) { Text("Cancelar", color = TextHint) }
+                    }
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Modo Segurança", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Text("Impede o uso de senha para burlar limites ativos. Bloqueio total e irreversível.", fontSize = 12.sp, color = TextSecondary)
+                }
+                
+                Switch(
+                    checked = safetyModeEnabled,
+                    onCheckedChange = { enable ->
+                        if (enable) {
+                            showSafetyDialog = true
+                        } else {
+                            safetyModeEnabled = false
+                            authManager.setSafetyModeEnabled(false)
+                        }
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = DarkBg,
+                        checkedTrackColor = DangerRed
                     )
                 )
             }

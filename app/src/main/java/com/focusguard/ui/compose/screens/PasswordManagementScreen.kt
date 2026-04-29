@@ -35,22 +35,28 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
     // Password list state
     var passwords by remember { mutableStateOf(authManager.getStoredPasswordLabels()) }
     var showAddDialog by remember { mutableStateOf(false) }
-    var newPassword by remember { mutableStateOf("") }
-    var newPasswordLabel by remember { mutableStateOf("") }
-    var addError by remember { mutableStateOf("") }
+    var showEditDialog by remember { mutableStateOf<Int?>(null) }
+    var showDeleteAuthDialog by remember { mutableStateOf<Int?>(null) }
+    
+    var tempPassword by remember { mutableStateOf("") }
+    var tempPasswordLabel by remember { mutableStateOf("") }
+    var actionError by remember { mutableStateOf("") }
+    
+    var currentAuthType by remember { mutableStateOf(authManager.getPreferredAuthType()) }
 
-    // Add password dialog
-    if (showAddDialog) {
+    // Add/Edit password dialog
+    if (showAddDialog || showEditDialog != null) {
+        val isEditing = showEditDialog != null
         AlertDialog(
-            onDismissRequest = { showAddDialog = false },
+            onDismissRequest = { showAddDialog = false; showEditDialog = null },
             containerColor = DarkSurface,
-            title = { Text("Nova Senha", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            title = { Text(if (isEditing) "Editar Senha" else "Nova Senha", color = TextPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
                     OutlinedTextField(
-                        value = newPasswordLabel,
-                        onValueChange = { newPasswordLabel = it },
-                        label = { Text("Nome/Rótulo (ex: Senha Principal)", color = TextHint) },
+                        value = tempPasswordLabel,
+                        onValueChange = { tempPasswordLabel = it },
+                        label = { Text("Nome/Rótulo", color = TextHint) },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = TextPrimary,
@@ -61,9 +67,9 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                     )
                     Spacer(modifier = Modifier.height(12.dp))
                     OutlinedTextField(
-                        value = newPassword,
-                        onValueChange = { newPassword = it },
-                        label = { Text("Senha", color = TextHint) },
+                        value = tempPassword,
+                        onValueChange = { tempPassword = it },
+                        label = { Text("Senha (números)", color = TextHint) },
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -73,32 +79,90 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                         ),
                         modifier = Modifier.fillMaxWidth()
                     )
-                    if (addError.isNotEmpty()) {
-                        Text(addError, color = DangerRed, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                    if (actionError.isNotEmpty()) {
+                        Text(actionError, color = DangerRed, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
                     }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        if (newPassword.isBlank()) {
-                            addError = "A senha não pode ser vazia."
+                        if (tempPassword.isBlank()) {
+                            actionError = "A senha não pode ser vazia."
                             return@Button
                         }
-                        val label = newPasswordLabel.ifBlank { "Senha ${passwords.size + 1}" }
-                        authManager.addPasswordWithLabel(newPassword, label)
+                        if (isEditing) {
+                            authManager.updatePasswordByIndex(showEditDialog!!, tempPassword, tempPasswordLabel)
+                        } else {
+                            val label = tempPasswordLabel.ifBlank { "Senha ${passwords.size + 1}" }
+                            authManager.addPasswordWithLabel(tempPassword, label)
+                        }
                         passwords = authManager.getStoredPasswordLabels()
-                        newPassword = ""
-                        newPasswordLabel = ""
-                        addError = ""
+                        tempPassword = ""
+                        tempPasswordLabel = ""
+                        actionError = ""
                         showAddDialog = false
+                        showEditDialog = null
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                     shape = RoundedCornerShape(12.dp)
                 ) { Text("Salvar", color = DarkBg, fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
-                TextButton(onClick = { showAddDialog = false; addError = "" }) {
+                TextButton(onClick = { showAddDialog = false; showEditDialog = null; actionError = "" }) {
+                    Text("Cancelar", color = TextHint)
+                }
+            }
+        )
+    }
+
+    // Delete Auth Dialog
+    if (showDeleteAuthDialog != null) {
+        var deleteAuthInput by remember { mutableStateOf("") }
+        var deleteAuthError by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { showDeleteAuthDialog = null },
+            containerColor = DarkSurface,
+            title = { Text("Confirmar Exclusão", color = TextPrimary, fontWeight = FontWeight.Bold) },
+            text = {
+                Column {
+                    Text("Digite sua senha atual para confirmar a exclusão desta senha.", color = TextSecondary, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(16.dp))
+                    OutlinedTextField(
+                        value = deleteAuthInput,
+                        onValueChange = { deleteAuthInput = it },
+                        label = { Text("Senha Atual", color = TextHint) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedBorderColor = AccentCyan
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    if (deleteAuthError.isNotEmpty()) {
+                        Text(deleteAuthError, color = DangerRed, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (authManager.verifyAndRemovePasswordByIndex(showDeleteAuthDialog!!, deleteAuthInput)) {
+                            passwords = authManager.getStoredPasswordLabels()
+                            showDeleteAuthDialog = null
+                        } else {
+                            deleteAuthError = "Senha incorreta."
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
+                    shape = RoundedCornerShape(12.dp)
+                ) { Text("Excluir", color = TextPrimary, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAuthDialog = null }) {
                     Text("Cancelar", color = TextHint)
                 }
             }
@@ -120,7 +184,11 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
         floatingActionButton = {
             if (isAuthenticated) {
                 FloatingActionButton(
-                    onClick = { showAddDialog = true },
+                    onClick = { 
+                        tempPassword = ""
+                        tempPasswordLabel = ""
+                        showAddDialog = true 
+                    },
                     containerColor = AccentCyan,
                     contentColor = DarkBg,
                     shape = CircleShape
@@ -133,7 +201,7 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
     ) { paddingValues ->
 
         if (!isAuthenticated) {
-            // Authentication gate
+            // Authentication gate (remains similar but uses primary auth)
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -212,28 +280,58 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
             }
         } else {
             // Password list
-            if (passwords.isEmpty()) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues)
-                        .padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(Icons.Default.Key, contentDescription = null, tint = TextHint, modifier = Modifier.size(64.dp))
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Nenhuma senha cadastrada.", color = TextHint, fontSize = 16.sp)
-                    Text("Toque no botão + para adicionar.", color = TextHint, fontSize = 14.sp, modifier = Modifier.padding(top = 4.dp))
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentPadding = PaddingValues(16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                item {
+                    Text(
+                        "Tipo de Bloqueio Principal",
+                        color = TextPrimary,
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
+                    )
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        listOf("NUMERIC" to "Senha", "PATTERN" to "Padrão", "DIGITAL" to "Digital").forEach { (type, label) ->
+                            FilterChip(
+                                selected = currentAuthType == type,
+                                onClick = { 
+                                    currentAuthType = type
+                                    authManager.setPreferredAuthType(type)
+                                },
+                                label = { Text(label) },
+                                colors = FilterChipDefaults.filterChipColors(
+                                    selectedContainerColor = AccentCyan,
+                                    selectedLabelColor = DarkBg,
+                                    containerColor = DarkSurface,
+                                    labelColor = TextSecondary
+                                ),
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
                 }
-            } else {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(paddingValues),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
+
+                if (passwords.isEmpty()) {
+                    item {
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(32.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Icon(Icons.Default.Key, contentDescription = null, tint = TextHint, modifier = Modifier.size(64.dp))
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text("Nenhuma senha cadastrada.", color = TextHint, fontSize = 16.sp)
+                        }
+                    }
+                } else {
                     item {
                         Text(
                             "${passwords.size} senha(s) cadastrada(s)",
@@ -247,9 +345,13 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                         PasswordCard(
                             index = index + 1,
                             label = label,
+                            onEdit = {
+                                tempPassword = "" // For security, don't show old password hash
+                                tempPasswordLabel = label
+                                showEditDialog = index
+                            },
                             onDelete = {
-                                authManager.removePasswordByIndex(index)
-                                passwords = authManager.getStoredPasswordLabels()
+                                showDeleteAuthDialog = index
                             }
                         )
                     }
@@ -260,9 +362,7 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
 }
 
 @Composable
-fun PasswordCard(index: Int, label: String, onDelete: () -> Unit) {
-    var showDeleteConfirm by remember { mutableStateOf(false) }
-
+fun PasswordCard(index: Int, label: String, onEdit: () -> Unit, onDelete: () -> Unit) {
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = DarkCard),
@@ -289,22 +389,11 @@ fun PasswordCard(index: Int, label: String, onDelete: () -> Unit) {
                 Text("••••••••", fontSize = 13.sp, color = TextHint)
             }
 
-            if (!showDeleteConfirm) {
-                IconButton(onClick = { showDeleteConfirm = true }) {
-                    Icon(Icons.Default.Delete, contentDescription = "Remover", tint = DangerRed.copy(alpha = 0.7f))
-                }
-            } else {
-                Row {
-                    IconButton(onClick = { showDeleteConfirm = false }) {
-                        Icon(Icons.Default.Close, contentDescription = "Cancelar", tint = TextHint)
-                    }
-                    IconButton(onClick = {
-                        onDelete()
-                        showDeleteConfirm = false
-                    }) {
-                        Icon(Icons.Default.CheckCircle, contentDescription = "Confirmar", tint = DangerRed)
-                    }
-                }
+            IconButton(onClick = onEdit) {
+                Icon(Icons.Default.Edit, contentDescription = "Editar", tint = AccentCyan.copy(alpha = 0.7f))
+            }
+            IconButton(onClick = onDelete) {
+                Icon(Icons.Default.Delete, contentDescription = "Remover", tint = DangerRed.copy(alpha = 0.7f))
             }
         }
     }
