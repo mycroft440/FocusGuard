@@ -198,13 +198,24 @@ fun AppLimitsTab(permissionsMissing: Boolean) {
             Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator(color = AccentCyan) }
         } else {
             LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
-                val configuredApps = filteredApps(apps, searchQuery).filter { it.currentLimitMinutes != null }
-                val unconfiguredApps = filteredApps(apps, searchQuery).filter { it.currentLimitMinutes == null }
+                val allFiltered = filteredApps(apps, searchQuery)
+                val activeLimits = allFiltered.filter { it.currentLimitMinutes != null && it.isEnabled }
+                val inactiveLimits = allFiltered.filter { it.currentLimitMinutes != null && !it.isEnabled }
+                val unconfiguredApps = allFiltered.filter { it.currentLimitMinutes == null }
 
-                if (configuredApps.isNotEmpty()) {
-                    item { Text("Aplicativos com Limite", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = AccentCyan, modifier = Modifier.padding(vertical = 8.dp)) }
-                    items(configuredApps, key = { it.packageName }) { app ->
-                        UsageLimitItem(app) { 
+                // 1. Prioridade Máxima: Limites Ativos
+                if (activeLimits.isNotEmpty()) {
+                    item { 
+                        Text(
+                            "Limites Ativos", 
+                            fontSize = 16.sp, 
+                            fontWeight = FontWeight.ExtraBold, 
+                            color = AccentCyan, 
+                            modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
+                        ) 
+                    }
+                    items(activeLimits, key = { "active_${it.packageName}" }) { app ->
+                        UsageLimitItem(app, isActive = true) { 
                             if (app.lockMode == "TIME" && app.lockUntilTimestamp != null && System.currentTimeMillis() < app.lockUntilTimestamp) {
                                 showTimeLockedAlert = true
                             } else if (app.lockMode == "PASSWORD") {
@@ -215,11 +226,43 @@ fun AppLimitsTab(permissionsMissing: Boolean) {
                             }
                         }
                     }
-                    item { Spacer(Modifier.height(16.dp)); HorizontalDivider(color = CardBorder); Spacer(Modifier.height(16.dp)) }
                 }
-                item { Text("Todos os Aplicativos", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary, modifier = Modifier.padding(vertical = 8.dp)) }
-                items(unconfiguredApps, key = { it.packageName }) { app ->
-                    UsageLimitItem(app) { selectedApp = app; showDialog = true }
+
+                // 2. Limites Configurados mas Desativados
+                if (inactiveLimits.isNotEmpty()) {
+                    item { 
+                        Text(
+                            "Limites Pausados", 
+                            fontSize = 14.sp, 
+                            fontWeight = FontWeight.Bold, 
+                            color = TextHint, 
+                            modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)
+                        ) 
+                    }
+                    items(inactiveLimits, key = { "inactive_${it.packageName}" }) { app ->
+                        UsageLimitItem(app, isActive = false) { 
+                            selectedApp = app; showDialog = true 
+                        }
+                    }
+                }
+
+                // 3. Demais Aplicativos (Apenas se a busca estiver vazia ou houver resultados)
+                if (unconfiguredApps.isNotEmpty()) {
+                    val sectionTitle = if (activeLimits.isEmpty() && inactiveLimits.isEmpty()) "Configurar Limites" else "Outros Aplicativos"
+                    item { 
+                        Text(
+                            sectionTitle, 
+                            fontSize = 14.sp, 
+                            fontWeight = FontWeight.Bold, 
+                            color = TextSecondary, 
+                            modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)
+                        ) 
+                    }
+                    items(unconfiguredApps, key = { "unconf_${it.packageName}" }) { app ->
+                        UsageLimitItem(app, isActive = false) { 
+                            selectedApp = app; showDialog = true 
+                        }
+                    }
                 }
             }
         }
@@ -404,42 +447,105 @@ private fun filteredApps(apps: List<UsageLimitAppUi>, query: String) =
     if (query.isBlank()) apps else apps.filter { it.appName.contains(query, true) || it.packageName.contains(query, true) }
 
 @Composable
-fun UsageLimitItem(app: UsageLimitAppUi, onClick: () -> Unit) {
+fun UsageLimitItem(app: UsageLimitAppUi, isActive: Boolean = false, onClick: () -> Unit) {
     Card(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp).clickable { onClick() },
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
-        border = BorderStroke(1.dp, CardBorder)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 6.dp)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isActive) DarkCardElevated else DarkCard
+        ),
+        border = BorderStroke(
+            width = if (isActive) 1.5.dp else 1.dp,
+            color = if (isActive) AccentCyan.copy(alpha = 0.5f) else CardBorder
+        ),
+        elevation = CardDefaults.cardElevation(defaultElevation = if (isActive) 4.dp else 0.dp)
     ) {
         Row(
-            modifier = Modifier.padding(12.dp),
+            modifier = Modifier.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (app.icon != null) {
                 val bitmap = remember(app.packageName) { app.icon.toBitmap(80, 80).asImageBitmap() }
-                Image(bitmap, null, Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)))
+                Image(
+                    bitmap, 
+                    null, 
+                    Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                )
             } else {
-                Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(DarkCardElevated), Alignment.Center) { Text("📱", fontSize = 18.sp) }
+                Box(
+                    Modifier
+                        .size(44.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(DarkCardElevated), 
+                    Alignment.Center
+                ) { Text("📱", fontSize = 20.sp) }
             }
-            Spacer(Modifier.width(12.dp))
+            
+            Spacer(Modifier.width(14.dp))
+            
             Column(Modifier.weight(1f)) {
-                Text(app.appName, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        app.appName, 
+                        fontSize = 15.sp, 
+                        fontWeight = FontWeight.Bold, 
+                        color = if (isActive) AccentCyan else TextPrimary
+                    )
+                    if (app.lockMode != "NONE") {
+                        Spacer(Modifier.width(6.dp))
+                        Icon(
+                            imageVector = if (app.lockMode == "TIME") Icons.Default.Lock else Icons.Default.Security,
+                            contentDescription = null,
+                            tint = if (isActive) AccentCyan else TextHint,
+                            modifier = Modifier.size(14.dp)
+                        )
+                    }
+                }
+                
                 if (app.currentLimitMinutes != null) {
                     val usedMin = app.usageMs / 60000
                     val progress = if (app.currentLimitMinutes > 0) (usedMin.toFloat() / app.currentLimitMinutes).coerceIn(0f, 1f) else 0f
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("$usedMin / ${app.currentLimitMinutes} min", fontSize = 12.sp, color = if (app.isEnabled) AccentCyan else TextHint)
-                        Spacer(Modifier.weight(1f))
-                        Text(if (app.isEnabled) "Ativo" else "Desativado", fontSize = 11.sp, color = if (app.isEnabled) AccentCyan else TextHint)
-                    }
+                    
                     Spacer(Modifier.height(4.dp))
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            "$usedMin / ${app.currentLimitMinutes} min", 
+                            fontSize = 12.sp, 
+                            color = if (isActive) TextPrimary else TextSecondary
+                        )
+                        Spacer(Modifier.weight(1f))
+                        Text(
+                            if (isActive) "Monitorando" else "Pausado", 
+                            fontSize = 11.sp, 
+                            color = if (isActive) AccentCyan else TextHint,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
+                    
+                    Spacer(Modifier.height(6.dp))
+                    
                     LinearProgressIndicator(
                         progress = progress,
-                        modifier = Modifier.fillMaxWidth().height(4.dp).clip(CircleShape),
-                        color = if (progress >= 0.9f) DangerRed else AccentCyan,
-                        trackColor = DarkCardElevated
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(CircleShape),
+                        color = when {
+                            !isActive -> TextHint.copy(alpha = 0.5f)
+                            progress >= 0.9f -> DangerRed
+                            else -> AccentCyan
+                        },
+                        trackColor = DarkBg
                     )
-                } else { Text("Sem limite configurado", fontSize = 12.sp, color = TextHint) }
+                } else { 
+                    Text("Sem limite configurado", fontSize = 12.sp, color = TextHint) 
+                }
             }
         }
     }
