@@ -152,7 +152,6 @@ fun MainActivityContent(
                         selectedSessionType = "TIME"
                         currentRoute = "SESSIONS_LIST"
                     },
-                    onActiveSessionsClick = { showSessionSheet = true },
                     onDeviceOwnerClick = { deviceOwnerManager.setAsDeviceOwner() },
                     onLimitsClick = { currentRoute = "LIMITS" },
                     onIntruderLogClick = { currentRoute = "INTRUDER_LOG" },

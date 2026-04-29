@@ -42,7 +42,6 @@ fun MainScreen(
     onPermissionsClick: () -> Unit,
     onPasswordSessionClick: () -> Unit,
     onTimeSessionClick: () -> Unit,
-    onActiveSessionsClick: () -> Unit,
     onDeviceOwnerClick: () -> Unit,
     onLimitsClick: () -> Unit,
     onIntruderLogClick: () -> Unit,
@@ -196,13 +195,9 @@ fun MainScreen(
                     modifier = Modifier.weight(1f)
                 ) { page ->
                     when (page) {
-                        0 -> HomeContent(
-                            permissionsVisible = permissionsVisible,
-                            onPermissionsClick = onPermissionsClick,
                             onPasswordSessionClick = onPasswordSessionClick,
                             onTimeSessionClick = onTimeSessionClick,
                             onAppUsageLimitsClick = onAppUsageLimitsClick,
-                            onActiveSessionsClick = onActiveSessionsClick,
                             pagerHint = true
                         )
                         1 -> usageStatsContent()
@@ -280,7 +275,6 @@ fun HomeContent(
     onPasswordSessionClick: () -> Unit,
     onTimeSessionClick: () -> Unit,
     onAppUsageLimitsClick: () -> Unit,
-    onActiveSessionsClick: () -> Unit,
     pagerHint: Boolean
 ) {
     var visible by remember { mutableStateOf(false) }
@@ -364,29 +358,6 @@ fun HomeContent(
                 subtitle = stringResource(id = R.string.usage_limits_sub),
                 onClick = onAppUsageLimitsClick
             )
-        }
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        Divider(color = Divider, thickness = 1.dp)
-
-        Spacer(modifier = Modifier.height(24.dp))
-
-        AnimatedVisibility(
-            visible = visible,
-            enter = fadeIn(animationSpec = tween(500, delayMillis = 500))
-        ) {
-            OutlinedButton(
-                onClick = onActiveSessionsClick,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                border = BorderStroke(1.5.dp, AccentCyan),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentCyan)
-            ) {
-                Icon(Icons.Outlined.PlaylistAddCheck, contentDescription = null, modifier = Modifier.size(20.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(id = R.string.view_active_sessions), fontWeight = FontWeight.Bold)
-            }
         }
 
         Spacer(modifier = Modifier.height(32.dp))
