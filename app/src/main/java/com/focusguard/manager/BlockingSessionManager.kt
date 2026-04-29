@@ -140,6 +140,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
             } catch (e: Exception) {
                 com.focusguard.utils.FocusGuardLogger.logError("Manager", "Erro ao iniciar sessão tempo", e)
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Erro ao iniciar sessão", Toast.LENGTH_SHORT).show() }
+            }
         }
     }
 
