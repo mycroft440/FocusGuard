@@ -26,16 +26,21 @@ class AuthManager(context: Context) {
     private val passwordDao = database.appPasswordDao()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
-    init {
-        // Inicialização leve. Migrações pesadas devem ser chamadas de forma assíncrona.
-        scope.launch {
-            try {
-                migrateSharedPreferencesToRoom()
-                migratePrefsToSecure()
-            } catch (e: Exception) {
-                com.focusguard.utils.FocusGuardLogger.logError("AuthManager", "Falha na migração inicial", e)
-            }
+    private val migrationJob = scope.launch {
+        try {
+            migrateSharedPreferencesToRoom()
+            migratePrefsToSecure()
+        } catch (e: Exception) {
+            com.focusguard.utils.FocusGuardLogger.logError("AuthManager", "Falha na migração inicial", e)
         }
+    }
+
+    init {
+        // Migration job started above
+    }
+
+    private suspend fun ensureMigrationDone() {
+        migrationJob.join()
     }
 
     private fun migratePrefsToSecure() {
@@ -70,10 +75,12 @@ class AuthManager(context: Context) {
     }
 
     suspend fun isAppLocked(): Boolean {
+        ensureMigrationDone()
         return hasPasswordSet()
     }
 
     suspend fun hasPasswordSet(): Boolean {
+        ensureMigrationDone()
         return passwordDao.getAllStatic().isNotEmpty()
     }
 
@@ -116,6 +123,7 @@ class AuthManager(context: Context) {
     }
 
     suspend fun getStoredPasswordLabels(): List<String> {
+        ensureMigrationDone()
         return passwordDao.getAllStatic().map { it.label }
     }
 
@@ -137,6 +145,7 @@ class AuthManager(context: Context) {
     }
 
     suspend fun verifyAndRemovePasswordByIndex(index: Int, passwordAttempt: String): Boolean {
+        ensureMigrationDone()
         val entries = passwordDao.getAllStatic()
         if (index in entries.indices) {
             val entry = entries[index]
@@ -151,6 +160,7 @@ class AuthManager(context: Context) {
     }
 
     suspend fun verifyAndUpdatePasswordByIndex(index: Int, passwordAttempt: String, newPassword: String, label: String): Boolean {
+        ensureMigrationDone()
         val entries = passwordDao.getAllStatic()
         if (index in entries.indices) {
             val entry = entries[index]
@@ -175,6 +185,7 @@ class AuthManager(context: Context) {
     }
 
     suspend fun verifyPassword(passwordAttempt: String): Boolean {
+        ensureMigrationDone()
         val entries = passwordDao.getAllStatic()
         for (entry in entries) {
             val hash = if (entry.salt != null) hashPasswordWithSalt(passwordAttempt, entry.salt) else hashPasswordLegacy(passwordAttempt)

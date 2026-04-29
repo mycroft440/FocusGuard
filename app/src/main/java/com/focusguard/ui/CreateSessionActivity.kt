@@ -85,7 +85,8 @@ fun CreateSessionWizard(sessionType: String, onFinish: () -> Unit) {
 
 @Composable
 fun AppSelectionStep(onNext: (List<SelectableAppUi>) -> Unit, onBack: () -> Unit) {
-    val pm = androidx.compose.ui.platform.LocalContext.current.packageManager
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val pm = context.packageManager
     var apps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
@@ -99,6 +100,9 @@ fun AppSelectionStep(onNext: (List<SelectableAppUi>) -> Unit, onBack: () -> Unit
             val installedPackageNames = mutableSetOf<String>()
 
             for (info in installedApps) {
+                // 1. Never allow selecting FocusGuard itself
+                if (info.packageName == context.packageName || info.packageName == "com.focusguard") continue
+
                 if (launchables.contains(info.packageName)) {
                     installedPackageNames.add(info.packageName)
                     val appName = info.loadLabel(pm).toString()
