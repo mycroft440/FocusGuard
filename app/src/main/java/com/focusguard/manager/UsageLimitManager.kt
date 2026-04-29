@@ -21,18 +21,16 @@ class UsageLimitManager private constructor(context: Context) {
         }
     }
 
-    suspend fun setLimit(packageName: String, appName: String, limitMinutes: Int, durationDays: Int = 1) {
-        val existing = limitDao.getLimitForPackage(packageName)
+    suspend fun setLimit(packageName: String, appName: String, limitMinutes: Int) {
         val limit = AppUsageLimit(
             packageName = packageName,
             appName = appName,
-            limitMinutesPerDay = limitMinutes,
-            isActive = true,
-            durationDays = durationDays,
+            dailyLimitMinutes = limitMinutes,
+            isEnabled = true,
             createdAt = System.currentTimeMillis(),
             lastResetDate = System.currentTimeMillis()
         )
-        limitDao.insertLimit(limit)
+        limitDao.insert(limit)
     }
 
     suspend fun getLimit(packageName: String): AppUsageLimit? {

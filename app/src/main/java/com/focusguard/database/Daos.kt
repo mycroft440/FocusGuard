@@ -119,20 +119,53 @@ interface SessionWebsiteCrossRefDao {
 @Dao
 interface AppUsageLimitDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertLimit(limit: AppUsageLimit)
+    suspend fun insert(limit: AppUsageLimit)
 
     @Update
-    suspend fun updateLimit(limit: AppUsageLimit)
+    suspend fun update(limit: AppUsageLimit)
 
     @Delete
-    suspend fun deleteLimit(limit: AppUsageLimit)
+    suspend fun delete(limit: AppUsageLimit)
+
+    @Query("SELECT * FROM app_usage_limits")
+    suspend fun getAll(): List<AppUsageLimit>
 
     @Query("SELECT * FROM app_usage_limits WHERE packageName = :packageName LIMIT 1")
     suspend fun getLimitForPackage(packageName: String): AppUsageLimit?
 
-    @Query("SELECT * FROM app_usage_limits WHERE isActive = 1")
+    @Query("SELECT * FROM app_usage_limits WHERE isEnabled = 1")
     suspend fun getAllActiveLimits(): List<AppUsageLimit>
 
     @Query("DELETE FROM app_usage_limits WHERE packageName = :packageName")
     suspend fun deleteLimitByPackage(packageName: String)
+}
+
+@Dao
+interface WebsiteUsageLimitDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(limit: WebsiteUsageLimit)
+
+    @Query("SELECT * FROM website_usage_limits")
+    suspend fun getAll(): List<WebsiteUsageLimit>
+
+    @Delete
+    suspend fun delete(limit: WebsiteUsageLimit)
+}
+
+@Dao
+interface UsageLimitsLockDao {
+    @Query("SELECT * FROM usage_limits_locks WHERE id = 0 LIMIT 1")
+    suspend fun getLock(): UsageLimitsLock?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(lock: UsageLimitsLock)
+}
+
+@Dao
+interface DailyUsageStatDao {
+    @Query("SELECT * FROM daily_usage_stats WHERE date = :date")
+    suspend fun getStatsForDate(date: String): List<DailyUsageStat>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(stat: DailyUsageStat)
 }

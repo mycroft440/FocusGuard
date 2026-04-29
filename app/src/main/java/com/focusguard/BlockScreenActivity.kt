@@ -159,13 +159,11 @@ fun BlockScreenContent(
                     onClick = {
                         authManager.showBiometricPrompt(
                             activity = context as androidx.fragment.app.FragmentActivity,
-                            title = "Desbloquear Sessão",
-                            subtitle = "Use sua digital para encerrar o bloqueio",
                             onSuccess = {
                                 BlockingSessionManager.getInstance(context).endPasswordSessions()
                                 onClose()
                             },
-                            onError = { _, _ ->
+                            onError = { _ ->
                                 showPasswordDialog = true
                             }
                         )

@@ -177,7 +177,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                         activeLimits.forEach { limit ->
                             val stat = stats.find { it.packageName == limit.packageName }
                             val usageMinutes = (stat?.totalTimeInForeground ?: 0L) / 1000 / 60
-                            if (usageMinutes >= limit.limitMinutesPerDay) {
+                            if (usageMinutes >= limit.dailyLimitMinutes) {
                                 limitApps.add(limit.packageName)
                             }
                         }

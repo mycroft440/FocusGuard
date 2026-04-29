@@ -9,8 +9,12 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
-    entities = [BlockedApp::class, BlockedWebsite::class, BlockSession::class, SessionAppCrossRef::class, SessionWebsiteCrossRef::class, AppUsageLimit::class],
-    version = 6,
+    entities = [
+        BlockedApp::class, BlockedWebsite::class, BlockSession::class, 
+        SessionAppCrossRef::class, SessionWebsiteCrossRef::class, 
+        AppUsageLimit::class, WebsiteUsageLimit::class, UsageLimitsLock::class, DailyUsageStat::class
+    ],
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -20,6 +24,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun sessionAppCrossRefDao(): SessionAppCrossRefDao
     abstract fun sessionWebsiteCrossRefDao(): SessionWebsiteCrossRefDao
     abstract fun appUsageLimitDao(): AppUsageLimitDao
+    abstract fun websiteUsageLimitDao(): WebsiteUsageLimitDao
+    abstract fun usageLimitsLockDao(): UsageLimitsLockDao
+    abstract fun dailyUsageStatDao(): DailyUsageStatDao
 
     companion object {
         @Volatile
@@ -62,6 +69,19 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Drop and Recreate app_usage_limits due to structure change
+                database.execSQL("DROP TABLE IF EXISTS `app_usage_limits`")
+                database.execSQL("CREATE TABLE IF NOT EXISTS `app_usage_limits` (`packageName` TEXT NOT NULL, `appName` TEXT NOT NULL, `dailyLimitMinutes` INTEGER NOT NULL, `isEnabled` INTEGER NOT NULL DEFAULT 1, `lockMode` TEXT NOT NULL DEFAULT 'NONE', `lockPasswordHash` TEXT, `lockUntilTimestamp` INTEGER, `createdAt` INTEGER NOT NULL, `lastResetDate` INTEGER NOT NULL, PRIMARY KEY(`packageName`))")
+                
+                // Create new tables
+                database.execSQL("CREATE TABLE IF NOT EXISTS `website_usage_limits` (`domain` TEXT NOT NULL, `dailyLimitMinutes` INTEGER NOT NULL, `isEnabled` INTEGER NOT NULL DEFAULT 1, `lockMode` TEXT NOT NULL DEFAULT 'NONE', `lockPasswordHash` TEXT, `lockUntilTimestamp` INTEGER, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`domain`))")
+                database.execSQL("CREATE TABLE IF NOT EXISTS `usage_limits_locks` (`id` INTEGER NOT NULL, `lockedUntilTimestamp` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+                database.execSQL("CREATE TABLE IF NOT EXISTS `daily_usage_stats` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `identifier` TEXT NOT NULL, `date` TEXT NOT NULL, `timeSpentMs` INTEGER NOT NULL)")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -69,7 +89,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "focusguard_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build()
                 INSTANCE = instance
                 instance

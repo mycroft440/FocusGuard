@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.os.Bundle
 import android.util.Log
+import android.widget.Toast
 import androidx.activity.compose.setContent
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -154,6 +155,10 @@ fun MainActivityContent(
             onIntruderLogClick = { currentRoute = "INTRUDER_LOG" },
             onLanguageClick = { currentRoute = "LANGUAGE" },
             onPasswordManagementClick = { currentRoute = "PASSWORD_MANAGEMENT" },
+            onBlockCustomizationClick = { 
+                Toast.makeText(activity, "Personalização em breve!", Toast.LENGTH_SHORT).show()
+            },
+            onAppUsageLimitsClick = { currentRoute = "USAGE_LIMITS" },
             authManager = authManager,
             usageStatsContent = { UsageStatsScreen() }
         )
@@ -199,6 +204,11 @@ fun MainActivityContent(
         )
     } else if (currentRoute == "PASSWORD_MANAGEMENT") {
         com.focusguard.ui.compose.screens.PasswordManagementScreen(
+            authManager = authManager,
+            onBack = { currentRoute = "HOME" }
+        )
+    } else if (currentRoute == "USAGE_LIMITS") {
+        com.focusguard.ui.compose.screens.UsageLimitsScreen(
             authManager = authManager,
             onBack = { currentRoute = "HOME" }
         )

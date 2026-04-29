@@ -154,7 +154,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
         }
     }
 
-    private suspend fun checkAndEnforce() {
+    suspend fun checkAndEnforce() {
         val sessions = database.blockSessionDao().getAllActiveSessions()
         val enforcingSessions = sessions.filter { isCurrentlyInBlockingWindow(it) }
 
@@ -180,7 +180,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 activeLimits.forEach { limit ->
                     val stat = stats.find { it.packageName == limit.packageName }
                     val usageMinutes = (stat?.totalTimeInForeground ?: 0L) / 1000 / 60
-                    if (usageMinutes >= limit.limitMinutesPerDay) {
+                    if (usageMinutes >= limit.dailyLimitMinutes) {
                         limitAppsToBlock.add(limit.packageName)
                     }
                 }

@@ -28,6 +28,7 @@ import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.ui.compose.screens.AppSelectionScreen
 import com.focusguard.ui.compose.screens.SelectableAppUi
 import com.focusguard.ui.compose.theme.*
+import com.focusguard.utils.findActivity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -235,11 +236,6 @@ fun SiteSelectionStep(initialSites: List<String>, onNext: (List<String>) -> Unit
     }
 }
 
-fun android.content.Context.findActivity(): android.app.Activity? = when (this) {
-    is android.app.Activity -> this
-    is android.content.ContextWrapper -> baseContext.findActivity()
-    else -> null
-}
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
