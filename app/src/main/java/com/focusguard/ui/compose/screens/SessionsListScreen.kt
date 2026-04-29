@@ -30,7 +30,9 @@ import com.focusguard.ui.CreateSessionActivity
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.security.AuthManager
 import com.focusguard.ui.compose.screens.SelectableAppUi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import android.content.pm.PackageManager
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
