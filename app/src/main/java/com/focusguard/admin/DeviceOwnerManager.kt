@@ -276,7 +276,7 @@ class DeviceOwnerManager(private val context: Context) {
                 // Apply to Microsoft Edge
                 dpm.setApplicationRestrictions(componentName, "com.microsoft.emmx", restrictions)
             } catch (e: Exception) {
-                e.printStackTrace()
+                com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Erro na operação de Device Owner", e)
             }
         }
     }
@@ -294,7 +294,7 @@ class DeviceOwnerManager(private val context: Context) {
                 dpm.setApplicationRestrictions(componentName, "com.android.chrome", emptyRestrictions)
                 dpm.setApplicationRestrictions(componentName, "com.microsoft.emmx", emptyRestrictions)
             } catch (e: Exception) {
-                e.printStackTrace()
+                com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Erro na operação de Device Owner", e)
             }
         }
     }

@@ -393,7 +393,7 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean) {
         AlertDialog(
             onDismissRequest = { showTimeLockedAlert = false },
             title = { Text("Limite Blindado", color = DangerRed) },
-            text = { Text("Este limite estÃ¡ blindado por tempo e nÃ£o pode ser alterado atÃ© o fim do prazo.", color = TextPrimary) },
+            text = { Text("Este limite está blindado por tempo e não pode ser alterado até o fim do prazo.", color = TextPrimary) },
             confirmButton = { TextButton({ showTimeLockedAlert = false }) { Text("OK", color = AccentCyan) } },
             containerColor = DarkSurface
         )
@@ -419,7 +419,7 @@ fun UsageLimitItem(app: UsageLimitAppUi, onClick: () -> Unit) {
                 val bitmap = remember(app.packageName) { app.icon.toBitmap(80, 80).asImageBitmap() }
                 Image(bitmap, null, Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)))
             } else {
-                Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(DarkCardElevated), Alignment.Center) { Text("ðŸ“±", fontSize = 18.sp) }
+                Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(DarkCardElevated), Alignment.Center) { Text("📱", fontSize = 18.sp) }
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -457,7 +457,7 @@ fun WebsiteLimitItem(site: WebsiteLimitUi, onClick: () -> Unit, onDelete: () -> 
             modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(AccentCyan.copy(0.12f)), Alignment.Center) { Text("ðŸŒ", fontSize = 20.sp) }
+            Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(AccentCyan.copy(0.12f)), Alignment.Center) { Text("🌐", fontSize = 20.sp) }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(site.domain, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = TextPrimary)

@@ -34,11 +34,15 @@ object FocusGuardLogger {
             
             if (!focusGuardDir.exists()) {
                 val success = focusGuardDir.mkdirs()
-                if (!success) {
-                    // Fallback para armazenamento interno se falhar no Downloads
-                    focusGuardDir = File(context.getExternalFilesDir(null), "FocusGuardLogs")
+                if (!success || !focusGuardDir.canWrite()) {
+                    // Fallback para armazenamento interno se falhar no Downloads (Comum no Android 11+)
+                    focusGuardDir = File(context.getExternalFilesDir(null), "Logs")
                     if (!focusGuardDir.exists()) focusGuardDir.mkdirs()
                 }
+            } else if (!focusGuardDir.canWrite()) {
+                 // Existe mas não podemos escrever
+                 focusGuardDir = File(context.getExternalFilesDir(null), "Logs")
+                 if (!focusGuardDir.exists()) focusGuardDir.mkdirs()
             }
 
             val dateStr = SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date())

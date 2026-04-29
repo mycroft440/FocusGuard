@@ -41,9 +41,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        deviceOwnerManager = DeviceOwnerManager(this)
-        sessionManager = BlockingSessionManager.getInstance(this)
-        authManager = AuthManager(this)
+        deviceOwnerManager = DeviceOwnerManager(applicationContext)
+        sessionManager = BlockingSessionManager.getInstance(applicationContext)
+        authManager = AuthManager(applicationContext)
 
         setContent {
             FocusGuardTheme {
@@ -66,9 +66,14 @@ fun MainActivityContent(
     sessionManager: BlockingSessionManager,
     authManager: AuthManager
 ) {
-    var isUnlocked by remember { mutableStateOf(true) } // Assume unlocked initially to prevent flicker, or false for security
+    var isUnlocked by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        isUnlocked = !authManager.isAppLocked()
+        withContext(Dispatchers.IO) {
+            val locked = authManager.isAppLocked()
+            withContext(Dispatchers.Main) {
+                isUnlocked = !locked
+            }
+        }
     }
 
     if (!isUnlocked) {
@@ -88,8 +93,9 @@ fun MainActivityContent(
     val hasSession by sessionManager.hasRegisteredSessionFlow.collectAsState(initial = false)
     val sessionDetails by sessionManager.sessionDetailsFlow.collectAsState(initial = "Carregando...")
 
-    val database = AppDatabase.getDatabase(activity)
-    val stats by database.dailyUsageStatDao().getStatsForDate(java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())).collectAsState(initial = emptyList())
+    val database = remember { AppDatabase.getDatabase(activity.applicationContext) }
+    val todayDate = remember { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date()) }
+    val stats by database.dailyUsageStatDao().getStatsForDate(todayDate).collectAsState(initial = emptyList())
 
     var resumeKey by remember { mutableIntStateOf(0) }
     LaunchedEffect(resumeKey) {

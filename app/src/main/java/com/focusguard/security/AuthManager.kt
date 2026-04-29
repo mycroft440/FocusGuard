@@ -17,17 +17,25 @@ import kotlinx.coroutines.runBlocking
 import java.security.MessageDigest
 import java.security.SecureRandom
 
-class AuthManager(private val context: Context) {
+class AuthManager(context: Context) {
+    private val appContext = context.applicationContext
 
-    private val prefs: SharedPreferences = context.getSharedPreferences("FocusGuardAuth", Context.MODE_PRIVATE)
-    private val securePrefs = SecurePrefsManager(context)
-    private val database = AppDatabase.getDatabase(context)
+    private val prefs: SharedPreferences = appContext.getSharedPreferences("FocusGuardAuth", Context.MODE_PRIVATE)
+    private val securePrefs = SecurePrefsManager(appContext)
+    private val database = AppDatabase.getDatabase(appContext)
     private val passwordDao = database.appPasswordDao()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
-        migrateSharedPreferencesToRoom()
-        migratePrefsToSecure()
+        // Inicialização leve. Migrações pesadas devem ser chamadas de forma assíncrona.
+        scope.launch {
+            try {
+                migrateSharedPreferencesToRoom()
+                migratePrefsToSecure()
+            } catch (e: Exception) {
+                com.focusguard.utils.FocusGuardLogger.logError("AuthManager", "Falha na migração inicial", e)
+            }
+        }
     }
 
     private fun migratePrefsToSecure() {
@@ -43,23 +51,21 @@ class AuthManager(private val context: Context) {
         }
     }
 
-    private fun migrateSharedPreferencesToRoom() {
+    private suspend fun migrateSharedPreferencesToRoom() {
         val entries = prefs.getStringSet("app_password_entries", null)
         if (entries != null && entries.isNotEmpty()) {
-            runBlocking(Dispatchers.IO) {
-                val dbEntries = passwordDao.getAllStatic()
-                if (dbEntries.isEmpty()) {
-                    entries.forEach { entry ->
-                        val withoutIndex = entry.substringAfter(":")
-                        val parts = withoutIndex.split("|")
-                        val label = parts.getOrNull(0) ?: "Senha"
-                        val hash = parts.getOrNull(1) ?: ""
-                        val salt = parts.getOrNull(2)
-                        passwordDao.insert(AppPassword(label = label, passwordHash = hash, salt = salt))
-                    }
+            val dbEntries = passwordDao.getAllStatic()
+            if (dbEntries.isEmpty()) {
+                entries.forEach { entry ->
+                    val withoutIndex = entry.substringAfter(":")
+                    val parts = withoutIndex.split("|")
+                    val label = parts.getOrNull(0) ?: "Senha"
+                    val hash = parts.getOrNull(1) ?: ""
+                    val salt = parts.getOrNull(2)
+                    passwordDao.insert(AppPassword(label = label, passwordHash = hash, salt = salt))
                 }
-                prefs.edit().remove("app_password_entries").remove("app_password_hashes").apply()
             }
+            prefs.edit().remove("app_password_entries").remove("app_password_hashes").apply()
         }
     }
 
@@ -219,10 +225,10 @@ class AuthManager(private val context: Context) {
         onSuccess: () -> Unit,
         onError: (String) -> Unit
     ) {
-        val biometricManager = BiometricManager.from(context)
+        val biometricManager = BiometricManager.from(appContext)
         when (biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)) {
             BiometricManager.BIOMETRIC_SUCCESS -> {
-                val executor = ContextCompat.getMainExecutor(context)
+                val executor = ContextCompat.getMainExecutor(appContext)
                 val biometricPrompt = BiometricPrompt(activity, executor,
                     object : BiometricPrompt.AuthenticationCallback() {
                         override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {

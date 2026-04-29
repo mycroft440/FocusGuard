@@ -17,7 +17,7 @@
     <string name="save">Salvar</string>
     <string name="cancel">Cancelar</string>
     <string name="nuclear_protection">Proteção Nuclear</string>
-    <string name="give_permissions">De o restante das permissões aqui</string>
+    <string name="give_permissions">Dê o restante das permissões aqui</string>
     <string name="permissions_warning_new">O bloqueio somente irá funcionar caso dê todas as permissões ao app</string>
 
     <string name="focus_subtitle">Foco Total, Zero Distrações</string>

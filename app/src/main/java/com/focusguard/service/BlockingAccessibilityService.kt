@@ -343,18 +343,29 @@ class BlockingAccessibilityService : AccessibilityService() {
             return true
         }
 
-        // Verificação via content description (alguns navegadores usam isso no ícone de incognito)
+        // Verificação via content description com prevenção de vazamento de memória
         return checkIncognitoHeuristics(source)
     }
 
     private fun checkIncognitoHeuristics(node: AccessibilityNodeInfo?): Boolean {
         if (node == null) return false
-        val desc = node.contentDescription?.toString()?.lowercase() ?: ""
-        if (desc.contains("incognito") || desc.contains("anônimo") || desc.contains("privada")) return true
         
-        for (i in 0 until node.childCount) {
-            if (checkIncognitoHeuristics(node.getChild(i))) return true
-        }
+        try {
+            val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+            if (desc.contains("incognito") || desc.contains("anônimo") || desc.contains("privada")) return true
+            
+            for (i in 0 until node.childCount) {
+                val child = node.getChild(i) ?: continue
+                if (checkIncognitoHeuristics(child)) {
+                    // Match encontrado, não reciclamos o child aqui pois a recursão vai subir e ele será reciclado no nível superior?
+                    // Não, precisamos reciclar todos os que NÃO são o nó raiz se estivermos apenas verificando um booleano.
+                    child.recycle()
+                    return true
+                }
+                child.recycle() // ESSENCIAL: Reciclar o filho após verificar e não encontrar match
+            }
+        } catch (_: Exception) {}
+        
         return false
     }
     private fun blockWebsite() {
