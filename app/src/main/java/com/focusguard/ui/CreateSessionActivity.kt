@@ -29,6 +29,7 @@ import com.focusguard.ui.compose.screens.AppSelectionScreen
 import com.focusguard.ui.compose.screens.SelectableAppUi
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.utils.findActivity
+import com.focusguard.security.AuthManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -38,10 +39,13 @@ class CreateSessionActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val sessionType = intent.getStringExtra("SESSION_TYPE") ?: "PASSWORD"
         
+        val authManager = AuthManager(this)
+        
         setContent {
             FocusGuardTheme {
                 CreateSessionWizard(
                     sessionType = sessionType,
+                    authManager = authManager,
                     onFinish = { finish() }
                 )
             }
@@ -50,7 +54,7 @@ class CreateSessionActivity : ComponentActivity() {
 }
 
 @Composable
-fun CreateSessionWizard(sessionType: String, onFinish: () -> Unit) {
+fun CreateSessionWizard(sessionType: String, authManager: AuthManager, onFinish: () -> Unit) {
     var step by remember { mutableStateOf(1) }
     
     // Data collected
@@ -75,6 +79,7 @@ fun CreateSessionWizard(sessionType: String, onFinish: () -> Unit) {
         )
         3 -> ConfigSessionStep(
             sessionType = sessionType,
+            authManager = authManager,
             apps = selectedApps.map { it.packageName },
             sites = selectedSites,
             onFinish = onFinish,
@@ -243,10 +248,11 @@ fun SiteSelectionStep(initialSites: List<String>, onNext: (List<String>) -> Unit
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<String>, onFinish: () -> Unit, onBack: () -> Unit) {
+fun ConfigSessionStep(sessionType: String, authManager: AuthManager, apps: List<String>, sites: List<String>, onFinish: () -> Unit, onBack: () -> Unit) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val activityContext = context.findActivity() ?: context
     val sessionManager = remember { com.focusguard.manager.BlockingSessionManager.getInstance(context) }
+    val scope = rememberCoroutineScope()
     
     var isFixed24h by remember { mutableStateOf(true) }
     var useSpecificTime by remember { mutableStateOf(false) }
@@ -256,12 +262,16 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
     var endHour by remember { mutableStateOf("20") }
     var endMin by remember { mutableStateOf("00") }
     
-    // Days selection: 1=Dom, 2=Seg, 3=Ter, 4=Qua, 5=Qui, 6=Sex, 7=Sáb
     var selectedDays by remember { mutableStateOf(setOf("2", "3", "4", "5", "6")) } 
-    val dayLabels = listOf("Dom" to "1", "Seg" to "2", "Ter" to "3", "Qua" to "4", "Qui" to "5", "Sex" to "6", "Sáb" to "7")
-    
     var timeDays by remember { mutableStateOf("0") }
     var timeHours by remember { mutableStateOf("2") }
+
+    var showPasswordCreationDialog by remember { mutableStateOf(false) }
+    var hasPassword by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        hasPassword = authManager.hasPasswordSet()
+    }
 
     Scaffold(
         topBar = {
@@ -452,6 +462,11 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
             
             Button(
                 onClick = {
+                    if (sessionType == "PASSWORD" && !hasPassword) {
+                        showPasswordCreationDialog = true
+                        return@Button
+                    }
+                    
                     val daysStr = selectedDays.joinToString(",")
                     if (sessionType == "PASSWORD") {
                         com.focusguard.manager.BlockingSessionManager.getInstance(context).startPasswordSession(
@@ -490,4 +505,78 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
             Spacer(modifier = Modifier.height(24.dp))
         }
     }
+
+    if (showPasswordCreationDialog) {
+        PasswordCreationDialog(
+            onDismiss = { showPasswordCreationDialog = false },
+            onPasswordCreated = { password ->
+                authManager.addPassword(password)
+                hasPassword = true
+                showPasswordCreationDialog = false
+                Toast.makeText(context, "Senha criada com sucesso! Agora você pode ativar o bloqueio.", Toast.LENGTH_LONG).show()
+            }
+        )
+    }
 }
+
+@Composable
+fun PasswordCreationDialog(onDismiss: () -> Unit, onPasswordCreated: (String) -> Unit) {
+    var password by remember { mutableStateOf("") }
+    var confirmPassword by remember { mutableStateOf("") }
+    var error by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Criar Senha de Segurança", color = TextPrimary) },
+        text = {
+            Column {
+                Text("Você precisa criar uma senha para usar o bloqueio por senha. Esta senha será necessária para desativar o bloqueio.", color = TextSecondary, fontSize = 14.sp)
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it; error = null },
+                    label = { Text("Nova Senha") },
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = AccentCyan)
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = confirmPassword,
+                    onValueChange = { confirmPassword = it; error = null },
+                    label = { Text("Confirmar Senha") },
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = AccentCyan)
+                )
+                if (error != null) {
+                    Text(error!!, color = DangerRed, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    if (password.isEmpty()) {
+                        error = "A senha não pode estar vazia"
+                    } else if (password != confirmPassword) {
+                        error = "As senhas não coincidem"
+                    } else {
+                        onPasswordCreated(password)
+                    }
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+            ) {
+                Text("Salvar", color = DarkBg)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar", color = TextSecondary)
+            }
+        },
+        containerColor = DarkSurface,
+        shape = RoundedCornerShape(24.dp)
+    )
+}
+
