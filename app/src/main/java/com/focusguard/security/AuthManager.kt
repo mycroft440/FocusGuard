@@ -7,6 +7,7 @@ import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import java.security.MessageDigest
+import java.security.SecureRandom
 
 class AuthManager(private val context: Context) {
 
@@ -73,26 +74,32 @@ class AuthManager(private val context: Context) {
     }
 
     // --- Labeled password storage (ordered list) ---
-    // Format: "label|hash" stored as ordered entries in a StringSet with index prefix
-    // e.g. "0:Senha Principal|abc123...", "1:Senha Backup|def456..."
+    // Format: "label|hash|salt" stored as ordered entries in a StringSet with index prefix
+    // e.g. "0:Senha Principal|abc123...|xyz789...", "1:Senha Backup|def456...|uvw321..."
     
-    private fun getPasswordEntries(): List<Pair<String, String>> {
+    private fun getPasswordEntries(): List<Triple<String, String, String?>> {
         val entries = prefs.getStringSet("app_password_entries", emptySet()) ?: emptySet()
         return entries.sortedBy { 
             val idx = it.substringBefore(":").toIntOrNull() ?: 0
             idx
         }.map { entry ->
             val withoutIndex = entry.substringAfter(":")
-            val label = withoutIndex.substringBefore("|")
-            val hash = withoutIndex.substringAfter("|")
-            label to hash
+            val parts = withoutIndex.split("|")
+            val label = parts.getOrNull(0) ?: "Senha"
+            val hash = parts.getOrNull(1) ?: ""
+            val salt = parts.getOrNull(2) // Pode ser null para hashes legados
+            Triple(label, hash, salt)
         }
     }
 
-    private fun savePasswordEntries(entries: List<Pair<String, String>>) {
-        val indexed = entries.mapIndexed { index, (label, hash) -> "$index:$label|$hash" }.toSet()
+    private fun savePasswordEntries(entries: List<Triple<String, String, String?>>) {
+        val indexed = entries.mapIndexed { index, (label, hash, salt) -> 
+            val suffix = if (salt != null) "|$hash|$salt" else "|$hash"
+            "$index:$label$suffix"
+        }.toSet()
+        
         val hashes = entries.map { it.second }.toSet()
-        // Single atomic transaction to keep both stores in sync
+        
         prefs.edit()
             .putStringSet("app_password_entries", indexed)
             .putStringSet("app_password_hashes", hashes)
@@ -100,9 +107,10 @@ class AuthManager(private val context: Context) {
     }
 
     fun addPasswordWithLabel(password: String, label: String) {
-        val hash = hashPassword(password)
+        val salt = generateSalt()
+        val hash = hashPasswordWithSalt(password, salt)
         val current = getPasswordEntries().toMutableList()
-        current.add(label to hash)
+        current.add(Triple(label, hash, salt))
         savePasswordEntries(current)
     }
 
@@ -137,7 +145,8 @@ class AuthManager(private val context: Context) {
     fun updatePasswordByIndex(index: Int, newPassword: String, label: String) {
         val current = getPasswordEntries().toMutableList()
         if (index in current.indices) {
-            current[index] = label to hashPassword(newPassword)
+            val salt = generateSalt()
+            current[index] = Triple(label, hashPasswordWithSalt(newPassword, salt), salt)
             savePasswordEntries(current)
         }
     }
@@ -152,38 +161,65 @@ class AuthManager(private val context: Context) {
     }
 
     fun addPassword(newPassword: String) {
-        val hash = hashPassword(newPassword)
         val entries = getPasswordEntries().toMutableList()
         val label = "Senha ${entries.size + 1}"
-        entries.add(label to hash)
-        savePasswordEntries(entries)
+        addPasswordWithLabel(newPassword, label)
     }
 
-    fun verifyPassword(password: String): Boolean {
-        val hash = hashPassword(password)
-        val isValid = getPasswordHashes().contains(hash)
-        if (isValid) {
-            resetFailedAttempts()
+    fun verifyPassword(passwordAttempt: String): Boolean {
+        val entries = getPasswordEntries()
+        
+        for (entry in entries) {
+            val (_, storedHash, salt) = entry
+            val hashToCompare = if (salt != null) {
+                hashPasswordWithSalt(passwordAttempt, salt)
+            } else {
+                hashPasswordLegacy(passwordAttempt)
+            }
+            
+            if (hashToCompare == storedHash) {
+                resetFailedAttempts()
+                return true
+            }
         }
-        return isValid
+        return false
     }
 
     fun removePassword(passwordToRemove: String) {
-        val hash = hashPassword(passwordToRemove)
-        val currentHashes = getPasswordHashes().toMutableSet()
-        currentHashes.remove(hash)
-        prefs.edit().putStringSet("app_password_hashes", currentHashes).apply()
+        // Obsoleto: usar removePasswordByIndex para maior precisÃ£o
+        val entries = getPasswordEntries().toMutableList()
+        val toRemove = entries.find { (label, storedHash, salt) ->
+            val hash = if (salt != null) hashPasswordWithSalt(passwordToRemove, salt) else hashPasswordLegacy(passwordToRemove)
+            hash == storedHash
+        }
+        if (toRemove != null) {
+            entries.remove(toRemove)
+            savePasswordEntries(entries)
+        }
     }
 
     fun removeAllPasswords() {
         prefs.edit().remove("app_password_hashes").remove("app_password_entries").apply()
     }
 
-    private fun hashPassword(password: String): String {
-        val bytes = password.toByteArray()
+    private fun generateSalt(): String {
+        val random = SecureRandom()
+        val salt = ByteArray(16)
+        random.nextBytes(salt)
+        return salt.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun hashPasswordWithSalt(password: String, salt: String): String {
         val md = MessageDigest.getInstance("SHA-256")
-        val digest = md.digest(bytes)
-        return digest.fold("") { str, it -> str + "%02x".format(it) }
+        md.update(salt.toByteArray())
+        val digest = md.digest(password.toByteArray())
+        return digest.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun hashPasswordLegacy(password: String): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        val digest = md.digest(password.toByteArray())
+        return digest.joinToString("") { "%02x".format(it) }
     }
 
     fun showBiometricPrompt(
@@ -209,7 +245,7 @@ class AuthManager(private val context: Context) {
 
                         override fun onAuthenticationFailed() {
                             super.onAuthenticationFailed()
-                            onError("Falha na autenticação biométrica.")
+                            onError("Falha na autenticaÃ§Ã£o biomÃ©trica.")
                         }
                     })
 
@@ -222,7 +258,7 @@ class AuthManager(private val context: Context) {
                 biometricPrompt.authenticate(promptInfo)
             }
             else -> {
-                onError("Biometria indisponível. Use a senha.")
+                onError("Biometria indisponÃ­vel. Use a senha.")
             }
         }
     }
