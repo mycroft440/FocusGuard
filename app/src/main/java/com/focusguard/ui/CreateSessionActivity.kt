@@ -453,7 +453,7 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
                         com.focusguard.manager.BlockingSessionManager.getInstance(context).startPasswordSession(
                             isFixed24h = isFixed24h,
                             startHour = if (useSpecificTime) startHour.toIntOrNull() ?: 0 else 0,
-                            endHour = if (useSpecificTime) endHour.toIntOrNull() ?: 24 else 0,
+                            endHour = if (useSpecificTime) endHour.toIntOrNull() ?: 24 else 24,
                             startMinute = if (useSpecificTime) startMin.toIntOrNull() ?: 0 else 0,
                             endMinute = if (useSpecificTime) endMin.toIntOrNull() ?: 0 else 0,
                             daysOfWeek = if (isFixed24h) "" else daysStr,
@@ -466,7 +466,7 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
                             hours = timeHours.toIntOrNull() ?: 0,
                             isFixed24h = isFixed24h,
                             startHour = if (useSpecificTime) startHour.toIntOrNull() ?: 0 else 0,
-                            endHour = if (useSpecificTime) endHour.toIntOrNull() ?: 24 else 0,
+                            endHour = if (useSpecificTime) endHour.toIntOrNull() ?: 24 else 24,
                             startMinute = if (useSpecificTime) startMin.toIntOrNull() ?: 0 else 0,
                             endMinute = if (useSpecificTime) endMin.toIntOrNull() ?: 0 else 0,
                             daysOfWeek = if (isFixed24h) "" else daysStr,

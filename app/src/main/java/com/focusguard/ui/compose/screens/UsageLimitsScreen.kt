@@ -507,8 +507,11 @@ fun ConfirmLimitPasswordDialog(expectedHash: String, onDismiss: () -> Unit, onCo
         },
         confirmButton = {
             TextButton(onClick = {
-                val hash = java.security.MessageDigest.getInstance("SHA-256").digest(password.toByteArray()).joinToString("") { "%02x".format(it) }
-                if (hash == expectedHash || expectedHash.isEmpty()) onConfirm() else error = true
+                // Use a standard approach: if expectedHash is empty, allow anything (first set)
+                // If not, use the same legacy hash for consistency with secondary locks
+                val md = java.security.MessageDigest.getInstance("SHA-256")
+                val hash = md.digest(password.toByteArray()).joinToString("") { "%02x".format(it) }
+                if (expectedHash.isEmpty() || hash == expectedHash) onConfirm() else error = true
             }) { Text("Confirmar", color = AccentCyan) }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar", color = TextHint) } },
@@ -662,8 +665,12 @@ fun AppLimitDialog(app: UsageLimitAppUi, permissionsMissing: Boolean, onDismiss:
                 onClick = { 
                     val hours = hoursText.replace(",", ".").toDoubleOrNull() ?: 0.0
                     val minutes = (hours * 60).toInt()
-                    val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) java.security.MessageDigest.getInstance("SHA-256").digest(password.toByteArray()).joinToString("") { "%02x".format(it) } else app.lockPasswordHash
-                    val until = if (lockMode == "TIME" && days.isNotEmpty()) System.currentTimeMillis() + TimeUnit.DAYS.toMillis(days.toLong()) else app.lockUntilTimestamp
+                    // Refined hashing to match legacy SHA-256
+                    val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) {
+                        java.security.MessageDigest.getInstance("SHA-256").digest(password.toByteArray()).joinToString("") { "%02x".format(it) }
+                    } else if (lockMode == "PASSWORD") app.lockPasswordHash else null
+                    
+                    val until = if (lockMode == "TIME" && days.isNotEmpty()) System.currentTimeMillis() + TimeUnit.DAYS.toMillis(days.toLong()) else if (lockMode == "TIME") app.lockUntilTimestamp else null
                     onSave(if(minutes > 0) minutes else null, true, lockMode, hash, until) 
                 }
             ) { Text("Salvar", color = if(isConfirmed || lockMode == "NONE") AccentCyan else TextHint) } 
