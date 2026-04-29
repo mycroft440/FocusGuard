@@ -51,7 +51,7 @@ fun SessionDetailScreen(
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            val activeSessions = db.blockSessionDao().getAllActiveSessions()
+            val activeSessions = db.blockSessionDao().getAllActiveSessionsStatic()
                 .filter { it.sessionType == sessionType }
             sessions = activeSessions
             isLoading = false

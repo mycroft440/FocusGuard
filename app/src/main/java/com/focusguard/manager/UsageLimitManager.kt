@@ -42,6 +42,6 @@ class UsageLimitManager private constructor(context: Context) {
     }
 
     suspend fun getAllActiveLimits(): List<AppUsageLimit> {
-        return limitDao.getAllActiveLimits()
+        return limitDao.getAllActiveLimitsStatic()
     }
 }

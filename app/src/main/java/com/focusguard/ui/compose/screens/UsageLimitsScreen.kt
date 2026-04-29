@@ -160,7 +160,7 @@ fun AppLimitsTab(permissionsMissing: Boolean) {
             val resolveInfos = pm.queryIntentActivities(intent, 0)
             val db = AppDatabase.getDatabase(context)
             val limitDao = db.appUsageLimitDao()
-            val existingLimits = limitDao.getAll().associateBy { it.packageName }
+            val existingLimits = limitDao.getAllStatic().associateBy { it.packageName }
             val usageStatsManager = context.getSystemService(android.content.Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
             val cal = java.util.Calendar.getInstance().apply { set(java.util.Calendar.HOUR_OF_DAY, 0); set(java.util.Calendar.MINUTE, 0); set(java.util.Calendar.SECOND, 0) }
             val stats = usageStatsManager.queryAndAggregateUsageStats(cal.timeInMillis, System.currentTimeMillis())
@@ -238,7 +238,7 @@ fun AppLimitsTab(permissionsMissing: Boolean) {
                         val updated = selectedApp!!.copy(currentLimitMinutes = minutes, isEnabled = enabled, lockMode = lockMode, lockPasswordHash = lockPassword, lockUntilTimestamp = lockUntil)
                         apps = apps.map { if (it.packageName == updated.packageName) updated else it }
                     } else {
-                        val existing = db.getAll().find { it.packageName == selectedApp!!.packageName }
+                        val existing = db.getAllStatic().find { it.packageName == selectedApp!!.packageName }
                         if (existing != null) db.delete(existing)
                         val updated = selectedApp!!.copy(currentLimitMinutes = null, isEnabled = false, lockMode = "NONE", lockPasswordHash = null, lockUntilTimestamp = null)
                         apps = apps.map { if (it.packageName == updated.packageName) updated else it }
@@ -289,8 +289,8 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean) {
         withContext(Dispatchers.IO) {
             val db = AppDatabase.getDatabase(context)
             val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
-            val allLimits = db.websiteUsageLimitDao().getAll()
-            val usageStats = db.dailyUsageStatDao().getStatsForDate(today).associate { it.identifier to it.timeSpentMs }
+            val allLimits = db.websiteUsageLimitDao().getAllStatic()
+            val usageStats = db.dailyUsageStatDao().getStatsForDateStatic(today).associate { it.identifier to it.timeSpentMs }
             sites = allLimits.map { WebsiteLimitUi(it.domain, it.dailyLimitMinutes, it.isEnabled, usageStats[it.domain] ?: 0L, it.lockMode, it.lockPasswordHash, it.lockUntilTimestamp) }
             withContext(Dispatchers.Main) { isLoading = false }
         }
@@ -332,7 +332,7 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean) {
                                 val action = {
                                     scope.launch(Dispatchers.IO) {
                                         val db = AppDatabase.getDatabase(context).websiteUsageLimitDao()
-                                        val existing = db.getAll().find { it.domain == site.domain }
+                                        val existing = db.getAllStatic().find { it.domain == site.domain }
                                         if (existing != null) db.delete(existing)
                                         withContext(Dispatchers.Main) { sites = sites.filter { it.domain != site.domain } }
                                     }

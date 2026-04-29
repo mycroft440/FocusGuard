@@ -170,7 +170,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         scope.launch {
             try {
-                val activeSessions = database.blockSessionDao().getAllActiveSessions().first()
+                val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
                 val enforcingSessions = activeSessions.filter { sessionManager.isCurrentlyInBlockingWindow(it) }
                 val enforcingIds = enforcingSessions.map { it.id }
 
@@ -180,7 +180,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
                 // Daily Limits Enforcement
                 val limitApps = mutableSetOf<String>()
-                val activeLimits = database.appUsageLimitDao().getAllActiveLimits().first()
+                val activeLimits = database.appUsageLimitDao().getAllActiveLimitsStatic()
                 
                 if (activeLimits.isNotEmpty()) {
                     val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? android.app.usage.UsageStatsManager
@@ -205,10 +205,10 @@ class BlockingAccessibilityService : AccessibilityService() {
 
                 // Website Daily Limits Enforcement
                 val limitWebsites = mutableSetOf<String>()
-                val activeWebsiteLimits = database.websiteUsageLimitDao().getAll().first().filter { it.isEnabled }
+                val activeWebsiteLimits = database.websiteUsageLimitDao().getAllStatic().filter { it.isEnabled }
                 if (activeWebsiteLimits.isNotEmpty()) {
                     val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
-                    val stats = database.dailyUsageStatDao().getStatsForDate(today).associate { it.identifier to it.timeSpentMs }
+                    val stats = database.dailyUsageStatDao().getStatsForDateStatic(today).associate { it.identifier to it.timeSpentMs }
                     
                     activeWebsiteLimits.forEach { limit ->
                         val usageMs = stats[limit.domain] ?: 0L

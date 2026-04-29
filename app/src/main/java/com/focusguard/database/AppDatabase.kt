@@ -74,10 +74,10 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_6_7 = object : Migration(6, 7) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 // 1. Criar nova tabela com estrutura V7
-                database.execSQL("CREATE TABLE IF NOT EXISTS `app_usage_limits_new` (`packageName` TEXT NOT NULL, `appName` TEXT NOT NULL, `dailyLimitMinutes` INTEGER NOT NULL, `isEnabled` INTEGER NOT NULL DEFAULT 1, `lockMode` TEXT NOT NULL DEFAULT 'NONE', `lockPasswordHash` TEXT, `lockUntilTimestamp` INTEGER, `createdAt` INTEGER NOT NULL, `lastResetDate` INTEGER NOT NULL, PRIMARY KEY(`packageName`))")
+                database.execSQL("CREATE TABLE IF NOT EXISTS `app_usage_limits_new` (`packageName` TEXT NOT NULL, `appName` TEXT NOT NULL, `dailyLimitMinutes` INTEGER NOT NULL, `isEnabled` INTEGER NOT NULL DEFAULT 1, `lockMode` TEXT NOT NULL DEFAULT 'NONE', `lockPasswordHash` TEXT, `lockUntilTimestamp` INTEGER, `createdAt` INTEGER NOT NULL, `lastResetDate` INTEGER NOT NULL, `preventOpeningAfterLimit` INTEGER NOT NULL DEFAULT 1, `durationDays` INTEGER NOT NULL DEFAULT 1, `unlockWithPassword` INTEGER NOT NULL DEFAULT 0, PRIMARY KEY(`packageName`))")
                 
-                // 2. Migrar dados da tabela antiga para a nova
-                database.execSQL("INSERT INTO app_usage_limits_new (packageName, appName, dailyLimitMinutes, isEnabled, createdAt, lastResetDate, lockMode) SELECT packageName, appName, limitMinutesPerDay, isActive, createdAt, lastResetDate, 'NONE' FROM app_usage_limits")
+                // 2. Migrar dados da tabela antiga para a nova (mapeando campos equivalentes)
+                database.execSQL("INSERT INTO app_usage_limits_new (packageName, appName, dailyLimitMinutes, isEnabled, createdAt, lastResetDate, lockMode, preventOpeningAfterLimit, durationDays) SELECT packageName, appName, limitMinutesPerDay, isActive, createdAt, lastResetDate, 'NONE', lockAfterLimit, durationDays FROM app_usage_limits")
                 
                 // 3. Remover tabela antiga e renomear a nova
                 database.execSQL("DROP TABLE `app_usage_limits`")

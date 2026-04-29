@@ -68,6 +68,9 @@ interface BlockSessionDao {
     @Query("SELECT * FROM block_sessions WHERE isActive = 1")
     fun getAllActiveSessions(): Flow<List<BlockSession>>
 
+    @Query("SELECT * FROM block_sessions WHERE isActive = 1")
+    suspend fun getAllActiveSessionsStatic(): List<BlockSession>
+
     @Query("SELECT * FROM block_sessions WHERE isActive = 1 ORDER BY startTime DESC LIMIT 1")
     fun getActiveSession(): Flow<BlockSession?>
 
@@ -137,6 +140,12 @@ interface AppUsageLimitDao {
     @Query("SELECT * FROM app_usage_limits WHERE isEnabled = 1")
     fun getAllActiveLimits(): Flow<List<AppUsageLimit>>
 
+    @Query("SELECT * FROM app_usage_limits WHERE isEnabled = 1")
+    suspend fun getAllActiveLimitsStatic(): List<AppUsageLimit>
+
+    @Query("SELECT * FROM app_usage_limits")
+    suspend fun getAllStatic(): List<AppUsageLimit>
+
     @Query("DELETE FROM app_usage_limits WHERE packageName = :packageName")
     suspend fun deleteLimitByPackage(packageName: String)
 }
@@ -148,6 +157,9 @@ interface WebsiteUsageLimitDao {
 
     @Query("SELECT * FROM website_usage_limits")
     fun getAll(): Flow<List<WebsiteUsageLimit>>
+
+    @Query("SELECT * FROM website_usage_limits")
+    suspend fun getAllStatic(): List<WebsiteUsageLimit>
 
     @Delete
     suspend fun delete(limit: WebsiteUsageLimit)
@@ -165,7 +177,10 @@ interface UsageLimitsLockDao {
 @Dao
 interface DailyUsageStatDao {
     @Query("SELECT * FROM daily_usage_stats WHERE date = :date")
-    suspend fun getStatsForDate(date: String): List<DailyUsageStat>
+    fun getStatsForDate(date: String): Flow<List<DailyUsageStat>>
+
+    @Query("SELECT * FROM daily_usage_stats WHERE date = :date")
+    suspend fun getStatsForDateStatic(date: String): List<DailyUsageStat>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(stat: DailyUsageStat)
