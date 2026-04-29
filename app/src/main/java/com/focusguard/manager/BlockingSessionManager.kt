@@ -140,6 +140,35 @@ class BlockingSessionManager private constructor(private val context: Context) {
             } catch (e: Exception) {
                 com.focusguard.utils.FocusGuardLogger.logError("Manager", "Erro ao iniciar sessão tempo", e)
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Erro ao iniciar sessão", Toast.LENGTH_SHORT).show() }
+        }
+    }
+
+    fun startPomodoroSession(durationMs: Long) {
+        scope.launch {
+            try {
+                database.withTransaction {
+                    val startMillis = System.currentTimeMillis()
+                    val endMillis = startMillis + durationMs
+
+                    val session = BlockSession(
+                        startTime = startMillis,
+                        endTime = endMillis,
+                        isActive = true,
+                        sessionType = "POMODORO",
+                        isFixed24h = true,
+                        blockedAppsCount = 0, // Handled dynamically in checkAndEnforce
+                        blockedWebsitesCount = 0
+                    )
+
+                    database.blockSessionDao().insertNewSession(session)
+                }
+
+                checkAndEnforce()
+                withContext(Dispatchers.Main) { 
+                    Toast.makeText(context, "MODO POMODORO ATIVADO: Foco Total.", Toast.LENGTH_LONG).show() 
+                }
+            } catch (e: Exception) {
+                com.focusguard.utils.FocusGuardLogger.logError("Manager", "Erro ao iniciar pomodoro", e)
             }
         }
     }
@@ -181,6 +210,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
     fun endPasswordSessions() {
         scope.launch {
             try {
+                // Não permite encerrar Pomodoro por aqui
                 val sessions = database.blockSessionDao().getAllActiveSessions().first().filter { it.sessionType == "PASSWORD" }
                 for (session in sessions) {
                     database.blockSessionDao().updateBlockSession(session.copy(isActive = false))
@@ -199,6 +229,12 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 val sessions = database.blockSessionDao().getAllActiveSessions().first()
                 val session = sessions.find { it.id == sessionId }
                 if (session != null) {
+                    if (session.sessionType == "POMODORO") {
+                        withContext(Dispatchers.Main) { 
+                            Toast.makeText(context, "O Pomodoro não pode ser interrompido!", Toast.LENGTH_LONG).show() 
+                        }
+                        return@launch
+                    }
                     database.blockSessionDao().updateBlockSession(session.copy(isActive = false))
                     checkAndEnforce()
                     withContext(Dispatchers.Main) { Toast.makeText(context, "Bloqueio encerrado", Toast.LENGTH_SHORT).show() }
@@ -215,7 +251,17 @@ class BlockingSessionManager private constructor(private val context: Context) {
             val enforcingSessions = sessions.filter { isCurrentlyInBlockingWindow(it) }
 
             val enforcingIds = enforcingSessions.map { it.id }
-            val sessionAppsToBlock = database.sessionAppCrossRefDao().getAppsForSessions(enforcingIds)
+            
+            val isPomodoroActive = enforcingSessions.any { it.sessionType == "POMODORO" }
+            
+            val sessionAppsToBlock = if (isPomodoroActive) {
+                // Em modo Pomodoro, bloqueamos TODOS os apps (o DeviceOwnerManager filtrará os essenciais)
+                context.packageManager.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA)
+                    .map { it.packageName }
+            } else {
+                database.sessionAppCrossRefDao().getAppsForSessions(enforcingIds)
+            }
+            
             val sitesToBlock = database.sessionWebsiteCrossRefDao().getWebsitesForSessions(enforcingIds)
 
             // New: Check Daily Usage Limits

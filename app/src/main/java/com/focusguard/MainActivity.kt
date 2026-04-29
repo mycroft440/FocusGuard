@@ -101,6 +101,9 @@ fun MainActivityContent(
     var showSessionSheet by remember { mutableStateOf(false) }
     
     val isBlocking by sessionManager.isBlockingActiveFlow.collectAsState(initial = false)
+    val activeSessions by sessionManager.activeSessionsFlow.collectAsState(initial = emptyList())
+    val isPomodoroActive = activeSessions.any { it.sessionType == "POMODORO" && sessionManager.isCurrentlyInBlockingWindow(it) }
+    
     val hasSession by sessionManager.hasRegisteredSessionFlow.collectAsState(initial = false)
     val sessionDetails by sessionManager.sessionDetailsFlow.collectAsState(initial = "Carregando...")
 
@@ -129,6 +132,13 @@ fun MainActivityContent(
         }
         activity.lifecycle.addObserver(callback)
         onDispose { activity.lifecycle.removeObserver(callback) }
+    }
+
+    if (isPomodoroActive) {
+        Box(modifier = Modifier.fillMaxSize().background(com.focusguard.ui.compose.theme.DarkBg)) {
+            PomodoroScreen()
+        }
+        return
     }
 
     Surface(color = MaterialTheme.colorScheme.background) {

@@ -173,7 +173,7 @@ fun MainScreen(
                 )
             }
         ) { paddingValues ->
-            val pagerState = rememberPagerState(pageCount = { 2 })
+            val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
 
             Column(
                 modifier = Modifier
@@ -186,7 +186,8 @@ fun MainScreen(
                     modifier = Modifier.weight(1f)
                 ) { page ->
                     when (page) {
-                        0 -> HomeContent(
+                        0 -> usageStatsContent()
+                        1 -> HomeContent(
                             permissionsVisible = permissionsVisible,
                             onPermissionsClick = onPermissionsClick,
                             onPasswordSessionClick = onPasswordSessionClick,
@@ -194,7 +195,7 @@ fun MainScreen(
                             onAppUsageLimitsClick = onAppUsageLimitsClick,
                             pagerHint = true
                         )
-                        1 -> usageStatsContent()
+                        2 -> PomodoroScreen()
                     }
                 }
 
@@ -204,7 +205,7 @@ fun MainScreen(
                         .padding(bottom = 12.dp),
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    repeat(2) { index ->
+                    repeat(3) { index ->
                         val isSelected = pagerState.currentPage == index
                         Box(
                             modifier = Modifier
