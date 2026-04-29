@@ -79,7 +79,7 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
             Spacer(modifier = Modifier.height(8.dp))
             
             Text(
-                text = "Configure o que acontece when someone misses the app password repeatedly.",
+                text = "Configure o que acontece quando alguém erra a senha do aplicativo repetidamente.",
                 fontSize = 14.sp,
                 color = TextSecondary
             )
