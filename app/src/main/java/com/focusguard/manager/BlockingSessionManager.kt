@@ -193,6 +193,22 @@ class BlockingSessionManager private constructor(private val context: Context) {
         }
     }
 
+    fun endSession(sessionId: Int) {
+        scope.launch {
+            try {
+                val sessions = database.blockSessionDao().getAllActiveSessions().first()
+                val session = sessions.find { it.id == sessionId }
+                if (session != null) {
+                    database.blockSessionDao().updateBlockSession(session.copy(isActive = false))
+                    checkAndEnforce()
+                    withContext(Dispatchers.Main) { Toast.makeText(context, "Bloqueio encerrado", Toast.LENGTH_SHORT).show() }
+                }
+            } catch (e: Exception) {
+                withContext(Dispatchers.Main) { Toast.makeText(context, "Falha ao encerrar: ${e.message}", Toast.LENGTH_SHORT).show() }
+            }
+        }
+    }
+
     suspend fun checkAndEnforce() {
         try {
             val sessions = database.blockSessionDao().getAllActiveSessions().first()

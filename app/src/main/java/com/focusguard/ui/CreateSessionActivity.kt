@@ -59,7 +59,7 @@ class CreateSessionActivity : ComponentActivity() {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CreateSessionWizard(sessionType: String, authManager: AuthManager, onFinish: () -> Unit) {
-    val pagerState = rememberPagerState(pageCount = { 2 })
+    val pagerState = rememberPagerState(pageCount = { 3 })
     val scope = rememberCoroutineScope()
     
     // Data collected
@@ -79,14 +79,24 @@ fun CreateSessionWizard(sessionType: String, authManager: AuthManager, onFinish:
                 },
                 onBack = onFinish
             )
-            1 -> UnifiedConfigStep(
+            1 -> WebsiteSelectionStep(
+                initialSites = selectedSites,
+                onNext = { sites ->
+                    selectedSites = sites
+                    scope.launch { pagerState.animateScrollToPage(2) }
+                },
+                onBack = {
+                    scope.launch { pagerState.animateScrollToPage(0) }
+                }
+            )
+            2 -> FinalConfigStep(
                 sessionType = sessionType,
                 authManager = authManager,
-                initialSites = selectedSites,
+                sites = selectedSites,
                 apps = selectedApps.map { it.packageName },
                 onFinish = onFinish,
                 onBack = {
-                    scope.launch { pagerState.animateScrollToPage(0) }
+                    scope.launch { pagerState.animateScrollToPage(1) }
                 }
             )
         }
@@ -171,46 +181,20 @@ fun AppSelectionStep(onNext: (List<SelectableAppUi>) -> Unit, onBack: () -> Unit
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UnifiedConfigStep(
-    sessionType: String,
-    authManager: AuthManager,
+fun WebsiteSelectionStep(
     initialSites: List<String>,
-    apps: List<String>,
-    onFinish: () -> Unit,
+    onNext: (List<String>) -> Unit,
     onBack: () -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val activityContext = context.findActivity() ?: context
-    val sessionManager = remember { com.focusguard.manager.BlockingSessionManager.getInstance(context) }
-    
     var sites by remember { mutableStateOf(initialSites) }
     var urlInput by remember { mutableStateOf("") }
-    
-    var isFixed24h by remember { mutableStateOf(true) }
-    var useSpecificTime by remember { mutableStateOf(false) }
-    
-    var startHour by remember { mutableStateOf("08") }
-    var startMin by remember { mutableStateOf("00") }
-    var endHour by remember { mutableStateOf("20") }
-    var endMin by remember { mutableStateOf("00") }
-    
-    var selectedDays by remember { mutableStateOf(setOf("2", "3", "4", "5", "6")) } 
-    var timeDays by remember { mutableStateOf("0") }
-    var timeHours by remember { mutableStateOf("2") }
-
-    var showPasswordCreationDialog by remember { mutableStateOf(false) }
-    var hasPassword by remember { mutableStateOf(true) }
-
-    LaunchedEffect(Unit) {
-        hasPassword = authManager.hasPasswordSet()
-    }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (sessionType == "PASSWORD") "Bloqueio por Senha" else "Bloqueio por Tempo", color = TextPrimary) },
+                title = { Text("Bloqueio de Sites", color = TextPrimary) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", tint = TextPrimary)
@@ -219,7 +203,20 @@ fun UnifiedConfigStep(
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBg)
             )
         },
-        containerColor = DarkBg
+        containerColor = DarkBg,
+        bottomBar = {
+            Button(
+                onClick = { onNext(sites) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp)
+                    .height(56.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Text("Prosseguir com a configuração", color = DarkBg, fontWeight = FontWeight.Bold)
+            }
+        }
     ) { padding ->
         Column(
             modifier = Modifier
@@ -228,9 +225,8 @@ fun UnifiedConfigStep(
                 .padding(16.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            // Sites Selection Section
-            Text("Bloqueio de Sites", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-            Spacer(modifier = Modifier.height(12.dp))
+            Text("Adicione os sites que deseja bloquear durante esta sessão.", color = TextSecondary, fontSize = 14.sp)
+            Spacer(modifier = Modifier.height(24.dp))
             
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
@@ -258,9 +254,8 @@ fun UnifiedConfigStep(
                 )
             }
             
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             
-            // Suggestions
             Text("Sugestões:", color = TextSecondary, fontSize = 12.sp)
             Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
                 listOf("facebook.com", "instagram.com").forEach { suggestion ->
@@ -280,6 +275,8 @@ fun UnifiedConfigStep(
             }
 
             if (sites.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(24.dp))
+                Text("Sites Selecionados:", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
                 Spacer(modifier = Modifier.height(8.dp))
                 Column(modifier = Modifier.fillMaxWidth().background(DarkCard, RoundedCornerShape(12.dp)).padding(8.dp)) {
                     sites.forEach { site ->
@@ -292,12 +289,63 @@ fun UnifiedConfigStep(
                     }
                 }
             }
+        }
+    }
+}
 
-            Spacer(modifier = Modifier.height(32.dp))
-            HorizontalDivider(color = CardBorder, thickness = 1.dp)
-            Spacer(modifier = Modifier.height(24.dp))
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
+@Composable
+fun FinalConfigStep(
+    sessionType: String,
+    authManager: AuthManager,
+    sites: List<String>,
+    apps: List<String>,
+    onFinish: () -> Unit,
+    onBack: () -> Unit
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val activityContext = com.focusguard.utils.findActivity(context) ?: context
+    
+    var isFixed24h by remember { mutableStateOf(true) }
+    var useSpecificTime by remember { mutableStateOf(false) }
+    
+    var startHour by remember { mutableStateOf("08") }
+    var startMin by remember { mutableStateOf("00") }
+    var endHour by remember { mutableStateOf("20") }
+    var endMin by remember { mutableStateOf("00") }
+    
+    var selectedDays by remember { mutableStateOf(setOf("2", "3", "4", "5", "6")) } 
+    var timeDays by remember { mutableStateOf("0") }
+    var timeHours by remember { mutableStateOf("2") }
 
-            // Configuration Section (Original ConfigSessionStep logic)
+    var showPasswordCreationDialog by remember { mutableStateOf(false) }
+    var hasPassword by remember { mutableStateOf(true) }
+
+    LaunchedEffect(Unit) {
+        hasPassword = authManager.hasPasswordSet()
+    }
+
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("Configurar Bloqueio", color = TextPrimary) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", tint = TextPrimary)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBg)
+            )
+        },
+        containerColor = DarkBg
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
             Text("Opções de Agendamento", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
             Spacer(modifier = Modifier.height(12.dp))
             

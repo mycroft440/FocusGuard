@@ -26,6 +26,8 @@ import com.focusguard.database.BlockSession
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.ui.CreateSessionActivity
 import com.focusguard.ui.compose.theme.*
+import com.focusguard.security.AuthManager
+import kotlinx.coroutines.launch
 import java.util.*
 import java.util.concurrent.TimeUnit
 
@@ -36,9 +38,13 @@ fun SessionsListScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val authManager = remember { AuthManager(context) }
     val sessionManager = remember { BlockingSessionManager.getInstance(context) }
     val sessions by sessionManager.activeSessionsFlow.collectAsState(initial = emptyList())
     val filteredSessions = sessions.filter { it.sessionType == sessionType }
+    
+    var showPasswordPrompt by remember { mutableStateOf<Int?>(null) }
+    val scope = rememberCoroutineScope()
     
     val title = if (sessionType == "PASSWORD") "Bloqueios por Senha" else "Bloqueios por Tempo"
     val icon = if (sessionType == "PASSWORD") Icons.Default.VpnKey else Icons.Default.Timer
@@ -117,17 +123,77 @@ fun SessionsListScreen(
                     modifier = Modifier.fillMaxSize()
                 ) {
                     items(filteredSessions, key = { it.id }) { session ->
-                        SessionListItem(session, sessionManager)
+                        SessionListItem(
+                            session = session, 
+                            sessionManager = sessionManager,
+                            onDeleteClick = { showPasswordPrompt = session.id }
+                        )
                     }
                     item { Spacer(Modifier.height(80.dp)) } // Space for FAB
                 }
             }
         }
     }
+
+    if (showPasswordPrompt != null) {
+        PasswordPromptDialog(
+            onDismiss = { showPasswordPrompt = null },
+            onConfirm = { password ->
+                scope.launch {
+                    if (authManager.verifyPassword(password)) {
+                        sessionManager.endSession(showPasswordPrompt!!)
+                        showPasswordPrompt = null
+                    } else {
+                        Toast.makeText(context, "Senha incorreta", Toast.LENGTH_SHORT).show()
+                    }
+                }
+            }
+        )
+    }
 }
 
 @Composable
-fun SessionListItem(session: BlockSession, sessionManager: BlockingSessionManager) {
+fun PasswordPromptDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+    var password by remember { mutableStateOf("") }
+    
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Encerrar Bloqueio", color = TextPrimary) },
+        text = {
+            Column {
+                Text("Digite sua senha de segurança para encerrar este bloqueio.", color = TextSecondary, fontSize = 14.sp)
+                Spacer(modifier = Modifier.height(16.dp))
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = { password = it },
+                    label = { Text("Senha") },
+                    modifier = Modifier.fillMaxWidth(),
+                    visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
+                    colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = AccentCyan)
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(password) }, colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)) {
+                Text("Confirmar", color = DarkBg)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("Cancelar", color = TextSecondary)
+            }
+        },
+        containerColor = DarkSurface,
+        shape = RoundedCornerShape(24.dp)
+    )
+}
+
+@Composable
+fun SessionListItem(
+    session: BlockSession, 
+    sessionManager: BlockingSessionManager,
+    onDeleteClick: () -> Unit
+) {
     val context = LocalContext.current
     val dateFormatter = remember { java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()) }
     val isCurrentlyActive = sessionManager.isCurrentlyInBlockingWindow(session)
@@ -186,6 +252,12 @@ fun SessionListItem(session: BlockSession, sessionManager: BlockingSessionManage
                             fontWeight = FontWeight.Black,
                             modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
                         )
+                    }
+                }
+
+                if (session.sessionType == "PASSWORD") {
+                    IconButton(onClick = onDeleteClick) {
+                        Icon(Icons.Default.Delete, contentDescription = "Excluir", tint = DangerRed.copy(alpha = 0.7f))
                     }
                 }
             }
