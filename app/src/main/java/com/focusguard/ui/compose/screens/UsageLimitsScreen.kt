@@ -216,9 +216,7 @@ fun AppLimitsTab(permissionsMissing: Boolean) {
                     }
                     items(activeLimits, key = { "active_${it.packageName}" }) { app ->
                         UsageLimitItem(app, isActive = true) { 
-                            if (app.lockMode == "TIME" && app.lockUntilTimestamp != null && System.currentTimeMillis() < app.lockUntilTimestamp) {
-                                showTimeLockedAlert = true
-                            } else if (app.lockMode == "PASSWORD") {
+                            if (app.lockMode == "PASSWORD") {
                                 pendingAction = { selectedApp = app; showDialog = true }
                                 showPasswordConfirm = true
                             } else {
@@ -723,15 +721,25 @@ fun LimitSecuritySection(
 
 @Composable
 fun AppLimitDialog(app: UsageLimitAppUi, permissionsMissing: Boolean, onDismiss: () -> Unit, onSave: (Int?, Boolean, String, String?, Long?) -> Unit) {
-    var hoursText by remember { mutableStateOf(if(app.currentLimitMinutes != null) (app.currentLimitMinutes / 60f).toString() else "") }
+    val isEditMode = app.currentLimitMinutes != null
+    var hoursText by remember { mutableStateOf(if(isEditMode) (app.currentLimitMinutes!! / 60f).toString() else "") }
     var lockMode by remember { mutableStateOf(app.lockMode) }
     var password by remember { mutableStateOf("") }
     var days by remember { mutableStateOf("") }
-    var isConfirmed by remember { mutableStateOf(lockMode == "NONE") }
+    var isConfirmed by remember { mutableStateOf(!isEditMode && lockMode == "NONE") }
+    
+    // For Edit Mode (Extend Only)
+    var extensionDays by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Definir qual o tempo máximo por dia você quer usar o ${app.appName}?", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
+        title = { 
+            Text(
+                if (isEditMode) "Informações do Limite: ${app.appName}" 
+                else "Definir tempo máximo para ${app.appName}", 
+                color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp
+            ) 
+        },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 if (permissionsMissing) {
@@ -751,34 +759,98 @@ fun AppLimitDialog(app: UsageLimitAppUi, permissionsMissing: Boolean, onDismiss:
                         }
                     }
                 }
-                OutlinedTextField(
-                    value = hoursText,
-                    onValueChange = { if (it.isEmpty() || it.replace(",", ".").toDoubleOrNull() != null || it == ".") hoursText = it },
-                    label = { Text("Limite diário em horas", color = TextHint) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AccentCyan, unfocusedTextColor = TextPrimary, focusedTextColor = TextPrimary),
-                    modifier = Modifier.fillMaxWidth()
-                )
-                
-                Spacer(Modifier.height(24.dp))
-                LimitSecuritySection(lockMode, { lockMode = it }, password, { password = it }, days, { days = it }, { isConfirmed = it })
+
+                if (isEditMode) {
+                    // MODO EDIÇÃO: Apenas Informações e Extensão
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = DarkCardElevated),
+                        modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, CardBorder)
+                    ) {
+                        Column(Modifier.padding(16.dp)) {
+                            Text("Tempo diário configurado:", color = TextHint, fontSize = 12.sp)
+                            Text("${app.currentLimitMinutes} minutos", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                            
+                            Spacer(Modifier.height(12.dp))
+                            
+                            Text("Segurança:", color = TextHint, fontSize = 12.sp)
+                            val securityText = when(app.lockMode) {
+                                "TIME" -> "Blindado por Tempo"
+                                "PASSWORD" -> "Protegido por Senha"
+                                else -> "Sem proteção extra"
+                            }
+                            Text(securityText, color = if(app.lockMode != "NONE") AccentCyan else TextPrimary, fontSize = 14.sp)
+
+                            if (app.lockUntilTimestamp != null && app.lockUntilTimestamp > System.currentTimeMillis()) {
+                                val date = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm").format(java.util.Date(app.lockUntilTimestamp))
+                                Spacer(Modifier.height(8.dp))
+                                Text("Inviolável até: $date", color = DangerRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Text("Adicionar mais dias de bloqueio", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 14.sp)
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = extensionDays,
+                        onValueChange = { if (it.all { c -> c.isDigit() }) extensionDays = it },
+                        placeholder = { Text("Ex: 7", color = TextHint) },
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AccentCyan, unfocusedTextColor = TextPrimary, focusedTextColor = TextPrimary),
+                        suffix = { Text("dias") }
+                    )
+                    Text("A opção de adicionar dias torna o bloqueio impossível de ser removido até o fim do prazo.", color = TextHint, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+                } else {
+                    // MODO CRIAÇÃO: Interface Completa
+                    OutlinedTextField(
+                        value = hoursText,
+                        onValueChange = { if (it.isEmpty() || it.replace(",", ".").toDoubleOrNull() != null || it == ".") hoursText = it },
+                        label = { Text("Limite diário em horas", color = TextHint) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AccentCyan, unfocusedTextColor = TextPrimary, focusedTextColor = TextPrimary),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(Modifier.height(24.dp))
+                    LimitSecuritySection(lockMode, { lockMode = it }, password, { password = it }, days, { days = it }, { isConfirmed = it })
+                }
             }
         },
         confirmButton = { 
             TextButton(
-                enabled = isConfirmed || lockMode == "NONE",
+                enabled = !isEditMode && (isConfirmed || lockMode == "NONE") || isEditMode,
                 onClick = { 
-                    val hours = hoursText.replace(",", ".").toDoubleOrNull() ?: 0.0
-                    val minutes = (hours * 60).toInt()
-                    // Refined hashing to match legacy SHA-256 for secondary locks
-                    val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) {
-                        com.focusguard.security.AuthManager.hashPasswordLegacy(password)
-                    } else if (lockMode == "PASSWORD") app.lockPasswordHash else null
-                    
-                    val until = if (lockMode == "TIME" && days.isNotEmpty()) System.currentTimeMillis() + TimeUnit.DAYS.toMillis(days.toLong()) else if (lockMode == "TIME") app.lockUntilTimestamp else null
-                    onSave(if(minutes > 0) minutes else null, true, lockMode, hash, until) 
+                    if (isEditMode) {
+                        // Salvar apenas extensão de dias
+                        val extraDays = extensionDays.toLongOrNull() ?: 0L
+                        if (extraDays > 0) {
+                            val currentUntil = app.lockUntilTimestamp ?: System.currentTimeMillis()
+                            val base = if (currentUntil < System.currentTimeMillis()) System.currentTimeMillis() else currentUntil
+                            val newUntil = base + TimeUnit.DAYS.toMillis(extraDays)
+                            // Mantém tudo igual, só altera o lockMode para TIME se não for e estende o prazo
+                            onSave(app.currentLimitMinutes, app.isEnabled, "TIME", app.lockPasswordHash, newUntil)
+                        } else {
+                            onDismiss()
+                        }
+                    } else {
+                        val hours = hoursText.replace(",", ".").toDoubleOrNull() ?: 0.0
+                        val minutes = (hours * 60).toInt()
+                        val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) {
+                            com.focusguard.security.AuthManager.hashPasswordLegacy(password)
+                        } else null
+                        
+                        val until = if (lockMode == "TIME" && days.isNotEmpty()) System.currentTimeMillis() + TimeUnit.DAYS.toMillis(days.toLong()) else null
+                        onSave(if(minutes > 0) minutes else null, true, lockMode, hash, until) 
+                    }
                 }
-            ) { Text("Salvar", color = if(isConfirmed || lockMode == "NONE") AccentCyan else TextHint) } 
+            ) { 
+                Text(
+                    if(isEditMode) "Estender Bloqueio" else "Salvar", 
+                    color = if(!isEditMode && (isConfirmed || lockMode == "NONE") || isEditMode) AccentCyan else TextHint
+                ) 
+            } 
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar", color = TextHint) } },
         containerColor = DarkSurface
@@ -826,34 +898,60 @@ fun AddWebsiteLimitDialog(permissionsMissing: Boolean, onDismiss: () -> Unit, on
 
 @Composable
 fun EditWebsiteLimitDialog(site: WebsiteLimitUi, permissionsMissing: Boolean, onDismiss: () -> Unit, onSave: (Int, Boolean, String, String?, Long?) -> Unit) {
-    var hoursText by remember { mutableStateOf(if(site.dailyLimitMinutes != null) (site.dailyLimitMinutes / 60f).toString() else "") }
-    var lockMode by remember { mutableStateOf(site.lockMode) }
-    var password by remember { mutableStateOf("") }
-    var days by remember { mutableStateOf("") }
-    var isConfirmed by remember { mutableStateOf(lockMode == "NONE") }
+    var extensionDays by remember { mutableStateOf("") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Editar Limite de Site", color = TextPrimary, fontWeight = FontWeight.Bold) },
+        title = { Text("Informações do Limite: ${site.domain}", color = TextPrimary, fontWeight = FontWeight.Bold) },
         text = {
             Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
-                OutlinedTextField(hoursText, { if (it.isEmpty() || it.replace(",", ".").toDoubleOrNull() != null) hoursText = it }, label = { Text("Limite diário em horas") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
-                Spacer(Modifier.height(16.dp))
-                LimitSecuritySection(lockMode, { lockMode = it }, password, { password = it }, days, { days = it }, { isConfirmed = it })
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = DarkCardElevated),
+                    modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(1.dp, CardBorder)
+                ) {
+                    Column(Modifier.padding(16.dp)) {
+                        Text("Tempo diário:", color = TextHint, fontSize = 12.sp)
+                        Text("${site.dailyLimitMinutes} minutos", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        
+                        if (site.lockUntilTimestamp != null && site.lockUntilTimestamp > System.currentTimeMillis()) {
+                            val date = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm").format(java.util.Date(site.lockUntilTimestamp))
+                            Spacer(Modifier.height(12.dp))
+                            Text("Inviolável até: $date", color = DangerRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+
+                Text("Adicionar mais dias de bloqueio", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 14.sp)
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = extensionDays,
+                    onValueChange = { if (it.all { c -> c.isDigit() }) extensionDays = it },
+                    placeholder = { Text("Ex: 7", color = TextHint) },
+                    modifier = Modifier.fillMaxWidth(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AccentCyan, unfocusedTextColor = TextPrimary, focusedTextColor = TextPrimary),
+                    suffix = { Text("dias") }
+                )
             }
         },
         confirmButton = { 
             TextButton(
-                enabled = isConfirmed || lockMode == "NONE",
                 onClick = { 
-                    val hours = hoursText.replace(",", ".").toDoubleOrNull() ?: 0.0
-                    val minutes = (hours * 60).toInt()
-                    val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) com.focusguard.security.AuthManager.hashPasswordLegacy(password) else site.lockPasswordHash
-                    val until = if (lockMode == "TIME" && days.isNotEmpty()) System.currentTimeMillis() + TimeUnit.DAYS.toMillis(days.toLong()) else site.lockUntilTimestamp
-                    onSave(minutes, true, lockMode, hash, until) 
+                    val extraDays = extensionDays.toLongOrNull() ?: 0L
+                    if (extraDays > 0) {
+                        val currentUntil = site.lockUntilTimestamp ?: System.currentTimeMillis()
+                        val base = if (currentUntil < System.currentTimeMillis()) System.currentTimeMillis() else currentUntil
+                        val newUntil = base + TimeUnit.DAYS.toMillis(extraDays)
+                        onSave(site.dailyLimitMinutes ?: 0, site.isEnabled, "TIME", site.lockPasswordHash, newUntil) 
+                    } else {
+                        onDismiss()
+                    }
                 }
-            ) { Text("Salvar", color = AccentCyan) } 
+            ) { Text("Estender Bloqueio", color = AccentCyan) } 
         },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar", color = TextHint) } },
         containerColor = DarkSurface
     )
 }
