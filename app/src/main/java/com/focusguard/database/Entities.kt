@@ -34,7 +34,7 @@ data class BlockSession(
     val blockedAppsCount: Int = 0,
     val blockedWebsitesCount: Int = 0,
     val createdAt: Long = System.currentTimeMillis(),
-    // Novas Colunas para Recorrência Diária
+    // Novas Colunas para RecorrÃªncia DiÃ¡ria
     val isRecurring: Boolean = false,
     val recurringStartHour: Int = 0,
     val recurringStartMinute: Int = 0,
@@ -101,4 +101,14 @@ data class DailyUsageStat(
     val identifier: String, // packageName or domain
     val date: String, // yyyy-MM-dd
     val timeSpentMs: Long
+)
+
+@Entity(tableName = "app_passwords")
+data class AppPassword(
+    @PrimaryKey(autoGenerate = true)
+    val id: Int = 0,
+    val label: String,
+    val passwordHash: String,
+    val salt: String?,
+    val createdAt: Long = System.currentTimeMillis()
 )

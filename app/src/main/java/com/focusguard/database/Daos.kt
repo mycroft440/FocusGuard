@@ -82,7 +82,7 @@ interface BlockSessionDao {
 
     @Transaction
     suspend fun insertNewSession(session: BlockSession): Long {
-        // Limpa lixo do DB que jÃ¡ expirou hÃ¡ mais de 30 dias (Trash Cleanup)
+        // Limpa lixo do DB que jÃƒÂ¡ expirou hÃƒÂ¡ mais de 30 dias (Trash Cleanup)
         deleteOldInactiveSessions(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000)
         cleanOrphanApps()
         cleanOrphanWebsites()
@@ -169,4 +169,24 @@ interface DailyUsageStatDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(stat: DailyUsageStat)
+}
+@Dao
+interface AppPasswordDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(password: AppPassword)
+
+    @Update
+    suspend fun update(password: AppPassword)
+
+    @Delete
+    suspend fun delete(password: AppPassword)
+
+    @Query("SELECT * FROM app_passwords ORDER BY id ASC")
+    fun getAll(): Flow<List<AppPassword>>
+
+    @Query("SELECT * FROM app_passwords ORDER BY id ASC")
+    suspend fun getAllStatic(): List<AppPassword>
+
+    @Query("DELETE FROM app_passwords")
+    suspend fun deleteAll()
 }

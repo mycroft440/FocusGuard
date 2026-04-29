@@ -1,9 +1,11 @@
-﻿package com.focusguard.service
+package com.focusguard.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
@@ -66,11 +68,27 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private var defaultLauncherPackage: String? = null
 
+    // BroadcastReceiver to update browser list dynamically
+    private val packageReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            calculateBrowserPackages()
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         database = AppDatabase.getDatabase(this)
         sessionManager = BlockingSessionManager.getInstance(this)
         deviceOwnerManager = DeviceOwnerManager(this)
+
+        // Register package change receiver
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_CHANGED)
+            addDataScheme("package")
+        }
+        registerReceiver(packageReceiver, filter)
     }
 
     override fun onServiceConnected() {
@@ -151,7 +169,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         scope.launch {
             try {
-                val activeSessions = database.blockSessionDao().getAllActiveSessions()
+                val activeSessions = database.blockSessionDao().getAllActiveSessions().first()
                 val enforcingSessions = activeSessions.filter { sessionManager.isCurrentlyInBlockingWindow(it) }
                 val enforcingIds = enforcingSessions.map { it.id }
 
@@ -161,7 +179,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
                 // Daily Limits Enforcement
                 val limitApps = mutableSetOf<String>()
-                val activeLimits = database.appUsageLimitDao().getAllActiveLimits()
+                val activeLimits = database.appUsageLimitDao().getAllActiveLimits().first()
                 
                 if (activeLimits.isNotEmpty()) {
                     val usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? android.app.usage.UsageStatsManager
@@ -186,7 +204,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
                 // Website Daily Limits Enforcement
                 val limitWebsites = mutableSetOf<String>()
-                val activeWebsiteLimits = database.websiteUsageLimitDao().getAll().filter { it.isEnabled }
+                val activeWebsiteLimits = database.websiteUsageLimitDao().getAll().first().filter { it.isEnabled }
                 if (activeWebsiteLimits.isNotEmpty()) {
                     val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
                     val stats = database.dailyUsageStatDao().getStatsForDate(today).associate { it.identifier to it.timeSpentMs }
@@ -318,10 +336,10 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         super.onDestroy()
+        unregisterReceiver(packageReceiver)
         job.cancel()
         try {
-            Toast.makeText(this, "ServiÃ§o FocusGuard parado", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "ServiÃƒÂ§o FocusGuard parado", Toast.LENGTH_SHORT).show()
         } catch (_: Exception) {}
     }
 }
-

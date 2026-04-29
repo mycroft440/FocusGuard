@@ -6,20 +6,47 @@ import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
+import com.focusguard.database.AppDatabase
+import com.focusguard.database.AppPassword
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import java.security.MessageDigest
 import java.security.SecureRandom
 
 class AuthManager(private val context: Context) {
 
     private val prefs: SharedPreferences = context.getSharedPreferences("FocusGuardAuth", Context.MODE_PRIVATE)
+    private val database = AppDatabase.getDatabase(context)
+    private val passwordDao = database.appPasswordDao()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
-        // Migration from single password to multiple passwords
-        val oldPassword = prefs.getString("app_password_hash", null)
-        if (oldPassword != null) {
-            val hashes = getPasswordHashes().toMutableSet()
-            hashes.add(oldPassword)
-            prefs.edit().putStringSet("app_password_hashes", hashes).remove("app_password_hash").apply()
+        migrateSharedPreferencesToRoom()
+    }
+
+    private fun migrateSharedPreferencesToRoom() {
+        // Verifica se hÃ¡ algo no formato antigo "app_password_entries"
+        val entries = prefs.getStringSet("app_password_entries", null)
+        if (entries != null && entries.isNotEmpty()) {
+            runBlocking(Dispatchers.IO) {
+                val dbEntries = passwordDao.getAllStatic()
+                if (dbEntries.isEmpty()) {
+                    // Migra apenas se o banco estiver vazio para evitar duplicatas
+                    entries.forEach { entry ->
+                        val withoutIndex = entry.substringAfter(":")
+                        val parts = withoutIndex.split("|")
+                        val label = parts.getOrNull(0) ?: "Senha"
+                        val hash = parts.getOrNull(1) ?: ""
+                        val salt = parts.getOrNull(2)
+                        passwordDao.insert(AppPassword(label = label, passwordHash = hash, salt = salt))
+                    }
+                }
+                // Limpa o SharedPreferences apÃ³s migraÃ§Ã£o bem sucedida
+                prefs.edit().remove("app_password_entries").remove("app_password_hashes").apply()
+            }
         }
     }
 
@@ -28,11 +55,13 @@ class AuthManager(private val context: Context) {
     }
 
     fun hasPasswordSet(): Boolean {
-        return getPasswordHashes().isNotEmpty()
+        return runBlocking(Dispatchers.IO) {
+            passwordDao.getAllStatic().isNotEmpty()
+        }
     }
 
     fun getMaxPasswordAttempts(): Int {
-        return prefs.getInt("max_password_attempts", 0) // 0 means no limit
+        return prefs.getInt("max_password_attempts", 0)
     }
 
     fun setMaxPasswordAttempts(limit: Int) {
@@ -69,137 +98,89 @@ class AuthManager(private val context: Context) {
         prefs.edit().putInt("failed_password_attempts", 0).apply()
     }
 
-    private fun getPasswordHashes(): Set<String> {
-        return prefs.getStringSet("app_password_hashes", emptySet()) ?: emptySet()
-    }
-
-    // --- Labeled password storage (ordered list) ---
-    // Format: "label|hash|salt" stored as ordered entries in a StringSet with index prefix
-    // e.g. "0:Senha Principal|abc123...|xyz789...", "1:Senha Backup|def456...|uvw321..."
-    
-    private fun getPasswordEntries(): List<Triple<String, String, String?>> {
-        val entries = prefs.getStringSet("app_password_entries", emptySet()) ?: emptySet()
-        return entries.sortedBy { 
-            val idx = it.substringBefore(":").toIntOrNull() ?: 0
-            idx
-        }.map { entry ->
-            val withoutIndex = entry.substringAfter(":")
-            val parts = withoutIndex.split("|")
-            val label = parts.getOrNull(0) ?: "Senha"
-            val hash = parts.getOrNull(1) ?: ""
-            val salt = parts.getOrNull(2) // Pode ser null para hashes legados
-            Triple(label, hash, salt)
+    fun getStoredPasswordLabels(): List<String> {
+        return runBlocking(Dispatchers.IO) {
+            passwordDao.getAllStatic().map { it.label }
         }
-    }
-
-    private fun savePasswordEntries(entries: List<Triple<String, String, String?>>) {
-        val indexed = entries.mapIndexed { index, (label, hash, salt) -> 
-            val suffix = if (salt != null) "|$hash|$salt" else "|$hash"
-            "$index:$label$suffix"
-        }.toSet()
-        
-        val hashes = entries.map { it.second }.toSet()
-        
-        prefs.edit()
-            .putStringSet("app_password_entries", indexed)
-            .putStringSet("app_password_hashes", hashes)
-            .apply()
     }
 
     fun addPasswordWithLabel(password: String, label: String) {
         val salt = generateSalt()
         val hash = hashPasswordWithSalt(password, salt)
-        val current = getPasswordEntries().toMutableList()
-        current.add(Triple(label, hash, salt))
-        savePasswordEntries(current)
-    }
-
-    fun getStoredPasswordLabels(): List<String> {
-        return getPasswordEntries().map { it.first }
+        scope.launch {
+            passwordDao.insert(AppPassword(label = label, passwordHash = hash, salt = salt))
+        }
     }
 
     fun removePasswordByIndex(index: Int) {
-        val current = getPasswordEntries().toMutableList()
-        if (index in current.indices) {
-            current.removeAt(index)
-            savePasswordEntries(current)
+        scope.launch {
+            val entries = passwordDao.getAllStatic()
+            if (index in entries.indices) {
+                passwordDao.delete(entries[index])
+            }
         }
     }
 
     fun verifyAndRemovePasswordByIndex(index: Int, passwordAttempt: String): Boolean {
-        if (verifyPassword(passwordAttempt)) {
-            removePasswordByIndex(index)
-            return true
+        return runBlocking(Dispatchers.IO) {
+            val entries = passwordDao.getAllStatic()
+            if (index in entries.indices) {
+                val entry = entries[index]
+                val hash = if (entry.salt != null) hashPasswordWithSalt(passwordAttempt, entry.salt) else hashPasswordLegacy(passwordAttempt)
+                if (hash == entry.passwordHash) {
+                    passwordDao.delete(entry)
+                    resetFailedAttempts()
+                    return@runBlocking true
+                }
+            }
+            false
         }
-        return false
     }
 
     fun verifyAndUpdatePasswordByIndex(index: Int, passwordAttempt: String, newPassword: String, label: String): Boolean {
-        if (verifyPassword(passwordAttempt)) {
-            updatePasswordByIndex(index, newPassword, label)
-            return true
+        return runBlocking(Dispatchers.IO) {
+            val entries = passwordDao.getAllStatic()
+            if (index in entries.indices) {
+                val entry = entries[index]
+                val hash = if (entry.salt != null) hashPasswordWithSalt(passwordAttempt, entry.salt) else hashPasswordLegacy(passwordAttempt)
+                if (hash == entry.passwordHash) {
+                    val newSalt = generateSalt()
+                    val newHash = hashPasswordWithSalt(newPassword, newSalt)
+                    passwordDao.update(entry.copy(label = label, passwordHash = newHash, salt = newSalt))
+                    resetFailedAttempts()
+                    return@runBlocking true
+                }
+            }
+            false
         }
-        return false
-    }
-
-    fun updatePasswordByIndex(index: Int, newPassword: String, label: String) {
-        val current = getPasswordEntries().toMutableList()
-        if (index in current.indices) {
-            val salt = generateSalt()
-            current[index] = Triple(label, hashPasswordWithSalt(newPassword, salt), salt)
-            savePasswordEntries(current)
-        }
-    }
-
-    // --- Authentication Type Management ---
-    fun getPreferredAuthType(): String {
-        return prefs.getString("preferred_auth_type", "NUMERIC") ?: "NUMERIC"
-    }
-
-    fun setPreferredAuthType(type: String) {
-        prefs.edit().putString("preferred_auth_type", type).apply()
     }
 
     fun addPassword(newPassword: String) {
-        val entries = getPasswordEntries().toMutableList()
-        val label = "Senha ${entries.size + 1}"
-        addPasswordWithLabel(newPassword, label)
+        scope.launch {
+            val count = passwordDao.getAllStatic().size
+            val label = "Senha ${count + 1}"
+            addPasswordWithLabel(newPassword, label)
+        }
     }
 
     fun verifyPassword(passwordAttempt: String): Boolean {
-        val entries = getPasswordEntries()
-        
-        for (entry in entries) {
-            val (_, storedHash, salt) = entry
-            val hashToCompare = if (salt != null) {
-                hashPasswordWithSalt(passwordAttempt, salt)
-            } else {
-                hashPasswordLegacy(passwordAttempt)
+        return runBlocking(Dispatchers.IO) {
+            val entries = passwordDao.getAllStatic()
+            for (entry in entries) {
+                val hash = if (entry.salt != null) hashPasswordWithSalt(passwordAttempt, entry.salt) else hashPasswordLegacy(passwordAttempt)
+                if (hash == entry.passwordHash) {
+                    resetFailedAttempts()
+                    return@runBlocking true
+                }
             }
-            
-            if (hashToCompare == storedHash) {
-                resetFailedAttempts()
-                return true
-            }
-        }
-        return false
-    }
-
-    fun removePassword(passwordToRemove: String) {
-        // Obsoleto: usar removePasswordByIndex para maior precisÃ£o
-        val entries = getPasswordEntries().toMutableList()
-        val toRemove = entries.find { (label, storedHash, salt) ->
-            val hash = if (salt != null) hashPasswordWithSalt(passwordToRemove, salt) else hashPasswordLegacy(passwordToRemove)
-            hash == storedHash
-        }
-        if (toRemove != null) {
-            entries.remove(toRemove)
-            savePasswordEntries(entries)
+            false
         }
     }
 
     fun removeAllPasswords() {
-        prefs.edit().remove("app_password_hashes").remove("app_password_entries").apply()
+        scope.launch {
+            passwordDao.deleteAll()
+        }
     }
 
     private fun generateSalt(): String {
