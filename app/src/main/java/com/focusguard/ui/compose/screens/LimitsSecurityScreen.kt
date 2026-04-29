@@ -137,7 +137,7 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
             }
 
             Spacer(modifier = Modifier.height(32.dp))
-            HorizontalDivider(color = Border, thickness = 1.dp)
+            Divider(color = Border, thickness = 1.dp)
             Spacer(modifier = Modifier.height(32.dp))
 
             // SAFETY MODE
