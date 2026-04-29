@@ -6,22 +6,21 @@ import android.os.Bundle
 import android.util.Log
 import android.widget.Toast
 import androidx.activity.compose.setContent
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.ui.PermissionsActivity
-import com.focusguard.ui.compose.screens.BlockingSessionStatusSheet
-import com.focusguard.ui.compose.screens.MainScreen
-import com.focusguard.ui.compose.screens.UsageStatsScreen
+import com.focusguard.ui.compose.screens.*
 import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.utils.PermissionUtils
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
-
 import androidx.appcompat.app.AppCompatActivity
 import com.focusguard.security.AuthManager
+import com.focusguard.database.AppDatabase
 
 class MainActivity : AppCompatActivity() {
 
@@ -33,17 +32,8 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
 
         val prefs = getSharedPreferences("FocusGuardPrefs", Context.MODE_PRIVATE)
-
         val attemptCount = prefs.getInt("launchAttemptCount", 0) + 1
         prefs.edit().putInt("launchAttemptCount", attemptCount).apply()
-
-        if (attemptCount <= 5) {
-            Log.d("FocusGuardNuclear", "========================================")
-            Log.d("FocusGuardNuclear", "OPÃ‡ÃƒO NUCLEAR: Inicializando o FocusGuard v2")
-            Log.d("FocusGuardNuclear", "Tentativa de inicializaÃ§Ã£o: $attemptCount")
-            Log.d("FocusGuardNuclear", "Pacote ativo: $packageName")
-            Log.d("FocusGuardNuclear", "========================================")
-        }
 
         if (!prefs.getBoolean("hasSeenOnboarding", false)) {
             startActivity(Intent(this, PermissionsActivity::class.java))
@@ -79,7 +69,7 @@ fun MainActivityContent(
     var isUnlocked by remember { mutableStateOf(!authManager.isAppLocked()) }
 
     if (!isUnlocked) {
-        com.focusguard.ui.compose.screens.AuthScreen(
+        AuthScreen(
             authManager = authManager,
             activity = activity,
             onUnlock = { isUnlocked = true }
@@ -88,14 +78,15 @@ fun MainActivityContent(
     }
 
     var currentRoute by remember { mutableStateOf("HOME") }
-
     var permissionsVisible by remember { mutableStateOf(false) }
     var showSessionSheet by remember { mutableStateOf(false) }
     
-    // Reactive States using Flows (No Polling!)
     val isBlocking by sessionManager.isBlockingActiveFlow.collectAsState(initial = false)
     val hasSession by sessionManager.hasRegisteredSessionFlow.collectAsState(initial = false)
     val sessionDetails by sessionManager.sessionDetailsFlow.collectAsState(initial = "Carregando...")
+
+    val database = AppDatabase.getDatabase(activity)
+    val stats by database.dailyUsageStatDao().getStatsForDate(java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())).collectAsState(initial = emptyList())
 
     var resumeKey by remember { mutableIntStateOf(0) }
     LaunchedEffect(resumeKey) {
@@ -120,88 +111,72 @@ fun MainActivityContent(
         onDispose { activity.lifecycle.removeObserver(callback) }
     }
 
-    if (currentRoute == "HOME") {
-        MainScreen(
-            permissionsVisible = permissionsVisible,
-            onPermissionsClick = {
-                activity.startActivity(Intent(activity, PermissionsActivity::class.java))
+    Surface(color = MaterialTheme.colorScheme.background) {
+        AnimatedContent(
+            targetState = currentRoute,
+            transitionSpec = {
+                fadeIn(animationSpec = tween(300)) + slideInHorizontally(animationSpec = tween(300), initialOffsetX = { it }) togetherWith
+                fadeOut(animationSpec = tween(300)) + slideOutHorizontally(animationSpec = tween(300), targetOffsetX = { -it })
             },
-            onPasswordSessionClick = {
-                val intent = Intent(activity, com.focusguard.ui.CreateSessionActivity::class.java)
-                intent.putExtra("SESSION_TYPE", "PASSWORD")
-                activity.startActivity(intent)
-            },
-            onTimeSessionClick = {
-                val intent = Intent(activity, com.focusguard.ui.CreateSessionActivity::class.java)
-                intent.putExtra("SESSION_TYPE", "TIME")
-                activity.startActivity(intent)
-            },
-            onActiveSessionsClick = {
-                showSessionSheet = true
-            },
-            onDeviceOwnerClick = {
-                deviceOwnerManager.setAsDeviceOwner()
-            },
-            onLimitsClick = { currentRoute = "LIMITS" },
-            onIntruderLogClick = { currentRoute = "INTRUDER_LOG" },
-            onLanguageClick = { currentRoute = "LANGUAGE" },
-            onPasswordManagementClick = { currentRoute = "PASSWORD_MANAGEMENT" },
-            onBlockCustomizationClick = { 
-                Toast.makeText(activity, "PersonalizaÃ§Ã£o em breve!", Toast.LENGTH_SHORT).show()
-            },
-            onAppUsageLimitsClick = { currentRoute = "USAGE_LIMITS" },
-            authManager = authManager,
-            usageStatsContent = { UsageStatsScreen() }
-        )
-
-        if (showSessionSheet) {
-            ModalBottomSheet(
-                onDismissRequest = { showSessionSheet = false },
-                containerColor = com.focusguard.ui.compose.theme.DarkSurface,
-                dragHandle = { BottomSheetDefaults.DragHandle(color = com.focusguard.ui.compose.theme.TextHint) }
-            ) {
-                BlockingSessionStatusSheet(
-                    isBlocking = isBlocking,
-                    hasSession = hasSession,
-                    details = sessionDetails,
-                    onRenounce = {
-                        if (!hasSession) {
-                            try {
-                                deviceOwnerManager.renounceDeviceOwner()
-                            } catch (_: Exception) {}
-                        }
+            label = "NavigationTransition"
+        ) { route ->
+            when (route) {
+                "HOME" -> MainScreen(
+                    permissionsVisible = permissionsVisible,
+                    onPermissionsClick = { activity.startActivity(Intent(activity, PermissionsActivity::class.java)) },
+                    onPasswordSessionClick = { 
+                        val intent = Intent(activity, com.focusguard.ui.CreateSessionActivity::class.java).apply { putExtra("SESSION_TYPE", "PASSWORD") }
+                        activity.startActivity(intent)
                     },
-                    onEndSessions = {
-                        sessionManager.endPasswordSessions()
-                        showSessionSheet = false
+                    onTimeSessionClick = { 
+                        val intent = Intent(activity, com.focusguard.ui.CreateSessionActivity::class.java).apply { putExtra("SESSION_TYPE", "TIME") }
+                        activity.startActivity(intent)
                     },
-                    onDismiss = { showSessionSheet = false },
-                    authManager = authManager
+                    onActiveSessionsClick = { showSessionSheet = true },
+                    onDeviceOwnerClick = { deviceOwnerManager.setAsDeviceOwner() },
+                    onLimitsClick = { currentRoute = "LIMITS" },
+                    onIntruderLogClick = { currentRoute = "INTRUDER_LOG" },
+                    onLanguageClick = { currentRoute = "LANGUAGE" },
+                    onPasswordManagementClick = { currentRoute = "PASSWORD_MANAGEMENT" },
+                    onBlockCustomizationClick = { currentRoute = "DASHBOARD" }, // Usando para o Dashboard por enquanto
+                    onAppUsageLimitsClick = { currentRoute = "USAGE_LIMITS" },
+                    authManager = authManager,
+                    usageStatsContent = { UsageStatsScreen() }
                 )
+                "LIMITS" -> LimitsSecurityScreen(authManager = authManager, onBack = { currentRoute = "HOME" })
+                "INTRUDER_LOG" -> IntruderLogScreen(onBack = { currentRoute = "HOME" })
+                "LANGUAGE" -> LanguageScreen(onBack = { currentRoute = "HOME" })
+                "PASSWORD_MANAGEMENT" -> PasswordManagementScreen(authManager = authManager, onBack = { currentRoute = "HOME" })
+                "USAGE_LIMITS" -> UsageLimitsScreen(authManager = authManager, onBack = { currentRoute = "HOME" })
+                "DASHBOARD" -> UsageStatsDashboardScreen(stats = stats, onBack = { currentRoute = "HOME" })
             }
         }
-    } else if (currentRoute == "LIMITS") {
-        com.focusguard.ui.compose.screens.LimitsSecurityScreen(
-            authManager = authManager,
-            onBack = { currentRoute = "HOME" }
-        )
-    } else if (currentRoute == "INTRUDER_LOG") {
-        com.focusguard.ui.compose.screens.IntruderLogScreen(
-            onBack = { currentRoute = "HOME" }
-        )
-    } else if (currentRoute == "LANGUAGE") {
-        com.focusguard.ui.compose.screens.LanguageScreen(
-            onBack = { currentRoute = "HOME" }
-        )
-    } else if (currentRoute == "PASSWORD_MANAGEMENT") {
-        com.focusguard.ui.compose.screens.PasswordManagementScreen(
-            authManager = authManager,
-            onBack = { currentRoute = "HOME" }
-        )
-    } else if (currentRoute == "USAGE_LIMITS") {
-        com.focusguard.ui.compose.screens.UsageLimitsScreen(
-            authManager = authManager,
-            onBack = { currentRoute = "HOME" }
-        )
+    }
+
+    if (showSessionSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showSessionSheet = false },
+            containerColor = com.focusguard.ui.compose.theme.DarkSurface,
+            dragHandle = { BottomSheetDefaults.DragHandle(color = com.focusguard.ui.compose.theme.TextHint) }
+        ) {
+            BlockingSessionStatusSheet(
+                isBlocking = isBlocking,
+                hasSession = hasSession,
+                details = sessionDetails,
+                onRenounce = {
+                    if (!hasSession) {
+                        try {
+                            deviceOwnerManager.renounceDeviceOwner()
+                        } catch (_: Exception) {}
+                    }
+                },
+                onEndSessions = {
+                    sessionManager.endPasswordSessions()
+                    showSessionSheet = false
+                },
+                onDismiss = { showSessionSheet = false },
+                authManager = authManager
+            )
+        }
     }
 }

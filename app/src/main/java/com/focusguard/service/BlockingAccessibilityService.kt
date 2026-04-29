@@ -21,6 +21,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.first
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.Calendar
 import java.util.concurrent.TimeUnit
@@ -261,7 +262,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         val source = event.source ?: return
         try {
-            checkAndBlockWebsite(source)
+            if (isIncognitoMode(source)) { blockWebsite() } else { checkAndBlockWebsite(source) }
         } finally {
             source.recycle()
         }
@@ -313,6 +314,33 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
+        private fun isIncognitoMode(source: AccessibilityNodeInfo): Boolean {
+        // Heurística para detectar modo anônimo/incógnito em navegadores comuns
+        val textNodes = source.findAccessibilityNodeInfosByText("Incógnito") +
+                         source.findAccessibilityNodeInfosByText("Incognito") +
+                         source.findAccessibilityNodeInfosByText("Anônimo") +
+                         source.findAccessibilityNodeInfosByText("Private") +
+                         source.findAccessibilityNodeInfosByText("Privada")
+        
+        if (textNodes.isNotEmpty()) {
+            textNodes.forEach { it.recycle() }
+            return true
+        }
+
+        // Verificação via content description (alguns navegadores usam isso no ícone de incognito)
+        return checkIncognitoHeuristics(source)
+    }
+
+    private fun checkIncognitoHeuristics(node: AccessibilityNodeInfo?): Boolean {
+        if (node == null) return false
+        val desc = node.contentDescription?.toString()?.lowercase() ?: ""
+        if (desc.contains("incognito") || desc.contains("anônimo") || desc.contains("privada")) return true
+        
+        for (i in 0 until node.childCount) {
+            if (checkIncognitoHeuristics(node.getChild(i))) return true
+        }
+        return false
+    }
     private fun blockWebsite() {
         try {
             performGlobalAction(GLOBAL_ACTION_HOME)

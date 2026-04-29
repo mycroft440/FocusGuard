@@ -8,6 +8,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.AppPassword
+import com.focusguard.utils.SecurePrefsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -19,22 +20,35 @@ import java.security.SecureRandom
 class AuthManager(private val context: Context) {
 
     private val prefs: SharedPreferences = context.getSharedPreferences("FocusGuardAuth", Context.MODE_PRIVATE)
+    private val securePrefs = SecurePrefsManager(context)
     private val database = AppDatabase.getDatabase(context)
     private val passwordDao = database.appPasswordDao()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     init {
         migrateSharedPreferencesToRoom()
+        migratePrefsToSecure()
+    }
+
+    private fun migratePrefsToSecure() {
+        val keysToMigrate = listOf("max_password_attempts", "photo_capture_enabled", "safety_mode_enabled", "failed_password_attempts", "preferred_auth_type")
+        keysToMigrate.forEach { key ->
+            if (prefs.contains(key) && !securePrefs.prefs.contains(key)) {
+                when (val value = prefs.all[key]) {
+                    is Int -> securePrefs.putInt(key, value)
+                    is Boolean -> securePrefs.putBoolean(key, value)
+                    is String -> securePrefs.putString(key, value)
+                }
+            }
+        }
     }
 
     private fun migrateSharedPreferencesToRoom() {
-        // Verifica se hÃ¡ algo no formato antigo "app_password_entries"
         val entries = prefs.getStringSet("app_password_entries", null)
         if (entries != null && entries.isNotEmpty()) {
             runBlocking(Dispatchers.IO) {
                 val dbEntries = passwordDao.getAllStatic()
                 if (dbEntries.isEmpty()) {
-                    // Migra apenas se o banco estiver vazio para evitar duplicatas
                     entries.forEach { entry ->
                         val withoutIndex = entry.substringAfter(":")
                         val parts = withoutIndex.split("|")
@@ -44,7 +58,6 @@ class AuthManager(private val context: Context) {
                         passwordDao.insert(AppPassword(label = label, passwordHash = hash, salt = salt))
                     }
                 }
-                // Limpa o SharedPreferences apÃ³s migraÃ§Ã£o bem sucedida
                 prefs.edit().remove("app_password_entries").remove("app_password_hashes").apply()
             }
         }
@@ -61,41 +74,41 @@ class AuthManager(private val context: Context) {
     }
 
     fun getMaxPasswordAttempts(): Int {
-        return prefs.getInt("max_password_attempts", 0)
+        return securePrefs.getInt("max_password_attempts", 0)
     }
 
     fun setMaxPasswordAttempts(limit: Int) {
-        prefs.edit().putInt("max_password_attempts", limit).apply()
+        securePrefs.putInt("max_password_attempts", limit)
     }
 
     fun isPhotoCaptureEnabled(): Boolean {
-        return prefs.getBoolean("photo_capture_enabled", false)
+        return securePrefs.getBoolean("photo_capture_enabled", false)
     }
 
     fun setPhotoCaptureEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean("photo_capture_enabled", enabled).apply()
+        securePrefs.putBoolean("photo_capture_enabled", enabled)
     }
 
     fun isSafetyModeEnabled(): Boolean {
-        return prefs.getBoolean("safety_mode_enabled", false)
+        return securePrefs.getBoolean("safety_mode_enabled", false)
     }
 
     fun setSafetyModeEnabled(enabled: Boolean) {
-        prefs.edit().putBoolean("safety_mode_enabled", enabled).apply()
+        securePrefs.putBoolean("safety_mode_enabled", enabled)
     }
 
     fun getFailedAttempts(): Int {
-        return prefs.getInt("failed_password_attempts", 0)
+        return securePrefs.getInt("failed_password_attempts", 0)
     }
 
     fun incrementFailedAttempts(): Int {
         val count = getFailedAttempts() + 1
-        prefs.edit().putInt("failed_password_attempts", count).apply()
+        securePrefs.putInt("failed_password_attempts", count)
         return count
     }
 
     fun resetFailedAttempts() {
-        prefs.edit().putInt("failed_password_attempts", 0).apply()
+        securePrefs.putInt("failed_password_attempts", 0)
     }
 
     fun getStoredPasswordLabels(): List<String> {
@@ -203,6 +216,14 @@ class AuthManager(private val context: Context) {
         return digest.joinToString("") { "%02x".format(it) }
     }
 
+    fun getPreferredAuthType(): String {
+        return securePrefs.getString("preferred_auth_type", "NUMERIC") ?: "NUMERIC"
+    }
+
+    fun setPreferredAuthType(type: String) {
+        securePrefs.putString("preferred_auth_type", type)
+    }
+
     fun showBiometricPrompt(
         activity: FragmentActivity,
         onSuccess: () -> Unit,
@@ -226,7 +247,7 @@ class AuthManager(private val context: Context) {
 
                         override fun onAuthenticationFailed() {
                             super.onAuthenticationFailed()
-                            onError("Falha na autenticaÃ§Ã£o biomÃ©trica.")
+                            onError("Falha na autenticação biométrica.")
                         }
                     })
 
@@ -239,7 +260,7 @@ class AuthManager(private val context: Context) {
                 biometricPrompt.authenticate(promptInfo)
             }
             else -> {
-                onError("Biometria indisponÃ­vel. Use a senha.")
+                onError("Biometria indisponível. Use a senha.")
             }
         }
     }
