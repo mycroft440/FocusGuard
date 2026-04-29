@@ -1,5 +1,6 @@
-package com.focusguard.ui.compose.screens
+﻿package com.focusguard.ui.compose.screens
 
+import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -16,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -47,12 +49,39 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
     // Add/Edit password dialog
     if (showAddDialog || showEditDialog != null) {
         val isEditing = showEditDialog != null
+        var currentPasswordForEdit by remember { mutableStateOf("") }
+        val context = LocalContext.current
+
         AlertDialog(
-            onDismissRequest = { showAddDialog = false; showEditDialog = null },
+            onDismissRequest = { 
+                showAddDialog = false
+                showEditDialog = null 
+                actionError = ""
+                currentPasswordForEdit = ""
+            },
             containerColor = DarkSurface,
             title = { Text(if (isEditing) "Editar Senha" else "Nova Senha", color = TextPrimary, fontWeight = FontWeight.Bold) },
             text = {
                 Column {
+                    if (isEditing) {
+                        Text("Digite sua senha atual para confirmar a alteração.", color = TextSecondary, fontSize = 14.sp)
+                        Spacer(modifier = Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = currentPasswordForEdit,
+                            onValueChange = { currentPasswordForEdit = it },
+                            label = { Text("Senha Atual", color = TextHint) },
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = TextPrimary,
+                                unfocusedTextColor = TextPrimary,
+                                focusedBorderColor = AccentCyan
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                    
                     OutlinedTextField(
                         value = tempPasswordLabel,
                         onValueChange = { tempPasswordLabel = it },
@@ -91,15 +120,25 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                             actionError = "A senha não pode ser vazia."
                             return@Button
                         }
+                        
                         if (isEditing) {
-                            authManager.updatePasswordByIndex(showEditDialog!!, tempPassword, tempPasswordLabel)
+                            if (authManager.verifyAndUpdatePasswordByIndex(showEditDialog!!, currentPasswordForEdit, tempPassword, tempPasswordLabel)) {
+                                // Success
+                            } else {
+                                actionError = "Senha atual incorreta."
+                                return@Button
+                            }
                         } else {
                             val label = tempPasswordLabel.ifBlank { "Senha ${passwords.size + 1}" }
                             authManager.addPasswordWithLabel(tempPassword, label)
                         }
+                        
+                        Toast.makeText(context, "Bloqueio configurado com sucesso!", Toast.LENGTH_SHORT).show()
+                        
                         passwords = authManager.getStoredPasswordLabels()
                         tempPassword = ""
                         tempPasswordLabel = ""
+                        currentPasswordForEdit = ""
                         actionError = ""
                         showAddDialog = false
                         showEditDialog = null
@@ -109,7 +148,12 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                 ) { Text("Salvar", color = DarkBg, fontWeight = FontWeight.Bold) }
             },
             dismissButton = {
-                TextButton(onClick = { showAddDialog = false; showEditDialog = null; actionError = "" }) {
+                TextButton(onClick = { 
+                    showAddDialog = false
+                    showEditDialog = null
+                    actionError = ""
+                    currentPasswordForEdit = ""
+                }) {
                     Text("Cancelar", color = TextHint)
                 }
             }
@@ -201,7 +245,7 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
     ) { paddingValues ->
 
         if (!isAuthenticated) {
-            // Authentication gate (remains similar but uses primary auth)
+            // Authentication gate
             Column(
                 modifier = Modifier
                     .fillMaxSize()

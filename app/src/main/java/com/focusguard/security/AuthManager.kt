@@ -126,6 +126,14 @@ class AuthManager(private val context: Context) {
         return false
     }
 
+    fun verifyAndUpdatePasswordByIndex(index: Int, passwordAttempt: String, newPassword: String, label: String): Boolean {
+        if (verifyPassword(passwordAttempt)) {
+            updatePasswordByIndex(index, newPassword, label)
+            return true
+        }
+        return false
+    }
+
     fun updatePasswordByIndex(index: Int, newPassword: String, label: String) {
         val current = getPasswordEntries().toMutableList()
         if (index in current.indices) {

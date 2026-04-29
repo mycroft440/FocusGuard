@@ -1,4 +1,4 @@
-package com.focusguard.service
+﻿package com.focusguard.service
 
 import android.accessibilityservice.AccessibilityService
 import android.accessibilityservice.AccessibilityServiceInfo
@@ -184,12 +184,29 @@ class BlockingAccessibilityService : AccessibilityService() {
                     }
                 }
 
+                // Website Daily Limits Enforcement
+                val limitWebsites = mutableSetOf<String>()
+                val activeWebsiteLimits = database.websiteUsageLimitDao().getAll().filter { it.isEnabled }
+                if (activeWebsiteLimits.isNotEmpty()) {
+                    val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+                    val stats = database.dailyUsageStatDao().getStatsForDate(today).associate { it.identifier to it.timeSpentMs }
+                    
+                    activeWebsiteLimits.forEach { limit ->
+                        val usageMs = stats[limit.domain] ?: 0L
+                        val usageMinutes = usageMs / 1000 / 60
+                        if (usageMinutes >= limit.dailyLimitMinutes) {
+                            limitWebsites.add(limit.domain.lowercase())
+                        }
+                    }
+                }
+
                 val allBlockedApps = sessionApps + limitApps
+                val allBlockedWebsites = activeWebsiteDomains + limitWebsites
 
                 withContext(Dispatchers.Main) {
                     isBlockingSessionActive = enforcingSessions.isNotEmpty() || limitApps.isNotEmpty()
                     blockedAppsSet = allBlockedApps
-                    blockedWebsitesDomainSet = activeWebsiteDomains
+                    blockedWebsitesDomainSet = allBlockedWebsites
                     lastLoadTime = System.currentTimeMillis()
                 }
             } catch (_: Exception) {
@@ -303,7 +320,8 @@ class BlockingAccessibilityService : AccessibilityService() {
         super.onDestroy()
         job.cancel()
         try {
-            Toast.makeText(this, "Serviço FocusGuard parado", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "ServiÃ§o FocusGuard parado", Toast.LENGTH_SHORT).show()
         } catch (_: Exception) {}
     }
 }
+

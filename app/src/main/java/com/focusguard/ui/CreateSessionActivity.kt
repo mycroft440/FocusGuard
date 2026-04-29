@@ -282,35 +282,44 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
             Spacer(modifier = Modifier.height(20.dp))
 
             // Selection: Pattern vs Scheduled
-            Row(modifier = Modifier.fillMaxWidth()) {
-                FilterChip(
-                    selected = isFixed24h,
-                    onClick = { isFixed24h = true },
-                    label = { Text("Bloqueio padrão") },
-                    modifier = Modifier.weight(1f).padding(end = 4.dp),
-                    colors = FilterChipDefaults.filterChipColors(selectedContainerColor = AccentCyan, selectedLabelColor = DarkBg)
-                )
-                FilterChip(
-                    selected = !isFixed24h,
-                    onClick = { isFixed24h = false },
-                    label = { Text("Programado") },
-                    modifier = Modifier.weight(1f).padding(start = 4.dp),
-                    colors = FilterChipDefaults.filterChipColors(selectedContainerColor = AccentCyan, selectedLabelColor = DarkBg)
-                )
+            Text("Opções de Agendamento:", color = TextPrimary, fontWeight = FontWeight.Bold)
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            Column(modifier = Modifier.fillMaxWidth().background(DarkCard, RoundedCornerShape(16.dp)).padding(8.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable { isFixed24h = true }.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(selected = isFixed24h, onClick = { isFixed24h = true }, colors = RadioButtonDefaults.colors(selectedColor = AccentCyan))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Bloqueio padrão (24h todos os dias)", color = TextPrimary)
+                }
+                
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable { isFixed24h = false }.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(selected = !isFixed24h, onClick = { isFixed24h = false }, colors = RadioButtonDefaults.colors(selectedColor = AccentCyan))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Bloquear somente dias específicos", color = TextPrimary)
+                }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
-
             if (!isFixed24h) {
-                Text("Selecione os dias da semana:", color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(24.dp))
+                Text("Selecione os dias em que o bloqueio irá funcionar:", color = TextPrimary, fontSize = 14.sp)
                 Spacer(modifier = Modifier.height(12.dp))
+                
+                val customDayLabels = listOf(
+                    "Seg" to "2", "Ter" to "3", "Qua" to "4", "Qui" to "5", "Sex" to "6", "Sáb" to "7", "Dom" to "1"
+                )
                 
                 FlowRow(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     maxItemsInEachRow = 4
                 ) {
-                    dayLabels.forEach { (label, value) ->
+                    customDayLabels.forEach { (label, value) ->
                         FilterChip(
                             selected = selectedDays.contains(value),
                             onClick = {
@@ -328,17 +337,33 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Especificar horário de início e término?", color = TextPrimary, modifier = Modifier.weight(1f))
-                    Switch(
-                        checked = useSpecificTime,
-                        onCheckedChange = { useSpecificTime = it },
-                        colors = SwitchDefaults.colors(checkedThumbColor = AccentCyan)
-                    )
+                Text("Especificar horário de início e término?", color = TextPrimary, fontWeight = FontWeight.SemiBold)
+                Spacer(modifier = Modifier.height(12.dp))
+                
+                Row(modifier = Modifier.fillMaxWidth().background(DarkCard, RoundedCornerShape(16.dp)).padding(8.dp)) {
+                    Row(
+                        modifier = Modifier.weight(1f).clickable { useSpecificTime = false }.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = !useSpecificTime, onClick = { useSpecificTime = false }, colors = RadioButtonDefaults.colors(selectedColor = AccentCyan))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Não", color = TextPrimary)
+                    }
+                    
+                    Row(
+                        modifier = Modifier.weight(1f).clickable { useSpecificTime = true }.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = useSpecificTime, onClick = { useSpecificTime = true }, colors = RadioButtonDefaults.colors(selectedColor = AccentCyan))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Sim", color = TextPrimary)
+                    }
                 }
 
                 if (useSpecificTime) {
                     Spacer(modifier = Modifier.height(16.dp))
+                    Text("Horários de bloqueio:", color = TextSecondary, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
                     Row(modifier = Modifier.fillMaxWidth()) {
                         OutlinedButton(
                             onClick = {
@@ -376,7 +401,17 @@ fun ConfigSessionStep(sessionType: String, apps: List<String>, sites: List<Strin
                     }
                 }
             } else {
-                Text("O bloqueio funcionará 24h por dia, todos os dias.", color = TextSecondary, fontSize = 14.sp)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = DarkCard),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    Text(
+                        "O bloqueio funcionará 24h por dia, todos os dias.", 
+                        color = TextSecondary, fontSize = 14.sp,
+                        modifier = Modifier.padding(16.dp)
+                    )
+                }
             }
 
             if (sessionType == "TIME") {

@@ -32,6 +32,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.WebsiteUsageLimit
@@ -263,7 +265,7 @@ fun AppLimitsTab(permissionsMissing: Boolean) {
         AlertDialog(
             onDismissRequest = { showTimeLockedAlert = false },
             title = { Text("Limite Blindado", color = DangerRed) },
-            text = { Text("Este limite está blindado por tempo e não pode ser alterado até o fim do prazo.", color = TextPrimary) },
+            text = { Text("Este limite estÃ¡ blindado por tempo e nÃ£o pode ser alterado atÃ© o fim do prazo.", color = TextPrimary) },
             confirmButton = { TextButton({ showTimeLockedAlert = false }) { Text("OK", color = AccentCyan) } },
             containerColor = DarkSurface
         )
@@ -391,7 +393,7 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean) {
         AlertDialog(
             onDismissRequest = { showTimeLockedAlert = false },
             title = { Text("Limite Blindado", color = DangerRed) },
-            text = { Text("Este limite está blindado por tempo e não pode ser alterado até o fim do prazo.", color = TextPrimary) },
+            text = { Text("Este limite estÃ¡ blindado por tempo e nÃ£o pode ser alterado atÃ© o fim do prazo.", color = TextPrimary) },
             confirmButton = { TextButton({ showTimeLockedAlert = false }) { Text("OK", color = AccentCyan) } },
             containerColor = DarkSurface
         )
@@ -417,7 +419,7 @@ fun UsageLimitItem(app: UsageLimitAppUi, onClick: () -> Unit) {
                 val bitmap = remember(app.packageName) { app.icon.toBitmap(80, 80).asImageBitmap() }
                 Image(bitmap, null, Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)))
             } else {
-                Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(DarkCardElevated), Alignment.Center) { Text("📱", fontSize = 18.sp) }
+                Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(DarkCardElevated), Alignment.Center) { Text("ðŸ“±", fontSize = 18.sp) }
             }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
@@ -455,7 +457,7 @@ fun WebsiteLimitItem(site: WebsiteLimitUi, onClick: () -> Unit, onDelete: () -> 
             modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(AccentCyan.copy(0.12f)), Alignment.Center) { Text("🌐", fontSize = 20.sp) }
+            Box(Modifier.size(40.dp).clip(RoundedCornerShape(10.dp)).background(AccentCyan.copy(0.12f)), Alignment.Center) { Text("ðŸŒ", fontSize = 20.sp) }
             Spacer(Modifier.width(12.dp))
             Column(Modifier.weight(1f)) {
                 Text(site.domain, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
@@ -479,75 +481,6 @@ fun WebsiteLimitItem(site: WebsiteLimitUi, onClick: () -> Unit, onDelete: () -> 
             IconButton(onClick = onDelete) { Icon(Icons.Default.Delete, "Remover", tint = DangerRed, modifier = Modifier.size(20.dp)) }
         }
     }
-}
-
-@Composable
-fun UsageSecurityDialog(authManager: AuthManager, isLocked: Boolean, onDismiss: () -> Unit, onLock: (Int) -> Unit) {
-    var daysText by remember { mutableStateOf("7") }
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Segurança dos Limites", color = TextPrimary, fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                if (isLocked) {
-                    Text("Esta seção está BLINDADA. Você só pode ver os limites atuais. Para alterar, aguarde o fim do prazo ou use a senha mestre em cada item.", color = DangerRed, fontSize = 14.sp)
-                } else {
-                    Text("Deseja blindar as configurações de limites por alguns dias? Durante esse tempo, qualquer alteração exigirá a senha mestre.", color = TextSecondary, fontSize = 14.sp)
-                    Spacer(Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = daysText,
-                        onValueChange = { if (it.all { c -> c.isDigit() }) daysText = it },
-                        label = { Text("Dias de Blindagem", color = TextHint) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AccentCyan, unfocusedTextColor = TextPrimary, focusedTextColor = TextPrimary),
-                        modifier = Modifier.fillMaxWidth()
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            if (!isLocked) {
-                TextButton(onClick = { onLock(daysText.toIntOrNull() ?: 7) }) { Text("Ativar Blindagem", color = AccentCyan) }
-            }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Fechar", color = TextHint) } },
-        containerColor = DarkSurface
-    )
-}
-
-@Composable
-fun ConfirmPasswordDialog(authManager: AuthManager, onDismiss: () -> Unit, onConfirm: () -> Unit) {
-    var password by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("Confirmar Senha", color = TextPrimary, fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                Text("Esta ação é protegida. Digite a senha mestre para continuar.", color = TextSecondary, fontSize = 14.sp)
-                Spacer(Modifier.height(16.dp))
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it; error = false },
-                    label = { Text("Senha", color = if (error) DangerRed else TextHint) },
-                    visualTransformation = PasswordVisualTransformation(),
-                    isError = error,
-                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AccentCyan, unfocusedTextColor = TextPrimary, focusedTextColor = TextPrimary),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(onClick = {
-                scope.launch {
-                    if (authManager.verifyPassword(password)) onConfirm() else error = true
-                }
-            }) { Text("Confirmar", color = AccentCyan) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar", color = TextHint) } },
-        containerColor = DarkSurface
-    )
 }
 
 @Composable
@@ -590,54 +523,109 @@ fun LimitSecuritySection(
     password: String,
     onPasswordChange: (String) -> Unit,
     days: String,
-    onDaysChange: (String) -> Unit
+    onDaysChange: (String) -> Unit,
+    onConfirmed: (Boolean) -> Unit
 ) {
+    var agreeText by remember { mutableStateOf("") }
+    var allowPasswordUnlock by remember { mutableStateOf(lockMode == "PASSWORD") }
+
     Column {
-        Text("Modo de Segurança", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 14.sp)
+        Text("Modo de SeguranÃ§a", fontWeight = FontWeight.Bold, color = TextPrimary, fontSize = 14.sp)
         Spacer(Modifier.height(8.dp))
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-            listOf("NONE" to "Sem Proteção", "PASSWORD" to "Senha", "TIME" to "Blindagem").forEach { (mode, label) ->
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onLockModeChange(mode) }) {
-                    RadioButton(selected = lockMode == mode, onClick = { onLockModeChange(mode) }, colors = RadioButtonDefaults.colors(selectedColor = AccentCyan))
-                    Text(label, color = TextPrimary, fontSize = 12.sp)
-                }
-            }
-        }
-        if (lockMode == "PASSWORD") {
-            OutlinedTextField(
-                value = password,
-                onValueChange = onPasswordChange,
-                label = { Text("Senha para alterar/remover") },
-                visualTransformation = PasswordVisualTransformation(),
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AccentCyan, unfocusedTextColor = TextPrimary, focusedTextColor = TextPrimary)
-            )
-        } else if (lockMode == "TIME") {
+        
+        Column(modifier = Modifier.fillMaxWidth().background(DarkCardElevated, RoundedCornerShape(12.dp)).padding(12.dp)) {
+            Text("Impedir que o app seja aberto depois que o tempo acabar", color = TextPrimary, fontSize = 13.sp)
+            Text("Aviso: quando o tempo acabar nÃ£o serÃ¡ possÃ­vel desbloquear o app nem com senha.", color = DangerRed, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+            
+            Spacer(Modifier.height(16.dp))
+            
             OutlinedTextField(
                 value = days,
                 onValueChange = { if (it.all { c -> c.isDigit() }) onDaysChange(it) },
-                label = { Text("Dias de blindagem") },
+                label = { Text("Por quantos dias deseja limitar o tempo?", color = TextHint) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AccentCyan, unfocusedTextColor = TextPrimary, focusedTextColor = TextPrimary)
             )
+            
+            Spacer(Modifier.height(16.dp))
+            
+            Text("Desbloquear app quando o tempo acabar utilizando uma senha?", color = TextPrimary, fontSize = 13.sp)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { 
+                    allowPasswordUnlock = false
+                    onLockModeChange("TIME")
+                }) {
+                    RadioButton(selected = !allowPasswordUnlock, onClick = { 
+                        allowPasswordUnlock = false
+                        onLockModeChange("TIME")
+                    }, colors = RadioButtonDefaults.colors(selectedColor = AccentCyan))
+                    Text("NÃ£o", color = TextPrimary, fontSize = 14.sp)
+                }
+                Spacer(Modifier.width(20.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { 
+                    allowPasswordUnlock = true
+                    onLockModeChange("PASSWORD")
+                }) {
+                    RadioButton(selected = allowPasswordUnlock, onClick = { 
+                        allowPasswordUnlock = true
+                        onLockModeChange("PASSWORD")
+                    }, colors = RadioButtonDefaults.colors(selectedColor = AccentCyan))
+                    Text("Sim", color = TextPrimary, fontSize = 14.sp)
+                }
+            }
+
+            if (allowPasswordUnlock) {
+                OutlinedTextField(
+                    value = password,
+                    onValueChange = onPasswordChange,
+                    label = { Text("Defina a senha de desbloqueio", color = TextHint) },
+                    visualTransformation = PasswordVisualTransformation(),
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AccentCyan, unfocusedTextColor = TextPrimary, focusedTextColor = TextPrimary)
+                )
+                LaunchedEffect(password) { onConfirmed(password.isNotEmpty()) }
+            } else {
+                Spacer(Modifier.height(12.dp))
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = DangerRed.copy(alpha = 0.1f)),
+                    border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.3f))
+                ) {
+                    Column(Modifier.padding(8.dp)) {
+                        Text("AtenÃ§Ã£o: caso o bloqueio seja sem senha o app serÃ¡ impossÃ­vel de desbloquear atÃ© o dia seguinte ou fim dos dias bloqueio.", color = DangerRed, fontSize = 11.sp)
+                        Text("VocÃª concorda?", color = TextPrimary, fontSize = 11.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 4.dp))
+                        Spacer(Modifier.height(8.dp))
+                        OutlinedTextField(
+                            value = agreeText,
+                            onValueChange = { 
+                                agreeText = it
+                                onConfirmed(it.lowercase() == "sim")
+                            },
+                            placeholder = { Text("Escreva 'sim' para continuar", color = TextHint, fontSize = 11.sp) },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = if(agreeText.lowercase() == "sim") AccentCyan else DangerRed, unfocusedTextColor = TextPrimary, focusedTextColor = TextPrimary),
+                            singleLine = true
+                        )
+                    }
+                }
+            }
         }
     }
 }
 
 @Composable
 fun AppLimitDialog(app: UsageLimitAppUi, permissionsMissing: Boolean, onDismiss: () -> Unit, onSave: (Int?, Boolean, String, String?, Long?) -> Unit) {
-    var minutesText by remember { mutableStateOf(app.currentLimitMinutes?.toString() ?: "") }
-    var isEnabled by remember { mutableStateOf(app.isEnabled || app.currentLimitMinutes == null) }
+    var hoursText by remember { mutableStateOf(if(app.currentLimitMinutes != null) (app.currentLimitMinutes / 60f).toString() else "") }
     var lockMode by remember { mutableStateOf(app.lockMode) }
     var password by remember { mutableStateOf("") }
     var days by remember { mutableStateOf("") }
+    var isConfirmed by remember { mutableStateOf(lockMode == "NONE") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Configurar Limite", color = TextPrimary, fontWeight = FontWeight.Bold) },
+        title = { Text("Definir qual o tempo mÃ¡ximo por dia vocÃª quer usar o ${app.appName}?", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp) },
         text = {
-            Column {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
                 if (permissionsMissing) {
                     Card(
                         colors = CardDefaults.cardColors(containerColor = DangerRed.copy(alpha = 0.1f)),
@@ -649,36 +637,36 @@ fun AppLimitDialog(app: UsageLimitAppUi, permissionsMissing: Boolean, onDismiss:
                             Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(20.dp))
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = androidx.compose.ui.res.stringResource(id = com.focusguard.R.string.permissions_warning_new),
-                                color = DangerRed,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
+                                text = "PermissÃµes necessÃ¡rias para bloqueio",
+                                color = DangerRed, fontSize = 12.sp, fontWeight = FontWeight.SemiBold
                             )
                         }
                     }
                 }
                 OutlinedTextField(
-                    value = minutesText,
-                    onValueChange = { if (it.isEmpty() || it.all { c -> c.isDigit() }) minutesText = it },
-                    label = { Text("Minutos por dia", color = TextHint) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    value = hoursText,
+                    onValueChange = { if (it.isEmpty() || it.replace(",", ".").toDoubleOrNull() != null || it == ".") hoursText = it },
+                    label = { Text("Limite diÃ¡rio em horas", color = TextHint) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     colors = OutlinedTextFieldDefaults.colors(focusedBorderColor = AccentCyan, unfocusedTextColor = TextPrimary, focusedTextColor = TextPrimary),
                     modifier = Modifier.fillMaxWidth()
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(isEnabled, { isEnabled = it }, colors = CheckboxDefaults.colors(AccentCyan, DarkBg))
-                    Text("Ativar este limite", color = TextPrimary, fontSize = 14.sp)
-                }
-                Spacer(Modifier.height(16.dp))
-                LimitSecuritySection(lockMode, { lockMode = it }, password, { password = it }, days, { days = it })
+                
+                Spacer(Modifier.height(24.dp))
+                LimitSecuritySection(lockMode, { lockMode = it }, password, { password = it }, days, { days = it }, { isConfirmed = it })
             }
         },
         confirmButton = { 
-            TextButton(onClick = { 
-                val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) java.security.MessageDigest.getInstance("SHA-256").digest(password.toByteArray()).joinToString("") { "%02x".format(it) } else app.lockPasswordHash
-                val until = if (lockMode == "TIME" && days.isNotEmpty()) System.currentTimeMillis() + TimeUnit.DAYS.toMillis(days.toLong()) else app.lockUntilTimestamp
-                onSave(minutesText.toIntOrNull(), isEnabled, lockMode, hash, until) 
-            }) { Text("Salvar", color = AccentCyan) } 
+            TextButton(
+                enabled = isConfirmed || lockMode == "NONE",
+                onClick = { 
+                    val hours = hoursText.replace(",", ".").toDoubleOrNull() ?: 0.0
+                    val minutes = (hours * 60).toInt()
+                    val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) java.security.MessageDigest.getInstance("SHA-256").digest(password.toByteArray()).joinToString("") { "%02x".format(it) } else app.lockPasswordHash
+                    val until = if (lockMode == "TIME" && days.isNotEmpty()) System.currentTimeMillis() + TimeUnit.DAYS.toMillis(days.toLong()) else app.lockUntilTimestamp
+                    onSave(if(minutes > 0) minutes else null, true, lockMode, hash, until) 
+                }
+            ) { Text("Salvar", color = if(isConfirmed || lockMode == "NONE") AccentCyan else TextHint) } 
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Cancelar", color = TextHint) } },
         containerColor = DarkSurface
@@ -688,49 +676,37 @@ fun AppLimitDialog(app: UsageLimitAppUi, permissionsMissing: Boolean, onDismiss:
 @Composable
 fun AddWebsiteLimitDialog(permissionsMissing: Boolean, onDismiss: () -> Unit, onSave: (String, Int, String, String?, Long?) -> Unit) {
     var domain by remember { mutableStateOf("") }
-    var minutesText by remember { mutableStateOf("") }
+    var hoursText by remember { mutableStateOf("") }
     var lockMode by remember { mutableStateOf("NONE") }
     var password by remember { mutableStateOf("") }
     var days by remember { mutableStateOf("") }
+    var isConfirmed by remember { mutableStateOf(true) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("Adicionar Site", color = TextPrimary, fontWeight = FontWeight.Bold) },
         text = {
-            Column {
-                if (permissionsMissing) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = DangerRed.copy(alpha = 0.1f)),
-                        border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.5f)),
-                        modifier = Modifier.padding(bottom = 16.dp).fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(20.dp))
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = androidx.compose.ui.res.stringResource(id = com.focusguard.R.string.permissions_warning_new),
-                                color = DangerRed,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-                }
-                OutlinedTextField(domain, { domain = it }, label = { Text("Domínio") }, modifier = Modifier.fillMaxWidth())
-                OutlinedTextField(minutesText, { if (it.all { c -> c.isDigit() }) minutesText = it }, label = { Text("Minutos") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(domain, { domain = it }, label = { Text("DomÃ­nio") }, modifier = Modifier.fillMaxWidth())
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(hoursText, { if (it.isEmpty() || it.replace(",", ".").toDoubleOrNull() != null) hoursText = it }, label = { Text("Limite diÃ¡rio em horas") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(16.dp))
-                LimitSecuritySection(lockMode, { lockMode = it }, password, { password = it }, days, { days = it })
+                LimitSecuritySection(lockMode, { lockMode = it }, password, { password = it }, days, { days = it }, { isConfirmed = it })
             }
         },
         confirmButton = { 
-            TextButton({ 
-                if (domain.isNotBlank()) {
-                    val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) java.security.MessageDigest.getInstance("SHA-256").digest(password.toByteArray()).joinToString("") { "%02x".format(it) } else null
-                    val until = if (lockMode == "TIME" && days.isNotEmpty()) System.currentTimeMillis() + TimeUnit.DAYS.toMillis(days.toLong()) else null
-                    onSave(domain, minutesText.toIntOrNull() ?: 0, lockMode, hash, until)
+            TextButton(
+                enabled = isConfirmed || lockMode == "NONE",
+                onClick = { 
+                    if (domain.isNotBlank()) {
+                        val hours = hoursText.replace(",", ".").toDoubleOrNull() ?: 0.0
+                        val minutes = (hours * 60).toInt()
+                        val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) java.security.MessageDigest.getInstance("SHA-256").digest(password.toByteArray()).joinToString("") { "%02x".format(it) } else null
+                        val until = if (lockMode == "TIME" && days.isNotEmpty()) System.currentTimeMillis() + TimeUnit.DAYS.toMillis(days.toLong()) else null
+                        onSave(domain, minutes, lockMode, hash, until)
+                    }
                 }
-            }) { Text("Salvar", color = AccentCyan) } 
+            ) { Text("Salvar", color = AccentCyan) } 
         },
         containerColor = DarkSurface
     )
@@ -738,48 +714,33 @@ fun AddWebsiteLimitDialog(permissionsMissing: Boolean, onDismiss: () -> Unit, on
 
 @Composable
 fun EditWebsiteLimitDialog(site: WebsiteLimitUi, permissionsMissing: Boolean, onDismiss: () -> Unit, onSave: (Int, Boolean, String, String?, Long?) -> Unit) {
-    var minutesText by remember { mutableStateOf(site.dailyLimitMinutes?.toString() ?: "") }
-    var isEnabled by remember { mutableStateOf(site.isEnabled) }
+    var hoursText by remember { mutableStateOf(if(site.dailyLimitMinutes != null) (site.dailyLimitMinutes / 60f).toString() else "") }
     var lockMode by remember { mutableStateOf(site.lockMode) }
     var password by remember { mutableStateOf("") }
     var days by remember { mutableStateOf("") }
+    var isConfirmed by remember { mutableStateOf(lockMode == "NONE") }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Editar Limite", color = TextPrimary, fontWeight = FontWeight.Bold) },
+        title = { Text("Editar Limite de Site", color = TextPrimary, fontWeight = FontWeight.Bold) },
         text = {
-            Column {
-                if (permissionsMissing) {
-                    Card(
-                        colors = CardDefaults.cardColors(containerColor = DangerRed.copy(alpha = 0.1f)),
-                        border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.5f)),
-                        modifier = Modifier.padding(bottom = 16.dp).fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp)
-                    ) {
-                        Row(modifier = Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed, modifier = Modifier.size(20.dp))
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Text(
-                                text = androidx.compose.ui.res.stringResource(id = com.focusguard.R.string.permissions_warning_new),
-                                color = DangerRed,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                        }
-                    }
-                }
-                OutlinedTextField(minutesText, { if (it.all { c -> c.isDigit() }) minutesText = it }, label = { Text("Minutos") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number), modifier = Modifier.fillMaxWidth())
-                Row(verticalAlignment = Alignment.CenterVertically) { Checkbox(isEnabled, { isEnabled = it }); Text("Ativar") }
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(hoursText, { if (it.isEmpty() || it.replace(",", ".").toDoubleOrNull() != null) hoursText = it }, label = { Text("Limite diÃ¡rio em horas") }, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal), modifier = Modifier.fillMaxWidth())
                 Spacer(Modifier.height(16.dp))
-                LimitSecuritySection(lockMode, { lockMode = it }, password, { password = it }, days, { days = it })
+                LimitSecuritySection(lockMode, { lockMode = it }, password, { password = it }, days, { days = it }, { isConfirmed = it })
             }
         },
         confirmButton = { 
-            TextButton({ 
-                val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) java.security.MessageDigest.getInstance("SHA-256").digest(password.toByteArray()).joinToString("") { "%02x".format(it) } else site.lockPasswordHash
-                val until = if (lockMode == "TIME" && days.isNotEmpty()) System.currentTimeMillis() + TimeUnit.DAYS.toMillis(days.toLong()) else site.lockUntilTimestamp
-                onSave(minutesText.toIntOrNull() ?: 0, isEnabled, lockMode, hash, until) 
-            }) { Text("Salvar", color = AccentCyan) } 
+            TextButton(
+                enabled = isConfirmed || lockMode == "NONE",
+                onClick = { 
+                    val hours = hoursText.replace(",", ".").toDoubleOrNull() ?: 0.0
+                    val minutes = (hours * 60).toInt()
+                    val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) java.security.MessageDigest.getInstance("SHA-256").digest(password.toByteArray()).joinToString("") { "%02x".format(it) } else site.lockPasswordHash
+                    val until = if (lockMode == "TIME" && days.isNotEmpty()) System.currentTimeMillis() + TimeUnit.DAYS.toMillis(days.toLong()) else site.lockUntilTimestamp
+                    onSave(minutes, true, lockMode, hash, until) 
+                }
+            ) { Text("Salvar", color = AccentCyan) } 
         },
         containerColor = DarkSurface
     )

@@ -69,7 +69,10 @@ data class AppUsageLimit(
     val lockPasswordHash: String? = null,
     val lockUntilTimestamp: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),
-    val lastResetDate: Long = 0
+    val lastResetDate: Long = 0,
+    val preventOpeningAfterLimit: Boolean = true,
+    val durationDays: Int = 1,
+    val unlockWithPassword: Boolean = false
 )
 
 @Entity(tableName = "website_usage_limits")
