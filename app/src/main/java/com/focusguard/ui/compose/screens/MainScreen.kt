@@ -195,6 +195,7 @@ fun MainScreen(
                     modifier = Modifier.weight(1f)
                 ) { page ->
                     when (page) {
+                        0 -> HomeContent(
                             onPasswordSessionClick = onPasswordSessionClick,
                             onTimeSessionClick = onTimeSessionClick,
                             onAppUsageLimitsClick = onAppUsageLimitsClick,
