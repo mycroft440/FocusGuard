@@ -45,6 +45,7 @@ fun SessionsListScreen(
     val filteredSessions = sessions.filter { it.sessionType == sessionType }
     
     var showPasswordPrompt by remember { mutableStateOf<Int?>(null) }
+    var showDetailsDialog by remember { mutableStateOf<BlockSession?>(null) }
     val scope = rememberCoroutineScope()
     
     val title = if (sessionType == "PASSWORD") "Bloqueios por Senha" else "Bloqueios por Tempo"
@@ -127,7 +128,8 @@ fun SessionsListScreen(
                         SessionListItem(
                             session = session, 
                             sessionManager = sessionManager,
-                            onDeleteClick = { showPasswordPrompt = session.id }
+                            onDeleteClick = { showPasswordPrompt = session.id },
+                            onClick = { showDetailsDialog = session }
                         )
                     }
                     item { Spacer(Modifier.height(80.dp)) } // Space for FAB
@@ -151,6 +153,99 @@ fun SessionsListScreen(
             }
         )
     }
+
+    if (showDetailsDialog != null) {
+        SessionDetailsDialog(
+            session = showDetailsDialog!!,
+            onDismiss = { showDetailsDialog = null }
+        )
+    }
+}
+
+@Composable
+fun SessionDetailsDialog(session: BlockSession, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val pm = remember { context.packageManager }
+    val database = remember { com.focusguard.database.AppDatabase.getDatabase(context) }
+    
+    var blockedApps by remember { mutableStateOf<List<String>>(emptyList()) }
+    var blockedSites by remember { mutableStateOf<List<String>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    LaunchedEffect(session.id) {
+        val apps = database.sessionAppCrossRefDao().getAppsForSessions(listOf(session.id))
+        val sites = database.sessionWebsiteCrossRefDao().getWebsitesForSessions(listOf(session.id))
+        blockedApps = apps
+        blockedSites = sites
+        isLoading = false
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { 
+            Text(
+                if (session.sessionType == "PASSWORD") "Apps e Sites Bloqueados" else "Blindagem Ativa",
+                color = TextPrimary,
+                fontWeight = FontWeight.Bold
+            ) 
+        },
+        text = {
+            Column(modifier = Modifier.fillMaxWidth().heightIn(max = 400.dp)) {
+                if (isLoading) {
+                    Box(Modifier.fillMaxWidth().padding(24.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = AccentCyan)
+                    }
+                } else {
+                    LazyColumn {
+                        if (blockedApps.isNotEmpty()) {
+                            item {
+                                Text("Aplicativos:", color = AccentCyan, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 8.dp))
+                            }
+                            items(blockedApps) { pkg ->
+                                val appName = try {
+                                    pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+                                } catch (_: Exception) {
+                                    pkg
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Apps, null, tint = TextHint, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(appName, color = TextPrimary, fontSize = 14.sp)
+                                }
+                            }
+                        }
+                        
+                        if (blockedSites.isNotEmpty()) {
+                            item {
+                                Spacer(Modifier.height(16.dp))
+                                Text("Websites:", color = AccentCyan, fontSize = 14.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(vertical = 8.dp))
+                            }
+                            items(blockedSites) { site ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(Icons.Default.Language, null, tint = TextHint, modifier = Modifier.size(16.dp))
+                                    Spacer(Modifier.width(8.dp))
+                                    Text(site, color = TextPrimary, fontSize = 14.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss, colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)) {
+                Text("Fechar", color = DarkBg)
+            }
+        },
+        containerColor = DarkSurface,
+        shape = RoundedCornerShape(24.dp)
+    )
 }
 
 @Composable
@@ -193,14 +288,17 @@ fun PasswordPromptDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
 fun SessionListItem(
     session: BlockSession, 
     sessionManager: BlockingSessionManager,
-    onDeleteClick: () -> Unit
+    onDeleteClick: () -> Unit,
+    onClick: () -> Unit
 ) {
     val context = LocalContext.current
     val dateFormatter = remember { java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()) }
     val isCurrentlyActive = sessionManager.isCurrentlyInBlockingWindow(session)
     
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = DarkCard),
         border = BorderStroke(
