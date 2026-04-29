@@ -23,6 +23,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.pager.PagerState
 import com.focusguard.database.AppDatabase
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.ui.compose.screens.AppSelectionScreen
@@ -53,38 +56,40 @@ class CreateSessionActivity : ComponentActivity() {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CreateSessionWizard(sessionType: String, authManager: AuthManager, onFinish: () -> Unit) {
-    var step by remember { mutableStateOf(1) }
+    val pagerState = rememberPagerState(pageCount = { 2 })
+    val scope = rememberCoroutineScope()
     
     // Data collected
     var selectedApps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
     var selectedSites by remember { mutableStateOf<List<String>>(emptyList()) }
 
-    when (step) {
-        1 -> AppSelectionStep(
-            onNext = { apps ->
-                selectedApps = apps
-                step = 2
-            },
-            onBack = onFinish
-        )
-        2 -> SiteSelectionStep(
-            initialSites = selectedSites,
-            onNext = { sites ->
-                selectedSites = sites
-                step = 3
-            },
-            onBack = { step = 1 }
-        )
-        3 -> ConfigSessionStep(
-            sessionType = sessionType,
-            authManager = authManager,
-            apps = selectedApps.map { it.packageName },
-            sites = selectedSites,
-            onFinish = onFinish,
-            onBack = { step = 2 }
-        )
+    HorizontalPager(
+        state = pagerState,
+        modifier = Modifier.fillMaxSize(),
+        userScrollEnabled = false // Control navigation via buttons
+    ) { page ->
+        when (page) {
+            0 -> AppSelectionStep(
+                onNext = { apps ->
+                    selectedApps = apps
+                    scope.launch { pagerState.animateScrollToPage(1) }
+                },
+                onBack = onFinish
+            )
+            1 -> UnifiedConfigStep(
+                sessionType = sessionType,
+                authManager = authManager,
+                initialSites = selectedSites,
+                apps = selectedApps.map { it.packageName },
+                onFinish = onFinish,
+                onBack = {
+                    scope.launch { pagerState.animateScrollToPage(0) }
+                }
+            )
+        }
     }
 }
 
@@ -157,102 +162,31 @@ fun AppSelectionStep(onNext: (List<SelectableAppUi>) -> Unit, onBack: () -> Unit
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp)
-                .height(50.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                .height(56.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+            shape = RoundedCornerShape(16.dp)
         ) {
-            Text("Confirmar Apps e Prosseguir", color = DarkBg, fontWeight = FontWeight.Bold)
+            Text("Prosseguir com o bloqueio", color = DarkBg, fontWeight = FontWeight.Bold, fontSize = 16.sp)
         }
     }
 }
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun SiteSelectionStep(initialSites: List<String>, onNext: (List<String>) -> Unit, onBack: () -> Unit) {
-    var sites by remember { mutableStateOf(initialSites) }
-    var urlInput by remember { mutableStateOf("") }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Adicionar Sites", color = TextPrimary) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", tint = TextPrimary)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBg)
-            )
-        },
-        containerColor = DarkBg
-    ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
-            Text("Quais sites você deseja bloquear nesta sessão?", color = TextSecondary)
-            Spacer(modifier = Modifier.height(16.dp))
-            
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                OutlinedTextField(
-                    value = urlInput,
-                    onValueChange = { urlInput = it },
-                    placeholder = { Text("Ex: facebook.com", color = TextHint) },
-                    modifier = Modifier.weight(1f),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary,
-                        focusedBorderColor = AccentCyan
-                    )
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                IconButton(
-                    onClick = {
-                        if (urlInput.isNotBlank() && !sites.contains(urlInput.trim())) {
-                            sites = sites + urlInput.trim()
-                            urlInput = ""
-                        }
-                    },
-                    modifier = Modifier.background(AccentCyan, RoundedCornerShape(12.dp))
-                ) {
-                    Icon(Icons.Default.Add, contentDescription = "Adicionar", tint = DarkBg)
-                }
-            }
-            
-            Spacer(modifier = Modifier.height(24.dp))
-            
-            LazyColumn(modifier = Modifier.weight(1f)) {
-                items(sites) { site ->
-                    Card(
-                        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-                        colors = CardDefaults.cardColors(containerColor = DarkCard),
-                        border = BorderStroke(1.dp, CardBorder)
-                    ) {
-                        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Text(site, color = TextPrimary, modifier = Modifier.weight(1f))
-                            IconButton(onClick = { sites = sites - site }) {
-                                Icon(Icons.Default.Delete, "Remover", tint = DangerRed)
-                            }
-                        }
-                    }
-                }
-            }
-            
-            Button(
-                onClick = { onNext(sites) },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-            ) {
-                Text("Confirmar Sites e Prosseguir", color = DarkBg, fontWeight = FontWeight.Bold)
-            }
-        }
-    }
-}
-
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
-fun ConfigSessionStep(sessionType: String, authManager: AuthManager, apps: List<String>, sites: List<String>, onFinish: () -> Unit, onBack: () -> Unit) {
+fun UnifiedConfigStep(
+    sessionType: String,
+    authManager: AuthManager,
+    initialSites: List<String>,
+    apps: List<String>,
+    onFinish: () -> Unit,
+    onBack: () -> Unit
+) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val activityContext = context.findActivity() ?: context
     val sessionManager = remember { com.focusguard.manager.BlockingSessionManager.getInstance(context) }
-    val scope = rememberCoroutineScope()
+    
+    var sites by remember { mutableStateOf(initialSites) }
+    var urlInput by remember { mutableStateOf("") }
     
     var isFixed24h by remember { mutableStateOf(true) }
     var useSpecificTime by remember { mutableStateOf(false) }
@@ -276,7 +210,7 @@ fun ConfigSessionStep(sessionType: String, authManager: AuthManager, apps: List<
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Configurar Bloqueio", color = TextPrimary) },
+                title = { Text(if (sessionType == "PASSWORD") "Bloqueio por Senha" else "Bloqueio por Tempo", color = TextPrimary) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", tint = TextPrimary)
@@ -287,16 +221,84 @@ fun ConfigSessionStep(sessionType: String, authManager: AuthManager, apps: List<
         },
         containerColor = DarkBg
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState())) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp)
+                .verticalScroll(rememberScrollState())
+        ) {
+            // Sites Selection Section
+            Text("Bloqueio de Sites", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Spacer(modifier = Modifier.height(12.dp))
             
-            Text(
-                if (sessionType == "PASSWORD") "Bloqueio por Senha" else "Bloqueio por Tempo",
-                fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary
-            )
-            Spacer(modifier = Modifier.height(20.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = urlInput,
+                    onValueChange = { urlInput = it },
+                    placeholder = { Text("Ex: site.com", color = TextHint) },
+                    modifier = Modifier.weight(1f),
+                    trailingIcon = {
+                        TextButton(
+                            onClick = {
+                                if (urlInput.isNotBlank() && !sites.contains(urlInput.trim())) {
+                                    sites = sites + urlInput.trim()
+                                    urlInput = ""
+                                }
+                            }
+                        ) {
+                            Text("ADD +", color = AccentCyan, fontWeight = FontWeight.Bold)
+                        }
+                    },
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary,
+                        focusedBorderColor = AccentCyan
+                    )
+                )
+            }
+            
+            Spacer(modifier = Modifier.height(12.dp))
+            
+            // Suggestions
+            Text("Sugestões:", color = TextSecondary, fontSize = 12.sp)
+            Row(modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                listOf("facebook.com", "instagram.com").forEach { suggestion ->
+                    FilterChip(
+                        selected = sites.contains(suggestion),
+                        onClick = {
+                            sites = if (sites.contains(suggestion)) sites - suggestion else sites + suggestion
+                        },
+                        label = { Text(suggestion) },
+                        modifier = Modifier.padding(end = 8.dp),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = AccentCyan.copy(alpha = 0.2f),
+                            selectedLabelColor = AccentCyan
+                        )
+                    )
+                }
+            }
 
-            // Selection: Pattern vs Scheduled
-            Text("Opções de Agendamento:", color = TextPrimary, fontWeight = FontWeight.Bold)
+            if (sites.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Column(modifier = Modifier.fillMaxWidth().background(DarkCard, RoundedCornerShape(12.dp)).padding(8.dp)) {
+                    sites.forEach { site ->
+                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
+                            Text(site, color = TextPrimary, modifier = Modifier.weight(1f), fontSize = 14.sp)
+                            IconButton(onClick = { sites = sites - site }, modifier = Modifier.size(24.dp)) {
+                                Icon(Icons.Default.Delete, "Remover", tint = DangerRed, modifier = Modifier.size(18.dp))
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+            HorizontalDivider(color = CardBorder, thickness = 1.dp)
+            Spacer(modifier = Modifier.height(24.dp))
+
+            // Configuration Section (Original ConfigSessionStep logic)
+            Text("Opções de Agendamento", fontSize = 18.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
             Spacer(modifier = Modifier.height(12.dp))
             
             Column(modifier = Modifier.fillMaxWidth().background(DarkCard, RoundedCornerShape(16.dp)).padding(8.dp)) {
@@ -493,7 +495,7 @@ fun ConfigSessionStep(sessionType: String, authManager: AuthManager, apps: List<
                             sites = sites
                         )
                     }
-                    Toast.makeText(context, "bloqueio configurado com sucesso!", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Bloqueio configurado com sucesso!", Toast.LENGTH_LONG).show()
                     onFinish()
                 },
                 modifier = Modifier.fillMaxWidth().height(56.dp),
