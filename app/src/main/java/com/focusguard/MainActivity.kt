@@ -96,6 +96,7 @@ fun MainActivityContent(
     }
 
     var currentRoute by remember { mutableStateOf("HOME") }
+    var selectedSessionType by remember { mutableStateOf("PASSWORD") }
     var permissionsVisible by remember { mutableStateOf(false) }
     var showSessionSheet by remember { mutableStateOf(false) }
     
@@ -144,12 +145,12 @@ fun MainActivityContent(
                     permissionsVisible = permissionsVisible,
                     onPermissionsClick = { activity.startActivity(Intent(activity, PermissionsActivity::class.java)) },
                     onPasswordSessionClick = { 
-                        val intent = Intent(activity, com.focusguard.ui.CreateSessionActivity::class.java).apply { putExtra("SESSION_TYPE", "PASSWORD") }
-                        activity.startActivity(intent)
+                        selectedSessionType = "PASSWORD"
+                        currentRoute = "SESSIONS_LIST"
                     },
                     onTimeSessionClick = { 
-                        val intent = Intent(activity, com.focusguard.ui.CreateSessionActivity::class.java).apply { putExtra("SESSION_TYPE", "TIME") }
-                        activity.startActivity(intent)
+                        selectedSessionType = "TIME"
+                        currentRoute = "SESSIONS_LIST"
                     },
                     onActiveSessionsClick = { showSessionSheet = true },
                     onDeviceOwnerClick = { deviceOwnerManager.setAsDeviceOwner() },
@@ -168,6 +169,7 @@ fun MainActivityContent(
                 "PASSWORD_MANAGEMENT" -> PasswordManagementScreen(authManager = authManager, onBack = { currentRoute = "HOME" })
                 "USAGE_LIMITS" -> UsageLimitsScreen(authManager = authManager, onBack = { currentRoute = "HOME" })
                 "DASHBOARD" -> UsageStatsDashboardScreen(stats = stats, onBack = { currentRoute = "HOME" })
+                "SESSIONS_LIST" -> SessionsListScreen(sessionType = selectedSessionType, onBack = { currentRoute = "HOME" })
             }
         }
     }
