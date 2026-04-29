@@ -228,13 +228,15 @@ class BlockingSessionManager private constructor(private val context: Context) {
             }
 
             val allAppsToBlock = (sessionAppsToBlock + limitAppsToBlock).toSet().toList()
+            val allAppsInAnySession = database.sessionAppCrossRefDao().getAppsForSessions(sessions.map { it.id })
 
             if (allAppsToBlock.isEmpty() && sitesToBlock.isEmpty()) {
-                deviceOwnerManager.unblockApps(database.sessionAppCrossRefDao().getAppsForSessions(sessions.map { it.id }))
+                deviceOwnerManager.unblockApps(allAppsInAnySession)
                 deviceOwnerManager.clearBlockingPolicies()
                 deviceOwnerManager.clearWebsiteRestrictions()
             } else {
-                deviceOwnerManager.blockApps(allAppsToBlock)
+                // SOTA: Differential synchronization
+                deviceOwnerManager.syncSuspendedApps(allAppsInAnySession, allAppsToBlock)
                 deviceOwnerManager.enforceWebsiteRestrictions(sitesToBlock)
                 deviceOwnerManager.enforceBlockingPolicies()
             }

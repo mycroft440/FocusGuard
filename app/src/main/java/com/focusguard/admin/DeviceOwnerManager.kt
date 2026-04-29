@@ -92,44 +92,53 @@ class DeviceOwnerManager(private val context: Context) {
     }
 
     /**
-     * Block applications using Device Policy Manager (setPackagesSuspended).
+     * Update the suspended apps list to match exactly the provided list.
+     * Apps in the list will be suspended; apps NOT in the list will be unsuspended.
+     * This prevents apps from being "stuck" suspended when a session ends.
      */
-    fun blockApps(packageNames: List<String>) {
-        if (!isDeviceOwnerActive() || packageNames.isEmpty()) return
+    fun syncSuspendedApps(allAppsInSessions: List<String>, appsToBlockNow: List<String>) {
+        if (!isDeviceOwnerActive()) return
 
         scope.launch {
             try {
                 val myPkg = context.packageName
                 val pm = context.packageManager
                 
-                val filtered = packageNames.filter { pkg ->
-                    // 1. Never block self
+                // 1. Identify which apps should be UNSUSPENDED
+                // (Apps that were in any session but are NOT in the current blocking window)
+                val appsToUnblock = allAppsInSessions.filter { !appsToBlockNow.contains(it) }
+                if (appsToUnblock.isNotEmpty()) {
+                    dpm.setPackagesSuspended(componentName, appsToUnblock.toTypedArray(), false)
+                    Log.d("FocusGuardAdmin", "Apps desbloqueados diferencialmente: ${appsToUnblock.size}")
+                }
+
+                // 2. Identify and filter apps to BLOCK
+                val filteredToBlock = appsToBlockNow.filter { pkg ->
                     if (pkg == myPkg || pkg == "com.focusguard") return@filter false
-                    
-                    // 2. Never block sacred system apps
                     if (SACRED_WHITELIST.contains(pkg)) return@filter false
-                    
-                    // 3. Prevent blocking critical system apps via FLAG_SYSTEM
                     try {
                         val appInfo = pm.getApplicationInfo(pkg, 0)
-                        if ((appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0) {
-                            // Extra check: allow blocking known common bloatware/distractions even if system
-                            // But for absolute safety, we follow the technical review: FLAG_SYSTEM = No Block
-                            return@filter false
-                        }
+                        if ((appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0) return@filter false
                     } catch (_: Exception) {}
-                    
                     true
                 }
                 
-                if (filtered.isNotEmpty()) {
-                    dpm.setPackagesSuspended(componentName, filtered.toTypedArray(), true)
-                    Log.d("FocusGuardAdmin", "Apps suspensos: ${filtered.size}")
+                if (filteredToBlock.isNotEmpty()) {
+                    dpm.setPackagesSuspended(componentName, filteredToBlock.toTypedArray(), true)
+                    Log.d("FocusGuardAdmin", "Apps suspensos: ${filteredToBlock.size}")
                 }
             } catch (e: Exception) {
-                Log.e("FocusGuardAdmin", "Falha ao suspender apps", e)
+                Log.e("FocusGuardAdmin", "Falha na sincronização diferencial de apps", e)
             }
         }
+    }
+
+    /**
+     * Block applications using Device Policy Manager (setPackagesSuspended).
+     * @deprecated Use syncSuspendedApps for more reliable session transitions.
+     */
+    fun blockApps(packageNames: List<String>) {
+        syncSuspendedApps(emptyList(), packageNames)
     }
 
     /**

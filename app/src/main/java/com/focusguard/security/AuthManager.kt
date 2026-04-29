@@ -192,32 +192,37 @@ class AuthManager(context: Context) {
         }
     }
 
-    private fun generateSalt(): String {
-        val random = SecureRandom()
-        val salt = ByteArray(16)
-        random.nextBytes(salt)
-        return salt.joinToString("") { "%02x".format(it) }
-    }
-
-    private fun hashPasswordWithSalt(password: String, salt: String): String {
-        val iterations = 5000
-        var hash = salt.toByteArray()
-        val md = MessageDigest.getInstance("SHA-256")
-        
-        // PBKDF2-style stretching
-        repeat(iterations) {
-            md.update(hash)
-            hash = md.digest(password.toByteArray())
+    companion object {
+        fun generateSalt(): String {
+            val random = SecureRandom()
+            val salt = ByteArray(16)
+            random.nextBytes(salt)
+            return salt.joinToString("") { "%02x".format(it) }
         }
-        
-        return hash.joinToString("") { "%02x".format(it) }
+
+        fun hashPasswordWithSalt(password: String, salt: String): String {
+            val iterations = 5000
+            var hash = salt.toByteArray()
+            val md = MessageDigest.getInstance("SHA-256")
+            
+            repeat(iterations) {
+                md.update(hash)
+                hash = md.digest(password.toByteArray())
+            }
+            
+            return hash.joinToString("") { "%02x".format(it) }
+        }
+
+        fun hashPasswordLegacy(password: String): String {
+            val md = MessageDigest.getInstance("SHA-256")
+            val digest = md.digest(password.toByteArray())
+            return digest.joinToString("") { "%02x".format(it) }
+        }
     }
 
-    private fun hashPasswordLegacy(password: String): String {
-        val md = MessageDigest.getInstance("SHA-256")
-        val digest = md.digest(password.toByteArray())
-        return digest.joinToString("") { "%02x".format(it) }
-    }
+    private fun generateSalt(): String = AuthManager.generateSalt()
+    private fun hashPasswordWithSalt(password: String, salt: String): String = AuthManager.hashPasswordWithSalt(password, salt)
+    private fun hashPasswordLegacy(password: String): String = AuthManager.hashPasswordLegacy(password)
 
     fun getPreferredAuthType(): String {
         return securePrefs.getString("preferred_auth_type", "NUMERIC") ?: "NUMERIC"

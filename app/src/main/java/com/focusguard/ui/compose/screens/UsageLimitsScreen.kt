@@ -507,10 +507,9 @@ fun ConfirmLimitPasswordDialog(expectedHash: String, onDismiss: () -> Unit, onCo
         },
         confirmButton = {
             TextButton(onClick = {
-                // Use a standard approach: if expectedHash is empty, allow anything (first set)
-                // If not, use the same legacy hash for consistency with secondary locks
-                val md = java.security.MessageDigest.getInstance("SHA-256")
-                val hash = md.digest(password.toByteArray()).joinToString("") { "%02x".format(it) }
+                // Use the standard legacy hash for secondary locks if stretching isn't available
+                // In a future update, we should migrate all secondary locks to stretching-hash too.
+                val hash = com.focusguard.security.AuthManager.hashPasswordLegacy(password)
                 if (expectedHash.isEmpty() || hash == expectedHash) onConfirm() else error = true
             }) { Text("Confirmar", color = AccentCyan) }
         },
@@ -665,9 +664,9 @@ fun AppLimitDialog(app: UsageLimitAppUi, permissionsMissing: Boolean, onDismiss:
                 onClick = { 
                     val hours = hoursText.replace(",", ".").toDoubleOrNull() ?: 0.0
                     val minutes = (hours * 60).toInt()
-                    // Refined hashing to match legacy SHA-256
+                    // Refined hashing to match legacy SHA-256 for secondary locks
                     val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) {
-                        java.security.MessageDigest.getInstance("SHA-256").digest(password.toByteArray()).joinToString("") { "%02x".format(it) }
+                        com.focusguard.security.AuthManager.hashPasswordLegacy(password)
                     } else if (lockMode == "PASSWORD") app.lockPasswordHash else null
                     
                     val until = if (lockMode == "TIME" && days.isNotEmpty()) System.currentTimeMillis() + TimeUnit.DAYS.toMillis(days.toLong()) else if (lockMode == "TIME") app.lockUntilTimestamp else null
@@ -708,7 +707,7 @@ fun AddWebsiteLimitDialog(permissionsMissing: Boolean, onDismiss: () -> Unit, on
                     if (domain.isNotBlank()) {
                         val hours = hoursText.replace(",", ".").toDoubleOrNull() ?: 0.0
                         val minutes = (hours * 60).toInt()
-                        val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) java.security.MessageDigest.getInstance("SHA-256").digest(password.toByteArray()).joinToString("") { "%02x".format(it) } else null
+                        val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) com.focusguard.security.AuthManager.hashPasswordLegacy(password) else null
                         val until = if (lockMode == "TIME" && days.isNotEmpty()) System.currentTimeMillis() + TimeUnit.DAYS.toMillis(days.toLong()) else null
                         onSave(domain, minutes, lockMode, hash, until)
                     }
@@ -743,7 +742,7 @@ fun EditWebsiteLimitDialog(site: WebsiteLimitUi, permissionsMissing: Boolean, on
                 onClick = { 
                     val hours = hoursText.replace(",", ".").toDoubleOrNull() ?: 0.0
                     val minutes = (hours * 60).toInt()
-                    val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) java.security.MessageDigest.getInstance("SHA-256").digest(password.toByteArray()).joinToString("") { "%02x".format(it) } else site.lockPasswordHash
+                    val hash = if (lockMode == "PASSWORD" && password.isNotEmpty()) com.focusguard.security.AuthManager.hashPasswordLegacy(password) else site.lockPasswordHash
                     val until = if (lockMode == "TIME" && days.isNotEmpty()) System.currentTimeMillis() + TimeUnit.DAYS.toMillis(days.toLong()) else site.lockUntilTimestamp
                     onSave(minutes, true, lockMode, hash, until) 
                 }
