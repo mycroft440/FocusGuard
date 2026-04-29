@@ -66,7 +66,7 @@ fun MainActivityContent(
     sessionManager: BlockingSessionManager,
     authManager: AuthManager
 ) {
-    var isUnlocked by remember { mutableStateOf(false) }
+    var isUnlocked by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             val locked = authManager.isAppLocked()
@@ -76,7 +76,13 @@ fun MainActivityContent(
         }
     }
 
-    if (!isUnlocked) {
+    if (isUnlocked == null) {
+        // Loading state: Show a clean dark screen to prevent flashes
+        Box(modifier = Modifier.fillMaxSize().background(com.focusguard.ui.compose.theme.DarkBg))
+        return
+    }
+
+    if (isUnlocked == false) {
         AuthScreen(
             authManager = authManager,
             activity = activity,
