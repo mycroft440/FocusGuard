@@ -71,11 +71,22 @@ abstract class AppDatabase : RoomDatabase() {
 
         val MIGRATION_6_7 = object : Migration(6, 7) {
             override fun migrate(database: SupportSQLiteDatabase) {
-                // Drop and Recreate app_usage_limits due to structure change
-                database.execSQL("DROP TABLE IF EXISTS `app_usage_limits`")
-                database.execSQL("CREATE TABLE IF NOT EXISTS `app_usage_limits` (`packageName` TEXT NOT NULL, `appName` TEXT NOT NULL, `dailyLimitMinutes` INTEGER NOT NULL, `isEnabled` INTEGER NOT NULL DEFAULT 1, `lockMode` TEXT NOT NULL DEFAULT 'NONE', `lockPasswordHash` TEXT, `lockUntilTimestamp` INTEGER, `createdAt` INTEGER NOT NULL, `lastResetDate` INTEGER NOT NULL, PRIMARY KEY(`packageName`))")
+                // 1. Criar nova tabela com estrutura V7
+                database.execSQL("CREATE TABLE IF NOT EXISTS `app_usage_limits_new` (`packageName` TEXT NOT NULL, `appName` TEXT NOT NULL, `dailyLimitMinutes` INTEGER NOT NULL, `isEnabled` INTEGER NOT NULL DEFAULT 1, `lockMode` TEXT NOT NULL DEFAULT 'NONE', `lockPasswordHash` TEXT, `lockUntilTimestamp` INTEGER, `createdAt` INTEGER NOT NULL, `lastResetDate` INTEGER NOT NULL, PRIMARY KEY(`packageName`))")
                 
-                // Create new tables
+                // 2. Migrar dados da tabela antiga para a nova
+                // Nota: Mapeamos limitMinutesPerDay -> dailyLimitMinutes e isActive -> isEnabled
+                database.execSQL("""
+                    INSERT INTO app_usage_limits_new (packageName, appName, dailyLimitMinutes, isEnabled, createdAt, lastResetDate, lockMode)
+                    SELECT packageName, appName, limitMinutesPerDay, isActive, createdAt, lastResetDate, 'NONE'
+                    FROM app_usage_limits
+                """.trimIndent())
+                
+                // 3. Remover tabela antiga e renomear a nova
+                database.execSQL("DROP TABLE `app_usage_limits`")
+                database.execSQL("ALTER TABLE `app_usage_limits_new` RENAME TO `app_usage_limits`")
+                
+                // 4. Criar novas tabelas auxiliares
                 database.execSQL("CREATE TABLE IF NOT EXISTS `website_usage_limits` (`domain` TEXT NOT NULL, `dailyLimitMinutes` INTEGER NOT NULL, `isEnabled` INTEGER NOT NULL DEFAULT 1, `lockMode` TEXT NOT NULL DEFAULT 'NONE', `lockPasswordHash` TEXT, `lockUntilTimestamp` INTEGER, `createdAt` INTEGER NOT NULL, PRIMARY KEY(`domain`))")
                 database.execSQL("CREATE TABLE IF NOT EXISTS `usage_limits_locks` (`id` INTEGER NOT NULL, `lockedUntilTimestamp` INTEGER NOT NULL, PRIMARY KEY(`id`))")
                 database.execSQL("CREATE TABLE IF NOT EXISTS `daily_usage_stats` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `identifier` TEXT NOT NULL, `date` TEXT NOT NULL, `timeSpentMs` INTEGER NOT NULL)")

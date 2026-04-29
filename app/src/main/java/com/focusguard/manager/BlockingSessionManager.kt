@@ -9,6 +9,7 @@ import com.focusguard.database.SessionWebsiteCrossRef
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
@@ -32,6 +33,37 @@ class BlockingSessionManager private constructor(private val context: Context) {
     private val database = AppDatabase.getDatabase(context)
     private val deviceOwnerManager = DeviceOwnerManager(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
+    // Flow-based Reactive API
+    val activeSessionsFlow: Flow<List<BlockSession>> = database.blockSessionDao().getAllActiveSessions()
+
+    val isBlockingActiveFlow: Flow<Boolean> = activeSessionsFlow.map { sessions ->
+        sessions.any { isCurrentlyInBlockingWindow(it) }
+    }
+
+    val hasRegisteredSessionFlow: Flow<Boolean> = activeSessionsFlow.map { it.isNotEmpty() }
+
+    val sessionDetailsFlow: Flow<String> = activeSessionsFlow.map { sessions ->
+        if (sessions.isEmpty()) return@map "Nenhuma sessÃ£o ativa"
+        val dateFormatter = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
+
+        buildString {
+            appendLine("=== SessÃµes Ativas (${sessions.size}) ===")
+            sessions.forEachIndexed { index, session ->
+                appendLine("SessÃ£o #${index + 1} (${session.sessionType})")
+                if (session.isFixed24h) {
+                    appendLine("Modo: FIXO 24H")
+                } else {
+                    appendLine("Modo: AGENDADO")
+                    appendLine("Entre: ${String.format(Locale.getDefault(), "%02d:%02d", session.recurringStartHour, session.recurringStartMinute)} e ${String.format(Locale.getDefault(), "%02d:%02d", session.recurringEndHour, session.recurringEndMinute)}")
+                }
+                if (session.sessionType == "TIME" && session.endTime != null) {
+                    appendLine("TÃ©rmino do Tempo: ${dateFormatter.format(session.endTime)}")
+                }
+                appendLine("---")
+            }
+        }
+    }
 
     fun startPasswordSession(
         isFixed24h: Boolean,
@@ -106,12 +138,12 @@ class BlockingSessionManager private constructor(private val context: Context) {
     }
 
     suspend fun hasTimeSession(): Boolean {
-        return database.blockSessionDao().getAllActiveSessions().any { it.sessionType == "TIME" }
+        return database.blockSessionDao().getAllActiveSessions().first().any { it.sessionType == "TIME" }
     }
 
     fun appendToTimeSession(addedDays: Int, addedHours: Int, additionalApps: List<String>, additionalSites: List<String>) {
         scope.launch {
-            val sessions = database.blockSessionDao().getAllActiveSessions().filter { it.sessionType == "TIME" }
+            val sessions = database.blockSessionDao().getAllActiveSessions().first().filter { it.sessionType == "TIME" }
             if (sessions.isNotEmpty()) {
                 val session = sessions.first()
                 val addedMillis = TimeUnit.DAYS.toMillis(addedDays.toLong()) + TimeUnit.HOURS.toMillis(addedHours.toLong())
@@ -142,7 +174,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
     fun endPasswordSessions() {
         scope.launch {
             try {
-                val sessions = database.blockSessionDao().getAllActiveSessions().filter { it.sessionType == "PASSWORD" }
+                val sessions = database.blockSessionDao().getAllActiveSessions().first().filter { it.sessionType == "PASSWORD" }
                 for (session in sessions) {
                     database.blockSessionDao().updateBlockSession(session.copy(isActive = false))
                 }
@@ -155,7 +187,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
     }
 
     suspend fun checkAndEnforce() {
-        val sessions = database.blockSessionDao().getAllActiveSessions()
+        val sessions = database.blockSessionDao().getAllActiveSessions().first()
         val enforcingSessions = sessions.filter { isCurrentlyInBlockingWindow(it) }
 
         val enforcingIds = enforcingSessions.map { it.id }
@@ -164,7 +196,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
 
         // New: Check Daily Usage Limits
         val limitAppsToBlock = mutableListOf<String>()
-        val activeLimits = database.appUsageLimitDao().getAllActiveLimits()
+        val activeLimits = database.appUsageLimitDao().getAllActiveLimits().first()
         
         if (activeLimits.isNotEmpty()) {
             val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? android.app.usage.UsageStatsManager
@@ -239,7 +271,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
 
     suspend fun getActiveSessions(): List<BlockSession> {
         return try {
-            val sessions = database.blockSessionDao().getAllActiveSessions()
+            val sessions = database.blockSessionDao().getAllActiveSessions().first()
             val validSessions = mutableListOf<BlockSession>()
 
             var expiredTimeSession = false
@@ -276,13 +308,13 @@ class BlockingSessionManager private constructor(private val context: Context) {
     suspend fun getSessionDetails(): String {
         return try {
             val sessions = getActiveSessions()
-            if (sessions.isEmpty()) return "Nenhuma sessão ativa"
+            if (sessions.isEmpty()) return "Nenhuma sessÃ£o ativa"
             val dateFormatter = java.text.SimpleDateFormat("dd/MM/yyyy HH:mm", Locale.getDefault())
 
             buildString {
-                appendLine("=== Sessões Ativas (${sessions.size}) ===")
+                appendLine("=== SessÃµes Ativas (${sessions.size}) ===")
                 sessions.forEachIndexed { index, session ->
-                    appendLine("Sessão #${index + 1} (${session.sessionType})")
+                    appendLine("SessÃ£o #${index + 1} (${session.sessionType})")
                     if (session.isFixed24h) {
                         appendLine("Modo: FIXO 24H")
                     } else {
@@ -290,7 +322,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
                         appendLine("Entre: ${String.format(Locale.getDefault(), "%02d:%02d", session.recurringStartHour, session.recurringStartMinute)} e ${String.format(Locale.getDefault(), "%02d:%02d", session.recurringEndHour, session.recurringEndMinute)}")
                     }
                     if (session.sessionType == "TIME" && session.endTime != null) {
-                        appendLine("Término do Tempo: ${dateFormatter.format(session.endTime)}")
+                        appendLine("TÃ©rmino do Tempo: ${dateFormatter.format(session.endTime)}")
                     }
                     appendLine("---")
                 }

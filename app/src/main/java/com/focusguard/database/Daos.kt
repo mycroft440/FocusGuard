@@ -7,6 +7,7 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface BlockedAppDao {
@@ -20,7 +21,7 @@ interface BlockedAppDao {
     suspend fun deleteBlockedApp(app: BlockedApp)
 
     @Query("SELECT * FROM blocked_apps WHERE isBlocked = 1 ORDER BY createdAt DESC")
-    suspend fun getAllBlockedApps(): List<BlockedApp>
+    fun getAllBlockedApps(): Flow<List<BlockedApp>>
 
     @Query("SELECT * FROM blocked_apps WHERE packageName = :packageName LIMIT 1")
     suspend fun getBlockedAppByPackage(packageName: String): BlockedApp?
@@ -44,7 +45,7 @@ interface BlockedWebsiteDao {
     suspend fun deleteBlockedWebsite(website: BlockedWebsite)
 
     @Query("SELECT * FROM blocked_websites WHERE isBlocked = 1 ORDER BY createdAt DESC")
-    suspend fun getAllBlockedWebsites(): List<BlockedWebsite>
+    fun getAllBlockedWebsites(): Flow<List<BlockedWebsite>>
 
     @Query("SELECT * FROM blocked_websites WHERE domain = :domain LIMIT 1")
     suspend fun getBlockedWebsiteByDomain(domain: String): BlockedWebsite?
@@ -65,10 +66,10 @@ interface BlockSessionDao {
     suspend fun updateBlockSession(session: BlockSession)
 
     @Query("SELECT * FROM block_sessions WHERE isActive = 1")
-    suspend fun getAllActiveSessions(): List<BlockSession>
+    fun getAllActiveSessions(): Flow<List<BlockSession>>
 
     @Query("SELECT * FROM block_sessions WHERE isActive = 1 ORDER BY startTime DESC LIMIT 1")
-    suspend fun getActiveSession(): BlockSession?
+    fun getActiveSession(): Flow<BlockSession?>
 
     @Query("DELETE FROM block_sessions WHERE isActive = 0 AND endTime < :threshold")
     suspend fun deleteOldInactiveSessions(threshold: Long)
@@ -81,7 +82,7 @@ interface BlockSessionDao {
 
     @Transaction
     suspend fun insertNewSession(session: BlockSession): Long {
-        // Limpa lixo do DB que já expirou há mais de 30 dias (Trash Cleanup)
+        // Limpa lixo do DB que jÃ¡ expirou hÃ¡ mais de 30 dias (Trash Cleanup)
         deleteOldInactiveSessions(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000)
         cleanOrphanApps()
         cleanOrphanWebsites()
@@ -89,7 +90,7 @@ interface BlockSessionDao {
     }
 
     @Query("SELECT * FROM block_sessions ORDER BY startTime DESC")
-    suspend fun getAllSessions(): List<BlockSession>
+    fun getAllSessions(): Flow<List<BlockSession>>
 }
 
 @Dao
@@ -128,13 +129,13 @@ interface AppUsageLimitDao {
     suspend fun delete(limit: AppUsageLimit)
 
     @Query("SELECT * FROM app_usage_limits")
-    suspend fun getAll(): List<AppUsageLimit>
+    fun getAll(): Flow<List<AppUsageLimit>>
 
     @Query("SELECT * FROM app_usage_limits WHERE packageName = :packageName LIMIT 1")
     suspend fun getLimitForPackage(packageName: String): AppUsageLimit?
 
     @Query("SELECT * FROM app_usage_limits WHERE isEnabled = 1")
-    suspend fun getAllActiveLimits(): List<AppUsageLimit>
+    fun getAllActiveLimits(): Flow<List<AppUsageLimit>>
 
     @Query("DELETE FROM app_usage_limits WHERE packageName = :packageName")
     suspend fun deleteLimitByPackage(packageName: String)
@@ -146,7 +147,7 @@ interface WebsiteUsageLimitDao {
     suspend fun insert(limit: WebsiteUsageLimit)
 
     @Query("SELECT * FROM website_usage_limits")
-    suspend fun getAll(): List<WebsiteUsageLimit>
+    fun getAll(): Flow<List<WebsiteUsageLimit>>
 
     @Delete
     suspend fun delete(limit: WebsiteUsageLimit)

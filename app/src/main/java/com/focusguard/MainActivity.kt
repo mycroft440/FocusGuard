@@ -39,8 +39,8 @@ class MainActivity : AppCompatActivity() {
 
         if (attemptCount <= 5) {
             Log.d("FocusGuardNuclear", "========================================")
-            Log.d("FocusGuardNuclear", "OPÇÃO NUCLEAR: Inicializando o FocusGuard v2")
-            Log.d("FocusGuardNuclear", "Tentativa de inicialização: $attemptCount")
+            Log.d("FocusGuardNuclear", "OPÃ‡ÃƒO NUCLEAR: Inicializando o FocusGuard v2")
+            Log.d("FocusGuardNuclear", "Tentativa de inicializaÃ§Ã£o: $attemptCount")
             Log.d("FocusGuardNuclear", "Pacote ativo: $packageName")
             Log.d("FocusGuardNuclear", "========================================")
         }
@@ -91,9 +91,11 @@ fun MainActivityContent(
 
     var permissionsVisible by remember { mutableStateOf(false) }
     var showSessionSheet by remember { mutableStateOf(false) }
-    var isBlocking by remember { mutableStateOf(false) }
-    var hasSession by remember { mutableStateOf(false) }
-    var sessionDetails by remember { mutableStateOf("") }
+    
+    // Reactive States using Flows (No Polling!)
+    val isBlocking by sessionManager.isBlockingActiveFlow.collectAsState(initial = false)
+    val hasSession by sessionManager.hasRegisteredSessionFlow.collectAsState(initial = false)
+    val sessionDetails by sessionManager.sessionDetailsFlow.collectAsState(initial = "Carregando...")
 
     var resumeKey by remember { mutableIntStateOf(0) }
     LaunchedEffect(resumeKey) {
@@ -116,17 +118,6 @@ fun MainActivityContent(
         }
         activity.lifecycle.addObserver(callback)
         onDispose { activity.lifecycle.removeObserver(callback) }
-    }
-
-    LaunchedEffect(showSessionSheet) {
-        while (showSessionSheet) {
-            withContext(Dispatchers.IO) {
-                isBlocking = sessionManager.isBlockingActive()
-                hasSession = sessionManager.hasRegisteredSession()
-                sessionDetails = sessionManager.getSessionDetails()
-            }
-            delay(2000)
-        }
     }
 
     if (currentRoute == "HOME") {
@@ -156,7 +147,7 @@ fun MainActivityContent(
             onLanguageClick = { currentRoute = "LANGUAGE" },
             onPasswordManagementClick = { currentRoute = "PASSWORD_MANAGEMENT" },
             onBlockCustomizationClick = { 
-                Toast.makeText(activity, "Personalização em breve!", Toast.LENGTH_SHORT).show()
+                Toast.makeText(activity, "PersonalizaÃ§Ã£o em breve!", Toast.LENGTH_SHORT).show()
             },
             onAppUsageLimitsClick = { currentRoute = "USAGE_LIMITS" },
             authManager = authManager,
