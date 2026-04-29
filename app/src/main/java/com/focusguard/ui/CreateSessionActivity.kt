@@ -304,7 +304,7 @@ fun FinalConfigStep(
     onBack: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val activityContext = com.focusguard.utils.findActivity(context) ?: context
+    val activityContext = context.findActivity() ?: context
     
     var isFixed24h by remember { mutableStateOf(true) }
     var useSpecificTime by remember { mutableStateOf(false) }
