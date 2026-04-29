@@ -137,15 +137,6 @@ fun MainScreen(
                         scope.launch { drawerState.close() }
                     }
                 )
-                DrawerMenuButton(
-                    icon = Icons.Default.DataUsage,
-                    label = "Limites de Uso",
-                    iconTint = AccentCyan,
-                    onClick = {
-                        onAppUsageLimitsClick()
-                        scope.launch { drawerState.close() }
-                    }
-                )
 
                 Spacer(modifier = Modifier.height(12.dp))
                 Divider(color = CardBorder, modifier = Modifier.padding(horizontal = 20.dp))
