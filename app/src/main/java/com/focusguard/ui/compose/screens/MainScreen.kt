@@ -196,6 +196,8 @@ fun MainScreen(
                 ) { page ->
                     when (page) {
                         0 -> HomeContent(
+                            permissionsVisible = permissionsVisible,
+                            onPermissionsClick = onPermissionsClick,
                             onPasswordSessionClick = onPasswordSessionClick,
                             onTimeSessionClick = onTimeSessionClick,
                             onAppUsageLimitsClick = onAppUsageLimitsClick,
