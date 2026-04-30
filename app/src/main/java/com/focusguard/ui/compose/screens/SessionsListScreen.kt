@@ -234,17 +234,17 @@ fun SessionDetailsSheet(
                     fontWeight = FontWeight.Bold
                 )
                 
-                IconButton(onClick = {
-                    scope.launch {
-                        database.sessionAppCrossRefDao().deleteForSession(session.id)
-                        database.sessionWebsiteCrossRefDao().deleteForSession(session.id)
-                        // If no content, maybe end session? Or just leave it empty.
-                        // User said "remover todos os apps do bloqueio"
-                        BlockingSessionManager.getInstance(context).checkAndEnforce()
-                        refresh()
+                if (session.sessionType != "TIME") {
+                    IconButton(onClick = {
+                        scope.launch {
+                            database.sessionAppCrossRefDao().deleteForSession(session.id)
+                            database.sessionWebsiteCrossRefDao().deleteForSession(session.id)
+                            BlockingSessionManager.getInstance(context).checkAndEnforce()
+                            refresh()
+                        }
+                    }) {
+                        Icon(Icons.Default.DeleteSweep, "Limpar Tudo", tint = DangerRed)
                     }
-                }) {
-                    Icon(Icons.Default.DeleteSweep, "Limpar Tudo", tint = DangerRed)
                 }
             }
 
@@ -278,14 +278,16 @@ fun SessionDetailsSheet(
                                 Icon(Icons.Default.Apps, null, tint = TextHint, modifier = Modifier.size(20.dp))
                                 Spacer(Modifier.width(12.dp))
                                 Text(appName, color = TextPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                                IconButton(onClick = {
-                                    scope.launch {
-                                        database.sessionAppCrossRefDao().deleteSpecificApp(session.id, pkg)
-                                        BlockingSessionManager.getInstance(context).checkAndEnforce()
-                                        refresh()
+                                if (session.sessionType != "TIME") {
+                                    IconButton(onClick = {
+                                        scope.launch {
+                                            database.sessionAppCrossRefDao().deleteSpecificApp(session.id, pkg)
+                                            BlockingSessionManager.getInstance(context).checkAndEnforce()
+                                            refresh()
+                                        }
+                                    }) {
+                                        Icon(Icons.Default.RemoveCircleOutline, "Remover", tint = DangerRed.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
                                     }
-                                }) {
-                                    Icon(Icons.Default.RemoveCircleOutline, "Remover", tint = DangerRed.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
                                 }
                             }
                         }
@@ -301,14 +303,16 @@ fun SessionDetailsSheet(
                                 Icon(Icons.Default.Language, null, tint = TextHint, modifier = Modifier.size(20.dp))
                                 Spacer(Modifier.width(12.dp))
                                 Text(site, color = TextPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
-                                IconButton(onClick = {
-                                    scope.launch {
-                                        database.sessionWebsiteCrossRefDao().deleteSpecificWebsite(session.id, site)
-                                        BlockingSessionManager.getInstance(context).checkAndEnforce()
-                                        refresh()
+                                if (session.sessionType != "TIME") {
+                                    IconButton(onClick = {
+                                        scope.launch {
+                                            database.sessionWebsiteCrossRefDao().deleteSpecificWebsite(session.id, site)
+                                            BlockingSessionManager.getInstance(context).checkAndEnforce()
+                                            refresh()
+                                        }
+                                    }) {
+                                        Icon(Icons.Default.RemoveCircleOutline, "Remover", tint = DangerRed.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
                                     }
-                                }) {
-                                    Icon(Icons.Default.RemoveCircleOutline, "Remover", tint = DangerRed.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
                                 }
                             }
                         }
@@ -633,33 +637,48 @@ fun SessionListItem(
                     }
                 }
 
-                Box {
-                    IconButton(onClick = { showMenu = true }) {
-                        Icon(Icons.Default.Settings, contentDescription = "Configurações", tint = TextHint)
+                    val isTimeActive = session.sessionType == "TIME" && isCurrentlyActive
+                    
+                    Box {
+                        IconButton(onClick = { 
+                            if (isTimeActive) {
+                                Toast.makeText(context, "Este bloqueio não pode ser alterado!", Toast.LENGTH_SHORT).show()
+                            } else {
+                                showMenu = true 
+                            }
+                        }) {
+                            Icon(
+                                imageVector = if (isTimeActive) Icons.Default.Lock else Icons.Default.Settings, 
+                                contentDescription = "Configurações", 
+                                tint = if (isTimeActive) DangerRed else TextHint
+                            )
+                        }
+                        
+                        if (!isTimeActive) {
+                            DropdownMenu(
+                                expanded = showMenu,
+                                onDismissRequest = { showMenu = false },
+                                modifier = Modifier.background(DarkSurface)
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text("Adicionar apps/sites", color = TextPrimary) },
+                                    onClick = { showMenu = false; onAddContent() },
+                                    leadingIcon = { Icon(Icons.Default.Add, null, tint = AccentCyan) }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Remover apps/sites", color = TextPrimary) },
+                                    onClick = { showMenu = false; onClick() },
+                                    leadingIcon = { Icon(Icons.Default.RemoveCircleOutline, null, tint = AccentCyan) }
+                                )
+                                HorizontalDivider(color = CardBorder, thickness = 0.5.dp)
+                                DropdownMenuItem(
+                                    text = { Text("Remover bloqueio", color = DangerRed) },
+                                    onClick = { showMenu = false; onRemoveBlock() },
+                                    leadingIcon = { Icon(Icons.Default.Delete, null, tint = DangerRed) }
+                                )
+                            }
+                        }
                     }
-                    DropdownMenu(
-                        expanded = showMenu,
-                        onDismissRequest = { showMenu = false },
-                        modifier = Modifier.background(DarkSurface)
-                    ) {
-                        DropdownMenuItem(
-                            text = { Text("Adicionar apps/sites", color = TextPrimary) },
-                            onClick = { showMenu = false; onAddContent() },
-                            leadingIcon = { Icon(Icons.Default.Add, null, tint = AccentCyan) }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Remover apps/sites", color = TextPrimary) },
-                            onClick = { showMenu = false; onClick() },
-                            leadingIcon = { Icon(Icons.Default.RemoveCircleOutline, null, tint = AccentCyan) }
-                        )
-                        HorizontalDivider(color = CardBorder, thickness = 0.5.dp)
-                        DropdownMenuItem(
-                            text = { Text("Remover bloqueio", color = DangerRed) },
-                            onClick = { showMenu = false; onRemoveBlock() },
-                            leadingIcon = { Icon(Icons.Default.Delete, null, tint = DangerRed) }
-                        )
-                    }
-                }
             }
             
             Spacer(Modifier.height(16.dp))

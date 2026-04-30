@@ -1,32 +1,36 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">FocusGuard</string>
-    <string name="accessibility_service_description">FocusGuard অ্যাক্সেসিবিলিটি পরিষেবা - বিভ্রান্তিকর অ্যাপ এবং ওয়েবসাইটগুলি ব্লক করে</string>
+    <string name="accessibility_service_description">FocusGuard অ্যাক্সেসিবিলিটি পরিষেবা - বিভ্রান্তিকর অ্যাপ এবং সাইটগুলি ব্লক করে</string>
     <string name="home_title">FocusGuard</string>
     <string name="blocked_apps_title">ব্লক করা অ্যাপস</string>
     <string name="blocked_websites_title">ব্লক করা ওয়েবসাইট</string>
     <string name="add_app_button">অ্যাপ যোগ করুন</string>
     <string name="add_website_button">ওয়েবসাইট যোগ করুন</string>
-    <string name="remove_button">মুছে ফেলুন</string>
-    <string name="enable_accessibility_service">অনুগ্রহ করে সেটিংস থেকে অ্যাক্সেসিবিলিটি পরিষেবা চালু করুন</string>
+    <string name="remove_button">সরান</string>
+    <string name="enable_accessibility_service">অনুগ্রহ করে সেটিংস থেকে অ্যাক্সেসিবিলিটি পরিষেবা সক্রিয় করুন</string>
     <string name="settings_title">সেটিংস</string>
     <string name="about_title">সম্পর্কে</string>
-    <string name="manage_passwords">অ্যাপের পাসওয়ার্ড পরিচালনা করুন</string>
+    <string name="manage_passwords">অ্যাপ পাসওয়ার্ড পরিচালনা করুন</string>
     <string name="old_password">পুরানো পাসওয়ার্ড</string>
     <string name="new_password">নতুন পাসওয়ার্ড</string>
     <string name="save">সংরক্ষণ করুন</string>
     <string name="cancel">বাতিল করুন</string>
     <string name="nuclear_protection">পারমাণবিক সুরক্ষা</string>
-    <string name="give_permissions">বাকি অনুমতিগুলো এখানে দিন</string>
-    <string name="focus_subtitle">সম্পূর্ণ ফোকাস, শূন্য বিভ্রান্তি</string>
-    <string name="password_block">পাসওয়ার্ড ব্লক</string>
-    <string name="password_block_sub">স্থায়ী বা নির্দিষ্ট সময় (পরিবর্তন করতে পাসওয়ার্ড প্রয়োজন)</string>
-    <string name="time_block">সময় ব্লক</string>
+    <string name="give_permissions">বাকি অনুমতিগুলি এখানে দিন</string>
+    <string name="permissions_warning_new">অ্যাপটিকে সমস্ত অনুমতি দিলেই কেবল ব্লকিং কাজ করবে</string>
+
+    <string name="focus_subtitle">পূর্ণ ফোকাস, শূন্য বিভ্রান্তি</string>
+    <string name="password_block">পাসওয়ার্ড লক</string>
+    <string name="password_block_sub">স্থায়ী বা সময়কাল (পরিবর্তনের জন্য পাসওয়ার্ড প্রয়োজন)</string>
+    <string name="time_block">টাইম লক</string>
     <string name="time_block_sub">দিন এবং ঘন্টা (বাতিল করা অসম্ভব)</string>
     <string name="view_active_sessions">সক্রিয় সেশন দেখুন</string>
     <string name="swipe_hint">← পরিসংখ্যান দেখতে সোয়াইপ করুন →</string>
-    
-    <!-- মেনু আইটেম -->
+    <string name="usage_limits">ব্যবহারের সীমা</string>
+    <string name="usage_limits_sub">অ্যাপ এবং সাইটের দৈনিক সময় নিয়ন্ত্রণ করুন</string>
+
+    <!-- Itens do Menu -->
     <string name="limits_and_security">সীমা এবং নিরাপত্তা</string>
     <string name="intruder_log">অনুপ্রবেশকারী লগ</string>
     <string name="language_settings">ভাষা</string>

@@ -279,10 +279,13 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun blockApp(packageName: String) {
         try {
-            performGlobalAction(GLOBAL_ACTION_HOME)
-            showToastThrottled("App bloqueado pelo FocusGuard")
+            val intent = Intent(this, com.focusguard.ui.BlockNoticeActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            }
+            startActivity(intent)
         } catch (e: Exception) {
-            com.focusguard.utils.FocusGuardLogger.log("A11y", "Erro no refreshData: ${e.message}")
+            com.focusguard.utils.FocusGuardLogger.log("A11y", "Erro ao bloquear app: ${e.message}")
+            performGlobalAction(GLOBAL_ACTION_HOME)
         }
     }
 
@@ -367,10 +370,13 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
     private fun blockWebsite() {
         try {
-            performGlobalAction(GLOBAL_ACTION_HOME)
-            showToastThrottled("Site bloqueado pelo FocusGuard")
+            val intent = Intent(this, com.focusguard.ui.BlockNoticeActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            }
+            startActivity(intent)
         } catch (e: Exception) {
             com.focusguard.utils.FocusGuardLogger.log("A11y", "Erro ao bloquear browser: ${e.message}")
+            performGlobalAction(GLOBAL_ACTION_HOME)
         }
     }
     

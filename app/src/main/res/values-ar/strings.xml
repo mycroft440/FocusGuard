@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">FocusGuard</string>
-    <string name="accessibility_service_description">خدمة إمكانية الوصول FocusGuard - تحجب التطبيقات والمواقع المشتتة</string>
+    <string name="accessibility_service_description">خدمة وصول FocusGuard - تحظر التطبيقات والمواقع المشتتة</string>
     <string name="home_title">FocusGuard</string>
-    <string name="blocked_apps_title">التطبيقات المحجوبة</string>
-    <string name="blocked_websites_title">المواقع المحجوبة</string>
+    <string name="blocked_apps_title">التطبيقات المحظورة</string>
+    <string name="blocked_websites_title">المواقع المحظورة</string>
     <string name="add_app_button">إضافة تطبيق</string>
     <string name="add_website_button">إضافة موقع</string>
     <string name="remove_button">إزالة</string>
-    <string name="enable_accessibility_service">يرجى تفعيل خدمة إمكانية الوصول من الإعدادات</string>
+    <string name="enable_accessibility_service">يرجى تفعيل خدمة الوصول في الإعدادات</string>
     <string name="settings_title">الإعدادات</string>
     <string name="about_title">حول</string>
     <string name="manage_passwords">إدارة كلمات مرور التطبيق</string>
@@ -16,18 +16,22 @@
     <string name="new_password">كلمة المرور الجديدة</string>
     <string name="save">حفظ</string>
     <string name="cancel">إلغاء</string>
-    <string name="nuclear_protection">الحماية النووية</string>
-    <string name="give_permissions">امنح الأذونات المتبقية هنا</string>
-    <string name="focus_subtitle">تركيز كامل، صفر تشتيت</string>
+    <string name="nuclear_protection">حماية نووية</string>
+    <string name="give_permissions">امنح بقية الأذونات هنا</string>
+    <string name="permissions_warning_new">سيعمل الحظر فقط إذا منحت جميع الأذونات للتطبيق</string>
+
+    <string name="focus_subtitle">تركيز كامل، صفر مشتتات</string>
     <string name="password_block">قفل بكلمة مرور</string>
-    <string name="password_block_sub">ثابت أو لفترة (يتطلب كلمة مرور للتغيير)</string>
-    <string name="time_block">قفل بالوقت</string>
+    <string name="password_block_sub">ثابت أو فترة (يتطلب كلمة مرور للتغيير)</string>
+    <string name="time_block">قفل زمني</string>
     <string name="time_block_sub">أيام وساعات (مستحيل الإلغاء)</string>
     <string name="view_active_sessions">عرض الجلسات النشطة</string>
     <string name="swipe_hint">← اسحب لرؤية الإحصائيات →</string>
-    
-    <!-- عناصر القائمة -->
+    <string name="usage_limits">حدود الاستخدام</string>
+    <string name="usage_limits_sub">تحكم في الوقت اليومي للتطبيقات والمواقع</string>
+
+    <!-- Itens do Menu -->
     <string name="limits_and_security">الحدود والأمان</string>
-    <string name="intruder_log">سجل المتطفلين</string>
+    <string name="intruder_log">سجل الدخلاء</string>
     <string name="language_settings">اللغة</string>
 </resources>

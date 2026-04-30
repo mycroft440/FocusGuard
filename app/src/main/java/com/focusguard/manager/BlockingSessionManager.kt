@@ -264,6 +264,13 @@ class BlockingSessionManager private constructor(private val context: Context) {
                         }
                         return@launch
                     }
+                    if (session.sessionType == "TIME" && isCurrentlyInBlockingWindow(session)) {
+                        FocusGuardLogger.log("BlockingSessionManager", "Tentativa de encerrar TIME session ativa negada (ID: $sessionId)")
+                        withContext(Dispatchers.Main) { 
+                            Toast.makeText(context, "Bloqueios por tempo não podem ser revogados até o fim do período!", Toast.LENGTH_LONG).show() 
+                        }
+                        return@launch
+                    }
                     database.blockSessionDao().updateBlockSession(session.copy(isActive = false))
                     checkAndEnforce()
                     FocusGuardLogger.log("BlockingSessionManager", "Sessão $sessionId encerrada com sucesso.")

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FocusGuard</string>
+    <string name="accessibility_service_description">FocusGuard قابل رسائی سروس - توجہ ہٹانے والی ایپس اور سائٹس کو بلاک کرتی ہے</string>
+    <string name="home_title">FocusGuard</string>
+    <string name="blocked_apps_title">بلاک شدہ ایپس</string>
+    <string name="blocked_websites_title">بلاک شدہ ویب سائٹس</string>
+    <string name="add_app_button">ایپ شامل کریں</string>
+    <string name="add_website_button">ویب سائٹ شامل کریں</string>
+    <string name="remove_button">ہٹائیں</string>
+    <string name="enable_accessibility_service">براہ کرم ترتیبات سے قابل رسائی سروس فعال کریں</string>
+    <string name="settings_title">ترتیبات</string>
+    <string name="about_title">بارے میں</string>
+    <string name="manage_passwords">ایپ پاس ورڈز کا انتظام کریں</string>
+    <string name="old_password">پرانا پاس ورڈ</string>
+    <string name="new_password">نیا پاس ورڈ</string>
+    <string name="save">محفوظ کریں</string>
+    <string name="cancel">منسوخ کریں</string>
+    <string name="nuclear_protection">ایٹمی تحفظ</string>
+    <string name="give_permissions">باقی اجازتیں یہاں دیں</string>
+    <string name="focus_subtitle">مکمل توجہ، صفر خلفشار</string>
+    <string name="password_block">پاس ورڈ لاک</string>
+    <string name="password_block_sub">مستقل یا مدت (تبدیلی کے لیے پاس ورڈ درکار ہے)</string>
+    <string name="time_block">ٹائم لاک</string>
+    <string name="time_block_sub">دن اور گھنٹے (منسوخ کرنا ناممکن ہے)</string>
+    <string name="view_active_sessions">فعال سیشنز دیکھیں</string>
+    <string name="swipe_hint">← اعداد و شمار دیکھنے کے لیے سوائپ کریں →</string>
+    
+    <!-- مینو آئٹمز -->
+    <string name="limits_and_security">حدود اور سیکیورٹی</string>
+    <string name="intruder_log">دراندازی لاگ</string>
+    <string name="language_settings">زبان</string>
+</resources>

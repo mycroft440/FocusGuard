@@ -51,6 +51,12 @@
             android:exported="false"
             android:theme="@style/Theme.FocusGuard" />
 
+        <activity
+            android:name=".ui.BlockNoticeActivity"
+            android:exported="false"
+            android:theme="@style/Theme.FocusGuard"
+            android:noHistory="true" />
+
         <receiver
             android:name=".admin.FocusGuardDeviceAdminReceiver"
             android:permission="android.permission.BIND_DEVICE_ADMIN"
