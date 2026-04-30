@@ -202,16 +202,19 @@ fun MainActivityContent(
                         selectedSessionType = "TIME"
                         currentRoute = "SESSIONS_LIST"
                     },
-                    onDeviceOwnerClick = { deviceOwnerManager.setAsDeviceOwner() },
+                    onAppUsageLimitsClick = { currentRoute = "USAGE_LIMITS" },
+                    onSettingsClick = { currentRoute = "SETTINGS" },
+                    usageStatsContent = { UsageStatsDashboardScreen(onBack = { currentRoute = "HOME" }) },
+                    pomodoroContent = { PomodoroScreen(pomodoroManager = pomodoroManager, authManager = authManager, onBack = { currentRoute = "HOME" }) }
+                )
+                "SETTINGS" -> SettingsScreen(
                     onLimitsClick = { currentRoute = "LIMITS" },
                     onIntruderLogClick = { currentRoute = "INTRUDER_LOG" },
                     onLanguageClick = { currentRoute = "LANGUAGE" },
                     onPasswordManagementClick = { currentRoute = "PASSWORD_MANAGEMENT" },
                     onBlockCustomizationClick = { currentRoute = "BLOCK_CUSTOMIZATION" },
-                    onAppUsageLimitsClick = { currentRoute = "USAGE_LIMITS" },
-                    authManager = authManager,
-                    usageStatsContent = { UsageStatsDashboardScreen(onBack = { currentRoute = "HOME" }) },
-                    pomodoroContent = { PomodoroScreen(pomodoroManager = pomodoroManager, authManager = authManager, onBack = { currentRoute = "HOME" }) }
+                    onDeviceOwnerClick = { deviceOwnerManager.setAsDeviceOwner() },
+                    onBack = { currentRoute = "HOME" }
                 )
                 "POMODORO" -> PomodoroScreen(pomodoroManager = pomodoroManager, authManager = authManager, onBack = { currentRoute = "HOME" })
                 "LIMITS" -> LimitsSecurityScreen(authManager = authManager, onBack = { currentRoute = "HOME" })

@@ -35,187 +35,124 @@ import com.focusguard.ui.compose.theme.*
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
-@OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
     permissionsVisible: Boolean,
     onPermissionsClick: () -> Unit,
     onPasswordSessionClick: () -> Unit,
     onTimeSessionClick: () -> Unit,
-    onDeviceOwnerClick: () -> Unit,
-    onLimitsClick: () -> Unit,
-    onIntruderLogClick: () -> Unit,
-    onLanguageClick: () -> Unit,
-    onPasswordManagementClick: () -> Unit,
-    onBlockCustomizationClick: () -> Unit,
     onAppUsageLimitsClick: () -> Unit,
-    authManager: AuthManager,
+    onSettingsClick: () -> Unit,
     usageStatsContent: @Composable () -> Unit,
     pomodoroContent: @Composable () -> Unit
 ) {
-    val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
-    val scope = rememberCoroutineScope()
+    var selectedTab by remember { mutableIntStateOf(1) }
 
-    ModalNavigationDrawer(
-        drawerState = drawerState,
-        drawerContent = {
-            ModalDrawerSheet(
-                drawerContainerColor = DarkSurface,
-                modifier = Modifier.width(300.dp)
+    Scaffold(
+        topBar = {
+            CenterAlignedTopAppBar(
+                title = { 
+                    Text(
+                        when(selectedTab) {
+                            0 -> stringResource(R.string.nav_insights)
+                            1 -> stringResource(R.string.app_name)
+                            else -> stringResource(R.string.nav_focus)
+                        },
+                        fontWeight = FontWeight.Bold
+                    ) 
+                },
+                actions = {
+                    IconButton(onClick = onSettingsClick) {
+                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.nav_settings))
+                    }
+                },
+                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
+                    containerColor = DarkBg,
+                    titleContentColor = TextPrimary,
+                    actionIconContentColor = TextPrimary
+                )
+            )
+        },
+        bottomBar = {
+            NavigationBar(
+                containerColor = DarkSurface,
+                tonalElevation = 8.dp
             ) {
-                // Header
-                Spacer(modifier = Modifier.height(24.dp))
-                Row(
-                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(48.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(AccentCyan.copy(alpha = 0.2f), AccentPurple.copy(alpha = 0.2f))
-                                )
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(painter = painterResource(id = R.drawable.ic_shield), contentDescription = null, tint = AccentCyan, modifier = Modifier.size(28.dp))
-                    }
-                    Spacer(modifier = Modifier.width(14.dp))
-                    Column {
-                        Text(stringResource(id = R.string.app_name), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                        Text(stringResource(id = R.string.focusguard_subtitle), fontSize = 12.sp, color = TextHint)
-                    }
-                }
-                Spacer(modifier = Modifier.height(8.dp))
-                Divider(color = CardBorder, modifier = Modifier.padding(horizontal = 20.dp))
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // Menu Items
-                DrawerMenuButton(
-                    icon = Icons.Default.Lock,
-                    label = stringResource(id = R.string.manage_passwords),
-                    iconTint = AccentCyan,
-                    onClick = {
-                        onPasswordManagementClick()
-                        scope.launch { drawerState.close() }
-                    }
+                NavigationBarItem(
+                    selected = selectedTab == 0,
+                    onClick = { selectedTab = 0 },
+                    icon = { Icon(Icons.Default.BarChart, contentDescription = null) },
+                    label = { Text(stringResource(R.string.nav_insights)) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = AccentCyan,
+                        selectedTextColor = AccentCyan,
+                        unselectedIconColor = TextHint,
+                        unselectedTextColor = TextHint,
+                        indicatorColor = AccentCyan.copy(alpha = 0.1f)
+                    )
                 )
-                DrawerMenuButton(
-                    icon = Icons.Default.Security,
-                    label = stringResource(id = R.string.limits_and_security),
-                    iconTint = AccentCyan,
-                    onClick = {
-                        onLimitsClick()
-                        scope.launch { drawerState.close() }
-                    }
+                NavigationBarItem(
+                    selected = selectedTab == 1,
+                    onClick = { selectedTab = 1 },
+                    icon = { Icon(Icons.Default.Shield, contentDescription = null) },
+                    label = { Text(stringResource(R.string.nav_protection)) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = AccentCyan,
+                        selectedTextColor = AccentCyan,
+                        unselectedIconColor = TextHint,
+                        unselectedTextColor = TextHint,
+                        indicatorColor = AccentCyan.copy(alpha = 0.1f)
+                    )
                 )
-                DrawerMenuButton(
-                    icon = Icons.Default.PhotoCamera,
-                    label = stringResource(id = R.string.intruder_log),
-                    iconTint = AccentCyan,
-                    onClick = {
-                        onIntruderLogClick()
-                        scope.launch { drawerState.close() }
-                    }
-                )
-                DrawerMenuButton(
-                    icon = Icons.Default.Language,
-                    label = stringResource(id = R.string.language_settings),
-                    iconTint = AccentCyan,
-                    onClick = {
-                        onLanguageClick()
-                        scope.launch { drawerState.close() }
-                    }
-                )
-                DrawerMenuButton(
-                    icon = Icons.Default.Palette,
-                    label = stringResource(id = R.string.block_customization),
-                    iconTint = AccentCyan,
-                    onClick = {
-                        onBlockCustomizationClick()
-                        scope.launch { drawerState.close() }
-                    }
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-                Divider(color = CardBorder, modifier = Modifier.padding(horizontal = 20.dp))
-                Spacer(modifier = Modifier.height(12.dp))
-
-                DrawerMenuButton(
-                    icon = Icons.Default.Warning,
-                    label = stringResource(id = R.string.nuclear_protection),
-                    iconTint = DangerRed,
-                    labelColor = DangerRed,
-                    bgColor = DangerRed.copy(alpha = 0.08f),
-                    onClick = {
-                        onDeviceOwnerClick()
-                        scope.launch { drawerState.close() }
-                    }
-                )
-            }
-        }
-    ) {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text(stringResource(id = R.string.app_name), fontWeight = FontWeight.Bold) },
-                    navigationIcon = {
-                        IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                            Icon(Icons.Default.Menu, contentDescription = "Menu")
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(
-                        containerColor = DarkBg,
-                        titleContentColor = TextPrimary,
-                        navigationIconContentColor = TextPrimary
+                NavigationBarItem(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    icon = { Icon(Icons.Default.Timer, contentDescription = null) },
+                    label = { Text(stringResource(R.string.nav_focus)) },
+                    colors = NavigationBarItemDefaults.colors(
+                        selectedIconColor = AccentCyan,
+                        selectedTextColor = AccentCyan,
+                        unselectedIconColor = TextHint,
+                        unselectedTextColor = TextHint,
+                        indicatorColor = AccentCyan.copy(alpha = 0.1f)
                     )
                 )
             }
-        ) { paddingValues ->
-            val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
-
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(DarkBg)
-                    .padding(paddingValues)
-            ) {
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.weight(1f)
-                ) { page ->
-                    when (page) {
-                        0 -> usageStatsContent()
-                        1 -> HomeContent(
-                            permissionsVisible = permissionsVisible,
-                            onPermissionsClick = onPermissionsClick,
-                            onPasswordSessionClick = onPasswordSessionClick,
-                            onTimeSessionClick = onTimeSessionClick,
-                            onAppUsageLimitsClick = onAppUsageLimitsClick,
-                            pagerHint = true
-                        )
-                        2 -> pomodoroContent()
-                    }
-                }
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 12.dp),
-                    horizontalArrangement = Arrangement.Center
-                ) {
-                    repeat(3) { index ->
-                        val isSelected = pagerState.currentPage == index
-                        Box(
-                            modifier = Modifier
-                                .padding(horizontal = 4.dp)
-                                .size(if (isSelected) 8.dp else 6.dp)
-                                .clip(CircleShape)
-                                .background(if (isSelected) AccentCyan else TextHint.copy(alpha = 0.4f))
-                        )
-                    }
+        }
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(DarkBg)
+                .padding(paddingValues)
+        ) {
+            AnimatedContent(
+                targetState = selectedTab,
+                transitionSpec = {
+                    if (targetState > initialState) {
+                        slideInHorizontally { width -> width } + fadeIn() togetherWith
+                                slideOutHorizontally { width -> -width } + fadeOut()
+                    } else {
+                        slideInHorizontally { width -> -width } + fadeIn() togetherWith
+                                slideOutHorizontally { width -> width } + fadeOut()
+                    }.using(
+                        SizeTransform(clip = false)
+                    )
+                },
+                label = "MainContent"
+            ) { targetTab ->
+                when (targetTab) {
+                    0 -> usageStatsContent()
+                    1 -> HomeContent(
+                        permissionsVisible = permissionsVisible,
+                        onPermissionsClick = onPermissionsClick,
+                        onPasswordSessionClick = onPasswordSessionClick,
+                        onTimeSessionClick = onTimeSessionClick,
+                        onAppUsageLimitsClick = onAppUsageLimitsClick,
+                        pagerHint = false
+                    )
+                    2 -> pomodoroContent()
                 }
             }
         }
