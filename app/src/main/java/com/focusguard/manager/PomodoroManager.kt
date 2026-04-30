@@ -37,20 +37,31 @@ class PomodoroManager private constructor(private val context: Context) {
     }
 
     init {
+        FocusGuardLogger.log("PomodoroManager", "Inicializando PomodoroManager...")
         loadSession()
         startTicker()
     }
 
     private fun loadSession() {
         scope.launch {
-            val session = dao.getPomodoroSessionSync()
-            _currentSession.value = session
-            updateTimeLeft()
+            try {
+                val session = dao.getPomodoroSessionSync()
+                if (session != null) {
+                    FocusGuardLogger.log("PomodoroManager", "Sessão carregada do banco: Ativa=${session.isActive}, Restante=${(session.endTime - System.currentTimeMillis())/1000}s")
+                } else {
+                    FocusGuardLogger.log("PomodoroManager", "Nenhuma sessão de Pomodoro encontrada no banco.")
+                }
+                _currentSession.value = session
+                updateTimeLeft()
+            } catch (e: Exception) {
+                FocusGuardLogger.logError("PomodoroManager", "Falha ao carregar sessão", e)
+            }
         }
     }
 
     private fun startTicker() {
         scope.launch {
+            FocusGuardLogger.log("PomodoroManager", "Iniciando Ticker do Pomodoro (1s)")
             while (true) {
                 updateTimeLeft()
                 delay(1000)
@@ -64,41 +75,60 @@ class PomodoroManager private constructor(private val context: Context) {
             val now = System.currentTimeMillis()
             val remaining = session.endTime - now
             if (remaining <= 0) {
+                FocusGuardLogger.log("PomodoroManager", "Tempo esgotado! Iniciando finalização automática.")
                 _timeLeftMillis.value = 0
                 scope.launch { stopSession() }
             } else {
                 _timeLeftMillis.value = remaining
+                // Log a cada 30 segundos para não poluir muito, ou log profundo se quiser tudo
+                if ((remaining / 1000) % 30 == 0L) {
+                    FocusGuardLogger.log("PomodoroManager", "Timer rodando: ${remaining/1000}s restantes")
+                }
             }
         } else {
-            _timeLeftMillis.value = 0
+            if (_timeLeftMillis.value != 0L) {
+                _timeLeftMillis.value = 0
+                FocusGuardLogger.log("PomodoroManager", "Timer zerado (sessão inativa ou nula)")
+            }
         }
     }
 
     suspend fun startSession(durationMinutes: Int, isBreak: Boolean = false) {
-        val durationMillis = durationMinutes * 60 * 1000L
-        val endTime = System.currentTimeMillis() + durationMillis
-        val session = PomodoroSession(
-            id = 1,
-            endTime = endTime,
-            durationMillis = durationMillis,
-            isActive = true,
-            isBreak = isBreak
-        )
-        dao.insertOrUpdate(session)
-        _currentSession.value = session
-        
-        // Ativa o bloqueio de apps no sistema
-        sessionManager.startPomodoroSession(durationMillis)
+        try {
+            val durationMillis = durationMinutes * 60 * 1000L
+            val endTime = System.currentTimeMillis() + durationMillis
+            val session = PomodoroSession(
+                id = 1,
+                endTime = endTime,
+                durationMillis = durationMillis,
+                isActive = true,
+                isBreak = isBreak
+            )
+            FocusGuardLogger.log("PomodoroManager", "Iniciando nova sessão: ${durationMinutes}min, Break=$isBreak")
+            dao.insertOrUpdate(session)
+            _currentSession.value = session
+            
+            FocusGuardLogger.log("PomodoroManager", "Notificando BlockingSessionManager para bloqueio de apps.")
+            sessionManager.startPomodoroSession(durationMillis)
+            FocusGuardLogger.log("PomodoroManager", "Sessão de Pomodoro iniciada com sucesso.")
+        } catch (e: Exception) {
+            FocusGuardLogger.logError("PomodoroManager", "Erro ao iniciar sessão", e)
+        }
     }
 
     suspend fun stopSession() {
-        dao.deleteSession()
-        _currentSession.value = null
-        _timeLeftMillis.value = 0
-        
-        // O BlockingSessionManager encerrará a sessão quando o tempo acabar no checkAndEnforce dele
-        // ou podemos forçar um checkAndEnforce
-        sessionManager.checkAndEnforce()
+        try {
+            FocusGuardLogger.log("PomodoroManager", "Encerrando sessão de Pomodoro...")
+            dao.deleteSession()
+            _currentSession.value = null
+            _timeLeftMillis.value = 0
+            
+            FocusGuardLogger.log("PomodoroManager", "Sessão deletada do banco. Atualizando BlockingSessionManager.")
+            sessionManager.checkAndEnforce()
+            FocusGuardLogger.log("PomodoroManager", "Pomodoro encerrado com sucesso. App desbloqueado.")
+        } catch (e: Exception) {
+            FocusGuardLogger.logError("PomodoroManager", "Erro ao parar sessão", e)
+        }
     }
 
     fun isPomodoroActive(): Boolean {

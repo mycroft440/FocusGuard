@@ -147,6 +147,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
     fun startPomodoroSession(durationMs: Long) {
         scope.launch {
             try {
+                FocusGuardLogger.log("BlockingSessionManager", "Iniciando sessÃ£o de Pomodoro no sistema: ${durationMs/1000}s")
                 database.withTransaction {
                     val startMillis = System.currentTimeMillis()
                     val endMillis = startMillis + durationMs
@@ -157,7 +158,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
                         isActive = true,
                         sessionType = "POMODORO",
                         isFixed24h = true,
-                        blockedAppsCount = 0, // Handled dynamically in checkAndEnforce
+                        blockedAppsCount = 0,
                         blockedWebsitesCount = 0
                     )
 
@@ -165,11 +166,12 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 }
 
                 checkAndEnforce()
+                FocusGuardLogger.log("BlockingSessionManager", "SessÃ£o de Pomodoro registrada com sucesso.")
                 withContext(Dispatchers.Main) { 
                     Toast.makeText(context, "MODO POMODORO ATIVADO: Foco Total.", Toast.LENGTH_LONG).show() 
                 }
             } catch (e: Exception) {
-                com.focusguard.utils.FocusGuardLogger.logError("Manager", "Erro ao iniciar pomodoro", e)
+                FocusGuardLogger.logError("BlockingSessionManager", "Erro ao iniciar pomodoro", e)
             }
         }
     }
@@ -180,6 +182,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
 
     fun appendToTimeSession(addedDays: Int, addedHours: Int, additionalApps: List<String>, additionalSites: List<String>) {
         scope.launch {
+            FocusGuardLogger.log("BlockingSessionManager", "Tentando adicionar tempo à sessão TIME")
             val sessions = database.blockSessionDao().getAllActiveSessions().first().filter { it.sessionType == "TIME" }
             if (sessions.isNotEmpty()) {
                 val session = sessions.first()
@@ -203,7 +206,10 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 additionalSites.forEach { database.sessionWebsiteCrossRefDao().insert(SessionWebsiteCrossRef(session.id, it)) }
 
                 checkAndEnforce()
+                FocusGuardLogger.log("BlockingSessionManager", "Tempo adicionado com sucesso. Novo endTime: $newEndTime")
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Tempo e/ou apps adicionados.", Toast.LENGTH_LONG).show() }
+            } else {
+                FocusGuardLogger.log("BlockingSessionManager", "Nenhuma sessão TIME ativa encontrada para adicionar tempo.")
             }
         }
     }
@@ -211,14 +217,16 @@ class BlockingSessionManager private constructor(private val context: Context) {
     fun endPasswordSessions() {
         scope.launch {
             try {
-                // Não permite encerrar Pomodoro por aqui
+                FocusGuardLogger.log("BlockingSessionManager", "Encerrando sessões PASSWORD")
                 val sessions = database.blockSessionDao().getAllActiveSessions().first().filter { it.sessionType == "PASSWORD" }
                 for (session in sessions) {
                     database.blockSessionDao().updateBlockSession(session.copy(isActive = false))
                 }
                 checkAndEnforce()
+                FocusGuardLogger.log("BlockingSessionManager", "Sessões PASSWORD encerradas.")
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Bloqueios por Senha encerrados", Toast.LENGTH_SHORT).show() }
             } catch (e: Exception) {
+                FocusGuardLogger.logError("BlockingSessionManager", "Erro ao encerrar sessões PASSWORD", e)
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Falha: ${e.message}", Toast.LENGTH_SHORT).show() }
             }
         }
@@ -227,10 +235,12 @@ class BlockingSessionManager private constructor(private val context: Context) {
     fun endSession(sessionId: Int) {
         scope.launch {
             try {
+                FocusGuardLogger.log("BlockingSessionManager", "Tentando encerrar sessão ID: $sessionId")
                 val sessions = database.blockSessionDao().getAllActiveSessions().first()
                 val session = sessions.find { it.id == sessionId }
                 if (session != null) {
                     if (session.sessionType == "POMODORO") {
+                        FocusGuardLogger.log("BlockingSessionManager", "Tentativa de encerrar POMODORO negada (ID: $sessionId)")
                         withContext(Dispatchers.Main) { 
                             Toast.makeText(context, "O Pomodoro não pode ser interrompido!", Toast.LENGTH_LONG).show() 
                         }
@@ -238,9 +248,11 @@ class BlockingSessionManager private constructor(private val context: Context) {
                     }
                     database.blockSessionDao().updateBlockSession(session.copy(isActive = false))
                     checkAndEnforce()
+                    FocusGuardLogger.log("BlockingSessionManager", "Sessão $sessionId encerrada com sucesso.")
                     withContext(Dispatchers.Main) { Toast.makeText(context, "Bloqueio encerrado", Toast.LENGTH_SHORT).show() }
                 }
             } catch (e: Exception) {
+                FocusGuardLogger.logError("BlockingSessionManager", "Erro ao encerrar sessão $sessionId", e)
                 withContext(Dispatchers.Main) { Toast.makeText(context, "Falha ao encerrar: ${e.message}", Toast.LENGTH_SHORT).show() }
             }
         }
@@ -248,15 +260,18 @@ class BlockingSessionManager private constructor(private val context: Context) {
 
     suspend fun checkAndEnforce() {
         try {
+            FocusGuardLogger.log("BlockingSessionManager", "Iniciando checkAndEnforce...")
             val sessions = database.blockSessionDao().getAllActiveSessions().first()
             val enforcingSessions = sessions.filter { isCurrentlyInBlockingWindow(it) }
+
+            FocusGuardLogger.log("BlockingSessionManager", "Sessões ativas: ${sessions.size}, Sessões aplicando bloqueio agora: ${enforcingSessions.size}")
 
             val enforcingIds = enforcingSessions.map { it.id }
             
             val isPomodoroActive = enforcingSessions.any { it.sessionType == "POMODORO" }
             
             val sessionAppsToBlock = if (isPomodoroActive) {
-                // Em modo Pomodoro, bloqueamos TODOS os apps (o DeviceOwnerManager filtrará os essenciais)
+                FocusGuardLogger.log("BlockingSessionManager", "Modo POMODORO detectado no enforce. Bloqueando TODOS os apps.")
                 context.packageManager.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA)
                     .map { it.packageName }
             } else {

@@ -25,6 +25,8 @@ import kotlinx.coroutines.withContext
 import androidx.appcompat.app.AppCompatActivity
 import com.focusguard.security.AuthManager
 import com.focusguard.database.AppDatabase
+import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.manager.PomodoroManager
 
 class MainActivity : AppCompatActivity() {
 
@@ -35,6 +37,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        FocusGuardLogger.init(this)
+        FocusGuardLogger.log("MainActivity", "onCreate disparado")
 
         val prefs = getSharedPreferences("FocusGuardPrefs", Context.MODE_PRIVATE)
         val attemptCount = prefs.getInt("launchAttemptCount", 0) + 1
@@ -50,6 +54,8 @@ class MainActivity : AppCompatActivity() {
         sessionManager = BlockingSessionManager.getInstance(applicationContext)
         authManager = AuthManager(applicationContext)
         pomodoroManager = PomodoroManager.getInstance(applicationContext)
+        
+        FocusGuardLogger.log("MainActivity", "Managers inicializados com sucesso")
 
         setContent {
             FocusGuardTheme {
@@ -57,10 +63,21 @@ class MainActivity : AppCompatActivity() {
                     activity = this,
                     deviceOwnerManager = deviceOwnerManager,
                     sessionManager = sessionManager,
-                    authManager = authManager
+                    authManager = authManager,
+                    pomodoroManager = pomodoroManager
                 )
             }
         }
+    }
+    
+    override fun onResume() {
+        super.onResume()
+        FocusGuardLogger.log("MainActivity", "onResume disparado")
+    }
+
+    override fun onPause() {
+        super.onPause()
+        FocusGuardLogger.log("MainActivity", "onPause disparado")
     }
 }
 
@@ -105,10 +122,23 @@ fun MainActivityContent(
     
     val currentPomodoro by pomodoroManager.currentSession.collectAsState()
     
-    // Forçar rota Pomodoro se estiver ativo
+    // Forçar rota Pomodoro se estiver ativo e correção proativa
     LaunchedEffect(currentPomodoro) {
         if (currentPomodoro?.isActive == true) {
-            currentRoute = "POMODORO"
+            val now = System.currentTimeMillis()
+            if (currentPomodoro!!.endTime <= now) {
+                FocusGuardLogger.log("MainActivity", "Detectado Pomodoro expirado na abertura. Limpando...")
+                pomodoroManager.stopSession()
+                currentRoute = "HOME"
+            } else {
+                FocusGuardLogger.log("MainActivity", "Pomodoro ativo detectado. Redirecionando para tela de foco.")
+                currentRoute = "POMODORO"
+            }
+        } else {
+            if (currentRoute == "POMODORO") {
+                FocusGuardLogger.log("MainActivity", "Pomodoro inativado. Voltando para Home.")
+                currentRoute = "HOME"
+            }
         }
     }
     val isBlocking by sessionManager.isBlockingActiveFlow.collectAsState(initial = false)
@@ -146,8 +176,9 @@ fun MainActivityContent(
     }
 
     if (isPomodoroActive) {
+        FocusGuardLogger.log("MainActivity", "isPomodoroActive=true (BlockingSessionManager). ForÃ§ando exibição.")
         Box(modifier = Modifier.fillMaxSize().background(com.focusguard.ui.compose.theme.DarkBg)) {
-            PomodoroScreen()
+            PomodoroScreen(pomodoroManager = pomodoroManager, onBack = { /* Bloqueado */ })
         }
         return
     }

@@ -29,6 +29,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.focusguard.manager.PomodoroManager
+import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.ui.compose.theme.*
 import kotlinx.coroutines.launch
 
@@ -48,12 +49,15 @@ fun PomodoroScreen(
     
     // MODO IMERSIVO (TELA INTEIRA)
     LaunchedEffect(isActive) {
+        FocusGuardLogger.log("PomodoroScreen", "Estado Imersivo alterado: $isActive")
         activity?.window?.let { window ->
             val controller = WindowInsetsControllerCompat(window, window.decorView)
             if (isActive) {
+                FocusGuardLogger.log("PomodoroScreen", "Escondendo barras de sistema.")
                 controller.hide(WindowInsetsCompat.Type.systemBars())
                 controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             } else {
+                FocusGuardLogger.log("PomodoroScreen", "Mostrando barras de sistema.")
                 controller.show(WindowInsetsCompat.Type.systemBars())
             }
         }
@@ -61,19 +65,25 @@ fun PomodoroScreen(
 
     // BLOQUEIO DO BOTÃƒO VOLTAR
     BackHandler(enabled = isActive) {
-        // NÃ£o faz nada: impede a saÃda da tela
+        FocusGuardLogger.log("PomodoroScreen", "Tentativa de voltar negada: Pomodoro ativo.")
     }
 
     // KIOSK MODE (Lock Task) - Se Device Owner
     LaunchedEffect(isActive) {
         if (isActive) {
             try {
+                FocusGuardLogger.log("PomodoroScreen", "Ativando startLockTask.")
                 activity?.startLockTask()
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                FocusGuardLogger.logError("PomodoroScreen", "Falha ao ativar startLockTask", e)
+            }
         } else {
             try {
+                FocusGuardLogger.log("PomodoroScreen", "Desativando stopLockTask.")
                 activity?.stopLockTask()
-            } catch (_: Exception) {}
+            } catch (e: Exception) {
+                FocusGuardLogger.logError("PomodoroScreen", "Falha ao desativar stopLockTask", e)
+            }
         }
     }
 
