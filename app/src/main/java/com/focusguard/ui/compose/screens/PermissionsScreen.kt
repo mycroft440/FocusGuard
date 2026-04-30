@@ -14,9 +14,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -275,7 +277,9 @@ fun PermissionsScreen(
             )
         }
 
-        var showSkipOverlay by remember { mutableStateOf(false) }
+        var showSkipOverlay by rememberSaveable { mutableStateOf(false) }
+        var showBatteryOverlay by rememberSaveable { mutableStateOf(false) }
+        var skipInteracted by rememberSaveable { mutableStateOf(false) }
         val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
             androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
         ) { isGranted ->
@@ -283,6 +287,77 @@ fun PermissionsScreen(
                 onFinish()
             } else {
                 onFinish()
+            }
+        }
+
+        if (showBatteryOverlay) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.8f))
+                    .clickable(enabled = false) {},
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    modifier = Modifier.padding(32.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(containerColor = DarkSurface),
+                    border = BorderStroke(1.dp, CardBorder)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Icon(androidx.compose.material.icons.Icons.Default.BatteryChargingFull, null, tint = AccentCyan, modifier = Modifier.size(48.dp))
+                        Spacer(Modifier.height(16.dp))
+                        Text(
+                            "Bateria Irrestrita",
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            "Para garantir que o bloqueio nunca falhe, o Android precisa ignorar as restrições de bateria para o FocusGuard.",
+                            fontSize = 14.sp,
+                            color = TextSecondary,
+                            textAlign = TextAlign.Center
+                        )
+                        Spacer(Modifier.height(24.dp))
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedButton(
+                                onClick = { 
+                                    showBatteryOverlay = false
+                                    showSkipOverlay = true
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, CardBorder)
+                            ) {
+                                Text("Negar", color = TextSecondary)
+                            }
+                            Button(
+                                onClick = {
+                                    try {
+                                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                            data = Uri.parse("package:${context.packageName}")
+                                        }
+                                        context.startActivity(intent)
+                                    } catch (e: Exception) {
+                                        context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+                                    }
+                                    showBatteryOverlay = false
+                                    showSkipOverlay = true
+                                },
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                            ) {
+                                Text("Permitir", color = DarkBg)
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -354,7 +429,16 @@ fun PermissionsScreen(
                 if (permState.accessibility && permState.usageAccess) {
                     onFinish()
                 } else {
-                    showSkipOverlay = true
+                    if (skipInteracted) {
+                        onFinish()
+                    } else {
+                        skipInteracted = true
+                        if (!permState.batteryOptimization) {
+                            showBatteryOverlay = true
+                        } else {
+                            showSkipOverlay = true
+                        }
+                    }
                 }
             },
             modifier = Modifier

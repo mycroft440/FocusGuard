@@ -22,6 +22,7 @@ import android.app.NotificationManager
 import android.os.Build
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,8 +57,17 @@ fun PomodoroScreen(
     val timeLeftMillis by pomodoroManager.timeLeftMillis.collectAsState()
     var isBlockingEnabled by remember { mutableStateOf(false) }
     var showBlockingWarning by remember { mutableStateOf(false) }
+    var countdown by remember { mutableIntStateOf(4) }
 
     if (showBlockingWarning) {
+        LaunchedEffect(showBlockingWarning) {
+            countdown = 4
+            while (countdown > 0) {
+                kotlinx.coroutines.delay(1000)
+                countdown--
+            }
+        }
+
         AlertDialog(
             onDismissRequest = { showBlockingWarning = false },
             containerColor = DarkSurface,
@@ -90,9 +100,10 @@ fun PomodoroScreen(
                             showBlockingWarning = false
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                    enabled = countdown == 0
                 ) {
-                    Text("Confirmar", color = DarkBg)
+                    Text(if (countdown > 0) "Confirmar (${countdown}s)" else "Confirmar", color = DarkBg)
                 }
             },
             dismissButton = {
