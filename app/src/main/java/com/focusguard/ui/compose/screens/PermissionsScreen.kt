@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -66,6 +67,102 @@ fun PermissionsScreen(
         lifecycleOwner.lifecycle.addObserver(callback)
         onDispose { lifecycleOwner.lifecycle.removeObserver(callback) }
     }
+    
+    var showRestrictedDialog by remember { mutableStateOf(false) }
+
+    if (showRestrictedDialog) {
+        AlertDialog(
+            onDismissRequest = { showRestrictedDialog = false },
+            containerColor = DarkSurface,
+            titleContentColor = AccentCyan,
+            textContentColor = TextPrimary,
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.Settings, contentDescription = null, tint = AccentCyan)
+                    Spacer(Modifier.width(8.dp))
+                    Text("Desbloquear Acessibilidade", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                }
+            },
+            text = {
+                Column {
+                    Text(
+                        "O Android ocultou essa permissão por segurança. Para ativá-la, siga os passos exatos:",
+                        fontSize = 14.sp,
+                        color = TextSecondary
+                    )
+                    Spacer(Modifier.height(16.dp))
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(24.dp).background(DarkCardElevated, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Text("1", color = AccentCyan, fontWeight = FontWeight.Bold) }
+                        Spacer(Modifier.width(8.dp))
+                        Text("Toque em 'Abrir Configurações' abaixo.", fontSize = 14.sp)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(24.dp).background(DarkCardElevated, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Text("2", color = AccentCyan, fontWeight = FontWeight.Bold) }
+                        Spacer(Modifier.width(8.dp))
+                        Text("No canto superior direito, toque nos três pontinhos (⋮).", fontSize = 14.sp)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(24.dp).background(DarkCardElevated, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Text("3", color = AccentCyan, fontWeight = FontWeight.Bold) }
+                        Spacer(Modifier.width(8.dp))
+                        Text("Toque em 'Permitir configurações restritas'.", fontSize = 14.sp)
+                    }
+                    Spacer(Modifier.height(12.dp))
+                    
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(24.dp).background(DarkCardElevated, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Text("4", color = AccentCyan, fontWeight = FontWeight.Bold) }
+                        Spacer(Modifier.width(8.dp))
+                        Text("Volte para cá e tente ativar novamente.", fontSize = 14.sp)
+                    }
+                    
+                    Spacer(Modifier.height(16.dp))
+                    Surface(
+                        color = DangerRed.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ) {
+                        Text(
+                            "Dica: Se a opção não aparecer nos 3 pontinhos, tente ativar a Acessibilidade primeiro para que o Android exiba o alerta, depois tente novamente.",
+                            color = DangerRed,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(8.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showRestrictedDialog = false
+                        try {
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = Uri.parse("package:${context.packageName}")
+                            }
+                            context.startActivity(intent)
+                        } catch (_: Exception) {
+                            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                ) {
+                    Text("Abrir Configurações", color = DarkBg)
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showRestrictedDialog = false
+                        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    }
+                ) {
+                    Text("Já liberei, ativar agora", color = TextSecondary)
+                }
+            }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -113,7 +210,13 @@ fun PermissionsScreen(
                 title = "Acessibilidade",
                 description = "Permite ler a tela e bloquear apps/sites",
                 isGranted = permState.accessibility,
-                onClick = { handleAccessibilityPermission(context) }
+                onClick = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && isAccessibilityServiceRestricted(context)) {
+                        showRestrictedDialog = true
+                    } else {
+                        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                    }
+                }
             )
 
             Spacer(modifier = Modifier.height(12.dp))
@@ -185,36 +288,7 @@ fun PermissionsScreen(
     }
 }
 
-private fun handleAccessibilityPermission(context: Context) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && isAccessibilityServiceRestricted(context)) {
-        AlertDialog.Builder(context)
-            .setTitle("Ativar Acessibilidade")
-            .setMessage(
-                "O FocusGuard precisa da permissão de Acessibilidade, mas o Android detectou uma restrição.\n\n" +
-                "Siga estes passos:\n\n" +
-                "1. Toque em \"Liberar Restrição\" abaixo\n" +
-                "2. Procure a opção \"Permitir configurações restritas\"\n" +
-                "3. Volte e toque em \"Ativar Acessibilidade\""
-            )
-            .setPositiveButton("Ativar Acessibilidade") { _, _ ->
-                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-            }
-            .setNeutralButton("Liberar Restrição") { _, _ ->
-                try {
-                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                        data = Uri.parse("package:${context.packageName}")
-                    }
-                    context.startActivity(intent)
-                } catch (_: Exception) {
-                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                }
-            }
-            .setNegativeButton("Cancelar", null)
-            .show()
-    } else {
-        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-    }
-}
+
 
 private fun isAccessibilityServiceRestricted(context: Context): Boolean {
     return try {
