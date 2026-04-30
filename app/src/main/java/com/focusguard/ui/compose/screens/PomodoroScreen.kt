@@ -37,6 +37,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.ui.res.stringResource
+import com.focusguard.R
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.security.AuthManager
 import com.focusguard.utils.FocusGuardLogger
@@ -71,10 +73,10 @@ fun PomodoroScreen(
         AlertDialog(
             onDismissRequest = { showBlockingWarning = false },
             containerColor = DarkSurface,
-            title = { Text("Ativar Bloqueio Total?", color = AccentCyan, fontWeight = FontWeight.Bold) },
+            title = { Text(stringResource(R.string.pomodoro_enable_block_title), color = AccentCyan, fontWeight = FontWeight.Bold) },
             text = {
                 Text(
-                    "Ao ativar esta opçâo, o FocusGuard irá bloquear completamente o uso do seu celular durante a sessâo de Pomodoro. Você só poderá acessar o discador de telefone para emergências.",
+                    stringResource(R.string.pomodoro_enable_block_desc),
                     color = TextSecondary,
                     fontSize = 14.sp
                 )
@@ -103,12 +105,16 @@ fun PomodoroScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                     enabled = countdown == 0
                 ) {
-                    Text(if (countdown > 0) "Confirmar (${countdown}s)" else "Confirmar", color = DarkBg)
+                    Text(
+                        if (countdown > 0) stringResource(R.string.pomodoro_confirm_btn_countdown, countdown) 
+                        else stringResource(R.string.pomodoro_confirm_btn), 
+                        color = DarkBg
+                    )
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showBlockingWarning = false }) {
-                    Text("Cancelar", color = TextSecondary)
+                    Text(stringResource(R.string.pomodoro_cancel_btn), color = TextSecondary)
                 }
             }
         )
@@ -169,7 +175,7 @@ fun PomodoroScreen(
             modifier = Modifier.padding(24.dp)
         ) {
             Text(
-                text = if (currentSession?.isBreak == true) "Descanso" else "Foco Total",
+                text = if (currentSession?.isBreak == true) stringResource(R.string.pomodoro_status_break) else stringResource(R.string.pomodoro_status_focus),
                 fontSize = 32.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (currentSession?.isBreak == true) AccentPurple else AccentCyan,
@@ -180,8 +186,8 @@ fun PomodoroScreen(
             
             Text(
                 text = if (isActive) {
-                    if (currentSession?.isBlockingEnabled == true) "Bloqueio Imersivo Ativo" else "Timer em ExecuÃ§Ã£o"
-                } else "Selecione a duraÃ§Ã£o",
+                    if (currentSession?.isBlockingEnabled == true) stringResource(R.string.pomodoro_status_immersive) else stringResource(R.string.pomodoro_status_running)
+                } else stringResource(R.string.pomodoro_status_idle),
                 fontSize = 14.sp,
                 color = TextSecondary,
                 textAlign = TextAlign.Center
@@ -251,7 +257,7 @@ fun PomodoroScreen(
                         .background(DarkCard)
                         .padding(horizontal = 16.dp, vertical = 8.dp)
                 ) {
-                    Text("Ativar Bloqueio Total", color = TextPrimary, fontSize = 14.sp)
+                    Text(stringResource(R.string.pomodoro_enable_block_switch), color = TextPrimary, fontSize = 14.sp)
                     Spacer(modifier = Modifier.width(16.dp))
                     Switch(
                         checked = isBlockingEnabled,
@@ -277,7 +283,7 @@ fun PomodoroScreen(
                     shape = RoundedCornerShape(16.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
                 ) {
-                    Text("Sair", color = TextSecondary)
+                    Text(stringResource(R.string.pomodoro_exit_btn), color = TextSecondary)
                 }
             } else {
                 Card(
@@ -287,9 +293,9 @@ fun PomodoroScreen(
                 ) {
                     Text(
                         if (currentSession?.isBlockingEnabled == true) 
-                            "O FocusGuard travou esta tela.\nSaÃda nÃ£o permitida atÃ© o fim do timer."
+                            stringResource(R.string.pomodoro_lock_warning_blocked)
                         else 
-                            "Timer em execuÃ§Ã£o.\nVocÃª pode sair, mas mantenha o foco!",
+                            stringResource(R.string.pomodoro_lock_warning_free),
                         color = TextHint,
                         textAlign = TextAlign.Center,
                         fontSize = 13.sp,
@@ -312,7 +318,7 @@ fun PomodoroScreen(
                         ) {
                             Icon(Icons.Default.Phone, contentDescription = null)
                             Spacer(modifier = Modifier.width(8.dp))
-                            Text("Telefone")
+                            Text(stringResource(R.string.pomodoro_phone_btn))
                         }
                     } else {
                         Button(
@@ -320,7 +326,7 @@ fun PomodoroScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.7f)),
                             shape = RoundedCornerShape(16.dp)
                         ) {
-                            Text("Cancelar Timer")
+                            Text(stringResource(R.string.pomodoro_cancel_timer_btn))
                         }
                     }
                 }

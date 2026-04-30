@@ -84,8 +84,8 @@ fun MainScreen(
                     }
                     Spacer(modifier = Modifier.width(14.dp))
                     Column {
-                        Text("FocusGuard", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                        Text("Proteção Digital", fontSize = 12.sp, color = TextHint)
+                        Text(stringResource(id = R.string.app_name), fontSize = 20.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                        Text(stringResource(id = R.string.focusguard_subtitle), fontSize = 12.sp, color = TextHint)
                     }
                 }
                 Spacer(modifier = Modifier.height(8.dp))
@@ -131,7 +131,7 @@ fun MainScreen(
                 )
                 DrawerMenuButton(
                     icon = Icons.Default.Palette,
-                    label = "Personalizar Bloqueio",
+                    label = stringResource(id = R.string.block_customization),
                     iconTint = AccentCyan,
                     onClick = {
                         onBlockCustomizationClick()
@@ -160,7 +160,7 @@ fun MainScreen(
         Scaffold(
             topBar = {
                 TopAppBar(
-                    title = { Text("FocusGuard", fontWeight = FontWeight.Bold) },
+                    title = { Text(stringResource(id = R.string.app_name), fontWeight = FontWeight.Bold) },
                     navigationIcon = {
                         IconButton(onClick = { scope.launch { drawerState.open() } }) {
                             Icon(Icons.Default.Menu, contentDescription = "Menu")
@@ -306,7 +306,7 @@ fun HomeContent(
             visible = visible,
             enter = fadeIn(animationSpec = tween(600, delayMillis = 100)) + slideInVertically(animationSpec = tween(600, delayMillis = 100)) { it / 2 }
         ) {
-            Text("FocusGuard", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text(stringResource(id = R.string.app_name), fontSize = 32.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
         }
 
         AnimatedVisibility(
@@ -335,8 +335,8 @@ fun HomeContent(
                     Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed)
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
-                        Text("Permissões Pendentes", color = DangerRed, fontWeight = FontWeight.Bold)
-                        Text("O FocusGuard precisa de permissões para funcionar.", color = DangerRed.copy(alpha = 0.8f), fontSize = 12.sp)
+                        Text(stringResource(id = R.string.pending_permissions_title), color = DangerRed, fontWeight = FontWeight.Bold)
+                        Text(stringResource(id = R.string.pending_permissions_desc), color = DangerRed.copy(alpha = 0.8f), fontSize = 12.sp)
                     }
                     Icon(Icons.Default.ChevronRight, contentDescription = null, tint = DangerRed)
                 }

@@ -35,4 +35,27 @@
     <string name="limits_and_security">Limites e Segurança</string>
     <string name="intruder_log">Registro de Intrusos</string>
     <string name="language_settings">Idioma</string>
+    <!-- Pomodoro Screen -->
+    <string name="pomodoro_enable_block_title">Ativar Bloqueio Total?</string>
+    <string name="pomodoro_enable_block_desc">Esta opção trava seu celular para evitar distrações durante a sessão. O discador de telefone (para emergências) ficará sempre disponível. Mantenha o foco!</string>
+    <string name="pomodoro_confirm_btn">Confirmar</string>
+    <string name="pomodoro_confirm_btn_countdown">Confirmar (%1$ds)</string>
+    <string name="pomodoro_cancel_btn">Cancelar</string>
+    <string name="pomodoro_status_break">Descanso</string>
+    <string name="pomodoro_status_focus">Foco Total</string>
+    <string name="pomodoro_status_immersive">Modo de Foco Ativo</string>
+    <string name="pomodoro_status_running">Sessão em Andamento</string>
+    <string name="pomodoro_status_idle">Selecione a duração do foco</string>
+    <string name="pomodoro_enable_block_switch">Ativar Bloqueio Total</string>
+    <string name="pomodoro_exit_btn">Sair</string>
+    <string name="pomodoro_lock_warning_blocked">Tela bloqueada pelo FocusGuard para proteger seu foco.\nVocê retornará ao menu assim que o tempo acabar.</string>
+    <string name="pomodoro_lock_warning_free">Tempo rolando!\nVocê pode sair desta tela, mas evite distrações.</string>
+    <string name="pomodoro_phone_btn">Telefone</string>
+    <string name="pomodoro_cancel_timer_btn">Cancelar Sessão</string>
+    
+    <!-- Main Screen -->
+    <string name="focusguard_subtitle">Proteção Digital</string>
+    <string name="block_customization">Personalizar Bloqueio</string>
+    <string name="pending_permissions_title">Permissões Pendentes</string>
+    <string name="pending_permissions_desc">O FocusGuard precisa de permissões para funcionar corretamente.</string>
 </resources>
