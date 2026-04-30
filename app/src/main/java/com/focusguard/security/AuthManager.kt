@@ -242,6 +242,11 @@ class AuthManager(context: Context) {
         securePrefs.putString("preferred_auth_type", type)
     }
 
+    fun isBiometricAvailable(): Boolean {
+        val biometricManager = BiometricManager.from(appContext)
+        return biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL) == BiometricManager.BIOMETRIC_SUCCESS
+    }
+
     fun showBiometricPrompt(
         activity: FragmentActivity,
         onSuccess: () -> Unit,
