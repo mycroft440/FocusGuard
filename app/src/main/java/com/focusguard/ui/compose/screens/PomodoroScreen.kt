@@ -52,6 +52,38 @@ fun PomodoroScreen(
     val currentSession by pomodoroManager.currentSession.collectAsState()
     val timeLeftMillis by pomodoroManager.timeLeftMillis.collectAsState()
     var isBlockingEnabled by remember { mutableStateOf(false) }
+    var showBlockingWarning by remember { mutableStateOf(false) }
+
+    if (showBlockingWarning) {
+        AlertDialog(
+            onDismissRequest = { showBlockingWarning = false },
+            containerColor = DarkSurface,
+            title = { Text("Ativar Bloqueio Total?", color = AccentCyan, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Ao ativar esta opçâo, o FocusGuard irá bloquear completamente o uso do seu celular durante a sessâo de Pomodoro. Você só poderá acessar o discador de telefone para emergências.",
+                    color = TextSecondary,
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        isBlockingEnabled = true
+                        showBlockingWarning = false
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                ) {
+                    Text("Confirmar", color = DarkBg)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showBlockingWarning = false }) {
+                    Text("Cancelar", color = TextSecondary)
+                }
+            }
+        )
+    }
     
     val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
     
@@ -194,7 +226,13 @@ fun PomodoroScreen(
                     Spacer(modifier = Modifier.width(16.dp))
                     Switch(
                         checked = isBlockingEnabled,
-                        onCheckedChange = { isBlockingEnabled = it },
+                        onCheckedChange = { checked ->
+                            if (checked) {
+                                showBlockingWarning = true
+                            } else {
+                                isBlockingEnabled = false
+                            }
+                        },
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = AccentCyan,
                             checkedTrackColor = AccentCyan.copy(alpha = 0.5f)
