@@ -145,7 +145,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
         }
     }
 
-    fun startPomodoroSession(durationMs: Long) {
+    fun startPomodoroSession(durationMs: Long, isBlockingEnabled: Boolean = true) {
         scope.launch {
             try {
                 FocusGuardLogger.log("BlockingSessionManager", "Iniciando sessÃ£o de Pomodoro no sistema: ${durationMs/1000}s")
@@ -159,8 +159,8 @@ class BlockingSessionManager private constructor(private val context: Context) {
                         isActive = true,
                         sessionType = "POMODORO",
                         isFixed24h = true,
-                        blockedAppsCount = 0,
-                        blockedWebsitesCount = 0
+                        blockedWebsitesCount = 0,
+                        isBlockingEnabled = isBlockingEnabled
                     )
 
                     database.blockSessionDao().insertNewSession(session)
@@ -185,6 +185,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 for (session in sessions) {
                     database.blockSessionDao().updateBlockSession(session.copy(isActive = false))
                 }
+                setDoNotDisturbMode(false) // Restore notifications
                 checkAndEnforce()
                 FocusGuardLogger.log("BlockingSessionManager", "Sessões POMODORO encerradas com sucesso no BlockSessionDao.")
             } catch (e: Exception) {
@@ -288,9 +289,29 @@ class BlockingSessionManager private constructor(private val context: Context) {
             val isPomodoroActive = enforcingSessions.any { it.sessionType == "POMODORO" }
             
             val sessionAppsToBlock = if (isPomodoroActive) {
-                FocusGuardLogger.log("BlockingSessionManager", "Modo POMODORO detectado no enforce. Bloqueando TODOS os apps.")
-                context.packageManager.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA)
-                    .map { it.packageName }
+                val pomodoroSession = enforcingSessions.find { it.sessionType == "POMODORO" }
+                if (pomodoroSession?.isBlockingEnabled == true) {
+                    FocusGuardLogger.log("BlockingSessionManager", "Modo POMODORO com BLOQUEIO detectado. Suspendendo apps.")
+                    setDoNotDisturbMode(true) // Activate DND
+                    
+                    val allApps = context.packageManager.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA)
+                        .map { it.packageName }
+                    
+                    // Whitelist Phone Apps
+                    val phoneWhitelist = listOf(
+                        "com.android.dialer", 
+                        "com.google.android.dialer", 
+                        "com.android.phone", 
+                        "com.android.server.telecom",
+                        "com.samsung.android.dialer",
+                        "com.samsung.android.incallui"
+                    )
+                    
+                    allApps.filter { pkg -> !phoneWhitelist.contains(pkg) && pkg != context.packageName }
+                } else {
+                    FocusGuardLogger.log("BlockingSessionManager", "Modo POMODORO SEM BLOQUEIO detectado.")
+                    database.sessionAppCrossRefDao().getAppsForSessions(enforcingIds)
+                }
             } else {
                 database.sessionAppCrossRefDao().getAppsForSessions(enforcingIds)
             }
@@ -379,6 +400,27 @@ class BlockingSessionManager private constructor(private val context: Context) {
             currentTimeVal in startVal until endVal
         } else {
             currentTimeVal >= startVal || currentTimeVal < endVal
+        }
+    }
+
+    private fun setDoNotDisturbMode(enabled: Boolean) {
+        try {
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as android.app.NotificationManager
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.M) {
+                if (notificationManager.isNotificationPolicyAccessGranted) {
+                    val filter = if (enabled) {
+                        android.app.NotificationManager.INTERRUPTION_FILTER_PRIORITY
+                    } else {
+                        android.app.NotificationManager.INTERRUPTION_FILTER_ALL
+                    }
+                    notificationManager.setInterruptionFilter(filter)
+                    FocusGuardLogger.log("BlockingSessionManager", "DND alterado para: $filter (enabled=$enabled)")
+                } else {
+                    FocusGuardLogger.log("BlockingSessionManager", "Sem permissÃ£o para alterar DND")
+                }
+            }
+        } catch (e: Exception) {
+            FocusGuardLogger.logError("BlockingSessionManager", "Erro ao alterar DND", e)
         }
     }
 }

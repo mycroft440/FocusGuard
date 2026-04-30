@@ -95,7 +95,7 @@ class PomodoroManager private constructor(private val context: Context) {
         }
     }
 
-    suspend fun startSession(durationMinutes: Int, isBreak: Boolean = false) {
+    suspend fun startSession(durationMinutes: Int, isBreak: Boolean = false, isBlockingEnabled: Boolean = true) {
         try {
             val durationMillis = durationMinutes * 60 * 1000L
             val endTime = System.currentTimeMillis() + durationMillis
@@ -104,14 +104,15 @@ class PomodoroManager private constructor(private val context: Context) {
                 endTime = endTime,
                 durationMillis = durationMillis,
                 isActive = true,
-                isBreak = isBreak
+                isBreak = isBreak,
+                isBlockingEnabled = isBlockingEnabled
             )
             FocusGuardLogger.log("PomodoroManager", "Iniciando nova sessão: ${durationMinutes}min, Break=$isBreak")
             dao.insertOrUpdate(session)
             _currentSession.value = session
             
-            FocusGuardLogger.log("PomodoroManager", "Notificando BlockingSessionManager para bloqueio de apps.")
-            sessionManager.startPomodoroSession(durationMillis)
+            FocusGuardLogger.log("PomodoroManager", "Notificando BlockingSessionManager para bloqueio de apps (Enabled=$isBlockingEnabled).")
+            sessionManager.startPomodoroSession(durationMillis, isBlockingEnabled)
             FocusGuardLogger.log("PomodoroManager", "Sessão de Pomodoro iniciada com sucesso.")
         } catch (e: Exception) {
             FocusGuardLogger.logError("PomodoroManager", "Erro ao iniciar sessão", e)
@@ -124,6 +125,16 @@ class PomodoroManager private constructor(private val context: Context) {
             dao.deleteSession()
             _currentSession.value = null
             _timeLeftMillis.value = 0
+            
+            // Play notification sound
+            try {
+                val notification = android.media.RingtoneManager.getDefaultUri(android.media.RingtoneManager.TYPE_NOTIFICATION)
+                val ringtone = android.media.RingtoneManager.getRingtone(context, notification)
+                ringtone.play()
+                FocusGuardLogger.log("PomodoroManager", "Aviso sonoro disparado.")
+            } catch (e: Exception) {
+                FocusGuardLogger.logError("PomodoroManager", "Falha ao tocar som", e)
+            }
             
             FocusGuardLogger.log("PomodoroManager", "Sessão deletada do banco. Atualizando BlockingSessionManager.")
             sessionManager.endPomodoroSession()

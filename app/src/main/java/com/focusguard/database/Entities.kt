@@ -43,7 +43,8 @@ data class BlockSession(
     val recurringDaysOfWeek: String = "", // e.g., "1,2,3,4,5" for Mon-Fri
     val recurringDurationMonths: Int = 1,
     val sessionType: String = "PASSWORD", // "PASSWORD" or "TIME"
-    val isFixed24h: Boolean = true
+    val isFixed24h: Boolean = true,
+    val isBlockingEnabled: Boolean = true
 )
 
 @Entity(tableName = "session_app_cross_ref", primaryKeys = ["sessionId", "packageName"])

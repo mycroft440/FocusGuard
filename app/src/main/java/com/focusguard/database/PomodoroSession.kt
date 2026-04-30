@@ -16,7 +16,8 @@ data class PomodoroSession(
     val durationMillis: Long,
     val isActive: Boolean,
     val isBreak: Boolean = false,
-    val lastTickTime: Long = System.currentTimeMillis()
+    val lastTickTime: Long = System.currentTimeMillis(),
+    val isBlockingEnabled: Boolean = true
 )
 
 @Dao

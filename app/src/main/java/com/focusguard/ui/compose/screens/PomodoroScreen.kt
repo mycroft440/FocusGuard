@@ -10,8 +10,14 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Timer
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import android.app.NotificationManager
+import android.os.Build
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -44,6 +50,9 @@ fun PomodoroScreen(
     
     val currentSession by pomodoroManager.currentSession.collectAsState()
     val timeLeftMillis by pomodoroManager.timeLeftMillis.collectAsState()
+    var isBlockingEnabled by remember { mutableStateOf(true) }
+    
+    val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
     
     val isActive = currentSession?.isActive == true
     
@@ -64,13 +73,13 @@ fun PomodoroScreen(
     }
 
     // BLOQUEIO DO BOTÃƒO VOLTAR
-    BackHandler(enabled = isActive) {
-        FocusGuardLogger.log("PomodoroScreen", "Tentativa de voltar negada: Pomodoro ativo.")
+    BackHandler(enabled = isActive && currentSession?.isBlockingEnabled == true) {
+        FocusGuardLogger.log("PomodoroScreen", "Tentativa de voltar negada: Pomodoro ativo com bloqueio.")
     }
 
     // KIOSK MODE (Lock Task) - Se Device Owner
     LaunchedEffect(isActive) {
-        if (isActive) {
+        if (isActive && currentSession?.isBlockingEnabled == true) {
             try {
                 FocusGuardLogger.log("PomodoroScreen", "Ativando startLockTask.")
                 activity?.startLockTask()
@@ -108,7 +117,9 @@ fun PomodoroScreen(
             Spacer(modifier = Modifier.height(8.dp))
             
             Text(
-                text = if (isActive) "Bloqueio Imersivo Ativo" else "Selecione a duraÃ§Ã£o",
+                text = if (isActive) {
+                    if (currentSession?.isBlockingEnabled == true) "Bloqueio Imersivo Ativo" else "Timer em ExecuÃ§Ã£o"
+                } else "Selecione a duraÃ§Ã£o",
                 fontSize = 14.sp,
                 color = TextSecondary,
                 textAlign = TextAlign.Center
@@ -155,9 +166,39 @@ fun PomodoroScreen(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    PomodoroOption(label = "15m", onClick = { scope.launch { pomodoroManager.startSession(15) } })
-                    PomodoroOption(label = "25m", onClick = { scope.launch { pomodoroManager.startSession(25) } })
-                    PomodoroOption(label = "45m", onClick = { scope.launch { pomodoroManager.startSession(45) } })
+                    val onStart: (Int) -> Unit = { mins ->
+                        if (isBlockingEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager?.isNotificationPolicyAccessGranted == false) {
+                            val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+                            context.startActivity(intent)
+                        } else {
+                            scope.launch { pomodoroManager.startSession(mins, isBlockingEnabled = isBlockingEnabled) }
+                        }
+                    }
+                    PomodoroOption(label = "15m", onClick = { onStart(15) })
+                    PomodoroOption(label = "25m", onClick = { onStart(25) })
+                    PomodoroOption(label = "45m", onClick = { onStart(45) })
+                }
+                
+                Spacer(modifier = Modifier.height(32.dp))
+                
+                // Switch de Bloqueio
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(DarkCard)
+                        .padding(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text("Ativar Bloqueio Total", color = TextPrimary, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.width(16.dp))
+                    Switch(
+                        checked = isBlockingEnabled,
+                        onCheckedChange = { isBlockingEnabled = it },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = AccentCyan,
+                            checkedTrackColor = AccentCyan.copy(alpha = 0.5f)
+                        )
+                    )
                 }
                 
                 Spacer(modifier = Modifier.height(48.dp))
@@ -177,12 +218,43 @@ fun PomodoroScreen(
                     modifier = Modifier.padding(16.dp)
                 ) {
                     Text(
-                        "O FocusGuard travou esta tela.\nSaÃda nÃ£o permitida atÃ© o fim do timer.",
+                        if (currentSession?.isBlockingEnabled == true) 
+                            "O FocusGuard travou esta tela.\nSaÃda nÃ£o permitida atÃ© o fim do timer."
+                        else 
+                            "Timer em execuÃ§Ã£o.\nVocÃª pode sair, mas mantenha o foco!",
                         color = TextHint,
                         textAlign = TextAlign.Center,
                         fontSize = 13.sp,
                         modifier = Modifier.padding(16.dp)
                     )
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // BotÃ£o de Telefone e Sair (se nÃ£o bloqueado)
+                Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    if (currentSession?.isBlockingEnabled == true) {
+                        Button(
+                            onClick = {
+                                val intent = Intent(Intent.ACTION_DIAL)
+                                context.startActivity(intent)
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Icon(Icons.Default.Phone, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Telefone")
+                        }
+                    } else {
+                        Button(
+                            onClick = { scope.launch { pomodoroManager.stopSession() } },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.7f)),
+                            shape = RoundedCornerShape(16.dp)
+                        ) {
+                            Text("Cancelar Timer")
+                        }
+                    }
                 }
             }
         }
