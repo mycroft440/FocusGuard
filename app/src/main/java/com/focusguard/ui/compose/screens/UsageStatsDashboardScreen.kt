@@ -2,23 +2,24 @@ package com.focusguard.ui.compose.screens
 
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
+import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
@@ -28,21 +29,53 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
-import com.focusguard.database.DailyUsageStat
+import com.focusguard.analytics.*
 import com.focusguard.ui.compose.theme.*
-import java.text.SimpleDateFormat
-import java.util.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.util.Calendar
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UsageStatsDashboardScreen(stats: List<DailyUsageStat>, onBack: () -> Unit) {
+fun UsageStatsDashboardScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val pm = context.packageManager
+    val analytics = remember { AdvancedUsageAnalytics(context) }
     
-    val todayDate = remember { SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date()) }
-    val todayStats = stats.filter { it.date == todayDate }
-    val totalTimeToday = todayStats.sumOf { it.timeSpentMs }
-    val mostUsedApp = todayStats.maxByOrNull { it.timeSpentMs }
+    // States for data
+    var weeklyUsage by remember { mutableStateOf<List<DailyPhoneUsage>>(emptyList()) }
+    var mostUsedApps by remember { mutableStateOf<List<AppUsageStat>>(emptyList()) }
+    var openCloseEvents by remember { mutableStateOf<List<AppEventStat>>(emptyList()) }
+    var neverUsedApps by remember { mutableStateOf<List<String>>(emptyList()) }
+    var isLoading by remember { mutableStateOf(true) }
+
+    // Toggles and expansions
+    var showAverageForMostUsed by remember { mutableStateOf(false) }
+    var expandMostUsed by remember { mutableStateOf(false) }
+    var expandOpenClose by remember { mutableStateOf(false) }
+    var expandNeverUsed by remember { mutableStateOf(false) }
+
+    LaunchedEffect(Unit) {
+        withContext(Dispatchers.IO) {
+            val end = System.currentTimeMillis()
+            val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -7) }
+            val start7Days = cal.timeInMillis
+            
+            val calToday = Calendar.getInstance().apply {
+                set(Calendar.HOUR_OF_DAY, 0)
+                set(Calendar.MINUTE, 0)
+                set(Calendar.SECOND, 0)
+            }
+            val startToday = calToday.timeInMillis
+
+            weeklyUsage = analytics.getWeeklyPhoneUsage()
+            mostUsedApps = analytics.getMostUsedApps(start7Days, end)
+            openCloseEvents = analytics.getAppOpenCloseCounts(startToday, end)
+            neverUsedApps = analytics.getNeverUsedApps(start7Days, end)
+            
+            isLoading = false
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -58,125 +91,155 @@ fun UsageStatsDashboardScreen(stats: List<DailyUsageStat>, onBack: () -> Unit) {
         },
         containerColor = DarkBg
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            item {
-                Spacer(Modifier.height(8.dp))
-                // Resumo do Dia
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = DarkCard),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
-                ) {
-                    Column(modifier = Modifier.padding(20.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Timer, null, tint = AccentCyan)
-                            Spacer(Modifier.width(8.dp))
-                            Text("Tempo Total (Hoje)", color = TextSecondary, fontSize = 14.sp)
-                        }
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            text = formatTime(totalTimeToday),
-                            color = TextPrimary,
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.Black
-                        )
-                        
-                        if (mostUsedApp != null) {
-                            Spacer(Modifier.height(16.dp))
-                            HorizontalDivider(color = CardBorder)
-                            Spacer(Modifier.height(16.dp))
-                            Text("Mais Usado Hoje", color = TextSecondary, fontSize = 12.sp)
-                            val appName = try { pm.getApplicationLabel(pm.getApplicationInfo(mostUsedApp.identifier, 0)).toString() } catch(e:Exception) { mostUsedApp.identifier }
-                            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-                                Text(appName, color = AccentCyan, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                                Spacer(Modifier.width(8.dp))
-                                Text("(${formatTime(mostUsedApp.timeSpentMs)})", color = TextHint, fontSize = 14.sp)
-                            }
-                        }
-                    }
-                }
+        if (isLoading) {
+            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = AccentCyan)
             }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(24.dp)
+            ) {
+                item { Spacer(Modifier.height(8.dp)) }
 
-            item {
-                if (stats.isNotEmpty()) {
-                    UsageBarChart(stats)
-                } else {
-                    Box(modifier = Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                        Text("Sem dados de uso disponíveis para gráficos.", color = TextHint)
-                    }
-                }
-            }
-
-            item {
-                Text(
-                    "Detalhes de Uso (Histórico)", 
-                    color = TextPrimary, 
-                    fontSize = 18.sp, 
-                    fontWeight = FontWeight.Bold, 
-                    modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)
-                )
-            }
-
-            if (stats.isEmpty()) {
                 item {
-                    Text("Nenhum registro de uso detectado ainda.", color = TextHint, modifier = Modifier.padding(16.dp))
+                    PhoneUsageChartSection(weeklyUsage)
                 }
-            } else {
-                items(stats.sortedByDescending { it.date + it.timeSpentMs }) { stat ->
-                    UsageStatRow(stat, pm)
+
+                item {
+                    MostUsedAppsSection(
+                        apps = mostUsedApps,
+                        pm = pm,
+                        showAverage = showAverageForMostUsed,
+                        onToggleAverage = { showAverageForMostUsed = it },
+                        expanded = expandMostUsed,
+                        onToggleExpand = { expandMostUsed = it }
+                    )
                 }
+
+                item {
+                    OpenCloseEventsSection(
+                        events = openCloseEvents,
+                        pm = pm,
+                        expanded = expandOpenClose,
+                        onToggleExpand = { expandOpenClose = it }
+                    )
+                }
+
+                item {
+                    NeverUsedAppsSection(
+                        apps = neverUsedApps,
+                        pm = pm,
+                        expanded = expandNeverUsed,
+                        onToggleExpand = { expandNeverUsed = it }
+                    )
+                }
+
+                item { Spacer(Modifier.height(32.dp)) }
             }
-            
-            item { Spacer(Modifier.height(32.dp)) }
         }
     }
 }
 
 @Composable
-fun UsageBarChart(stats: List<DailyUsageStat>) {
-    val dailyTotals = stats.groupBy { it.date }.mapValues { entry -> entry.value.sumOf { it.timeSpentMs } }.toSortedMap()
-    val sortedDates: List<String> = dailyTotals.keys.toList().takeLast(7)
-    val maxUsage = dailyTotals.values.maxOfOrNull { it }?.coerceAtLeast(60000L) ?: 60000L // Min 1 min
-    
+fun PhoneUsageChartSection(weeklyUsage: List<DailyPhoneUsage>) {
+    val totalTime = weeklyUsage.sumOf { it.totalTimeMs }
+    val days = weeklyUsage.size.coerceAtLeast(1)
+    val dailyAvg = totalTime / days
+
     Card(
-        modifier = Modifier.fillMaxWidth().height(260.dp),
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = DarkCard),
         border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
-            Text("Uso Diário (Últimos Dias)", color = TextPrimary, fontWeight = FontWeight.Bold)
-            Spacer(modifier = Modifier.height(24.dp))
-            Canvas(modifier = Modifier.fillMaxSize().padding(bottom = 20.dp, top = 10.dp)) {
-                val canvasWidth = size.width
-                val canvasHeight = size.height
+        Column(modifier = Modifier.padding(20.dp)) {
+            Text("Uso do Telefone (7 Dias)", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(16.dp))
+            
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Column {
+                    Text("Total na Semana", color = TextSecondary, fontSize = 12.sp)
+                    Text(formatTime(totalTime), color = AccentCyan, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text("Média Diária", color = TextSecondary, fontSize = 12.sp)
+                    Text(formatTime(dailyAvg), color = AccentPurple, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+            
+            Spacer(Modifier.height(24.dp))
+            
+            Canvas(modifier = Modifier.fillMaxWidth().height(150.dp)) {
+                val maxTime = weeklyUsage.maxOfOrNull { it.totalTimeMs }?.coerceAtLeast(60000L) ?: 60000L
                 val barGap = 16.dp.toPx()
-                val totalBars = sortedDates.size
-                val barWidth = (canvasWidth - (totalBars - 1) * barGap) / totalBars.coerceAtLeast(1)
+                val totalBars = weeklyUsage.size
+                if (totalBars == 0) return@Canvas
+                val barWidth = (size.width - (totalBars - 1) * barGap) / totalBars
                 
-                sortedDates.forEachIndexed { index: Int, date: String ->
-                    val totalMs = dailyTotals[date] ?: 0L
-                    val barHeight = (totalMs.toFloat() / maxUsage.toFloat()) * canvasHeight
-                    
-                    // Draw Bar
+                weeklyUsage.forEachIndexed { index, usage ->
+                    val barHeight = (usage.totalTimeMs.toFloat() / maxTime.toFloat()) * size.height
                     drawRoundRect(
                         color = AccentCyan,
-                        topLeft = Offset(x = index * (barWidth + barGap), y = canvasHeight - barHeight),
+                        topLeft = Offset(x = index * (barWidth + barGap), y = size.height - barHeight),
                         size = Size(width = barWidth, height = barHeight),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(8.dp.toPx())
+                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx())
                     )
-                    
-                    // Faint line at bottom
-                    drawLine(
-                        color = CardBorder,
-                        start = Offset(0f, canvasHeight),
-                        end = Offset(canvasWidth, canvasHeight),
-                        strokeWidth = 1f
-                    )
+                }
+                
+                val avgY = size.height - ((dailyAvg.toFloat() / maxTime.toFloat()) * size.height)
+                drawLine(
+                    color = AccentPurple,
+                    start = Offset(0f, avgY),
+                    end = Offset(size.width, avgY),
+                    strokeWidth = 2.dp.toPx()
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun MostUsedAppsSection(
+    apps: List<AppUsageStat>, 
+    pm: PackageManager, 
+    showAverage: Boolean, 
+    onToggleAverage: (Boolean) -> Unit,
+    expanded: Boolean,
+    onToggleExpand: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = DarkSurface),
+        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
+                Text("Apps Mais Usados", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Média Diária", color = TextSecondary, fontSize = 12.sp)
+                    Switch(checked = showAverage, onCheckedChange = onToggleAverage, modifier = Modifier.scale(0.8f))
+                }
+            }
+            
+            Spacer(Modifier.height(16.dp))
+            
+            val displayList = if (expanded) apps else apps.take(5)
+            
+            if (displayList.isEmpty()) {
+                Text("Nenhum dado encontrado.", color = TextHint)
+            } else {
+                displayList.forEach { stat ->
+                    val timeToDisplay = if (showAverage) stat.timeSpentMs / 7 else stat.timeSpentMs
+                    AppUsageRow(stat.packageName, timeToDisplay, pm)
+                    Spacer(Modifier.height(12.dp))
+                }
+            }
+            
+            if (apps.size > 5) {
+                TextButton(onClick = { onToggleExpand(!expanded) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (expanded) "Ocultar" else "Ver Todos (${apps.size})", color = AccentCyan)
                 }
             }
         }
@@ -184,50 +247,120 @@ fun UsageBarChart(stats: List<DailyUsageStat>) {
 }
 
 @Composable
-fun UsageStatRow(stat: DailyUsageStat, pm: PackageManager) {
-    val appName = try { pm.getApplicationLabel(pm.getApplicationInfo(stat.identifier, 0)).toString() } catch(e:Exception) { stat.identifier }
-    val iconDrawable: Drawable? = try { pm.getApplicationIcon(stat.identifier) } catch(e:Exception) { null }
-    val isDomain = stat.identifier.contains(".") && !stat.identifier.startsWith("com.") && iconDrawable == null
-
+fun OpenCloseEventsSection(
+    events: List<AppEventStat>,
+    pm: PackageManager,
+    expanded: Boolean,
+    onToggleExpand: (Boolean) -> Unit
+) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = DarkSurface)
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (iconDrawable != null) {
-                Image(
-                    bitmap = iconDrawable.toBitmap().asImageBitmap(),
-                    contentDescription = null,
-                    modifier = Modifier.size(40.dp).clip(CircleShape)
-                )
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Aberturas e Fechamentos (Hoje)", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(16.dp))
+            
+            val displayList = if (expanded) events else events.take(5)
+            
+            if (displayList.isEmpty()) {
+                Text("Nenhum evento registrado hoje.", color = TextHint)
             } else {
-                Box(
-                    modifier = Modifier.size(40.dp).background(DarkCardElevated, CircleShape),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(if (isDomain) Icons.Default.Language else Icons.Default.Timer, null, tint = AccentCyan, modifier = Modifier.size(24.dp))
+                displayList.forEach { event ->
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        AppIcon(event.packageName, pm, 32)
+                        Spacer(Modifier.width(12.dp))
+                        Text(getAppName(event.packageName, pm), color = TextPrimary, modifier = Modifier.weight(1f), maxLines = 1)
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text("${event.openCount} abertos", color = DangerRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("${event.closeCount} fechados", color = TextSecondary, fontSize = 12.sp)
+                        }
+                    }
                 }
             }
             
-            Spacer(Modifier.width(16.dp))
-            
-            Column(modifier = Modifier.weight(1f)) {
-                Text(appName, color = TextPrimary, fontWeight = FontWeight.Bold, maxLines = 1)
-                Text(stat.date, color = TextHint, fontSize = 12.sp)
+            if (events.size > 5) {
+                TextButton(onClick = { onToggleExpand(!expanded) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (expanded) "Ocultar" else "Ver Todos (${events.size})", color = AccentCyan)
+                }
             }
-            
-            Text(
-                text = formatTime(stat.timeSpentMs),
-                color = AccentCyan,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
-            )
         }
     }
+}
+
+@Composable
+fun NeverUsedAppsSection(
+    apps: List<String>,
+    pm: PackageManager,
+    expanded: Boolean,
+    onToggleExpand: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = DarkSurface)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Apps Nunca Usados (7 Dias)", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Spacer(Modifier.height(16.dp))
+            
+            val displayList = if (expanded) apps else apps.take(3)
+            
+            if (displayList.isEmpty()) {
+                Text("Nenhum app inativo encontrado.", color = TextHint)
+            } else {
+                displayList.forEach { pkg ->
+                    Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                        AppIcon(pkg, pm, 32)
+                        Spacer(Modifier.width(12.dp))
+                        Text(getAppName(pkg, pm), color = TextSecondary, modifier = Modifier.weight(1f), maxLines = 1)
+                    }
+                }
+            }
+            
+            if (apps.size > 3) {
+                TextButton(onClick = { onToggleExpand(!expanded) }, modifier = Modifier.fillMaxWidth()) {
+                    Text(if (expanded) "Ocultar" else "Ver Todos (${apps.size})", color = AccentCyan)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun AppUsageRow(pkg: String, timeMs: Long, pm: PackageManager) {
+    Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+        AppIcon(pkg, pm, 40)
+        Spacer(Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Text(getAppName(pkg, pm), color = TextPrimary, fontWeight = FontWeight.Bold, maxLines = 1)
+        }
+        Text(formatTime(timeMs), color = AccentCyan, fontWeight = FontWeight.Bold)
+    }
+}
+
+@Composable
+fun AppIcon(pkg: String, pm: PackageManager, size: Int) {
+    val iconDrawable: Drawable? = try { pm.getApplicationIcon(pkg) } catch(e:Exception) { null }
+    if (iconDrawable != null) {
+        Image(
+            bitmap = iconDrawable.toBitmap().asImageBitmap(),
+            contentDescription = null,
+            modifier = Modifier.size(size.dp).clip(CircleShape)
+        )
+    } else {
+        Box(
+            modifier = Modifier.size(size.dp).background(DarkCardElevated, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(Icons.Default.Language, null, tint = AccentCyan, modifier = Modifier.size((size/2).dp))
+        }
+    }
+}
+
+fun getAppName(pkg: String, pm: PackageManager): String {
+    return try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() } catch(e:Exception) { pkg }
 }
 
 private fun formatTime(millis: Long): String {
