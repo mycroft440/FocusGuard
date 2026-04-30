@@ -143,9 +143,42 @@ fun MainActivityContent(
 
     val database = remember { AppDatabase.getDatabase(activity.applicationContext) }
     val todayDate = remember { java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date()) }
-    val stats by database.dailyUsageStatDao().getStatsForDate(todayDate).collectAsState(initial = emptyList())
-
+    val dbStats by database.dailyUsageStatDao().getStatsForDate(todayDate).collectAsState(initial = emptyList())
+    
     var resumeKey by remember { mutableIntStateOf(0) }
+    
+    val usageStatsManager = remember { activity.getSystemService(Context.USAGE_STATS_SERVICE) as? android.app.usage.UsageStatsManager }
+    val combinedStats by produceState<List<com.focusguard.database.DailyUsageStat>>(initialValue = emptyList(), dbStats, resumeKey) {
+        withContext(Dispatchers.IO) {
+            val nativeStats = mutableListOf<com.focusguard.database.DailyUsageStat>()
+            if (usageStatsManager != null && PermissionUtils.isUsageAccessEnabled(activity)) {
+                val cal = java.util.Calendar.getInstance().apply {
+                    set(java.util.Calendar.HOUR_OF_DAY, 0)
+                    set(java.util.Calendar.MINUTE, 0)
+                    set(java.util.Calendar.SECOND, 0)
+                }
+                val usageList = usageStatsManager.queryUsageStats(android.app.usage.UsageStatsManager.INTERVAL_DAILY, cal.timeInMillis, System.currentTimeMillis())
+                usageList.forEach { usage ->
+                    if (usage.totalTimeInForeground > 60000L && activity.packageManager.getLaunchIntentForPackage(usage.packageName) != null) {
+                        nativeStats.add(
+                            com.focusguard.database.DailyUsageStat(
+                                identifier = usage.packageName,
+                                date = todayDate,
+                                timeSpentMs = usage.totalTimeInForeground
+                            )
+                        )
+                    }
+                }
+            }
+            
+            val allStats = (dbStats + nativeStats)
+                .groupBy { it.identifier }
+                .map { (_, list) -> list.maxByOrNull { it.timeSpentMs }!! }
+            
+            value = allStats.sortedByDescending { it.timeSpentMs }
+        }
+    }
+
     LaunchedEffect(resumeKey) {
         withContext(Dispatchers.IO) {
             val isA11yEnabled = PermissionUtils.isAccessibilityServiceEnabled(activity)
@@ -209,7 +242,7 @@ fun MainActivityContent(
                     onAppUsageLimitsClick = { currentRoute = "USAGE_LIMITS" },
                     onPomodoroClick = { currentRoute = "POMODORO" },
                     authManager = authManager,
-                    usageStatsContent = { UsageStatsDashboardScreen(stats = stats, onBack = {}) }
+                    usageStatsContent = { UsageStatsDashboardScreen(stats = combinedStats, onBack = {}) }
                 )
                 "POMODORO" -> PomodoroScreen(pomodoroManager = pomodoroManager, onBack = { currentRoute = "HOME" })
                 "LIMITS" -> LimitsSecurityScreen(authManager = authManager, onBack = { currentRoute = "HOME" })
@@ -217,7 +250,7 @@ fun MainActivityContent(
                 "LANGUAGE" -> LanguageScreen(onBack = { currentRoute = "HOME" })
                 "PASSWORD_MANAGEMENT" -> PasswordManagementScreen(authManager = authManager, onBack = { currentRoute = "HOME" })
                 "USAGE_LIMITS" -> UsageLimitsScreen(authManager = authManager, onBack = { currentRoute = "HOME" })
-                "DASHBOARD" -> UsageStatsDashboardScreen(stats = stats, onBack = { currentRoute = "HOME" })
+                "DASHBOARD" -> UsageStatsDashboardScreen(stats = combinedStats, onBack = { currentRoute = "HOME" })
                 "SESSIONS_LIST" -> SessionsListScreen(sessionType = selectedSessionType, onBack = { currentRoute = "HOME" })
             }
         }
