@@ -1,5 +1,7 @@
 package com.focusguard.manager
 
+import com.focusguard.utils.FocusGuardLogger
+
 import android.content.Context
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.PomodoroSession

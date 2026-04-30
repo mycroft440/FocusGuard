@@ -10,8 +10,6 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
 import com.focusguard.database.AppDatabase
-import com.focusguard.database.BlockedApp
-import com.focusguard.database.BlockedWebsite
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.utils.WebsiteBlocker
@@ -24,7 +22,6 @@ import kotlinx.coroutines.withContext
 import kotlinx.coroutines.flow.first
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.Calendar
-import java.util.concurrent.TimeUnit
 
 /**
  * Accessibility Service that monitors and blocks distracting apps and websites.

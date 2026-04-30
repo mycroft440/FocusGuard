@@ -101,7 +101,6 @@ fun MainActivityContent(
     }
 
     if (isUnlocked == null) {
-        // Loading state: Show a clean dark screen to prevent flashes
         Box(modifier = Modifier.fillMaxSize().background(com.focusguard.ui.compose.theme.DarkBg))
         return
     }
@@ -118,11 +117,9 @@ fun MainActivityContent(
     var currentRoute by remember { mutableStateOf("HOME") }
     var selectedSessionType by remember { mutableStateOf("PASSWORD") }
     var permissionsVisible by remember { mutableStateOf(false) }
-    var showSessionSheet by remember { mutableStateOf(false) }
     
     val currentPomodoro by pomodoroManager.currentSession.collectAsState()
     
-    // Forçar rota Pomodoro se estiver ativo e correção proativa
     LaunchedEffect(currentPomodoro) {
         if (currentPomodoro?.isActive == true) {
             val now = System.currentTimeMillis()
@@ -208,11 +205,11 @@ fun MainActivityContent(
                     onIntruderLogClick = { currentRoute = "INTRUDER_LOG" },
                     onLanguageClick = { currentRoute = "LANGUAGE" },
                     onPasswordManagementClick = { currentRoute = "PASSWORD_MANAGEMENT" },
-                    onBlockCustomizationClick = { currentRoute = "DASHBOARD" }, // Usando para o Dashboard por enquanto
+                    onBlockCustomizationClick = { currentRoute = "DASHBOARD" },
                     onAppUsageLimitsClick = { currentRoute = "USAGE_LIMITS" },
                     onPomodoroClick = { currentRoute = "POMODORO" },
                     authManager = authManager,
-                    usageStatsContent = { UsageStatsScreen() }
+                    usageStatsContent = { UsageStatsDashboardScreen(stats = stats, onBack = {}) }
                 )
                 "POMODORO" -> PomodoroScreen(pomodoroManager = pomodoroManager, onBack = { currentRoute = "HOME" })
                 "LIMITS" -> LimitsSecurityScreen(authManager = authManager, onBack = { currentRoute = "HOME" })
@@ -223,33 +220,6 @@ fun MainActivityContent(
                 "DASHBOARD" -> UsageStatsDashboardScreen(stats = stats, onBack = { currentRoute = "HOME" })
                 "SESSIONS_LIST" -> SessionsListScreen(sessionType = selectedSessionType, onBack = { currentRoute = "HOME" })
             }
-        }
-    }
-
-    if (showSessionSheet) {
-        ModalBottomSheet(
-            onDismissRequest = { showSessionSheet = false },
-            containerColor = com.focusguard.ui.compose.theme.DarkSurface,
-            dragHandle = { BottomSheetDefaults.DragHandle(color = com.focusguard.ui.compose.theme.TextHint) }
-        ) {
-            BlockingSessionStatusSheet(
-                isBlocking = hasSession, // Simplificado
-                hasSession = hasSession,
-                details = sessionDetails,
-                onRenounce = {
-                    if (!hasSession) {
-                        try {
-                            deviceOwnerManager.renounceDeviceOwner()
-                        } catch (_: Exception) {}
-                    }
-                },
-                onEndSessions = {
-                    sessionManager.endPasswordSessions()
-                    showSessionSheet = false
-                },
-                onDismiss = { showSessionSheet = false },
-                authManager = authManager
-            )
         }
     }
 }

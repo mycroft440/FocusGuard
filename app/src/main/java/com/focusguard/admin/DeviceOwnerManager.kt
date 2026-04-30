@@ -15,7 +15,6 @@ import kotlinx.coroutines.launch
 import android.os.Bundle
 import android.os.UserManager
 import android.util.Log
-import org.json.JSONArray
 import java.util.concurrent.atomic.AtomicInteger
 
 /**
@@ -131,14 +130,6 @@ class DeviceOwnerManager(private val context: Context) {
                 Log.e("FocusGuardAdmin", "Falha na sincronização diferencial de apps", e)
             }
         }
-    }
-
-    /**
-     * Block applications using Device Policy Manager (setPackagesSuspended).
-     * @deprecated Use syncSuspendedApps for more reliable session transitions.
-     */
-    fun blockApps(packageNames: List<String>) {
-        syncSuspendedApps(emptyList(), packageNames)
     }
 
     /**
