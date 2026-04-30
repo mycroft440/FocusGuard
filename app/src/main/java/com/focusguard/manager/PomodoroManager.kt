@@ -11,7 +11,9 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 
 class PomodoroManager private constructor(private val context: Context) {
@@ -26,6 +28,9 @@ class PomodoroManager private constructor(private val context: Context) {
 
     private val _timeLeftMillis = MutableStateFlow(0L)
     val timeLeftMillis: StateFlow<Long> = _timeLeftMillis.asStateFlow()
+
+    private val _onSessionFinished = kotlinx.coroutines.flow.MutableSharedFlow<Unit>(replay = 0)
+    val onSessionFinished = _onSessionFinished.asSharedFlow()
 
     companion object {
         @Volatile
@@ -138,6 +143,7 @@ class PomodoroManager private constructor(private val context: Context) {
             
             FocusGuardLogger.log("PomodoroManager", "Sessão deletada do banco. Atualizando BlockingSessionManager.")
             sessionManager.endPomodoroSession()
+            _onSessionFinished.emit(Unit)
             FocusGuardLogger.log("PomodoroManager", "Pomodoro encerrado com sucesso. App desbloqueado.")
         } catch (e: Exception) {
             FocusGuardLogger.logError("PomodoroManager", "Erro ao parar sessão", e)

@@ -59,7 +59,14 @@ fun PomodoroScreen(
     val timeLeftMillis by pomodoroManager.timeLeftMillis.collectAsState()
     var isBlockingEnabled by remember { mutableStateOf(false) }
     var showBlockingWarning by remember { mutableStateOf(false) }
+    var showSummary by remember { mutableStateOf(false) }
     var countdown by remember { mutableIntStateOf(4) }
+
+    LaunchedEffect(Unit) {
+        pomodoroManager.onSessionFinished.collect {
+            showSummary = true
+        }
+    }
 
     if (showBlockingWarning) {
         LaunchedEffect(showBlockingWarning) {
@@ -115,6 +122,24 @@ fun PomodoroScreen(
             dismissButton = {
                 TextButton(onClick = { showBlockingWarning = false }) {
                     Text(stringResource(R.string.pomodoro_cancel_btn), color = TextSecondary)
+                }
+            }
+        )
+    }
+
+    if (showSummary) {
+        AlertDialog(
+            onDismissRequest = { showSummary = false },
+            containerColor = DarkSurface,
+            icon = { Icon(Icons.Default.Timer, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(48.dp)) },
+            title = { Text(stringResource(R.string.pomodoro_summary_title), color = TextPrimary, fontWeight = FontWeight.Bold) },
+            text = { Text(stringResource(R.string.pomodoro_summary_desc), color = TextSecondary, textAlign = TextAlign.Center) },
+            confirmButton = {
+                Button(
+                    onClick = { showSummary = false },
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                ) {
+                    Text("Ótimo!", color = DarkBg)
                 }
             }
         )
@@ -218,8 +243,8 @@ fun PomodoroScreen(
                     
                     if (isActive) {
                         Icon(
-                            Icons.Default.Timer, 
-                            contentDescription = null, 
+                            imageVector = Icons.Default.Timer, 
+                            contentDescription = "Temporizador ativo", 
                             tint = if (currentSession?.isBreak == true) AccentPurple else AccentCyan,
                             modifier = Modifier.size(24.dp)
                         )
@@ -316,7 +341,7 @@ fun PomodoroScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                             shape = RoundedCornerShape(16.dp)
                         ) {
-                            Icon(Icons.Default.Phone, contentDescription = null)
+                            Icon(Icons.Default.Phone, contentDescription = "Fazer chamada de emergência")
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(stringResource(R.string.pomodoro_phone_btn))
                         }
