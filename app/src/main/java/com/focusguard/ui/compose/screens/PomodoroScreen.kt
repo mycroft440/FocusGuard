@@ -51,7 +51,7 @@ fun PomodoroScreen(
     
     val currentSession by pomodoroManager.currentSession.collectAsState()
     val timeLeftMillis by pomodoroManager.timeLeftMillis.collectAsState()
-    var isBlockingEnabled by remember { mutableStateOf(true) }
+    var isBlockingEnabled by remember { mutableStateOf(false) }
     
     val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
     
