@@ -317,6 +317,33 @@ fun HomeContent(
         }
 
         AnimatedVisibility(
+            visible = permissionsVisible,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            Card(
+                onClick = onPermissionsClick,
+                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = DangerRed.copy(alpha = 0.1f)),
+                border = BorderStroke(1.dp, DangerRed)
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed)
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("Permissões Pendentes", color = DangerRed, fontWeight = FontWeight.Bold)
+                        Text("O FocusGuard precisa de permissões para funcionar.", color = DangerRed.copy(alpha = 0.8f), fontSize = 12.sp)
+                    }
+                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = DangerRed)
+                }
+            }
+        }
+
+        AnimatedVisibility(
             visible = visible,
             enter = fadeIn(animationSpec = tween(500, delayMillis = 300)) + slideInVertically(animationSpec = tween(500, delayMillis = 300)) { it / 3 }
         ) {
