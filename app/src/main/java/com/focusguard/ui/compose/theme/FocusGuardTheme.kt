@@ -39,6 +39,22 @@ val BorderSubtle = Color(0xFF1F1F23)
 val Divider = Color(0xFF2A2A2E)
 val CardBorder = Color(0xFF303035)
 
+// Light Theme Base
+val LightBg = Color(0xFFF8F9FA)
+val LightSurface = Color(0xFFFFFFFF)
+val LightCard = Color(0xFFF1F3F4)
+val LightCardElevated = Color(0xFFE8EAED)
+
+// Light Text Colors
+val LightTextPrimary = Color(0xFF202124)
+val LightTextSecondary = Color(0xFF5F6368)
+val LightTextHint = Color(0xFF80868B)
+
+// Light Borders
+val LightBorder = Color(0xFFDADCE0)
+val LightBorderSubtle = Color(0xFFE8EAED)
+val LightCardBorder = Color(0xFFE0E0E0)
+
 private val FocusGuardDarkColorScheme = darkColorScheme(
     primary = AccentCyan,
     onPrimary = Color.White,
@@ -61,51 +77,76 @@ private val FocusGuardDarkColorScheme = darkColorScheme(
     onError = Color.White,
 )
 
+private val FocusGuardLightColorScheme = lightColorScheme(
+    primary = AccentCyanDark,
+    onPrimary = Color.White,
+    primaryContainer = AccentCyan,
+    onPrimaryContainer = Color.White,
+    secondary = AccentPurpleDark,
+    onSecondary = Color.White,
+    secondaryContainer = AccentPurple,
+    onSecondaryContainer = Color.White,
+    tertiary = AccentCyanDark,
+    background = LightBg,
+    onBackground = LightTextPrimary,
+    surface = LightSurface,
+    onSurface = LightTextPrimary,
+    surfaceVariant = LightCard,
+    onSurfaceVariant = LightTextSecondary,
+    outline = LightCardBorder,
+    outlineVariant = LightBorderSubtle,
+    error = DangerRedDark,
+    onError = Color.White,
+)
+
 val FocusGuardTypography = Typography(
     headlineLarge = TextStyle(
         fontWeight = FontWeight.Bold,
-        fontSize = 32.sp,
-        color = TextPrimary
+        fontSize = 32.sp
     ),
     headlineMedium = TextStyle(
         fontWeight = FontWeight.Bold,
-        fontSize = 26.sp,
-        color = TextPrimary
+        fontSize = 26.sp
     ),
     titleLarge = TextStyle(
         fontWeight = FontWeight.Bold,
-        fontSize = 20.sp,
-        color = TextPrimary
+        fontSize = 20.sp
     ),
     titleMedium = TextStyle(
         fontWeight = FontWeight.Bold,
-        fontSize = 17.sp,
-        color = TextPrimary
+        fontSize = 17.sp
     ),
     bodyLarge = TextStyle(
-        fontSize = 16.sp,
-        color = TextPrimary
+        fontSize = 16.sp
     ),
     bodyMedium = TextStyle(
-        fontSize = 14.sp,
-        color = TextSecondary
+        fontSize = 14.sp
     ),
     bodySmall = TextStyle(
-        fontSize = 13.sp,
-        color = TextSecondary
+        fontSize = 13.sp
     ),
     labelMedium = TextStyle(
-        fontSize = 12.sp,
-        color = TextHint
+        fontSize = 12.sp
     ),
 )
 
 @Composable
 fun FocusGuardTheme(
+    darkTheme: Boolean = isSystemInDarkTheme(),
+    dynamicColor: Boolean = true,
     content: @Composable () -> Unit
 ) {
+    val colorScheme = when {
+        dynamicColor && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S -> {
+            val context = androidx.compose.ui.platform.LocalContext.current
+            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+        }
+        darkTheme -> FocusGuardDarkColorScheme
+        else -> FocusGuardLightColorScheme
+    }
+
     MaterialTheme(
-        colorScheme = FocusGuardDarkColorScheme,
+        colorScheme = colorScheme,
         typography = FocusGuardTypography,
         content = content
     )
