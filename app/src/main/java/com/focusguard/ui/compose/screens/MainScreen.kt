@@ -194,7 +194,6 @@ fun MainScreen(
                             onTimeSessionClick = onTimeSessionClick,
                             onAppUsageLimitsClick = onAppUsageLimitsClick,
                             onPomodoroClick = onPomodoroClick,
-                            onActiveSessionsClick = onActiveSessionsClick,
                             pagerHint = true
                         )
                         1 -> usageStatsContent()
@@ -273,7 +272,6 @@ fun HomeContent(
     onTimeSessionClick: () -> Unit,
     onAppUsageLimitsClick: () -> Unit,
     onPomodoroClick: () -> Unit,
-    onActiveSessionsClick: () -> Unit,
     pagerHint: Boolean
 ) {
     var visible by remember { mutableStateOf(false) }

@@ -141,10 +141,6 @@ fun MainActivityContent(
             }
         }
     }
-    val isBlocking by sessionManager.isBlockingActiveFlow.collectAsState(initial = false)
-    val activeSessions by sessionManager.activeSessionsFlow.collectAsState(initial = emptyList())
-    val isPomodoroActive = activeSessions.any { it.sessionType == "POMODORO" && sessionManager.isCurrentlyInBlockingWindow(it) }
-    
     val hasSession by sessionManager.hasRegisteredSessionFlow.collectAsState(initial = false)
     val sessionDetails by sessionManager.sessionDetailsFlow.collectAsState(initial = "Carregando...")
 
@@ -175,12 +171,15 @@ fun MainActivityContent(
         onDispose { activity.lifecycle.removeObserver(callback) }
     }
 
-    if (isPomodoroActive) {
-        FocusGuardLogger.log("MainActivity", "isPomodoroActive=true (BlockingSessionManager). ForÃ§ando exibição.")
-        Box(modifier = Modifier.fillMaxSize().background(com.focusguard.ui.compose.theme.DarkBg)) {
-            PomodoroScreen(pomodoroManager = pomodoroManager, onBack = { /* Bloqueado */ })
+    if (currentPomodoro?.isActive == true) {
+        val now = System.currentTimeMillis()
+        if (currentPomodoro!!.endTime > now) {
+            FocusGuardLogger.log("MainActivity", "Pomodoro Ativo detectado na UI. Exibindo tela de foco.")
+            Box(modifier = Modifier.fillMaxSize().background(com.focusguard.ui.compose.theme.DarkBg)) {
+                PomodoroScreen(pomodoroManager = pomodoroManager, onBack = { /* Bloqueado */ })
+            }
+            return
         }
-        return
     }
 
     Surface(color = MaterialTheme.colorScheme.background) {
@@ -234,7 +233,7 @@ fun MainActivityContent(
             dragHandle = { BottomSheetDefaults.DragHandle(color = com.focusguard.ui.compose.theme.TextHint) }
         ) {
             BlockingSessionStatusSheet(
-                isBlocking = isBlocking,
+                isBlocking = hasSession, // Simplificado
                 hasSession = hasSession,
                 details = sessionDetails,
                 onRenounce = {
