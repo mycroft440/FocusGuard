@@ -1,6 +1,7 @@
 package com.focusguard.ui.compose.screens
 
 import android.app.Activity
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
@@ -36,6 +37,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.focusguard.manager.PomodoroManager
+import com.focusguard.security.AuthManager
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.ui.compose.theme.*
 import kotlinx.coroutines.launch
@@ -43,10 +45,11 @@ import kotlinx.coroutines.launch
 @Composable
 fun PomodoroScreen(
     pomodoroManager: PomodoroManager,
+    authManager: AuthManager,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val activity = context as? Activity
+    val activity = context as? androidx.fragment.app.FragmentActivity
     val scope = rememberCoroutineScope()
     
     val currentSession by pomodoroManager.currentSession.collectAsState()
@@ -69,8 +72,23 @@ fun PomodoroScreen(
             confirmButton = {
                 Button(
                     onClick = {
-                        isBlockingEnabled = true
-                        showBlockingWarning = false
+                        activity?.let {
+                            authManager.showBiometricPrompt(
+                                activity = it,
+                                onSuccess = {
+                                    isBlockingEnabled = true
+                                    showBlockingWarning = false
+                                },
+                                onError = { error: String ->
+                                    Toast.makeText(context, error, Toast.LENGTH_SHORT).show()
+                                    showBlockingWarning = false
+                                }
+                            )
+                        } ?: run {
+                            // Fallback caso nâo seja FragmentActivity (nâo deve ocorrer no app)
+                            isBlockingEnabled = true
+                            showBlockingWarning = false
+                        }
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
                 ) {

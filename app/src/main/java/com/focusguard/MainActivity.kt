@@ -171,7 +171,7 @@ fun MainActivityContent(
         if (currentPomodoro!!.endTime > now) {
             FocusGuardLogger.log("MainActivity", "Pomodoro Ativo detectado na UI. Exibindo tela de foco.")
             Box(modifier = Modifier.fillMaxSize().background(com.focusguard.ui.compose.theme.DarkBg)) {
-                PomodoroScreen(pomodoroManager = pomodoroManager, onBack = { /* Bloqueado */ })
+                PomodoroScreen(pomodoroManager = pomodoroManager, authManager = authManager, onBack = { /* Bloqueado */ })
             }
             return
         }
@@ -207,9 +207,9 @@ fun MainActivityContent(
                     onAppUsageLimitsClick = { currentRoute = "USAGE_LIMITS" },
                     authManager = authManager,
                     usageStatsContent = { UsageStatsDashboardScreen(onBack = {}) },
-                    pomodoroContent = { PomodoroScreen(pomodoroManager = pomodoroManager, onBack = { currentRoute = "HOME" }) }
+                    pomodoroContent = { PomodoroScreen(pomodoroManager = pomodoroManager, authManager = authManager, onBack = { currentRoute = "HOME" }) }
                 )
-                "POMODORO" -> PomodoroScreen(pomodoroManager = pomodoroManager, onBack = { currentRoute = "HOME" })
+                "POMODORO" -> PomodoroScreen(pomodoroManager = pomodoroManager, authManager = authManager, onBack = { currentRoute = "HOME" })
                 "LIMITS" -> LimitsSecurityScreen(authManager = authManager, onBack = { currentRoute = "HOME" })
                 "INTRUDER_LOG" -> IntruderLogScreen(onBack = { currentRoute = "HOME" })
                 "LANGUAGE" -> LanguageScreen(onBack = { currentRoute = "HOME" })
