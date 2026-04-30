@@ -126,7 +126,7 @@ class PomodoroManager private constructor(private val context: Context) {
             _timeLeftMillis.value = 0
             
             FocusGuardLogger.log("PomodoroManager", "Sessão deletada do banco. Atualizando BlockingSessionManager.")
-            sessionManager.checkAndEnforce()
+            sessionManager.endPomodoroSession()
             FocusGuardLogger.log("PomodoroManager", "Pomodoro encerrado com sucesso. App desbloqueado.")
         } catch (e: Exception) {
             FocusGuardLogger.logError("PomodoroManager", "Erro ao parar sessão", e)

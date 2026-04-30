@@ -17,6 +17,7 @@ import java.util.concurrent.TimeUnit
 import java.util.Calendar
 import java.util.Locale
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.utils.FocusGuardLogger
 
 class BlockingSessionManager private constructor(private val context: Context) {
 
@@ -172,6 +173,22 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 }
             } catch (e: Exception) {
                 FocusGuardLogger.logError("BlockingSessionManager", "Erro ao iniciar pomodoro", e)
+            }
+        }
+    }
+
+    fun endPomodoroSession() {
+        scope.launch {
+            try {
+                FocusGuardLogger.log("BlockingSessionManager", "Encerrando sessão POMODORO no BlockingSessionManager.")
+                val sessions = database.blockSessionDao().getAllActiveSessions().first().filter { it.sessionType == "POMODORO" }
+                for (session in sessions) {
+                    database.blockSessionDao().updateBlockSession(session.copy(isActive = false))
+                }
+                checkAndEnforce()
+                FocusGuardLogger.log("BlockingSessionManager", "Sessões POMODORO encerradas com sucesso no BlockSessionDao.")
+            } catch (e: Exception) {
+                FocusGuardLogger.logError("BlockingSessionManager", "Erro ao encerrar sessão POMODORO", e)
             }
         }
     }
