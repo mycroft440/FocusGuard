@@ -49,6 +49,7 @@ fun MainScreen(
     onPasswordManagementClick: () -> Unit,
     onBlockCustomizationClick: () -> Unit,
     onAppUsageLimitsClick: () -> Unit,
+    onPomodoroClick: () -> Unit,
     authManager: AuthManager,
     usageStatsContent: @Composable () -> Unit
 ) {
@@ -173,7 +174,7 @@ fun MainScreen(
                 )
             }
         ) { paddingValues ->
-            val pagerState = rememberPagerState(initialPage = 1, pageCount = { 3 })
+            val pagerState = rememberPagerState(initialPage = 0, pageCount = { 2 })
 
             Column(
                 modifier = Modifier
@@ -186,16 +187,17 @@ fun MainScreen(
                     modifier = Modifier.weight(1f)
                 ) { page ->
                     when (page) {
-                        0 -> usageStatsContent()
-                        1 -> HomeContent(
+                        0 -> HomeContent(
                             permissionsVisible = permissionsVisible,
                             onPermissionsClick = onPermissionsClick,
                             onPasswordSessionClick = onPasswordSessionClick,
                             onTimeSessionClick = onTimeSessionClick,
                             onAppUsageLimitsClick = onAppUsageLimitsClick,
+                            onPomodoroClick = onPomodoroClick,
+                            onActiveSessionsClick = onActiveSessionsClick,
                             pagerHint = true
                         )
-                        2 -> PomodoroScreen()
+                        1 -> usageStatsContent()
                     }
                 }
 
@@ -205,7 +207,7 @@ fun MainScreen(
                         .padding(bottom = 12.dp),
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    repeat(3) { index ->
+                    repeat(2) { index ->
                         val isSelected = pagerState.currentPage == index
                         Box(
                             modifier = Modifier
@@ -270,6 +272,8 @@ fun HomeContent(
     onPasswordSessionClick: () -> Unit,
     onTimeSessionClick: () -> Unit,
     onAppUsageLimitsClick: () -> Unit,
+    onPomodoroClick: () -> Unit,
+    onActiveSessionsClick: () -> Unit,
     pagerHint: Boolean
 ) {
     var visible by remember { mutableStateOf(false) }
@@ -352,6 +356,20 @@ fun HomeContent(
                 title = stringResource(id = R.string.usage_limits),
                 subtitle = stringResource(id = R.string.usage_limits_sub),
                 onClick = onAppUsageLimitsClick
+            )
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        AnimatedVisibility(
+            visible = visible,
+            enter = fadeIn(animationSpec = tween(500, delayMillis = 480)) + slideInVertically(animationSpec = tween(500, delayMillis = 480)) { it / 3 }
+        ) {
+            SessionCard(
+                icon = Icons.Outlined.Timer,
+                title = "Modo Pomodoro",
+                subtitle = "Foco total e imersivo sem distraÃ§Ãµes",
+                onClick = onPomodoroClick
             )
         }
 

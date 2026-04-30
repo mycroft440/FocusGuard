@@ -1,8 +1,9 @@
 package com.focusguard.ui.compose.screens
 
-import android.os.CountDownTimer
-import android.widget.Toast
+import android.app.Activity
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -25,199 +26,195 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.focusguard.manager.BlockingSessionManager
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import com.focusguard.manager.PomodoroManager
 import com.focusguard.ui.compose.theme.*
-import kotlinx.coroutines.flow.first
-import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.launch
 
 @Composable
-fun PomodoroScreen() {
+fun PomodoroScreen(
+    pomodoroManager: PomodoroManager,
+    onBack: () -> Unit
+) {
     val context = LocalContext.current
-    val sessionManager = remember { BlockingSessionManager.getInstance(context) }
+    val activity = context as? Activity
+    val scope = rememberCoroutineScope()
     
-    var isRunning by remember { mutableStateOf(false) }
-    var remainingTimeMs by remember { mutableLongStateOf(25 * 60 * 1000L) }
-    var totalTimeMs by remember { mutableLongStateOf(25 * 60 * 1000L) }
+    val currentSession by pomodoroManager.currentSession.collectAsState()
+    val timeLeftMillis by pomodoroManager.timeLeftMillis.collectAsState()
     
-    // Check if a Pomodoro session is already active
-    LaunchedEffect(Unit) {
-        val activePomodoros = sessionManager.activeSessionsFlow.first().filter { it.sessionType == "POMODORO" }
-        if (activePomodoros.isNotEmpty()) {
-            val session = activePomodoros.first()
-            val endTime = session.endTime ?: 0L
-            val now = System.currentTimeMillis()
-            if (endTime > now) {
-                isRunning = true
-                totalTimeMs = endTime - session.startTime
-                remainingTimeMs = endTime - now
+    val isActive = currentSession?.isActive == true
+    
+    // MODO IMERSIVO (TELA INTEIRA)
+    LaunchedEffect(isActive) {
+        activity?.window?.let { window ->
+            val controller = WindowInsetsControllerCompat(window, window.decorView)
+            if (isActive) {
+                controller.hide(WindowInsetsCompat.Type.systemBars())
+                controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            } else {
+                controller.show(WindowInsetsCompat.Type.systemBars())
             }
         }
     }
 
-    Column(
+    // BLOQUEIO DO BOTÃƒO VOLTAR
+    BackHandler(enabled = isActive) {
+        // NÃ£o faz nada: impede a saÃda da tela
+    }
+
+    // KIOSK MODE (Lock Task) - Se Device Owner
+    LaunchedEffect(isActive) {
+        if (isActive) {
+            try {
+                activity?.startLockTask()
+            } catch (_: Exception) {}
+        } else {
+            try {
+                activity?.stopLockTask()
+            } catch (_: Exception) {}
+        }
+    }
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(DarkBg)
-            .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+            .background(DarkBg),
+        contentAlignment = Alignment.Center
     ) {
-        Text(
-            "Modo Pomodoro",
-            fontSize = 28.sp,
-            fontWeight = FontWeight.Bold,
-            color = TextPrimary
-        )
-        
-        Text(
-            "Foco absoluto. Nada além de ligações.",
-            fontSize = 14.sp,
-            color = TextSecondary,
-            modifier = Modifier.padding(top = 8.dp, bottom = 48.dp)
-        )
-
-        // Circular Timer
-        Box(
-            contentAlignment = Alignment.Center,
-            modifier = Modifier.size(280.dp)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(24.dp)
         ) {
-            Canvas(modifier = Modifier.size(280.dp)) {
-                drawCircle(
-                    color = DarkSurface,
-                    style = Stroke(width = 12.dp.toPx())
+            Text(
+                text = if (currentSession?.isBreak == true) "Descanso" else "Foco Total",
+                fontSize = 32.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (currentSession?.isBreak == true) AccentPurple else AccentCyan,
+                textAlign = TextAlign.Center
+            )
+            
+            Spacer(modifier = Modifier.height(8.dp))
+            
+            Text(
+                text = if (isActive) "Bloqueio Imersivo Ativo" else "Selecione a duraÃ§Ã£o",
+                fontSize = 14.sp,
+                color = TextSecondary,
+                textAlign = TextAlign.Center
+            )
+            
+            Spacer(modifier = Modifier.height(48.dp))
+            
+            // Timer Circular Premium
+            Box(contentAlignment = Alignment.Center) {
+                val progress = if (isActive && currentSession != null) {
+                    timeLeftMillis.toFloat() / currentSession!!.durationMillis.toFloat()
+                } else 1f
+                
+                CircularTimerProgress(
+                    progress = progress,
+                    color = if (currentSession?.isBreak == true) AccentPurple else AccentCyan
                 )
                 
-                val sweepAngle = (remainingTimeMs.toFloat() / totalTimeMs.toFloat()) * 360f
-                drawArc(
-                    brush = Brush.linearGradient(listOf(AccentCyan, AccentPurple)),
-                    startAngle = -90f,
-                    sweepAngle = sweepAngle,
-                    useCenter = false,
-                    style = Stroke(width = 12.dp.toPx(), cap = StrokeCap.Round)
-                )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    val minutes = (timeLeftMillis / 1000) / 60
+                    val seconds = (timeLeftMillis / 1000) % 60
+                    Text(
+                        text = if (isActive) String.format("%02d:%02d", minutes, seconds) else "25:00",
+                        fontSize = 72.sp,
+                        fontWeight = FontWeight.Black,
+                        color = TextPrimary
+                    )
+                    
+                    if (isActive) {
+                        Icon(
+                            Icons.Default.Timer, 
+                            contentDescription = null, 
+                            tint = if (currentSession?.isBreak == true) AccentPurple else AccentCyan,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
+                }
             }
             
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                val minutes = TimeUnit.MILLISECONDS.toMinutes(remainingTimeMs)
-                val seconds = TimeUnit.MILLISECONDS.toSeconds(remainingTimeMs) % 60
-                
-                Text(
-                    text = String.format("%02d:%02d", minutes, seconds),
-                    fontSize = 54.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-                Text(
-                    text = if (isRunning) "EM FOCO" else "PRONTO",
-                    fontSize = 14.sp,
-                    color = if (isRunning) AccentCyan else TextHint,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(64.dp))
-
-        if (!isRunning) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly
-            ) {
-                TimeOption(label = "15m", isSelected = totalTimeMs == 15 * 60 * 1000L) {
-                    totalTimeMs = 15 * 60 * 1000L
-                    remainingTimeMs = totalTimeMs
-                }
-                TimeOption(label = "25m", isSelected = totalTimeMs == 25 * 60 * 1000L) {
-                    totalTimeMs = 25 * 60 * 1000L
-                    remainingTimeMs = totalTimeMs
-                }
-                TimeOption(label = "45m", isSelected = totalTimeMs == 45 * 60 * 1000L) {
-                    totalTimeMs = 45 * 60 * 1000L
-                    remainingTimeMs = totalTimeMs
-                }
-                TimeOption(label = "60m", isSelected = totalTimeMs == 60 * 60 * 1000L) {
-                    totalTimeMs = 60 * 60 * 1000L
-                    remainingTimeMs = totalTimeMs
-                }
-            }
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            Button(
-                onClick = {
-                    isRunning = true
-                    // Start session in manager
-                    sessionManager.startPomodoroSession(totalTimeMs)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Icon(Icons.Default.PlayArrow, null, tint = DarkBg)
-                Spacer(Modifier.width(8.dp))
-                Text("Iniciar Pomodoro", color = DarkBg, fontWeight = FontWeight.Bold)
-            }
-        } else {
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = DarkSurface.copy(alpha = 0.5f)),
-                shape = RoundedCornerShape(16.dp)
-            ) {
+            Spacer(modifier = Modifier.height(64.dp))
+            
+            if (!isActive) {
                 Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    Icon(Icons.Default.Timer, null, tint = DangerRed)
-                    Spacer(Modifier.width(12.dp))
+                    PomodoroOption(label = "15m", onClick = { scope.launch { pomodoroManager.startSession(15) } })
+                    PomodoroOption(label = "25m", onClick = { scope.launch { pomodoroManager.startSession(25) } })
+                    PomodoroOption(label = "45m", onClick = { scope.launch { pomodoroManager.startSession(45) } })
+                }
+                
+                Spacer(modifier = Modifier.height(48.dp))
+                
+                OutlinedButton(
+                    onClick = onBack,
+                    modifier = Modifier.width(200.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+                ) {
+                    Text("Sair", color = TextSecondary)
+                }
+            } else {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = DarkCard.copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.padding(16.dp)
+                ) {
                     Text(
-                        "Bloqueio Irreversível Ativo.\nO tempo deve esgotar para desbloquear.",
-                        color = TextSecondary,
-                        fontSize = 12.sp
+                        "O FocusGuard travou esta tela.\nSaÃda nÃ£o permitida atÃ© o fim do timer.",
+                        color = TextHint,
+                        textAlign = TextAlign.Center,
+                        fontSize = 13.sp,
+                        modifier = Modifier.padding(16.dp)
                     )
                 }
             }
-        }
-        
-        Spacer(modifier = Modifier.height(24.dp))
-        
-        Text(
-            "Deslize para navegar",
-            fontSize = 12.sp,
-            color = TextHint.copy(alpha = 0.5f)
-        )
-    }
-
-    // Timer update effect
-    LaunchedEffect(isRunning) {
-        if (isRunning) {
-            while (remainingTimeMs > 0) {
-                kotlinx.coroutines.delay(1000)
-                remainingTimeMs -= 1000
-            }
-            isRunning = false
-            Toast.makeText(context, "Pomodoro Concluído!", Toast.LENGTH_LONG).show()
         }
     }
 }
 
 @Composable
-fun TimeOption(label: String, isSelected: Boolean, onClick: () -> Unit) {
-    Surface(
+fun CircularTimerProgress(progress: Float, color: Color) {
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress,
+        animationSpec = tween(1000, easing = LinearEasing),
+        label = "TimerProgress"
+    )
+    
+    Canvas(modifier = Modifier.size(300.dp)) {
+        // Track
+        drawCircle(
+            color = DarkCard,
+            style = Stroke(width = 14.dp.toPx())
+        )
+        // Progress
+        drawArc(
+            brush = Brush.sweepGradient(listOf(color.copy(alpha = 0.3f), color)),
+            startAngle = -90f,
+            sweepAngle = 360 * animatedProgress,
+            useCenter = false,
+            style = Stroke(width = 14.dp.toPx(), cap = StrokeCap.Round)
+        )
+    }
+}
+
+@Composable
+fun PomodoroOption(label: String, onClick: () -> Unit) {
+    FilledTonalButton(
         onClick = onClick,
+        modifier = Modifier.size(80.dp, 50.dp),
         shape = RoundedCornerShape(12.dp),
-        color = if (isSelected) AccentCyan.copy(alpha = 0.15f) else DarkSurface,
-        border = if (isSelected) androidx.compose.foundation.BorderStroke(1.dp, AccentCyan) else null,
-        modifier = Modifier.size(60.dp, 40.dp)
+        colors = ButtonDefaults.filledTonalButtonColors(
+            containerColor = DarkCard,
+            contentColor = AccentCyan
+        )
     ) {
-        Box(contentAlignment = Alignment.Center) {
-            Text(
-                label,
-                color = if (isSelected) AccentCyan else TextSecondary,
-                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                fontSize = 14.sp
-            )
-        }
+        Text(label, fontWeight = FontWeight.Bold, fontSize = 16.sp)
     }
 }

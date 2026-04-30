@@ -13,9 +13,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         BlockedApp::class, BlockedWebsite::class, BlockSession::class, 
         SessionAppCrossRef::class, SessionWebsiteCrossRef::class, 
         AppUsageLimit::class, WebsiteUsageLimit::class, UsageLimitsLock::class, 
-        DailyUsageStat::class, AppPassword::class
+        DailyUsageStat::class, AppPassword::class, PomodoroSession::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -29,6 +29,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun usageLimitsLockDao(): UsageLimitsLockDao
     abstract fun dailyUsageStatDao(): DailyUsageStatDao
     abstract fun appPasswordDao(): AppPasswordDao
+    abstract fun pomodoroSessionDao(): PomodoroSessionDao
 
     companion object {
         @Volatile
@@ -96,6 +97,12 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("CREATE TABLE IF NOT EXISTS `pomodoro_sessions` (`id` INTEGER NOT NULL, `endTime` INTEGER NOT NULL, `durationMillis` INTEGER NOT NULL, `isActive` INTEGER NOT NULL, `isBreak` INTEGER NOT NULL, `lastTickTime` INTEGER NOT NULL, PRIMARY KEY(`id`))")
+            }
+        }
+
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -103,7 +110,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "focusguard_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 .build()
                 INSTANCE = instance
                 instance

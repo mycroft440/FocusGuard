@@ -31,6 +31,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var deviceOwnerManager: DeviceOwnerManager
     private lateinit var sessionManager: BlockingSessionManager
     private lateinit var authManager: AuthManager
+    private lateinit var pomodoroManager: PomodoroManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -48,6 +49,7 @@ class MainActivity : AppCompatActivity() {
         deviceOwnerManager = DeviceOwnerManager(applicationContext)
         sessionManager = BlockingSessionManager.getInstance(applicationContext)
         authManager = AuthManager(applicationContext)
+        pomodoroManager = PomodoroManager.getInstance(applicationContext)
 
         setContent {
             FocusGuardTheme {
@@ -68,7 +70,8 @@ fun MainActivityContent(
     activity: AppCompatActivity,
     deviceOwnerManager: DeviceOwnerManager,
     sessionManager: BlockingSessionManager,
-    authManager: AuthManager
+    authManager: AuthManager,
+    pomodoroManager: PomodoroManager
 ) {
     var isUnlocked by remember { mutableStateOf<Boolean?>(null) }
     LaunchedEffect(Unit) {
@@ -100,6 +103,14 @@ fun MainActivityContent(
     var permissionsVisible by remember { mutableStateOf(false) }
     var showSessionSheet by remember { mutableStateOf(false) }
     
+    val currentPomodoro by pomodoroManager.currentSession.collectAsState()
+    
+    // Forçar rota Pomodoro se estiver ativo
+    LaunchedEffect(currentPomodoro) {
+        if (currentPomodoro?.isActive == true) {
+            currentRoute = "POMODORO"
+        }
+    }
     val isBlocking by sessionManager.isBlockingActiveFlow.collectAsState(initial = false)
     val activeSessions by sessionManager.activeSessionsFlow.collectAsState(initial = emptyList())
     val isPomodoroActive = activeSessions.any { it.sessionType == "POMODORO" && sessionManager.isCurrentlyInBlockingWindow(it) }
@@ -169,9 +180,11 @@ fun MainActivityContent(
                     onPasswordManagementClick = { currentRoute = "PASSWORD_MANAGEMENT" },
                     onBlockCustomizationClick = { currentRoute = "DASHBOARD" }, // Usando para o Dashboard por enquanto
                     onAppUsageLimitsClick = { currentRoute = "USAGE_LIMITS" },
+                    onPomodoroClick = { currentRoute = "POMODORO" },
                     authManager = authManager,
                     usageStatsContent = { UsageStatsScreen() }
                 )
+                "POMODORO" -> PomodoroScreen(pomodoroManager = pomodoroManager, onBack = { currentRoute = "HOME" })
                 "LIMITS" -> LimitsSecurityScreen(authManager = authManager, onBack = { currentRoute = "HOME" })
                 "INTRUDER_LOG" -> IntruderLogScreen(onBack = { currentRoute = "HOME" })
                 "LANGUAGE" -> LanguageScreen(onBack = { currentRoute = "HOME" })
