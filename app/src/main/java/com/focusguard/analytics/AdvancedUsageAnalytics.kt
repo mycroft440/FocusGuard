@@ -29,7 +29,7 @@ class AdvancedUsageAnalytics(private val context: Context) {
     private val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
     private val pm = context.packageManager
 
-    suspend fun getWeeklyPhoneUsage(): List<DailyPhoneUsage> = withContext(Dispatchers.IO) {
+    suspend fun getPhoneUsageHistory(days: Int = 7): List<DailyPhoneUsage> = withContext(Dispatchers.IO) {
         if (usageStatsManager == null) return@withContext emptyList()
         
         val cal = Calendar.getInstance().apply {
@@ -37,7 +37,7 @@ class AdvancedUsageAnalytics(private val context: Context) {
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
-            add(Calendar.DAY_OF_YEAR, -6)
+            add(Calendar.DAY_OF_YEAR, -(days - 1))
         }
         val startTime = cal.timeInMillis
         val endTime = System.currentTimeMillis()
@@ -68,7 +68,7 @@ class AdvancedUsageAnalytics(private val context: Context) {
         dailyMap.map { (key, value) ->
             val parts = key.split("|")
             DailyPhoneUsage(parts[1], value, parts[0].toLong())
-        }.sortedBy { it.timestamp }.takeLast(7)
+        }.sortedBy { it.timestamp }.takeLast(days)
     }
 
     suspend fun getMostUsedApps(startTime: Long, endTime: Long): List<AppUsageStat> = withContext(Dispatchers.IO) {

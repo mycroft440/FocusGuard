@@ -177,6 +177,10 @@ fun MainActivityContent(
         }
     }
 
+    androidx.activity.compose.BackHandler(enabled = currentRoute != "HOME") {
+        currentRoute = "HOME"
+    }
+
     Surface(color = MaterialTheme.colorScheme.background) {
         AnimatedContent(
             targetState = currentRoute,
@@ -206,7 +210,7 @@ fun MainActivityContent(
                     onBlockCustomizationClick = { currentRoute = "BLOCK_CUSTOMIZATION" },
                     onAppUsageLimitsClick = { currentRoute = "USAGE_LIMITS" },
                     authManager = authManager,
-                    usageStatsContent = { UsageStatsDashboardScreen(onBack = {}) },
+                    usageStatsContent = { UsageStatsDashboardScreen(onBack = { currentRoute = "HOME" }) },
                     pomodoroContent = { PomodoroScreen(pomodoroManager = pomodoroManager, authManager = authManager, onBack = { currentRoute = "HOME" }) }
                 )
                 "POMODORO" -> PomodoroScreen(pomodoroManager = pomodoroManager, authManager = authManager, onBack = { currentRoute = "HOME" })

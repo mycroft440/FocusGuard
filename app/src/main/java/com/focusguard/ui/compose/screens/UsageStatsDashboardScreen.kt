@@ -14,6 +14,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Language
+import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -26,6 +28,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
@@ -68,7 +71,7 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit) {
             }
             val startToday = calToday.timeInMillis
 
-            weeklyUsage = analytics.getWeeklyPhoneUsage()
+            weeklyUsage = analytics.getPhoneUsageHistory(14)
             mostUsedApps = analytics.getMostUsedApps(start7Days, end)
             openCloseEvents = analytics.getAppOpenCloseCounts(startToday, end)
             neverUsedApps = analytics.getNeverUsedApps(start7Days, end)
@@ -142,10 +145,18 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit) {
 }
 
 @Composable
-fun PhoneUsageChartSection(weeklyUsage: List<DailyPhoneUsage>) {
-    val totalTime = weeklyUsage.sumOf { it.totalTimeMs }
-    val days = weeklyUsage.size.coerceAtLeast(1)
-    val dailyAvg = totalTime / days
+fun PhoneUsageChartSection(usageHistory: List<DailyPhoneUsage>) {
+    val currentWeek = usageHistory.takeLast(7)
+    val previousWeek = usageHistory.take(usageHistory.size - 7).takeLast(7)
+    
+    val currentTotal = currentWeek.sumOf { it.totalTimeMs }
+    val currentAvg = currentTotal / currentWeek.size.coerceAtLeast(1)
+    
+    val previousTotal = previousWeek.sumOf { it.totalTimeMs }
+    val previousAvg = previousTotal / previousWeek.size.coerceAtLeast(1)
+    
+    val diff = currentAvg - previousAvg
+    val isIncrease = diff > 0
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -154,46 +165,87 @@ fun PhoneUsageChartSection(weeklyUsage: List<DailyPhoneUsage>) {
         border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Text("Uso do Telefone (7 Dias)", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Uso do Telefone", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                
+                if (previousWeek.isNotEmpty()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = if (isIncrease) androidx.compose.material.icons.Icons.Default.Timer else androidx.compose.material.icons.Icons.Default.Check,
+                            contentDescription = null,
+                            tint = if (isIncrease) DangerRed else SuccessGreen,
+                            modifier = Modifier.size(14.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                        Text(
+                            text = "${if (isIncrease) "+" else ""}${formatTime(Math.abs(diff))}",
+                            color = if (isIncrease) DangerRed else SuccessGreen,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(" vs sem. ant.", color = TextHint, fontSize = 10.sp)
+                    }
+                }
+            }
+            
             Spacer(Modifier.height(16.dp))
             
             Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Column {
                     Text("Total na Semana", color = TextSecondary, fontSize = 12.sp)
-                    Text(formatTime(totalTime), color = AccentCyan, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text(formatTime(currentTotal), color = AccentCyan, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
                 Column(horizontalAlignment = Alignment.End) {
                     Text("Média Diária", color = TextSecondary, fontSize = 12.sp)
-                    Text(formatTime(dailyAvg), color = AccentPurple, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                    Text(formatTime(currentAvg), color = AccentPurple, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
             }
             
             Spacer(Modifier.height(24.dp))
             
-            Canvas(modifier = Modifier.fillMaxWidth().height(150.dp)) {
-                val maxTime = weeklyUsage.maxOfOrNull { it.totalTimeMs }?.coerceAtLeast(60000L) ?: 60000L
-                val barGap = 16.dp.toPx()
-                val totalBars = weeklyUsage.size
-                if (totalBars == 0) return@Canvas
-                val barWidth = (size.width - (totalBars - 1) * barGap) / totalBars
-                
-                weeklyUsage.forEachIndexed { index, usage ->
-                    val barHeight = (usage.totalTimeMs.toFloat() / maxTime.toFloat()) * size.height
-                    drawRoundRect(
-                        color = AccentCyan,
-                        topLeft = Offset(x = index * (barWidth + barGap), y = size.height - barHeight),
-                        size = Size(width = barWidth, height = barHeight),
-                        cornerRadius = androidx.compose.ui.geometry.CornerRadius(4.dp.toPx())
+            Column {
+                Canvas(modifier = Modifier.fillMaxWidth().height(150.dp)) {
+                    val maxTime = currentWeek.maxOfOrNull { it.totalTimeMs }?.coerceAtLeast(60000L) ?: 60000L
+                    val barGap = 12.dp.toPx()
+                    val totalBars = currentWeek.size
+                    if (totalBars == 0) return@Canvas
+                    val barWidth = (size.width - (totalBars - 1) * barGap) / totalBars
+                    
+                    currentWeek.forEachIndexed { index, usage ->
+                        val barHeight = (usage.totalTimeMs.toFloat() / maxTime.toFloat()) * size.height
+                        drawRoundRect(
+                            color = AccentCyan,
+                            topLeft = Offset(x = index * (barWidth + barGap), y = size.height - barHeight),
+                            size = Size(width = barWidth, height = barHeight),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx())
+                        )
+                    }
+                    
+                    val avgY = size.height - ((currentAvg.toFloat() / maxTime.toFloat()) * size.height)
+                    drawLine(
+                        color = AccentPurple.copy(alpha = 0.5f),
+                        start = Offset(0f, avgY),
+                        end = Offset(size.width, avgY),
+                        strokeWidth = 1.dp.toPx(),
+                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f))
                     )
                 }
                 
-                val avgY = size.height - ((dailyAvg.toFloat() / maxTime.toFloat()) * size.height)
-                drawLine(
-                    color = AccentPurple,
-                    start = Offset(0f, avgY),
-                    end = Offset(size.width, avgY),
-                    strokeWidth = 2.dp.toPx()
-                )
+                Spacer(Modifier.height(8.dp))
+                
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                    currentWeek.forEach { usage ->
+                        val label = usage.dateLabel.take(1) // Pega a primeira letra (S, T, Q...)
+                        Text(
+                            text = label,
+                            color = TextHint,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.width(20.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                }
             }
         }
     }
