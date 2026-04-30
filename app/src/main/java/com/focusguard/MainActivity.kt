@@ -238,11 +238,11 @@ fun MainActivityContent(
                     onIntruderLogClick = { currentRoute = "INTRUDER_LOG" },
                     onLanguageClick = { currentRoute = "LANGUAGE" },
                     onPasswordManagementClick = { currentRoute = "PASSWORD_MANAGEMENT" },
-                    onBlockCustomizationClick = { currentRoute = "DASHBOARD" },
+                    onBlockCustomizationClick = { currentRoute = "BLOCK_CUSTOMIZATION" },
                     onAppUsageLimitsClick = { currentRoute = "USAGE_LIMITS" },
-                    onPomodoroClick = { currentRoute = "POMODORO" },
                     authManager = authManager,
-                    usageStatsContent = { UsageStatsDashboardScreen(stats = combinedStats, onBack = {}) }
+                    usageStatsContent = { UsageStatsDashboardScreen(stats = combinedStats, onBack = {}) },
+                    pomodoroContent = { PomodoroScreen(pomodoroManager = pomodoroManager, onBack = { currentRoute = "HOME" }) }
                 )
                 "POMODORO" -> PomodoroScreen(pomodoroManager = pomodoroManager, onBack = { currentRoute = "HOME" })
                 "LIMITS" -> LimitsSecurityScreen(authManager = authManager, onBack = { currentRoute = "HOME" })
@@ -251,6 +251,7 @@ fun MainActivityContent(
                 "PASSWORD_MANAGEMENT" -> PasswordManagementScreen(authManager = authManager, onBack = { currentRoute = "HOME" })
                 "USAGE_LIMITS" -> UsageLimitsScreen(authManager = authManager, onBack = { currentRoute = "HOME" })
                 "DASHBOARD" -> UsageStatsDashboardScreen(stats = combinedStats, onBack = { currentRoute = "HOME" })
+                "BLOCK_CUSTOMIZATION" -> BlockCustomizationScreen(onBack = { currentRoute = "HOME" })
                 "SESSIONS_LIST" -> SessionsListScreen(sessionType = selectedSessionType, onBack = { currentRoute = "HOME" })
             }
         }
