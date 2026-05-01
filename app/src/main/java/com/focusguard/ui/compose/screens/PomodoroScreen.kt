@@ -54,7 +54,7 @@ fun PomodoroScreen(
     val context = LocalContext.current
     val activity = context as? androidx.fragment.app.FragmentActivity
     val scope = rememberCoroutineScope()
-    
+
     val currentSession by pomodoroManager.currentSession.collectAsState()
     val timeLeftMillis by pomodoroManager.timeLeftMillis.collectAsState()
     var isBlockingEnabled by remember { mutableStateOf(false) }
@@ -122,8 +122,8 @@ fun PomodoroScreen(
                     enabled = countdown == 0
                 ) {
                     Text(
-                        if (countdown > 0) stringResource(R.string.pomodoro_confirm_btn_countdown, countdown) 
-                        else stringResource(R.string.pomodoro_confirm_btn), 
+                        if (countdown > 0) stringResource(R.string.pomodoro_confirm_btn_countdown, countdown)
+                        else stringResource(R.string.pomodoro_confirm_btn),
                         color = DarkBg
                     )
                 }
@@ -148,12 +148,12 @@ fun PomodoroScreen(
                     onClick = { showSummary = false },
                     colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
                 ) {
-                    Text("Ótimo!", color = DarkBg)
+                    Text(stringResource(R.string.pomodoro_summary_confirm), color = DarkBg)
                 }
             }
         )
     }
-    
+
     val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
     val isActive = currentSession?.isActive == true
 
@@ -167,17 +167,15 @@ fun PomodoroScreen(
             }
         }
     }
-    
+
     LaunchedEffect(isActive) {
         FocusGuardLogger.log("PomodoroScreen", "Estado Imersivo alterado: $isActive")
         activity?.window?.let { window ->
             val controller = WindowInsetsControllerCompat(window, window.decorView)
             if (isActive) {
-                FocusGuardLogger.log("PomodoroScreen", "Escondendo barras de sistema.")
                 controller.hide(WindowInsetsCompat.Type.systemBars())
                 controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
             } else {
-                FocusGuardLogger.log("PomodoroScreen", "Mostrando barras de sistema.")
                 controller.show(WindowInsetsCompat.Type.systemBars())
             }
         }
@@ -190,14 +188,12 @@ fun PomodoroScreen(
     LaunchedEffect(isActive) {
         if (isActive && currentSession?.isBlockingEnabled == true) {
             try {
-                FocusGuardLogger.log("PomodoroScreen", "Ativando startLockTask.")
                 activity?.startLockTask()
             } catch (e: Exception) {
                 FocusGuardLogger.logError("PomodoroScreen", "Falha ao ativar startLockTask", e)
             }
         } else {
             try {
-                FocusGuardLogger.log("PomodoroScreen", "Desativando stopLockTask.")
                 activity?.stopLockTask()
             } catch (e: Exception) {
                 FocusGuardLogger.logError("PomodoroScreen", "Falha ao desativar stopLockTask", e)
@@ -225,9 +221,9 @@ fun PomodoroScreen(
                 color = if (currentSession?.isBreak == true) AccentPurple else AccentCyan,
                 textAlign = TextAlign.Center
             )
-            
+
             Spacer(modifier = Modifier.height(8.dp))
-            
+
             Text(
                 text = if (isActive) {
                     if (currentSession?.isBlockingEnabled == true) stringResource(R.string.pomodoro_status_immersive) else stringResource(R.string.pomodoro_status_running)
@@ -242,27 +238,23 @@ fun PomodoroScreen(
                 BlockingToggleCard(
                     isBlockingEnabled = isBlockingEnabled,
                     onToggle = { checked ->
-                        if (checked) {
-                            showBlockingWarning = true
-                        } else {
-                            isBlockingEnabled = false
-                        }
+                        if (checked) showBlockingWarning = true else isBlockingEnabled = false
                     }
                 )
             }
-            
+
             Spacer(modifier = Modifier.height(if (isActive) 48.dp else 32.dp))
-            
+
             Box(contentAlignment = Alignment.Center) {
                 val progress = if (isActive && currentSession != null) {
                     timeLeftMillis.toFloat() / currentSession!!.durationMillis.toFloat()
                 } else 1f
-                
+
                 CircularTimerProgress(
                     progress = progress,
                     color = if (currentSession?.isBreak == true) AccentPurple else AccentCyan
                 )
-                
+
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     val minutes = (timeLeftMillis / 1000) / 60
                     val seconds = (timeLeftMillis / 1000) % 60
@@ -272,28 +264,28 @@ fun PomodoroScreen(
                         fontWeight = FontWeight.Black,
                         color = TextPrimary
                     )
-                    
+
                     if (isActive) {
                         Icon(
-                            imageVector = Icons.Default.Timer, 
-                            contentDescription = "Temporizador ativo", 
+                            imageVector = Icons.Default.Timer,
+                            contentDescription = stringResource(R.string.content_timer_active),
                             tint = if (currentSession?.isBreak == true) AccentPurple else AccentCyan,
                             modifier = Modifier.size(24.dp)
                         )
                     }
                 }
             }
-            
+
             Spacer(modifier = Modifier.height(48.dp))
-            
+
             if (!isActive) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    PomodoroOption(label = "15m", onClick = { onStart(15) })
-                    PomodoroOption(label = "25m", onClick = { onStart(25) })
-                    PomodoroOption(label = "45m", onClick = { onStart(45) })
+                    PomodoroOption(label = stringResource(R.string.pomodoro_option_15), onClick = { onStart(15) })
+                    PomodoroOption(label = stringResource(R.string.pomodoro_option_25), onClick = { onStart(25) })
+                    PomodoroOption(label = stringResource(R.string.pomodoro_option_45), onClick = { onStart(45) })
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -305,13 +297,11 @@ fun PomodoroScreen(
                             customMinutesText = newValue
                         }
                     },
-                    onStart = {
-                        customMinutesText.toIntOrNull()?.let(onStart)
-                    }
+                    onStart = { customMinutesText.toIntOrNull()?.let(onStart) }
                 )
-                
+
                 Spacer(modifier = Modifier.height(32.dp))
-                
+
                 OutlinedButton(
                     onClick = onBack,
                     modifier = Modifier.width(200.dp),
@@ -327,9 +317,9 @@ fun PomodoroScreen(
                     modifier = Modifier.padding(16.dp)
                 ) {
                     Text(
-                        if (currentSession?.isBlockingEnabled == true) 
+                        if (currentSession?.isBlockingEnabled == true)
                             stringResource(R.string.pomodoro_lock_warning_blocked)
-                        else 
+                        else
                             stringResource(R.string.pomodoro_lock_warning_free),
                         color = TextHint,
                         textAlign = TextAlign.Center,
@@ -350,7 +340,7 @@ fun PomodoroScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                             shape = RoundedCornerShape(16.dp)
                         ) {
-                            Icon(Icons.Default.Phone, contentDescription = "Fazer chamada de emergência")
+                            Icon(Icons.Default.Phone, contentDescription = stringResource(R.string.content_emergency_call))
                             Spacer(modifier = Modifier.width(8.dp))
                             Text(stringResource(R.string.pomodoro_phone_btn))
                         }
@@ -383,7 +373,7 @@ fun BlockingToggleCard(
     ) {
         Column(modifier = Modifier.weight(1f, fill = false)) {
             Text(stringResource(R.string.pomodoro_enable_block_switch), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-            Text("Ative antes de iniciar para bloquear saídas e distrações", color = TextHint, fontSize = 11.sp)
+            Text(stringResource(R.string.pomodoro_enable_block_subtitle), color = TextHint, fontSize = 11.sp)
         }
         Spacer(modifier = Modifier.width(16.dp))
         Switch(
@@ -413,7 +403,7 @@ fun CustomPomodoroTimeInput(
         border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text("Tempo personalizado", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Text(stringResource(R.string.pomodoro_custom_time_title), color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
             Spacer(modifier = Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
@@ -421,7 +411,7 @@ fun CustomPomodoroTimeInput(
                     onValueChange = onValueChange,
                     modifier = Modifier.weight(1f),
                     singleLine = true,
-                    label = { Text("Minutos", color = TextHint) },
+                    label = { Text(stringResource(R.string.pomodoro_minutes_label), color = TextHint) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedBorderColor = AccentCyan,
@@ -440,7 +430,7 @@ fun CustomPomodoroTimeInput(
                     colors = ButtonDefaults.buttonColors(containerColor = AccentCyan, disabledContainerColor = DarkCardElevated),
                     shape = RoundedCornerShape(14.dp)
                 ) {
-                    Text("Iniciar", color = if (isValid) DarkBg else TextHint, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.pomodoro_start_btn), color = if (isValid) DarkBg else TextHint, fontWeight = FontWeight.Bold)
                 }
             }
         }
@@ -454,7 +444,7 @@ fun CircularTimerProgress(progress: Float, color: Color) {
         animationSpec = tween(1000, easing = LinearEasing),
         label = "TimerProgress"
     )
-    
+
     Canvas(modifier = Modifier.size(300.dp)) {
         drawCircle(
             color = DarkCard,

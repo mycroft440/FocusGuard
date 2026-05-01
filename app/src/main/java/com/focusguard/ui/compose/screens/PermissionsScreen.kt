@@ -15,7 +15,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.BatteryChargingFull
-import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -24,6 +23,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -50,7 +50,7 @@ fun PermissionsScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val deviceOwnerManager = remember { DeviceOwnerManager(context) }
-    
+
     var permState by remember { mutableStateOf(PermissionState()) }
     var resumeKey by remember { mutableIntStateOf(0) }
 
@@ -72,7 +72,7 @@ fun PermissionsScreen(
         lifecycleOwner.lifecycle.addObserver(callback)
         onDispose { lifecycleOwner.lifecycle.removeObserver(callback) }
     }
-    
+
     var showRestrictedDialog by remember { mutableStateOf(false) }
 
     if (showRestrictedDialog) {
@@ -85,52 +85,33 @@ fun PermissionsScreen(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(Icons.Default.Settings, contentDescription = null, tint = AccentCyan)
                     Spacer(Modifier.width(8.dp))
-                    Text("Desbloquear Acessibilidade", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text(stringResource(R.string.permission_restricted_title), fontWeight = FontWeight.Bold, fontSize = 18.sp)
                 }
             },
             text = {
                 Column {
                     Text(
-                        "O Android ocultou essa permissão por segurança. Para ativá-la, siga os passos exatos:",
+                        stringResource(R.string.permission_restricted_intro),
                         fontSize = 14.sp,
                         color = TextSecondary
                     )
                     Spacer(Modifier.height(16.dp))
-                    
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(24.dp).background(DarkCardElevated, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Text("1", color = AccentCyan, fontWeight = FontWeight.Bold) }
-                        Spacer(Modifier.width(8.dp))
-                        Text("Toque em 'Abrir Configurações' abaixo.", fontSize = 14.sp)
-                    }
+
+                    PermissionStep(number = 1, text = stringResource(R.string.permission_restricted_step_1))
                     Spacer(Modifier.height(12.dp))
-                    
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(24.dp).background(DarkCardElevated, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Text("2", color = AccentCyan, fontWeight = FontWeight.Bold) }
-                        Spacer(Modifier.width(8.dp))
-                        Text("No canto superior direito, toque nos três pontinhos (⋮).", fontSize = 14.sp)
-                    }
+                    PermissionStep(number = 2, text = stringResource(R.string.permission_restricted_step_2))
                     Spacer(Modifier.height(12.dp))
-                    
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(24.dp).background(DarkCardElevated, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Text("3", color = AccentCyan, fontWeight = FontWeight.Bold) }
-                        Spacer(Modifier.width(8.dp))
-                        Text("Toque em 'Permitir configurações restritas'.", fontSize = 14.sp)
-                    }
+                    PermissionStep(number = 3, text = stringResource(R.string.permission_restricted_step_3))
                     Spacer(Modifier.height(12.dp))
-                    
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(Modifier.size(24.dp).background(DarkCardElevated, RoundedCornerShape(12.dp)), contentAlignment = Alignment.Center) { Text("4", color = AccentCyan, fontWeight = FontWeight.Bold) }
-                        Spacer(Modifier.width(8.dp))
-                        Text("Volte para cá e tente ativar novamente.", fontSize = 14.sp)
-                    }
-                    
+                    PermissionStep(number = 4, text = stringResource(R.string.permission_restricted_step_4))
+
                     Spacer(Modifier.height(16.dp))
                     Surface(
                         color = DangerRed.copy(alpha = 0.1f),
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(
-                            "Dica: Se a opção não aparecer nos 3 pontinhos, tente ativar a Acessibilidade primeiro para que o Android exiba o alerta, depois tente novamente.",
+                            stringResource(R.string.permission_restricted_tip),
                             color = DangerRed,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(8.dp)
@@ -153,7 +134,7 @@ fun PermissionsScreen(
                     },
                     colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
                 ) {
-                    Text("Abrir Configurações", color = DarkBg)
+                    Text(stringResource(R.string.permission_open_settings), color = DarkBg)
                 }
             },
             dismissButton = {
@@ -163,7 +144,7 @@ fun PermissionsScreen(
                         context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                     }
                 ) {
-                    Text("Já liberei, ativar agora", color = TextSecondary)
+                    Text(stringResource(R.string.permission_already_allowed), color = TextSecondary)
                 }
             }
         )
@@ -185,7 +166,7 @@ fun PermissionsScreen(
 
             Icon(
                 painter = painterResource(id = R.drawable.ic_shield),
-                contentDescription = "FocusGuard",
+                contentDescription = stringResource(R.string.content_focusguard_logo),
                 modifier = Modifier.size(72.dp),
                 tint = AccentCyan
             )
@@ -193,16 +174,17 @@ fun PermissionsScreen(
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Bem-vindo ao FocusGuard",
+                text = stringResource(R.string.permissions_welcome_title),
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Bold,
-                color = TextPrimary
+                color = TextPrimary,
+                textAlign = TextAlign.Center
             )
 
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Para que possamos bloquear aplicativos e sites que distraem você, precisamos de algumas permissões do sistema.",
+                text = stringResource(R.string.permissions_welcome_desc),
                 fontSize = 14.sp,
                 color = TextSecondary,
                 textAlign = TextAlign.Center,
@@ -212,8 +194,11 @@ fun PermissionsScreen(
 
             PermissionCard(
                 number = 1,
-                title = "Acessibilidade",
-                description = "Permite ler a tela e bloquear apps/sites",
+                title = stringResource(R.string.permission_accessibility_title),
+                description = stringResource(R.string.permission_accessibility_desc),
+                detail = stringResource(R.string.permission_accessibility_detail),
+                badge = stringResource(R.string.permissions_badge_required),
+                badgeColor = DangerRed,
                 isGranted = permState.accessibility,
                 onClick = {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && isAccessibilityServiceRestricted(context)) {
@@ -228,8 +213,11 @@ fun PermissionsScreen(
 
             PermissionCard(
                 number = 2,
-                title = "Acesso a Uso de Dados",
-                description = "Permite rastrear o tempo gasto",
+                title = stringResource(R.string.permission_usage_access_title),
+                description = stringResource(R.string.permission_usage_access_desc),
+                detail = stringResource(R.string.permission_usage_access_detail),
+                badge = stringResource(R.string.permissions_badge_required),
+                badgeColor = DangerRed,
                 isGranted = permState.usageAccess,
                 onClick = {
                     try {
@@ -247,22 +235,11 @@ fun PermissionsScreen(
 
             PermissionCard(
                 number = 3,
-                title = "Admin do Dispositivo",
-                description = "Proteção contra desinstalação",
-                isGranted = permState.deviceAdmin,
-                onClick = {
-                    if (!deviceOwnerManager.isDeviceAdminActive()) {
-                        deviceOwnerManager.requestDeviceAdmin()
-                    }
-                }
-            )
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            PermissionCard(
-                number = 4,
-                title = "Bateria Irrestrita",
-                description = "Impede o sistema de encerrar o bloqueio",
+                title = stringResource(R.string.permission_battery_title),
+                description = stringResource(R.string.permission_battery_desc),
+                detail = stringResource(R.string.permission_battery_detail),
+                badge = stringResource(R.string.permissions_badge_recommended),
+                badgeColor = WarningAmber,
                 isGranted = permState.batteryOptimization,
                 onClick = {
                     try {
@@ -275,6 +252,23 @@ fun PermissionsScreen(
                     }
                 }
             )
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            PermissionCard(
+                number = 4,
+                title = stringResource(R.string.permission_device_admin_title),
+                description = stringResource(R.string.permission_device_admin_desc),
+                detail = stringResource(R.string.permission_device_admin_detail),
+                badge = stringResource(R.string.permissions_badge_advanced),
+                badgeColor = AccentPurple,
+                isGranted = permState.deviceAdmin,
+                onClick = {
+                    if (!deviceOwnerManager.isDeviceAdminActive()) {
+                        deviceOwnerManager.requestDeviceAdmin()
+                    }
+                }
+            )
         }
 
         var showSkipOverlay by rememberSaveable { mutableStateOf(false) }
@@ -282,146 +276,48 @@ fun PermissionsScreen(
         var skipInteracted by rememberSaveable { mutableStateOf(false) }
         val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
             androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
-        ) { isGranted ->
-            if (isGranted) {
-                onFinish()
-            } else {
-                onFinish()
-            }
+        ) { _ ->
+            onFinish()
         }
 
         if (showBatteryOverlay) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.8f))
-                    .clickable(enabled = false) {},
-                contentAlignment = Alignment.Center
-            ) {
-                Card(
-                    modifier = Modifier.padding(32.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = DarkSurface),
-                    border = BorderStroke(1.dp, CardBorder)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(androidx.compose.material.icons.Icons.Default.BatteryChargingFull, null, tint = AccentCyan, modifier = Modifier.size(48.dp))
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            "Bateria Irrestrita",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Para garantir que o bloqueio nunca falhe, o Android precisa ignorar as restrições de bateria para o FocusGuard.",
-                            fontSize = 14.sp,
-                            color = TextSecondary,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(Modifier.height(24.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            OutlinedButton(
-                                onClick = { 
-                                    showBatteryOverlay = false
-                                    showSkipOverlay = true
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                border = BorderStroke(1.dp, CardBorder)
-                            ) {
-                                Text("Negar", color = TextSecondary)
-                            }
-                            Button(
-                                onClick = {
-                                    try {
-                                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                                            data = Uri.parse("package:${context.packageName}")
-                                        }
-                                        context.startActivity(intent)
-                                    } catch (e: Exception) {
-                                        context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-                                    }
-                                    showBatteryOverlay = false
-                                    showSkipOverlay = true
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-                            ) {
-                                Text("Permitir", color = DarkBg)
-                            }
+            OverlayPermissionDialog(
+                icon = { Icon(Icons.Default.BatteryChargingFull, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(48.dp)) },
+                title = stringResource(R.string.permission_battery_overlay_title),
+                description = stringResource(R.string.permission_battery_overlay_desc),
+                onDeny = {
+                    showBatteryOverlay = false
+                    showSkipOverlay = true
+                },
+                onAllow = {
+                    try {
+                        val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                            data = Uri.parse("package:${context.packageName}")
                         }
+                        context.startActivity(intent)
+                    } catch (e: Exception) {
+                        context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
                     }
+                    showBatteryOverlay = false
+                    showSkipOverlay = true
                 }
-            }
+            )
         }
 
         if (showSkipOverlay) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.8f))
-                    .clickable(enabled = false) {},
-                contentAlignment = Alignment.Center
-            ) {
-                Card(
-                    modifier = Modifier.padding(32.dp),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = DarkSurface),
-                    border = BorderStroke(1.dp, CardBorder)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Icon(Icons.Default.NotificationsActive, null, tint = AccentCyan, modifier = Modifier.size(48.dp))
-                        Spacer(Modifier.height(16.dp))
-                        Text(
-                            "Notificações de Foco",
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Deseja permitir que o FocusGuard envie avisos sobre seus bloqueios ativos?",
-                            fontSize = 14.sp,
-                            color = TextSecondary,
-                            textAlign = TextAlign.Center
-                        )
-                        Spacer(Modifier.height(24.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            OutlinedButton(
-                                onClick = { onFinish() },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                border = BorderStroke(1.dp, CardBorder)
-                            ) {
-                                Text("Negar", color = TextSecondary)
-                            }
-                            Button(
-                                onClick = {
-                                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                        permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
-                                    } else {
-                                        onFinish()
-                                    }
-                                },
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-                            ) {
-                                Text("Permitir", color = DarkBg)
-                            }
-                        }
+            OverlayPermissionDialog(
+                icon = { Icon(Icons.Default.NotificationsActive, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(48.dp)) },
+                title = stringResource(R.string.permission_notifications_title),
+                description = stringResource(R.string.permission_notifications_desc),
+                onDeny = { onFinish() },
+                onAllow = {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                        permissionLauncher.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+                    } else {
+                        onFinish()
                     }
                 }
-            }
+            )
         }
 
         TextButton(
@@ -446,7 +342,7 @@ fun PermissionsScreen(
                 .padding(bottom = 20.dp)
         ) {
             Text(
-                text = if (permState.accessibility && permState.usageAccess) "Concluir Configuração" else "Pular por enquanto",
+                text = if (permState.accessibility && permState.usageAccess) stringResource(R.string.permissions_finish) else stringResource(R.string.permissions_skip),
                 fontSize = 14.sp,
                 color = AccentCyan,
                 fontWeight = FontWeight.Bold
@@ -455,7 +351,85 @@ fun PermissionsScreen(
     }
 }
 
+@Composable
+private fun PermissionStep(number: Int, text: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            Modifier
+                .size(24.dp)
+                .background(DarkCardElevated, RoundedCornerShape(12.dp)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text("$number", color = AccentCyan, fontWeight = FontWeight.Bold)
+        }
+        Spacer(Modifier.width(8.dp))
+        Text(text, fontSize = 14.sp)
+    }
+}
 
+@Composable
+private fun OverlayPermissionDialog(
+    icon: @Composable () -> Unit,
+    title: String,
+    description: String,
+    onDeny: () -> Unit,
+    onAllow: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black.copy(alpha = 0.8f))
+            .clickable(enabled = false) {},
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier.padding(32.dp),
+            shape = RoundedCornerShape(24.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkSurface),
+            border = BorderStroke(1.dp, CardBorder)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                icon()
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    title,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    description,
+                    fontSize = 14.sp,
+                    color = TextSecondary,
+                    textAlign = TextAlign.Center
+                )
+                Spacer(Modifier.height(24.dp))
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    OutlinedButton(
+                        onClick = onDeny,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, CardBorder)
+                    ) {
+                        Text(stringResource(R.string.permission_deny), color = TextSecondary)
+                    }
+                    Button(
+                        onClick = onAllow,
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                    ) {
+                        Text(stringResource(R.string.permission_allow), color = DarkBg)
+                    }
+                }
+            }
+        }
+    }
+}
 
 private fun isAccessibilityServiceRestricted(context: Context): Boolean {
     return try {
@@ -480,6 +454,9 @@ fun PermissionCard(
     number: Int,
     title: String,
     description: String,
+    detail: String,
+    badge: String,
+    badgeColor: Color,
     isGranted: Boolean,
     onClick: () -> Unit
 ) {
@@ -513,17 +490,35 @@ fun PermissionCard(
             Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-                Spacer(modifier = Modifier.height(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = title,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Surface(color = badgeColor.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
+                        Text(
+                            text = badge,
+                            color = badgeColor,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(3.dp))
                 Text(
                     text = description,
                     fontSize = 12.sp,
                     color = TextSecondary
+                )
+                Spacer(modifier = Modifier.height(3.dp))
+                Text(
+                    text = detail,
+                    fontSize = 11.sp,
+                    color = TextHint
                 )
             }
 
@@ -549,7 +544,7 @@ fun PermissionCard(
                     Spacer(modifier = Modifier.width(4.dp))
                 }
                 Text(
-                    text = if (isGranted) "Concedido" else "Conceder",
+                    text = if (isGranted) stringResource(R.string.action_granted) else stringResource(R.string.action_enable),
                     fontSize = 12.sp
                 )
             }

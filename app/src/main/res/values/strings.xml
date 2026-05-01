@@ -11,61 +11,136 @@
     <string name="enable_accessibility_service">Por favor, ative o Serviço de Acessibilidade nas Configurações</string>
     <string name="settings_title">Configurações</string>
     <string name="about_title">Sobre</string>
-    <string name="manage_passwords">Gerenciar Senhas do App</string>
-    <string name="old_password">Senha Antiga</string>
-    <string name="new_password">Nova Senha</string>
+    <string name="manage_passwords">Gerenciar senhas do app</string>
+    <string name="old_password">Senha antiga</string>
+    <string name="new_password">Nova senha</string>
     <string name="save">Salvar</string>
     <string name="cancel">Cancelar</string>
-    <string name="nuclear_protection">Proteção Nuclear</string>
+    <string name="nuclear_protection">Proteção nuclear</string>
     <string name="give_permissions">Dê o restante das permissões aqui</string>
     <string name="permissions_warning_new">O bloqueio somente irá funcionar caso dê todas as permissões ao app</string>
 
-    <string name="focus_subtitle">Foco Total, Zero Distrações</string>
-    <string name="password_block">Bloqueio por Senha</string>
-    <string name="password_block_sub">Fixo ou Período (Requer senha para alterar)</string>
-    <string name="time_block">Bloqueio por Tempo</string>
-    <string name="time_block_sub">Dias e Horas (Impossível cancelar)</string>
-    <string name="view_active_sessions">Ver Sessões Ativas</string>
-    <string name="swipe_hint">← Deslize para ver estatísticas →</string>
-    <string name="usage_limits">Limites de Uso</string>
-    <string name="usage_limits_sub">Controle o tempo diário de apps e sites</string>
+    <!-- Ações comuns e acessibilidade -->
+    <string name="action_back">Voltar</string>
+    <string name="action_open">Abrir</string>
+    <string name="action_enable">Conceder</string>
+    <string name="action_granted">Concedido</string>
+    <string name="content_focusguard_logo">Logotipo do FocusGuard</string>
+    <string name="content_warning">Aviso</string>
+    <string name="content_timer_active">Temporizador ativo</string>
+    <string name="content_emergency_call">Fazer chamada de emergência</string>
 
-    
-    <!-- Itens do Menu -->
-    <string name="limits_and_security">Limites e Segurança</string>
-    <string name="intruder_log">Registro de Intrusos</string>
-    <string name="language_settings">Idioma</string>
-    <!-- Pomodoro Screen -->
-    <string name="pomodoro_enable_block_title">Ativar Bloqueio Total?</string>
-    <string name="pomodoro_enable_block_desc">Esta opção trava seu celular para evitar distrações durante a sessão. O discador de telefone (para emergências) ficará sempre disponível. Mantenha o foco!</string>
-    <string name="pomodoro_confirm_btn">Confirmar</string>
-    <string name="pomodoro_confirm_btn_countdown">Confirmar (%1$ds)</string>
-    <string name="pomodoro_cancel_btn">Cancelar</string>
-    <string name="pomodoro_status_break">Descanso</string>
-    <string name="pomodoro_status_focus">Foco Total</string>
-    <string name="pomodoro_status_immersive">Modo de Foco Ativo</string>
-    <string name="pomodoro_status_running">Sessão em Andamento</string>
-    <string name="pomodoro_status_idle">Selecione a duração do foco</string>
-    <string name="pomodoro_enable_block_switch">Ativar Bloqueio Total</string>
-    <string name="pomodoro_exit_btn">Sair</string>
-    <string name="pomodoro_lock_warning_blocked">Tela bloqueada pelo FocusGuard para proteger seu foco.\nVocê retornará ao menu assim que o tempo acabar.</string>
-    <string name="pomodoro_lock_warning_free">Tempo rolando!\nVocê pode sair desta tela, mas evite distrações.</string>
-    <string name="pomodoro_phone_btn">Telefone</string>
-    <string name="pomodoro_cancel_timer_btn">Cancelar Sessão</string>
-    
-    <!-- Main Screen -->
-    <string name="focusguard_subtitle">Proteção Digital</string>
-    <string name="block_customization">Personalizar Bloqueio</string>
-    <string name="pending_permissions_title">Permissões Pendentes</string>
+    <!-- Tela principal -->
+    <string name="focus_subtitle">Foco total, zero distrações</string>
+    <string name="password_block">Bloqueio por senha</string>
+    <string name="password_block_sub">Fixo ou por período, protegido por senha</string>
+    <string name="time_block">Bloqueio por tempo</string>
+    <string name="time_block_sub">Dias e horários com cancelamento restrito</string>
+    <string name="view_active_sessions">Ver sessões ativas</string>
+    <string name="swipe_hint">← Deslize para ver estatísticas →</string>
+    <string name="usage_limits">Limites de uso</string>
+    <string name="usage_limits_sub">Controle o tempo diário de apps e sites</string>
+    <string name="focusguard_subtitle">Proteção digital</string>
+    <string name="block_customization">Personalizar bloqueio</string>
+    <string name="pending_permissions_title">Permissões pendentes</string>
     <string name="pending_permissions_desc">O FocusGuard precisa de permissões para funcionar corretamente.</string>
 
-    <!-- Navigation Tabs -->
+    <!-- Navegação -->
     <string name="nav_protection">Proteção</string>
     <string name="nav_focus">Foco</string>
     <string name="nav_insights">Insights</string>
     <string name="nav_settings">Configurações</string>
 
-    <!-- Pomodoro Summary -->
-    <string name="pomodoro_summary_title">Sessão Concluída!</string>
+    <!-- Configurações -->
+    <string name="settings_category_general">Geral</string>
+    <string name="settings_category_blocking">Bloqueio</string>
+    <string name="settings_category_advanced_security">Segurança avançada</string>
+    <string name="settings_category_danger">Zona de perigo</string>
+    <string name="settings_password_subtitle">Configurar senha e biometria</string>
+    <string name="settings_language_subtitle">Alterar o idioma do aplicativo</string>
+    <string name="settings_block_customization_subtitle">Cores e estilos da tela de bloqueio</string>
+    <string name="limits_and_security">Limites e segurança</string>
+    <string name="settings_limits_subtitle">Tentativas de senha e limites</string>
+    <string name="intruder_log">Registro de intrusos</string>
+    <string name="settings_intruder_log_subtitle">Ver fotos de tentativas falhas</string>
+    <string name="language_settings">Idioma</string>
+    <string name="settings_nuclear_subtitle">Tornar o app mais resistente à desinstalação</string>
+    <string name="settings_app_version">FocusGuard v1.0.0</string>
+
+    <!-- Autenticação -->
+    <string name="auth_locked_content_description">App bloqueado</string>
+    <string name="auth_locked_title">App bloqueado</string>
+    <string name="auth_locked_description">Digite sua senha para acessar o FocusGuard</string>
+    <string name="auth_password_label">Senha</string>
+    <string name="auth_show_password">Mostrar senha</string>
+    <string name="auth_hide_password">Ocultar senha</string>
+    <string name="auth_wrong_password_limit">Senha incorreta! Limite de tentativas excedido.</string>
+    <string name="auth_wrong_password_attempt">Senha incorreta. Tentativa %1$d de %2$d</string>
+    <string name="auth_wrong_password">Senha incorreta.</string>
+    <string name="auth_unlock_button">Desbloquear</string>
+    <string name="auth_biometrics_button">Usar biometria</string>
+
+    <!-- Permissões -->
+    <string name="permissions_welcome_title">Bem-vindo ao FocusGuard</string>
+    <string name="permissions_welcome_desc">Para bloquear aplicativos e sites que distraem você, precisamos de algumas permissões do sistema.</string>
+    <string name="permissions_finish">Concluir configuração</string>
+    <string name="permissions_skip">Pular por enquanto</string>
+    <string name="permissions_badge_required">Essencial</string>
+    <string name="permissions_badge_recommended">Recomendado</string>
+    <string name="permissions_badge_advanced">Avançado</string>
+    <string name="permission_accessibility_title">Acessibilidade</string>
+    <string name="permission_accessibility_desc">Permite identificar apps e sites abertos para aplicar bloqueios.</string>
+    <string name="permission_accessibility_detail">Sem esta permissão, o bloqueio em tempo real pode não funcionar.</string>
+    <string name="permission_usage_access_title">Acesso de uso</string>
+    <string name="permission_usage_access_desc">Permite medir o tempo gasto em apps e gerar insights.</string>
+    <string name="permission_usage_access_detail">Usado para limites diários, dashboard e relatórios de uso.</string>
+    <string name="permission_device_admin_title">Admin do dispositivo</string>
+    <string name="permission_device_admin_desc">Adiciona proteção avançada contra remoção impulsiva.</string>
+    <string name="permission_device_admin_detail">Use apenas se quiser tornar o FocusGuard mais resistente à desinstalação.</string>
+    <string name="permission_battery_title">Bateria irrestrita</string>
+    <string name="permission_battery_desc">Ajuda a manter bloqueios ativos em segundo plano.</string>
+    <string name="permission_battery_detail">Reduz o risco de o Android encerrar o FocusGuard durante uma sessão.</string>
+    <string name="permission_restricted_title">Desbloquear acessibilidade</string>
+    <string name="permission_restricted_intro">O Android ocultou essa permissão por segurança. Para ativá-la, siga os passos:</string>
+    <string name="permission_restricted_step_1">Toque em "Abrir configurações" abaixo.</string>
+    <string name="permission_restricted_step_2">No canto superior direito, toque nos três pontinhos (⋮).</string>
+    <string name="permission_restricted_step_3">Toque em "Permitir configurações restritas".</string>
+    <string name="permission_restricted_step_4">Volte para cá e tente ativar novamente.</string>
+    <string name="permission_restricted_tip">Dica: se a opção não aparecer, tente ativar a Acessibilidade primeiro para que o Android exiba o alerta.</string>
+    <string name="permission_open_settings">Abrir configurações</string>
+    <string name="permission_already_allowed">Já liberei, ativar agora</string>
+    <string name="permission_battery_overlay_title">Bateria irrestrita</string>
+    <string name="permission_battery_overlay_desc">Para garantir que o bloqueio não falhe, o Android precisa ignorar as restrições de bateria para o FocusGuard.</string>
+    <string name="permission_notifications_title">Notificações de foco</string>
+    <string name="permission_notifications_desc">Deseja permitir que o FocusGuard envie avisos sobre seus bloqueios ativos?</string>
+    <string name="permission_deny">Negar</string>
+    <string name="permission_allow">Permitir</string>
+
+    <!-- Pomodoro -->
+    <string name="pomodoro_enable_block_title">Ativar bloqueio total?</string>
+    <string name="pomodoro_enable_block_desc">Esta opção trava seu celular para evitar distrações durante a sessão. O discador de telefone para emergências ficará sempre disponível.</string>
+    <string name="pomodoro_confirm_btn">Confirmar</string>
+    <string name="pomodoro_confirm_btn_countdown">Confirmar (%1$ds)</string>
+    <string name="pomodoro_cancel_btn">Cancelar</string>
+    <string name="pomodoro_status_break">Descanso</string>
+    <string name="pomodoro_status_focus">Foco total</string>
+    <string name="pomodoro_status_immersive">Modo de foco ativo</string>
+    <string name="pomodoro_status_running">Sessão em andamento</string>
+    <string name="pomodoro_status_idle">Selecione a duração do foco</string>
+    <string name="pomodoro_enable_block_switch">Ativar bloqueio total</string>
+    <string name="pomodoro_enable_block_subtitle">Ative antes de iniciar para bloquear saídas e distrações.</string>
+    <string name="pomodoro_exit_btn">Sair</string>
+    <string name="pomodoro_lock_warning_blocked">Tela bloqueada pelo FocusGuard para proteger seu foco.\nVocê retornará ao menu assim que o tempo acabar.</string>
+    <string name="pomodoro_lock_warning_free">Tempo rolando!\nVocê pode sair desta tela, mas evite distrações.</string>
+    <string name="pomodoro_phone_btn">Telefone</string>
+    <string name="pomodoro_cancel_timer_btn">Cancelar sessão</string>
+    <string name="pomodoro_option_15">15m</string>
+    <string name="pomodoro_option_25">25m</string>
+    <string name="pomodoro_option_45">45m</string>
+    <string name="pomodoro_custom_time_title">Tempo personalizado</string>
+    <string name="pomodoro_minutes_label">Minutos</string>
+    <string name="pomodoro_start_btn">Iniciar</string>
+    <string name="pomodoro_summary_title">Sessão concluída!</string>
     <string name="pomodoro_summary_desc">Parabéns! Você completou sua sessão de foco com sucesso. Continue assim!</string>
+    <string name="pomodoro_summary_confirm">Ótimo!</string>
 </resources>

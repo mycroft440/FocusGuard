@@ -1,14 +1,9 @@
 package com.focusguard.ui.compose.screens
 
-import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -21,19 +16,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
-import com.focusguard.security.AuthManager
 import com.focusguard.ui.compose.theme.*
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,15 +42,15 @@ fun MainScreen(
     Scaffold(
         topBar = {
             CenterAlignedTopAppBar(
-                title = { 
+                title = {
                     Text(
-                        when(selectedTab) {
+                        when (selectedTab) {
                             0 -> stringResource(R.string.nav_insights)
                             1 -> stringResource(R.string.app_name)
                             else -> stringResource(R.string.nav_focus)
                         },
                         fontWeight = FontWeight.Bold
-                    ) 
+                    )
                 },
                 actions = {
                     IconButton(onClick = onSettingsClick) {
@@ -82,41 +72,23 @@ fun MainScreen(
                 NavigationBarItem(
                     selected = selectedTab == 0,
                     onClick = { selectedTab = 0 },
-                    icon = { Icon(Icons.Default.BarChart, contentDescription = null) },
+                    icon = { Icon(Icons.Default.BarChart, contentDescription = stringResource(R.string.nav_insights)) },
                     label = { Text(stringResource(R.string.nav_insights)) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = AccentCyan,
-                        selectedTextColor = AccentCyan,
-                        unselectedIconColor = TextHint,
-                        unselectedTextColor = TextHint,
-                        indicatorColor = AccentCyan.copy(alpha = 0.1f)
-                    )
+                    colors = navigationItemColors()
                 )
                 NavigationBarItem(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    icon = { Icon(Icons.Default.Shield, contentDescription = null) },
+                    icon = { Icon(Icons.Default.Shield, contentDescription = stringResource(R.string.nav_protection)) },
                     label = { Text(stringResource(R.string.nav_protection)) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = AccentCyan,
-                        selectedTextColor = AccentCyan,
-                        unselectedIconColor = TextHint,
-                        unselectedTextColor = TextHint,
-                        indicatorColor = AccentCyan.copy(alpha = 0.1f)
-                    )
+                    colors = navigationItemColors()
                 )
                 NavigationBarItem(
                     selected = selectedTab == 2,
                     onClick = { selectedTab = 2 },
-                    icon = { Icon(Icons.Default.Timer, contentDescription = null) },
+                    icon = { Icon(Icons.Default.Timer, contentDescription = stringResource(R.string.nav_focus)) },
                     label = { Text(stringResource(R.string.nav_focus)) },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = AccentCyan,
-                        selectedTextColor = AccentCyan,
-                        unselectedIconColor = TextHint,
-                        unselectedTextColor = TextHint,
-                        indicatorColor = AccentCyan.copy(alpha = 0.1f)
-                    )
+                    colors = navigationItemColors()
                 )
             }
         }
@@ -136,9 +108,7 @@ fun MainScreen(
                     } else {
                         slideInHorizontally { width -> -width } + fadeIn() togetherWith
                                 slideOutHorizontally { width -> width } + fadeOut()
-                    }.using(
-                        SizeTransform(clip = false)
-                    )
+                    }.using(SizeTransform(clip = false))
                 },
                 label = "MainContent"
             ) { targetTab ->
@@ -158,6 +128,15 @@ fun MainScreen(
         }
     }
 }
+
+@Composable
+private fun navigationItemColors() = NavigationBarItemDefaults.colors(
+    selectedIconColor = AccentCyan,
+    selectedTextColor = AccentCyan,
+    unselectedIconColor = TextHint,
+    unselectedTextColor = TextHint,
+    indicatorColor = AccentCyan.copy(alpha = 0.1f)
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -196,7 +175,7 @@ fun DrawerMenuButton(
             Spacer(modifier = Modifier.width(14.dp))
             Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = labelColor)
             Spacer(modifier = Modifier.weight(1f))
-            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = TextHint, modifier = Modifier.size(18.dp))
+            Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.action_open), tint = TextHint, modifier = Modifier.size(18.dp))
         }
     }
 }
@@ -231,7 +210,7 @@ fun HomeContent(
         ) {
             Icon(
                 painter = painterResource(id = R.drawable.ic_shield),
-                contentDescription = "FocusGuard",
+                contentDescription = stringResource(R.string.content_focusguard_logo),
                 modifier = Modifier.size(64.dp),
                 tint = AccentCyan
             )
@@ -269,13 +248,13 @@ fun HomeContent(
                     modifier = Modifier.padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(Icons.Default.Warning, contentDescription = null, tint = DangerRed)
+                    Icon(Icons.Default.Warning, contentDescription = stringResource(R.string.content_warning), tint = DangerRed)
                     Spacer(modifier = Modifier.width(12.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(stringResource(id = R.string.pending_permissions_title), color = DangerRed, fontWeight = FontWeight.Bold)
                         Text(stringResource(id = R.string.pending_permissions_desc), color = DangerRed.copy(alpha = 0.8f), fontSize = 12.sp)
                     }
-                    Icon(Icons.Default.ChevronRight, contentDescription = null, tint = DangerRed)
+                    Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.action_open), tint = DangerRed)
                 }
             }
         }
@@ -349,7 +328,7 @@ fun SessionCard(icon: ImageVector, title: String, subtitle: String, onClick: () 
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(subtitle, fontSize = 13.sp, color = TextSecondary)
             }
-            Icon(Icons.Filled.ChevronRight, contentDescription = "Abrir", modifier = Modifier.size(20.dp), tint = TextHint)
+            Icon(Icons.Filled.ChevronRight, contentDescription = stringResource(R.string.action_open), modifier = Modifier.size(20.dp), tint = TextHint)
         }
     }
 }

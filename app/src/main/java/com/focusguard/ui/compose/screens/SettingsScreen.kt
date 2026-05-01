@@ -37,7 +37,7 @@ fun SettingsScreen(
                 title = { Text(stringResource(R.string.nav_settings), fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Voltar")
+                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.action_back))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -56,66 +56,62 @@ fun SettingsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp)
         ) {
-            // Categoria: Geral
-            SettingsCategoryHeader(title = "Geral")
+            SettingsCategoryHeader(title = stringResource(R.string.settings_category_general))
             SettingsItem(
                 icon = Icons.Default.Lock,
                 title = stringResource(R.string.manage_passwords),
-                subtitle = "Configurar senha e biometria",
+                subtitle = stringResource(R.string.settings_password_subtitle),
                 onClick = onPasswordManagementClick
             )
             SettingsItem(
                 icon = Icons.Default.Language,
                 title = stringResource(R.string.language_settings),
-                subtitle = "Alterar o idioma do aplicativo",
+                subtitle = stringResource(R.string.settings_language_subtitle),
                 onClick = onLanguageClick
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Categoria: Bloqueio
-            SettingsCategoryHeader(title = "Bloqueio")
+            SettingsCategoryHeader(title = stringResource(R.string.settings_category_blocking))
             SettingsItem(
                 icon = Icons.Default.Palette,
                 title = stringResource(R.string.block_customization),
-                subtitle = "Cores e estilos da tela de bloqueio",
+                subtitle = stringResource(R.string.settings_block_customization_subtitle),
                 onClick = onBlockCustomizationClick
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Categoria: Segurança Avançada
-            SettingsCategoryHeader(title = "Segurança Avançada")
+            SettingsCategoryHeader(title = stringResource(R.string.settings_category_advanced_security))
             SettingsItem(
                 icon = Icons.Default.Security,
                 title = stringResource(R.string.limits_and_security),
-                subtitle = "Tentativas de senha e limites",
+                subtitle = stringResource(R.string.settings_limits_subtitle),
                 onClick = onLimitsClick
             )
             SettingsItem(
                 icon = Icons.Default.PhotoCamera,
                 title = stringResource(R.string.intruder_log),
-                subtitle = "Ver fotos de tentativas falhas",
+                subtitle = stringResource(R.string.settings_intruder_log_subtitle),
                 onClick = onIntruderLogClick
             )
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // Categoria: Perigo
-            SettingsCategoryHeader(title = "Zona de Perigo", color = DangerRed)
+            SettingsCategoryHeader(title = stringResource(R.string.settings_category_danger), color = DangerRed)
             SettingsItem(
                 icon = Icons.Default.Warning,
                 title = stringResource(R.string.nuclear_protection),
-                subtitle = "Tornar o app impossível de desinstalar",
+                subtitle = stringResource(R.string.settings_nuclear_subtitle),
                 iconTint = DangerRed,
                 titleColor = DangerRed,
                 onClick = onDeviceOwnerClick
             )
-            
+
             Spacer(modifier = Modifier.height(32.dp))
-            
+
             Text(
-                text = "FocusGuard v1.0.0",
+                text = stringResource(R.string.settings_app_version),
                 modifier = Modifier.align(Alignment.CenterHorizontally),
                 fontSize = 12.sp,
                 color = TextHint
@@ -171,7 +167,7 @@ fun SettingsItem(
             }
             Icon(
                 imageVector = Icons.Default.ChevronRight,
-                contentDescription = null,
+                contentDescription = stringResource(R.string.action_open),
                 tint = TextHint,
                 modifier = Modifier.size(20.dp)
             )
