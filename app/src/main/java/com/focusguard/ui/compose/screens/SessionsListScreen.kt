@@ -16,7 +16,6 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -34,19 +33,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.content.pm.PackageManager
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.core.graphics.drawable.toBitmap
 import java.util.*
 import java.util.concurrent.TimeUnit
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionsListScreen(
-    sessionType: String, // "PASSWORD" or "TIME"
+    sessionType: String,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val authManager = remember { AuthManager(context) }
     val sessionManager = remember { BlockingSessionManager.getInstance(context) }
     val sessions by sessionManager.activeSessionsFlow.collectAsState(initial = emptyList())
     val filteredSessions = sessions.filter { it.sessionType == sessionType }
@@ -141,23 +137,20 @@ fun SessionsListScreen(
                             onClick = { showDetailsSheet = session }
                         )
                     }
-                    item { Spacer(Modifier.height(80.dp)) } // Space for FAB
+                    item { Spacer(Modifier.height(80.dp)) }
                 }
             }
         }
     }
 
-    if (showPasswordPrompt != null) {
+    val sessionIdToEnd = showPasswordPrompt
+    if (sessionIdToEnd != null) {
         PasswordPromptDialog(
             onDismiss = { showPasswordPrompt = null },
-            onConfirm = { password ->
+            onAuthenticated = {
                 scope.launch {
-                    if (authManager.verifyPassword(password)) {
-                        sessionManager.endSession(showPasswordPrompt!!)
-                        showPasswordPrompt = null
-                    } else {
-                        Toast.makeText(context, "Senha incorreta", Toast.LENGTH_SHORT).show()
-                    }
+                    sessionManager.endSession(sessionIdToEnd)
+                    showPasswordPrompt = null
                 }
             }
         )
@@ -202,10 +195,13 @@ fun SessionDetailsSheet(
     fun refresh() {
         scope.launch {
             isLoading = true
-            val apps = database.sessionAppCrossRefDao().getAppsForSessions(listOf(session.id))
-            val sites = database.sessionWebsiteCrossRefDao().getWebsitesForSessions(listOf(session.id))
-            blockedApps = apps
-            blockedSites = sites
+            val data = withContext(Dispatchers.IO) {
+                val apps = database.sessionAppCrossRefDao().getAppsForSessions(listOf(session.id))
+                val sites = database.sessionWebsiteCrossRefDao().getWebsitesForSessions(listOf(session.id))
+                apps to sites
+            }
+            blockedApps = data.first
+            blockedSites = data.second
             isLoading = false
         }
     }
@@ -221,7 +217,6 @@ fun SessionDetailsSheet(
         dragHandle = { BottomSheetDefaults.DragHandle(color = TextHint.copy(alpha = 0.3f)) }
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            // Header with Clear All
             Row(
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -237,9 +232,11 @@ fun SessionDetailsSheet(
                 if (session.sessionType != "TIME") {
                     IconButton(onClick = {
                         scope.launch {
-                            database.sessionAppCrossRefDao().deleteForSession(session.id)
-                            database.sessionWebsiteCrossRefDao().deleteForSession(session.id)
-                            BlockingSessionManager.getInstance(context).checkAndEnforce()
+                            withContext(Dispatchers.IO) {
+                                database.sessionAppCrossRefDao().deleteForSession(session.id)
+                                database.sessionWebsiteCrossRefDao().deleteForSession(session.id)
+                                BlockingSessionManager.getInstance(context).checkAndEnforce()
+                            }
                             refresh()
                         }
                     }) {
@@ -281,8 +278,10 @@ fun SessionDetailsSheet(
                                 if (session.sessionType != "TIME") {
                                     IconButton(onClick = {
                                         scope.launch {
-                                            database.sessionAppCrossRefDao().deleteSpecificApp(session.id, pkg)
-                                            BlockingSessionManager.getInstance(context).checkAndEnforce()
+                                            withContext(Dispatchers.IO) {
+                                                database.sessionAppCrossRefDao().deleteSpecificApp(session.id, pkg)
+                                                BlockingSessionManager.getInstance(context).checkAndEnforce()
+                                            }
                                             refresh()
                                         }
                                     }) {
@@ -306,8 +305,10 @@ fun SessionDetailsSheet(
                                 if (session.sessionType != "TIME") {
                                     IconButton(onClick = {
                                         scope.launch {
-                                            database.sessionWebsiteCrossRefDao().deleteSpecificWebsite(session.id, site)
-                                            BlockingSessionManager.getInstance(context).checkAndEnforce()
+                                            withContext(Dispatchers.IO) {
+                                                database.sessionWebsiteCrossRefDao().deleteSpecificWebsite(session.id, site)
+                                                BlockingSessionManager.getInstance(context).checkAndEnforce()
+                                            }
                                             refresh()
                                         }
                                     }) {
@@ -323,7 +324,6 @@ fun SessionDetailsSheet(
             }
         }
         
-        // Floating + Button inside the sheet? Or just at bottom.
         Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomEnd) {
             FloatingActionButton(
                 onClick = onAddClick,
@@ -346,29 +346,24 @@ fun ContentPickerSheet(session: BlockSession, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     val database = remember { com.focusguard.database.AppDatabase.getDatabase(context) }
 
-    var selectedTab by remember { mutableStateOf(0) } // 0 = Apps, 1 = Sites
-    
-    // App State
+    var selectedTab by remember { mutableStateOf(0) }
     var apps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
     var isLoadingApps by remember { mutableStateOf(true) }
-    
-    // Site State
     var sites by remember { mutableStateOf<List<String>>(emptyList()) }
     var siteInput by remember { mutableStateOf("") }
+    var isSaving by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        scope.launch(Dispatchers.IO) {
-            val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            val appList = installedApps.map { info ->
-                val name = info.loadLabel(pm).toString()
-                SelectableAppUi(info.packageName, name, null, false, true)
-            }.sortedBy { it.appName.lowercase() }
-            
-            withContext(Dispatchers.Main) {
-                apps = appList
-                isLoadingApps = false
-            }
+        val appList = withContext(Dispatchers.IO) {
+            pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                .map { info ->
+                    val name = info.loadLabel(pm).toString()
+                    SelectableAppUi(info.packageName, name, null, false, true)
+                }
+                .sortedBy { it.appName.lowercase() }
         }
+        apps = appList
+        isLoadingApps = false
     }
 
     ModalBottomSheet(
@@ -403,7 +398,7 @@ fun ContentPickerSheet(session: BlockSession, onDismiss: () -> Unit) {
                         LazyColumn {
                             items(apps) { app ->
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().clickable {
+                                    modifier = Modifier.fillMaxWidth().clickable(enabled = !isSaving) {
                                         apps = apps.map { if (it.packageName == app.packageName) it.copy(isSelected = !it.isSelected) else it }
                                     }.padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
@@ -422,10 +417,12 @@ fun ContentPickerSheet(session: BlockSession, onDismiss: () -> Unit) {
                             onValueChange = { siteInput = it },
                             placeholder = { Text("Ex: site.com", color = TextHint) },
                             modifier = Modifier.fillMaxWidth(),
+                            enabled = !isSaving,
                             trailingIcon = {
                                 TextButton(onClick = {
-                                    if (siteInput.isNotBlank() && !sites.contains(siteInput.trim())) {
-                                        sites = sites + siteInput.trim()
+                                    val cleanSite = siteInput.trim().lowercase()
+                                    if (cleanSite.isNotBlank() && !sites.contains(cleanSite)) {
+                                        sites = sites + cleanSite
                                         siteInput = ""
                                     }
                                 }) {
@@ -444,7 +441,7 @@ fun ContentPickerSheet(session: BlockSession, onDismiss: () -> Unit) {
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(site, color = TextPrimary, modifier = Modifier.weight(1f))
-                                    IconButton(onClick = { sites = sites - site }) {
+                                    IconButton(onClick = { sites = sites - site }, enabled = !isSaving) {
                                         Icon(Icons.Default.Close, null, tint = DangerRed)
                                     }
                                 }
@@ -458,28 +455,37 @@ fun ContentPickerSheet(session: BlockSession, onDismiss: () -> Unit) {
             Button(
                 onClick = {
                     scope.launch {
+                        isSaving = true
                         val selectedApps = apps.filter { it.isSelected }.map { it.packageName }
-                        selectedApps.forEach { pkg ->
-                            database.sessionAppCrossRefDao().insert(com.focusguard.database.SessionAppCrossRef(session.id, pkg))
+                        withContext(Dispatchers.IO) {
+                            selectedApps.forEach { pkg ->
+                                database.sessionAppCrossRefDao().insert(com.focusguard.database.SessionAppCrossRef(session.id, pkg))
+                            }
+                            sites.forEach { domain ->
+                                database.sessionWebsiteCrossRefDao().insert(com.focusguard.database.SessionWebsiteCrossRef(session.id, domain))
+                            }
+                            BlockingSessionManager.getInstance(context).checkAndEnforce()
                         }
-                        sites.forEach { domain ->
-                            database.sessionWebsiteCrossRefDao().insert(com.focusguard.database.SessionWebsiteCrossRef(session.id, domain))
-                        }
-                        BlockingSessionManager.getInstance(context).checkAndEnforce()
+                        isSaving = false
                         onDismiss()
                     }
                 },
+                enabled = !isSaving,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
             ) {
-                Text("Salvar Conteúdo", color = DarkBg, fontWeight = FontWeight.Bold)
+                if (isSaving) {
+                    CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = DarkBg)
+                    Spacer(Modifier.width(8.dp))
+                }
+                Text(if (isSaving) "Salvando..." else "Salvar Conteúdo", color = DarkBg, fontWeight = FontWeight.Bold)
             }
         }
     }
 }
 
 @Composable
-fun PasswordPromptDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
+fun PasswordPromptDialog(onDismiss: () -> Unit, onAuthenticated: () -> Unit) {
     val context = LocalContext.current
     val activity = context as? androidx.fragment.app.FragmentActivity
     val authManager = remember { AuthManager(context) }
@@ -487,11 +493,15 @@ fun PasswordPromptDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
     var error by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     
+    fun confirmBiometricSuccess() {
+        scope.launch { onAuthenticated() }
+    }
+
     LaunchedEffect(Unit) {
         if (activity != null) {
             authManager.showBiometricPrompt(
                 activity = activity,
-                onSuccess = { onConfirm("") },
+                onSuccess = { confirmBiometricSuccess() },
                 onError = { /* Let user use password */ }
             )
         }
@@ -523,7 +533,7 @@ fun PasswordPromptDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
                         onClick = {
                             authManager.showBiometricPrompt(
                                 activity = activity,
-                                onSuccess = { onConfirm("") },
+                                onSuccess = { confirmBiometricSuccess() },
                                 onError = { error = it }
                             )
                         },
@@ -541,7 +551,7 @@ fun PasswordPromptDialog(onDismiss: () -> Unit, onConfirm: (String) -> Unit) {
                 onClick = {
                     scope.launch {
                         if (authManager.verifyPassword(password)) {
-                            onConfirm(password)
+                            onAuthenticated()
                         } else {
                             error = "Senha incorreta"
                         }
@@ -572,8 +582,6 @@ fun SessionListItem(
 ) {
     val context = LocalContext.current
     var showMenu by remember { mutableStateOf(false) }
-    
-    val dateFormatter = remember { java.text.SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()) }
     val isCurrentlyActive = sessionManager.isCurrentlyInBlockingWindow(session)
     
     Card(
@@ -637,53 +645,52 @@ fun SessionListItem(
                     }
                 }
 
-                    val isTimeActive = session.sessionType == "TIME" && isCurrentlyActive
+                val isTimeActive = session.sessionType == "TIME" && isCurrentlyActive
                     
-                    Box {
-                        IconButton(onClick = { 
-                            if (isTimeActive) {
-                                Toast.makeText(context, "Este bloqueio não pode ser alterado!", Toast.LENGTH_SHORT).show()
-                            } else {
-                                showMenu = true 
-                            }
-                        }) {
-                            Icon(
-                                imageVector = if (isTimeActive) Icons.Default.Lock else Icons.Default.Settings, 
-                                contentDescription = "Configurações", 
-                                tint = if (isTimeActive) DangerRed else TextHint
+                Box {
+                    IconButton(onClick = { 
+                        if (isTimeActive) {
+                            Toast.makeText(context, "Este bloqueio não pode ser alterado!", Toast.LENGTH_SHORT).show()
+                        } else {
+                            showMenu = true 
+                        }
+                    }) {
+                        Icon(
+                            imageVector = if (isTimeActive) Icons.Default.Lock else Icons.Default.Settings, 
+                            contentDescription = "Configurações", 
+                            tint = if (isTimeActive) DangerRed else TextHint
+                        )
+                    }
+                    
+                    if (!isTimeActive) {
+                        DropdownMenu(
+                            expanded = showMenu,
+                            onDismissRequest = { showMenu = false },
+                            modifier = Modifier.background(DarkSurface)
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Adicionar apps/sites", color = TextPrimary) },
+                                onClick = { showMenu = false; onAddContent() },
+                                leadingIcon = { Icon(Icons.Default.Add, null, tint = AccentCyan) }
+                            )
+                            DropdownMenuItem(
+                                text = { Text("Remover apps/sites", color = TextPrimary) },
+                                onClick = { showMenu = false; onClick() },
+                                leadingIcon = { Icon(Icons.Default.RemoveCircleOutline, null, tint = AccentCyan) }
+                            )
+                            HorizontalDivider(color = CardBorder, thickness = 0.5.dp)
+                            DropdownMenuItem(
+                                text = { Text("Remover bloqueio", color = DangerRed) },
+                                onClick = { showMenu = false; onRemoveBlock() },
+                                leadingIcon = { Icon(Icons.Default.Delete, null, tint = DangerRed) }
                             )
                         }
-                        
-                        if (!isTimeActive) {
-                            DropdownMenu(
-                                expanded = showMenu,
-                                onDismissRequest = { showMenu = false },
-                                modifier = Modifier.background(DarkSurface)
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text("Adicionar apps/sites", color = TextPrimary) },
-                                    onClick = { showMenu = false; onAddContent() },
-                                    leadingIcon = { Icon(Icons.Default.Add, null, tint = AccentCyan) }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text("Remover apps/sites", color = TextPrimary) },
-                                    onClick = { showMenu = false; onClick() },
-                                    leadingIcon = { Icon(Icons.Default.RemoveCircleOutline, null, tint = AccentCyan) }
-                                )
-                                HorizontalDivider(color = CardBorder, thickness = 0.5.dp)
-                                DropdownMenuItem(
-                                    text = { Text("Remover bloqueio", color = DangerRed) },
-                                    onClick = { showMenu = false; onRemoveBlock() },
-                                    leadingIcon = { Icon(Icons.Default.Delete, null, tint = DangerRed) }
-                                )
-                            }
-                        }
                     }
+                }
             }
             
             Spacer(Modifier.height(16.dp))
             
-            // Stats Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -692,7 +699,7 @@ fun SessionListItem(
                 InfoTag(Icons.Default.Language, "${session.blockedWebsitesCount} Sites")
                 
                 if (session.sessionType == "TIME" && session.endTime != null) {
-                    val remainingMs = session.endTime - System.currentTimeMillis()
+                    val remainingMs = (session.endTime - System.currentTimeMillis()).coerceAtLeast(0L)
                     val remainingDays = TimeUnit.MILLISECONDS.toDays(remainingMs)
                     val remainingHours = TimeUnit.MILLISECONDS.toHours(remainingMs) % 24
                     InfoTag(Icons.Default.AccessTime, "${remainingDays}d ${remainingHours}h")
