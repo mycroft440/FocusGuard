@@ -212,17 +212,17 @@ fun PomodoroScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(24.dp)
+                .padding(horizontal = 24.dp, vertical = 8.dp)
         ) {
             Text(
                 text = if (currentSession?.isBreak == true) stringResource(R.string.pomodoro_status_break) else stringResource(R.string.pomodoro_status_focus),
-                fontSize = 32.sp,
+                fontSize = 30.sp,
                 fontWeight = FontWeight.Bold,
                 color = if (currentSession?.isBreak == true) AccentPurple else AccentCyan,
                 textAlign = TextAlign.Center
             )
 
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             Text(
                 text = if (isActive) {
@@ -234,7 +234,7 @@ fun PomodoroScreen(
             )
 
             if (!isActive) {
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(14.dp))
                 BlockingToggleCard(
                     isBlockingEnabled = isBlockingEnabled,
                     onToggle = { checked ->
@@ -243,7 +243,7 @@ fun PomodoroScreen(
                 )
             }
 
-            Spacer(modifier = Modifier.height(if (isActive) 48.dp else 32.dp))
+            Spacer(modifier = Modifier.height(if (isActive) 40.dp else 16.dp))
 
             Box(contentAlignment = Alignment.Center) {
                 val progress = if (isActive && currentSession != null) {
@@ -260,7 +260,7 @@ fun PomodoroScreen(
                     val seconds = (timeLeftMillis / 1000) % 60
                     Text(
                         text = if (isActive) String.format("%02d:%02d", minutes, seconds) else "25:00",
-                        fontSize = 72.sp,
+                        fontSize = 64.sp,
                         fontWeight = FontWeight.Black,
                         color = TextPrimary
                     )
@@ -276,7 +276,7 @@ fun PomodoroScreen(
                 }
             }
 
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             if (!isActive) {
                 Row(
@@ -288,7 +288,7 @@ fun PomodoroScreen(
                     PomodoroOption(label = stringResource(R.string.pomodoro_option_45), onClick = { onStart(45) })
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(14.dp))
 
                 CustomPomodoroTimeInput(
                     value = customMinutesText,
@@ -300,11 +300,11 @@ fun PomodoroScreen(
                     onStart = { customMinutesText.toIntOrNull()?.let(onStart) }
                 )
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(16.dp))
 
                 OutlinedButton(
                     onClick = onBack,
-                    modifier = Modifier.width(200.dp),
+                    modifier = Modifier.width(200.dp).height(44.dp),
                     shape = RoundedCornerShape(16.dp),
                     border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
                 ) {
@@ -367,11 +367,12 @@ fun BlockingToggleCard(
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
+            .fillMaxWidth()
             .clip(RoundedCornerShape(16.dp))
             .background(DarkCard)
-            .padding(horizontal = 18.dp, vertical = 10.dp)
+            .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
-        Column(modifier = Modifier.weight(1f, fill = false)) {
+        Column(modifier = Modifier.weight(1f)) {
             Text(stringResource(R.string.pomodoro_enable_block_switch), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
             Text(stringResource(R.string.pomodoro_enable_block_subtitle), color = TextHint, fontSize = 11.sp)
         }
@@ -402,14 +403,14 @@ fun CustomPomodoroTimeInput(
         shape = RoundedCornerShape(18.dp),
         border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(14.dp)) {
             Text(stringResource(R.string.pomodoro_custom_time_title), color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
                     value = value,
                     onValueChange = onValueChange,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.weight(1f).height(56.dp),
                     singleLine = true,
                     label = { Text(stringResource(R.string.pomodoro_minutes_label), color = TextHint) },
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -445,7 +446,7 @@ fun CircularTimerProgress(progress: Float, color: Color) {
         label = "TimerProgress"
     )
 
-    Canvas(modifier = Modifier.size(300.dp)) {
+    Canvas(modifier = Modifier.size(260.dp)) {
         drawCircle(
             color = DarkCard,
             style = Stroke(width = 14.dp.toPx())
@@ -464,13 +465,14 @@ fun CircularTimerProgress(progress: Float, color: Color) {
 fun PomodoroOption(label: String, onClick: () -> Unit) {
     FilledTonalButton(
         onClick = onClick,
-        modifier = Modifier.size(80.dp, 50.dp),
+        modifier = Modifier.size(88.dp, 46.dp),
         shape = RoundedCornerShape(12.dp),
         colors = ButtonDefaults.filledTonalButtonColors(
             containerColor = DarkCard,
             contentColor = AccentCyan
-        )
+        ),
+        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 0.dp)
     ) {
-        Text(label, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+        Text(label, fontWeight = FontWeight.Bold, fontSize = 17.sp, maxLines = 1)
     }
 }
