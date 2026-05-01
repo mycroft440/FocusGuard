@@ -8,9 +8,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Timer
@@ -65,6 +66,15 @@ fun PomodoroScreen(
     LaunchedEffect(Unit) {
         pomodoroManager.onSessionFinished.collect {
             showSummary = true
+        }
+    }
+
+    DisposableEffect(activity) {
+        onDispose {
+            activity?.window?.let { window ->
+                WindowInsetsControllerCompat(window, window.decorView)
+                    .show(WindowInsetsCompat.Type.systemBars())
+            }
         }
     }
 
@@ -203,7 +213,10 @@ fun PomodoroScreen(
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(24.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(24.dp)
         ) {
             Text(
                 text = if (currentSession?.isBreak == true) stringResource(R.string.pomodoro_status_break) else stringResource(R.string.pomodoro_status_focus),
