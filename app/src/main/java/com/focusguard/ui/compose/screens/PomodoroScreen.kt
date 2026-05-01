@@ -148,12 +148,13 @@ fun PomodoroScreen(
     val isActive = currentSession?.isActive == true
 
     val onStart: (Int) -> Unit = { mins ->
-        if (mins <= 0) return@let
-        if (isBlockingEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager?.isNotificationPolicyAccessGranted == false) {
-            val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
-            context.startActivity(intent)
-        } else {
-            scope.launch { pomodoroManager.startSession(mins, isBlockingEnabled = isBlockingEnabled) }
+        if (mins > 0) {
+            if (isBlockingEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager?.isNotificationPolicyAccessGranted == false) {
+                val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+                context.startActivity(intent)
+            } else {
+                scope.launch { pomodoroManager.startSession(mins, isBlockingEnabled = isBlockingEnabled) }
+            }
         }
     }
     
