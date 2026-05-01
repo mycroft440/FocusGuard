@@ -41,28 +41,26 @@ fun MainScreen(
 
     Scaffold(
         topBar = {
-            CenterAlignedTopAppBar(
-                title = {
-                    Text(
-                        when (selectedTab) {
-                            0 -> stringResource(R.string.nav_insights)
-                            1 -> stringResource(R.string.app_name)
-                            else -> stringResource(R.string.nav_focus)
-                        },
-                        fontWeight = FontWeight.Bold
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(DarkBg)
+                    .statusBarsPadding()
+                    .height(48.dp)
+            ) {
+                IconButton(
+                    onClick = onSettingsClick,
+                    modifier = Modifier
+                        .align(Alignment.CenterEnd)
+                        .padding(end = 12.dp)
+                ) {
+                    Icon(
+                        Icons.Default.Menu,
+                        contentDescription = stringResource(R.string.nav_settings),
+                        tint = TextPrimary
                     )
-                },
-                actions = {
-                    IconButton(onClick = onSettingsClick) {
-                        Icon(Icons.Default.Settings, contentDescription = stringResource(R.string.nav_settings))
-                    }
-                },
-                colors = TopAppBarDefaults.centerAlignedTopAppBarColors(
-                    containerColor = DarkBg,
-                    titleContentColor = TextPrimary,
-                    actionIconContentColor = TextPrimary
-                )
-            )
+                }
+            }
         },
         bottomBar = {
             NavigationBar(
@@ -202,7 +200,7 @@ fun HomeContent(
             .padding(horizontal = 24.dp, vertical = 0.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         AnimatedVisibility(
             visible = visible,
@@ -211,25 +209,25 @@ fun HomeContent(
             Icon(
                 painter = painterResource(id = R.drawable.ic_shield),
                 contentDescription = stringResource(R.string.content_focusguard_logo),
-                modifier = Modifier.size(64.dp),
+                modifier = Modifier.size(48.dp),
                 tint = AccentCyan
             )
         }
 
-        Spacer(modifier = Modifier.height(12.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         AnimatedVisibility(
             visible = visible,
             enter = fadeIn(animationSpec = tween(600, delayMillis = 100)) + slideInVertically(animationSpec = tween(600, delayMillis = 100)) { it / 2 }
         ) {
-            Text(stringResource(id = R.string.app_name), fontSize = 32.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+            Text(stringResource(id = R.string.app_name), fontSize = 30.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
         }
 
         AnimatedVisibility(
             visible = visible,
             enter = fadeIn(animationSpec = tween(600, delayMillis = 200)) + slideInVertically(animationSpec = tween(600, delayMillis = 200)) { it / 2 }
         ) {
-            Text(stringResource(id = R.string.focus_subtitle), fontSize = 14.sp, color = TextSecondary, modifier = Modifier.padding(top = 4.dp, bottom = 32.dp))
+            Text(stringResource(id = R.string.focus_subtitle), fontSize = 14.sp, color = TextSecondary, modifier = Modifier.padding(top = 2.dp, bottom = 20.dp))
         }
 
         AnimatedVisibility(
@@ -239,13 +237,13 @@ fun HomeContent(
         ) {
             Card(
                 onClick = onPermissionsClick,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
+                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(containerColor = DangerRed.copy(alpha = 0.1f)),
                 border = BorderStroke(1.dp, DangerRed)
             ) {
                 Row(
-                    modifier = Modifier.padding(16.dp),
+                    modifier = Modifier.padding(14.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(Icons.Default.Warning, contentDescription = stringResource(R.string.content_warning), tint = DangerRed)
@@ -271,7 +269,7 @@ fun HomeContent(
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         AnimatedVisibility(
             visible = visible,
@@ -285,7 +283,7 @@ fun HomeContent(
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(12.dp))
 
         AnimatedVisibility(
             visible = visible,
@@ -299,7 +297,7 @@ fun HomeContent(
             )
         }
 
-        Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
         if (pagerHint) {
             Text(stringResource(id = R.string.swipe_hint), fontSize = 12.sp, color = TextHint, modifier = Modifier.padding(top = 8.dp, bottom = 24.dp))
@@ -317,15 +315,15 @@ fun SessionCard(icon: ImageVector, title: String, subtitle: String, onClick: () 
         colors = CardDefaults.cardColors(containerColor = DarkCard),
         border = BorderStroke(1.dp, CardBorder)
     ) {
-        Row(modifier = Modifier.padding(20.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                modifier = Modifier.size(52.dp).clip(RoundedCornerShape(16.dp)).background(Brush.linearGradient(colors = listOf(AccentCyan.copy(alpha = 0.15f), AccentPurple.copy(alpha = 0.15f)))),
+                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(Brush.linearGradient(colors = listOf(AccentCyan.copy(alpha = 0.15f), AccentPurple.copy(alpha = 0.15f)))),
                 contentAlignment = Alignment.Center
-            ) { Icon(icon, contentDescription = null, modifier = Modifier.size(28.dp), tint = AccentCyan) }
+            ) { Icon(icon, contentDescription = null, modifier = Modifier.size(26.dp), tint = AccentCyan) }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, fontSize = 17.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                Spacer(modifier = Modifier.height(4.dp))
+                Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                Spacer(modifier = Modifier.height(3.dp))
                 Text(subtitle, fontSize = 13.sp, color = TextSecondary)
             }
             Icon(Icons.Filled.ChevronRight, contentDescription = stringResource(R.string.action_open), modifier = Modifier.size(20.dp), tint = TextHint)
