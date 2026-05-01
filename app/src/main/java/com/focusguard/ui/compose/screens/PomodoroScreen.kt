@@ -1,28 +1,26 @@
 package com.focusguard.ui.compose.screens
 
-import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Timer
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.provider.Settings
 import android.app.NotificationManager
 import android.os.Build
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,6 +30,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -60,6 +59,7 @@ fun PomodoroScreen(
     var isBlockingEnabled by remember { mutableStateOf(false) }
     var showBlockingWarning by remember { mutableStateOf(false) }
     var showSummary by remember { mutableStateOf(false) }
+    var customMinutesText by remember { mutableStateOf("") }
     var countdown by remember { mutableIntStateOf(4) }
 
     LaunchedEffect(Unit) {
@@ -104,7 +104,6 @@ fun PomodoroScreen(
                                 }
                             )
                         } ?: run {
-                            // Fallback caso nâo seja FragmentActivity (nâo deve ocorrer no app)
                             isBlockingEnabled = true
                             showBlockingWarning = false
                         }
@@ -146,10 +145,18 @@ fun PomodoroScreen(
     }
     
     val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
-    
     val isActive = currentSession?.isActive == true
+
+    val onStart: (Int) -> Unit = { mins ->
+        if (mins <= 0) return@let
+        if (isBlockingEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager?.isNotificationPolicyAccessGranted == false) {
+            val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+            context.startActivity(intent)
+        } else {
+            scope.launch { pomodoroManager.startSession(mins, isBlockingEnabled = isBlockingEnabled) }
+        }
+    }
     
-    // MODO IMERSIVO (TELA INTEIRA)
     LaunchedEffect(isActive) {
         FocusGuardLogger.log("PomodoroScreen", "Estado Imersivo alterado: $isActive")
         activity?.window?.let { window ->
@@ -165,12 +172,10 @@ fun PomodoroScreen(
         }
     }
 
-    // BLOQUEIO DO BOTÃƒO VOLTAR
     BackHandler(enabled = isActive && currentSession?.isBlockingEnabled == true) {
         FocusGuardLogger.log("PomodoroScreen", "Tentativa de voltar negada: Pomodoro ativo com bloqueio.")
     }
 
-    // KIOSK MODE (Lock Task) - Se Device Owner
     LaunchedEffect(isActive) {
         if (isActive && currentSession?.isBlockingEnabled == true) {
             try {
@@ -217,10 +222,23 @@ fun PomodoroScreen(
                 color = TextSecondary,
                 textAlign = TextAlign.Center
             )
+
+            if (!isActive) {
+                Spacer(modifier = Modifier.height(24.dp))
+                BlockingToggleCard(
+                    isBlockingEnabled = isBlockingEnabled,
+                    onToggle = { checked ->
+                        if (checked) {
+                            showBlockingWarning = true
+                        } else {
+                            isBlockingEnabled = false
+                        }
+                    }
+                )
+            }
             
-            Spacer(modifier = Modifier.height(48.dp))
+            Spacer(modifier = Modifier.height(if (isActive) 48.dp else 32.dp))
             
-            // Timer Circular Premium
             Box(contentAlignment = Alignment.Center) {
                 val progress = if (isActive && currentSession != null) {
                     timeLeftMillis.toFloat() / currentSession!!.durationMillis.toFloat()
@@ -252,55 +270,33 @@ fun PomodoroScreen(
                 }
             }
             
-            Spacer(modifier = Modifier.height(64.dp))
+            Spacer(modifier = Modifier.height(48.dp))
             
             if (!isActive) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceEvenly
                 ) {
-                    val onStart: (Int) -> Unit = { mins ->
-                        if (isBlockingEnabled && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && notificationManager?.isNotificationPolicyAccessGranted == false) {
-                            val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
-                            context.startActivity(intent)
-                        } else {
-                            scope.launch { pomodoroManager.startSession(mins, isBlockingEnabled = isBlockingEnabled) }
-                        }
-                    }
                     PomodoroOption(label = "15m", onClick = { onStart(15) })
                     PomodoroOption(label = "25m", onClick = { onStart(25) })
                     PomodoroOption(label = "45m", onClick = { onStart(45) })
                 }
+
+                Spacer(modifier = Modifier.height(20.dp))
+
+                CustomPomodoroTimeInput(
+                    value = customMinutesText,
+                    onValueChange = { newValue ->
+                        if (newValue.length <= 3 && newValue.all { it.isDigit() }) {
+                            customMinutesText = newValue
+                        }
+                    },
+                    onStart = {
+                        customMinutesText.toIntOrNull()?.let(onStart)
+                    }
+                )
                 
                 Spacer(modifier = Modifier.height(32.dp))
-                
-                // Switch de Bloqueio
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(DarkCard)
-                        .padding(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    Text(stringResource(R.string.pomodoro_enable_block_switch), color = TextPrimary, fontSize = 14.sp)
-                    Spacer(modifier = Modifier.width(16.dp))
-                    Switch(
-                        checked = isBlockingEnabled,
-                        onCheckedChange = { checked ->
-                            if (checked) {
-                                showBlockingWarning = true
-                            } else {
-                                isBlockingEnabled = false
-                            }
-                        },
-                        colors = SwitchDefaults.colors(
-                            checkedThumbColor = AccentCyan,
-                            checkedTrackColor = AccentCyan.copy(alpha = 0.5f)
-                        )
-                    )
-                }
-                
-                Spacer(modifier = Modifier.height(48.dp))
                 
                 OutlinedButton(
                     onClick = onBack,
@@ -330,7 +326,6 @@ fun PomodoroScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // BotÃ£o de Telefone e Sair (se nÃ£o bloqueado)
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     if (currentSession?.isBlockingEnabled == true) {
                         Button(
@@ -361,20 +356,96 @@ fun PomodoroScreen(
 }
 
 @Composable
+fun BlockingToggleCard(
+    isBlockingEnabled: Boolean,
+    onToggle: (Boolean) -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(DarkCard)
+            .padding(horizontal = 18.dp, vertical = 10.dp)
+    ) {
+        Column(modifier = Modifier.weight(1f, fill = false)) {
+            Text(stringResource(R.string.pomodoro_enable_block_switch), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text("Ative antes de iniciar para bloquear saídas e distrações", color = TextHint, fontSize = 11.sp)
+        }
+        Spacer(modifier = Modifier.width(16.dp))
+        Switch(
+            checked = isBlockingEnabled,
+            onCheckedChange = onToggle,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = AccentCyan,
+                checkedTrackColor = AccentCyan.copy(alpha = 0.5f)
+            )
+        )
+    }
+}
+
+@Composable
+fun CustomPomodoroTimeInput(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onStart: () -> Unit
+) {
+    val minutes = value.toIntOrNull()
+    val isValid = minutes != null && minutes > 0
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = DarkCard.copy(alpha = 0.8f)),
+        shape = RoundedCornerShape(18.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text("Tempo personalizado", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                OutlinedTextField(
+                    value = value,
+                    onValueChange = onValueChange,
+                    modifier = Modifier.weight(1f),
+                    singleLine = true,
+                    label = { Text("Minutos", color = TextHint) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = AccentCyan,
+                        unfocusedBorderColor = CardBorder,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary,
+                        cursorColor = AccentCyan
+                    ),
+                    shape = RoundedCornerShape(14.dp)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Button(
+                    onClick = onStart,
+                    enabled = isValid,
+                    modifier = Modifier.height(56.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan, disabledContainerColor = DarkCardElevated),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Text("Iniciar", color = if (isValid) DarkBg else TextHint, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+@Composable
 fun CircularTimerProgress(progress: Float, color: Color) {
     val animatedProgress by animateFloatAsState(
-        targetValue = progress,
+        targetValue = progress.coerceIn(0f, 1f),
         animationSpec = tween(1000, easing = LinearEasing),
         label = "TimerProgress"
     )
     
     Canvas(modifier = Modifier.size(300.dp)) {
-        // Track
         drawCircle(
             color = DarkCard,
             style = Stroke(width = 14.dp.toPx())
         )
-        // Progress
         drawArc(
             brush = Brush.sweepGradient(listOf(color.copy(alpha = 0.3f), color)),
             startAngle = -90f,
