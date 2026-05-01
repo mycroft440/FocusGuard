@@ -34,15 +34,17 @@ fun IntruderLogScreen(onBack: () -> Unit) {
     var photos by remember { mutableStateOf<List<File>>(emptyList()) }
 
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
+        val loadedPhotos = withContext(Dispatchers.IO) {
             val dir = context.getExternalFilesDir(null)
             if (dir != null && dir.exists()) {
-                val files = dir.listFiles { file -> file.name.endsWith(".jpg") }
-                if (files != null) {
-                    photos = files.sortedByDescending { it.lastModified() }
-                }
+                dir.listFiles { file -> file.name.endsWith(".jpg") }
+                    ?.sortedByDescending { it.lastModified() }
+                    ?: emptyList()
+            } else {
+                emptyList()
             }
         }
+        photos = loadedPhotos
     }
 
     Scaffold(
@@ -81,17 +83,14 @@ fun IntruderLogScreen(onBack: () -> Unit) {
 
 @Composable
 fun IntruderPhotoCard(file: File) {
-    // BUG FIX: Decode bitmap off the main thread using produceState
     val bitmapState = produceState<ImageBitmap?>(initialValue = null, key1 = file.absolutePath) {
         value = withContext(Dispatchers.IO) {
             try {
-                // Decode with downsampling to prevent OOM
                 val options = BitmapFactory.Options().apply {
                     inJustDecodeBounds = true
                 }
                 BitmapFactory.decodeFile(file.absolutePath, options)
                 
-                // Calculate sample size targeting ~512px max dimension
                 val maxDim = maxOf(options.outWidth, options.outHeight)
                 var sampleSize = 1
                 while (maxDim / sampleSize > 512) {
