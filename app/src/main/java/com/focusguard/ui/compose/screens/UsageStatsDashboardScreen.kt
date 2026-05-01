@@ -1,12 +1,12 @@
 package com.focusguard.ui.compose.screens
 
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
-import androidx.compose.animation.*
+import android.provider.Settings
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -16,6 +16,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -24,7 +25,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -34,48 +34,76 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import com.focusguard.analytics.*
 import com.focusguard.ui.compose.theme.*
+import com.focusguard.utils.PermissionUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Calendar
+
+private data class UsageInsightsData(
+    val weeklyUsage: List<DailyPhoneUsage>,
+    val mostUsedApps: List<AppUsageStat>,
+    val openCloseEvents: List<AppEventStat>,
+    val neverUsedApps: List<String>
+)
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UsageStatsDashboardScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val pm = context.packageManager
-    val analytics = remember { AdvancedUsageAnalytics(context) }
+    val analytics = remember { AdvancedUsageAnalytics(context.applicationContext) }
     
-    // States for data
     var weeklyUsage by remember { mutableStateOf<List<DailyPhoneUsage>>(emptyList()) }
     var mostUsedApps by remember { mutableStateOf<List<AppUsageStat>>(emptyList()) }
     var openCloseEvents by remember { mutableStateOf<List<AppEventStat>>(emptyList()) }
     var neverUsedApps by remember { mutableStateOf<List<String>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    var hasUsageAccess by remember { mutableStateOf(false) }
+    var loadError by remember { mutableStateOf<String?>(null) }
 
-    // Toggles and expansions
     var showAverageForMostUsed by remember { mutableStateOf(false) }
     var expandMostUsed by remember { mutableStateOf(false) }
     var expandOpenClose by remember { mutableStateOf(false) }
     var expandNeverUsed by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
-            val end = System.currentTimeMillis()
-            val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -7) }
-            val start7Days = cal.timeInMillis
-            
-            val calToday = Calendar.getInstance().apply {
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-            }
-            val startToday = calToday.timeInMillis
+        isLoading = true
+        loadError = null
+        hasUsageAccess = PermissionUtils.isUsageAccessEnabled(context)
 
-            weeklyUsage = analytics.getPhoneUsageHistory(14)
-            mostUsedApps = analytics.getMostUsedApps(start7Days, end)
-            openCloseEvents = analytics.getAppOpenCloseCounts(startToday, end)
-            neverUsedApps = analytics.getNeverUsedApps(start7Days, end)
-            
+        if (!hasUsageAccess) {
+            isLoading = false
+            return@LaunchedEffect
+        }
+
+        try {
+            val data = withContext(Dispatchers.IO) {
+                val end = System.currentTimeMillis()
+                val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -7) }
+                val start7Days = cal.timeInMillis
+                
+                val calToday = Calendar.getInstance().apply {
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                val startToday = calToday.timeInMillis
+
+                UsageInsightsData(
+                    weeklyUsage = analytics.getPhoneUsageHistory(14),
+                    mostUsedApps = analytics.getMostUsedApps(start7Days, end),
+                    openCloseEvents = analytics.getAppOpenCloseCounts(startToday, end),
+                    neverUsedApps = analytics.getNeverUsedApps(start7Days, end)
+                )
+            }
+            weeklyUsage = data.weeklyUsage
+            mostUsedApps = data.mostUsedApps
+            openCloseEvents = data.openCloseEvents
+            neverUsedApps = data.neverUsedApps
+        } catch (e: Exception) {
+            loadError = e.localizedMessage ?: "Não foi possível carregar as métricas de uso."
+        } finally {
             isLoading = false
         }
     }
@@ -94,51 +122,118 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit) {
         },
         containerColor = DarkBg
     ) { padding ->
-        if (isLoading) {
-            Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator(color = AccentCyan)
+        when {
+            isLoading -> {
+                Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = AccentCyan)
+                }
             }
-        } else {
-            LazyColumn(
-                modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
-                verticalArrangement = Arrangement.spacedBy(24.dp)
+
+            !hasUsageAccess -> {
+                InsightsFallback(
+                    modifier = Modifier.padding(padding),
+                    title = "Permissão necessária",
+                    message = "Ative o acesso ao uso para visualizar os insights sem fechar o app.",
+                    actionLabel = "Abrir configurações",
+                    onAction = {
+                        runCatching {
+                            context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+                        }
+                    }
+                )
+            }
+
+            loadError != null -> {
+                InsightsFallback(
+                    modifier = Modifier.padding(padding),
+                    title = "Não foi possível carregar",
+                    message = loadError ?: "Tente novamente em instantes.",
+                    actionLabel = "Voltar",
+                    onAction = onBack
+                )
+            }
+
+            else -> {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(24.dp)
+                ) {
+                    item { Spacer(Modifier.height(8.dp)) }
+
+                    item {
+                        PhoneUsageChartSection(weeklyUsage)
+                    }
+
+                    item {
+                        MostUsedAppsSection(
+                            apps = mostUsedApps,
+                            pm = pm,
+                            showAverage = showAverageForMostUsed,
+                            onToggleAverage = { showAverageForMostUsed = it },
+                            expanded = expandMostUsed,
+                            onToggleExpand = { expandMostUsed = it }
+                        )
+                    }
+
+                    item {
+                        OpenCloseEventsSection(
+                            events = openCloseEvents,
+                            pm = pm,
+                            expanded = expandOpenClose,
+                            onToggleExpand = { expandOpenClose = it }
+                        )
+                    }
+
+                    item {
+                        NeverUsedAppsSection(
+                            apps = neverUsedApps,
+                            pm = pm,
+                            expanded = expandNeverUsed,
+                            onToggleExpand = { expandNeverUsed = it }
+                        )
+                    }
+
+                    item { Spacer(Modifier.height(32.dp)) }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun InsightsFallback(
+    modifier: Modifier = Modifier,
+    title: String,
+    message: String,
+    actionLabel: String,
+    onAction: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .then(modifier)
+            .padding(24.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkCard),
+            border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+        ) {
+            Column(
+                modifier = Modifier.padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                item { Spacer(Modifier.height(8.dp)) }
-
-                item {
-                    PhoneUsageChartSection(weeklyUsage)
+                Icon(Icons.Default.Warning, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(42.dp))
+                Spacer(Modifier.height(16.dp))
+                Text(title, color = TextPrimary, fontSize = 20.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(8.dp))
+                Text(message, color = TextSecondary, fontSize = 14.sp, textAlign = TextAlign.Center)
+                Spacer(Modifier.height(20.dp))
+                Button(onClick = onAction) {
+                    Text(actionLabel)
                 }
-
-                item {
-                    MostUsedAppsSection(
-                        apps = mostUsedApps,
-                        pm = pm,
-                        showAverage = showAverageForMostUsed,
-                        onToggleAverage = { showAverageForMostUsed = it },
-                        expanded = expandMostUsed,
-                        onToggleExpand = { expandMostUsed = it }
-                    )
-                }
-
-                item {
-                    OpenCloseEventsSection(
-                        events = openCloseEvents,
-                        pm = pm,
-                        expanded = expandOpenClose,
-                        onToggleExpand = { expandOpenClose = it }
-                    )
-                }
-
-                item {
-                    NeverUsedAppsSection(
-                        apps = neverUsedApps,
-                        pm = pm,
-                        expanded = expandNeverUsed,
-                        onToggleExpand = { expandNeverUsed = it }
-                    )
-                }
-
-                item { Spacer(Modifier.height(32.dp)) }
             }
         }
     }
@@ -235,7 +330,7 @@ fun PhoneUsageChartSection(usageHistory: List<DailyPhoneUsage>) {
                 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     currentWeek.forEach { usage ->
-                        val label = usage.dateLabel.take(1) // Pega a primeira letra (S, T, Q...)
+                        val label = usage.dateLabel.take(1)
                         Text(
                             text = label,
                             color = TextHint,

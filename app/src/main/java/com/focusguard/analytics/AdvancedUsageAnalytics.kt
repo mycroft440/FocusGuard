@@ -42,7 +42,11 @@ class AdvancedUsageAnalytics(private val context: Context) {
         val startTime = cal.timeInMillis
         val endTime = System.currentTimeMillis()
 
-        val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
+        val stats = try {
+            usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
+        } catch (e: Exception) {
+            return@withContext emptyList()
+        }
         
         val dailyMap = mutableMapOf<String, Long>()
         val dateFormat = java.text.SimpleDateFormat("E", java.util.Locale.getDefault())
@@ -65,19 +69,31 @@ class AdvancedUsageAnalytics(private val context: Context) {
             }
         }
         
-        dailyMap.map { (key, value) ->
+        dailyMap.mapNotNull { (key, value) ->
             val parts = key.split("|")
-            DailyPhoneUsage(parts[1], value, parts[0].toLong())
+            val timestamp = parts.getOrNull(0)?.toLongOrNull()
+            val label = parts.getOrNull(1)
+            if (timestamp == null || label == null) null else DailyPhoneUsage(label, value, timestamp)
         }.sortedBy { it.timestamp }.takeLast(days)
     }
 
     suspend fun getMostUsedApps(startTime: Long, endTime: Long): List<AppUsageStat> = withContext(Dispatchers.IO) {
         if (usageStatsManager == null) return@withContext emptyList()
-        val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
+        val stats = try {
+            usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
+        } catch (e: Exception) {
+            return@withContext emptyList()
+        }
         val map = mutableMapOf<String, Long>()
         
         stats?.forEach { usage ->
-            if (usage.totalTimeInForeground > 60000L && pm.getLaunchIntentForPackage(usage.packageName) != null) {
+            val hasLaunchIntent = try {
+                pm.getLaunchIntentForPackage(usage.packageName) != null
+            } catch (e: Exception) {
+                false
+            }
+
+            if (usage.totalTimeInForeground > 60000L && hasLaunchIntent) {
                 map[usage.packageName] = (map[usage.packageName] ?: 0L) + usage.totalTimeInForeground
             }
         }
@@ -86,7 +102,12 @@ class AdvancedUsageAnalytics(private val context: Context) {
 
     suspend fun getAppOpenCloseCounts(startTime: Long, endTime: Long): List<AppEventStat> = withContext(Dispatchers.IO) {
         if (usageStatsManager == null) return@withContext emptyList()
-        val events = usageStatsManager.queryEvents(startTime, endTime)
+        val events = try {
+            usageStatsManager.queryEvents(startTime, endTime)
+        } catch (e: Exception) {
+            return@withContext emptyList()
+        } ?: return@withContext emptyList()
+
         val event = UsageEvents.Event()
         
         val openCounts = mutableMapOf<String, Int>()
@@ -94,8 +115,14 @@ class AdvancedUsageAnalytics(private val context: Context) {
 
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
-            val pkg = event.packageName
-            if (pm.getLaunchIntentForPackage(pkg) != null) {
+            val pkg = event.packageName ?: continue
+            val hasLaunchIntent = try {
+                pm.getLaunchIntentForPackage(pkg) != null
+            } catch (e: Exception) {
+                false
+            }
+
+            if (hasLaunchIntent) {
                 when (event.eventType) {
                     UsageEvents.Event.ACTIVITY_RESUMED -> openCounts[pkg] = (openCounts[pkg] ?: 0) + 1
                     UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED -> closeCounts[pkg] = (closeCounts[pkg] ?: 0) + 1
@@ -110,14 +137,29 @@ class AdvancedUsageAnalytics(private val context: Context) {
     }
 
     suspend fun getNeverUsedApps(startTime: Long, endTime: Long): List<String> = withContext(Dispatchers.IO) {
-        val allLaunchableApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
-            .filter { pm.getLaunchIntentForPackage(it.packageName) != null && it.packageName != context.packageName }
-            .map { it.packageName }
-            .toSet()
+        val allLaunchableApps = try {
+            pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                .filter {
+                    val hasLaunchIntent = try {
+                        pm.getLaunchIntentForPackage(it.packageName) != null
+                    } catch (e: Exception) {
+                        false
+                    }
+                    hasLaunchIntent && it.packageName != context.packageName
+                }
+                .map { it.packageName }
+                .toSet()
+        } catch (e: Exception) {
+            return@withContext emptyList()
+        }
 
         if (usageStatsManager == null) return@withContext allLaunchableApps.toList()
 
-        val stats = usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
+        val stats = try {
+            usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
+        } catch (e: Exception) {
+            return@withContext allLaunchableApps.toList()
+        }
         val usedApps = stats?.filter { it.totalTimeInForeground > 0 }?.map { it.packageName }?.toSet() ?: emptySet()
 
         (allLaunchableApps - usedApps).toList()
