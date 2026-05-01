@@ -1,9 +1,7 @@
 package com.focusguard.ui.compose.screens
 
-import android.app.Activity
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
-import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -12,17 +10,14 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Timer
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.provider.Settings
 import android.app.NotificationManager
 import android.os.Build
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -68,6 +63,15 @@ fun PomodoroScreen(
         }
     }
 
+    DisposableEffect(activity) {
+        onDispose {
+            activity?.window?.let { window ->
+                WindowInsetsControllerCompat(window, window.decorView)
+                    .show(WindowInsetsCompat.Type.systemBars())
+            }
+        }
+    }
+
     if (showBlockingWarning) {
         LaunchedEffect(showBlockingWarning) {
             countdown = 4
@@ -104,7 +108,6 @@ fun PomodoroScreen(
                                 }
                             )
                         } ?: run {
-                            // Fallback caso nâo seja FragmentActivity (nâo deve ocorrer no app)
                             isBlockingEnabled = true
                             showBlockingWarning = false
                         }
@@ -149,7 +152,6 @@ fun PomodoroScreen(
     
     val isActive = currentSession?.isActive == true
     
-    // MODO IMERSIVO (TELA INTEIRA)
     LaunchedEffect(isActive) {
         FocusGuardLogger.log("PomodoroScreen", "Estado Imersivo alterado: $isActive")
         activity?.window?.let { window ->
@@ -165,12 +167,10 @@ fun PomodoroScreen(
         }
     }
 
-    // BLOQUEIO DO BOTÃƒO VOLTAR
     BackHandler(enabled = isActive && currentSession?.isBlockingEnabled == true) {
         FocusGuardLogger.log("PomodoroScreen", "Tentativa de voltar negada: Pomodoro ativo com bloqueio.")
     }
 
-    // KIOSK MODE (Lock Task) - Se Device Owner
     LaunchedEffect(isActive) {
         if (isActive && currentSession?.isBlockingEnabled == true) {
             try {
@@ -220,7 +220,6 @@ fun PomodoroScreen(
             
             Spacer(modifier = Modifier.height(48.dp))
             
-            // Timer Circular Premium
             Box(contentAlignment = Alignment.Center) {
                 val progress = if (isActive && currentSession != null) {
                     timeLeftMillis.toFloat() / currentSession!!.durationMillis.toFloat()
@@ -274,7 +273,6 @@ fun PomodoroScreen(
                 
                 Spacer(modifier = Modifier.height(32.dp))
                 
-                // Switch de Bloqueio
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     modifier = Modifier
@@ -330,7 +328,6 @@ fun PomodoroScreen(
 
                 Spacer(modifier = Modifier.height(24.dp))
 
-                // BotÃ£o de Telefone e Sair (se nÃ£o bloqueado)
                 Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                     if (currentSession?.isBlockingEnabled == true) {
                         Button(
@@ -363,18 +360,16 @@ fun PomodoroScreen(
 @Composable
 fun CircularTimerProgress(progress: Float, color: Color) {
     val animatedProgress by animateFloatAsState(
-        targetValue = progress,
+        targetValue = progress.coerceIn(0f, 1f),
         animationSpec = tween(1000, easing = LinearEasing),
         label = "TimerProgress"
     )
     
     Canvas(modifier = Modifier.size(300.dp)) {
-        // Track
         drawCircle(
             color = DarkCard,
             style = Stroke(width = 14.dp.toPx())
         )
-        // Progress
         drawArc(
             brush = Brush.sweepGradient(listOf(color.copy(alpha = 0.3f), color)),
             startAngle = -90f,
