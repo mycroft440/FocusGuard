@@ -16,7 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.launch
+import com.focusguard.R
 import com.focusguard.security.AuthManager
 import com.focusguard.security.CameraManager
 import com.focusguard.ui.compose.theme.*
@@ -41,9 +42,8 @@ fun AuthScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
-    
-    // CameraManager singleton para evitar race conditions de instâncias múltiplas
     val cameraManager = remember { CameraManager(activity) }
+    val biometricsAvailable = remember { authManager.isBiometricAvailable() }
 
     val handleUnlock = {
         scope.launch {
@@ -52,24 +52,23 @@ fun AuthScreen(
             } else {
                 val failed = authManager.incrementFailedAttempts()
                 val limit = authManager.getMaxPasswordAttempts()
-                
-                if (limit > 0 && failed >= limit) {
-                    errorMessage = "Senha incorreta! Limite de tentativas excedido."
-                    if (authManager.isPhotoCaptureEnabled()) {
-                        cameraManager.setupAndCaptureSilent(activity) { _ -> }
+
+                errorMessage = when {
+                    limit > 0 && failed >= limit -> {
+                        if (authManager.isPhotoCaptureEnabled()) {
+                            cameraManager.setupAndCaptureSilent(activity) { _ -> }
+                        }
+                        activity.getString(R.string.auth_wrong_password_limit)
                     }
-                } else if (limit > 0) {
-                    errorMessage = "Senha incorreta. Tentativa $failed de $limit"
-                } else {
-                    errorMessage = "Senha incorreta."
+                    limit > 0 -> activity.getString(R.string.auth_wrong_password_attempt, failed, limit)
+                    else -> activity.getString(R.string.auth_wrong_password)
                 }
             }
         }
     }
 
-    // Tenta biometria automaticamente
-    LaunchedEffect(Unit) {
-        if (authManager.hasPasswordSet()) {
+    LaunchedEffect(biometricsAvailable) {
+        if (biometricsAvailable && authManager.hasPasswordSet()) {
             authManager.showBiometricPrompt(
                 activity = activity,
                 onSuccess = onUnlock,
@@ -83,55 +82,55 @@ fun AuthScreen(
             .fillMaxSize()
             .background(DarkBg)
             .verticalScroll(rememberScrollState())
+            .imePadding()
             .padding(24.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
+        Spacer(modifier = Modifier.weight(1f, fill = false).heightIn(min = 48.dp))
+
         Icon(
             imageVector = Icons.Default.Lock,
-            contentDescription = "Bloqueado",
+            contentDescription = stringResource(R.string.auth_locked_content_description),
             tint = AccentCyan,
             modifier = Modifier.size(64.dp)
         )
-        
+
         Spacer(modifier = Modifier.height(24.dp))
-        
+
         Text(
-            text = "App Bloqueado",
+            text = stringResource(R.string.auth_locked_title),
             fontSize = 24.sp,
             fontWeight = FontWeight.Bold,
             color = TextPrimary
         )
-        
+
         Spacer(modifier = Modifier.height(8.dp))
-        
+
         Text(
-            text = "Digite sua senha para acessar o FocusGuard",
+            text = stringResource(R.string.auth_locked_description),
             fontSize = 14.sp,
             color = TextSecondary
         )
-        
+
         Spacer(modifier = Modifier.height(32.dp))
-        
+
         OutlinedTextField(
             value = passwordInput,
             onValueChange = { passwordInput = it },
-            label = { Text("Senha", color = TextHint) },
+            label = { Text(stringResource(R.string.auth_password_label), color = TextHint) },
             visualTransformation = if (passwordVisible) VisualTransformation.None else PasswordVisualTransformation(),
             trailingIcon = {
                 val image = if (passwordVisible) Icons.Default.Visibility else Icons.Default.VisibilityOff
-                val description = if (passwordVisible) "Ocultar senha" else "Mostrar senha"
+                val description = if (passwordVisible) R.string.auth_hide_password else R.string.auth_show_password
                 IconButton(onClick = { passwordVisible = !passwordVisible }) {
-                    Icon(imageVector = image, contentDescription = description, tint = TextHint)
+                    Icon(imageVector = image, contentDescription = stringResource(description), tint = TextHint)
                 }
             },
             keyboardOptions = KeyboardOptions(
                 keyboardType = KeyboardType.Password,
                 imeAction = ImeAction.Done
             ),
-            keyboardActions = KeyboardActions(
-                onDone = { handleUnlock() }
-            ),
+            keyboardActions = KeyboardActions(onDone = { handleUnlock() }),
             singleLine = true,
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = AccentCyan,
@@ -141,7 +140,7 @@ fun AuthScreen(
             ),
             modifier = Modifier.fillMaxWidth()
         )
-        
+
         if (errorMessage.isNotEmpty()) {
             Text(
                 text = errorMessage,
@@ -150,19 +149,22 @@ fun AuthScreen(
                 modifier = Modifier.padding(top = 8.dp)
             )
         }
-        
+
+        Spacer(modifier = Modifier.height(20.dp))
+
         Button(
             onClick = { handleUnlock() },
+            enabled = passwordInput.isNotBlank(),
             modifier = Modifier.fillMaxWidth().height(50.dp),
             colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
             shape = RoundedCornerShape(16.dp)
         ) {
-            Text("Desbloquear", fontWeight = FontWeight.Bold, color = DarkBg)
+            Text(stringResource(R.string.auth_unlock_button), fontWeight = FontWeight.Bold, color = DarkBg)
         }
-        
-        if (authManager.isBiometricAvailable()) {
+
+        if (biometricsAvailable) {
             Spacer(modifier = Modifier.height(16.dp))
-            
+
             OutlinedButton(
                 onClick = {
                     authManager.showBiometricPrompt(
@@ -178,8 +180,10 @@ fun AuthScreen(
             ) {
                 Icon(Icons.Default.Fingerprint, contentDescription = null)
                 Spacer(modifier = Modifier.width(8.dp))
-                Text("Usar Biometria")
+                Text(stringResource(R.string.auth_biometrics_button))
             }
         }
+
+        Spacer(modifier = Modifier.weight(1f, fill = false).heightIn(min = 24.dp))
     }
 }
