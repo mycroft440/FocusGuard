@@ -62,9 +62,14 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             "com.oplus.dialer"
         )
 
-        private val BLOCKING_RESTRICTIONS = listOf(
+        private val GLOBAL_SHIELD_RESTRICTIONS = listOf(
             UserManager.DISALLOW_FACTORY_RESET,
             UserManager.DISALLOW_SAFE_BOOT,
+            UserManager.DISALLOW_UNINSTALL_APPS,
+            UserManager.DISALLOW_APPS_CONTROL
+        )
+
+        private val SESSION_RESTRICTIONS = listOf(
             UserManager.DISALLOW_ADD_USER,
             UserManager.DISALLOW_REMOVE_USER,
             UserManager.DISALLOW_CONFIG_DATE_TIME
@@ -267,33 +272,55 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     fun enforceBlockingPolicies() {
         if (!isDeviceOwnerActive()) return
         try {
-            val currentRestrictions = BLOCKING_RESTRICTIONS.toMutableList()
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                currentRestrictions.add(UserManager.DISALLOW_APPS_CONTROL)
-                currentRestrictions.add(UserManager.DISALLOW_UNINSTALL_APPS)
-            }
-            currentRestrictions.forEach { dpm.addUserRestriction(componentName, it) }
-            Log.d("FocusGuardAdmin", "Políticas de restrição aplicadas")
+            // Primeiro aplica o Shield Global (Persistente)
+            applyNuclearShield()
+            
+            // Depois aplica as restrições temporárias da sessão
+            SESSION_RESTRICTIONS.forEach { dpm.addUserRestriction(componentName, it) }
+            Log.d("FocusGuardAdmin", "Políticas de sessão aplicadas")
         } catch (e: Exception) {
-            com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Falha ao aplicar políticas", e)
+            com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Falha ao aplicar políticas de sessão", e)
         }
     }
 
     /**
      * Clear strict device policies when block session ends.
+     * Note: Does NOT clear the Nuclear Shield if it's meant to be persistent.
      */
     fun clearBlockingPolicies() {
         if (!isDeviceOwnerActive()) return
         try {
-            val currentRestrictions = BLOCKING_RESTRICTIONS.toMutableList()
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.N) {
-                currentRestrictions.add(UserManager.DISALLOW_APPS_CONTROL)
-                currentRestrictions.add(UserManager.DISALLOW_UNINSTALL_APPS)
-            }
-            currentRestrictions.forEach { dpm.clearUserRestriction(componentName, it) }
-            Log.d("FocusGuardAdmin", "Políticas de restrição removidas")
+            SESSION_RESTRICTIONS.forEach { dpm.clearUserRestriction(componentName, it) }
+            Log.d("FocusGuardAdmin", "Políticas de sessão removidas")
         } catch (e: Exception) {
-            com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Falha ao remover políticas", e)
+            com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Falha ao remover políticas de sessão", e)
+        }
+    }
+
+    /**
+     * Aplica a Proteção Nuclear Permanente (Anti-Desinstalação e Anti-SafeBoot).
+     * Deve ser chamada sempre que o app estiver em execução e for Device Owner.
+     */
+    fun applyNuclearShield() {
+        if (!isDeviceOwnerActive()) return
+        try {
+            GLOBAL_SHIELD_RESTRICTIONS.forEach { dpm.addUserRestriction(componentName, it) }
+            Log.d("FocusGuardAdmin", "Nuclear Shield (Permanente) aplicado")
+        } catch (e: Exception) {
+            com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Falha ao aplicar Nuclear Shield", e)
+        }
+    }
+
+    /**
+     * Revoga a Proteção Nuclear. Usado apenas quando o usuário deseja desinstalar o app legitimamente.
+     */
+    fun revokeNuclearShield() {
+        if (!isDeviceOwnerActive()) return
+        try {
+            GLOBAL_SHIELD_RESTRICTIONS.forEach { dpm.clearUserRestriction(componentName, it) }
+            Log.d("FocusGuardAdmin", "Nuclear Shield revogado")
+        } catch (e: Exception) {
+            com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Falha ao revogar Nuclear Shield", e)
         }
     }
 
@@ -356,6 +383,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         if (!isDeviceOwnerActive()) return
         try {
             clearBlockingPolicies()
+            revokeNuclearShield()
             dpm.clearDeviceOwnerApp(context.packageName)
             Toast.makeText(context, "Acesso Device Owner revogado", Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {

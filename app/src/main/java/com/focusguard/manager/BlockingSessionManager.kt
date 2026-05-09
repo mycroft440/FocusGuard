@@ -312,6 +312,8 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 deviceOwnerManager.unblockApps(allKnownApps)
                 deviceOwnerManager.clearBlockingPolicies()
                 deviceOwnerManager.clearWebsiteRestrictions()
+                // Garante que o Shield Permanente (Anti-Uninstall/SafeMode) continue ativo se for DO
+                deviceOwnerManager.applyNuclearShield()
             } else {
                 deviceOwnerManager.syncSuspendedApps(allKnownApps, allAppsToBlock)
                 deviceOwnerManager.enforceWebsiteRestrictions(sitesToBlock)
