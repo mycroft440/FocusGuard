@@ -39,7 +39,7 @@ class AuthManager(context: Context) {
     }
 
     private fun migratePrefsToSecure() {
-        val keysToMigrate = listOf("max_password_attempts", "photo_capture_enabled", "safety_mode_enabled", "failed_password_attempts", "preferred_auth_type")
+        val keysToMigrate = listOf("max_password_attempts", "photo_capture_enabled", "safety_mode_enabled", "failed_password_attempts", "preferred_auth_type", "adult_filter_enabled")
         keysToMigrate.forEach { key ->
             if (prefs.contains(key) && !securePrefs.prefs.contains(key)) {
                 when (val value = prefs.all[key]) {
@@ -101,6 +101,14 @@ class AuthManager(context: Context) {
 
     fun setSafetyModeEnabled(enabled: Boolean) {
         securePrefs.putBoolean("safety_mode_enabled", enabled)
+    }
+
+    fun isAdultFilterEnabled(): Boolean {
+        return securePrefs.getBoolean("adult_filter_enabled", false)
+    }
+
+    fun setAdultFilterEnabled(enabled: Boolean) {
+        securePrefs.putBoolean("adult_filter_enabled", enabled)
     }
 
     fun getFailedAttempts(): Int {

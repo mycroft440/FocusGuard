@@ -95,10 +95,9 @@ fun CreateSessionWizard(
     authManager: AuthManager,
     onFinish: () -> Unit
 ) {
-    val pagerState = rememberPagerState(pageCount = { 3 })
+    val pagerState = rememberPagerState(pageCount = { 2 })
     val scope = rememberCoroutineScope()
     var selectedApps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
-    var selectedSites by remember { mutableStateOf<List<String>>(emptyList()) }
 
     HorizontalPager(
         state = pagerState,
@@ -113,23 +112,21 @@ fun CreateSessionWizard(
                 },
                 onBack = onFinish
             )
-            1 -> WebsiteSelectionStep(
-                initialSites = selectedSites,
-                onNext = { sites ->
-                    selectedSites = sites
-                    scope.launch { pagerState.animateScrollToPage(2) }
-                },
-                onBack = { scope.launch { pagerState.animateScrollToPage(0) } }
-            )
-            2 -> TimeAwareFinalConfigStep(
-                sessionType = sessionType,
-                authManager = authManager,
-                sites = selectedSites,
-                apps = selectedApps.map { it.packageName },
-                appName = selectedApps.firstOrNull()?.appName ?: if (selectedApps.size > 1) "${selectedApps.size} aplicativos" else "aplicativo",
-                onFinish = onFinish,
-                onBack = { scope.launch { pagerState.animateScrollToPage(1) } }
-            )
+            1 -> {
+                val sites = selectedApps.filter { it.packageName.startsWith("site:") }.map { it.packageName.removePrefix("site:") }
+                val pureApps = selectedApps.filter { !it.packageName.startsWith("site:") }.map { it.packageName }
+                val appNameLabel = selectedApps.firstOrNull()?.appName ?: if (selectedApps.size > 1) "${selectedApps.size} itens" else "aplicativo"
+                
+                TimeAwareFinalConfigStep(
+                    sessionType = sessionType,
+                    authManager = authManager,
+                    sites = sites,
+                    apps = pureApps,
+                    appName = appNameLabel,
+                    onFinish = onFinish,
+                    onBack = { scope.launch { pagerState.animateScrollToPage(0) } }
+                )
+            }
         }
     }
 }
@@ -170,12 +167,17 @@ fun AppSelectionStep(
             val predefinedApps = PredefinedApps.PREVENTIVE_APPS
                 .filter { !installedPackageNames.contains(it.packageName) }
                 .map {
+                    val iconUrl = if (!it.domain.isNullOrBlank()) {
+                        "https://www.google.com/s2/favicons?domain=${it.domain}&sz=128"
+                    } else null
+                    
                     SelectableAppUi(
                         packageName = it.packageName,
                         appName = it.appName,
                         isSelected = false,
                         isInstalled = false,
-                        category = it.category
+                        category = it.category,
+                        iconUrl = iconUrl
                     )
                 }
 
@@ -209,88 +211,7 @@ fun AppSelectionStep(
     }
 }
 
-@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
-@Composable
-fun WebsiteSelectionStep(
-    initialSites: List<String>,
-    onNext: (List<String>) -> Unit,
-    onBack: () -> Unit
-) {
-    var sites by remember { mutableStateOf(initialSites) }
-    var urlInput by remember { mutableStateOf("") }
-
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("Sites", color = TextPrimary) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", tint = TextPrimary)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBg)
-            )
-        },
-        containerColor = DarkBg,
-        bottomBar = {
-            Button(
-                onClick = { onNext(sites) },
-                modifier = Modifier.fillMaxWidth().padding(16.dp).height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Text("Prosseguir", color = DarkBg, fontWeight = FontWeight.Bold)
-            }
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp).verticalScroll(rememberScrollState())
-        ) {
-            Text("Adicione sites que também devem ser bloqueados.", color = TextSecondary, fontSize = 14.sp)
-            Spacer(modifier = Modifier.height(24.dp))
-            OutlinedTextField(
-                value = urlInput,
-                onValueChange = { urlInput = it },
-                placeholder = { Text("exemplo.com", color = TextHint) },
-                modifier = Modifier.fillMaxWidth(),
-                trailingIcon = {
-                    TextButton(
-                        onClick = {
-                            val cleanSite = urlInput.trim().lowercase()
-                            if (cleanSite.isNotBlank() && !sites.contains(cleanSite)) {
-                                sites = sites + cleanSite
-                                urlInput = ""
-                            }
-                        }
-                    ) {
-                        Text("Adicionar", color = AccentCyan, fontWeight = FontWeight.Bold)
-                    }
-                },
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary,
-                    focusedBorderColor = AccentCyan
-                )
-            )
-
-            if (sites.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(24.dp))
-                Text("Sites selecionados", fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                Spacer(modifier = Modifier.height(8.dp))
-                Column(modifier = Modifier.fillMaxWidth().background(DarkCard, RoundedCornerShape(12.dp)).padding(8.dp)) {
-                    sites.forEach { site ->
-                        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(8.dp)) {
-                            Text(site, color = TextPrimary, modifier = Modifier.weight(1f), fontSize = 14.sp)
-                            IconButton(onClick = { sites = sites - site }, modifier = Modifier.size(24.dp)) {
-                                Icon(Icons.Default.Delete, "Remover", tint = DangerRed, modifier = Modifier.size(18.dp))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
+// Fluxo de criação de sessão unificado.
 
 @Composable
 fun PasswordCreationDialog(

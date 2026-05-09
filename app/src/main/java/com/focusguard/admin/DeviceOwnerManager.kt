@@ -377,6 +377,42 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     }
 
     /**
+     * Enforce Global Private DNS using CleanBrowsing Adult Filter
+     */
+    fun enforceAdultDns(): Boolean {
+        if (!isDeviceOwnerActive()) return false
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            try {
+                val result = dpm.setGlobalPrivateDnsModeSpecifiedHost(componentName, "adult-filter-dns.cleanbrowsing.org")
+                if (result == DevicePolicyManager.PRIVATE_DNS_SET_NO_ERROR) {
+                    Log.d("FocusGuardAdmin", "DNS Adulto aplicado com sucesso via DPM")
+                    return true
+                }
+            } catch (e: Exception) {
+                com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Erro ao aplicar DNS", e)
+            }
+        } else {
+            com.focusguard.utils.FocusGuardLogger.log("DeviceOwner", "DNS Global não suportado nesta versão do Android")
+        }
+        return false
+    }
+
+    /**
+     * Clear Global Private DNS to Opportunistic Mode
+     */
+    fun clearAdultDns() {
+        if (!isDeviceOwnerActive()) return
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+            try {
+                dpm.setGlobalPrivateDnsModeOpportunistic(componentName)
+                Log.d("FocusGuardAdmin", "DNS Global removido via DPM")
+            } catch (e: Exception) {
+                com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Erro ao remover DNS", e)
+            }
+        }
+    }
+
+    /**
      * Renounce Device Owner privileges natively.
      */
     fun renounceDeviceOwner() {

@@ -251,6 +251,16 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         scope.launch {
             try {
+                val authManager = com.focusguard.security.AuthManager(this@BlockingAccessibilityService)
+                val isAdultFilterActive = authManager.isAdultFilterEnabled()
+                
+                val adultDomains = if (isAdultFilterActive) {
+                    com.focusguard.data.PredefinedApps.PREVENTIVE_APPS
+                        .filter { it.category == "Pornografia" }
+                        .mapNotNull { it.domain?.lowercase() }
+                        .toSet()
+                } else emptySet()
+
                 val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
                 val enforcingSessions = activeSessions.filter { sessionManager.isCurrentlyInBlockingWindow(it) }
                 val enforcingIds = enforcingSessions.map { it.id }
@@ -298,12 +308,12 @@ class BlockingAccessibilityService : AccessibilityService() {
                 }
 
                 val allBlockedApps = sessionApps + limitApps
-                val allBlockedWebsites = activeWebsiteDomains + limitWebsites
+                val allBlockedWebsites = activeWebsiteDomains + limitWebsites + adultDomains
 
                 withContext(Dispatchers.Main) {
                     val pomodoroStrict = enforcingSessions.any { it.sessionType == "POMODORO" && it.isBlockingEnabled }
                     isPomodoroStrictActive = pomodoroStrict
-                    isBlockingSessionActive = enforcingSessions.isNotEmpty() || limitApps.isNotEmpty() || pomodoroStrict
+                    isBlockingSessionActive = enforcingSessions.isNotEmpty() || limitApps.isNotEmpty() || pomodoroStrict || isAdultFilterActive
                     blockedAppsSet = allBlockedApps
                     blockedWebsitesDomainSet = allBlockedWebsites
                     lastLoadTime = System.currentTimeMillis()

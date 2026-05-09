@@ -1,4 +1,4 @@
-﻿package com.focusguard.ui.compose.screens
+package com.focusguard.ui.compose.screens
 
 import android.Manifest
 import android.widget.Toast
@@ -20,12 +20,14 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.security.AuthManager
+import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.ui.compose.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
     val context = LocalContext.current
+    val deviceOwnerManager = remember { DeviceOwnerManager.getInstance(context) }
     var limitText by remember { mutableStateOf(authManager.getMaxPasswordAttempts().toString()) }
     var photoEnabled by remember { mutableStateOf(authManager.isPhotoCaptureEnabled()) }
 
@@ -213,6 +215,54 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = DarkBg,
                         checkedTrackColor = DangerRed
+                    )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(32.dp))
+            Divider(color = Border, thickness = 1.dp)
+            Spacer(modifier = Modifier.height(32.dp))
+
+            // FILTRO DNS GLOBAL
+            var adultFilterEnabled by remember { mutableStateOf(authManager.isAdultFilterEnabled()) }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("Blindagem Anti-Pornografia", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Text("Ativa Filtro DNS (Rede) e varredura de URLs 24/7. Exige Proteção Nuclear ativa.", fontSize = 12.sp, color = TextSecondary)
+                }
+                
+                Switch(
+                    checked = adultFilterEnabled,
+                    onCheckedChange = { enable ->
+                        if (enable) {
+                            if (!deviceOwnerManager.isDeviceOwnerActive()) {
+                                Toast.makeText(context, "Ative a Proteção Nuclear nas configurações primeiro!", Toast.LENGTH_LONG).show()
+                            } else {
+                                val success = deviceOwnerManager.enforceAdultDns()
+                                if (success) {
+                                    adultFilterEnabled = true
+                                    authManager.setAdultFilterEnabled(true)
+                                    // Notifica o serviço para atualizar as URLs (24/7 block list)
+                                    context.sendBroadcast(android.content.Intent("com.focusguard.ACTION_REFRESH_BLOCKING"))
+                                } else {
+                                    Toast.makeText(context, "Falha ao injetar DNS. Sua versão do Android suporta?", Toast.LENGTH_LONG).show()
+                                }
+                            }
+                        } else {
+                            deviceOwnerManager.clearAdultDns()
+                            adultFilterEnabled = false
+                            authManager.setAdultFilterEnabled(false)
+                            context.sendBroadcast(android.content.Intent("com.focusguard.ACTION_REFRESH_BLOCKING"))
+                        }
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = DarkBg,
+                        checkedTrackColor = AccentCyan
                     )
                 )
             }

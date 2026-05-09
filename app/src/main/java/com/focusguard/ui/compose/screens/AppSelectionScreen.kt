@@ -24,6 +24,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
 import androidx.core.graphics.drawable.toBitmap
+import coil.compose.AsyncImage
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.R
 
@@ -33,7 +34,8 @@ data class SelectableAppUi(
     val isSelected: Boolean,
     val isSuggested: Boolean = false,
     val isInstalled: Boolean = true,
-    val category: String = ""
+    val category: String = "",
+    val iconUrl: String? = null
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -113,7 +115,7 @@ fun AppSelectionScreen(
                     if (uninstalledApps.isNotEmpty()) {
                         item {
                             Text(
-                                text = "Bloqueie apps que podem ser instalados e usados posteriormente:",
+                                text = "Aplicativos e Sites predefinidos:",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = AccentCyan,
@@ -267,47 +269,60 @@ fun AppSelectionItem(
                 }
             }
 
-            if (iconDrawable != null) {
-                val bitmap = remember(iconDrawable) {
-                    iconDrawable!!.toBitmap(80, 80).asImageBitmap()
-                }
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = app.appName,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                )
-            } else {
-                val brandColor = remember(app.packageName) {
-                    when {
-                        app.packageName.contains("instagram") -> Color(0xFFE4405F)
-                        app.packageName.contains("facebook") -> Color(0xFF1877F2)
-                        app.packageName.contains("youtube") -> Color(0xFFFF0000)
-                        app.packageName.contains("tiktok") -> Color(0xFF000000)
-                        app.packageName.contains("twitter") || app.packageName.contains("x.android") -> Color(0xFF1DA1F2)
-                        app.packageName.contains("netflix") -> Color(0xFFE50914)
-                        app.packageName.contains("spotify") -> Color(0xFF1DB954)
-                        app.packageName.contains("whatsapp") -> Color(0xFF25D366)
-                        app.packageName.contains("tinder") -> Color(0xFFFE3C72)
-                        app.packageName.contains("twitch") -> Color(0xFF9146FF)
-                        app.packageName.contains("discord") -> Color(0xFF5865F2)
-                        else -> Color(app.packageName.hashCode()).copy(alpha = 1.0f)
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(RoundedCornerShape(10.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (iconDrawable != null) {
+                    val bitmap = remember(iconDrawable) {
+                        iconDrawable!!.toBitmap(80, 80).asImageBitmap()
                     }
-                }
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(brandColor),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = app.appName.take(1).uppercase(),
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
+                    Image(
+                        bitmap = bitmap,
+                        contentDescription = app.appName,
+                        modifier = Modifier.fillMaxSize()
                     )
+                } else if (!app.iconUrl.isNullOrBlank()) {
+                    AsyncImage(
+                        model = app.iconUrl,
+                        contentDescription = app.appName,
+                        modifier = Modifier.fillMaxSize(),
+                        error = androidx.compose.ui.graphics.painter.ColorPainter(
+                            Color(app.packageName.hashCode()).copy(alpha = 1.0f)
+                        )
+                    )
+                } else {
+                    val brandColor = remember(app.packageName) {
+                        when {
+                            app.packageName.contains("instagram") -> Color(0xFFE4405F)
+                            app.packageName.contains("facebook") -> Color(0xFF1877F2)
+                            app.packageName.contains("youtube") -> Color(0xFFFF0000)
+                            app.packageName.contains("tiktok") -> Color(0xFF000000)
+                            app.packageName.contains("twitter") || app.packageName.contains("x.android") -> Color(0xFF1DA1F2)
+                            app.packageName.contains("netflix") -> Color(0xFFE50914)
+                            app.packageName.contains("spotify") -> Color(0xFF1DB954)
+                            app.packageName.contains("whatsapp") -> Color(0xFF25D366)
+                            app.packageName.contains("tinder") -> Color(0xFFFE3C72)
+                            app.packageName.contains("twitch") -> Color(0xFF9146FF)
+                            app.packageName.contains("discord") -> Color(0xFF5865F2)
+                            else -> Color(app.packageName.hashCode()).copy(alpha = 1.0f)
+                        }
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(brandColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = app.appName.take(1).uppercase(),
+                            color = Color.White,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             }
 
