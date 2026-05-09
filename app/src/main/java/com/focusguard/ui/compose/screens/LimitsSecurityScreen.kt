@@ -14,11 +14,13 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.focusguard.R
 import com.focusguard.security.AuthManager
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.ui.compose.theme.*
@@ -232,8 +234,8 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("Blindagem Anti-Pornografia", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    Text("Ativa Filtro DNS (Rede) e varredura de URLs 24/7. Exige Proteção Nuclear ativa.", fontSize = 12.sp, color = TextSecondary)
+                    Text(stringResource(R.string.limits_dns_filter_title), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                    Text(stringResource(R.string.limits_dns_filter_desc), fontSize = 12.sp, color = TextSecondary)
                 }
                 
                 Switch(
@@ -248,7 +250,7 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                                     adultFilterEnabled = true
                                     authManager.setAdultFilterEnabled(true)
                                     // Notifica o serviço para atualizar as URLs (24/7 block list)
-                                    context.sendBroadcast(android.content.Intent("com.focusguard.ACTION_REFRESH_BLOCKING"))
+                                    context.sendBroadcast(android.content.Intent(com.focusguard.service.BlockingAccessibilityService.ACTION_REFRESH_BLOCKING))
                                 } else {
                                     Toast.makeText(context, "Falha ao injetar DNS. Sua versão do Android suporta?", Toast.LENGTH_LONG).show()
                                 }
@@ -257,7 +259,7 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                             deviceOwnerManager.clearAdultDns()
                             adultFilterEnabled = false
                             authManager.setAdultFilterEnabled(false)
-                            context.sendBroadcast(android.content.Intent("com.focusguard.ACTION_REFRESH_BLOCKING"))
+                            context.sendBroadcast(android.content.Intent(com.focusguard.service.BlockingAccessibilityService.ACTION_REFRESH_BLOCKING))
                         }
                     },
                     colors = SwitchDefaults.colors(

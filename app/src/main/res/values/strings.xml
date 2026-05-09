@@ -256,6 +256,8 @@
     <string name="permissions_progress_label">%1$s de %2$s concedidas</string>
     <string name="limits_locked_remaining_days">%1$s dias e %2$s h</string>
     <string name="limits_locked_remaining_hours">%1$s horas</string>
+    <string name="limits_dns_filter_title">Blindagem Anti-Pornografia</string>
+    <string name="limits_dns_filter_desc">Ativa Filtro DNS (Rede) e varredura de URLs 24/7. Exige Proteção Nuclear ativa.</string>
 
     <!-- App Selection Wizard -->
     <string name="app_selection_title">Selecionar Aplicativos</string>

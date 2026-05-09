@@ -39,6 +39,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private lateinit var database: AppDatabase
     private lateinit var sessionManager: BlockingSessionManager
     private lateinit var deviceOwnerManager: DeviceOwnerManager
+    private lateinit var authManager: com.focusguard.security.AuthManager
     private val job = SupervisorJob()
     private val scope = CoroutineScope(job + Dispatchers.IO)
 
@@ -117,6 +118,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         database = AppDatabase.getDatabase(this)
         sessionManager = BlockingSessionManager.getInstance(this)
         deviceOwnerManager = DeviceOwnerManager.getInstance(this)
+        authManager = com.focusguard.security.AuthManager(this)
         usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? android.app.usage.UsageStatsManager
 
         val packageFilter = IntentFilter().apply {
@@ -127,7 +129,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
         registerReceiver(packageReceiver, packageFilter)
 
-        val refreshFilter = IntentFilter("com.focusguard.ACTION_REFRESH_BLOCKING")
+        val refreshFilter = IntentFilter(ACTION_REFRESH_BLOCKING)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(refreshReceiver, refreshFilter, Context.RECEIVER_NOT_EXPORTED)
         } else {
@@ -251,12 +253,11 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         scope.launch {
             try {
-                val authManager = com.focusguard.security.AuthManager(this@BlockingAccessibilityService)
                 val isAdultFilterActive = authManager.isAdultFilterEnabled()
                 
                 val adultDomains = if (isAdultFilterActive) {
                     com.focusguard.data.PredefinedApps.PREVENTIVE_APPS
-                        .filter { it.category == "Pornografia" }
+                        .filter { it.category == com.focusguard.data.PredefinedApps.CATEGORY_PORNOGRAPHY }
                         .mapNotNull { it.domain?.lowercase() }
                         .toSet()
                 } else emptySet()
@@ -595,5 +596,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                 com.focusguard.utils.FocusGuardLogger.logError("A11y", "Erro critico no onDestroy do AccessibilityService", e)
             }
         }
+    }
+
+    companion object {
+        const val ACTION_REFRESH_BLOCKING = "com.focusguard.ACTION_REFRESH_BLOCKING"
     }
 }
