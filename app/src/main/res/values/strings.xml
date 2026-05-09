@@ -1,0 +1,326 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FocusGuard</string>
+    <string name="accessibility_service_description">Serviço de Acessibilidade FocusGuard - Bloqueia apps e sites que distraem</string>
+    <string name="home_title">FocusGuard</string>
+    <string name="blocked_apps_title">Apps Bloqueados</string>
+    <string name="blocked_websites_title">Sites Bloqueados</string>
+    <string name="add_app_button">Adicionar App</string>
+    <string name="add_website_button">Adicionar Site</string>
+    <string name="remove_button">Remover</string>
+    <string name="enable_accessibility_service">Por favor, ative o Serviço de Acessibilidade nas Configurações</string>
+    <string name="settings_title">Configurações</string>
+    <string name="about_title">Sobre</string>
+    <string name="manage_passwords">Gerenciar senhas do app</string>
+    <string name="old_password">Senha antiga</string>
+    <string name="new_password">Nova senha</string>
+    <string name="save">Salvar</string>
+    <string name="cancel">Cancelar</string>
+    <string name="nuclear_protection">Proteção nuclear</string>
+    <string name="give_permissions">Dê o restante das permissões aqui</string>
+    <string name="permissions_warning_new">O bloqueio somente irá funcionar caso dê todas as permissões ao app</string>
+
+    <!-- Ações comuns e acessibilidade -->
+    <string name="action_back">Voltar</string>
+    <string name="action_open">Abrir</string>
+    <string name="action_enable">Conceder</string>
+    <string name="action_granted">Concedido</string>
+    <string name="content_focusguard_logo">Logotipo do FocusGuard</string>
+    <string name="content_warning">Aviso</string>
+    <string name="content_timer_active">Temporizador ativo</string>
+    <string name="content_emergency_call">Fazer chamada de emergência</string>
+
+    <!-- Tela principal -->
+    <string name="focus_subtitle">Foco total, zero distrações</string>
+    <string name="password_block">Bloqueio por Senha</string>
+    <string name="password_block_sub">proteja o app para que outras pessoas não acessem</string>
+    <string name="time_block">Jejum de Dopamina</string>
+    <string name="time_block_sub">Dias e horários com cancelamento restrito</string>
+    <string name="view_active_sessions">Ver sessões ativas</string>
+    <string name="swipe_hint">← Deslize para ver estatísticas →</string>
+    <string name="usage_limits">Limites de uso</string>
+    <string name="usage_limits_sub">Controle o tempo diário de apps e sites</string>
+    <string name="focusguard_subtitle">Proteção digital</string>
+    <string name="block_customization">Personalizar bloqueio</string>
+    <string name="pending_permissions_title">Permissões pendentes</string>
+    <string name="pending_permissions_desc">O FocusGuard precisa de permissões para funcionar corretamente.</string>
+
+    <!-- Navegação -->
+    <string name="nav_protection">Proteção</string>
+    <string name="nav_focus">Foco</string>
+    <string name="nav_insights">Insights</string>
+    <string name="nav_settings">Configurações</string>
+
+    <!-- Configurações -->
+    <string name="settings_category_general">Geral</string>
+    <string name="settings_category_blocking">Bloqueio</string>
+    <string name="settings_category_advanced_security">Segurança avançada</string>
+    <string name="settings_category_danger">Zona de perigo</string>
+    <string name="settings_password_subtitle">Configurar senha e biometria</string>
+    <string name="settings_language_subtitle">Alterar o idioma do aplicativo</string>
+    <string name="settings_block_customization_subtitle">Cores e estilos da tela de bloqueio</string>
+    <string name="limits_and_security">Limites e segurança</string>
+    <string name="settings_limits_subtitle">Tentativas de senha e limites</string>
+    <string name="intruder_log">Registro de intrusos</string>
+    <string name="settings_intruder_log_subtitle">Ver fotos de tentativas falhas</string>
+    <string name="language_settings">Idioma</string>
+    <string name="settings_nuclear_subtitle">Tornar o app mais resistente à desinstalação</string>
+    <string name="settings_app_version">FocusGuard v1.0.0</string>
+
+    <!-- Autenticação -->
+    <string name="auth_locked_content_description">App bloqueado</string>
+    <string name="auth_locked_title">App bloqueado</string>
+    <string name="auth_locked_description">Digite sua senha para acessar o FocusGuard</string>
+    <string name="auth_password_label">Senha</string>
+    <string name="auth_show_password">Mostrar senha</string>
+    <string name="auth_hide_password">Ocultar senha</string>
+    <string name="auth_wrong_password_limit">Senha incorreta! Limite de tentativas excedido.</string>
+    <string name="auth_wrong_password_attempt">Senha incorreta. Tentativa %1$d de %2$d</string>
+    <string name="auth_wrong_password">Senha incorreta.</string>
+    <string name="auth_unlock_button">Desbloquear</string>
+    <string name="auth_biometrics_button">Usar biometria</string>
+
+    <!-- Permissões -->
+    <string name="permissions_welcome_title">Bem-vindo ao FocusGuard</string>
+    <string name="permissions_welcome_desc">Para bloquear aplicativos e sites que distraem você, precisamos de algumas permissões do sistema.</string>
+    <string name="permissions_finish">Concluir configuração</string>
+    <string name="permissions_skip">Pular por enquanto</string>
+    <string name="permissions_badge_required">Essencial</string>
+    <string name="permissions_badge_recommended">Recomendado</string>
+    <string name="permissions_badge_advanced">Avançado</string>
+    <string name="permission_accessibility_title">Acessibilidade</string>
+    <string name="permission_accessibility_desc">Permite identificar apps e sites abertos para aplicar bloqueios.</string>
+    <string name="permission_accessibility_detail">Sem esta permissão, o bloqueio em tempo real pode não funcionar.</string>
+    <string name="permission_usage_access_title">Acesso de uso</string>
+    <string name="permission_usage_access_desc">Permite medir o tempo gasto em apps e gerar insights.</string>
+    <string name="permission_usage_access_detail">Usado para limites diários, dashboard e relatórios de uso.</string>
+    <string name="permission_device_admin_title">Admin do dispositivo</string>
+    <string name="permission_device_admin_desc">Adiciona proteção avançada contra remoção impulsiva.</string>
+    <string name="permission_device_admin_detail">Use apenas se quiser tornar o FocusGuard mais resistente à desinstalação.</string>
+    <string name="permission_battery_title">Bateria irrestrita</string>
+    <string name="permission_battery_desc">Ajuda a manter bloqueios ativos em segundo plano.</string>
+    <string name="permission_battery_detail">Reduz o risco de o Android encerrar o FocusGuard durante uma sessão.</string>
+    <string name="permission_restricted_title">Desbloquear acessibilidade</string>
+    <string name="permission_restricted_intro">O Android ocultou essa permissão por segurança. Para ativá-la, siga os passos:</string>
+    <string name="permission_restricted_step_1">Toque em \"Abrir configurações\" abaixo.</string>
+    <string name="permission_restricted_step_2">No canto superior direito, toque nos três pontinhos (⋮).</string>
+    <string name="permission_restricted_step_3">Toque em \"Permitir configurações restritas\".</string>
+    <string name="permission_restricted_step_4">Volte para cá e tente ativar novamente.</string>
+    <string name="permission_restricted_tip">Dica: se a opção não aparecer, tente ativar a Acessibilidade primeiro para que o Android exiba o alerta.</string>
+    <string name="permission_open_settings">Abrir configurações</string>
+    <string name="permission_already_allowed">Já liberei, ativar agora</string>
+    <string name="permission_battery_overlay_title">Bateria irrestrita</string>
+    <string name="permission_battery_overlay_desc">Para garantir que o bloqueio não falhe, o Android precisa ignorar as restrições de bateria para o FocusGuard.</string>
+    <string name="permission_notifications_title">Notificações de foco</string>
+    <string name="permission_notifications_desc">Deseja permitir que o FocusGuard envie avisos sobre seus bloqueios ativos?</string>
+    <string name="permission_deny">Negar</string>
+    <string name="permission_allow">Permitir</string>
+
+    <!-- Pomodoro -->
+    <string name="pomodoro_enable_block_title">Ativar bloqueio total?</string>
+    <string name="pomodoro_enable_block_desc">Esta opção trava seu celular para evitar distrações durante a sessão. O discador de telefone para emergências ficará sempre disponível.</string>
+    <string name="pomodoro_confirm_btn">Confirmar</string>
+    <string name="pomodoro_confirm_btn_countdown">Confirmar (%1$ds)</string>
+    <string name="pomodoro_cancel_btn">Cancelar</string>
+    <string name="pomodoro_status_break">Descanso</string>
+    <string name="pomodoro_status_focus">FocusGuard</string>
+    <string name="pomodoro_status_immersive">Modo de foco ativo</string>
+    <string name="pomodoro_status_running">Sessão em andamento</string>
+    <string name="pomodoro_status_idle">Selecione a duração do foco</string>
+    <string name="pomodoro_enable_block_switch">Bloqueio Rigoroso</string>
+    <string name="pomodoro_enable_block_subtitle">Ative antes de iniciar para bloquear saídas e distrações.</string>
+    <string name="pomodoro_exit_btn">Sair</string>
+    <string name="pomodoro_lock_warning_blocked">Tela bloqueada pelo FocusGuard para proteger seu foco.\nVocê retornará ao menu assim que o tempo acabar.</string>
+    <string name="pomodoro_lock_warning_free">Tempo rolando!\nVocê pode sair desta tela, mas evite distrações.</string>
+    <string name="pomodoro_phone_btn">Chamada de Emergência</string>
+    <string name="pomodoro_cancel_timer_btn">Cancelar sessão</string>
+    <string name="pomodoro_start_session">Iniciar Pomodoro</string>
+    <string name="pomodoro_summary_title">Sessão concluída!</string>
+    <string name="pomodoro_summary_desc">Parabéns! Você completou sua sessão de foco com sucesso. Continue assim!</string>
+    <string name="pomodoro_summary_confirm">Ótimo!</string>
+
+    <!-- Sessions Screen -->
+    <string name="sessions_title_password">Bloqueios por Senha</string>
+    <string name="sessions_title_time">Bloqueios por Tempo</string>
+    <string name="sessions_empty_title">Nenhum bloqueio configurado</string>
+    <string name="sessions_empty_desc">Toque no + para criar seu primeiro bloqueio.</string>
+    <string name="sessions_active_header">Seus Bloqueios Ativos</string>
+    <string name="sessions_add_new">Adicionar Novo</string>
+    <string name="sessions_details_title_password">Apps e Sites Bloqueados</string>
+    <string name="sessions_details_title_time">Blindagem Ativa</string>
+    <string name="sessions_clear_all">Limpar Tudo</string>
+    <string name="sessions_no_content">Nenhum conteúdo bloqueado.</string>
+    <string name="sessions_category_apps">Aplicativos</string>
+    <string name="sessions_category_websites">Websites</string>
+    <string name="sessions_remove_item">Remover</string>
+    <string name="sessions_add_more">Adicionar Mais</string>
+    <string name="sessions_add_content_title">Adicionar Conteúdo</string>
+    <string name="sessions_site_placeholder">Ex: site.com</string>
+    <string name="sessions_add_site_btn">ADD +</string>
+    <string name="sessions_saving">Salvando…</string>
+    <string name="sessions_save_content">Salvar Conteúdo</string>
+    <string name="sessions_end_title">Encerrar Bloqueio</string>
+    <string name="sessions_end_desc">Digite sua senha de segurança para encerrar este bloqueio.</string>
+    <string name="sessions_password_hint">Senha</string>
+    <string name="sessions_use_biometric">Usar Digital</string>
+    <string name="sessions_wrong_password">Senha incorreta</string>
+    <string name="sessions_confirm">Confirmar</string>
+    <string name="sessions_type_password">Bloqueio por Senha</string>
+    <string name="sessions_type_time">Bloqueio por Tempo</string>
+    <string name="sessions_mode_fixed">Modo: Fixo 24h</string>
+    <string name="sessions_mode_scheduled">Modo: Agendado</string>
+    <string name="sessions_active_badge">ATIVO AGORA</string>
+    <string name="sessions_locked_toast">Este bloqueio não pode ser alterado!</string>
+    <string name="sessions_menu_add">Adicionar apps/sites</string>
+    <string name="sessions_menu_remove">Remover apps/sites</string>
+    <string name="sessions_menu_delete">Remover bloqueio</string>
+    <string name="sessions_schedule_label">Horário: %1$s - %2$s</string>
+    <string name="sessions_time_remaining">%1$dd %2$dh</string>
+    <string name="sessions_apps_count">%1$d Apps</string>
+    <string name="sessions_sites_count">%1$d Sites</string>
+
+    <!-- Usage Stats Dashboard -->
+    <string name="dashboard_title">Métricas e Uso</string>
+    <string name="dashboard_load_error">Não foi possível carregar as métricas de uso.</string>
+    <string name="dashboard_permission_title">Permissão necessária</string>
+    <string name="dashboard_permission_desc">Ative o acesso ao uso para visualizar os insights sem fechar o app.</string>
+    <string name="dashboard_open_settings">Abrir configurações</string>
+    <string name="dashboard_load_failed_title">Não foi possível carregar</string>
+    <string name="dashboard_load_failed_desc">Tente novamente em instantes.</string>
+    <string name="dashboard_phone_usage">Uso do Telefone</string>
+    <string name="dashboard_vs_prev_week"> vs sem. ant.</string>
+    <string name="dashboard_total_week">Total na Semana</string>
+    <string name="dashboard_daily_avg">Média Diária</string>
+    <string name="dashboard_most_used">Apps Mais Usados</string>
+    <string name="dashboard_no_data">Nenhum dado encontrado.</string>
+    <string name="dashboard_hide">Ocultar</string>
+    <string name="dashboard_show_all">Ver Todos (%1$d)</string>
+    <string name="dashboard_open_close_title">Aberturas e Fechamentos (Hoje)</string>
+    <string name="dashboard_no_events">Nenhum evento registrado hoje.</string>
+    <string name="dashboard_opened_count">%1$d abertos</string>
+    <string name="dashboard_closed_count">%1$d fechados</string>
+    <string name="dashboard_never_used">Apps Nunca Usados (7 Dias)</string>
+    <string name="dashboard_no_inactive">Nenhum app inativo encontrado.</string>
+
+    <!-- Intruder Log -->
+    <string name="intruder_title">Registro de Intrusos</string>
+    <string name="intruder_empty">Nenhum intruso registrado.</string>
+    <string name="intruder_photo_desc">Intruso</string>
+
+    <!-- Usage Limits -->
+    <string name="limits_title">Limites de Uso</string>
+    <string name="limits_search_placeholder">Buscar aplicativo...</string>
+    <string name="limits_active_section">Limites Ativos</string>
+    <string name="limits_paused_section">Limites Pausados</string>
+    <string name="limits_setup_section">Configurar Limites</string>
+    <string name="limits_other_section">Outros Aplicativos</string>
+    <string name="limits_locked_alert_title">Limite Blindado</string>
+    <string name="limits_locked_alert_desc">Este limite está blindado por tempo e não pode ser alterado até o fim do prazo.</string>
+    <string name="limits_add_site_btn">Adicionar Site</string>
+    <string name="limits_status_monitoring">Monitorando</string>
+    <string name="limits_status_paused">Pausado</string>
+    <string name="limits_status_none">Sem limite configurado</string>
+    <string name="limits_confirm_password_title">Confirmar Senha</string>
+    <string name="limits_confirm_password_desc">Digite a senha configurada para este limite.</string>
+    <string name="limits_security_mode">Modo de Segurança</string>
+    <string name="limits_security_mode_desc">Impedir que o app seja aberto depois que o tempo acabar</string>
+    <string name="limits_security_mode_warning">Aviso: quando o tempo acabar não será possível desbloquear o app nem com senha.</string>
+    <string name="limits_security_days_label">Por quantos dias deseja limitar o tempo?</string>
+    <string name="limits_security_password_question">Desbloquear app quando o tempo acabar utilizando uma senha?</string>
+    <string name="limits_security_password_label">Defina a senha de desbloqueio</string>
+    <string name="limits_security_no_password_warning">Atenção: caso o bloqueio seja sem senha o app será impossível de desbloquear até o dia seguinte ou fim dos dias bloqueio.</string>
+    <string name="limits_security_agree_question">Você concorda?</string>
+    <string name="limits_security_agree_placeholder">Escreva \'sim\' para continuar</string>
+    <string name="limits_info_title">Informações do Limite: %1$s</string>
+    <string name="limits_setup_title">Definir tempo máximo para %1$s</string>
+    <string name="limits_permissions_warning">Permissões necessárias para bloqueio</string>
+    <string name="limits_daily_time_label">Tempo diário configurado:</string>
+    <string name="limits_daily_time_website_label">Tempo diário:</string>
+    <string name="limits_minutes_count">%1$s minutos</string>
+    <string name="limits_security_label">Segurança:</string>
+    <string name="limits_security_type_time">Blindado por Tempo</string>
+    <string name="limits_security_type_password">Protegido por Senha</string>
+    <string name="limits_security_type_none">Sem proteção extra</string>
+    <string name="limits_locked_until">Inviolável até: %1$s</string>
+    <string name="limits_add_more_days">Adicionar mais dias de bloqueio</string>
+    <string name="limits_days_placeholder">Ex: 7</string>
+    <string name="limits_days_suffix">dias</string>
+    <string name="limits_add_days_warning">A opção de adicionar dias torna o bloqueio impossível de ser removido até o fim do prazo.</string>
+    <string name="limits_daily_hours_label">Limite diário em horas</string>
+    <string name="limits_extend_btn">Estender Bloqueio</string>
+    <string name="limits_domain_label">Domínio</string>
+    <string name="limits_app_limit_placeholder">Limites de Uso</string>
+    <string name="action_no">Não</string>
+    <string name="action_yes">Sim</string>
+    <string name="action_ok">OK</string>
+    <string name="permissions_progress_label">%1$s de %2$s concedidas</string>
+    <string name="limits_locked_remaining_days">%1$s dias e %2$s h</string>
+    <string name="limits_locked_remaining_hours">%1$s horas</string>
+
+    <!-- App Selection Wizard -->
+    <string name="app_selection_title">Selecionar Aplicativos</string>
+    <string name="app_selection_preventive">Bloqueio Preventivo (Não Instalados)</string>
+    <string name="app_selection_show_more">Mostrar Mais (+%1$s apps)</string>
+    <string name="app_selection_show_less">Mostrar Menos</string>
+    <string name="app_selection_installed">Aplicativos Instalados</string>
+
+    <!-- Create Session Wizard -->
+    <string name="create_session_proceed_blocking">Prosseguir com o bloqueio</string>
+    <string name="create_session_websites_title">Bloqueio de Sites</string>
+    <string name="create_session_proceed_config">Prosseguir com a configuração</string>
+    <string name="create_session_websites_desc">Adicione os sites que deseja bloquear durante esta sessão.</string>
+    <string name="create_session_website_placeholder">Ex: site.com</string>
+    <string name="create_session_add_btn">ADD +</string>
+    <string name="create_session_suggestions">Sugestões:</string>
+    <string name="create_session_selected_sites">Sites Selecionados:</string>
+    <string name="create_session_config_title">Configurar Bloqueio</string>
+    <string name="create_session_scheduling_options">Opções de Agendamento</string>
+    <string name="create_session_default_blocking">Bloqueio padrão (24h todos os dias)</string>
+    <string name="create_session_specific_days">Bloquear somente dias específicos</string>
+    <string name="create_session_select_days_label">Selecione os dias em que o bloqueio irá funcionar:</string>
+    <string name="create_session_specify_time_question">Especificar horário de início e término?</string>
+    <string name="create_session_blocking_times">Horários de bloqueio:</string>
+    <string name="create_session_start">Início</string>
+    <string name="create_session_end">Término</string>
+    <string name="create_session_limit_duration">Duração do Limite</string>
+    <string name="create_session_days">Dias</string>
+    <string name="create_session_hours">Horas</string>
+    <string name="create_session_time_warning">AVISO: Bloqueios por tempo não podem ser cancelados nem com senha após iniciados.</string>
+    <string name="create_session_activate_btn">Ativar Bloqueio</string>
+    <string name="create_session_success_toast">Bloqueio configurado com sucesso!</string>
+    <string name="create_session_create_password_title">Criar Senha de Segurança</string>
+    <string name="create_session_create_password_desc">Você precisa criar uma senha para usar o bloqueio por senha. Esta senha será necessária para desativar o bloqueio.</string>
+    <string name="create_session_new_password">Nova Senha</string>
+    <string name="create_session_password_success_toast">Senha criada com sucesso! Agora você pode ativar o bloqueio.</string>
+    <string name="create_session_error_empty">A senha não pode estar vazia</string>
+    <string name="create_session_error_mismatch">As senhas não coincidem</string>
+    <string name="create_session_24h_desc">O bloqueio funcionará 24h por dia, todos os dias.</string>
+
+    <!-- Session Detail -->
+    <string name="session_detail_add_new">Adicionar Novo Bloqueio</string>
+    <string name="session_detail_apps_blocked">Aplicativos Bloqueados</string>
+    <string name="session_detail_sites_blocked">Sites Bloqueados</string>
+
+    <!-- Password Management -->
+    <string name="password_mgmt_confirm_change">Digite sua senha atual para confirmar a alteração.</string>
+    <string name="password_mgmt_current_password">Senha Atual</string>
+    <string name="password_mgmt_label">Nome/Rótulo</string>
+    <string name="password_mgmt_password_numeric">Senha (números)</string>
+    <string name="password_mgmt_confirm_delete">Confirmar Exclusão</string>
+    <string name="password_mgmt_confirm_delete_desc">Digite sua senha atual para confirmar a exclusão desta senha.</string>
+    <string name="session_detail_password_block">Bloqueio por Senha</string>
+    <string name="session_detail_time_block">Bloqueio por Tempo</string>
+    <string name="session_detail_none_active">Nenhum bloqueio ativo</string>
+    <string name="session_detail_none_active_desc">Configure um novo bloqueio para começar a proteger seu foco.</string>
+    <string name="session_detail_password_session">Sessão por Senha</string>
+    <string name="session_detail_time_session">Sessão por Tempo</string>
+    <string name="session_detail_fixed_24h">Bloqueio 24h</string>
+    <string name="session_detail_scheduled">Bloqueio Agendado</string>
+    <string name="session_detail_expires_in">Expira em: %1$s</string>
+    <string name="minutes_label">%1$s min</string>
+    <string name="minutes_ratio">%1$s / %2$s min</string>
+    <string name="pomodoro_title">Pomodoro Focus</string>
+    <string name="pomodoro_status_ready">Pronto para começar?</string>
+    <string name="pomodoro_start_btn">Iniciar Foco</string>
+    <string name="limits_usage_alert">Limite Próximo!</string>
+</resources>

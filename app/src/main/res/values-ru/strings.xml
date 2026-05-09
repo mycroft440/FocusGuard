@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FocusGuard</string>
+    <string name="accessibility_service_description">Служба специальных возможностей FocusGuard - Блокирует отвлекающие приложения и сайты</string>
+    <string name="home_title">FocusGuard</string>
+    <string name="blocked_apps_title">Заблокированные приложения</string>
+    <string name="blocked_websites_title">Заблокированные сайты</string>
+    <string name="add_app_button">Добавить приложение</string>
+    <string name="add_website_button">Добавить сайт</string>
+    <string name="remove_button">Удалить</string>
+    <string name="enable_accessibility_service">Пожалуйста, включите службу специальных возможностей в настройках</string>
+    <string name="settings_title">Настройки</string>
+    <string name="about_title">О приложении</string>
+    <string name="manage_passwords">Управление паролями приложения</string>
+    <string name="old_password">Старый пароль</string>
+    <string name="new_password">Новый пароль</string>
+    <string name="save">Сохранить</string>
+    <string name="cancel">Отмена</string>
+    <string name="nuclear_protection">Ядерная защита</string>
+    <string name="give_permissions">Предоставьте остальные разрешения здесь</string>
+    <string name="focus_subtitle">Полная концентрация, ноль отвлекающих факторов</string>
+    <string name="password_block">Блокировка паролем</string>
+    <string name="password_block_sub">Фиксированный период (требуется пароль для изменения)</string>
+    <string name="time_block">Блокировка по времени</string>
+    <string name="time_block_sub">Дни и часы (невозможно отменить)</string>
+    <string name="view_active_sessions">Просмотр активных сессий</string>
+    <string name="swipe_hint">← Листайте, чтобы увидеть статистику →</string>
+    
+    <!-- Пункты меню -->
+    <string name="limits_and_security">Лимиты и безопасность</string>
+    <string name="intruder_log">Журнал нарушителей</string>
+    <string name="language_settings">Язык</string>
+</resources>

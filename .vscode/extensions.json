@@ -1,0 +1,12 @@
+{
+    "recommendations": [
+        "fwcd.kotlin",
+        "vscjava.vscode-java-pack",
+        "mathiasfrohlich.Kotlin",
+        "vscjava.vscode-gradle",
+        "eamodio.gitlens",
+        "usernamehw.errorlens",
+        "sonarsource.sonarlint-vscode",
+        "editorconfig.editorconfig"
+    ]
+}

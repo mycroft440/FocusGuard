@@ -1,0 +1,12 @@
+﻿{
+    "commands":  {
+                     "test":  "gradlew.bat testDebug",
+                     "build":  "gradlew.bat assembleDebug",
+                     "lint":  "gradlew.bat lintDebug"
+                 },
+    "suites":  {
+                   "default":  [
+                                   "build"
+                               ]
+               }
+}

@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FocusGuard</string>
+    <string name="accessibility_service_description">FocusGuard एक्सेसिबिलिटी सेवा - विचलित करने वाले ऐप्स और वेबसाइटों को ब्लॉक करती है</string>
+    <string name="home_title">FocusGuard</string>
+    <string name="blocked_apps_title">ब्लॉक किए गए ऐप्स</string>
+    <string name="blocked_websites_title">ब्लॉक की गई वेबसाइटें</string>
+    <string name="add_app_button">ऐप जोड़ें</string>
+    <string name="add_website_button">वेबसाइट जोड़ें</string>
+    <string name="remove_button">हटाएं</string>
+    <string name="enable_accessibility_service">कृपया सेटिंग्स में एक्सेसिबिलिटी सेवा सक्षम करें</string>
+    <string name="settings_title">सेटिंग्स</string>
+    <string name="about_title">हमारे बारे में</string>
+    <string name="manage_passwords">ऐप पासवर्ड प्रबंधित करें</string>
+    <string name="old_password">पुराना पासवर्ड</string>
+    <string name="new_password">नया पासवर्ड</string>
+    <string name="save">सहेजें</string>
+    <string name="cancel">रद्द करें</string>
+    <string name="nuclear_protection">न्यूक्लियर सुरक्षा</string>
+    <string name="give_permissions">बाकी अनुमतियाँ यहाँ दें</string>
+    <string name="focus_subtitle">पूर्ण ध्यान, शून्य विकर्षण</string>
+    <string name="password_block">पासवर्ड ब्लॉक</string>
+    <string name="password_block_sub">निश्चित या अवधि (बदलने के लिए पासवर्ड आवश्यक है)</string>
+    <string name="time_block">समय ब्लॉक</string>
+    <string name="time_block_sub">दिन और घंटे (रद्द करना असंभव है)</string>
+    <string name="view_active_sessions">सक्रिय सत्र देखें</string>
+    <string name="swipe_hint">← आँकड़े देखने के लिए स्वाइप करें →</string>
+    
+    <!-- मेनू आइटम -->
+    <string name="limits_and_security">सीमाएं और सुरक्षा</string>
+    <string name="intruder_log">घुसपैठिया लॉग</string>
+    <string name="language_settings">भाषा</string>
+</resources>

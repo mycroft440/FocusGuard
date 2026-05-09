@@ -1,0 +1,25 @@
+{
+  "operations": [
+    {
+      "action": "rt",
+      "file": "app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt",
+      "findText": "        } catch (e: Exception) {\r\n            com.focusguard.utils.FocusGuardLogger.log(\"A11y\", \"Falha ao lan\ufffdr PomodoroLockScreen: ${e.message}\")\r\n            performGlobalAction(GLOBAL_ACTION_HOME)\r\n        }",
+      "newContent": "        } catch (e: SecurityException) {\r\n            com.focusguard.utils.FocusGuardLogger.logError(\"A11y\", \"Permissao negada ao lancar LockScreen. Verifique Device Admin.\", e)\r\n            performGlobalAction(GLOBAL_ACTION_HOME)\r\n        } catch (e: Exception) {\r\n            com.focusguard.utils.FocusGuardLogger.logError(\"A11y\", \"Erro inesperado ao lancar LockScreen\", e)\r\n            performGlobalAction(GLOBAL_ACTION_HOME)\r\n        }",
+      "fuzzy": true
+    },
+    {
+      "action": "rt",
+      "file": "app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt",
+      "findText": "        } catch (e: Exception) {\r\n            com.focusguard.utils.FocusGuardLogger.log(\"A11y\", \"Erro no onDestroy: ${e.message}\")\r\n        }",
+      "newContent": "        } catch (e: Exception) {\r\n            com.focusguard.utils.FocusGuardLogger.logError(\"A11y\", \"Erro critico no onDestroy do AccessibilityService\", e)\r\n        }",
+      "fuzzy": true
+    },
+    {
+      "action": "rt",
+      "file": "app/src/main/java/com/focusguard/ui/PomodoroLockActivity.kt",
+      "findText": "        } catch (e: Exception) {\r\n            FocusGuardLogger.logError(\"PomodoroLock\", \"Falha ao agendar re-lan\u00e7amento\", e)\r\n        }",
+      "newContent": "        } catch (e: SecurityException) {\r\n            FocusGuardLogger.logError(\"PomodoroLock\", \"Permissao de relancamento negada (Device Admin/Owner?)\", e)\r\n        } catch (e: Exception) {\r\n            FocusGuardLogger.logError(\"PomodoroLock\", \"Falha critica ao agendar relancamento\", e)\r\n        }",
+      "fuzzy": true
+    }
+  ]
+}

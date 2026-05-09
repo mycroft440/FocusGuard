@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">FocusGuard</string>
+    <string name="accessibility_service_description">FocusGuard 辅助功能服务 - 拦截分散注意力的应用和网站</string>
+    <string name="home_title">FocusGuard</string>
+    <string name="blocked_apps_title">已拦截应用</string>
+    <string name="blocked_websites_title">已拦截网站</string>
+    <string name="add_app_button">添加应用</string>
+    <string name="add_website_button">添加网站</string>
+    <string name="remove_button">移除</string>
+    <string name="enable_accessibility_service">请在设置中启用辅助功能服务</string>
+    <string name="settings_title">设置</string>
+    <string name="about_title">关于</string>
+    <string name="manage_passwords">管理应用密码</string>
+    <string name="old_password">旧密码</string>
+    <string name="new_password">新密码</string>
+    <string name="save">保存</string>
+    <string name="cancel">取消</string>
+    <string name="nuclear_protection">核保护</string>
+    <string name="give_permissions">在此授予其余权限</string>
+    <string name="focus_subtitle">全程专注，零干扰</string>
+    <string name="password_block">密码锁定</string>
+    <string name="password_block_sub">固定或周期（更改需密码）</string>
+    <string name="time_block">时间锁定</string>
+    <string name="time_block_sub">天数和小时（无法取消）</string>
+    <string name="view_active_sessions">查看活动会话</string>
+    <string name="swipe_hint">← 左右滑动查看统计 →</string>
+    
+    <!-- 菜单项 -->
+    <string name="limits_and_security">限制与安全</string>
+    <string name="intruder_log">入侵者日志</string>
+    <string name="language_settings">语言</string>
+</resources>
