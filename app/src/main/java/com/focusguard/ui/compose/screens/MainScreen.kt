@@ -115,7 +115,7 @@ fun MainScreen(
                                 slideOutHorizontally { width -> width } + fadeOut()
                     }.using(SizeTransform(clip = false))
                 },
-                label = stringResource(R.string.maincontent)
+                label = "MainContent"
             ) { targetTab ->
                 when (targetTab) {
                     0 -> usageStatsContent()
@@ -302,7 +302,7 @@ fun SessionCard(icon: ImageVector, title: String, subtitle: String, onClick: () 
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.96f else 1f,
         animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow),
-        label = stringResource(R.string.scaleanimation)
+        label = "ScaleAnimation"
     )
 
     Card(

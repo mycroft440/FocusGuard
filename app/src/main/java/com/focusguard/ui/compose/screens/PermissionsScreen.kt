@@ -323,7 +323,7 @@ fun PermissionsScreen(onFinish: () -> Unit) {
             AnimatedContent(
                 targetState = currentStep,
                 transitionSpec = { fadeIn() togetherWith fadeOut() },
-                label = stringResource(R.string.permission_step_content)
+                label = "permission_step_content"
             ) { step ->
                 if (step == null) {
                     PermissionsSummaryCard(

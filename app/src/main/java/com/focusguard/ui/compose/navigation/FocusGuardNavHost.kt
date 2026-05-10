@@ -169,7 +169,7 @@ fun FocusGuardNavHost(
             transitionSpec = {
                 fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
             },
-            label = stringResource(R.string.navigationtransition)
+            label = "NavigationTransition"
         ) { route ->
             when (route) {
                 FocusGuardRoute.Home -> MainScreen(
