@@ -64,7 +64,7 @@ fun BlockCustomizationScreen(onBack: () -> Unit) {
                 title = { Text("Personalizar Bloqueio", color = TextPrimary) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar", tint = TextPrimary)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = TextPrimary)
                     }
                 },
                 actions = {
@@ -73,10 +73,10 @@ fun BlockCustomizationScreen(onBack: () -> Unit) {
                             .putString("block_text", customText)
                             .putString("block_image_uri", imageUriString)
                             .apply()
-                        Toast.makeText(context, "Configurações salvas!", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, context.getString(R.string.configuracoes_salvas), Toast.LENGTH_SHORT).show()
                         onBack()
                     }) {
-                        Icon(Icons.Default.Save, contentDescription = "Salvar", tint = AccentCyan)
+                        Icon(Icons.Default.Save, contentDescription = stringResource(R.string.save), tint = AccentCyan)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBg)
@@ -141,7 +141,7 @@ fun BlockCustomizationScreen(onBack: () -> Unit) {
                 if (imageUriString.isNotEmpty()) {
                     Image(
                         painter = rememberAsyncImagePainter(imageUriString),
-                        contentDescription = "Imagem de bloqueio",
+                        contentDescription = stringResource(R.string.imagem_de_bloqueio),
                         modifier = Modifier.fillMaxSize(),
                         contentScale = ContentScale.Crop
                     )
@@ -176,7 +176,7 @@ fun BlockCustomizationScreen(onBack: () -> Unit) {
                         .putString("block_text", customText)
                         .putString("block_image_uri", imageUriString)
                         .apply()
-                    Toast.makeText(context, "Configurações salvas!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(context, context.getString(R.string.configuracoes_salvas), Toast.LENGTH_SHORT).show()
                     onBack()
                 },
                 modifier = Modifier.fillMaxWidth().height(50.dp),

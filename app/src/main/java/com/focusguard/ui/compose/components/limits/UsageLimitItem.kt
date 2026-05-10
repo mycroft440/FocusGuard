@@ -66,14 +66,14 @@ fun UsageLimitItem(
     val progress by animateFloatAsState(
         targetValue = targetProgress,
         animationSpec = tween(durationMillis = 800),
-        label = "progress_anim"
+        label = stringResource(R.string.progress_anim)
     )
 
     // Cores dinâmicas para estado de alerta
     val progressColor by animateColorAsState(
         targetValue = if (progress >= 0.9f) DangerRed else AccentCyan,
         animationSpec = tween(durationMillis = 500),
-        label = "color_anim"
+        label = stringResource(R.string.color_anim)
     )
 
     Card(

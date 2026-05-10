@@ -1,6 +1,7 @@
 package com.focusguard.admin
 
 import android.app.Activity
+import com.focusguard.R
 import android.app.admin.DevicePolicyManager
 import android.content.ClipData
 import android.content.ClipboardManager
@@ -247,7 +248,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 val clip = ClipData.newPlainText("ADB Command", adbCommand)
                 clipboard.setPrimaryClip(clip)
-                Toast.makeText(hostActivity, "Comando ADB copiado!", Toast.LENGTH_LONG).show()
+                Toast.makeText(hostActivity, context.getString(R.string.comando_adb_copiado), Toast.LENGTH_LONG).show()
             }
             .setNegativeButton("Fechar", null)
             .show()
@@ -421,9 +422,9 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             clearBlockingPolicies()
             revokeNuclearShield()
             dpm.clearDeviceOwnerApp(context.packageName)
-            Toast.makeText(context, "Acesso Device Owner revogado", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.acesso_device_owner_revogado), Toast.LENGTH_SHORT).show()
         } catch (e: Exception) {
-            Toast.makeText(context, "Falha ao revogar Device Owner: ${e.message}", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, context.getString(R.string.falha_ao_revogar_device_owner_e_message), Toast.LENGTH_LONG).show()
         }
     }
 }

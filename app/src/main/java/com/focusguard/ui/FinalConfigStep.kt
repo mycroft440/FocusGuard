@@ -123,7 +123,7 @@ fun FinalConfigStep(
                             apps = apps,
                             sites = sites
                         )
-                        Toast.makeText(context, "Bloqueio ativado com sucesso", Toast.LENGTH_LONG).show()
+                        Toast.makeText(context, context.getString(R.string.bloqueio_ativado_com_sucesso), Toast.LENGTH_LONG).show()
                         onFinish()
                     }
                 },
@@ -143,7 +143,7 @@ fun FinalConfigStep(
                 authManager.addPassword(password)
                 hasPassword = true
                 showPasswordCreationDialog = false
-                Toast.makeText(context, "Senha criada com sucesso!", Toast.LENGTH_LONG).show()
+                Toast.makeText(context, context.getString(R.string.senha_criada_com_sucesso), Toast.LENGTH_LONG).show()
             }
         )
     }

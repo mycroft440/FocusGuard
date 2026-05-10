@@ -52,11 +52,11 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
         if (isGranted) {
             photoEnabled = true
             authManager.setPhotoCaptureEnabled(true)
-            Toast.makeText(context, "Câmera oculta ativada", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.limits_hidden_camera_active), Toast.LENGTH_SHORT).show()
         } else {
             photoEnabled = false
             authManager.setPhotoCaptureEnabled(false)
-            Toast.makeText(context, "Permissão negada. Recurso desativado.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, context.getString(R.string.limits_permission_denied_feature), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -254,7 +254,7 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                                     showDeactivateDialog = false
                                     deactivateInput = ""
                                 } else {
-                                    Toast.makeText(context, "Senha incorreta!", Toast.LENGTH_SHORT).show()
+                                    Toast.makeText(context, context.getString(R.string.senha_incorreta), Toast.LENGTH_SHORT).show()
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
@@ -379,7 +379,7 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
 
                                 if (enable) {
                                     if (!deviceOwnerManager.isDeviceOwnerActive()) {
-                                        Toast.makeText(context, "Ative a Proteção Nuclear nas configurações primeiro!", Toast.LENGTH_LONG).show()
+                                        Toast.makeText(context, context.getString(R.string.limits_nuclear_required), Toast.LENGTH_LONG).show()
                                     } else {
                                         val success = deviceOwnerManager.enforceAdultDns()
                                         if (success) {
@@ -387,7 +387,7 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                                             authManager.setAdultFilterEnabled(true)
                                             context.sendBroadcast(android.content.Intent(com.focusguard.service.BlockingAccessibilityService.ACTION_REFRESH_BLOCKING))
                                         } else {
-                                            Toast.makeText(context, "context.getString(R.string.limits_dns_injection_failed)", Toast.LENGTH_LONG).show()
+                                            Toast.makeText(context, context.getString(R.string.context_getstring_r_string_limits_dns_in), Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 } else {

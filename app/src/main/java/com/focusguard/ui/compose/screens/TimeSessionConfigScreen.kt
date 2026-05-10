@@ -1,6 +1,7 @@
 package com.focusguard.ui.compose.screens
 
 import android.widget.Toast
+import com.focusguard.R
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -98,7 +99,7 @@ fun TimeSessionConfigScreen(
                 BlockingSessionManager.getInstance(context).checkAndEnforce()
 
                 withContext(Dispatchers.Main) {
-                    Toast.makeText(context, "Limite diário ativado com sucesso", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, context.getString(R.string.limite_diario_ativado_com_sucesso), Toast.LENGTH_LONG).show()
                     onFinish()
                 }
             }

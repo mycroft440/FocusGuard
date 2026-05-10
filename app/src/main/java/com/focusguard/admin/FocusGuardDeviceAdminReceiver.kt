@@ -15,12 +15,12 @@ class FocusGuardDeviceAdminReceiver : DeviceAdminReceiver() {
 
     override fun onEnabled(context: Context, intent: Intent) {
         super.onEnabled(context, intent)
-        Toast.makeText(context, "FocusGuard Device Admin habilitado", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.focusguard_device_admin_habilitado), Toast.LENGTH_SHORT).show()
     }
 
     override fun onDisabled(context: Context, intent: Intent) {
         super.onDisabled(context, intent)
-        Toast.makeText(context, "FocusGuard Device Admin desabilitado", Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, context.getString(R.string.focusguard_device_admin_desabilitado), Toast.LENGTH_SHORT).show()
     }
 
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {

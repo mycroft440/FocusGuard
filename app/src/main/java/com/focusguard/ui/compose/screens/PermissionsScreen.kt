@@ -1,6 +1,7 @@
 package com.focusguard.ui.compose.screens
 
 import android.app.AppOpsManager
+import androidx.compose.ui.res.stringResource
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -321,7 +322,7 @@ fun PermissionsScreen(onFinish: () -> Unit) {
             AnimatedContent(
                 targetState = currentStep,
                 transitionSpec = { fadeIn() togetherWith fadeOut() },
-                label = "permission-step-content"
+                label = stringResource(R.string.permission_step_content)
             ) { step ->
                 if (step == null) {
                     PermissionsSummaryCard(
@@ -364,36 +365,36 @@ private data class PermissionStepUi(
 private fun permissionStepUi(step: PermissionStepType): PermissionStepUi {
     return when (step) {
         PermissionStepType.Notifications -> PermissionStepUi(
-            title = "Notificações",
-            description = "Permite avisos importantes quando sessões e proteções estiverem ativas.",
+            title = stringResource(R.string.notificacoes),
+            description = stringResource(R.string.permite_avisos_importantes_quando_sessoe),
             detail = "Esta permissão pode ser aceita diretamente no app.",
             badge = "Recomendado",
             badgeColor = WarningAmber
         )
         PermissionStepType.BatteryOptimization -> PermissionStepUi(
-            title = "Bateria",
-            description = "Evita que o Android pause o FocusGuard em segundo plano.",
+            title = stringResource(R.string.bateria),
+            description = stringResource(R.string.evita_que_o_android_pause_o_focusguard_e),
             detail = "Pode abrir uma confirmação do sistema para manter a proteção ativa.",
             badge = "Recomendado",
             badgeColor = WarningAmber
         )
         PermissionStepType.Accessibility -> PermissionStepUi(
-            title = "Acessibilidade",
-            description = "Permite identificar apps e sites abertos para aplicar bloqueios.",
+            title = stringResource(R.string.permission_accessibility_title),
+            description = stringResource(R.string.permission_accessibility_desc),
             detail = "Sem esta permissão, o bloqueio em tempo real pode não funcionar.",
             badge = "Essencial",
             badgeColor = DangerRed
         )
         PermissionStepType.UsageAccess -> PermissionStepUi(
-            title = "Acesso de uso",
-            description = "Permite medir o tempo usado em cada app.",
+            title = stringResource(R.string.permission_usage_access_title),
+            description = stringResource(R.string.permite_medir_o_tempo_usado_em_cada_app),
             detail = "Necessário para insights e limites diários.",
             badge = "Essencial",
             badgeColor = DangerRed
         )
         PermissionStepType.DeviceAdmin -> PermissionStepUi(
-            title = "Administrador",
-            description = "Reforça o bloqueio e reduz formas de burlar sessões.",
+            title = stringResource(R.string.administrador),
+            description = stringResource(R.string.reforca_o_bloqueio_e_reduz_formas_de_bur),
             detail = "Recomendado para bloqueios rigorosos.",
             badge = "Avançado",
             badgeColor = AccentPurple

@@ -89,10 +89,10 @@ class BlockingSessionManager private constructor(private val context: Context) {
                     sites.forEach { database.sessionWebsiteCrossRefDao().insert(SessionWebsiteCrossRef(sessionId, it)) }
                 }
                 checkAndEnforce()
-                withContext(Dispatchers.Main) { Toast.makeText(context, "Bloqueio por Senha iniciado.", Toast.LENGTH_LONG).show() }
+                withContext(Dispatchers.Main) { Toast.makeText(context, context.getString(R.string.bloqueio_por_senha_iniciado), Toast.LENGTH_LONG).show() }
             } catch (e: Exception) {
                 FocusGuardLogger.logError("Manager", "Erro ao iniciar sessão", e)
-                withContext(Dispatchers.Main) { Toast.makeText(context, "Erro ao iniciar sessão", Toast.LENGTH_SHORT).show() }
+                withContext(Dispatchers.Main) { Toast.makeText(context, context.getString(R.string.erro_ao_iniciar_sessao), Toast.LENGTH_SHORT).show() }
             }
         }
     }
@@ -130,10 +130,10 @@ class BlockingSessionManager private constructor(private val context: Context) {
                     sites.forEach { database.sessionWebsiteCrossRefDao().insert(SessionWebsiteCrossRef(sessionId, it)) }
                 }
                 checkAndEnforce()
-                withContext(Dispatchers.Main) { Toast.makeText(context, "Bloqueio por Tempo iniciado.", Toast.LENGTH_LONG).show() }
+                withContext(Dispatchers.Main) { Toast.makeText(context, context.getString(R.string.bloqueio_por_tempo_iniciado), Toast.LENGTH_LONG).show() }
             } catch (e: Exception) {
                 FocusGuardLogger.logError("Manager", "Erro ao iniciar sessão tempo", e)
-                withContext(Dispatchers.Main) { Toast.makeText(context, "Erro ao iniciar sessão", Toast.LENGTH_SHORT).show() }
+                withContext(Dispatchers.Main) { Toast.makeText(context, context.getString(R.string.erro_ao_iniciar_sessao), Toast.LENGTH_SHORT).show() }
             }
         }
     }
@@ -158,7 +158,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 }
                 checkAndEnforce()
                 FocusGuardLogger.log("BlockingSessionManager", "Sessão de Pomodoro registrada com sucesso.")
-                withContext(Dispatchers.Main) { Toast.makeText(context, "MODO POMODORO ATIVADO: Foco Total.", Toast.LENGTH_LONG).show() }
+                withContext(Dispatchers.Main) { Toast.makeText(context, context.getString(R.string.modo_pomodoro_ativado_foco_total), Toast.LENGTH_LONG).show() }
             } catch (e: Exception) {
                 FocusGuardLogger.logError("BlockingSessionManager", "Erro ao iniciar pomodoro", e)
             }
@@ -205,7 +205,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 val sessions = database.blockSessionDao().getAllActiveSessions().first().filter { it.sessionType == "PASSWORD" }
                 for (session in sessions) database.blockSessionDao().updateBlockSession(session.copy(isActive = false))
                 checkAndEnforce()
-                withContext(Dispatchers.Main) { Toast.makeText(context, "Bloqueios por Senha encerrados", Toast.LENGTH_SHORT).show() }
+                withContext(Dispatchers.Main) { Toast.makeText(context, context.getString(R.string.bloqueios_por_senha_encerrados), Toast.LENGTH_SHORT).show() }
             } catch (e: Exception) {
                 FocusGuardLogger.logError("BlockingSessionManager", "Erro ao encerrar sessões PASSWORD", e)
             }
@@ -219,11 +219,11 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 val session = sessions.find { it.id == sessionId }
                 if (session != null) {
                     if (session.sessionType == "POMODORO") {
-                        withContext(Dispatchers.Main) { Toast.makeText(context, "O Pomodoro não pode ser interrompido!", Toast.LENGTH_LONG).show() }
+                        withContext(Dispatchers.Main) { Toast.makeText(context, context.getString(R.string.o_pomodoro_nao_pode_ser_interrompido), Toast.LENGTH_LONG).show() }
                         return@launch
                     }
                     if (session.sessionType == "TIME" && isCurrentlyInBlockingWindow(session)) {
-                        withContext(Dispatchers.Main) { Toast.makeText(context, "Bloqueios por tempo não podem ser revogados até o fim do período!", Toast.LENGTH_LONG).show() }
+                        withContext(Dispatchers.Main) { Toast.makeText(context, context.getString(R.string.bloqueios_por_tempo_nao_podem_ser_revoga), Toast.LENGTH_LONG).show() }
                         return@launch
                     }
                     database.blockSessionDao().updateBlockSession(session.copy(isActive = false))

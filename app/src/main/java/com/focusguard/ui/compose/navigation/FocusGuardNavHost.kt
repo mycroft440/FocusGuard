@@ -1,6 +1,8 @@
 package com.focusguard.ui.compose.navigation
 
 import android.content.Intent
+import androidx.compose.ui.res.stringResource
+import com.focusguard.R
 import androidx.activity.compose.BackHandler
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.AnimatedContent
@@ -166,7 +168,7 @@ fun FocusGuardNavHost(
             transitionSpec = {
                 fadeIn(animationSpec = tween(220)) togetherWith fadeOut(animationSpec = tween(220))
             },
-            label = "NavigationTransition"
+            label = stringResource(R.string.navigationtransition)
         ) { route ->
             when (route) {
                 FocusGuardRoute.Home -> MainScreen(

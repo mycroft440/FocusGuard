@@ -1,6 +1,7 @@
 package com.focusguard.ui
 
 import android.content.Intent
+import androidx.compose.ui.res.stringResource
 import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -232,7 +233,7 @@ fun PasswordCreationDialog(
                 OutlinedTextField(
                     value = password,
                     onValueChange = { password = it; error = null },
-                    label = { Text("Nova senha") },
+                    label = { Text(stringResource(R.string.new_password)) },
                     modifier = Modifier.fillMaxWidth(),
                     visualTransformation = PasswordVisualTransformation(),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -245,7 +246,7 @@ fun PasswordCreationDialog(
                 OutlinedTextField(
                     value = confirmPassword,
                     onValueChange = { confirmPassword = it; error = null },
-                    label = { Text("Confirmar senha") },
+                    label = { Text(stringResource(R.string.confirmar_senha)) },
                     modifier = Modifier.fillMaxWidth(),
                     visualTransformation = PasswordVisualTransformation(),
                     colors = OutlinedTextFieldDefaults.colors(

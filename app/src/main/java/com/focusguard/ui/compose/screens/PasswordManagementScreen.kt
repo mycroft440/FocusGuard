@@ -598,10 +598,10 @@ fun PasswordCard(index: Int, label: String, onEdit: () -> Unit, onDelete: () -> 
             }
 
             IconButton(onClick = onEdit) {
-                Icon(Icons.Default.Edit, contentDescription = "Editar", tint = AccentCyan.copy(alpha = 0.7f))
+                Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.editar), tint = AccentCyan.copy(alpha = 0.7f))
             }
             IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = "Remover", tint = DangerRed.copy(alpha = 0.7f))
+                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.sessions_remove_item), tint = DangerRed.copy(alpha = 0.7f))
             }
         }
     }

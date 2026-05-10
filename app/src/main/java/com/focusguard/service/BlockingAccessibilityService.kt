@@ -1,6 +1,7 @@
 package com.focusguard.service
 
 import android.accessibilityservice.AccessibilityService
+import androidx.compose.ui.res.stringResource
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Notification
 import android.app.NotificationChannel
@@ -148,7 +149,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 "FocusGuard Protection Service",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Mantém o FocusGuard ativo para garantir seus bloqueios"
+                description = stringResource(R.string.mantem_o_focusguard_ativo_para_garantir_)
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(serviceChannel)
@@ -591,7 +592,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             PomodoroForegroundService.scheduleWatchdogAlarm(applicationContext)
         } else {
             try {
-                Toast.makeText(this, "Serviço FocusGuard parado", Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, context.getString(R.string.servico_focusguard_parado), Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 com.focusguard.utils.FocusGuardLogger.logError("A11y", "Erro critico no onDestroy do AccessibilityService", e)
             }

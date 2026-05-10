@@ -167,16 +167,16 @@ fun PomodoroScreen(
                 if (showStrictBlockWarning) {
                     AlertDialog(
                         onDismissRequest = { showStrictBlockWarning = false },
-                        title = { Text("Aviso de Bloqueio Rigoroso") },
-                        text = { Text("O Bloqueio Rigoroso irá impedir que você feche o aplicativo ou desative as restrições durante a sessão. Só será possível usar o atalho de telefone para ligações. Deseja continuar?") },
+                        title = { Text(stringResource(R.string.aviso_de_bloqueio_rigoroso)) },
+                        text = { Text(stringResource(R.string.o_bloqueio_rigoroso_ira_impedir_que_voce)) },
                         confirmButton = {
                             Button(onClick = {
                                 showStrictBlockWarning = false
                                 isBlockingEnabled = true
-                            }) { Text("Ativar") }
+                            }) { Text(stringResource(R.string.ativar)) }
                         },
                         dismissButton = {
-                            TextButton(onClick = { showStrictBlockWarning = false }) { Text("Cancelar") }
+                            TextButton(onClick = { showStrictBlockWarning = false }) { Text(stringResource(R.string.pomodoro_cancel_btn)) }
                         }
                     )
                 }

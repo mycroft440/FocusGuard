@@ -1,6 +1,7 @@
 package com.focusguard.service
 
 import android.app.AlarmManager
+import androidx.compose.ui.res.stringResource
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -230,7 +231,7 @@ class PomodoroForegroundService : Service() {
                 "Pomodoro Watchdog",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = "Garante que o bloqueio rigoroso do Pomodoro permaneça ativo"
+                description = stringResource(R.string.garante_que_o_bloqueio_rigoroso_do_pomod)
                 setShowBadge(false)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }

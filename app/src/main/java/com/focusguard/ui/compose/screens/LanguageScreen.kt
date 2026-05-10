@@ -1,6 +1,7 @@
 ﻿package com.focusguard.ui.compose.screens
 
 import androidx.appcompat.app.AppCompatDelegate
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
@@ -24,7 +25,7 @@ fun LanguageScreen(onBack: () -> Unit) {
                 title = { Text("Idioma / Language", color = TextPrimary) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Voltar", tint = TextPrimary)
+                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = TextPrimary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkSurface)
@@ -68,4 +69,3 @@ fun LanguageItem(label: String, langCode: String) {
         Text(text = label, fontSize = 16.sp, color = TextPrimary, fontWeight = FontWeight.Medium)
     }
 }
-

@@ -1,6 +1,7 @@
 package com.focusguard.ui.compose.screens
 
 import android.widget.Toast
+import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -74,7 +75,7 @@ fun TimeBlockSessionConfigScreen(
                 title = { Text("Bloqueio por tempo", color = TextPrimary) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Voltar", tint = TextPrimary)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = TextPrimary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBg)
@@ -169,7 +170,7 @@ fun TimeBlockSessionConfigScreen(
                         apps = apps,
                         sites = sites
                     )
-                    Toast.makeText(context, "Bloqueio por tempo ativado", Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, context.getString(R.string.bloqueio_por_tempo_ativado), Toast.LENGTH_LONG).show()
                     onFinish()
                 },
                 enabled = canSave,
