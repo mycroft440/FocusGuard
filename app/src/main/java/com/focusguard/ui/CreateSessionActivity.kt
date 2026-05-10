@@ -1,5 +1,8 @@
 package com.focusguard.ui
 
+import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
+import com.focusguard.R
 import android.content.Intent
 import androidx.compose.ui.res.stringResource
 import android.content.pm.PackageManager

@@ -1,5 +1,7 @@
 package com.focusguard.ui
 
+import androidx.compose.runtime.*
+import androidx.compose.ui.platform.LocalContext
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context

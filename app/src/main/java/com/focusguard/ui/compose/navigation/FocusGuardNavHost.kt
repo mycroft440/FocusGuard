@@ -1,5 +1,6 @@
 package com.focusguard.ui.compose.navigation
 
+import androidx.compose.runtime.*
 import android.content.Intent
 import androidx.compose.ui.res.stringResource
 import com.focusguard.R

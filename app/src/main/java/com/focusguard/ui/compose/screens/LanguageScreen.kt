@@ -1,5 +1,8 @@
 ﻿package com.focusguard.ui.compose.screens
 
+import kotlin.OptIn
+import androidx.compose.material3.ExperimentalMaterial3Api
+import com.focusguard.R
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.ui.res.stringResource
 import androidx.compose.foundation.clickable

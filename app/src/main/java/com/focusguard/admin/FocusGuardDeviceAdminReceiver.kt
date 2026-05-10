@@ -1,5 +1,6 @@
 ﻿package com.focusguard.admin
 
+import com.focusguard.R
 import android.app.admin.DeviceAdminReceiver
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
@@ -78,4 +79,3 @@ class FocusGuardDeviceAdminReceiver : DeviceAdminReceiver() {
         }
     }
 }
-

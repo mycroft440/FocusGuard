@@ -1,5 +1,6 @@
 package com.focusguard.ui.compose.screens
 
+import androidx.compose.runtime.*
 import android.app.Activity
 import android.content.Intent
 import android.graphics.Typeface

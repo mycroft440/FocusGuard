@@ -1,5 +1,7 @@
 package com.focusguard.ui.compose.components.limits
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import android.graphics.drawable.Drawable
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState

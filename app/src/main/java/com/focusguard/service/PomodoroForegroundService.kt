@@ -231,7 +231,7 @@ class PomodoroForegroundService : Service() {
                 "Pomodoro Watchdog",
                 NotificationManager.IMPORTANCE_HIGH
             ).apply {
-                description = stringResource(R.string.garante_que_o_bloqueio_rigoroso_do_pomod)
+                description = getString(R.string.garante_que_o_bloqueio_rigoroso_do_pomod)
                 setShowBadge(false)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }

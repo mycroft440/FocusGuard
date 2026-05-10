@@ -1,5 +1,6 @@
 package com.focusguard.manager
 
+import com.focusguard.R
 import android.content.Context
 import android.widget.Toast
 import com.focusguard.database.AppDatabase

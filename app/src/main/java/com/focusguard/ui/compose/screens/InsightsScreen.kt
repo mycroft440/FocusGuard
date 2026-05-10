@@ -1,5 +1,6 @@
 package com.focusguard.ui.compose.screens
 
+import androidx.compose.runtime.*
 import android.content.Context
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column

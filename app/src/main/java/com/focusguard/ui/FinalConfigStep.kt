@@ -1,5 +1,9 @@
 package com.focusguard.ui
 
+import kotlin.OptIn
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.runtime.*
+import com.focusguard.R
 import android.widget.Toast
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer

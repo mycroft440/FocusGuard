@@ -1,5 +1,9 @@
 ﻿package com.focusguard.ui.compose.screens
 
+import kotlin.OptIn
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.ExperimentalMaterial3Api
 import android.graphics.BitmapFactory
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -138,4 +142,3 @@ fun IntruderPhotoCard(file: File) {
         }
     }
 }
-

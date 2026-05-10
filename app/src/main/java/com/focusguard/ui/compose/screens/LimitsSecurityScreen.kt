@@ -1,5 +1,9 @@
 package com.focusguard.ui.compose.screens
 
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import kotlinx.coroutines.launch
 import android.Manifest
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -14,12 +18,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.filled.Dns
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.*
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -27,6 +30,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
+import kotlin.OptIn
 import com.focusguard.security.AuthManager
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.ui.compose.theme.*
@@ -246,15 +250,18 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                         }
                     },
                     confirmButton = {
+                        val scope = rememberCoroutineScope()
                         Button(
                             onClick = {
-                                if (authManager.verifyPassword(deactivateInput)) {
-                                    safetyModeEnabled = false
-                                    authManager.setSafetyModeEnabled(false)
-                                    showDeactivateDialog = false
-                                    deactivateInput = ""
-                                } else {
-                                    Toast.makeText(context, context.getString(R.string.senha_incorreta), Toast.LENGTH_SHORT).show()
+                                scope.launch {
+                                    if (authManager.verifyPassword(deactivateInput)) {
+                                        safetyModeEnabled = false
+                                        authManager.setSafetyModeEnabled(false)
+                                        showDeactivateDialog = false
+                                        deactivateInput = ""
+                                    } else {
+                                        Toast.makeText(context, context.getString(R.string.senha_incorreta), Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
@@ -387,7 +394,7 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                                             authManager.setAdultFilterEnabled(true)
                                             context.sendBroadcast(android.content.Intent(com.focusguard.service.BlockingAccessibilityService.ACTION_REFRESH_BLOCKING))
                                         } else {
-                                            Toast.makeText(context, context.getString(R.string.context_getstring_r_string_limits_dns_in), Toast.LENGTH_LONG).show()
+                                            Toast.makeText(context, context.getString(R.string.limits_dns_injection_failed), Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 } else {
@@ -409,4 +416,3 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
         }
     }
 }
-

@@ -1,5 +1,7 @@
 ﻿package com.focusguard.ui.compose.screens
 
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
 import com.focusguard.ui.compose.components.limits.*
 
 import android.graphics.drawable.Drawable

@@ -1,5 +1,10 @@
 package com.focusguard.ui.compose.screens
 
+import kotlin.OptIn
+import androidx.compose.ui.graphics.Color
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.ui.res.stringResource
+import com.focusguard.R
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -184,4 +189,3 @@ fun BlockingSessionStatusSheet(
         Spacer(modifier = Modifier.height(16.dp))
     }
 }
-

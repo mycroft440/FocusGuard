@@ -1,5 +1,10 @@
 package com.focusguard.ui.compose.screens
 
+import kotlin.OptIn
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.ui.graphics.graphicsLayer
 import android.widget.Toast
 import androidx.compose.animation.*
 import androidx.compose.foundation.background
@@ -606,4 +611,3 @@ fun PasswordCard(index: Int, label: String, onEdit: () -> Unit, onDelete: () -> 
         }
     }
 }
-

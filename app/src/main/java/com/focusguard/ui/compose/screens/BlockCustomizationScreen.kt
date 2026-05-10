@@ -1,5 +1,9 @@
 ﻿package com.focusguard.ui.compose.screens
 
+import kotlin.OptIn
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.ExperimentalMaterial3Api
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
@@ -188,4 +192,3 @@ fun BlockCustomizationScreen(onBack: () -> Unit) {
         }
     }
 }
-

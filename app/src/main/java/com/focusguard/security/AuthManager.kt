@@ -1,7 +1,6 @@
 package com.focusguard.security
 
 import android.content.Context
-import androidx.compose.ui.res.stringResource
 import com.focusguard.R
 import android.content.SharedPreferences
 import androidx.biometric.BiometricManager
@@ -215,7 +214,7 @@ class AuthManager(context: Context) {
         scope.launch {
             ensureMigrationDone()
             val count = passwordDao.getAllStatic().size
-            insertPassword(password = newPassword, label = stringResource(R.string.senha_count_1))
+            insertPassword(password = newPassword, label = appContext.getString(R.string.senha_count_1))
         }
     }
 

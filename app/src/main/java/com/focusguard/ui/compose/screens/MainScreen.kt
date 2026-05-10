@@ -1,5 +1,10 @@
 package com.focusguard.ui.compose.screens
 
+import kotlin.OptIn
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
@@ -338,5 +343,3 @@ fun SessionCard(icon: ImageVector, title: String, subtitle: String, onClick: () 
         }
     }
 }
-
-

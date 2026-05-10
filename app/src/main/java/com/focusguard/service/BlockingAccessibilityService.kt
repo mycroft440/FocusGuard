@@ -149,7 +149,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 "FocusGuard Protection Service",
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = stringResource(R.string.mantem_o_focusguard_ativo_para_garantir_)
+                description = getString(R.string.mantem_o_focusguard_ativo_para_garantir_)
             }
             val manager = getSystemService(NotificationManager::class.java)
             manager?.createNotificationChannel(serviceChannel)
@@ -592,7 +592,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             PomodoroForegroundService.scheduleWatchdogAlarm(applicationContext)
         } else {
             try {
-                Toast.makeText(this, context.getString(R.string.servico_focusguard_parado), Toast.LENGTH_SHORT).show()
+                Toast.makeText(this, getString(R.string.servico_focusguard_parado), Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 com.focusguard.utils.FocusGuardLogger.logError("A11y", "Erro critico no onDestroy do AccessibilityService", e)
             }

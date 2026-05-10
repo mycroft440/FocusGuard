@@ -1,5 +1,6 @@
 package com.focusguard.ui.compose.layout
 
+import kotlin.OptIn
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope

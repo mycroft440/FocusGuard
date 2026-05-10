@@ -1,5 +1,9 @@
 ﻿package com.focusguard.ui.compose.screens
 
+import kotlin.OptIn
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.ExperimentalMaterial3Api
 import android.content.Intent
 import android.widget.Toast
 import androidx.compose.animation.*
@@ -736,5 +740,3 @@ fun InfoTag(icon: androidx.compose.ui.graphics.vector.ImageVector, text: String)
         Text(text, color = TextSecondary, fontSize = 12.sp)
     }
 }
-
-

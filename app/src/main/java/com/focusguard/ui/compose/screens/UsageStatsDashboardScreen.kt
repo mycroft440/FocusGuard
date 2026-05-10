@@ -1,5 +1,9 @@
 ﻿package com.focusguard.ui.compose.screens
 
+import kotlin.OptIn
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.ExperimentalMaterial3Api
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
@@ -521,4 +525,3 @@ private fun formatTime(millis: Long): String {
     val m = totalMinutes % 60
     return if (h > 0) "${h}h ${m}m" else "${m}m"
 }
-

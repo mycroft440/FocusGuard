@@ -1,5 +1,6 @@
 ﻿package com.focusguard.ui.compose.theme
 
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
@@ -151,4 +152,3 @@ fun FocusGuardTheme(
         content = content
     )
 }
-

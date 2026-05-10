@@ -1,5 +1,10 @@
 package com.focusguard.ui.compose.screens
 
+import kotlin.OptIn
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.setValue
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -232,4 +237,3 @@ fun AuthScreen(
         Spacer(modifier = Modifier.weight(1f, fill = false).heightIn(min = 24.dp))
     }
 }
-
