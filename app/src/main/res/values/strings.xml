@@ -325,4 +325,46 @@
     <string name="pomodoro_status_ready">Pronto para começar?</string>
     <string name="pomodoro_start_btn">Iniciar Foco</string>
     <string name="limits_usage_alert">Limite Próximo!</string>
+
+    <!-- Hardening & UI New Strings -->
+    <string name="security_protected_area">Área Protegida</string>
+    <string name="security_confirm_identity">Confirme sua identidade para gerenciar suas chaves de segurança.</string>
+    <string name="security_unlock_access">Desbloquear Acesso</string>
+    <string name="security_biometric_auth">Autenticação Biométrica</string>
+    <string name="security_master_password">Senha Mestra</string>
+    <string name="security_wrong_password">Senha incorreta</string>
+    <string name="security_limit_exceeded_photo">Limite excedido! Foto capturada.</string>
+    <string name="security_attempts_indicator">Senha incorreta (%1$d/%2$d)</string>
+    <string name="security_none_saved">Nenhuma senha cadastrada.</string>
+    <string name="security_passwords_count">%1$d senha(s) cadastrada(s)</string>
+    <string name="security_main_block_type">Tipo de Bloqueio Principal</string>
+    <string name="security_password_label">Senha</string>
+    <string name="security_pattern_label">Padrão</string>
+    <string name="security_digital_label">Digital</string>
+    <string name="security_saved_success">Salvo com sucesso!</string>
+    <string name="security_updated_success">Senha atualizada com sucesso!</string>
+    <string name="security_delete_success">Excluído com sucesso!</string>
+    
+    <string name="status_blocking_active">Bloqueio Ativo</string>
+    <string name="status_session_registered">Sessão Registrada (Aguardando janela)</string>
+    <string name="status_no_session">Nenhuma Sessão Ativa</string>
+    <string name="status_safety_mode_warning">O modo segurança está ativo, não é possível burlar ou alterar configurações de limite.</string>
+    <string name="status_end_password_block">Encerrar Bloqueio por Senha</string>
+    <string name="status_revoke_do_blocked">Não é possível revogar (Bloqueio ativo)</string>
+    <string name="status_revoke_do">Revogar Device Owner</string>
+    <string name="status_close">Fechar</string>
+    
+    <string name="limits_attempts_label">Limite de Tentativas de Senha (0 para infinito)</string>
+    <string name="limits_intruder_selfie">Selfie do Intruso</string>
+    <string name="limits_intruder_selfie_desc">Tira uma foto invisível com a câmera frontal quando o limite for excedido.</string>
+    <string name="limits_safety_mode_enable_title">Ativar Modo Segurança?</string>
+    <string name="limits_safety_mode_confirm_text">Para confirmar, digite \'sim\' abaixo:</string>
+    <string name="limits_safety_mode_placeholder">digite sim</string>
+    <string name="limits_safety_mode_disable_title">Desativar Modo Segurança?</string>
+    <string name="limits_safety_mode_desc">Impede o uso de senha para burlar limites ativos. Bloqueio total e irreversível sem senha mestra.</string>
+    <string name="limits_safety_mode_toast_dns">Desative o Modo Segurança para alterar o Filtro DNS!</string>
+    <string name="limits_nuclear_required">Ative a Proteção Nuclear nas configurações primeiro!</string>
+    <string name="limits_dns_injection_failed">Falha ao injetar DNS. Sua versão do Android suporta?</string>
+    <string name="limits_hidden_camera_active">Câmera oculta ativada</string>
+    <string name="limits_permission_denied_feature">Permissão negada. Recurso desativado.</string>
 </resources>

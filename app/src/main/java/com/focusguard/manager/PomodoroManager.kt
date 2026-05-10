@@ -7,6 +7,7 @@ import com.focusguard.database.PomodoroSession
 import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.service.BlockingAccessibilityService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -171,7 +172,7 @@ class PomodoroManager private constructor(private val context: Context) {
             }
             _currentSession.value = session
             startTicker()
-            context.sendBroadcast(Intent("com.focusguard.ACTION_REFRESH_BLOCKING").setPackage(context.packageName))
+            context.sendBroadcast(Intent(BlockingAccessibilityService.ACTION_REFRESH_BLOCKING).setPackage(context.packageName))
             FocusGuardLogger.log("PomodoroManager", "Notificando BlockingSessionManager para bloqueio de apps (Enabled=$isBlockingEnabled).")
             sessionManager.startPomodoroSession(durationMillis, isBlockingEnabled)
             if (isBlockingEnabled) {

@@ -1,4 +1,4 @@
-﻿package com.focusguard.ui.compose.screens
+package com.focusguard.ui.compose.screens
 
 import android.widget.Toast
 import androidx.compose.animation.*
@@ -26,10 +26,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.launch
+import com.focusguard.security.CameraManager
 import com.focusguard.security.AuthManager
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.R
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.*
+import androidx.fragment.app.FragmentActivity
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -42,6 +45,23 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
     // Password list state
     var passwords by remember { mutableStateOf<List<String>>(emptyList()) }
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
+    val activity = context as? FragmentActivity
+    val cameraManager = remember { activity?.let { CameraManager(it) } }
+
+    // Animation states
+    var shakeOffset by remember { mutableStateOf(0f) }
+    val animatedShakeOffset by animateFloatAsState(
+        targetValue = shakeOffset,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioHighBouncy, stiffness = Spring.StiffnessMedium)
+    )
+
+    LaunchedEffect(shakeOffset) {
+        if (shakeOffset != 0f) {
+            kotlinx.coroutines.delay(100)
+            shakeOffset = 0f
+        }
+    }
 
     LaunchedEffect(Unit) {
         hasPasswords = authManager.hasPasswordSet()
@@ -155,7 +175,7 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                                             actionError = ""
                                             showAddDialog = false
                                             showEditDialog = null
-                                            Toast.makeText(context, "Senha atualizada com sucesso!", Toast.LENGTH_SHORT).show()
+                                            Toast.makeText(context, context.getString(R.string.security_updated_success), Toast.LENGTH_SHORT).show()
                                         }
                                     }
                                 },
@@ -182,7 +202,7 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                                     authManager.addPasswordWithLabel(tempPassword, label)
                                 }
                                 
-                                Toast.makeText(context, "Salvo com sucesso!", Toast.LENGTH_SHORT).show()
+                                Toast.makeText(context, context.getString(R.string.security_saved_success), Toast.LENGTH_SHORT).show()
                                 
                                 passwords = authManager.getStoredPasswordLabels()
                                 tempPassword = ""
@@ -281,7 +301,7 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
                         shape = RoundedCornerShape(12.dp)
-                    ) { Text("Excluir", color = TextPrimary, fontWeight = FontWeight.Bold) }
+                    ) { Text(stringResource(R.string.remove_button), color = TextPrimary, fontWeight = FontWeight.Bold) }
                 }
             },
             dismissButton = {
@@ -295,7 +315,7 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Gerenciar Senhas", color = TextPrimary) },
+                title = { Text(stringResource(R.string.manage_passwords), color = TextPrimary) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = TextPrimary)
@@ -316,7 +336,7 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                     contentColor = DarkBg,
                     shape = CircleShape
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = "Adicionar Senha")
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_app_button)) // Using existing add_app for add icon desc
                 }
             }
         },
@@ -324,18 +344,33 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
     ) { paddingValues ->
 
         if (!isAuthenticated) {
-            // Authentication gate
+            // [L2] Authentication gate with improved layout and security [S3]
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .padding(32.dp),
+                    .padding(32.dp)
+                    .offset(x = animatedShakeOffset.dp), // [L1] Shake animation
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
+                val infiniteTransition = rememberInfiniteTransition()
+                val pulseScale by infiniteTransition.animateFloat(
+                    initialValue = 1f,
+                    targetValue = 1.1f,
+                    animationSpec = infiniteRepeatable(
+                        animation = tween(1500, easing = LinearEasing),
+                        repeatMode = RepeatMode.Reverse
+                    )
+                )
+
                 Box(
                     modifier = Modifier
                         .size(80.dp)
+                        .graphicsLayer {
+                            scaleX = pulseScale
+                            scaleY = pulseScale
+                        }
                         .clip(RoundedCornerShape(24.dp))
                         .background(
                             Brush.linearGradient(
@@ -344,48 +379,59 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(Icons.Default.Lock, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(40.dp))
+                    Icon(
+                        imageVector = if (isAuthenticated) Icons.Default.LockOpen else Icons.Default.Lock,
+                        contentDescription = null,
+                        tint = AccentCyan,
+                        modifier = Modifier.size(40.dp)
+                    )
                 }
 
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Text(
                     "Área Protegida",
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold,
+                    fontSize = 24.sp,
+                    fontWeight = FontWeight.ExtraBold,
                     color = TextPrimary
                 )
                 Text(
-                    "Digite uma das suas senhas para visualizar e gerenciar.",
+                    "Confirme sua identidade para gerenciar suas chaves de segurança.",
                     fontSize = 14.sp,
                     color = TextSecondary,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.padding(top = 8.dp)
+                    modifier = Modifier.padding(top = 8.dp, start = 16.dp, end = 16.dp)
                 )
 
-                Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(40.dp))
 
                 OutlinedTextField(
                     value = authInput,
                     onValueChange = { authInput = it },
-                    label = { Text("Senha", color = TextHint) },
+                    label = { Text(stringResource(R.string.security_master_password), color = TextHint) },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = TextPrimary,
                         unfocusedTextColor = TextPrimary,
-                        focusedBorderColor = AccentCyan
+                        focusedBorderColor = if (authError.isNotEmpty()) DangerRed else AccentCyan,
+                        unfocusedBorderColor = if (authError.isNotEmpty()) DangerRed else Border
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
 
                 if (authError.isNotEmpty()) {
-                    Text(authError, color = DangerRed, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                    Text(
+                        authError,
+                        color = DangerRed,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.padding(top = 10.dp)
+                    )
                 }
 
-                Spacer(modifier = Modifier.height(20.dp))
+                Spacer(modifier = Modifier.height(24.dp))
 
-                val activity = LocalContext.current as? androidx.fragment.app.FragmentActivity
                 if (activity != null) {
                     Button(
                         onClick = {
@@ -395,14 +441,14 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                                 onError = { authError = it }
                             )
                         },
-                        modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
+                        modifier = Modifier.fillMaxWidth().height(54.dp).padding(bottom = 8.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = DarkSurface),
-                        border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.5f)),
+                        border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.3f)),
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Icon(Icons.Default.Fingerprint, null, tint = AccentCyan)
-                        Spacer(Modifier.width(8.dp))
-                        Text("Usar Digital", color = TextPrimary)
+                        Spacer(Modifier.width(10.dp))
+                        Text(stringResource(R.string.security_biometric_auth), color = TextPrimary, fontWeight = FontWeight.Bold)
                     }
                 }
 
@@ -413,15 +459,30 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                                 isAuthenticated = true
                                 authError = ""
                             } else {
-                                authError = "Senha incorreta."
+                                // [S3] Security Hardening: Count failed attempts
+                                val failed = authManager.incrementFailedAttempts()
+                                val limit = authManager.getMaxPasswordAttempts()
+                                
+                                shakeOffset = 20f // Trigger shake
+
+                                authError = when {
+                                    limit > 0 && failed >= limit -> {
+                                        if (authManager.isPhotoCaptureEnabled()) {
+                                            activity?.let { cameraManager?.setupAndCaptureSilent(it) { _ -> } }
+                                        }
+                                        "Limite excedido! Foto capturada."
+                                    }
+                                    limit > 0 -> "Senha incorreta ($failed/$limit)"
+                                    else -> "Senha incorreta"
+                                }
                             }
                         }
                     },
-                    modifier = Modifier.fillMaxWidth().height(50.dp),
+                    modifier = Modifier.fillMaxWidth().height(54.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Text("Desbloquear", fontWeight = FontWeight.Bold, color = DarkBg)
+                    Text(stringResource(R.string.security_unlock_access), fontWeight = FontWeight.ExtraBold, color = DarkBg)
                 }
             }
         } else {
@@ -474,7 +535,7 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                         ) {
                             Icon(Icons.Default.Key, contentDescription = null, tint = TextHint, modifier = Modifier.size(64.dp))
                             Spacer(modifier = Modifier.height(16.dp))
-                            Text("Nenhuma senha cadastrada.", color = TextHint, fontSize = 16.sp)
+                            Text(stringResource(R.string.security_none_saved), color = TextHint, fontSize = 16.sp)
                         }
                     }
                 } else {
@@ -512,6 +573,7 @@ fun PasswordCard(index: Int, label: String, onEdit: () -> Unit, onDelete: () -> 
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = DarkCard),
+        border = BorderStroke(1.dp, CardBorder), // [L2] Added border
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(

@@ -1,4 +1,4 @@
-﻿package com.focusguard.ui.compose.screens
+package com.focusguard.ui.compose.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -12,6 +12,12 @@ import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -45,11 +51,26 @@ fun AuthScreen(
     val cameraManager = remember { CameraManager(activity) }
     val biometricsAvailable = remember { authManager.isBiometricAvailable() }
 
+    // [L1] Shake animation state
+    var shakeOffset by remember { mutableStateOf(0f) }
+    val animatedShakeOffset by animateFloatAsState(
+        targetValue = shakeOffset,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioHighBouncy, stiffness = Spring.StiffnessMedium)
+    )
+
+    LaunchedEffect(shakeOffset) {
+        if (shakeOffset != 0f) {
+            kotlinx.coroutines.delay(100)
+            shakeOffset = 0f
+        }
+    }
+
     val handleUnlock = {
         scope.launch {
             if (authManager.verifyPassword(passwordInput)) {
                 onUnlock()
             } else {
+                shakeOffset = 20f // [L1] Trigger shake
                 val failed = authManager.incrementFailedAttempts()
                 val limit = authManager.getMaxPasswordAttempts()
 
@@ -83,17 +104,41 @@ fun AuthScreen(
             .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
             .imePadding()
-            .padding(24.dp),
+            .padding(24.dp)
+            .offset(x = animatedShakeOffset.dp), // [L1] Apply shake
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Spacer(modifier = Modifier.weight(1f, fill = false).heightIn(min = 48.dp))
 
-        Icon(
-            imageVector = Icons.Default.Lock,
-            contentDescription = stringResource(R.string.auth_locked_content_description),
-            tint = AccentCyan,
-            modifier = Modifier.size(64.dp)
+        // [L1] Infinite pulse for lock icon
+        val infiniteTransition = rememberInfiniteTransition()
+        val pulseScale by infiniteTransition.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.15f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(2000, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            )
         )
+
+        Box(
+            modifier = Modifier
+                .size(100.dp)
+                .graphicsLayer {
+                    scaleX = pulseScale
+                    scaleY = pulseScale
+                }
+                .clip(RoundedCornerShape(30.dp))
+                .background(AccentCyan.copy(alpha = 0.1f)),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Lock,
+                contentDescription = stringResource(R.string.auth_locked_content_description),
+                tint = AccentCyan,
+                modifier = Modifier.size(56.dp)
+            )
+        }
 
         Spacer(modifier = Modifier.height(24.dp))
 

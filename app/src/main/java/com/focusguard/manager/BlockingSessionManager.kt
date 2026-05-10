@@ -18,6 +18,7 @@ import java.util.Calendar
 import java.util.Locale
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.service.BlockingAccessibilityService
 
 class BlockingSessionManager private constructor(private val context: Context) {
 
@@ -320,7 +321,7 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 deviceOwnerManager.enforceBlockingPolicies()
             }
 
-            context.sendBroadcast(android.content.Intent("com.focusguard.ACTION_REFRESH_BLOCKING").setPackage(context.packageName))
+            context.sendBroadcast(android.content.Intent(BlockingAccessibilityService.ACTION_REFRESH_BLOCKING).setPackage(context.packageName))
         } catch (e: Exception) {
             FocusGuardLogger.log("Manager", "Erro no checkAndEnforce: ${e.message}")
         }

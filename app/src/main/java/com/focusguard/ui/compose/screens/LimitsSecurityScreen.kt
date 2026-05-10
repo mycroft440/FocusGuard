@@ -10,7 +10,13 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.filled.Dns
+import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.Security
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -57,10 +63,10 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Limites e Segurança", color = TextPrimary) },
+                title = { Text(stringResource(R.string.limits_and_security), color = TextPrimary) },
                 navigationIcon = {
                     IconButton(onClick = saveLimitOnBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "Voltar", tint = TextPrimary)
+                        Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = TextPrimary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkSurface)
@@ -74,102 +80,123 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                 .padding(paddingValues)
                 .padding(24.dp)
         ) {
-            Text(
-                text = "Segurança Anti-Invasão",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextPrimary
-            )
-            
-            Spacer(modifier = Modifier.height(8.dp))
-            
-            Text(
-                text = "Configure o que acontece quando alguém erra a senha do aplicativo repetidamente.",
-                fontSize = 14.sp,
-                color = TextSecondary
-            )
-            
-            Spacer(modifier = Modifier.height(32.dp))
-
-            OutlinedTextField(
-                value = limitText,
-                onValueChange = { newValue ->
-                    // Only accept numeric input
-                    if (newValue.isEmpty() || newValue.all { it.isDigit() }) {
-                        limitText = newValue
-                    }
-                },
-                label = { Text("Limite de Tentativas de Senha (0 para infinito)", color = TextHint) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                singleLine = true,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary,
-                    focusedBorderColor = AccentCyan
-                ),
-                modifier = Modifier.fillMaxWidth()
-            )
-            
-            Spacer(modifier = Modifier.height(32.dp))
-            
-            Spacer(modifier = Modifier.height(32.dp))
-            
-            Row(
+            // SECTION: ANTI-INTRUSION
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = DarkCard),
+                border = BorderStroke(1.dp, CardBorder)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Selfie do Intruso", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    Text("Tira uma foto invisível com a câmera frontal quando o limite for excedido.", fontSize = 12.sp, color = TextSecondary)
-                }
-                
-                Switch(
-                    checked = photoEnabled,
-                    onCheckedChange = { enable ->
-                        if (enable) {
-                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
-                        } else {
-                            photoEnabled = false
-                            authManager.setPhotoCaptureEnabled(false)
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(AccentCyan.copy(alpha = 0.1f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.PhotoCamera, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(22.dp))
                         }
-                    },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = DarkBg,
-                        checkedTrackColor = AccentCyan
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = "Segurança Anti-Invasão",
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+                    
+                    Text(
+                        text = "Configure o que acontece quando alguém erra a senha do aplicativo repetidamente.",
+                        fontSize = 14.sp,
+                        color = TextSecondary
                     )
-                )
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    OutlinedTextField(
+                        value = limitText,
+                        onValueChange = { newValue ->
+                            if (newValue.isEmpty() || newValue.all { it.isDigit() }) {
+                                limitText = newValue
+                            }
+                        },
+                        label = { Text(stringResource(R.string.limits_attempts_label), color = TextHint) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary,
+                            focusedBorderColor = AccentCyan,
+                            unfocusedBorderColor = Border
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+                    
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(stringResource(R.string.limits_intruder_selfie), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
+                            Text(stringResource(R.string.limits_intruder_selfie_desc), fontSize = 12.sp, color = TextSecondary)
+                        }
+                        
+                        Switch(
+                            checked = photoEnabled,
+                            onCheckedChange = { enable ->
+                                if (enable) {
+                                    cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                } else {
+                                    photoEnabled = false
+                                    authManager.setPhotoCaptureEnabled(false)
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkBg,
+                                checkedTrackColor = AccentCyan
+                            )
+                        )
+                    }
+                }
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
-            Divider(color = Border, thickness = 1.dp)
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(modifier = Modifier.height(16.dp))
 
-            // SAFETY MODE
+            // SECTION: SAFETY MODE
             var safetyModeEnabled by remember { mutableStateOf(authManager.isSafetyModeEnabled()) }
             var showSafetyDialog by remember { mutableStateOf(false) }
+            var showDeactivateDialog by remember { mutableStateOf(false) }
             var safetyInput by remember { mutableStateOf("") }
+            var deactivateInput by remember { mutableStateOf("") }
 
+            // Activation Dialog
             if (showSafetyDialog) {
                 AlertDialog(
                     onDismissRequest = { showSafetyDialog = false },
                     containerColor = DarkSurface,
-                    title = { Text("Ativar Modo Segurança?", color = DangerRed, fontWeight = FontWeight.Bold) },
+                    title = { Text(stringResource(R.string.limits_safety_mode_enable_title), color = DangerRed, fontWeight = FontWeight.Bold) },
                     text = {
                         Column {
                             Text(
-                                "Ao ativar, você NÃO poderá remover limites de uso ou sessões de tempo usando sua senha. O bloqueio será absoluto até o fim do tempo definido.",
+                                stringResource(R.string.limits_safety_mode_desc),
                                 color = TextSecondary, fontSize = 14.sp
                             )
                             Spacer(modifier = Modifier.height(16.dp))
-                            Text("Para confirmar, digite 'sim' abaixo:", color = TextPrimary, fontWeight = FontWeight.Bold)
+                            Text(stringResource(R.string.limits_safety_mode_confirm_text), color = TextPrimary, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(8.dp))
                             OutlinedTextField(
                                 value = safetyInput,
                                 onValueChange = { safetyInput = it },
-                                placeholder = { Text("digite sim", color = TextHint) },
+                                placeholder = { Text(stringResource(R.string.limits_safety_mode_placeholder), color = TextHint) },
                                 singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = DangerRed),
+                                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = DangerRed, unfocusedBorderColor = Border),
                                 modifier = Modifier.fillMaxWidth()
                             )
                         }
@@ -186,88 +213,199 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                             },
                             colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
                             enabled = safetyInput.lowercase().trim() == "sim"
-                        ) { Text("Confirmar", color = TextPrimary) }
+                        ) { Text(stringResource(R.string.sessions_confirm), color = TextPrimary) }
                     },
                     dismissButton = {
-                        TextButton(onClick = { showSafetyDialog = false; safetyInput = "" }) { Text("Cancelar", color = TextHint) }
+                        TextButton(onClick = { showSafetyDialog = false; safetyInput = "" }) { Text(stringResource(R.string.cancel), color = TextHint) }
                     }
                 )
             }
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
-            ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text("Modo Segurança", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    Text("Impede o uso de senha para burlar limites ativos. Bloqueio total e irreversível.", fontSize = 12.sp, color = TextSecondary)
-                }
-                
-                Switch(
-                    checked = safetyModeEnabled,
-                    onCheckedChange = { enable ->
-                        if (enable) {
-                            showSafetyDialog = true
-                        } else {
-                            safetyModeEnabled = false
-                            authManager.setSafetyModeEnabled(false)
+            // [S1] Deactivation Dialog (Security Hardening)
+            if (showDeactivateDialog) {
+                AlertDialog(
+                    onDismissRequest = { showDeactivateDialog = false },
+                    containerColor = DarkSurface,
+                    title = { Text("Desativar Modo Segurança?", color = TextPrimary, fontWeight = FontWeight.Bold) },
+                    text = {
+                        Column {
+                            Text(
+                                "stringResource(R.string.sessions_end_desc)",
+                                color = TextSecondary, fontSize = 14.sp
+                            )
+                            Spacer(modifier = Modifier.height(16.dp))
+                            OutlinedTextField(
+                                value = deactivateInput,
+                                onValueChange = { deactivateInput = it },
+                                placeholder = { Text("Digite sua senha", color = TextHint) },
+                                singleLine = true,
+                                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                                colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = AccentCyan, unfocusedBorderColor = Border),
+                                modifier = Modifier.fillMaxWidth()
+                            )
                         }
                     },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = DarkBg,
-                        checkedTrackColor = DangerRed
-                    )
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                if (authManager.verifyPassword(deactivateInput)) {
+                                    safetyModeEnabled = false
+                                    authManager.setSafetyModeEnabled(false)
+                                    showDeactivateDialog = false
+                                    deactivateInput = ""
+                                } else {
+                                    Toast.makeText(context, "Senha incorreta!", Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                        ) { Text(stringResource(R.string.sessions_confirm), color = DarkBg) }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showDeactivateDialog = false; deactivateInput = "" }) { Text(stringResource(R.string.cancel), color = TextHint) }
+                    }
                 )
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
-            Divider(color = Border, thickness = 1.dp)
-            Spacer(modifier = Modifier.height(32.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = DarkCard),
+                border = BorderStroke(1.dp, CardBorder)
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(DangerRed.copy(alpha = 0.1f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Security, contentDescription = null, tint = DangerRed, modifier = Modifier.size(22.dp))
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = stringResource(R.string.limits_security_mode),
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                    }
 
-            // FILTRO DNS GLOBAL
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(stringResource(R.string.limits_safety_mode_desc), fontSize = 12.sp, color = TextSecondary)
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(stringResource(R.string.sessions_active_badge), fontSize = 16.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
+                        
+                        Switch(
+                            checked = safetyModeEnabled,
+                            onCheckedChange = { enable ->
+                                if (enable) {
+                                    showSafetyDialog = true
+                                } else {
+                                    // [S1] Now requires authentication
+                                    showDeactivateDialog = true
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkBg,
+                                checkedTrackColor = DangerRed
+                            )
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
+            // SECTION: DNS FILTER
             var adultFilterEnabled by remember { mutableStateOf(authManager.isAdultFilterEnabled()) }
 
-            Row(
+            Card(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = DarkCard),
+                border = BorderStroke(1.dp, CardBorder)
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(stringResource(R.string.limits_dns_filter_title), fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                    Text(stringResource(R.string.limits_dns_filter_desc), fontSize = 12.sp, color = TextSecondary)
-                }
-                
-                Switch(
-                    checked = adultFilterEnabled,
-                    onCheckedChange = { enable ->
-                        if (enable) {
-                            if (!deviceOwnerManager.isDeviceOwnerActive()) {
-                                Toast.makeText(context, "Ative a Proteção Nuclear nas configurações primeiro!", Toast.LENGTH_LONG).show()
-                            } else {
-                                val success = deviceOwnerManager.enforceAdultDns()
-                                if (success) {
-                                    adultFilterEnabled = true
-                                    authManager.setAdultFilterEnabled(true)
-                                    // Notifica o serviço para atualizar as URLs (24/7 block list)
-                                    context.sendBroadcast(android.content.Intent(com.focusguard.service.BlockingAccessibilityService.ACTION_REFRESH_BLOCKING))
-                                } else {
-                                    Toast.makeText(context, "Falha ao injetar DNS. Sua versão do Android suporta?", Toast.LENGTH_LONG).show()
-                                }
-                            }
-                        } else {
-                            deviceOwnerManager.clearAdultDns()
-                            adultFilterEnabled = false
-                            authManager.setAdultFilterEnabled(false)
-                            context.sendBroadcast(android.content.Intent(com.focusguard.service.BlockingAccessibilityService.ACTION_REFRESH_BLOCKING))
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(AccentCyan.copy(alpha = 0.1f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(Icons.Default.Dns, contentDescription = null, tint = AccentCyan, modifier = Modifier.size(22.dp))
                         }
-                    },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = DarkBg,
-                        checkedTrackColor = AccentCyan
-                    )
-                )
+                        Spacer(modifier = Modifier.width(16.dp))
+                        Text(
+                            text = stringResource(R.string.limits_dns_filter_title),
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Text(stringResource(R.string.limits_dns_filter_desc), fontSize = 12.sp, color = TextSecondary)
+                    
+                    Spacer(modifier = Modifier.height(24.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Text(stringResource(R.string.sessions_active_badge), fontSize = 16.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
+                        
+                        Switch(
+                            checked = adultFilterEnabled,
+                            onCheckedChange = { enable ->
+                                // [S2] Block changes if Safety Mode is active
+                                if (safetyModeEnabled) {
+                                    Toast.makeText(context, context.getString(R.string.limits_safety_mode_toast_dns), Toast.LENGTH_LONG).show()
+                                    return@Switch
+                                }
+
+                                if (enable) {
+                                    if (!deviceOwnerManager.isDeviceOwnerActive()) {
+                                        Toast.makeText(context, "Ative a Proteção Nuclear nas configurações primeiro!", Toast.LENGTH_LONG).show()
+                                    } else {
+                                        val success = deviceOwnerManager.enforceAdultDns()
+                                        if (success) {
+                                            adultFilterEnabled = true
+                                            authManager.setAdultFilterEnabled(true)
+                                            context.sendBroadcast(android.content.Intent(com.focusguard.service.BlockingAccessibilityService.ACTION_REFRESH_BLOCKING))
+                                        } else {
+                                            Toast.makeText(context, "context.getString(R.string.limits_dns_injection_failed)", Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                } else {
+                                    deviceOwnerManager.clearAdultDns()
+                                    adultFilterEnabled = false
+                                    authManager.setAdultFilterEnabled(false)
+                                    context.sendBroadcast(android.content.Intent(com.focusguard.service.BlockingAccessibilityService.ACTION_REFRESH_BLOCKING))
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkBg,
+                                checkedTrackColor = AccentCyan
+                            )
+                        )
+                    }
+                }
             }
+
         }
     }
 }

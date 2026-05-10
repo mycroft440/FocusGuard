@@ -293,9 +293,24 @@ fun HomeContent(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SessionCard(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+    var isPressed by remember { mutableStateOf(false) }
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.96f else 1f,
+        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow),
+        label = "ScaleAnimation"
+    )
+
     Card(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        onClick = { 
+            isPressed = true
+            onClick()
+        },
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(containerColor = DarkCard),
         border = BorderStroke(1.dp, CardBorder)
@@ -312,6 +327,14 @@ fun SessionCard(icon: ImageVector, title: String, subtitle: String, onClick: () 
                 Text(subtitle, fontSize = 13.sp, color = TextSecondary)
             }
             Icon(Icons.Filled.ChevronRight, contentDescription = stringResource(R.string.action_open), modifier = Modifier.size(20.dp), tint = TextHint)
+        }
+    }
+    
+    // Reset pressed state after a delay or interaction
+    LaunchedEffect(isPressed) {
+        if (isPressed) {
+            kotlinx.coroutines.delay(100)
+            isPressed = false
         }
     }
 }

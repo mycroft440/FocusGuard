@@ -1,4 +1,4 @@
-﻿package com.focusguard.ui.compose.screens
+package com.focusguard.ui.compose.screens
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
@@ -11,6 +11,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.animation.core.*
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.draw.clip
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Shield
 import com.focusguard.ui.compose.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -31,15 +37,15 @@ fun BlockingSessionStatusSheet(
 
     when {
         isBlocking -> {
-            statusText = "Bloqueio Ativo"
+            statusText = stringResource(R.string.status_blocking_active)
             statusColor = DangerRed
         }
         hasSession -> {
-            statusText = "Sessão Registrada (Aguardando janela)"
+            statusText = stringResource(R.string.status_session_registered)
             statusColor = WarningAmber
         }
         else -> {
-            statusText = "Nenhuma Sessão Ativa"
+            statusText = stringResource(R.string.status_no_session)
             statusColor = SuccessGreen
         }
     }
@@ -49,23 +55,45 @@ fun BlockingSessionStatusSheet(
             .fillMaxWidth()
             .padding(24.dp)
     ) {
-        // Status indicator
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(bottom = 16.dp)
+        // [L3] Status indicator with pulse animation
+        val infiniteTransition = rememberInfiniteTransition()
+        val pulseAlpha by infiniteTransition.animateFloat(
+            initialValue = 0.4f,
+            targetValue = 1f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1000, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            )
+        )
+
+        Card(
+            modifier = Modifier.fillMaxWidth().padding(bottom = 20.dp),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = statusColor.copy(alpha = 0.05f)),
+            border = BorderStroke(1.dp, statusColor.copy(alpha = 0.2f))
         ) {
-            Box(
-                modifier = Modifier
-                    .size(12.dp)
-                    .background(statusColor, RoundedCornerShape(6.dp))
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-            Text(
-                text = statusText,
-                fontSize = 18.sp,
-                fontWeight = FontWeight.Bold,
-                color = statusColor
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier.padding(16.dp)
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(12.dp)
+                        .graphicsLayer { alpha = pulseAlpha }
+                        .background(statusColor, RoundedCornerShape(6.dp))
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                Text(
+                    text = statusText,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = statusColor
+                )
+                if (isBlocking) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    Icon(Icons.Default.Shield, null, tint = statusColor, modifier = Modifier.size(20.dp))
+                }
+            }
         }
 
         // Details
@@ -94,7 +122,7 @@ fun BlockingSessionStatusSheet(
                     modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
                 ) {
                     Text(
-                        "O modo segurança está ativo, não é possível burlar ou alterar configurações de limite.",
+                        stringResource(R.string.status_safety_mode_warning),
                         color = DangerRed, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.padding(12.dp)
@@ -103,11 +131,19 @@ fun BlockingSessionStatusSheet(
             } else {
                 Button(
                     onClick = onEndSessions,
-                    modifier = Modifier.fillMaxWidth().height(50.dp).padding(bottom = 16.dp),
+                    modifier = Modifier.fillMaxWidth().height(54.dp).padding(bottom = 16.dp),
                     shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                    colors = ButtonDefaults.buttonColors(containerColor = Color.Transparent),
+                    contentPadding = PaddingValues()
                 ) {
-                    Text("Encerrar Bloqueio por Senha", color = DarkBg, fontWeight = FontWeight.Bold)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Brush.linearGradient(listOf(AccentCyan, AccentCyanDark))),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(stringResource(R.string.status_end_password_block), color = DarkBg, fontWeight = FontWeight.ExtraBold)
+                    }
                 }
             }
         }
@@ -127,8 +163,8 @@ fun BlockingSessionStatusSheet(
             )
         ) {
             Text(
-                text = if (isBlocking) "Não é possível revogar (Bloqueio ativo)"
-                       else "Revogar Device Owner",
+                text = if (isBlocking) stringResource(R.string.status_revoke_do_blocked)
+                       else stringResource(R.string.status_revoke_do),
                 fontWeight = FontWeight.Bold
             )
         }
@@ -142,7 +178,7 @@ fun BlockingSessionStatusSheet(
             shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(containerColor = DarkCardElevated)
         ) {
-            Text("Fechar", color = TextPrimary)
+            Text(stringResource(R.string.status_close), color = TextPrimary)
         }
 
         Spacer(modifier = Modifier.height(16.dp))
