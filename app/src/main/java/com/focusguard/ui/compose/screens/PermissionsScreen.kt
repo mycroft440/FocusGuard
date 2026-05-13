@@ -236,6 +236,7 @@ fun PermissionsScreen(onFinish: () -> Unit) {
                 }
             }
             PermissionStepType.DeviceAdmin -> {
+                // Deixa o sistema lidar com a restricao ou tenta direto
                 markPending(step)
                 deviceOwnerManager.requestDeviceAdmin()
             }
@@ -564,15 +565,34 @@ private fun RestrictedAccessibilityDialog(
         },
         text = {
             Column {
-                Text("Ative as configurações restritas do app e depois volte para habilitar a acessibilidade.", fontSize = 14.sp, color = TextSecondary)
+                Text(
+                    "O Android bloqueou o acesso a recursos sensíveis para este app porque ele foi instalado fora da Play Store.",
+                    fontSize = 14.sp,
+                    color = TextPrimary
+                )
                 Spacer(Modifier.height(16.dp))
-                PermissionStep(number = 1, text = "Abra as configurações do app")
+                Text(
+                    "Siga estas etapas para desbloquear:",
+                    fontSize = 13.sp,
+                    color = AccentCyan,
+                    fontWeight = FontWeight.Bold
+                )
                 Spacer(Modifier.height(12.dp))
-                PermissionStep(number = 2, text = "Toque nos três pontos do canto superior")
+                PermissionStep(number = 1, text = "Abra as 'Informações do App' (botão abaixo)")
+                Spacer(Modifier.height(8.dp))
+                PermissionStep(number = 2, text = "Toque nos '3 pontos' (ou 'Mais') no topo direito")
+                Spacer(Modifier.height(8.dp))
+                PermissionStep(number = 3, text = "Selecione 'Permitir configurações restritas'")
+                Spacer(Modifier.height(8.dp))
+                PermissionStep(number = 4, text = "Confirme com sua senha/biometria e volte aqui")
+                
                 Spacer(Modifier.height(12.dp))
-                PermissionStep(number = 3, text = "Permita configurações restritas")
-                Spacer(Modifier.height(12.dp))
-                PermissionStep(number = 4, text = "Volte e ative o serviço de acessibilidade")
+                Text(
+                    "Nota: Em aparelhos Xiaomi/Samsung, procure por 'Configurações Adicionais' ou no final da lista de permissões.",
+                    fontSize = 11.sp,
+                    color = TextSecondary,
+                    lineHeight = 14.sp
+                )
             }
         },
         confirmButton = {

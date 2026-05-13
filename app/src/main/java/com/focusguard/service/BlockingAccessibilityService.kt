@@ -93,7 +93,13 @@ class BlockingAccessibilityService : AccessibilityService() {
         "com.kiwibrowser.browser",
         "com.duckduckgo.mobile.android",
         "com.vivaldi.browser",
-        "com.UCMobile.intl"
+        "com.UCMobile.intl",
+        "com.facebook.katana",
+        "com.instagram.android",
+        "com.twitter.android",
+        "com.zhiliaoapp.musically",
+        "com.reddit.frontpage",
+        "com.linkedin.android"
     )
 
     private var defaultLauncherPackage: String? = null
@@ -449,20 +455,81 @@ class BlockingAccessibilityService : AccessibilityService() {
     private fun handleBrowserEvent(event: AccessibilityEvent) {
         val packageName = event.packageName?.toString() ?: return
         if (!browserPackages.contains(packageName)) return
-        if (::deviceOwnerManager.isInitialized && deviceOwnerManager.isDeviceOwnerActive()) {
-            if (packageName == "com.android.chrome" || packageName == "com.microsoft.emmx") return
-        }
 
-        val source = event.source ?: return
+        // Para navegadores, rootInActiveWindow e muito mais confiavel que event.source
+        // especialmente para capturar mudancas de URL que nao disparam TYPE_WINDOW_STATE_CHANGED
+        val root = rootInActiveWindow ?: event.source ?: return
         try {
-            if (isIncognitoMode(source)) {
+            if (isIncognitoMode(root)) {
+                com.focusguard.utils.FocusGuardLogger.log("A11y", "Modo Incognito detectado em $packageName")
                 blockWebsite()
-            } else {
-                checkAndBlockWebsite(source)
+                return
             }
+            
+            // Verificacao explicita de YouTube (VIP para conter desvios)
+            if (isYouTubeContent(root, packageName)) {
+                if (blockedWebsitesDomainSet.contains("youtube.com") || blockedWebsitesDomainSet.contains("youtu.be")) {
+                    com.focusguard.utils.FocusGuardLogger.log("A11y", "Conteudo YouTube detectado via heuristica de UI")
+                    blockWebsite()
+                    return
+                }
+            }
+
+            checkAndBlockWebsite(root)
         } finally {
-            source.recycle()
+            root.recycle()
         }
+    }
+
+    /**
+     * Heuristica para detectar se o conteudo atual e o YouTube, 
+     * mesmo que a barra de enderecos nao seja capturada perfeitamente.
+     */
+    /**
+     * Heuristica para detectar se o conteudo atual pertence a um site bloqueado,
+     * mesmo que a barra de enderecos nao seja capturada perfeitamente.
+     */
+    private fun isBlockedContentInUI(root: AccessibilityNodeInfo): Boolean {
+        // Verifica indicadores visuais para sites criticos (como YouTube e redes sociais)
+        // Usamos sinais mais especificos (dominios) para evitar falsos positivos em buscas/noticias
+        val indicators = mapOf(
+            "youtube.com" to listOf("youtube.com", "m.youtube.com", "youtu.be"),
+            "facebook.com" to listOf("facebook.com", "fb.com", "facebook.com/"),
+            "instagram.com" to listOf("instagram.com", "instagr.am"),
+            "tiktok.com" to listOf("tiktok.com", "tiktok.com/"),
+            "twitter.com" to listOf("twitter.com", "x.com", "t.co")
+        )
+
+        for (domain in blockedWebsitesDomainSet) {
+            val key = indicators.keys.find { domain.contains(it) } ?: continue
+            val signals = indicators[key] ?: continue
+            
+            for (signal in signals) {
+                val nodes = root.findAccessibilityNodeInfosByText(signal)
+                if (nodes.isNotEmpty()) {
+                    nodes.forEach { it.recycle() }
+                    com.focusguard.utils.FocusGuardLogger.log("A11y", "Conteudo bloqueado '$domain' detectado via sinal UI: $signal")
+                    return true
+                }
+            }
+        }
+        return false
+    }
+
+    /**
+     * Tenta extrair o titulo da janela ou conteudo principal para bloqueio secundario.
+     */
+    private fun checkTitleBlocking(root: AccessibilityNodeInfo): Boolean {
+        // Em navegadores, o titulo da janela as vezes contem o nome do site
+        // Ex: "YouTube - Chrome"
+        for (domain in blockedWebsitesDomainSet) {
+            val nodes = root.findAccessibilityNodeInfosByText(domain)
+            if (nodes.isNotEmpty()) {
+                nodes.forEach { it.recycle() }
+                return true
+            }
+        }
+        return false
     }
 
     private fun blockApp(packageName: String) {
@@ -478,37 +545,41 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun checkAndBlockWebsite(source: AccessibilityNodeInfo) {
+    private fun checkAndBlockWebsite(root: AccessibilityNodeInfo) {
         try {
-            val addressBarNode = WebsiteBlocker.findAddressBarNode(source)
+            // 1. Verificacao da Barra de Enderecos (Metodo Principal)
+            val addressBarNode = WebsiteBlocker.findAddressBarNode(root)
             if (addressBarNode != null && addressBarNode.text != null) {
                 val url = addressBarNode.text.toString()
                 if (url.isNotEmpty() && isWebsiteBlocked(url)) {
+                    com.focusguard.utils.FocusGuardLogger.log("A11y", "Bloqueado via URL: $url")
                     blockWebsite()
                     addressBarNode.recycle()
                     return
                 }
                 addressBarNode.recycle()
             }
+
+            // 2. Verificacao de Heuristica de Conteudo (Metodo Secundario)
+            if (isBlockedContentInUI(root)) {
+                blockWebsite()
+                return
+            }
+
+            // 3. Verificacao de Titulo/Texto geral
+            if (checkTitleBlocking(root)) {
+                com.focusguard.utils.FocusGuardLogger.log("A11y", "Bloqueado via Titulo/Texto UI")
+                blockWebsite()
+                return
+            }
         } catch (e: Exception) {
-            com.focusguard.utils.FocusGuardLogger.log("A11y", "Erro ao fechar app: ${e.message}")
+            com.focusguard.utils.FocusGuardLogger.log("A11y", "Erro em checkAndBlockWebsite: ${e.message}")
         }
     }
 
     private fun isWebsiteBlocked(url: String): Boolean {
         return try {
-            val domain = WebsiteBlocker.extractDomain(url).lowercase()
-            if (domain.length < 4) return false
-            if (blockedWebsitesDomainSet.contains(domain)) return true
-
-            var currentDomain = domain
-            while (currentDomain.contains(".")) {
-                val firstDotIndex = currentDomain.indexOf('.')
-                if (firstDotIndex == -1 || firstDotIndex == currentDomain.lastIndex) break
-                currentDomain = currentDomain.substring(firstDotIndex + 1)
-                if (blockedWebsitesDomainSet.contains(currentDomain)) return true
-            }
-            false
+            WebsiteBlocker.isUrlBlocked(url, blockedWebsitesDomainSet)
         } catch (_: Exception) {
             false
         }

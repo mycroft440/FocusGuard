@@ -1,4 +1,4 @@
-package com.focusguard.utils
+﻿package com.focusguard.utils
 
 import android.view.accessibility.AccessibilityNodeInfo
 import java.net.URL
@@ -50,13 +50,13 @@ object WebsiteBlocker {
      * Checks if a URL matches any blocked domain using proper suffix matching.
      * Avoids false positives like "com" matching "facebook.com".
      */
-    fun isUrlBlocked(url: String, blockedDomains: Collection<String>): Boolean {
+    fun isUrlBlocked(url: String, blockedDomains: List<String>): Boolean {
         val domain = extractDomain(url)
         if (domain.length < 4) return false
 
         return blockedDomains.any { blockedDomain ->
             val blocked = blockedDomain.lowercase()
-            domain == blocked || domain.endsWith(".$blocked") || (blocked == "youtube.com" && (domain == "youtu.be" || domain.endsWith(".youtu.be")))
+            domain == blocked || domain.endsWith(".$blocked") || blocked.endsWith(".$domain")
         }
     }
 
@@ -69,24 +69,20 @@ object WebsiteBlocker {
 
         val addressBarIds = listOf(
             "com.android.chrome:id/line_1",
+            "com.android.chrome:id/url_text",
+            "com.android.chrome:id/location_bar_edit_text",
             "com.android.chrome:id/url_bar",
             "com.android.chrome:id/search_box_text",
             "com.android.chrome:id/url_bar_edit_text",
-            "com.android.chrome:id/location_bar_edit_text",
-            "com.android.chrome:id/url_text",
             "org.mozilla.firefox:id/mozac_browser_toolbar_url_view",
             "org.mozilla.firefox:id/url_bar_title",
             "com.opera.browser:id/url_field",
             "com.microsoft.emmx:id/url_bar",
-            "com.microsoft.emmx:id/search_box_text",
             "com.sec.android.app.sbrowser:id/url_bar",
-            "com.sec.android.app.sbrowser:id/location_bar_edit_text",
             "com.brave.browser:id/url_bar",
             "com.kiwibrowser.browser:id/url_bar",
             "com.vivaldi.browser:id/url_bar",
-            "com.duckduckgo.mobile.android:id/omnibarTextInput",
-            "com.duckduckgo.mobile.android:id/url_edit_text",
-            "com.UCMobile.intl:id/url_bar"
+            "com.duckduckgo.mobile.android:id/omnibarTextInput"
         )
 
         for (id in addressBarIds) {
@@ -100,10 +96,6 @@ object WebsiteBlocker {
             }
         }
 
-        // Heuristic 1: Look for nodes with content descriptions related to address bars
-        val descResult = findAddressBarByDescription(root)
-        if (descResult != null) return descResult
-
         // Fallback: look for EditText with URL-like content
         val startTime = System.currentTimeMillis()
         val result = findEditTextWithUrl(root, 0)
@@ -114,37 +106,6 @@ object WebsiteBlocker {
         }
         
         return result
-    }
-
-    /**
-     * Heuristic to find address bar based on common content descriptions.
-     */
-    private fun findAddressBarByDescription(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
-        if (root == null) return null
-        
-        val commonDescriptions = listOf(
-            "Address and search bar",
-            "Endereço e barra de pesquisa",
-            "Search or type web address",
-            "Pesquisar ou digitar endereço Web",
-            "URL bar",
-            "Barra de URL"
-        )
-
-        for (desc in commonDescriptions) {
-            val nodes = root.findAccessibilityNodeInfosByText(desc)
-            if (!nodes.isNullOrEmpty()) {
-                for (node in nodes) {
-                    if (node.isEditable || node.className == "android.widget.EditText") {
-                        // Recycle others
-                        nodes.filter { it !== node }.forEach { it.recycle() }
-                        return node
-                    }
-                    node.recycle()
-                }
-            }
-        }
-        return null
     }
 
     /**

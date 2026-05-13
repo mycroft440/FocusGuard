@@ -1,0 +1,18 @@
+{
+  "operations": [
+    {
+      "action": "rt",
+      "file": "app/src/main/java/com/focusguard/ui/compose/screens/PermissionsScreen.kt",
+      "findText": "                Text(\"Ative as configurações restritas do app e depois volte para habilitar a acessibilidade.\", fontSize = 14.sp, color = TextSecondary)",
+      "newContent": "                Text(\"O Android restringiu as permissões deste app. Ative as 'Configurações Restritas' para habilitar a Acessibilidade e o Administrador.\", fontSize = 14.sp, color = TextSecondary)",
+      "fuzzy": true
+    },
+    {
+      "action": "rt",
+      "file": "app/src/main/java/com/focusguard/ui/compose/screens/PermissionsScreen.kt",
+      "findText": "            PermissionStepType.DeviceAdmin -> {\n                markPending(step)\n                deviceOwnerManager.requestDeviceAdmin()\n            }",
+      "newContent": "            PermissionStepType.DeviceAdmin -> {\n                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && isAccessibilityServiceRestricted(context)) {\n                    showRestrictedDialog = true\n                } else {\n                    markPending(step)\n                    deviceOwnerManager.requestDeviceAdmin()\n                }\n            }",
+      "fuzzy": true
+    }
+  ]
+}
