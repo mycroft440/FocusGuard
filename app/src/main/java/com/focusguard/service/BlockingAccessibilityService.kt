@@ -481,10 +481,22 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
-    /**
-     * Heuristica para detectar se o conteudo atual e o YouTube, 
-     * mesmo que a barra de enderecos nao seja capturada perfeitamente.
-     */
+    private fun isYouTubeContent(root: AccessibilityNodeInfo, packageName: String): Boolean {
+        // Se for o app nativo do YouTube, ja confirmamos
+        if (packageName == "com.google.android.youtube" || packageName == "com.google.android.youtube.tv") return true
+        
+        // Em navegadores, procuramos por sinais do dominio na UI
+        val youtubeSignals = listOf("youtube.com", "m.youtube.com", "youtu.be")
+        for (signal in youtubeSignals) {
+            val nodes = root.findAccessibilityNodeInfosByText(signal)
+            if (nodes.isNotEmpty()) {
+                nodes.forEach { it.recycle() }
+                return true
+            }
+        }
+        return false
+    }
+
     /**
      * Heuristica para detectar se o conteudo atual pertence a um site bloqueado,
      * mesmo que a barra de enderecos nao seja capturada perfeitamente.
