@@ -1,18 +1,22 @@
-# Gradle files
+# ============================================================================
+# Build outputs
+# ============================================================================
 .gradle/
 build/
 *.apk
 *.ap_
 *.aab
 
-# Local configuration file (sdk path, etc)
+# Local configuration (SDK path, signing debug info)
 local.properties
 
-# Log/OS Files
+# Logs / OS
 *.log
 .DS_Store
 
-# Android Studio generated files and folders
+# ============================================================================
+# IDE
+# ============================================================================
 .idea/
 .project
 .classpath
@@ -20,71 +24,80 @@ local.properties
 *.launch
 .settings/
 *.sublime-workspace
-
-# Android Studio/IntelliJ
 *.iml
 *.iws
 *.ipr
 out/
 .idea_modules/
+.vscode/
 
-# Keystore files
-*.jks
-*.keystore
-
-# External native build folder generated in Android Studio 2.2 and later
+# ============================================================================
+# Native build
+# ============================================================================
 .externalNativeBuild
 .cxx/
 
-# Google Services (e.g. APIs or Firebase)
+# ============================================================================
+# Keystores (NUNCA commitar)
+# ============================================================================
+*.jks
+*.keystore
+focusguard-release.jks
+keystore_base64.txt
+
+# ============================================================================
+# Google Services / Firebase
+# ============================================================================
 google-services.json
 
-# Freeline
+# ============================================================================
+# Fastlane / Freeline
+# ============================================================================
 freeline.py
 freeline/
 freeline_files/
-
-# fastlane
 fastlane/report.xml
 fastlane/Preview.html
 fastlane/screenshots
 fastlane/test_output
 fastlane/readme.md
 
-# Version control
-.versionrc_changelog
-
-# misc
+# ============================================================================
+# Misc
+# ============================================================================
 *.swp
 *.swo
 *~
 .env
 .env.local
-
-focusguard-release.jks
-keystore_base64.txt
+.versionrc_changelog
 build_logs.txt
 build_logs2.txt
 build_logs3.txt
 
-# Test files
+# Test scratch
 test_archive.zip
 folder_archive.zip
 test_folder/
 test.txt
 
-local.properties
-
+# ============================================================================
+# Agent tooling (NÃO commitar artefatos de geração de plano/scripts)
+# Estes arquivos poluem o source tree e não fazem parte do app Android.
+# ============================================================================
 .ag-agent/
-
-.ag-agent/
-
-.ag-agent/
-
-.ag-agent/
-
-.ag-agent/
-
-.ag-agent/
-
-.ag-agent/
+.ag-write-*.tmp
+*.ag.tmp
+scratch.py
+ag_toolkit.py
+generate_plan.py
+run_edits.py
+plan.json
+refine_blocker.json
+update_blocker.json
+update_blocker_simple.json
+update_permissions_ux.json
+update_a11y.json
+security_hardening_plan.json
+security_hardening_plan_v2.json
+security_hardening.patch
