@@ -1,4 +1,4 @@
-﻿package com.focusguard.ui.compose.screens
+package com.focusguard.ui.compose.screens
 
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue

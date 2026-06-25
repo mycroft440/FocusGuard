@@ -1,9 +1,8 @@
-﻿package com.focusguard.utils
+package com.focusguard.utils
 
 import kotlinx.coroutines.launch
 import android.content.Context
 import android.os.Build
-import android.os.Environment
 import android.util.Log
 import kotlinx.coroutines.*
 import kotlinx.coroutines.sync.Mutex
@@ -35,22 +34,16 @@ object FocusGuardLogger {
 
     fun init(context: Context) {
         if (isInitialized) return
-        
+
         try {
-            var downloadDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
-            var focusGuardDir = File(downloadDir, "FocusGuardLogs")
-            
-            if (!focusGuardDir.exists()) {
-                val success = focusGuardDir.mkdirs()
-                if (!success || !focusGuardDir.canWrite()) {
-                    // Fallback para armazenamento interno se falhar no Downloads (Comum no Android 11+)
-                    focusGuardDir = File(context.getExternalFilesDir(null), "Logs")
-                    if (!focusGuardDir.exists()) focusGuardDir.mkdirs()
-                }
-            } else if (!focusGuardDir.canWrite()) {
-                 // Existe mas não podemos escrever
-                 focusGuardDir = File(context.getExternalFilesDir(null), "Logs")
-                 if (!focusGuardDir.exists()) focusGuardDir.mkdirs()
+            // PRIVACIDADE: logs são escritos em armazenamento PRIVADO do app
+            // (context.filesDir). Antes eram escritos em Environment.DIRECTORY_DOWNLOADS
+            // (pasta pública), o que permitia que qualquer app com permissão de storage
+            // lesse logs de comportamento do usuário — violação de privacidade para um
+            // app de bloqueio. Arquivos em filesDir são sandboxed pelo SO e não requerem
+            // permissão de storage.
+            val focusGuardDir = File(context.filesDir, "FocusGuardLogs").also { dir ->
+                if (!dir.exists()) dir.mkdirs()
             }
 
             val dateStr = dayDateFormat.get()!!.format(Date())

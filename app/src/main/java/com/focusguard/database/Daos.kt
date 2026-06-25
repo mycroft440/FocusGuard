@@ -1,4 +1,4 @@
-﻿package com.focusguard.database
+package com.focusguard.database
 
 import androidx.room.Dao
 import androidx.room.Delete

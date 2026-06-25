@@ -14,10 +14,14 @@ Para facilitar o desenvolvimento e economizar recursos computacionais (tokens), 
 ## 🛠️ Tecnologias
 - **Linguagem**: Kotlin
 - **UI**: Jetpack Compose (Material 3)
-- **Persistência**: Room, DataStore
+- **Persistência**: Room, SharedPreferences, EncryptedSharedPreferences
 - **Segurança**: Device Policy Manager, Biometrics
 
 ## 🏗️ Como Buildar
 1. Clone o repositório.
 2. Abra no Android Studio (Koala ou superior).
 3. Execute `./gradlew assembleDebug` para gerar o APK.
+
+## 📋 Code Review
+
+Uma avaliação técnica completa do projeto está disponível em [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md), cobrindo arquitetura, testes, code smells, i18n, segurança e plano de ação em 4 fases.

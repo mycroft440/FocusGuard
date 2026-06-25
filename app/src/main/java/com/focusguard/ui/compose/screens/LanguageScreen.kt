@@ -1,4 +1,4 @@
-﻿package com.focusguard.ui.compose.screens
+package com.focusguard.ui.compose.screens
 
 import kotlin.OptIn
 import androidx.compose.material3.ExperimentalMaterial3Api

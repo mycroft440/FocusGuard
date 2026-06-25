@@ -1,4 +1,4 @@
-﻿package com.focusguard.security
+package com.focusguard.security
 
 import android.content.Context
 import android.util.Log
