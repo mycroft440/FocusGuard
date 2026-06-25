@@ -1,4 +1,4 @@
-﻿package com.focusguard.database
+package com.focusguard.database
 
 import androidx.room.Entity
 import androidx.room.PrimaryKey

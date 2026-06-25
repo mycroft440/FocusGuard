@@ -1,4 +1,4 @@
-﻿package com.focusguard
+package com.focusguard
 
 import android.app.Application
 import com.focusguard.utils.FocusGuardLogger

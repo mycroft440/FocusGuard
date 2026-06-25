@@ -1,4 +1,4 @@
-﻿package com.focusguard.admin
+package com.focusguard.admin
 
 import com.focusguard.R
 import android.app.admin.DeviceAdminReceiver

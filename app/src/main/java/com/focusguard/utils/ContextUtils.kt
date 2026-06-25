@@ -1,4 +1,4 @@
-﻿package com.focusguard.utils
+package com.focusguard.utils
 
 import android.app.Activity
 import android.content.Context

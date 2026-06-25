@@ -200,7 +200,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun calculateBrowserPackages() {
         browserPackages = try {
-            val browserIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("http://www.google.com"))
+            val browserIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com"))
             val dynamicBrowsers = packageManager.queryIntentActivities(browserIntent, android.content.pm.PackageManager.MATCH_ALL)
                 .mapNotNull { it.activityInfo?.packageName }
                 .toSet()

@@ -1,4 +1,4 @@
-﻿package com.focusguard.ui
+package com.focusguard.ui
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity

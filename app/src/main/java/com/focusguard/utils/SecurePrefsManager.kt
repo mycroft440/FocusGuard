@@ -1,4 +1,4 @@
-﻿package com.focusguard.utils
+package com.focusguard.utils
 
 import android.content.Context
 import android.content.SharedPreferences

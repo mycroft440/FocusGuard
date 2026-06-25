@@ -1,4 +1,4 @@
-﻿package com.focusguard.analytics
+package com.focusguard.analytics
 
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
