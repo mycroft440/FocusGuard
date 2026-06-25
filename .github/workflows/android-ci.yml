@@ -1,5 +1,9 @@
 name: Android CI Pro
 
+# Triggers:
+# - push para main/master
+# - pull_request para main/master
+# - execução manual via Actions tab
 on:
   push:
     branches: [ "main", "master" ]
@@ -7,33 +11,135 @@ on:
     branches: [ "main", "master" ]
   workflow_dispatch:
 
-# Cancela builds antigos se fizer um novo commit rapidamente
+# Cancela builds antigas quando um novo commit chega na mesma ref
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  checks: write       # necessário para upload de test results
+  pull-requests: write
+
 jobs:
-  build:
-    name: Build FocusGuard APKs
+  # ─────────────────────────────────────────────────────────────────────────
+  # JOB 1: Static Analysis (Lint + Detekt)
+  # Roda em paralelo com o build. Não bloqueia o build se falhar (ainda há
+  # débito técnico — vamos transformar em blocking aos poucos).
+  # ─────────────────────────────────────────────────────────────────────────
+  static-analysis:
+    name: Lint + Detekt
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
+    continue-on-error: true   # transitional: ainda há débito técnico
 
     steps:
-      - name: Clonar o repositório
+      - name: Clonar repositório
         uses: actions/checkout@v4
 
-      - name: Configurar Java JDK 17
+      - name: Configurar JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Setup Gradle Cache
+      - name: Setup Gradle (com cache automático)
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Conceder permissão de execução ao gradlew
+      - name: Conceder permissão ao gradlew
         run: chmod +x gradlew
 
+      - name: Run Detekt
+        run: ./gradlew detekt --no-daemon --stacktrace
+        continue-on-error: true   # config é maxIssues=0 e há 19 violações LongMethod
+
+      - name: Run Android Lint (debug)
+        run: ./gradlew lintDebug --no-daemon --stacktrace
+        continue-on-error: true
+
+      - name: Upload Lint reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-reports
+          path: |
+            app/build/reports/lint-results-*.html
+            app/build/reports/detekt/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # JOB 2: Unit tests
+  # Por enquanto o projeto NÃO tem testes unitários. Esse job serve como
+  # placeholder: assim que testes forem adicionados em app/src/test/, ele
+  # começa a rodar automaticamente.
+  # ─────────────────────────────────────────────────────────────────────────
+  unit-tests:
+    name: Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    continue-on-error: true   # ainda não há testes
+
+    steps:
+      - name: Clonar repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Conceder permissão ao gradlew
+        run: chmod +x gradlew
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace --continue
+        continue-on-error: true
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: unit-test-results
+          path: |
+            app/build/reports/tests/
+            app/build/test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+
+  # ─────────────────────────────────────────────────────────────────────────
+  # JOB 3: Build APKs (debug + release condicional)
+  # ─────────────────────────────────────────────────────────────────────────
+  build:
+    name: Build APKs
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [static-analysis, unit-tests]
+    # Mesmo se static-analysis/unit-tests falharem (continue-on-error), o build
+    # ainda roda. Mudar para `if: always()` se quiser garantir.
+    if: always()
+
+    steps:
+      - name: Clonar repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Gradle (com cache automático)
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Conceder permissão ao gradlew
+        run: chmod +x gradlew
+
+      # ── Debug APK ──────────────────────────────────────────────────────
       - name: Compilar APK Debug
         run: ./gradlew clean assembleDebug --no-daemon --stacktrace
 
@@ -42,7 +148,10 @@ jobs:
         with:
           name: focusguard-debug-apk
           path: app/build/outputs/apk/debug/*.apk
+          retention-days: 14
+          if-no-files-found: error
 
+      # ── Release APK (apenas se os secrets de assinatura estiverem configurados) ─
       - name: Verificar secrets de assinatura Release
         id: release_signing
         env:
@@ -54,10 +163,10 @@ jobs:
           if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
             echo "$KEYSTORE_BASE64" | tr -d '\n' | tr -d '\r' | base64 -d > ${{ github.workspace }}/release.jks
             echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "Release keystore configured from GitHub Secrets."
+            echo "Release keystore configurado via GitHub Secrets."
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "Release keystore secrets are incomplete or missing. Skipping release APK build; debug APK build remains the required CI compilation check."
+            echo "Secrets de release ausentes — pulando assembleRelease (debug APK continua como check obrigatório)."
           fi
 
       - name: Compilar APK Release
@@ -67,9 +176,9 @@ jobs:
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
-        run: ./gradlew clean assembleRelease --no-daemon --stacktrace
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
 
-      - name: Remover Keystore Físico (Segurança)
+      - name: Remover Keystore físico (Segurança)
         if: always()
         run: rm -f ${{ github.workspace }}/release.jks
 
@@ -79,3 +188,16 @@ jobs:
         with:
           name: focusguard-release-apk
           path: app/build/outputs/apk/release/*.apk
+          retention-days: 30
+          if-no-files-found: error
+
+      # ── Health check final ──────────────────────────────────────────────
+      - name: Resumo do build
+        if: always()
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Item | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Debug APK | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release APK | ${{ steps.release_signing.outputs.enabled == 'true' && 'built' || 'skipped (no signing secrets)' }} |" >> $GITHUB_STEP_SUMMARY
