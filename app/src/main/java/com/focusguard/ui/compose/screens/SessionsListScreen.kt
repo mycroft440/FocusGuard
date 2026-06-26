@@ -36,6 +36,8 @@ import com.focusguard.ui.compose.theme.*
 import com.focusguard.R
 import com.focusguard.security.AuthManager
 import com.focusguard.ui.compose.screens.SelectableAppUi
+import com.focusguard.ui.compose.screens.sessions.SessionsListViewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -50,8 +52,14 @@ fun SessionsListScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    // ViewModel (Hilt) fornece o flow de sessões ativas via Repository → Room.
+    // Antes: sessionManager.activeSessionsFlow (acesso direto ao singleton).
+    // Agora: viewModel.sessions (StateFlow que sobrevive a mudanças de config).
+    // sessionManager ainda é usado para SessionListItem (ações por-item) e
+    // para checkAndEnforce() em sub-sheets — migração dessas é deferred.
+    val viewModel: SessionsListViewModel = hiltViewModel()
     val sessionManager = remember { BlockingSessionManager.getInstance(context) }
-    val sessions by sessionManager.activeSessionsFlow.collectAsState(initial = emptyList())
+    val sessions by viewModel.sessions.collectAsState()
     val filteredSessions = sessions.filter { it.sessionType == sessionType }
     
     var showPasswordPrompt by remember { mutableStateOf<Int?>(null) }
