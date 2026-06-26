@@ -187,7 +187,8 @@ fun SessionsListScreen(
     if (showAppPickerForSession != null) {
         ContentPickerSheet(
             session = showAppPickerForSession!!,
-            onDismiss = { showAppPickerForSession = null }
+            onDismiss = { showAppPickerForSession = null },
+            viewModel = viewModel
         )
     }
 }
@@ -323,20 +324,22 @@ fun SessionDetailsSheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ContentPickerSheet(session: BlockSession, onDismiss: () -> Unit) {
+fun ContentPickerSheet(
+    session: BlockSession,
+    onDismiss: () -> Unit,
+    viewModel: SessionsListViewModel
+) {
     val context = LocalContext.current
     val pm = context.packageManager
-    val scope = rememberCoroutineScope()
-    val database = remember { com.focusguard.database.AppDatabase.getDatabase(context) }
+    val pickerState by viewModel.contentPickerState.collectAsState()
 
     var selectedTab by remember { mutableStateOf(0) }
     var apps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
     var isLoadingApps by remember { mutableStateOf(true) }
-    var sites by remember { mutableStateOf<List<String>>(emptyList()) }
-    var siteInput by remember { mutableStateOf("") }
-    var isSaving by remember { mutableStateOf(false) }
 
+    // Inicia o estado do ContentPicker ao abrir a sheet
     LaunchedEffect(Unit) {
+        viewModel.initContentPicker()
         val appList = withContext(Dispatchers.IO) {
             pm.getInstalledApplications(PackageManager.GET_META_DATA)
                 .map { info ->
@@ -347,6 +350,10 @@ fun ContentPickerSheet(session: BlockSession, onDismiss: () -> Unit) {
         }
         apps = appList
         isLoadingApps = false
+    }
+    // Reseta o estado ao fechar a sheet
+    DisposableEffect(Unit) {
+        onDispose { viewModel.resetContentPicker() }
     }
 
     ModalBottomSheet(
@@ -381,7 +388,7 @@ fun ContentPickerSheet(session: BlockSession, onDismiss: () -> Unit) {
                         LazyColumn {
                             items(apps) { app ->
                                 Row(
-                                    modifier = Modifier.fillMaxWidth().clickable(enabled = !isSaving) {
+                                    modifier = Modifier.fillMaxWidth().clickable(enabled = !pickerState.isSaving) {
                                         apps = apps.map { if (it.packageName == app.packageName) it.copy(isSelected = !it.isSelected) else it }
                                     }.padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
@@ -396,19 +403,13 @@ fun ContentPickerSheet(session: BlockSession, onDismiss: () -> Unit) {
                 } else {
                     Column {
                         OutlinedTextField(
-                            value = siteInput,
-                            onValueChange = { siteInput = it },
+                            value = pickerState.siteInput,
+                            onValueChange = { viewModel.updateSiteInput(it) },
                             placeholder = { Text(stringResource(R.string.sessions_site_placeholder), color = TextHint) },
                             modifier = Modifier.fillMaxWidth(),
-                            enabled = !isSaving,
+                            enabled = !pickerState.isSaving,
                             trailingIcon = {
-                                TextButton(onClick = {
-                                    val cleanSite = siteInput.trim().lowercase()
-                                    if (cleanSite.isNotBlank() && !sites.contains(cleanSite)) {
-                                        sites = sites + cleanSite
-                                        siteInput = ""
-                                    }
-                                }) {
+                                TextButton(onClick = { viewModel.addPendingSite() }) {
                                     Text(stringResource(R.string.sessions_add_site_btn), color = AccentCyan)
                                 }
                             },
@@ -418,13 +419,13 @@ fun ContentPickerSheet(session: BlockSession, onDismiss: () -> Unit) {
                         Spacer(Modifier.height(16.dp))
                         
                         LazyColumn(modifier = Modifier.weight(1f)) {
-                            items(sites) { site ->
+                            items(pickerState.sites) { site ->
                                 Row(
                                     modifier = Modifier.fillMaxWidth().background(DarkCard, RoundedCornerShape(12.dp)).padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Text(site, color = TextPrimary, modifier = Modifier.weight(1f))
-                                    IconButton(onClick = { sites = sites - site }, enabled = !isSaving) {
+                                    IconButton(onClick = { viewModel.removePendingSite(site) }, enabled = !pickerState.isSaving) {
                                         Icon(Icons.Default.Close, null, tint = DangerRed)
                                     }
                                 }
@@ -437,31 +438,20 @@ fun ContentPickerSheet(session: BlockSession, onDismiss: () -> Unit) {
             
             Button(
                 onClick = {
-                    scope.launch {
-                        isSaving = true
-                        val selectedApps = apps.filter { it.isSelected }.map { it.packageName }
-                        withContext(Dispatchers.IO) {
-                            selectedApps.forEach { pkg ->
-                                database.sessionAppCrossRefDao().insert(com.focusguard.database.SessionAppCrossRef(session.id, pkg))
-                            }
-                            sites.forEach { domain ->
-                                database.sessionWebsiteCrossRefDao().insert(com.focusguard.database.SessionWebsiteCrossRef(session.id, domain))
-                            }
-                            BlockingSessionManager.getInstance(context).checkAndEnforce()
-                        }
-                        isSaving = false
-                        onDismiss()
-                    }
+                    val selectedApps = apps.filter { it.isSelected }.map { it.packageName }
+                    viewModel.bulkAddContent(session.id, selectedApps)
+                    // Fecha a sheet imediatamente; o VM cuida do save em background
+                    onDismiss()
                 },
-                enabled = !isSaving,
+                enabled = !pickerState.isSaving,
                 modifier = Modifier.fillMaxWidth().padding(vertical = 16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
             ) {
-                if (isSaving) {
+                if (pickerState.isSaving) {
                     CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp, color = DarkBg)
                     Spacer(Modifier.width(8.dp))
                 }
-                Text(if (isSaving) stringResource(R.string.sessions_saving) else stringResource(R.string.sessions_save_content), color = DarkBg, fontWeight = FontWeight.Bold)
+                Text(if (pickerState.isSaving) stringResource(R.string.sessions_saving) else stringResource(R.string.sessions_save_content), color = DarkBg, fontWeight = FontWeight.Bold)
             }
         }
     }

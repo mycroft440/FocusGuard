@@ -208,59 +208,168 @@ class SessionsListViewModelTest {
     }
 
     @Test
-    fun `addSiteToSession returns false for empty input`() = runTest(testDispatcher) {
+    fun `addPendingSite returns false for empty input`() {
         viewModel.updateSiteInput("")
-        val result = viewModel.addSiteToSession(1)
+        val result = viewModel.addPendingSite()
         assertThat(result).isFalse()
+        assertThat(viewModel.contentPickerState.value.sites).isEmpty()
     }
 
     @Test
-    fun `addSiteToSession returns false for blank input`() = runTest(testDispatcher) {
+    fun `addPendingSite returns false for blank input`() {
         viewModel.updateSiteInput("   ")
-        val result = viewModel.addSiteToSession(1)
+        val result = viewModel.addPendingSite()
         assertThat(result).isFalse()
+        assertThat(viewModel.contentPickerState.value.sites).isEmpty()
     }
 
     @Test
-    fun `addSiteToSession returns true and delegates to repository for valid input`() = runTest(testDispatcher) {
-        val sessionId = 4
+    fun `addPendingSite returns true and adds site to pending list for valid input`() {
         viewModel.updateSiteInput("facebook.com")
-
-        val result = viewModel.addSiteToSession(sessionId)
+        val result = viewModel.addPendingSite()
         assertThat(result).isTrue()
-
-        testScheduler.advanceUntilIdle()
-
-        coVerify(exactly = 1) { repository.addSiteToSession(sessionId, "facebook.com") }
+        assertThat(viewModel.contentPickerState.value.sites).containsExactly("facebook.com")
     }
 
     @Test
-    fun `addSiteToSession clears siteInput after successful add`() = runTest(testDispatcher) {
-        val sessionId = 4
-        coEvery { repository.getBlockedSitesForSession(sessionId) } returns emptyList()
+    fun `addPendingSite lowercases the site before adding`() {
+        viewModel.updateSiteInput("FACEBOOK.COM")
+        viewModel.addPendingSite()
+        assertThat(viewModel.contentPickerState.value.sites).containsExactly("facebook.com")
+    }
+
+    @Test
+    fun `addPendingSite returns false if site already in pending list`() {
         viewModel.updateSiteInput("facebook.com")
+        viewModel.addPendingSite()
+        viewModel.updateSiteInput("facebook.com")
+        val result = viewModel.addPendingSite()
+        assertThat(result).isFalse()
+        assertThat(viewModel.contentPickerState.value.sites).hasSize(1)
+    }
 
-        viewModel.addSiteToSession(sessionId)
-        testScheduler.advanceUntilIdle()
-
+    @Test
+    fun `addPendingSite clears siteInput after adding`() {
+        viewModel.updateSiteInput("facebook.com")
+        viewModel.addPendingSite()
         assertThat(viewModel.contentPickerState.value.siteInput).isEmpty()
     }
 
     @Test
-    fun `addAppToSession delegates to repository`() = runTest(testDispatcher) {
-        val sessionId = 2
-        val packageName = "com.example.app"
+    fun `addPendingSite can add multiple distinct sites`() {
+        viewModel.updateSiteInput("facebook.com")
+        viewModel.addPendingSite()
+        viewModel.updateSiteInput("instagram.com")
+        viewModel.addPendingSite()
+        viewModel.updateSiteInput("twitter.com")
+        viewModel.addPendingSite()
+        assertThat(viewModel.contentPickerState.value.sites)
+            .containsExactly("facebook.com", "instagram.com", "twitter.com")
+    }
 
-        viewModel.addAppToSession(sessionId, packageName)
+    @Test
+    fun `removePendingSite removes site from pending list`() {
+        viewModel.updateSiteInput("facebook.com")
+        viewModel.addPendingSite()
+        viewModel.updateSiteInput("instagram.com")
+        viewModel.addPendingSite()
+        assertThat(viewModel.contentPickerState.value.sites).hasSize(2)
+
+        viewModel.removePendingSite("facebook.com")
+        assertThat(viewModel.contentPickerState.value.sites).containsExactly("instagram.com")
+    }
+
+    @Test
+    fun `removePendingSite does nothing if site not in list`() {
+        viewModel.updateSiteInput("facebook.com")
+        viewModel.addPendingSite()
+
+        viewModel.removePendingSite("instagram.com")
+        assertThat(viewModel.contentPickerState.value.sites).containsExactly("facebook.com")
+    }
+
+    @Test
+    fun `initContentPicker resets state`() {
+        viewModel.updateSiteInput("foo")
+        viewModel.addPendingSite()
+
+        viewModel.initContentPicker()
+
+        assertThat(viewModel.contentPickerState.value.siteInput).isEmpty()
+        assertThat(viewModel.contentPickerState.value.sites).isEmpty()
+        assertThat(viewModel.contentPickerState.value.isSaving).isFalse()
+    }
+
+    @Test
+    fun `bulkAddContent inserts all selected apps via repository`() = runTest(testDispatcher) {
+        val sessionId = 5
+        val selectedApps = listOf("com.facebook.katana", "com.instagram.android", "com.twitter.android")
+
+        viewModel.bulkAddContent(sessionId, selectedApps)
         testScheduler.advanceUntilIdle()
 
-        coVerify(exactly = 1) { repository.addAppToSession(sessionId, packageName) }
+        coVerify(exactly = 1) { repository.addAppToSession(sessionId, "com.facebook.katana") }
+        coVerify(exactly = 1) { repository.addAppToSession(sessionId, "com.instagram.android") }
+        coVerify(exactly = 1) { repository.addAppToSession(sessionId, "com.twitter.android") }
+    }
+
+    @Test
+    fun `bulkAddContent inserts all pending sites via repository`() = runTest(testDispatcher) {
+        val sessionId = 5
+        viewModel.updateSiteInput("facebook.com")
+        viewModel.addPendingSite()
+        viewModel.updateSiteInput("instagram.com")
+        viewModel.addPendingSite()
+
+        viewModel.bulkAddContent(sessionId, emptyList())
+        testScheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { repository.addSiteToSession(sessionId, "facebook.com") }
+        coVerify(exactly = 1) { repository.addSiteToSession(sessionId, "instagram.com") }
+    }
+
+    @Test
+    fun `bulkAddContent calls checkAndEnforce to sync blocking state`() = runTest(testDispatcher) {
+        val sessionId = 5
+        viewModel.updateSiteInput("facebook.com")
+        viewModel.addPendingSite()
+
+        viewModel.bulkAddContent(sessionId, listOf("com.example.app"))
+        testScheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { blockingSessionManager.checkAndEnforce() }
+    }
+
+    @Test
+    fun `bulkAddContent resets contentPickerState after save`() = runTest(testDispatcher) {
+        val sessionId = 5
+        viewModel.updateSiteInput("facebook.com")
+        viewModel.addPendingSite()
+
+        viewModel.bulkAddContent(sessionId, listOf("com.example.app"))
+        testScheduler.advanceUntilIdle()
+
+        assertThat(viewModel.contentPickerState.value.sites).isEmpty()
+        assertThat(viewModel.contentPickerState.value.siteInput).isEmpty()
+        assertThat(viewModel.contentPickerState.value.isSaving).isFalse()
+    }
+
+    @Test
+    fun `bulkAddContent with no apps and no sites still calls checkAndEnforce`() = runTest(testDispatcher) {
+        val sessionId = 5
+
+        viewModel.bulkAddContent(sessionId, emptyList())
+        testScheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { blockingSessionManager.checkAndEnforce() }
     }
 
     @Test
     fun `resetContentPicker clears contentPickerState`() = runTest(testDispatcher) {
         viewModel.updateSiteInput("foo")
+        viewModel.addPendingSite()
         assertThat(viewModel.contentPickerState.value.siteInput).isEqualTo("foo")
+        assertThat(viewModel.contentPickerState.value.sites).hasSize(1)
 
         viewModel.resetContentPicker()
 
