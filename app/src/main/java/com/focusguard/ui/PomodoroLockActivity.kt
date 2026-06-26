@@ -15,6 +15,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.activity.ComponentActivity
+import dagger.hilt.android.AndroidEntryPoint
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
@@ -72,6 +73,7 @@ import kotlinx.coroutines.delay
  * - Auto-relaunches on pause/stop via AlarmManager
  * - Survives process kills via watchdog service
  */
+@AndroidEntryPoint
 class PomodoroLockActivity : ComponentActivity() {
     private lateinit var deviceOwnerManager: DeviceOwnerManager
     private lateinit var pomodoroManager: PomodoroManager

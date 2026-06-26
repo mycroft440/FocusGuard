@@ -12,7 +12,9 @@ import com.focusguard.ui.PermissionsActivity
 import com.focusguard.ui.compose.navigation.FocusGuardNavHost
 import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.utils.FocusGuardLogger
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
 
     private lateinit var deviceOwnerManager: DeviceOwnerManager

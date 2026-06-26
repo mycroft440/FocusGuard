@@ -3,6 +3,7 @@ package com.focusguard.ui
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import dagger.hilt.android.AndroidEntryPoint
 
 import androidx.activity.addCallback
 import androidx.activity.compose.setContent
@@ -23,6 +24,7 @@ import com.focusguard.R
 import com.focusguard.ui.compose.theme.*
 import kotlinx.coroutines.delay
 
+@AndroidEntryPoint
 class BlockNoticeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

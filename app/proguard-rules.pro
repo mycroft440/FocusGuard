@@ -97,6 +97,15 @@
 -keep class com.focusguard.utils.FocusGuardLogger { *; }
 
 # ----------------------------------------------------------------------------
+# Hilt ( Dagger ) —.generated classes usam reflection
+# ----------------------------------------------------------------------------
+-keep class dagger.hilt.** { *; }
+-keep class * extends dagger.hilt.android.lifecycle.HiltViewModel { *; }
+-keepclassmembers class * { @javax.inject.Inject *; }
+-keep,allowobfuscation,allowshrinking class kotlin.coroutines.Continuation
+-keep,allowobfuscation,allowshrinking interface kotlin.coroutines.Continuation
+
+# ----------------------------------------------------------------------------
 # Debug logs — remover em release builds para reduzir APK
 # ----------------------------------------------------------------------------
 -assumenosideeffects class android.util.Log {

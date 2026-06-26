@@ -14,6 +14,8 @@ agp = "8.7.2"
 kotlin = "2.0.21"
 ksp = "2.0.21-1.0.28"
 detekt = "1.23.6"
+hilt = "2.52"
+androidxHiltNavigationCompose = "1.2.0"
 
 # ─── AndroidX Core ─────────────────────────────────────────────────────────
 androidxCore = "1.13.1"
@@ -54,6 +56,12 @@ mpAndroidChart = "v3.1.0"
 junit = "4.13.2"
 androidxTestJunit = "1.2.1"
 androidxTestEspresso = "3.6.1"
+mockk = "1.13.13"
+mockitoCore = "5.14.2"
+robolectric = "4.13"
+kotlinxCoroutinesTest = "1.9.0"
+truth = "1.4.4"
+turbine = "1.2.0"
 
 
 [libraries]
@@ -111,10 +119,24 @@ mpandroidchart = { group = "com.github.PhilJay", name = "MPAndroidChart", versio
 # ─── Kotlin stdlib ─────────────────────────────────────────────────────────
 kotlin-stdlib = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib", version.ref = "kotlin" }
 
+# ─── Hilt (DI) ─────────────────────────────────────────────────────────────
+hilt-android = { group = "com.google.dagger", name = "hilt-android", version.ref = "hilt" }
+hilt-compiler = { group = "com.google.dagger", name = "hilt-compiler", version.ref = "hilt" }
+androidx-hilt-navigation-compose = { group = "androidx.hilt", name = "hilt-navigation-compose", version.ref = "androidxHiltNavigationCompose" }
+
+# ─── Architecture components ────────────────────────────────────────────────
+androidx-lifecycle-viewmodel-ktx = { group = "androidx.lifecycle", name = "lifecycle-viewmodel-ktx", version.ref = "androidxLifecycle" }
+
 # ─── Testing ───────────────────────────────────────────────────────────────
 junit = { group = "junit", name = "junit", version.ref = "junit" }
 androidx-test-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestJunit" }
 androidx-test-espresso-core = { group = "androidx.test.espresso", name = "espresso-core", version.ref = "androidxTestEspresso" }
+mockk = { group = "io.mockk", name = "mockk", version.ref = "mockk" }
+mockito-core = { group = "org.mockito", name = "mockito-core", version.ref = "mockitoCore" }
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "kotlinxCoroutinesTest" }
+truth = { group = "com.google.truth", name = "truth", version.ref = "truth" }
+turbine = { group = "app.cash.turbine", name = "turbine", version.ref = "turbine" }
 
 
 [plugins]
@@ -125,3 +147,4 @@ kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }
+hilt = { id = "com.google.dagger.hilt.android", version.ref = "hilt" }

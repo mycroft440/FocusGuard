@@ -10,6 +10,7 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    alias(libs.plugins.hilt)
 }
 
 android {
@@ -92,9 +93,17 @@ android {
             // K2 compiler (Kotlin 2.0+): melhor performance e relatórios de
             // erro mais precisos.
             freeCompilerArgs.addAll(
-                "-Xjsr305=strict",
-                "-Xcontext-receivers"
+                "-Xjsr305=strict"
             )
+        }
+    }
+
+    // Permite testes unitários com classes Android (Context, SharedPreferences, etc)
+    // via Robolectric
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            isReturnDefaultValues = true
         }
     }
 
@@ -134,6 +143,14 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
 
+    // ─── Hilt (DI) ──────────────────────────────────────────────────────
+    implementation(libs.hilt.android)
+    ksp(libs.hilt.compiler)
+    implementation(libs.androidx.hilt.navigation.compose)
+
+    // ─── Lifecycle (ViewModel + runtime) ────────────────────────────────
+    implementation(libs.androidx.lifecycle.viewmodel.ktx)
+
     // ─── Security ────────────────────────────────────────────────────────
     implementation(libs.androidx.security.crypto)
 
@@ -162,6 +179,10 @@ dependencies {
 
     // ─── Testing ─────────────────────────────────────────────────────────
     testImplementation(libs.junit)
+    testImplementation(libs.mockk)
+    testImplementation(libs.kotlinx.coroutines.test)
+    testImplementation(libs.truth)
+    testImplementation(libs.robolectric)
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
 }
