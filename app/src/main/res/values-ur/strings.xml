@@ -18,6 +18,10 @@
     <string name="cancel">منسوخ کریں</string>
     <string name="nuclear_protection">ایٹمی تحفظ</string>
     <string name="give_permissions">باقی اجازتیں یہاں دیں</string>
+    <string name="action_back">واپس</string>
+    <string name="action_open">کھولیں</string>
+    <string name="action_enable">اجازت دیں</string>
+    <string name="action_granted">اجازت دی گئی</string>
     <string name="focus_subtitle">مکمل توجہ، صفر خلفشار</string>
     <string name="password_block">پاس ورڈ لاک</string>
     <string name="password_block_sub">مستقل یا مدت (تبدیلی کے لیے پاس ورڈ درکار ہے)</string>
@@ -25,9 +29,29 @@
     <string name="time_block_sub">دن اور گھنٹے (منسوخ کرنا ناممکن ہے)</string>
     <string name="view_active_sessions">فعال سیشنز دیکھیں</string>
     <string name="swipe_hint">← اعداد و شمار دیکھنے کے لیے سوائپ کریں →</string>
-    
-    <!-- مینو آئٹمز -->
     <string name="limits_and_security">حدود اور سیکیورٹی</string>
     <string name="intruder_log">دراندازی لاگ</string>
     <string name="language_settings">زبان</string>
+    <string name="auth_locked_content_description">ایپ لاک ہے</string>
+    <string name="auth_locked_title">ایپ لاک ہے</string>
+    <string name="auth_locked_description">FocusGuard تک رسائی کے لیے اپنا پاس ورڈ درج کریں</string>
+    <string name="auth_password_label">پاس ورڈ</string>
+    <string name="auth_show_password">پاس ورڈ دکھائیں</string>
+    <string name="auth_hide_password">پاس ورڈ چھپائیں</string>
+    <string name="auth_wrong_password">غلط پاس ورڈ۔</string>
+    <string name="auth_unlock_button">ان لاک</string>
+    <string name="auth_biometrics_button">بائیو میٹرکس استعمال کریں</string>
+    <string name="action_no">نہیں</string>
+    <string name="action_yes">ہاں</string>
+    <string name="action_ok">ٹھیک ہے</string>
+    <string name="app_selection_title">ایپس منتخب کریں</string>
+    <string name="app_selection_preventive">روک تھام بلاک (انسٹال نہیں)</string>
+    <string name="app_selection_show_more">مزید دکھائیں (+%1$s ایپس)</string>
+    <string name="app_selection_show_less">کم دکھائیں</string>
+    <string name="app_selection_installed">انسٹال شدہ ایپس</string>
+    <string name="ativar_bloqueio">بلاکنگ فعال کریں</string>
+    <string name="abrir_telefone_para_emergencia">ایمرجنسی کے لیے فون کھولیں</string>
+    <string name="abrir_acessibilidade">رسائی کھولیں</string>
+    <string name="administrador">ایڈمنسٹریٹر</string>
+    <string name="ativar">فعال کریں</string>
 </resources>

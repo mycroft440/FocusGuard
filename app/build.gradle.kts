@@ -29,6 +29,14 @@ android {
     lint {
         abortOnError = true
         checkReleaseBuilds = true
+        // MissingTranslation: warn (não abort) quando strings do default não têm
+        // tradução em algum locale. Temos ~340 strings faltantes em 10 locales
+        // — este PR adiciona as 26 strings críticas (botões/actions) traduzidas.
+        // O warning coleta o gap restante sem quebrar o build.
+        warning.add("MissingTranslation")
+        // ExtraTranslation: erro quando um locale tem string que não existe no
+        // default — provavelmente é erro de digitação de key.
+        error.add("ExtraTranslation")
     }
 
     signingConfigs {

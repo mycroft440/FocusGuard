@@ -18,6 +18,10 @@
     <string name="cancel">取消</string>
     <string name="nuclear_protection">核保护</string>
     <string name="give_permissions">在此授予其余权限</string>
+    <string name="action_back">返回</string>
+    <string name="action_open">打开</string>
+    <string name="action_enable">授予</string>
+    <string name="action_granted">已授予</string>
     <string name="focus_subtitle">全程专注，零干扰</string>
     <string name="password_block">密码锁定</string>
     <string name="password_block_sub">固定或周期（更改需密码）</string>
@@ -25,9 +29,29 @@
     <string name="time_block_sub">天数和小时（无法取消）</string>
     <string name="view_active_sessions">查看活动会话</string>
     <string name="swipe_hint">← 左右滑动查看统计 →</string>
-    
-    <!-- 菜单项 -->
     <string name="limits_and_security">限制与安全</string>
     <string name="intruder_log">入侵者日志</string>
     <string name="language_settings">语言</string>
+    <string name="auth_locked_content_description">应用已锁定</string>
+    <string name="auth_locked_title">应用已锁定</string>
+    <string name="auth_locked_description">输入您的密码以访问 FocusGuard</string>
+    <string name="auth_password_label">密码</string>
+    <string name="auth_show_password">显示密码</string>
+    <string name="auth_hide_password">隐藏密码</string>
+    <string name="auth_wrong_password">密码错误。</string>
+    <string name="auth_unlock_button">解锁</string>
+    <string name="auth_biometrics_button">使用生物识别</string>
+    <string name="action_no">否</string>
+    <string name="action_yes">是</string>
+    <string name="action_ok">确定</string>
+    <string name="app_selection_title">选择应用</string>
+    <string name="app_selection_preventive">预防性阻止（未安装）</string>
+    <string name="app_selection_show_more">显示更多（+%1$s 个应用）</string>
+    <string name="app_selection_show_less">显示更少</string>
+    <string name="app_selection_installed">已安装应用</string>
+    <string name="ativar_bloqueio">启用阻止</string>
+    <string name="abrir_telefone_para_emergencia">打开电话以应对紧急情况</string>
+    <string name="abrir_acessibilidade">打开无障碍</string>
+    <string name="administrador">管理员</string>
+    <string name="ativar">启用</string>
 </resources>

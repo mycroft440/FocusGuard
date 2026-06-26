@@ -18,6 +18,10 @@
     <string name="cancel">Annuler</string>
     <string name="nuclear_protection">Protection nucléaire</string>
     <string name="give_permissions">Accordez les autorisations restantes ici</string>
+    <string name="action_back">Retour</string>
+    <string name="action_open">Ouvrir</string>
+    <string name="action_enable">Accorder</string>
+    <string name="action_granted">Accordé</string>
     <string name="focus_subtitle">Concentration totale, zéro distraction</string>
     <string name="password_block">Blocage par mot de passe</string>
     <string name="password_block_sub">Fixe ou période (Nécessite un mot de passe pour changer)</string>
@@ -25,9 +29,29 @@
     <string name="time_block_sub">Jours et heures (Impossible à annuler)</string>
     <string name="view_active_sessions">Voir les sessions actives</string>
     <string name="swipe_hint">← Balayez pour voir les statistiques →</string>
-    
-    <!-- Éléments du menu -->
     <string name="limits_and_security">Limites et sécurité</string>
     <string name="intruder_log">Journal des intrus</string>
     <string name="language_settings">Langue</string>
+    <string name="auth_locked_content_description">Application verrouillée</string>
+    <string name="auth_locked_title">Application verrouillée</string>
+    <string name="auth_locked_description">Saisissez votre mot de passe pour accéder à FocusGuard</string>
+    <string name="auth_password_label">Mot de passe</string>
+    <string name="auth_show_password">Afficher le mot de passe</string>
+    <string name="auth_hide_password">Masquer le mot de passe</string>
+    <string name="auth_wrong_password">Mot de passe incorrect.</string>
+    <string name="auth_unlock_button">Déverrouiller</string>
+    <string name="auth_biometrics_button">Utiliser la biométrie</string>
+    <string name="action_no">Non</string>
+    <string name="action_yes">Oui</string>
+    <string name="action_ok">OK</string>
+    <string name="app_selection_title">Sélectionner les Applications</string>
+    <string name="app_selection_preventive">Blocage Préventif (Non Installées)</string>
+    <string name="app_selection_show_more">Afficher Plus (+%1$s apps)</string>
+    <string name="app_selection_show_less">Afficher Moins</string>
+    <string name="app_selection_installed">Applications Installées</string>
+    <string name="ativar_bloqueio">Activer le blocage</string>
+    <string name="abrir_telefone_para_emergencia">Ouvrir le téléphone pour les urgences</string>
+    <string name="abrir_acessibilidade">Ouvrir l'accessibilité</string>
+    <string name="administrador">Administrateur</string>
+    <string name="ativar">Activer</string>
 </resources>

@@ -19,7 +19,10 @@
     <string name="nuclear_protection">حماية نووية</string>
     <string name="give_permissions">امنح بقية الأذونات هنا</string>
     <string name="permissions_warning_new">سيعمل الحظر فقط إذا منحت جميع الأذونات للتطبيق</string>
-
+    <string name="action_back">رجوع</string>
+    <string name="action_open">فتح</string>
+    <string name="action_enable">منح</string>
+    <string name="action_granted">تم المنح</string>
     <string name="focus_subtitle">تركيز كامل، صفر مشتتات</string>
     <string name="password_block">قفل بكلمة مرور</string>
     <string name="password_block_sub">ثابت أو فترة (يتطلب كلمة مرور للتغيير)</string>
@@ -29,9 +32,29 @@
     <string name="swipe_hint">← اسحب لرؤية الإحصائيات →</string>
     <string name="usage_limits">حدود الاستخدام</string>
     <string name="usage_limits_sub">تحكم في الوقت اليومي للتطبيقات والمواقع</string>
-
-    <!-- Itens do Menu -->
     <string name="limits_and_security">الحدود والأمان</string>
     <string name="intruder_log">سجل الدخلاء</string>
     <string name="language_settings">اللغة</string>
+    <string name="auth_locked_content_description">التطبيق مقفل</string>
+    <string name="auth_locked_title">التطبيق مقفل</string>
+    <string name="auth_locked_description">أدخل كلمة المرور للوصول إلى FocusGuard</string>
+    <string name="auth_password_label">كلمة المرور</string>
+    <string name="auth_show_password">إظهار كلمة المرور</string>
+    <string name="auth_hide_password">إخفاء كلمة المرور</string>
+    <string name="auth_wrong_password">كلمة المرور غير صحيحة.</string>
+    <string name="auth_unlock_button">فتح القفل</string>
+    <string name="auth_biometrics_button">استخدم القياسات الحيوية</string>
+    <string name="action_no">لا</string>
+    <string name="action_yes">نعم</string>
+    <string name="action_ok">موافق</string>
+    <string name="app_selection_title">تحديد التطبيقات</string>
+    <string name="app_selection_preventive">الحظر الوقائي (غير المثبتة)</string>
+    <string name="app_selection_show_more">عرض أكثر (+%1$s تطبيقات)</string>
+    <string name="app_selection_show_less">عرض أقل</string>
+    <string name="app_selection_installed">التطبيقات المثبتة</string>
+    <string name="ativar_bloqueio">تفعيل الحظر</string>
+    <string name="abrir_telefone_para_emergencia">فتح الهاتف للطوارئ</string>
+    <string name="abrir_acessibilidade">فتح إمكانية الوصول</string>
+    <string name="administrador">المسؤول</string>
+    <string name="ativar">تفعيل</string>
 </resources>
