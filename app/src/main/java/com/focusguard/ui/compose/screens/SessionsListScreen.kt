@@ -179,7 +179,8 @@ fun SessionsListScreen(
                 val s = showDetailsSheet!!
                 showDetailsSheet = null
                 showAppPickerForSession = s
-            }
+            },
+            viewModel = viewModel
         )
     }
 
@@ -196,33 +197,19 @@ fun SessionsListScreen(
 fun SessionDetailsSheet(
     session: BlockSession, 
     onDismiss: () -> Unit,
-    onAddClick: () -> Unit
+    onAddClick: () -> Unit,
+    viewModel: SessionsListViewModel
 ) {
     val context = LocalContext.current
     val pm = remember { context.packageManager }
-    val database = remember { com.focusguard.database.AppDatabase.getDatabase(context) }
-    val scope = rememberCoroutineScope()
+    val detailsState by viewModel.detailsSheetState.collectAsState()
     
-    var blockedApps by remember { mutableStateOf<List<String>>(emptyList()) }
-    var blockedSites by remember { mutableStateOf<List<String>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
-
-    fun refresh() {
-        scope.launch {
-            isLoading = true
-            val data = withContext(Dispatchers.IO) {
-                val apps = database.sessionAppCrossRefDao().getAppsForSessions(listOf(session.id))
-                val sites = database.sessionWebsiteCrossRefDao().getWebsitesForSessions(listOf(session.id))
-                apps to sites
-            }
-            blockedApps = data.first
-            blockedSites = data.second
-            isLoading = false
-        }
-    }
-
     LaunchedEffect(session.id) {
-        refresh()
+        viewModel.loadSessionDetails(session.id)
+    }
+    // Quando o sheet fecha, reseta o estado para a próxima abertura
+    DisposableEffect(Unit) {
+        onDispose { viewModel.resetDetailsSheet() }
     }
 
     ModalBottomSheet(
@@ -246,14 +233,7 @@ fun SessionDetailsSheet(
                 
                 if (session.sessionType != "TIME") {
                     IconButton(onClick = {
-                        scope.launch {
-                            withContext(Dispatchers.IO) {
-                                database.sessionAppCrossRefDao().deleteForSession(session.id)
-                                database.sessionWebsiteCrossRefDao().deleteForSession(session.id)
-                                BlockingSessionManager.getInstance(context).checkAndEnforce()
-                            }
-                            refresh()
-                        }
+                        viewModel.clearAllBlockedContent(session.id)
                     }) {
                         Icon(Icons.Default.DeleteSweep, stringResource(R.string.sessions_clear_all), tint = DangerRed)
                     }
@@ -262,7 +242,7 @@ fun SessionDetailsSheet(
 
             Spacer(Modifier.height(16.dp))
 
-            if (isLoading) {
+            if (detailsState.isLoading) {
                 Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                     CircularProgressIndicator(color = AccentCyan)
                 }
@@ -271,7 +251,7 @@ fun SessionDetailsSheet(
                     modifier = Modifier.weight(1f).padding(horizontal = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    if (blockedApps.isEmpty() && blockedSites.isEmpty()) {
+                    if (detailsState.blockedApps.isEmpty() && detailsState.blockedSites.isEmpty()) {
                         item {
                             Box(Modifier.fillMaxWidth().padding(40.dp), contentAlignment = Alignment.Center) {
                                 Text(stringResource(R.string.sessions_no_content), color = TextHint, textAlign = TextAlign.Center)
@@ -279,9 +259,9 @@ fun SessionDetailsSheet(
                         }
                     }
 
-                    if (blockedApps.isNotEmpty()) {
+                    if (detailsState.blockedApps.isNotEmpty()) {
                         item { Text(stringResource(R.string.sessions_category_apps), color = AccentCyan, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
-                        items(blockedApps) { pkg ->
+                        items(detailsState.blockedApps) { pkg ->
                             val appName = try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() } catch (_: Exception) { pkg }
                             Row(
                                 modifier = Modifier.fillMaxWidth().background(DarkCard, RoundedCornerShape(12.dp)).padding(12.dp),
@@ -292,13 +272,7 @@ fun SessionDetailsSheet(
                                 Text(appName, color = TextPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
                                 if (session.sessionType != "TIME") {
                                     IconButton(onClick = {
-                                        scope.launch {
-                                            withContext(Dispatchers.IO) {
-                                                database.sessionAppCrossRefDao().deleteSpecificApp(session.id, pkg)
-                                                BlockingSessionManager.getInstance(context).checkAndEnforce()
-                                            }
-                                            refresh()
-                                        }
+                                        viewModel.removeAppFromSession(session.id, pkg)
                                     }) {
                                         Icon(Icons.Default.RemoveCircleOutline, stringResource(R.string.sessions_remove_item), tint = DangerRed.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
                                     }
@@ -307,9 +281,9 @@ fun SessionDetailsSheet(
                         }
                     }
 
-                    if (blockedSites.isNotEmpty()) {
+                    if (detailsState.blockedSites.isNotEmpty()) {
                         item { Spacer(Modifier.height(8.dp)); Text(stringResource(R.string.sessions_category_websites), color = AccentCyan, fontSize = 14.sp, fontWeight = FontWeight.Bold) }
-                        items(blockedSites) { site ->
+                        items(detailsState.blockedSites) { site ->
                             Row(
                                 modifier = Modifier.fillMaxWidth().background(DarkCard, RoundedCornerShape(12.dp)).padding(12.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -319,13 +293,7 @@ fun SessionDetailsSheet(
                                 Text(site, color = TextPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
                                 if (session.sessionType != "TIME") {
                                     IconButton(onClick = {
-                                        scope.launch {
-                                            withContext(Dispatchers.IO) {
-                                                database.sessionWebsiteCrossRefDao().deleteSpecificWebsite(session.id, site)
-                                                BlockingSessionManager.getInstance(context).checkAndEnforce()
-                                            }
-                                            refresh()
-                                        }
+                                        viewModel.removeSiteFromSession(session.id, site)
                                     }) {
                                         Icon(Icons.Default.RemoveCircleOutline, stringResource(R.string.sessions_remove_item), tint = DangerRed.copy(alpha = 0.6f), modifier = Modifier.size(20.dp))
                                     }

@@ -1,6 +1,7 @@
 package com.focusguard.ui.compose.screens.sessions
 
 import com.focusguard.database.BlockSession
+import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.repository.BlockSessionRepository
 import com.google.common.truth.Truth.assertThat
 import io.mockk.coEvery
@@ -29,6 +30,7 @@ import org.junit.Test
 class SessionsListViewModelTest {
 
     private val repository: BlockSessionRepository = mockk(relaxed = true)
+    private val blockingSessionManager: BlockingSessionManager = mockk(relaxed = true)
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var viewModel: SessionsListViewModel
 
@@ -36,7 +38,7 @@ class SessionsListViewModelTest {
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
         coEvery { repository.observeActiveSessions() } returns flowOf(emptyList())
-        viewModel = SessionsListViewModel(repository)
+        viewModel = SessionsListViewModel(repository, blockingSessionManager)
     }
 
     @After
@@ -57,7 +59,7 @@ class SessionsListViewModelTest {
         )
         coEvery { repository.observeActiveSessions() } returns flowOf(sessions)
         // Recriar o ViewModel para que pegue o novo flow mockado
-        viewModel = SessionsListViewModel(repository)
+        viewModel = SessionsListViewModel(repository, blockingSessionManager)
 
         // Aguardar o stateIn propagar
         testScheduler.advanceUntilIdle()
@@ -118,6 +120,19 @@ class SessionsListViewModelTest {
     }
 
     @Test
+    fun `clearAllBlockedContent calls checkAndEnforce to sync blocking state`() = runTest(testDispatcher) {
+        val sessionId = 7
+        coEvery { repository.getBlockedAppsForSession(sessionId) } returns emptyList()
+        coEvery { repository.getBlockedSitesForSession(sessionId) } returns emptyList()
+
+        viewModel.clearAllBlockedContent(sessionId)
+        testScheduler.advanceUntilIdle()
+
+        // Verifica que checkAndEnforce foi chamado exatamente 1x após a mutation
+        coVerify(exactly = 1) { blockingSessionManager.checkAndEnforce() }
+    }
+
+    @Test
     fun `removeAppFromSession delegates to repository and reloads details`() = runTest(testDispatcher) {
         val sessionId = 3
         val packageName = "com.example.app"
@@ -128,6 +143,32 @@ class SessionsListViewModelTest {
         testScheduler.advanceUntilIdle()
 
         coVerify(exactly = 1) { repository.removeAppFromSession(sessionId, packageName) }
+    }
+
+    @Test
+    fun `removeAppFromSession calls checkAndEnforce to sync blocking state`() = runTest(testDispatcher) {
+        val sessionId = 3
+        val packageName = "com.example.app"
+        coEvery { repository.getBlockedAppsForSession(sessionId) } returns emptyList()
+        coEvery { repository.getBlockedSitesForSession(sessionId) } returns emptyList()
+
+        viewModel.removeAppFromSession(sessionId, packageName)
+        testScheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { blockingSessionManager.checkAndEnforce() }
+    }
+
+    @Test
+    fun `removeSiteFromSession calls checkAndEnforce to sync blocking state`() = runTest(testDispatcher) {
+        val sessionId = 3
+        val domain = "example.com"
+        coEvery { repository.getBlockedAppsForSession(sessionId) } returns emptyList()
+        coEvery { repository.getBlockedSitesForSession(sessionId) } returns emptyList()
+
+        viewModel.removeSiteFromSession(sessionId, domain)
+        testScheduler.advanceUntilIdle()
+
+        coVerify(exactly = 1) { blockingSessionManager.checkAndEnforce() }
     }
 
     @Test
