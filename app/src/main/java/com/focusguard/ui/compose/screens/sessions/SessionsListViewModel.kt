@@ -137,17 +137,13 @@ class SessionsListViewModel @Inject constructor(
     // ─────────────────────────────────────────────────────────────────────
 
     /**
-     * Carrega os sites já bloqueados de uma sessão para o ContentPicker.
-     * Apps instalados no dispositivo são carregados diretamente na UI porque
-     * dependem de PackageManager (não do DB).
+     * Inicia o estado do ContentPicker para uma sessão.
+     * Reseta a lista de sites pendentes e o input.
+     * Apps instalados no dispositivo são carregados na UI porque dependem
+     * de PackageManager (não do DB) — o VM só cuida da lista de sites.
      */
-    fun loadContentPickerSites(sessionId: Int) {
-        viewModelScope.launch {
-            val sites = repository.getBlockedSitesForSession(sessionId)
-            _contentPickerState.value = _contentPickerState.value.copy(
-                sites = sites
-            )
-        }
+    fun initContentPicker() {
+        _contentPickerState.value = ContentPickerState()
     }
 
     /**
@@ -158,36 +154,66 @@ class SessionsListViewModel @Inject constructor(
     }
 
     /**
-     * Adiciona o site digitado à sessão.
-     * @return true se adicionou com sucesso, false se input estava vazio.
+     * Adiciona o site digitado à lista pendente (ainda não salva no DB).
+     * O site é commitado no DB apenas quando bulkAddContent é chamado.
+     * @return true se adicionou, false se input vazio ou site já na lista.
      */
-    fun addSiteToSession(sessionId: Int): Boolean {
-        val site = _contentPickerState.value.siteInput.trim()
-        if (site.isEmpty()) return false
+    fun addPendingSite(): Boolean {
+        val site = _contentPickerState.value.siteInput.trim().lowercase()
+        if (site.isBlank()) return false
+        if (_contentPickerState.value.sites.contains(site)) return false
 
-        viewModelScope.launch {
-            _contentPickerState.value = _contentPickerState.value.copy(isSaving = true)
-            repository.addSiteToSession(sessionId, site)
-            _contentPickerState.value = _contentPickerState.value.copy(
-                siteInput = "",
-                isSaving = false
-            )
-            loadContentPickerSites(sessionId)
-        }
+        _contentPickerState.value = _contentPickerState.value.copy(
+            sites = _contentPickerState.value.sites + site,
+            siteInput = ""
+        )
         return true
     }
 
     /**
-     * Adiciona um pacote de app à sessão (se ainda não estiver bloqueado).
+     * Remove um site da lista pendente (antes de salvar).
      */
-    fun addAppToSession(sessionId: Int, packageName: String) {
+    fun removePendingSite(site: String) {
+        _contentPickerState.value = _contentPickerState.value.copy(
+            sites = _contentPickerState.value.sites - site
+        )
+    }
+
+    /**
+     * Salva em bulk todos os apps selecionados + sites pendentes na sessão.
+     * Após salvar, chama checkAndEnforce() para sincronizar o bloqueio e
+     * reseta o estado do ContentPicker.
+     *
+     * @param sessionId ID da sessão destino
+     * @param selectedApps Lista de packageNames selecionados pelo usuário
+     * @return true sempre (a função não falha — errores são logados)
+     */
+    fun bulkAddContent(
+        sessionId: Int,
+        selectedApps: List<String>
+    ) {
+        val sitesToSave = _contentPickerState.value.sites
+
         viewModelScope.launch {
-            repository.addAppToSession(sessionId, packageName)
+            _contentPickerState.value = _contentPickerState.value.copy(isSaving = true)
+
+            // Insere todos os apps selecionados
+            selectedApps.forEach { pkg ->
+                repository.addAppToSession(sessionId, pkg)
+            }
+            // Insere todos os sites pendentes
+            sitesToSave.forEach { domain ->
+                repository.addSiteToSession(sessionId, domain)
+            }
+            // Sincroniza o estado de bloqueio com o Accessibility Service
+            blockingSessionManager.checkAndEnforce()
+
+            _contentPickerState.value = ContentPickerState()
         }
     }
 
     /**
-     * Reseta o estado do ContentPicker (chamar quando fechar).
+     * Reseta o estado do ContentPicker (chamar quando fechar sem salvar).
      */
     fun resetContentPicker() {
         _contentPickerState.value = ContentPickerState()
