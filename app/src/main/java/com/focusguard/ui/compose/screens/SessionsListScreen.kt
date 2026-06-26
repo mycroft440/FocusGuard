@@ -37,6 +37,7 @@ import com.focusguard.R
 import com.focusguard.security.AuthManager
 import com.focusguard.ui.compose.screens.SelectableAppUi
 import com.focusguard.ui.compose.screens.sessions.SessionsListViewModel
+import com.focusguard.ui.compose.screens.sessions.AuthViewModel
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -60,6 +61,7 @@ fun SessionsListScreen(
     //  - initContentPicker/addPendingSite/removePendingSite/bulkAddContent para ContentPickerSheet
     // Tudo via Repository + BlockingSessionManager injetados por Hilt.
     val viewModel: SessionsListViewModel = hiltViewModel()
+    val authViewModel: AuthViewModel = hiltViewModel()
     val sessions by viewModel.sessions.collectAsState()
     val filteredSessions = sessions.filter { it.sessionType == sessionType }
     
@@ -161,11 +163,16 @@ fun SessionsListScreen(
     val sessionIdToEnd = showPasswordPrompt
     if (sessionIdToEnd != null) {
         PasswordPromptDialog(
-            onDismiss = { showPasswordPrompt = null },
+            onDismiss = {
+                showPasswordPrompt = null
+                authViewModel.reset()
+            },
             onAuthenticated = {
                 viewModel.endSession(sessionIdToEnd)
                 showPasswordPrompt = null
-            }
+                authViewModel.reset()
+            },
+            authViewModel = authViewModel
         )
     }
 
@@ -456,14 +463,25 @@ fun ContentPickerSheet(
 }
 
 @Composable
-fun PasswordPromptDialog(onDismiss: () -> Unit, onAuthenticated: () -> Unit) {
+fun PasswordPromptDialog(
+    onDismiss: () -> Unit,
+    onAuthenticated: () -> Unit,
+    authViewModel: AuthViewModel
+) {
     val context = LocalContext.current
     val activity = context as? androidx.fragment.app.FragmentActivity
     val authManager = remember { AuthManager(context) }
-    var password by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
+    val authState by authViewModel.uiState.collectAsState()
     val scope = rememberCoroutineScope()
-    
+
+    // Observa sucesso de autenticação e chama callback
+    LaunchedEffect(authState.isAuthenticated) {
+        if (authState.isAuthenticated) {
+            onAuthenticated()
+            authViewModel.onAuthenticatedHandled()
+        }
+    }
+
     fun confirmBiometricSuccess() {
         scope.launch { onAuthenticated() }
     }
@@ -486,16 +504,16 @@ fun PasswordPromptDialog(onDismiss: () -> Unit, onAuthenticated: () -> Unit) {
                 Text(stringResource(R.string.sessions_end_desc), color = TextSecondary, fontSize = 14.sp)
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it; error = null },
+                    value = authState.password,
+                    onValueChange = { authViewModel.updatePassword(it) },
                     placeholder = { Text(stringResource(R.string.sessions_password_hint), color = TextHint) },
                     visualTransformation = androidx.compose.ui.text.input.PasswordVisualTransformation(),
-                    isError = error != null,
+                    isError = authState.error != null,
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = AccentCyan)
                 )
-                if (error != null) {
-                    Text(error!!, color = DangerRed, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
+                if (authState.error != null) {
+                    Text(authState.error!!, color = DangerRed, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
                 }
                 
                 if (activity != null) {
@@ -505,7 +523,7 @@ fun PasswordPromptDialog(onDismiss: () -> Unit, onAuthenticated: () -> Unit) {
                             authManager.showBiometricPrompt(
                                 activity = activity,
                                 onSuccess = { confirmBiometricSuccess() },
-                                onError = { error = it }
+                                onError = { authViewModel.setError(it) }
                             )
                         },
                         modifier = Modifier.fillMaxWidth()
@@ -520,16 +538,21 @@ fun PasswordPromptDialog(onDismiss: () -> Unit, onAuthenticated: () -> Unit) {
         confirmButton = {
             Button(
                 onClick = {
-                    scope.launch {
-                        if (authManager.verifyPassword(password)) {
-                            onAuthenticated()
-                        } else {
-                            error = context.getString(R.string.sessions_wrong_password)
-                        }
-                    }
+                    authViewModel.verifyPassword(
+                        errorMessage = context.getString(R.string.sessions_wrong_password)
+                    )
                 },
+                enabled = !authState.isVerifying && authState.password.isNotEmpty(),
                 colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
             ) {
+                if (authState.isVerifying) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = DarkBg
+                    )
+                    Spacer(Modifier.width(8.dp))
+                }
                 Text(stringResource(R.string.sessions_confirm), color = DarkBg)
             }
         },
