@@ -1,10 +1,9 @@
 # ============================================================================
 # FocusGuard - ProGuard / R8 rules
 # ============================================================================
-# Este arquivo ESTAVA FALTANDO no projeto (app/build.gradle referencia
-# 'proguard-rules.pro' mas o arquivo não existia). Adicionado como parte do
-# code review. Quando minifyEnabled for ligado em release, estas regras
-# impedem o R8 de remover/renomear código que precisa ser preservado.
+# Regras para preservar código que o R8 não deve remover/renomear quando
+# minifyEnabled true em release. Originalmente criado no PR #8 (CI improvements)
+# e ampliado no PR #10 (Phase 2 — R8 ativado em release).
 # ============================================================================
 
 # ----------------------------------------------------------------------------
