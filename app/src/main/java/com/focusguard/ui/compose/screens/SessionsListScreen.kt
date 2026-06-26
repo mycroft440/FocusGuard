@@ -52,21 +52,21 @@ fun SessionsListScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    // ViewModel (Hilt) fornece o flow de sessões ativas via Repository → Room.
-    // Antes: sessionManager.activeSessionsFlow (acesso direto ao singleton).
-    // Agora: viewModel.sessions (StateFlow que sobrevive a mudanças de config).
-    // sessionManager ainda é usado para SessionListItem (ações por-item) e
-    // para checkAndEnforce() em sub-sheets — migração dessas é deferred.
+    // ViewModel (Hilt) fornece:
+    //  - sessions (StateFlow) via Repository → Room
+    //  - isCurrentlyInBlockingWindow(session) para SessionListItem
+    //  - endSession(sessionId) para encerrar sessão após auth
+    //  - loadSessionDetails/clearAll/removeApp/removeSite para SessionDetailsSheet
+    //  - initContentPicker/addPendingSite/removePendingSite/bulkAddContent para ContentPickerSheet
+    // Tudo via Repository + BlockingSessionManager injetados por Hilt.
     val viewModel: SessionsListViewModel = hiltViewModel()
-    val sessionManager = remember { BlockingSessionManager.getInstance(context) }
     val sessions by viewModel.sessions.collectAsState()
     val filteredSessions = sessions.filter { it.sessionType == sessionType }
     
     var showPasswordPrompt by remember { mutableStateOf<Int?>(null) }
     var showDetailsSheet by remember { mutableStateOf<BlockSession?>(null) }
     var showAppPickerForSession by remember { mutableStateOf<BlockSession?>(null) }
-    val scope = rememberCoroutineScope()
-    
+
     val title = if (sessionType == "PASSWORD") stringResource(R.string.sessions_title_password) else stringResource(R.string.sessions_title_time)
     val icon = if (sessionType == "PASSWORD") Icons.Default.VpnKey else Icons.Default.Timer
 
@@ -145,8 +145,8 @@ fun SessionsListScreen(
                 ) {
                     items(filteredSessions, key = { it.id }) { session ->
                         SessionListItem(
-                            session = session, 
-                            sessionManager = sessionManager,
+                            session = session,
+                            viewModel = viewModel,
                             onRemoveBlock = { showPasswordPrompt = session.id },
                             onAddContent = { showAppPickerForSession = session },
                             onClick = { showDetailsSheet = session }
@@ -163,10 +163,8 @@ fun SessionsListScreen(
         PasswordPromptDialog(
             onDismiss = { showPasswordPrompt = null },
             onAuthenticated = {
-                scope.launch {
-                    sessionManager.endSession(sessionIdToEnd)
-                    showPasswordPrompt = null
-                }
+                viewModel.endSession(sessionIdToEnd)
+                showPasswordPrompt = null
             }
         )
     }
@@ -547,15 +545,15 @@ fun PasswordPromptDialog(onDismiss: () -> Unit, onAuthenticated: () -> Unit) {
 
 @Composable
 fun SessionListItem(
-    session: BlockSession, 
-    sessionManager: BlockingSessionManager,
+    session: BlockSession,
+    viewModel: SessionsListViewModel,
     onRemoveBlock: () -> Unit,
     onAddContent: () -> Unit,
     onClick: () -> Unit
 ) {
     val context = LocalContext.current
     var showMenu by remember { mutableStateOf(false) }
-    val isCurrentlyActive = sessionManager.isCurrentlyInBlockingWindow(session)
+    val isCurrentlyActive = viewModel.isCurrentlyInBlockingWindow(session)
     
     Card(
         modifier = Modifier

@@ -220,6 +220,26 @@ class SessionsListViewModel @Inject constructor(
     }
 
     // ─────────────────────────────────────────────────────────────────────
+    // SessionListItem actions
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * Verifica se uma sessão está atualmente na janela de bloqueio (ativa agora).
+     * Delega para BlockingSessionManager — mesma lógica do legacy.
+     */
+    fun isCurrentlyInBlockingWindow(session: BlockSession?): Boolean {
+        return blockingSessionManager.isCurrentlyInBlockingWindow(session)
+    }
+
+    /**
+     * Encerra uma sessão ativa (após autenticação do usuário).
+     * Delega para BlockingSessionManager.endSession — mesma lógica do legacy.
+     */
+    fun endSession(sessionId: Int) {
+        blockingSessionManager.endSession(sessionId)
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
 // Sub-estados tipados
 // ─────────────────────────────────────────────────────────────────────
 

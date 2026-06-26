@@ -377,4 +377,58 @@ class SessionsListViewModelTest {
         assertThat(viewModel.contentPickerState.value.sites).isEmpty()
         assertThat(viewModel.contentPickerState.value.isSaving).isFalse()
     }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // SessionListItem actions (isCurrentlyInBlockingWindow, endSession)
+    // ─────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `isCurrentlyInBlockingWindow delegates to BlockingSessionManager`() {
+        val session = mockk<BlockSession>(relaxed = true)
+        coEvery { blockingSessionManager.isCurrentlyInBlockingWindow(session) } returns true
+
+        val result = viewModel.isCurrentlyInBlockingWindow(session)
+
+        assertThat(result).isTrue()
+        coVerify(exactly = 1) { blockingSessionManager.isCurrentlyInBlockingWindow(session) }
+    }
+
+    @Test
+    fun `isCurrentlyInBlockingWindow returns false when manager returns false`() {
+        val session = mockk<BlockSession>(relaxed = true)
+        coEvery { blockingSessionManager.isCurrentlyInBlockingWindow(session) } returns false
+
+        val result = viewModel.isCurrentlyInBlockingWindow(session)
+
+        assertThat(result).isFalse()
+    }
+
+    @Test
+    fun `isCurrentlyInBlockingWindow handles null session`() {
+        coEvery { blockingSessionManager.isCurrentlyInBlockingWindow(null) } returns false
+
+        val result = viewModel.isCurrentlyInBlockingWindow(null)
+
+        assertThat(result).isFalse()
+        coVerify(exactly = 1) { blockingSessionManager.isCurrentlyInBlockingWindow(null) }
+    }
+
+    @Test
+    fun `endSession delegates to BlockingSessionManager`() {
+        val sessionId = 42
+        viewModel.endSession(sessionId)
+
+        coVerify(exactly = 1) { blockingSessionManager.endSession(sessionId) }
+    }
+
+    @Test
+    fun `endSession with different sessionIds delegates correctly`() {
+        viewModel.endSession(1)
+        viewModel.endSession(99)
+        viewModel.endSession(123)
+
+        coVerify(exactly = 1) { blockingSessionManager.endSession(1) }
+        coVerify(exactly = 1) { blockingSessionManager.endSession(99) }
+        coVerify(exactly = 1) { blockingSessionManager.endSession(123) }
+    }
 }
