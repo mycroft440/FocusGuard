@@ -3,6 +3,7 @@ package com.focusguard.ui.compose.screens.sessions
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.focusguard.database.BlockSession
+import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.repository.BlockSessionRepository
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -39,10 +40,13 @@ data class SessionsListUiState(
  *
  * Observa o [BlockSessionRepository] para a lista de sessões ativas e expõe
  * ações para gerenciar apps/sites bloqueados de uma sessão específica.
+ * Após qualquer mutação (add/remove/clear), chama [BlockingSessionManager.checkAndEnforce]
+ * para sincronizar o estado de bloqueio com o Accessibility Service.
  */
 @HiltViewModel
 class SessionsListViewModel @Inject constructor(
-    private val repository: BlockSessionRepository
+    private val repository: BlockSessionRepository,
+    private val blockingSessionManager: BlockingSessionManager
 ) : ViewModel() {
 
     /**
@@ -87,30 +91,36 @@ class SessionsListViewModel @Inject constructor(
 
     /**
      * Limpa todos os apps/sites bloqueados de uma sessão.
+     * Após limpar, chama checkAndEnforce() para sincronizar o bloqueio.
      */
     fun clearAllBlockedContent(sessionId: Int) {
         viewModelScope.launch {
             repository.clearAllBlockedContent(sessionId)
+            blockingSessionManager.checkAndEnforce()
             loadSessionDetails(sessionId)
         }
     }
 
     /**
      * Remove um app específico de uma sessão.
+     * Após remover, chama checkAndEnforce() para sincronizar o bloqueio.
      */
     fun removeAppFromSession(sessionId: Int, packageName: String) {
         viewModelScope.launch {
             repository.removeAppFromSession(sessionId, packageName)
+            blockingSessionManager.checkAndEnforce()
             loadSessionDetails(sessionId)
         }
     }
 
     /**
      * Remove um site específico de uma sessão.
+     * Após remover, chama checkAndEnforce() para sincronizar o bloqueio.
      */
     fun removeSiteFromSession(sessionId: Int, domain: String) {
         viewModelScope.launch {
             repository.removeSiteFromSession(sessionId, domain)
+            blockingSessionManager.checkAndEnforce()
             loadSessionDetails(sessionId)
         }
     }
