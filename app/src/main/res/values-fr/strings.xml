@@ -51,7 +51,7 @@
     <string name="app_selection_installed">Applications Installées</string>
     <string name="ativar_bloqueio">Activer le blocage</string>
     <string name="abrir_telefone_para_emergencia">Ouvrir le téléphone pour les urgences</string>
-    <string name="abrir_acessibilidade">Ouvrir l'accessibilité</string>
+    <string name="abrir_acessibilidade">Ouvrir l\'accessibilité</string>
     <string name="administrador">Administrateur</string>
     <string name="ativar">Activer</string>
 </resources>
