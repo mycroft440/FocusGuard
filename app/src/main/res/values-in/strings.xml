@@ -18,6 +18,10 @@
     <string name="cancel">Batal</string>
     <string name="nuclear_protection">Perlindungan Nuklir</string>
     <string name="give_permissions">Berikan izin yang tersisa di sini</string>
+    <string name="action_back">Kembali</string>
+    <string name="action_open">Buka</string>
+    <string name="action_enable">Berikan</string>
+    <string name="action_granted">Diberikan</string>
     <string name="focus_subtitle">Fokus Total, Tanpa Gangguan</string>
     <string name="password_block">Blokir Kata Sandi</string>
     <string name="password_block_sub">Tetap atau Periode (Memerlukan kata sandi untuk mengubah)</string>
@@ -25,9 +29,29 @@
     <string name="time_block_sub">Hari dan Jam (Mustahil untuk dibatalkan)</string>
     <string name="view_active_sessions">Lihat Sesi Aktif</string>
     <string name="swipe_hint">← Geser untuk melihat statistik →</string>
-    
-    <!-- Item Menu -->
     <string name="limits_and_security">Batas &amp; Keamanan</string>
     <string name="intruder_log">Log Penyusup</string>
     <string name="language_settings">Bahasa</string>
+    <string name="auth_locked_content_description">Aplikasi terkunci</string>
+    <string name="auth_locked_title">Aplikasi terkunci</string>
+    <string name="auth_locked_description">Masukkan kata sandi Anda untuk mengakses FocusGuard</string>
+    <string name="auth_password_label">Kata sandi</string>
+    <string name="auth_show_password">Tampilkan kata sandi</string>
+    <string name="auth_hide_password">Sembunyikan kata sandi</string>
+    <string name="auth_wrong_password">Kata sandi salah.</string>
+    <string name="auth_unlock_button">Buka kunci</string>
+    <string name="auth_biometrics_button">Gunakan biometrik</string>
+    <string name="action_no">Tidak</string>
+    <string name="action_yes">Ya</string>
+    <string name="action_ok">OK</string>
+    <string name="app_selection_title">Pilih Aplikasi</string>
+    <string name="app_selection_preventive">Blokir Pencegahan (Tidak Terpasang)</string>
+    <string name="app_selection_show_more">Tampilkan Lebih Banyak (+%1$s aplikasi)</string>
+    <string name="app_selection_show_less">Tampilkan Lebih Sedikit</string>
+    <string name="app_selection_installed">Aplikasi Terpasang</string>
+    <string name="ativar_bloqueio">Aktifkan pemblokiran</string>
+    <string name="abrir_telefone_para_emergencia">Buka telepon untuk darurat</string>
+    <string name="abrir_acessibilidade">Buka aksesibilitas</string>
+    <string name="administrador">Administrator</string>
+    <string name="ativar">Aktifkan</string>
 </resources>

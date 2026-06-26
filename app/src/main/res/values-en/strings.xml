@@ -18,6 +18,10 @@
     <string name="cancel">Cancel</string>
     <string name="nuclear_protection">Nuclear Protection</string>
     <string name="give_permissions">Grant remaining permissions here</string>
+    <string name="action_back">Back</string>
+    <string name="action_open">Open</string>
+    <string name="action_enable">Grant</string>
+    <string name="action_granted">Granted</string>
     <string name="focus_subtitle">Total Focus, Zero Distractions</string>
     <string name="password_block">Password Block</string>
     <string name="password_block_sub">Fixed or Period (Requires password to change)</string>
@@ -25,9 +29,29 @@
     <string name="time_block_sub">Days and Hours (Impossible to cancel)</string>
     <string name="view_active_sessions">View Active Sessions</string>
     <string name="swipe_hint">← Swipe to see statistics →</string>
-    
-    <!-- New Hamburger Menu Items -->
     <string name="limits_and_security">Limits &amp; Security</string>
     <string name="intruder_log">Intruder Log</string>
     <string name="language_settings">Language</string>
+    <string name="auth_locked_content_description">App locked</string>
+    <string name="auth_locked_title">App locked</string>
+    <string name="auth_locked_description">Enter your password to access FocusGuard</string>
+    <string name="auth_password_label">Password</string>
+    <string name="auth_show_password">Show password</string>
+    <string name="auth_hide_password">Hide password</string>
+    <string name="auth_wrong_password">Wrong password.</string>
+    <string name="auth_unlock_button">Unlock</string>
+    <string name="auth_biometrics_button">Use biometrics</string>
+    <string name="action_no">No</string>
+    <string name="action_yes">Yes</string>
+    <string name="action_ok">OK</string>
+    <string name="app_selection_title">Select Apps</string>
+    <string name="app_selection_preventive">Preventive Block (Not Installed)</string>
+    <string name="app_selection_show_more">Show More (+%1$s apps)</string>
+    <string name="app_selection_show_less">Show Less</string>
+    <string name="app_selection_installed">Installed Apps</string>
+    <string name="ativar_bloqueio">Enable blocking</string>
+    <string name="abrir_telefone_para_emergencia">Open phone for emergency</string>
+    <string name="abrir_acessibilidade">Open accessibility</string>
+    <string name="administrador">Administrator</string>
+    <string name="ativar">Enable</string>
 </resources>
