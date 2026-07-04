@@ -54,9 +54,11 @@ class AuthManager(context: Context) {
     }
 
     private suspend fun runMigrationOnce() {
-        // Companion-level synchronization — garante que apenas a primeira
-        // instância de AuthManager dispare a migração Room/SecurePrefs.
-        synchronized(migrationLock) {
+        // Companion-level synchronization via Mutex — garante que apenas a
+        // primeira instância de AuthManager dispare a migração Room/SecurePrefs.
+        // Usamos Mutex (não synchronized) porque migrateSharedPreferencesToRoom
+        // é suspend — Kotlin proíbe suspensão dentro de synchronized{}.
+        migrationMutex.withLock {
             if (migrationCompleted) return
             migrateSharedPreferencesToRoom()
             migratePrefsToSecure()
@@ -268,7 +270,10 @@ class AuthManager(context: Context) {
         // de AuthManager (criadas por callers legados) não disparem migração
         // em paralelo. Quando todos os callers forem migrados para Hilt, isso
         // pode ser removido (Hilt garante singleton).
-        private val migrationLock = Any()
+        //
+        // Mutex (não synchronized/Object) porque migrateSharedPreferencesToRoom
+        // é suspend — Kotlin proíbe suspensão dentro de synchronized{}.
+        private val migrationMutex = kotlinx.coroutines.sync.Mutex()
         @Volatile
         private var migrationCompleted = false
 
