@@ -41,9 +41,18 @@ object StrictPomodoroLock {
     fun isActive(context: Context): Boolean {
         val endTime = getEndTime(context)
         val active = endTime > System.currentTimeMillis()
-        if (!active && endTime > 0L) {
-            clear(context)
-        }
+        // ANTIGO: this.clear() era chamado aqui se endTime expirou.
+        // PROBLEMA: isActive() é chamado por múltiplas threads (PomodoroManager,
+        // BlockingAccessibilityService, PomodoroForegroundService, receivers).
+        // Se duas threads chamam isActive() ao mesmo tempo quando a sessão
+        // expirou, ambas disparam clear() — race condition. Pior: se uma
+        // thread está no meio de iniciar uma NOVA sessão (save()) enquanto
+        // outra chama isActive() com endTime antigo, clear() pode apagar
+        // o estado recém-criado.
+        //
+        // SOLUÇÃO: isActive() é uma função de LEITURA pura. A limpeza do
+        // estado expirado deve ser responsabilidade do PomodoroManager
+        // (que é singleton e coordena stop/clear).
         return active
     }
 

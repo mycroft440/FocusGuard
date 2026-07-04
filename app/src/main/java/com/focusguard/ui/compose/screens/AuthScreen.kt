@@ -20,9 +20,6 @@ import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -72,23 +69,30 @@ fun AuthScreen(
 
     val handleUnlock = {
         scope.launch {
-            if (authManager.verifyPassword(passwordInput)) {
-                onUnlock()
-            } else {
-                shakeOffset = 20f // [L1] Trigger shake
-                val failed = authManager.incrementFailedAttempts()
-                val limit = authManager.getMaxPasswordAttempts()
+            try {
+                if (authManager.verifyPassword(passwordInput)) {
+                    onUnlock()
+                } else {
+                    shakeOffset = 20f // [L1] Trigger shake
+                    val failed = authManager.incrementFailedAttempts()
+                    val limit = authManager.getMaxPasswordAttempts()
 
-                errorMessage = when {
-                    limit > 0 && failed >= limit -> {
-                        if (authManager.isPhotoCaptureEnabled()) {
-                            cameraManager.setupAndCaptureSilent(activity) { _ -> }
+                    errorMessage = when {
+                        limit > 0 && failed >= limit -> {
+                            if (authManager.isPhotoCaptureEnabled()) {
+                                cameraManager.setupAndCaptureSilent(activity) { _ -> }
+                            }
+                            activity.getString(R.string.auth_wrong_password_limit)
                         }
-                        activity.getString(R.string.auth_wrong_password_limit)
+                        limit > 0 -> activity.getString(R.string.auth_wrong_password_attempt, failed, limit)
+                        else -> activity.getString(R.string.auth_wrong_password)
                     }
-                    limit > 0 -> activity.getString(R.string.auth_wrong_password_attempt, failed, limit)
-                    else -> activity.getString(R.string.auth_wrong_password)
                 }
+            } catch (e: Throwable) {
+                // Captura Throwable — em release builds com R8, podem ocorrer
+                // Errors que escapam de catch(Exception) e crasham o app na
+                // tela de unlock, impedindo o usuário de acessar o app.
+                errorMessage = activity.getString(R.string.auth_wrong_password)
             }
         }
     }

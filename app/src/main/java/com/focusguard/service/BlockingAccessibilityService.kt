@@ -1,7 +1,6 @@
 package com.focusguard.service
 
 import android.accessibilityservice.AccessibilityService
-import androidx.compose.ui.res.stringResource
 import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Notification
 import android.app.NotificationChannel
@@ -134,7 +133,15 @@ class BlockingAccessibilityService : AccessibilityService() {
             addAction(Intent.ACTION_PACKAGE_CHANGED)
             addDataScheme("package")
         }
-        registerReceiver(packageReceiver, packageFilter)
+        // Em API 33+ (Tiramisu), registerReceiver sem flag de exported lança
+        // SecurityException. Como este receiver só precisa receber broadcasts
+        // do sistema (ACTION_PACKAGE_*), usamos RECEIVER_NOT_EXPORTED.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(packageReceiver, packageFilter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(packageReceiver, packageFilter)
+        }
 
         val refreshFilter = IntentFilter(ACTION_REFRESH_BLOCKING)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -250,8 +257,12 @@ class BlockingAccessibilityService : AccessibilityService() {
                     }
                 }
             }
-        } catch (e: Exception) {
-            com.focusguard.utils.FocusGuardLogger.log("A11y", "Erro no onAccessibilityEvent: ${e.message}")
+        } catch (e: Throwable) {
+            // Captura Throwable (não só Exception) — em release builds com R8,
+            // NoClassDefFoundError/NoSuchMethodError/OutOfMemoryError podem
+            // escapar de catch(Exception) e derrubar o Accessibility Service
+            // permanentemente, desativando todo o bloqueio do app.
+            com.focusguard.utils.FocusGuardLogger.logError("A11y", "Erro no onAccessibilityEvent: ${e.message}", e)
         }
     }
 
@@ -326,7 +337,10 @@ class BlockingAccessibilityService : AccessibilityService() {
                     blockedWebsitesDomainSet = allBlockedWebsites
                     lastLoadTime = System.currentTimeMillis()
                 }
-            } catch (_: Exception) {
+            } catch (e: Throwable) {
+                // Loga erro em vez de silenciar — antes era catch(_: Exception) {}
+                // que mascarava falhas de bloqueio sem nenhum rastro.
+                com.focusguard.utils.FocusGuardLogger.logError("A11y", "Falha em refreshData", e)
             } finally {
                 isRefreshing.set(false)
             }

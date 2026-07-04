@@ -3,9 +3,8 @@ package com.focusguard.ui
 import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.OnBackPressedCallback
 import dagger.hilt.android.AndroidEntryPoint
-
-import androidx.activity.addCallback
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -29,13 +28,18 @@ class BlockNoticeActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        onBackPressedDispatcher.addCallback(this) {
-            if (intent.getBooleanExtra("STRICT_BLOCK", false)) {
-                // Bloqueado
-            } else {
-                finish()
+        // Em STRICT_BLOCK (Pomodoro rigoroso), o back é bloqueado — o lambda
+        // retorna Unit mas o callback não deve propagar (o sistema trata).
+        // Em modo normal, finish() permite sair da tela de aviso.
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (!intent.getBooleanExtra("STRICT_BLOCK", false)) {
+                    isEnabled = false
+                    onBackPressedDispatcher.onBackPressed()
+                }
+                // Em STRICT_BLOCK: não faz nada — back bloqueado
             }
-        }
+        })
         setContent {
             FocusGuardTheme {
                 Box(

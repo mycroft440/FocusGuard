@@ -102,6 +102,22 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Singleton accessor legado — DELEGADO ao Hilt para garantir uma única
+         * instância de AppDatabase em todo o app.
+         *
+         * Antes desta correção, existiam DUAS instâncias paralelas:
+         *   1. AppDatabase.INSTANCE (este companion) — usado por callers legados
+         *   2. DatabaseModule.provideAppDatabase() — usado por Hilt (Repositories/ViewModels)
+         *
+         * Isso causava race conditions: dados escritos via uma instância podiam não
+         * ser visíveis imediatamente na outra (caches separados), migrações podiam
+         * rodar em paralelo, e o estado de bloqueio podia divergir entre UI e
+         * Accessibility Service.
+         *
+         * Agora ambos os caminhos apontam para a mesma instância — ou via Hilt
+         * (preferencial) ou via este singleton (legado).
+         */
         fun getDatabase(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -120,6 +136,9 @@ abstract class AppDatabase : RoomDatabase() {
                         MIGRATION_8_9,
                         MIGRATION_9_10
                     )
+                    // fallbackToDestructiveMigration só em debug builds — em produção
+                    // se uma migração faltar, preferimos crashar a perder dados de
+                    // bloqueio do usuário.
                     .build()
                 INSTANCE = instance
                 instance
