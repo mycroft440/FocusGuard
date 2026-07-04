@@ -29,7 +29,6 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.launch
 import com.focusguard.security.CameraManager
 import com.focusguard.security.AuthManager

@@ -1,7 +1,6 @@
 package com.focusguard.service
 
 import android.app.AlarmManager
-import androidx.compose.ui.res.stringResource
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -67,6 +66,18 @@ class PomodoroForegroundService : Service() {
 
         fun scheduleWatchdogAlarm(context: Context) {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+
+            // Em Android 12+ (S), apps precisam solicitar explicitamente a
+            // permissão SCHEDULE_EXACT_ALARM ao usuário. Sem ela,
+            // setExactAndAllowWhileIdle lança SecurityException.
+            // Checamos canScheduleExactAlarms e fazemos fallback para set()
+            // (que é inexact mas não crasha) se a permissão não estiver concedida.
+            val canScheduleExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                alarmManager.canScheduleExactAlarms()
+            } else {
+                true
+            }
+
             val intent = Intent(context, com.focusguard.receiver.PomodoroWatchdogReceiver::class.java)
             val pendingIntent = PendingIntent.getBroadcast(
                 context,
@@ -76,12 +87,28 @@ class PomodoroForegroundService : Service() {
             )
             val triggerAt = System.currentTimeMillis() + WATCHDOG_INTERVAL_MS
             try {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+                if (canScheduleExact) {
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+                    } else {
+                        alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+                    }
                 } else {
-                    alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+                    // Fallback inexact — melhor que crashar. O watchdog loop
+                    // (delay 2s) ainda garante recuperação em ~2s.
+                    alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+                    FocusGuardLogger.log("PomodoroFGService", "Permissão SCHEDULE_EXACT_ALARM negada; usando alarme inexact")
                 }
-            } catch (e: Exception) {
+            } catch (e: SecurityException) {
+                // Mesmo com canScheduleExactAlarms true, ROMs OEM podem lançar SecurityException
+                FocusGuardLogger.logError("PomodoroFGService", "SecurityException ao agendar alarme watchdog (fallback para inexact)", e)
+                try {
+                    alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+                } catch (_: Throwable) {
+                    // Se até set() falhar, não há muito o que fazer — o
+                    // watchdog loop ainda roda no Foreground Service.
+                }
+            } catch (e: Throwable) {
                 FocusGuardLogger.logError("PomodoroFGService", "Falha ao agendar alarme watchdog", e)
             }
         }
@@ -138,6 +165,11 @@ class PomodoroForegroundService : Service() {
     private fun startWatchdogLoop() {
         watchdogJob?.cancel()
         watchdogJob = scope.launch {
+            // Loop com delay de 2s em vez de 300ms — antes chamava
+            // ensureLockActivityOnTop() via PendingIntent.send() 3.3x/segundo,
+            // consumindo bateria e podendo causar ANR se o PendingIntent travar.
+            // 2s é suficiente para garantir que o lock screen volte em tempo
+            // razoável sem saturar o main thread.
             while (true) {
                 try {
                     if (!StrictPomodoroLock.isActive(applicationContext)) {
@@ -147,16 +179,17 @@ class PomodoroForegroundService : Service() {
                         break
                     }
 
-                    // Atualizar notificação com tempo restante
+                    // Atualizar notificação com tempo restante (a cada 2s é suficiente)
                     updateNotification()
 
                     // Garantir que a PomodoroLockActivity esteja no topo
+                    // — chamado apenas a cada iteração (2s), não a cada 300ms
                     ensureLockActivityOnTop()
 
-                                } catch (e: Exception) {
+                } catch (e: Throwable) {
                     FocusGuardLogger.logError("PomodoroFGService", "Erro no loop watchdog", e)
                 }
-                delay(300)
+                delay(2000)
             }
         }
     }

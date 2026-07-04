@@ -97,8 +97,17 @@ class CameraManager(private val context: Context) {
             return
         }
 
+        // PRIVACIDADE: salva fotos de intruso em armazenamento PRIVADO do app
+        // (context.filesDir/IntruderPhotos/). Antes era getExternalFilesDir(null)
+        // — pasta que qualquer app com permissão READ_EXTERNAL_STORAGE pode ler
+        // em API < 29, e que pode ser acessível via SAF em outras APIs.
+        // Para um app de segurança, fotos de quem tentou desbloquear são
+        // altamente sensíveis e não devem sair do sandbox privado.
+        val photosDir = File(context.filesDir, "IntruderPhotos").apply {
+            if (!exists()) mkdirs()
+        }
         val photoFile = File(
-            context.getExternalFilesDir(null),
+            photosDir,
             SimpleDateFormat("yyyy-MM-dd-HH-mm-ss-SSS", Locale.US).format(System.currentTimeMillis()) + ".jpg"
         )
 

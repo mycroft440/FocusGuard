@@ -33,7 +33,7 @@ class BootReceiver : BroadcastReceiver() {
             context
         }
 
-        FocusGuardLogger.init(context)
+        FocusGuardLogger.init(storageContext)
         FocusGuardLogger.log("BootReceiver", "Boot detectado (action=$action, directBoot=$isDirectBoot)")
 
         // Verificação rápida via SharedPreferences (funciona mesmo em Direct Boot)

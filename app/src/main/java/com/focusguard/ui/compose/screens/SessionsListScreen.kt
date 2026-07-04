@@ -177,24 +177,32 @@ fun SessionsListScreen(
     }
 
     if (showDetailsSheet != null) {
+        val currentDetails = showDetailsSheet
         SessionDetailsSheet(
-            session = showDetailsSheet!!,
+            session = currentDetails!!,
             onDismiss = { showDetailsSheet = null },
             onAddClick = { 
-                val s = showDetailsSheet!!
-                showDetailsSheet = null
-                showAppPickerForSession = s
+                // Captura o ID antes de mudar o estado — evita race com
+                // recomposição que poderia setar showDetailsSheet = null
+                // entre o check e o uso (force-unwrap crash).
+                currentDetails?.let { s ->
+                    showDetailsSheet = null
+                    showAppPickerForSession = s
+                }
             },
             viewModel = viewModel
         )
     }
 
     if (showAppPickerForSession != null) {
-        ContentPickerSheet(
-            session = showAppPickerForSession!!,
-            onDismiss = { showAppPickerForSession = null },
-            viewModel = viewModel
-        )
+        val currentPicker = showAppPickerForSession
+        currentPicker?.let { session ->
+            ContentPickerSheet(
+                session = session,
+                onDismiss = { showAppPickerForSession = null },
+                viewModel = viewModel
+            )
+        }
     }
 }
 

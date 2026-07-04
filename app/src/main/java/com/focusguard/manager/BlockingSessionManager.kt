@@ -254,9 +254,27 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 val pomodoroSession = enforcingSessions.find { it.sessionType == "POMODORO" }
                 if (pomodoroSession?.isBlockingEnabled == true) {
                     setDoNotDisturbMode(true)
-                    val allApps = context.packageManager.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA).map { it.packageName }
+                    // Filtra apps sistema — tentar suspender apps sistema via
+                    // DevicePolicyManager.setPackagesSuspended lança
+                    // SecurityException ou é silenciosamente ignorado, e em
+                    // alguns ROMs causa watchdog kill. Filtramos por FLAG_SYSTEM
+                    // igual ao DeviceOwnerManager.syncSuspendedApps.
+                    val pm = context.packageManager
                     val phoneWhitelist = listOf("com.android.dialer", "com.google.android.dialer", "com.android.phone", "com.android.server.telecom", "com.samsung.android.dialer", "com.samsung.android.incallui")
-                    allApps.filter { pkg -> !phoneWhitelist.contains(pkg) && pkg != context.packageName }
+                    try {
+                        pm.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA)
+                            .filter { appInfo ->
+                                val pkg = appInfo.packageName
+                                // Não bloquear: próprio app, telefone, apps sistema
+                                pkg != context.packageName &&
+                                    !phoneWhitelist.contains(pkg) &&
+                                    (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0
+                            }
+                            .map { it.packageName }
+                    } catch (e: Throwable) {
+                        FocusGuardLogger.logError("BlockingSessionManager", "Falha ao listar apps para Pomodoro", e)
+                        emptyList()
+                    }
                 } else {
                     database.sessionAppCrossRefDao().getAppsForSessions(enforcingIds)
                 }
