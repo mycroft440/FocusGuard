@@ -101,23 +101,30 @@ object FocusGuardLogger {
                 "BREADCRUMBS (Últimas ações):\n" +
                 breadcrumbs.joinToString("\n") + "\n" +
                 "=".repeat(50)
-        
+
         val stackTrace = Log.getStackTraceString(throwable)
-        
-        // Operação bloqueante proposital para garantir escrita antes do app fechar
-        runBlocking {
-            mutex.withLock {
-                try {
-                    logFile?.let { file ->
-                        FileOutputStream(file, true).use { stream ->
-                            stream.write("$fatalHeader\nSTACKTRACE:\n$stackTrace\n".toByteArray())
-                            stream.flush()
-                        }
-                    }
-                } catch (e: Exception) {
-                    Log.e(TAG, "Erro ao gravar crash fatal", e)
+
+        // IMPORTANTE: NÃO usar runBlocking aqui.
+        // Antes esta função usava runBlocking { mutex.withLock { ... } } para
+        // garantir a escrita antes do app morrer. Porém, se o crash ocorreu
+        // dentro de uma coroutine (caso comum), runBlocking tenta aguardar
+        // a liberação do mutex que pode nunca chegar — causando deadlock
+        // silencioso e perdendo o log do crash.
+        //
+        // Agora escrevemos síncrono sem mutex: o pior caso é duas threads
+        // escrevendo ao mesmo tempo e corrompendo parcialmente o arquivo,
+        // mas em cenário de FATAL crash isso é aceitável — ter o log é mais
+        // importante que ter o log perfeitamente formatado.
+        try {
+            logFile?.let { file ->
+                FileOutputStream(file, true).use { stream ->
+                    stream.write("$fatalHeader\nSTACKTRACE:\n$stackTrace\n".toByteArray())
+                    stream.flush()
                 }
             }
+        } catch (e: Throwable) {
+            // Mesmo no fallback, não relançar — defaultHandler precisa rodar
+            Log.e(TAG, "Erro ao gravar crash fatal", e)
         }
     }
 

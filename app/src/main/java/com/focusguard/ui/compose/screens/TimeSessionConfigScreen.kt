@@ -12,11 +12,11 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
-import com.focusguard.database.AppDatabase
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.WebsiteUsageLimit
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
+import com.focusguard.ui.compose.rememberAppDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -35,6 +35,8 @@ fun TimeSessionConfigScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var hasPassword by remember { mutableStateOf(false) }
+    // P2-3: captura AppDatabase via Hilt EntryPoint antes das coroutines
+    val database = rememberAppDatabase()
 
     LaunchedEffect(passwordRefreshKey) {
         hasPassword = authManager.hasPasswordSet()
@@ -52,7 +54,6 @@ fun TimeSessionConfigScreen(
             }
 
             scope.launch(Dispatchers.IO) {
-                val database = AppDatabase.getDatabase(context)
                 val dailyLimitMinutes = (config.dailyLimitHours.coerceAtLeast(1) * 60)
                 val now = System.currentTimeMillis()
                 val lockMode = when (config.limitType) {

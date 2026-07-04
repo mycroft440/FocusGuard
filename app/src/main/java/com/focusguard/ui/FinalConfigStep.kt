@@ -34,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -44,7 +45,6 @@ import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
 import com.focusguard.ui.compose.theme.DarkCard
 import com.focusguard.ui.compose.theme.TextPrimary
-import com.focusguard.ui.compose.theme.TextSecondary
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -67,10 +67,10 @@ fun FinalConfigStep(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Configurar bloqueio por senha", color = TextPrimary) },
+                title = { Text(stringResource(R.string.final_config_title), color = TextPrimary) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", tint = TextPrimary)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.common_back), tint = TextPrimary)
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBg)
@@ -91,10 +91,10 @@ fun FinalConfigStep(
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Column(modifier = Modifier.padding(16.dp)) {
-                    Text("Bloqueio por senha", color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Text(stringResource(R.string.final_config_password_block), color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 18.sp)
                     Spacer(modifier = Modifier.height(10.dp))
                     Text(
-                        text = if (hasPassword) "Senha existente encontrada." else "Nenhuma senha encontrada. Crie uma senha para continuar.",
+                        text = if (hasPassword) stringResource(R.string.final_config_existing_password) else stringResource(R.string.final_config_no_password),
                         color = if (hasPassword) AccentCyan else DangerRed
                     )
                     Spacer(modifier = Modifier.height(16.dp))
@@ -104,7 +104,7 @@ fun FinalConfigStep(
                             colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                             shape = RoundedCornerShape(14.dp)
                         ) {
-                            Text("Criar senha", color = DarkBg)
+                            Text(stringResource(R.string.final_config_create_password), color = DarkBg)
                         }
                     }
                 }
@@ -135,7 +135,7 @@ fun FinalConfigStep(
                 colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                Text("Ativar bloqueio", color = DarkBg, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.final_config_activate_block), color = DarkBg, fontWeight = FontWeight.Bold)
             }
         }
     }

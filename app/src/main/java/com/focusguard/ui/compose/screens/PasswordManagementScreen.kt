@@ -29,10 +29,10 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.ui.res.stringResource
 import kotlinx.coroutines.launch
 import com.focusguard.security.CameraManager
 import com.focusguard.security.AuthManager
+import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.R
 import androidx.compose.foundation.BorderStroke
@@ -46,13 +46,16 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
     var isAuthenticated by remember { mutableStateOf(true) } // Temporarily true to avoid flicker if no passwords
     var authInput by remember { mutableStateOf("") }
     var authError by remember { mutableStateOf("") }
-    
+
     // Password list state
     var passwords by remember { mutableStateOf<List<String>>(emptyList()) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val activity = context as? FragmentActivity
     val cameraManager = remember { activity?.let { CameraManager(it) } }
+    // P2-4: usa Hilt EntryPoint via rememberAppDatabase() — substitui 4
+    // chamadas diretas a AppDatabase.getDatabase(context) neste arquivo.
+    val db = rememberAppDatabase()
 
     // Animation states
     var shakeOffset by remember { mutableStateOf(0f) }
@@ -167,11 +170,11 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                                         val entries = authManager.getStoredPasswordLabels()
                                         if (showEditDialog!! in entries.indices) {
                                             // Update logic moved here
-                                            val currentEntries = com.focusguard.database.AppDatabase.getDatabase(context).appPasswordDao().getAllStatic()
+                                            val currentEntries = db.appPasswordDao().getAllStatic()
                                             val entry = currentEntries[showEditDialog!!]
                                             val newSalt = AuthManager.generateSalt()
                                             val newHash = AuthManager.hashPasswordWithSalt(tempPassword, newSalt)
-                                            com.focusguard.database.AppDatabase.getDatabase(context).appPasswordDao().update(entry.copy(label = tempPasswordLabel, passwordHash = newHash, salt = newSalt))
+                                            db.appPasswordDao().update(entry.copy(label = tempPasswordLabel, passwordHash = newHash, salt = newSalt))
                                             
                                             passwords = authManager.getStoredPasswordLabels()
                                             tempPassword = ""
@@ -277,9 +280,9 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                                 activity = activity,
                                 onSuccess = {
                                     scope.launch {
-                                        val currentEntries = com.focusguard.database.AppDatabase.getDatabase(context).appPasswordDao().getAllStatic()
+                                        val currentEntries = db.appPasswordDao().getAllStatic()
                                         if (showDeleteAuthDialog!! in currentEntries.indices) {
-                                            com.focusguard.database.AppDatabase.getDatabase(context).appPasswordDao().delete(currentEntries[showDeleteAuthDialog!!])
+                                            db.appPasswordDao().delete(currentEntries[showDeleteAuthDialog!!])
                                             passwords = authManager.getStoredPasswordLabels()
                                             showDeleteAuthDialog = null
                                         }

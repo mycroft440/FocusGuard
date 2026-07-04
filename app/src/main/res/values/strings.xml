@@ -429,4 +429,17 @@
     <string name="quantidade_de_dias_max_120">Quantidade de dias (máx. 120)</string>
     <string name="eu_concordo_e_entendo_os_riscos">eu concordo e entendo os riscos</string>
 
+    <!-- FinalConfigStep / CreateSessionActivity i18n (P2-6, P2-8) -->
+    <string name="final_config_title">Configurar bloqueio por senha</string>
+    <string name="final_config_password_block">Bloqueio por senha</string>
+    <string name="final_config_existing_password">Senha existente encontrada.</string>
+    <string name="final_config_no_password">Nenhuma senha encontrada. Crie uma senha para continuar.</string>
+    <string name="final_config_create_password">Criar senha</string>
+    <string name="final_config_activate_block">Ativar bloqueio</string>
+    <string name="final_config_proceed">Prosseguir</string>
+    <string name="create_password_subtitle">Crie uma senha para desbloqueios autorizados.</string>
+    <string name="create_password_save">Salvar</string>
+    <string name="create_password_cancel">Cancelar</string>
+    <string name="common_back">Voltar</string>
+
 </resources>

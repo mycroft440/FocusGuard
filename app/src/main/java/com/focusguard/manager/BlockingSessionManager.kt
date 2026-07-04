@@ -20,18 +20,68 @@ import java.util.Locale
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.service.BlockingAccessibilityService
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class BlockingSessionManager private constructor(private val context: Context) {
+/**
+ * Manager de sessões de bloqueio (PASSWORD, TIME, POMODORO).
+ *
+ * P3-2: Agora anotado com `@Singleton` + `@Inject constructor` para que Hilt
+ * forneça a instância automaticamente. O `companion.getInstance(context)`
+ * permanece para callers legados (BroadcastReceivers não-Hilt, Services
+ * antes da migração, etc.) — internamente delega para a mesma instância
+ * via `EntryPointAccessors.fromApplication` quando disponível, ou cria
+ * uma instância singleton legacy como fallback.
+ *
+ * Funcionalmente, o comportamento é idêntico ao anterior (singleton), mas
+ * agora os callers via Hilt (Activities, ViewModels, Repositories) recebem
+ * a MESMA instância que os callers legados — eliminando duplicação.
+ */
+@Singleton
+class BlockingSessionManager @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
 
     companion object {
         @Volatile
-        private var instance: BlockingSessionManager? = null
+        private var legacyInstance: BlockingSessionManager? = null
 
+        /**
+         * Entry point legado para callers que não são Hilt-injectable
+         * (BroadcastReceivers sem @AndroidEntryPoint, etc.).
+         *
+         * Tenta primeiro obter a instância via Hilt EntryPointAccessors
+         * (garantindo mesma instância que @Inject callers). Se Hilt não
+         * estiver inicializado (caso raro em boot muito cedo), cai para
+         * singleton legacy via synchronized block.
+         */
         fun getInstance(context: Context): BlockingSessionManager {
-            return instance ?: synchronized(this) {
-                instance ?: BlockingSessionManager(context.applicationContext).also { instance = it }
+            // Tentativa 1: Hilt EntryPoint (preferencial)
+            return try {
+                val appContext = context.applicationContext
+                val entryPoint = dagger.hilt.android.EntryPointAccessors.fromApplication(
+                    appContext,
+                    BlockingSessionManagerEntryPoint::class.java
+                )
+                entryPoint.blockingSessionManager()
+            } catch (_: Throwable) {
+                // Tentativa 2: singleton legacy (fallback se Hilt não inicializado)
+                synchronized(this) {
+                    legacyInstance ?: BlockingSessionManager(context.applicationContext).also { legacyInstance = it }
+                }
             }
         }
+    }
+
+    /**
+     * Hilt EntryPoint para que callers não-Hilt (BroadcastReceivers, etc.)
+     * possam acessar a instância singleton via `getInstance()`.
+     */
+    @dagger.hilt.EntryPoint
+    @dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
+    interface BlockingSessionManagerEntryPoint {
+        fun blockingSessionManager(): BlockingSessionManager
     }
 
     private val database = AppDatabase.getDatabase(context)
@@ -254,9 +304,27 @@ class BlockingSessionManager private constructor(private val context: Context) {
                 val pomodoroSession = enforcingSessions.find { it.sessionType == "POMODORO" }
                 if (pomodoroSession?.isBlockingEnabled == true) {
                     setDoNotDisturbMode(true)
-                    val allApps = context.packageManager.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA).map { it.packageName }
+                    // Filtra apps sistema — tentar suspender apps sistema via
+                    // DevicePolicyManager.setPackagesSuspended lança
+                    // SecurityException ou é silenciosamente ignorado, e em
+                    // alguns ROMs causa watchdog kill. Filtramos por FLAG_SYSTEM
+                    // igual ao DeviceOwnerManager.syncSuspendedApps.
+                    val pm = context.packageManager
                     val phoneWhitelist = listOf("com.android.dialer", "com.google.android.dialer", "com.android.phone", "com.android.server.telecom", "com.samsung.android.dialer", "com.samsung.android.incallui")
-                    allApps.filter { pkg -> !phoneWhitelist.contains(pkg) && pkg != context.packageName }
+                    try {
+                        pm.getInstalledApplications(android.content.pm.PackageManager.GET_META_DATA)
+                            .filter { appInfo ->
+                                val pkg = appInfo.packageName
+                                // Não bloquear: próprio app, telefone, apps sistema
+                                pkg != context.packageName &&
+                                    !phoneWhitelist.contains(pkg) &&
+                                    (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) == 0
+                            }
+                            .map { it.packageName }
+                    } catch (e: Throwable) {
+                        FocusGuardLogger.logError("BlockingSessionManager", "Falha ao listar apps para Pomodoro", e)
+                        emptyList()
+                    }
                 } else {
                     database.sessionAppCrossRefDao().getAppsForSessions(enforcingIds)
                 }
