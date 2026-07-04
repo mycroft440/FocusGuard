@@ -4,6 +4,7 @@ import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.pm.PackageManager
+import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Calendar
@@ -66,7 +67,8 @@ class AdvancedUsageAnalytics(private val context: Context) {
 
         val stats = try {
             usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            FocusGuardLogger.logError("AdvancedUsageAnalytics", "Falha em queryUsageStats (phoneUsage)", e)
             return@withContext emptyList()
         }
         
@@ -113,7 +115,8 @@ class AdvancedUsageAnalytics(private val context: Context) {
         if (usageStatsManager == null) return@withContext emptyList()
         val stats = try {
             usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            FocusGuardLogger.logError("AdvancedUsageAnalytics", "Falha em queryUsageStats (mostUsed)", e)
             return@withContext emptyList()
         }
         val map = mutableMapOf<String, Long>()
@@ -121,7 +124,7 @@ class AdvancedUsageAnalytics(private val context: Context) {
         stats?.forEach { usage ->
             val hasLaunchIntent = try {
                 pm.getLaunchIntentForPackage(usage.packageName) != null
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 false
             }
 
@@ -145,37 +148,49 @@ class AdvancedUsageAnalytics(private val context: Context) {
         if (usageStatsManager == null) return@withContext emptyList()
         val events = try {
             usageStatsManager.queryEvents(startTime, endTime)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            // Captura Throwable (não apenas Exception) — em release builds com R8,
+            // podem ocorrer NoClassDefFoundError/NoSuchMethodError que escapam de
+            // catch(Exception) e crasham o app.
+            FocusGuardLogger.logError("AdvancedUsageAnalytics", "Falha em queryEvents", e)
             return@withContext emptyList()
         } ?: return@withContext emptyList()
 
+        // Objeto reutilizável para evitar alocações em cada iteração
         val event = UsageEvents.Event()
-        
+
         val openCounts = mutableMapOf<String, Int>()
         val closeCounts = mutableMapOf<String, Int>()
 
-        while (events.hasNextEvent()) {
-            events.getNextEvent(event)
-            val pkg = event.packageName ?: continue
-            val hasLaunchIntent = try {
-                pm.getLaunchIntentForPackage(pkg) != null
-            } catch (e: Exception) {
-                false
-            }
+        try {
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event)
+                val pkg = event.packageName ?: continue
+                val hasLaunchIntent = try {
+                    pm.getLaunchIntentForPackage(pkg) != null
+                } catch (e: Throwable) {
+                    false
+                }
 
-            if (hasLaunchIntent) {
-                when (event.eventType) {
-                    UsageEvents.Event.ACTIVITY_RESUMED -> openCounts[pkg] = (openCounts[pkg] ?: 0) + 1
-                    UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED -> closeCounts[pkg] = (closeCounts[pkg] ?: 0) + 1
+                if (hasLaunchIntent) {
+                    when (event.eventType) {
+                        UsageEvents.Event.ACTIVITY_RESUMED -> openCounts[pkg] = (openCounts[pkg] ?: 0) + 1
+                        UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED -> closeCounts[pkg] = (closeCounts[pkg] ?: 0) + 1
+                    }
                 }
             }
+        } catch (e: Throwable) {
+            // Em algumas ROMs OEM, hasNextEvent/getNextEvent podem lançar exceções
+            // estranhas (SecurityException, DeadObjectException, etc). Retorna o
+            // que já foi coletado em vez de crashar.
+            FocusGuardLogger.logError("AdvancedUsageAnalytics", "Falha no loop de eventos", e)
         }
 
         val allPkgs = (openCounts.keys + closeCounts.keys).toSet()
         val result = allPkgs.map { pkg ->
             AppEventStat(pkg, openCounts[pkg] ?: 0, closeCounts[pkg] ?: 0)
         }.sortedByDescending { it.openCount }
-        
+
         cachedEvents = key to result
         lastEventsTime = now
         result
@@ -189,17 +204,19 @@ class AdvancedUsageAnalytics(private val context: Context) {
         }
         val allLaunchableApps = try {
             pm.getInstalledApplications(PackageManager.GET_META_DATA)
+                .asSequence()
                 .filter {
                     val hasLaunchIntent = try {
                         pm.getLaunchIntentForPackage(it.packageName) != null
-                    } catch (e: Exception) {
+                    } catch (e: Throwable) {
                         false
                     }
                     hasLaunchIntent && it.packageName != context.packageName
                 }
                 .map { it.packageName }
                 .toSet()
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            FocusGuardLogger.logError("AdvancedUsageAnalytics", "Falha em getInstalledApplications", e)
             return@withContext emptyList()
         }
 
@@ -207,12 +224,15 @@ class AdvancedUsageAnalytics(private val context: Context) {
 
         val stats = try {
             usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
-        } catch (e: Exception) {
+        } catch (e: Throwable) {
+            FocusGuardLogger.logError("AdvancedUsageAnalytics", "Falha em queryUsageStats (neverUsed)", e)
             return@withContext allLaunchableApps.toList()
         }
         val usedApps = stats?.filter { it.totalTimeInForeground > 0 }?.map { it.packageName }?.toSet() ?: emptySet()
 
-        val result = (allLaunchableApps - usedApps).toList()
+        // Limita a 50 resultados — em devices com centenas de apps instalados,
+        // a lista "nunca usados" pode ser enorme e causar OOM ou UI lenta.
+        val result = (allLaunchableApps - usedApps).take(50)
         cachedNeverUsed = key to result
         lastNeverUsedTime = now
         result

@@ -40,6 +40,7 @@ import androidx.core.graphics.drawable.toBitmap
 import com.focusguard.R
 import com.focusguard.analytics.*
 import com.focusguard.ui.compose.theme.*
+import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -75,19 +76,21 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
     LaunchedEffect(Unit) {
         isLoading = true
         loadError = null
-        hasUsageAccess = PermissionUtils.isUsageAccessEnabled(context)
+        // wrap em runCatching — captura Throwable (não só Exception).
+        // Em release builds com R8, NoClassDefFoundError/NoSuchMethodError
+        // podem ocorrer e escapam de catch(Exception), crashando o app.
+        val result = runCatching {
+            hasUsageAccess = PermissionUtils.isUsageAccessEnabled(context)
 
-        if (!hasUsageAccess) {
-            isLoading = false
-            return@LaunchedEffect
-        }
+            if (!hasUsageAccess) {
+                return@runCatching null
+            }
 
-        try {
-            val data = withContext(Dispatchers.IO) {
+            withContext(Dispatchers.IO) {
                 val end = System.currentTimeMillis()
                 val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -7) }
                 val start7Days = cal.timeInMillis
-                
+
                 val calToday = Calendar.getInstance().apply {
                     set(Calendar.HOUR_OF_DAY, 0)
                     set(Calendar.MINUTE, 0)
@@ -103,15 +106,28 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                     neverUsedApps = analytics.getNeverUsedApps(start7Days, end)
                 )
             }
-            weeklyUsage = data.weeklyUsage
-            mostUsedApps = data.mostUsedApps
-            openCloseEvents = data.openCloseEvents
-            neverUsedApps = data.neverUsedApps
-        } catch (e: Exception) {
-            loadError = e.localizedMessage
-        } finally {
-            isLoading = false
         }
+
+        result
+            .onSuccess { data ->
+                if (data != null) {
+                    weeklyUsage = data.weeklyUsage
+                    mostUsedApps = data.mostUsedApps
+                    openCloseEvents = data.openCloseEvents
+                    neverUsedApps = data.neverUsedApps
+                }
+            }
+            .onFailure { e ->
+                // Loga stacktrace completo para diagnóstico em filesDir/FocusGuardLogs/
+                FocusGuardLogger.logError(
+                    "UsageStatsDashboard",
+                    "Falha ao carregar dados de insights",
+                    e
+                )
+                loadError = e.localizedMessage ?: e.javaClass.simpleName
+            }
+
+        isLoading = false
     }
 
     Scaffold(
@@ -166,13 +182,13 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                     modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(24.dp)
                 ) {
-                    item { Spacer(Modifier.height(8.dp)) }
+                    item(key = "header_spacer") { Spacer(Modifier.height(8.dp)) }
 
-                    item {
+                    item(key = "phone_usage_chart") {
                         PhoneUsageChartSection(weeklyUsage)
                     }
 
-                    item {
+                    item(key = "most_used_apps") {
                         MostUsedAppsSection(
                             apps = mostUsedApps,
                             pm = pm,
@@ -183,7 +199,7 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                         )
                     }
 
-                    item {
+                    item(key = "open_close_events") {
                         OpenCloseEventsSection(
                             events = openCloseEvents,
                             pm = pm,
@@ -192,7 +208,7 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                         )
                     }
 
-                    item {
+                    item(key = "never_used_apps") {
                         NeverUsedAppsSection(
                             apps = neverUsedApps,
                             pm = pm,
@@ -201,7 +217,7 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                         )
                     }
 
-                    item { Spacer(Modifier.height(32.dp)) }
+                    item(key = "footer_spacer") { Spacer(Modifier.height(32.dp)) }
                 }
             }
         }
@@ -497,25 +513,54 @@ fun AppUsageRow(pkg: String, timeMs: Long, pm: PackageManager) {
 
 @Composable
 fun AppIcon(pkg: String, pm: PackageManager, size: Int) {
-    val iconDrawable: Drawable? = try { pm.getApplicationIcon(pkg) } catch(e:Exception) { null }
+    // Carrega o drawable com try/catchThrowable — getApplicationIcon pode lançar
+    // NameNotFoundException (app desinstado entre coleta e renderização).
+    val iconDrawable: Drawable? = try {
+        pm.getApplicationIcon(pkg)
+    } catch (e: Throwable) {
+        null
+    }
+
     if (iconDrawable != null) {
-        Image(
-            bitmap = iconDrawable.toBitmap().asImageBitmap(),
-            contentDescription = null,
-            modifier = Modifier.size(size.dp).clip(CircleShape)
-        )
-    } else {
-        Box(
-            modifier = Modifier.size(size.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(Icons.Default.Language, null, tint = AccentCyan, modifier = Modifier.size((size/2).dp))
+        // toBitmap() pode falhar em AdaptiveIconDrawable com intrinsicWidth=-1
+        // em alguns devices/OEMs. runCatching evita crash e cai para o fallback.
+        val bitmap = runCatching {
+            iconDrawable.toBitmap(
+                width = if (iconDrawable.intrinsicWidth > 0) iconDrawable.intrinsicWidth else size,
+                height = if (iconDrawable.intrinsicHeight > 0) iconDrawable.intrinsicHeight else size
+            ).asImageBitmap()
+        }.getOrNull()
+
+        if (bitmap != null) {
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                modifier = Modifier.size(size.dp).clip(CircleShape)
+            )
+        } else {
+            AppIconFallback(size)
         }
+    } else {
+        AppIconFallback(size)
+    }
+}
+
+@Composable
+private fun AppIconFallback(size: Int) {
+    Box(
+        modifier = Modifier.size(size.dp).background(MaterialTheme.colorScheme.surfaceVariant, CircleShape),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(Icons.Default.Language, null, tint = AccentCyan, modifier = Modifier.size((size / 2).dp))
     }
 }
 
 fun getAppName(pkg: String, pm: PackageManager): String {
-    return try { pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString() } catch(e:Exception) { pkg }
+    return try {
+        pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0)).toString()
+    } catch (e: Throwable) {
+        pkg
+    }
 }
 
 private fun formatTime(millis: Long): String {
