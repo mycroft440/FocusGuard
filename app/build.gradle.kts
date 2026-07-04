@@ -25,6 +25,13 @@ android {
         versionName = "2.4.0-toolchain"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Room schema export directory — exportSchema=true em AppDatabase
+        // exige que o KSP saiba onde escrever os JSONs de schema.
+        // Os JSONs são commitados em app/schemas/ para auditoria.
+        ksp {
+            arg("room.schemaLocation", "$projectDir/schemas")
+        }
     }
 
     lint {

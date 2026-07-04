@@ -74,13 +74,20 @@ import com.focusguard.ui.compose.theme.TextSecondary
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class CreateSessionActivity : ComponentActivity() {
+
+    // Injetado via Hilt (AuthModule.provideAuthManager) — usa a MESMA instância
+    // singleton do app inteiro. Antes era `AuthManager(this)` direto, criando
+    // uma instância paralela que burlava o singleton do Hilt e podia disparar
+    // migrações em paralelo (corrigido em P0-2 no PR #20).
+    @Inject lateinit var authManager: AuthManager
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val sessionType = intent.getStringExtra("SESSION_TYPE") ?: "PASSWORD"
-        val authManager = AuthManager(this)
 
         setContent {
             FocusGuardTheme {
@@ -212,7 +219,7 @@ fun AppSelectionStep(
             colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
             shape = RoundedCornerShape(16.dp)
         ) {
-            Text("Prosseguir", color = DarkBg, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+            Text(stringResource(R.string.final_config_proceed), color = DarkBg, fontWeight = FontWeight.Bold, fontSize = 16.sp)
         }
     }
 }
@@ -230,10 +237,10 @@ fun PasswordCreationDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Criar senha", color = TextPrimary) },
+        title = { Text(stringResource(R.string.final_config_create_password), color = TextPrimary) },
         text = {
             Column {
-                Text("Crie uma senha para desbloqueios autorizados.", color = TextSecondary, fontSize = 14.sp)
+                Text(stringResource(R.string.create_password_subtitle), color = TextSecondary, fontSize = 14.sp)
                 Spacer(modifier = Modifier.height(16.dp))
                 OutlinedTextField(
                     value = password,
@@ -278,12 +285,12 @@ fun PasswordCreationDialog(
                 },
                 colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
             ) {
-                Text("Salvar", color = DarkBg)
+                Text(stringResource(R.string.create_password_save), color = DarkBg)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("Cancelar", color = TextSecondary)
+                Text(stringResource(R.string.create_password_cancel), color = TextSecondary)
             }
         },
         containerColor = DarkSurface,

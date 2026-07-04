@@ -15,7 +15,14 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         DailyUsageStat::class, AppPassword::class, PomodoroSession::class
     ],
     version = 10,
-    exportSchema = false
+    // ANTIGO: exportSchema = false — impossível auditar schema em produção.
+    // NOVO: true — Room exporta o schema JSON em app/schemas/ a cada build.
+    // Esses JSONs podem (e devem) ser commitados no repo para permitir:
+    //   1. Auditoria de mudanças de schema em code review
+    //   2. Validação automática de migrações em CI
+    //   3. Rollback seguro para versões anteriores
+    // O diretório de output é configurado no KSP args do app/build.gradle.kts.
+    exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun blockedAppDao(): BlockedAppDao

@@ -19,8 +19,10 @@ import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.database.AppDatabase
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.StrictPomodoroLock
+import com.focusguard.security.AuthManager
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.WebsiteBlocker
+import dagger.hilt.android.AndroidEntryPoint
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,17 +31,26 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Calendar
 import java.util.concurrent.atomic.AtomicBoolean
+import javax.inject.Inject
 
 /**
  * Accessibility Service that monitors and blocks distracting apps and websites.
  * Utilizes optimized caching mechanisms and Atomic concurrency guards.
+ *
+ * Anotado com @AndroidEntryPoint para que Hilt injete [AuthManager] (singleton)
+ * em vez de criar uma instância paralela via `AuthManager(this)` direto.
  */
+@AndroidEntryPoint
 class BlockingAccessibilityService : AccessibilityService() {
 
     private lateinit var database: AppDatabase
     private lateinit var sessionManager: BlockingSessionManager
     private lateinit var deviceOwnerManager: DeviceOwnerManager
-    private lateinit var authManager: com.focusguard.security.AuthManager
+
+    // Injetado via Hilt — usa a mesma instância singleton do app inteiro
+    // (corrigido em P0-2 / P3-1).
+    @Inject lateinit var authManager: AuthManager
+
     private val job = SupervisorJob()
     private val scope = CoroutineScope(job + Dispatchers.IO)
 
@@ -103,8 +114,15 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private var defaultLauncherPackage: String? = null
     private var usageStatsManager: android.app.usage.UsageStatsManager? = null
-    private val cachedCalendar = Calendar.getInstance()
-    private val cachedDateFormat = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+    // ANTIGO: cachedCalendar mutável compartilhado entre threads (refreshData
+    // roda em scope.launch(Dispatchers.IO) mas onAccessibilityEvent roda no
+    // main thread — ambas acessavam cachedCalendar sem sincronização).
+    // NOVO: criamos um Calendar local em cada uso — o custo de criação
+    // (~1μs) é desprezível vs. o custo de queryUsageStats (10-50ms) e evita
+    // race conditions que podiam produzir horários incorretos.
+    private val cachedDateFormat = ThreadLocal.withInitial {
+        java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault())
+    }
 
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -121,10 +139,10 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     override fun onCreate() {
         super.onCreate()
+        // authManager é injetado via Hilt (@Inject lateinit var acima).
         database = AppDatabase.getDatabase(this)
         sessionManager = BlockingSessionManager.getInstance(this)
         deviceOwnerManager = DeviceOwnerManager.getInstance(this)
-        authManager = com.focusguard.security.AuthManager(this)
         usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? android.app.usage.UsageStatsManager
 
         val packageFilter = IntentFilter().apply {
@@ -292,11 +310,13 @@ class BlockingAccessibilityService : AccessibilityService() {
                 val limitApps = mutableSetOf<String>()
                 val activeLimits = database.appUsageLimitDao().getAllActiveLimitsStatic()
                 if (activeLimits.isNotEmpty() && usageStatsManager != null) {
-                    cachedCalendar.timeInMillis = System.currentTimeMillis()
-                    cachedCalendar.set(Calendar.HOUR_OF_DAY, 0)
-                    cachedCalendar.set(Calendar.MINUTE, 0)
-                    cachedCalendar.set(Calendar.SECOND, 0)
-                    val startOfDay = cachedCalendar.timeInMillis
+                    val cal = Calendar.getInstance().apply {
+                        set(Calendar.HOUR_OF_DAY, 0)
+                        set(Calendar.MINUTE, 0)
+                        set(Calendar.SECOND, 0)
+                        set(Calendar.MILLISECOND, 0)
+                    }
+                    val startOfDay = cal.timeInMillis
                     val stats = usageStatsManager!!.queryUsageStats(
                         android.app.usage.UsageStatsManager.INTERVAL_DAILY,
                         startOfDay,
@@ -315,7 +335,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 val limitWebsites = mutableSetOf<String>()
                 val activeWebsiteLimits = database.websiteUsageLimitDao().getAllStatic().filter { it.isEnabled }
                 if (activeWebsiteLimits.isNotEmpty()) {
-                    val today = cachedDateFormat.format(java.util.Date())
+                    val today = cachedDateFormat.get()!!.format(java.util.Date())
                     val stats = database.dailyUsageStatDao().getStatsForDateStatic(today).associate { it.identifier to it.timeSpentMs }
                     activeWebsiteLimits.forEach { limit ->
                         val usageMs = stats[limit.domain] ?: 0L

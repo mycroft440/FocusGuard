@@ -13,12 +13,17 @@ import com.focusguard.ui.compose.navigation.FocusGuardNavHost
 import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
 
+    // Injetados via Hilt — usam singletons do app (corrigido em P0-2 / P3-1).
+    // Antes eram instanciados direto, criando instâncias paralelas e disparando
+    // migrações em paralelo (AuthManager) ou multiplas instâncias de manager.
+    @Inject lateinit var authManager: AuthManager
+
     private lateinit var deviceOwnerManager: DeviceOwnerManager
-    private lateinit var authManager: AuthManager
     private lateinit var pomodoroManager: PomodoroManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -36,8 +41,10 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
+        // DeviceOwnerManager e PomodoroManager ainda usam pattern getInstance()
+        // legado (P3-2/P3-3 não resolvidos). Quando migrados para Hilt, podem
+        // ser injetados igual ao AuthManager.
         deviceOwnerManager = DeviceOwnerManager.getInstance(applicationContext)
-        authManager = AuthManager(applicationContext)
         pomodoroManager = PomodoroManager.getInstance(applicationContext)
 
         FocusGuardLogger.log("MainActivity", "Managers inicializados com sucesso")
