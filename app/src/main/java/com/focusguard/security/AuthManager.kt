@@ -14,6 +14,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import java.security.MessageDigest
 import java.security.SecureRandom
 import javax.crypto.SecretKeyFactory
@@ -58,12 +59,20 @@ class AuthManager(context: Context) {
         // primeira instância de AuthManager dispare a migração Room/SecurePrefs.
         // Usamos Mutex (não synchronized) porque migrateSharedPreferencesToRoom
         // é suspend — Kotlin proíbe suspensão dentro de synchronized{}.
-        migrationMutex.withLock {
-            if (migrationCompleted) return
-            migrateSharedPreferencesToRoom()
-            migratePrefsToSecure()
-            migrationCompleted = true
+        //
+        // Não podemos usar `return` dentro de withLock (não-locally), então
+        // capturamos o resultado do bloco.
+        val alreadyDone = migrationMutex.withLock {
+            if (migrationCompleted) {
+                true
+            } else {
+                migrateSharedPreferencesToRoom()
+                migratePrefsToSecure()
+                migrationCompleted = true
+                false
+            }
         }
+        if (alreadyDone) return
     }
 
     private fun migratePrefsToSecure() {
