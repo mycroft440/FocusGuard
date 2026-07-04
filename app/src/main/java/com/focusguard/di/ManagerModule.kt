@@ -1,7 +1,7 @@
 package com.focusguard.di
 
 import android.content.Context
-import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.admin.DeviceOwnerManager
 import dagger.Module
 import dagger.Provides
 import dagger.hilt.InstallIn
@@ -10,15 +10,15 @@ import dagger.hilt.components.SingletonComponent
 import javax.inject.Singleton
 
 /**
- * Módulo Hilt que fornece os managers legados (que ainda usam o pattern
- * `getInstance(context)`) como dependências injetáveis.
+ * Módulo Hilt para managers legados que ainda usam `getInstance(context)`.
  *
- * Esta é uma solução de transição: mantém o `getInstance` para os 32 callers
- * legados que ainda fazem `BlockingSessionManager.getInstance(context)`,
- * mas permite que ViewModels e Repositories injetem a instância via Hilt.
+ * P3-2: `BlockingSessionManager` agora usa `@Inject constructor` direto —
+ * não precisa mais de @Provides aqui. Mantemos o módulo para `DeviceOwnerManager`
+ * que ainda usa pattern getInstance legado (P3-3 não cobre DeviceOwnerManager,
+ * será migrado em PR futura).
  *
- * Quando todos os callers forem migrados para Hilt, `getInstance` poderá ser
- * removido e o `BlockingSessionManager` convertido para `@Inject constructor`.
+ * Quando todos os managers forem migrados para `@Inject constructor`, este
+ * módulo pode ser removido completamente.
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -26,7 +26,7 @@ object ManagerModule {
 
     @Provides
     @Singleton
-    fun provideBlockingSessionManager(@ApplicationContext context: Context): BlockingSessionManager {
-        return BlockingSessionManager.getInstance(context)
+    fun provideDeviceOwnerManager(@ApplicationContext context: Context): DeviceOwnerManager {
+        return DeviceOwnerManager.getInstance(context)
     }
 }

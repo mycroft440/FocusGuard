@@ -25,9 +25,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.focusguard.database.AppDatabase
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.WebsiteUsageLimit
+import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.R
 import kotlinx.coroutines.Dispatchers
@@ -96,6 +96,8 @@ fun UsageLimitsScreen(onBack: () -> Unit) {
 fun AppLimitsTab(permissionsMissing: Boolean) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // P2-2: usa Hilt EntryPoint via rememberAppDatabase()
+    val db = rememberAppDatabase()
     var apps by remember { mutableStateOf<List<UsageLimitAppUi>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(true) }
@@ -110,7 +112,6 @@ fun AppLimitsTab(permissionsMissing: Boolean) {
             val pm = context.packageManager
             val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER)
             val resolveInfos = pm.queryIntentActivities(intent, 0)
-            val db = AppDatabase.getDatabase(context)
             val limitDao = db.appUsageLimitDao()
             val existingLimits = limitDao.getAllStatic().associateBy { it.packageName }
             val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
@@ -220,14 +221,14 @@ fun AppLimitsTab(permissionsMissing: Boolean) {
             onDismiss = { showDialog = false },
             onSave = { minutes, enabled, lockMode, lockPassword, lockUntil ->
                 scope.launch(Dispatchers.IO) {
-                    val db = AppDatabase.getDatabase(context).appUsageLimitDao()
+                    val limitDao = db.appUsageLimitDao()
                     if (minutes != null && minutes > 0) {
-                        db.insert(AppUsageLimit(selectedApp!!.packageName, selectedApp!!.appName, minutes, enabled, lockMode, lockPassword, lockUntil))
+                        limitDao.insert(AppUsageLimit(selectedApp!!.packageName, selectedApp!!.appName, minutes, enabled, lockMode, lockPassword, lockUntil))
                         val updated = selectedApp!!.copy(currentLimitMinutes = minutes, isEnabled = enabled, lockMode = lockMode, lockPasswordHash = lockPassword, lockUntilTimestamp = lockUntil)
                         apps = apps.map { if (it.packageName == updated.packageName) updated else it }
                     } else {
-                        val existing = db.getAllStatic().find { it.packageName == selectedApp!!.packageName }
-                        if (existing != null) db.delete(existing)
+                        val existing = limitDao.getAllStatic().find { it.packageName == selectedApp!!.packageName }
+                        if (existing != null) limitDao.delete(existing)
                         val updated = selectedApp!!.copy(currentLimitMinutes = null, isEnabled = false, lockMode = "NONE", lockPasswordHash = null, lockUntilTimestamp = null)
                         apps = apps.map { if (it.packageName == updated.packageName) updated else it }
                     }
@@ -264,6 +265,8 @@ fun AppLimitsTab(permissionsMissing: Boolean) {
 fun WebsiteLimitsTab(permissionsMissing: Boolean) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    // P2-2: usa Hilt EntryPoint via rememberAppDatabase()
+    val db = rememberAppDatabase()
     var sites by remember { mutableStateOf<List<WebsiteLimitUi>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var showAddDialog by remember { mutableStateOf(false) }
@@ -275,7 +278,6 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean) {
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            val db = AppDatabase.getDatabase(context)
             val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
             val allLimits = db.websiteUsageLimitDao().getAllStatic()
             val usageStats = db.dailyUsageStatDao().getStatsForDateStatic(today).associate { it.identifier to it.timeSpentMs }
@@ -319,9 +321,9 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean) {
                             } else {
                                 val action = {
                                     scope.launch(Dispatchers.IO) {
-                                        val db = AppDatabase.getDatabase(context).websiteUsageLimitDao()
-                                        val existing = db.getAllStatic().find { it.domain == site.domain }
-                                        if (existing != null) db.delete(existing)
+                                        val websiteDao = db.websiteUsageLimitDao()
+                                        val existing = websiteDao.getAllStatic().find { it.domain == site.domain }
+                                        if (existing != null) websiteDao.delete(existing)
                                         withContext(Dispatchers.Main) { sites = sites.filter { it.domain != site.domain } }
                                     }
                                     Unit
@@ -344,9 +346,9 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean) {
     if (showAddDialog) {
         AddWebsiteLimitDialog(permissionsMissing = permissionsMissing, onDismiss = { showAddDialog = false }, onSave = { domain, minutes, lockMode, lockPassword, lockUntil ->
             scope.launch(Dispatchers.IO) {
-                val db = AppDatabase.getDatabase(context).websiteUsageLimitDao()
+                val websiteDao = db.websiteUsageLimitDao()
                 val clean = domain.trim().lowercase().removePrefix("http://").removePrefix("https://").removePrefix("www.").trimEnd('/')
-                db.insert(WebsiteUsageLimit(clean, minutes, true, lockMode, lockPassword, lockUntil))
+                websiteDao.insert(WebsiteUsageLimit(clean, minutes, true, lockMode, lockPassword, lockUntil))
                 withContext(Dispatchers.Main) { sites = sites + WebsiteLimitUi(clean, minutes, true, 0L, lockMode, lockPassword, lockUntil); showAddDialog = false }
             }
         })
@@ -355,8 +357,8 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean) {
     if (showEditDialog && selectedSite != null) {
         EditWebsiteLimitDialog(site = selectedSite!!, permissionsMissing = permissionsMissing, onDismiss = { showEditDialog = false }, onSave = { minutes, enabled, lockMode, lockPassword, lockUntil ->
             scope.launch(Dispatchers.IO) {
-                val db = AppDatabase.getDatabase(context).websiteUsageLimitDao()
-                db.insert(WebsiteUsageLimit(selectedSite!!.domain, minutes, enabled, lockMode, lockPassword, lockUntil))
+                val websiteDao = db.websiteUsageLimitDao()
+                websiteDao.insert(WebsiteUsageLimit(selectedSite!!.domain, minutes, enabled, lockMode, lockPassword, lockUntil))
                 withContext(Dispatchers.Main) {
                     sites = sites.map { if (it.domain == selectedSite!!.domain) it.copy(dailyLimitMinutes = minutes, isEnabled = enabled, lockMode = lockMode, lockPasswordHash = lockPassword, lockUntilTimestamp = lockUntil) else it }
                     showEditDialog = false

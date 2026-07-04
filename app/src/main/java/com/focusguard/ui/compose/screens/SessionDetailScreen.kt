@@ -30,6 +30,7 @@ import androidx.compose.ui.text.style.TextAlign
 import com.focusguard.R
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.BlockSession
+import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.ui.compose.theme.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -43,7 +44,10 @@ fun SessionDetailScreen(
     onAddNewBlock: () -> Unit
 ) {
     val context = LocalContext.current
-    val db = remember { AppDatabase.getDatabase(context) }
+    // P2-1: usa Hilt EntryPoint via rememberAppDatabase() em vez de
+    // AppDatabase.getDatabase(context) direto (delega para o mesmo singleton
+    // mas arquiteturalmente correto — UI acessa DB via DI, não bypass).
+    val db = rememberAppDatabase()
     var sessions by remember { mutableStateOf<List<BlockSession>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
@@ -165,7 +169,8 @@ fun EmptySessionCard(type: String) {
 fun SessionDetailCard(session: BlockSession) {
     var expanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
-    val db = remember { AppDatabase.getDatabase(context) }
+    // P2-1: usa Hilt EntryPoint via rememberAppDatabase()
+    val db = rememberAppDatabase()
     var apps by remember { mutableStateOf<List<String>>(emptyList()) }
     var sites by remember { mutableStateOf<List<String>>(emptyList()) }
 

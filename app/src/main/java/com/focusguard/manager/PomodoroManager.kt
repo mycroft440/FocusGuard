@@ -8,6 +8,7 @@ import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.service.BlockingAccessibilityService
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -18,8 +19,21 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class PomodoroManager private constructor(private val context: Context) {
+/**
+ * Manager do Pomodoro (timer rigoroso com bloqueio).
+ *
+ * P3-3: Agora anotado com `@Singleton` + `@Inject constructor` para que Hilt
+ * forneça a instância automaticamente. O `companion.getInstance(context)`
+ * permanece para callers legados (BootReceiver, etc.) — internamente delega
+ * para a mesma instância via `EntryPointAccessors.fromApplication`.
+ */
+@Singleton
+class PomodoroManager @Inject constructor(
+    @ApplicationContext private val context: Context
+) {
 
     private val database = AppDatabase.getDatabase(context)
     private val dao = database.pomodoroSessionDao()
@@ -39,13 +53,40 @@ class PomodoroManager private constructor(private val context: Context) {
 
     companion object {
         @Volatile
-        private var instance: PomodoroManager? = null
+        private var legacyInstance: PomodoroManager? = null
 
+        /**
+         * Entry point legado para callers que não são Hilt-injectable
+         * (BroadcastReceivers como BootReceiver, etc.).
+         *
+         * Tenta primeiro obter a instância via Hilt EntryPointAccessors
+         * (garantindo mesma instância que @Inject callers). Se Hilt não
+         * estiver inicializado, cai para singleton legacy.
+         */
         fun getInstance(context: Context): PomodoroManager {
-            return instance ?: synchronized(this) {
-                instance ?: PomodoroManager(context.applicationContext).also { instance = it }
+            return try {
+                val appContext = context.applicationContext
+                val entryPoint = dagger.hilt.android.EntryPointAccessors.fromApplication(
+                    appContext,
+                    PomodoroManagerEntryPoint::class.java
+                )
+                entryPoint.pomodoroManager()
+            } catch (_: Throwable) {
+                synchronized(this) {
+                    legacyInstance ?: PomodoroManager(context.applicationContext).also { legacyInstance = it }
+                }
             }
         }
+    }
+
+    /**
+     * Hilt EntryPoint para que callers não-Hilt (BootReceiver, etc.) possam
+     * acessar a instância singleton via `getInstance()`.
+     */
+    @dagger.hilt.EntryPoint
+    @dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
+    interface PomodoroManagerEntryPoint {
+        fun pomodoroManager(): PomodoroManager
     }
 
     init {
