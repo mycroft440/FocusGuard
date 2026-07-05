@@ -76,6 +76,16 @@
             android:noHistory="true"
             android:theme="@style/Theme.FocusGuard" />
 
+        <activity
+            android:name=".ui.AccessibilityDisabledActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:launchMode="singleTask"
+            android:showWhenLocked="true"
+            android:taskAffinity="com.focusguard.a11ydisabled"
+            android:theme="@style/Theme.FocusGuard"
+            android:turnScreenOn="true" />
+
         <receiver
             android:name=".admin.FocusGuardDeviceAdminReceiver"
             android:exported="true"
