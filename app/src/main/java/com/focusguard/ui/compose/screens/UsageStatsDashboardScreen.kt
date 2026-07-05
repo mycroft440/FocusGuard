@@ -31,12 +31,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
 import com.focusguard.R
 import com.focusguard.analytics.*
 import com.focusguard.ui.compose.theme.*
@@ -59,7 +62,8 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
     val context = LocalContext.current
     val pm = context.packageManager
     val analytics = remember { AdvancedUsageAnalytics(context.applicationContext) }
-    
+    val lifecycleOwner = LocalLifecycleOwner.current
+
     var weeklyUsage by remember { mutableStateOf<List<DailyPhoneUsage>>(emptyList()) }
     var mostUsedApps by remember { mutableStateOf<List<AppUsageStat>>(emptyList()) }
     var openCloseEvents by remember { mutableStateOf<List<AppEventStat>>(emptyList()) }
@@ -73,7 +77,27 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
     var expandOpenClose by remember { mutableStateOf(false) }
     var expandNeverUsed by remember { mutableStateOf(false) }
 
-    LaunchedEffect(Unit) {
+    // Trigger que incrementa a cada ON_RESUME do lifecycle — usado para
+    // re-disparar o LaunchedEffect de carregamento. Sem isso, quando o
+    // usuário vai para Settings conceder Usage Access e volta, a tela
+    // continuava mostrando o fallback de "permissão necessária" porque o
+    // LaunchedEffect(Unit) só roda uma vez na entrada da composição.
+    var reloadTrigger by remember { mutableStateOf(0) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = object : DefaultLifecycleObserver {
+            override fun onResume(owner: LifecycleOwner) {
+                // Incrementa o trigger — dispara re-avaliação do LaunchedEffect
+                // abaixo. O analytics tem cache de 5min (CACHE_TTL), então a
+                // maioria dos reloads será quase instantânea.
+                reloadTrigger++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(reloadTrigger) {
         isLoading = true
         loadError = null
         // wrap em runCatching — captura Throwable (não só Exception).
