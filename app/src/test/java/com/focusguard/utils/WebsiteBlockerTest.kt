@@ -1,6 +1,7 @@
 package com.focusguard.utils
 
 import com.google.common.truth.Truth.assertThat
+import org.junit.Before
 import org.junit.Test
 
 /**
@@ -12,6 +13,16 @@ import org.junit.Test
  * bloqueia sites legítimos. Antes da Fase 3, este código não tinha testes.
  */
 class WebsiteBlockerTest {
+
+    /**
+     * Limpa o cache LRU antes de cada teste — sem isso, testes que usam a
+     * mesma URL com blocklists diferentes se interfeririam (cache hit
+     * retornaria o resultado do teste anterior).
+     */
+    @Before
+    fun setUp() {
+        WebsiteBlocker.clearCache()
+    }
 
     // ─────────────────────────────────────────────────────────────────────
     // extractDomain
@@ -160,5 +171,41 @@ class WebsiteBlockerTest {
     fun `isUrlBlocked handles multiple subdomain levels`() {
         val blocked = listOf("example.com")
         assertThat(WebsiteBlocker.isUrlBlocked("a.b.c.example.com", blocked)).isTrue()
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // Cache O(1) — comportamento de caching do isUrlBlocked
+    // ─────────────────────────────────────────────────────────────────────
+
+    @Test
+    fun `isUrlBlocked caches result for repeated calls`() {
+        // Primeira chamada computa e armazena no cache
+        val blocked = listOf("facebook.com")
+        val first = WebsiteBlocker.isUrlBlocked("https://facebook.com/home", blocked)
+        // Segunda chamada com mesma URL retorna do cache — não importa que
+        // a blocklist agora está vazia (cache hit retorna o valor anterior)
+        val second = WebsiteBlocker.isUrlBlocked("https://facebook.com/home", emptyList())
+        assertThat(first).isTrue()
+        assertThat(second).isTrue() // cache hit, não recomputa
+    }
+
+    @Test
+    fun `clearCache forces recomputation on next call`() {
+        val blocked = listOf("facebook.com")
+        // Primeira chamada popula cache
+        WebsiteBlocker.isUrlBlocked("https://facebook.com", blocked)
+        // Limpa cache
+        WebsiteBlocker.clearCache()
+        // Próxima chamada com blocklist vazia deve retornar false (recomputou)
+        val result = WebsiteBlocker.isUrlBlocked("https://facebook.com", emptyList())
+        assertThat(result).isFalse()
+    }
+
+    @Test
+    fun `isUrlBlocked is case insensitive for url input`() {
+        // URL em uppercase deve dar mesmo resultado que lowercase
+        val blocked = listOf("facebook.com")
+        assertThat(WebsiteBlocker.isUrlBlocked("HTTPS://FACEBOOK.COM", blocked)).isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked("https://facebook.com", blocked)).isTrue()
     }
 }

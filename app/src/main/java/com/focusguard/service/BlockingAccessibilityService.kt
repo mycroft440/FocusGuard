@@ -92,24 +92,53 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private var browserPackages: Set<String> = setOf()
     private val browserPackagesOriginal = setOf(
+        // Chromium-based
         "com.android.chrome",
+        "com.android.chrome.beta",
+        "com.android.chrome.dev",
+        "com.android.chrome.canary",
+        "com.microsoft.emmx",
+        "com.brave.browser",
+        "com.brave.browser_beta",
+        "com.kiwibrowser.browser",
+        "com.kiwibrowser.browser.dev",
+        "com.vivaldi.browser",
+        "com.vivaldi.browser.snapshot",
+        "com.ecosia.android",
+        "com.yandex.browser",
+        "com.UCMobile.intl",
+        "com.UCMobile.intl.mi",
+        // Mozilla
         "org.mozilla.firefox",
         "org.mozilla.firefox_beta",
+        "org.mozilla.fennec_aurora",
+        "org.mozilla.focus",
+        "org.mozilla.klar",
+        // Opera
         "com.opera.browser",
+        "com.opera.browser.beta",
         "com.opera.mini.native",
-        "com.microsoft.emmx",
+        "com.opera.gx",
+        // Samsung
         "com.sec.android.app.sbrowser",
-        "com.brave.browser",
-        "com.kiwibrowser.browser",
+        "com.sec.android.app.sbrowser.beta",
+        // DuckDuckGo
         "com.duckduckgo.mobile.android",
-        "com.vivaldi.browser",
-        "com.UCMobile.intl",
+        // Outros
+        "com.google.android.apps.chromeos",
+        // Apps com in-app browsers (detectados via WebView)
         "com.facebook.katana",
+        "com.facebook.lite",
         "com.instagram.android",
         "com.twitter.android",
         "com.zhiliaoapp.musically",
         "com.reddit.frontpage",
-        "com.linkedin.android"
+        "com.linkedin.android",
+        "com.tinder",
+        "com.whatsapp",
+        "com.telegram.messenger",
+        "org.telegram.messenger",
+        "com.discord"
     )
 
     private var defaultLauncherPackage: String? = null
@@ -355,6 +384,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                     isBlockingSessionActive = enforcingSessions.isNotEmpty() || limitApps.isNotEmpty() || pomodoroStrict || isAdultFilterActive
                     blockedAppsSet = allBlockedApps
                     blockedWebsitesDomainSet = allBlockedWebsites
+                    // Limpa cache O(1) do WebsiteBlocker — blocklist mudou,
+                    // URLs em cache podem estar desatualizadas.
+                    com.focusguard.utils.WebsiteBlocker.clearCache()
                     lastLoadTime = System.currentTimeMillis()
                 }
             } catch (e: Throwable) {
@@ -490,8 +522,20 @@ class BlockingAccessibilityService : AccessibilityService() {
         val packageName = event.packageName?.toString() ?: return
         if (!browserPackages.contains(packageName)) return
 
-        // Para navegadores, rootInActiveWindow e muito mais confiavel que event.source
-        // especialmente para capturar mudancas de URL que nao disparam TYPE_WINDOW_STATE_CHANGED
+        // ─── FAST PATH O(1) — tenta extrair URL diretamente do event ───
+        // Muito mais rápido que varrer árvore de nodes (~0ms vs 5-50ms).
+        // Firefox Focus, DuckDuckGo e browsers com toolbar custom expõem
+        // a URL via event.text ou event.contentDescription.
+        val eventUrl = com.focusguard.utils.WebsiteBlocker.extractUrlFromEvent(event)
+        if (eventUrl != null && isWebsiteBlocked(eventUrl)) {
+            com.focusguard.utils.FocusGuardLogger.log("A11y", "Bloqueado via event URL (fast path): $eventUrl")
+            blockWebsite()
+            return
+        }
+
+        // ─── SLOW PATH — varre árvore de nodes ───
+        // Para browsers que não expõem URL no event (Chrome, Edge, Firefox
+        // standard), precisamos varrer a árvore para achar o nó url_bar.
         val root = rootInActiveWindow ?: event.source ?: return
         try {
             if (isIncognitoMode(root)) {
@@ -499,7 +543,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 blockWebsite()
                 return
             }
-            
+
             // Verificacao explicita de YouTube (VIP para conter desvios)
             if (isYouTubeContent(root, packageName)) {
                 if (blockedWebsitesDomainSet.contains("youtube.com") || blockedWebsitesDomainSet.contains("youtu.be")) {
