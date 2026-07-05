@@ -1,6 +1,7 @@
 package com.focusguard
 
 import android.app.Application
+import com.focusguard.utils.AccessibilityStateMonitor
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.HiltAndroidApp
 
@@ -18,5 +19,9 @@ class FocusGuardApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         FocusGuardLogger.init(this)
+        // Inicia monitor de desativação do Accessibility Service.
+        // Detecta bypass via adb, App Info → Force Stop, etc., e lança
+        // AccessibilityDisabledActivity para forçar reativação.
+        AccessibilityStateMonitor.start(this)
     }
 }
