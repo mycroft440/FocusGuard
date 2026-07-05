@@ -442,4 +442,13 @@
     <string name="create_password_cancel">Cancelar</string>
     <string name="common_back">Voltar</string>
 
+    <!-- BlockNoticeActivity unlock with password -->
+    <string name="block_notice_unlock_with_password">Desbloquear com senha</string>
+    <string name="block_notice_unlock_title">Digite a senha para desbloquear</string>
+    <string name="block_notice_unlock_desc">Encerre a sessão de bloqueio atual digitando sua senha.</string>
+    <string name="block_notice_unlock_success">Sessão encerrada com sucesso</string>
+    <string name="block_notice_pomodoro_cannot_stop">O Pomodoro rigoroso não pode ser interrompido. Aguarde o tempo acabar.</string>
+    <string name="block_notice_time_cannot_revoke">O bloqueio por tempo não pode ser revogado durante a janela ativa. Aguarde o tempo acabar.</string>
+    <string name="block_notice_no_active_session">Nenhuma sessão ativa encontrada para encerrar.</string>
+
 </resources>
