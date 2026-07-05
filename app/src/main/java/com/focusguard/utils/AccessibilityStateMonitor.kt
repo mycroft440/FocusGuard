@@ -199,14 +199,13 @@ object AccessibilityStateMonitor {
                     Intent.FLAG_ACTIVITY_CLEAR_TASK or
                     Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
                 )
-                // FLAG_ACTIVITY_SHOW_WHEN_LOCKED e FLAG_ACTIVITY_TURN_SCREEN_ON
-                // foram adicionados em API 27 (O_MR1). Para compatibilidade
-                // com API 21+, só adicionamos se disponível.
+                // FLAG_ACTIVITY_SHOW_WHEN_LOCKED (0x00080000) e
+                // FLAG_ACTIVITY_TURN_SCREEN_ON (0x00100000) foram adicionados
+                // em API 27 (O_MR1). Em algumas versões do compileSdk eles
+                // não resolvem como constantes simbólicas — usamos os valores
+                // numéricos diretos para máxima compatibilidade.
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                    addFlags(
-                        Intent.FLAG_ACTIVITY_SHOW_WHEN_LOCKED or
-                        Intent.FLAG_ACTIVITY_TURN_SCREEN_ON
-                    )
+                    addFlags(0x00080000 or 0x00100000)
                 }
             }
             context.startActivity(intent)
