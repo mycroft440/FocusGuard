@@ -142,8 +142,17 @@ object WebsiteBlocker {
     fun extractDomain(url: String): String {
         return try {
             val cleanUrl = url.trim()
-            val urlObj = URL(if (cleanUrl.startsWith("http")) cleanUrl else "https://$cleanUrl")
-            urlObj.host?.removePrefix("www.")?.lowercase() ?: cleanUrl.lowercase()
+            // Case-insensitive check para "http" — antes era case-sensitive
+            // e falhava com "HTTPS://..." (adicionava "https://" na frente).
+            val withProtocol = if (cleanUrl.lowercase().startsWith("http")) {
+                cleanUrl
+            } else {
+                "https://$cleanUrl"
+            }
+            val urlObj = URL(withProtocol)
+            // lowercase ANTES do removePrefix para case-insensitive matching
+            // — antes era removePrefix("www.") que não funcionava com "WWW."
+            urlObj.host?.lowercase()?.removePrefix("www.") ?: cleanUrl.lowercase()
         } catch (_: Throwable) {
             // Fallback: simple string extraction
             try {

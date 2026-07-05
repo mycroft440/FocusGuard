@@ -56,8 +56,9 @@ class AuthManagerTest {
     @Test
     fun `hashPasswordWithSalt returns 64-char hex string (SHA-256 = 32 bytes)`() {
         val hash = AuthManager.hashPasswordWithSalt("test", "00000000000000000000000000000000")
-        assertThat(hash).hasLength(64) // 32 bytes * 2 chars/byte
-        assertThat(hash).matches("[0-9a-f]{64}")
+        // PBKDF2 scheme v2: prefix "v2:" + 64 hex chars (32 bytes SHA-256)
+        assertThat(hash).hasLength(67) // 3 (prefix) + 64 (hash)
+        assertThat(hash).matches("v2:[0-9a-f]{64}")
     }
 
     @Test
@@ -90,16 +91,16 @@ class AuthManagerTest {
         val salt = AuthManager.generateSalt()
         val hash = AuthManager.hashPasswordWithSalt("", salt)
         // Não deve lançar exceção e deve produzir hash válido
-        assertThat(hash).hasLength(64)
-        assertThat(hash).matches("[0-9a-f]{64}")
+        assertThat(hash).hasLength(67) // v2: prefix + 64 hex
+        assertThat(hash).matches("v2:[0-9a-f]{64}")
     }
 
     @Test
     fun `hashPasswordWithSalt handles unicode password`() {
         val salt = AuthManager.generateSalt()
         val hash = AuthManager.hashPasswordWithSalt("senhação☕", salt)
-        assertThat(hash).hasLength(64)
-        assertThat(hash).matches("[0-9a-f]{64}")
+        assertThat(hash).hasLength(67) // v2: prefix + 64 hex
+        assertThat(hash).matches("v2:[0-9a-f]{64}")
     }
 
     @Test
@@ -107,7 +108,7 @@ class AuthManagerTest {
         val salt = AuthManager.generateSalt()
         val longPassword = "a".repeat(10_000)
         val hash = AuthManager.hashPasswordWithSalt(longPassword, salt)
-        assertThat(hash).hasLength(64)
+        assertThat(hash).hasLength(67) // v2: prefix + 64 hex
     }
 
     @Test
