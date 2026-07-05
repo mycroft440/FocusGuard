@@ -19,7 +19,7 @@ import com.focusguard.utils.FocusGuardLogger
  *
  * Estratégia híbrida de detecção:
  *
- * 1. **BroadcastReceiver** para `AccessibilityManager.ACTION_ACCESSIBILITY_SERVICE_STATE_CHANGED`
+ * 1. **BroadcastReceiver** para `ACTION_STATE_CHANGED`
  *    — disparado pelo sistema quando o usuário ativa/desativa qualquer
  *    serviço de acessibilidade. Reação instantânea (~0ms).
  *
@@ -43,6 +43,18 @@ object AccessibilityStateMonitor {
     private var lastKnownEnabled = false
 
     /**
+     * Broadcast action disparada pelo sistema quando o usuário ativa/desativa
+     * qualquer serviço de acessibilidade.
+     *
+     * NOTA: ACTION_STATE_CHANGED
+     * foi adicionado em API 33 (Android 13). Para compatibilidade com
+     * API 21+ (minSdk), usamos a string literal diretamente. O valor é
+     * estável desde Android 5.0.
+     */
+    private const val ACTION_STATE_CHANGED =
+        "android.accessibilityservice.ACCESSIBILITY_SERVICE_STATE_CHANGED"
+
+    /**
      * Nome esperado do serviço de acessibilidade do FocusGuard.
      * Deve bater com o declarado em AndroidManifest.xml.
      */
@@ -56,7 +68,7 @@ object AccessibilityStateMonitor {
     private val stateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (context == null) return
-            if (intent?.action == AccessibilityManager.ACTION_ACCESSIBILITY_SERVICE_STATE_CHANGED) {
+            if (intent?.action == ACTION_STATE_CHANGED) {
                 FocusGuardLogger.log(TAG, "STATE_CHANGED broadcast recebido — verificando serviço")
                 checkAndHandle(context)
             }
@@ -74,7 +86,7 @@ object AccessibilityStateMonitor {
         lastKnownEnabled = isAccessibilityServiceEnabled(appContext)
 
         // Registra receiver para STATE_CHANGED
-        val filter = IntentFilter(AccessibilityManager.ACTION_ACCESSIBILITY_SERVICE_STATE_CHANGED)
+        val filter = IntentFilter(ACTION_STATE_CHANGED)
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 appContext.registerReceiver(stateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
@@ -185,10 +197,17 @@ object AccessibilityStateMonitor {
                 addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_CLEAR_TASK or
-                    Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS or
-                    Intent.FLAG_ACTIVITY_SHOW_WHEN_LOCKED or
-                    Intent.FLAG_ACTIVITY_TURN_SCREEN_ON
+                    Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
                 )
+                // FLAG_ACTIVITY_SHOW_WHEN_LOCKED e FLAG_ACTIVITY_TURN_SCREEN_ON
+                // foram adicionados em API 27 (O_MR1). Para compatibilidade
+                // com API 21+, só adicionamos se disponível.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_SHOW_WHEN_LOCKED or
+                        Intent.FLAG_ACTIVITY_TURN_SCREEN_ON
+                    )
+                }
             }
             context.startActivity(intent)
         } catch (e: Throwable) {

@@ -116,7 +116,7 @@ private fun AccessibilityDisabledScreen(onReactivate: () -> Unit) {
         while (true) {
             serviceEnabled = AccessibilityStateMonitor.isAccessibilityServiceEnabled(context)
             if (serviceEnabled) {
-                FocusGuardLogger.log(TAG, "Serviço reativado — fechando tela de bloqueio")
+                FocusGuardLogger.log("A11yDisabledActivity", "Serviço reativado — fechando tela de bloqueio")
                 delay(500) // Pequena delay para garantir estabilidade
                 (context as? androidx.activity.ComponentActivity)?.finish()
                 break
