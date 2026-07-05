@@ -326,8 +326,21 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     }
 
     /**
-     * Enforce SOTA Website Blocking via Managed Configurations (URLBlocklist)
-     * Applies to Chrome and Edge natively.
+     * Enforce SOTA Website Blocking via Managed Configurations (URLBlocklist).
+     *
+     * Aplica 3 policies no Chrome/Edge:
+     * 1. URLBlocklist — lista de domínios bloqueados (bloqueio no renderer)
+     * 2. DnsOverHttpsMode=off — DESATIVA DoH no Chrome/Edge. Sem isso, o
+     *    usuário pode ativar "Secure DNS" no Chrome e burlar o Private DNS
+     *    DoT do sistema (CleanBrowsing/NextDNS). Com DoH off, todo DNS do
+     *    Chrome passa pelo DoT Private DNS do FocusGuard → bloqueio
+     *    universal efetivo dentro do Chrome/Edge.
+     * 3. DnsOverHttpsTemplates="" — limpa templates DoH que o Chrome possa
+     *    ter cached (Cloudflare, Google, etc.).
+     *
+     * Cobertura: Chrome + Edge (Chromium-based que suportam managed config).
+     * Firefox/Brave/Opera não suportam URLBlocklist — cobertura vem da
+     * camada Accessibility.
      */
     fun enforceWebsiteRestrictions(domains: List<String>) {
         if (!isDeviceOwnerActive()) return
@@ -341,19 +354,29 @@ class DeviceOwnerManager private constructor(private val context: Context) {
                     domains
                 }
 
-                val restrictions = Bundle()
-                restrictions.putStringArray("URLBlocklist", limitedDomains.toTypedArray())
+                val restrictions = Bundle().apply {
+                    // 1. URL Blocklist — bloqueio no renderer do Chrome/Edge
+                    putStringArray("URLBlocklist", limitedDomains.toTypedArray())
+                    // 2. Desativar DNS-over-HTTPS no browser — fecha bypass DoH
+                    //    que permitiria ignorar o Private DNS DoT do FocusGuard.
+                    //    Valores válidos: "off" | "automatic" | "secure".
+                    //    "off" = nunca usar DoH (mesmo se o servidor suportar).
+                    putString("DnsOverHttpsMode", "off")
+                    // 3. Limpar templates DoH — garante que nenhum servidor DoH
+                    //    (Cloudflare 1.1.1.1, Google 8.8.8.8, etc.) fique cached.
+                    putString("DnsOverHttpsTemplates", "")
+                }
 
                 val attempt = sotaAttempts.incrementAndGet()
                 if (attempt <= 5) {
-                    Log.d("FocusGuardNuclear", "Tentativa SOTA (Managed Config) $attempt: ${limitedDomains.size} dominios")
+                    Log.d("FocusGuardNuclear", "Tentativa SOTA (Managed Config) $attempt: ${limitedDomains.size} dominios + DoH off")
                 }
 
                 dpm.setApplicationRestrictions(componentName, "com.android.chrome", restrictions)
                 dpm.setApplicationRestrictions(componentName, "com.microsoft.emmx", restrictions)
             } catch (e: android.os.TransactionTooLargeException) {
                 com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Erro: Limite de Binder excedido na restricao de URLs", e)
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Falha na operacao de Device Owner", e)
             }
         }
