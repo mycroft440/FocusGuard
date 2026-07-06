@@ -705,13 +705,38 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun blockWebsite() {
         try {
+            // ─── ESTRATÉGIA 1: Voltar para a página anterior (fecha aba atual) ───
+            // GLOBAL_ACTION_BACK simula o botão voltar. Em navegadores, isso
+            // volta para a página anterior ou fecha a aba se não houver histórico.
+            // Fazemos 2x para garantir que sai da página bloqueada.
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            try { Thread.sleep(50) } catch (_: Throwable) {}
+            performGlobalAction(GLOBAL_ACTION_BACK)
+
+            // ─── ESTRATÉGIA 2: Redirecionar para google.com (nova aba) ───
+            // Abre uma URL segura no navegador padrão. Se o navegador já estiver
+            // na página bloqueada, o ACTION_VIEW abre nova aba com google.com.
+            runCatching {
+                val redirectIntent = Intent(Intent.ACTION_VIEW, android.net.Uri.parse("https://www.google.com")).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                }
+                startActivity(redirectIntent)
+            }.onFailure { e ->
+                com.focusguard.utils.FocusGuardLogger.log("A11y", "Falha ao redirecionar para google.com: ${e.message}")
+            }
+
+            // ─── ESTRATÉGIA 3: Mostrar tela de bloqueio FocusGuard ───
+            // Overlay por cima de tudo explicando o bloqueio.
             val intent = Intent(this, com.focusguard.ui.BlockNoticeActivity::class.java).apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS)
                 putExtra("STRICT_BLOCK", isPomodoroStrictActive)
             }
             startActivity(intent)
-        } catch (e: Exception) {
+
+            com.focusguard.utils.FocusGuardLogger.log("A11y", "Site bloqueado: back×2 + redirect google.com + BlockNotice")
+        } catch (e: Throwable) {
             com.focusguard.utils.FocusGuardLogger.log("A11y", "Erro ao bloquear browser: ${e.message}")
+            // Fallback final: ir para home screen
             performGlobalAction(GLOBAL_ACTION_HOME)
         }
     }
