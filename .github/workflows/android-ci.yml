@@ -30,14 +30,20 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: chmod +x gradlew
       - name: Run Android Lint
-        run: ./gradlew lintDebug --no-daemon --stacktrace
-      - name: Upload Lint reports
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew lintDebug --no-daemon --stacktrace 2>&1 | tee lint-gradle.log
+      - name: Upload Lint diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lint-reports
-          path: app/build/reports/lint-results-*.html
-          if-no-files-found: ignore
+          name: lint-diagnostics
+          path: |
+            lint-gradle.log
+            app/build/reports/lint-results-*.html
+            app/build/reports/lint-results-*.xml
+          if-no-files-found: error
           retention-days: 14
 
   unit-tests:
@@ -53,16 +59,20 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: chmod +x gradlew
       - name: Run unit tests
-        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
-      - name: Upload test results
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew testDebugUnitTest --no-daemon --stacktrace 2>&1 | tee unit-tests-gradle.log
+      - name: Upload unit-test diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: unit-test-results
+          name: unit-test-diagnostics
           path: |
+            unit-tests-gradle.log
             app/build/reports/tests/
             app/build/test-results/
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 14
 
   build:
@@ -79,7 +89,18 @@ jobs:
       - uses: gradle/actions/setup-gradle@v4
       - run: chmod +x gradlew
       - name: Compile debug APK
-        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew clean assembleDebug --no-daemon --stacktrace 2>&1 | tee build-gradle.log
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-diagnostics
+          path: build-gradle.log
+          if-no-files-found: error
+          retention-days: 14
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
