@@ -37,7 +37,7 @@ object WebsiteBlocker {
         synchronized(urlBlockedCache) { urlBlockedCache.clear() }
     }
 
-    private val addressBarIds: List<String> = listOf(
+    private val addressBarIds: Set<String> = setOf(
         "com.android.chrome:id/line_1",
         "com.android.chrome:id/url_bar",
         "com.android.chrome:id/search_box_text",
@@ -69,15 +69,15 @@ object WebsiteBlocker {
         "com.ecosia.android:id/url_bar"
     )
 
-    private val commonDescriptions = listOf(
-        "Address and search bar",
-        "Endereço e barra de pesquisa",
-        "Search or type web address",
-        "Pesquisar ou digitar endereço Web",
-        "URL bar",
-        "Barra de URL",
-        "Address bar",
-        "Barra de endereços"
+    private val commonDescriptions = setOf(
+        "address and search bar",
+        "endereço e barra de pesquisa",
+        "search or type web address",
+        "pesquisar ou digitar endereço web",
+        "url bar",
+        "barra de url",
+        "address bar",
+        "barra de endereços"
     )
 
     fun isValidUrl(text: String): Boolean {
@@ -145,14 +145,32 @@ object WebsiteBlocker {
         }
     }
 
+    /**
+     * Caminho rápido: aceita texto somente quando o evento veio de uma barra de
+     * endereço conhecida ou de um campo editável. Textos comuns da página não
+     * são tratados como URL, evitando falsos positivos em notícias e buscas.
+     */
     fun extractUrlFromEvent(event: AccessibilityEvent): String? {
-        event.text.orEmpty().forEach { text ->
-            val candidate = text?.toString()?.trim().orEmpty()
-            if (candidate.isNotEmpty() && isValidUrl(candidate)) return candidate
-        }
+        val source = event.source ?: return null
+        return try {
+            if (!looksLikeAddressBar(source)) return null
 
-        val description = event.contentDescription?.toString()?.trim().orEmpty()
-        return description.takeIf { it.isNotEmpty() && isValidUrl(it) }
+            val text = source.text?.toString()?.trim().orEmpty()
+            if (text.isNotEmpty() && isValidUrl(text)) return text
+
+            event.text.orEmpty().forEach { value ->
+                val candidate = value?.toString()?.trim().orEmpty()
+                if (candidate.isNotEmpty() && isValidUrl(candidate)) return candidate
+            }
+
+            val description = source.contentDescription?.toString()?.trim().orEmpty()
+            description.takeIf { it.isNotEmpty() && isValidUrl(it) }
+        } catch (error: RuntimeException) {
+            FocusGuardLogger.logError(TAG, "Falha ao ler URL do evento", error)
+            null
+        } finally {
+            recycleSafely(source)
+        }
     }
 
     fun findAddressBarNode(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
@@ -179,13 +197,24 @@ object WebsiteBlocker {
         return result
     }
 
+    private fun looksLikeAddressBar(node: AccessibilityNodeInfo): Boolean {
+        val viewId = node.viewIdResourceName
+        if (viewId != null && viewId in addressBarIds) return true
+        if (node.isEditable || node.className == "android.widget.EditText") return true
+        val description = node.contentDescription?.toString()
+            ?.trim()
+            ?.lowercase()
+            .orEmpty()
+        return description in commonDescriptions
+    }
+
     private fun findAddressBarByDescription(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
         for (description in commonDescriptions) {
             val nodes = runCatching { root.findAccessibilityNodeInfosByText(description) }
                 .getOrNull()
                 .orEmpty()
             for (node in nodes) {
-                if (node.isEditable || node.className == "android.widget.EditText") {
+                if (looksLikeAddressBar(node)) {
                     nodes.filter { it !== node }.forEach(::recycleSafely)
                     return node
                 }
@@ -243,5 +272,8 @@ object WebsiteBlocker {
     }
 
     private val SCHEME_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://")
-    private val SCHEME_PREFIX_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://", RegexOption.IGNORE_CASE)
+    private val SCHEME_PREFIX_REGEX = Regex(
+        "^[a-zA-Z][a-zA-Z0-9+.-]*://",
+        RegexOption.IGNORE_CASE
+    )
 }
