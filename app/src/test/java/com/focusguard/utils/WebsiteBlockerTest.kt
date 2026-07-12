@@ -4,208 +4,141 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Before
 import org.junit.Test
 
-/**
- * Testes unitários para [WebsiteBlocker] — foco em `extractDomain` e
- * `isUrlBlocked` (funções puras que não dependem de Android Context).
- *
- * Estas funções são críticas para o bloqueio correto de sites — um falso
- * negativo permite que o usuário acesse conteúdo bloqueado; um falso positivo
- * bloqueia sites legítimos. Antes da Fase 3, este código não tinha testes.
- */
 class WebsiteBlockerTest {
 
-    /**
-     * Limpa o cache LRU antes de cada teste — sem isso, testes que usam a
-     * mesma URL com blocklists diferentes se interfeririam (cache hit
-     * retornaria o resultado do teste anterior).
-     */
     @Before
     fun setUp() {
         WebsiteBlocker.clearCache()
     }
 
-    // ─────────────────────────────────────────────────────────────────────
-    // extractDomain
-    // ─────────────────────────────────────────────────────────────────────
-
     @Test
-    fun `extractDomain strips https protocol`() {
-        assertThat(WebsiteBlocker.extractDomain("https://www.example.com/path?query=1"))
-            .isEqualTo("example.com")
+    fun `extractDomain normalizes protocol www port path query and fragment`() {
+        assertThat(
+            WebsiteBlocker.extractDomain("HTTPS://WWW.Example.COM:8443/path?q=1#part")
+        ).isEqualTo("example.com")
     }
 
     @Test
-    fun `extractDomain strips http protocol`() {
-        assertThat(WebsiteBlocker.extractDomain("http://www.example.com/path"))
-            .isEqualTo("example.com")
-    }
-
-    @Test
-    fun `extractDomain strips www prefix`() {
-        assertThat(WebsiteBlocker.extractDomain("www.example.com"))
-            .isEqualTo("example.com")
-    }
-
-    @Test
-    fun `extractDomain lowercases domain`() {
-        assertThat(WebsiteBlocker.extractDomain("HTTPS://WWW.EXAMPLE.COM"))
-            .isEqualTo("example.com")
-    }
-
-    @Test
-    fun `extractDomain strips path and query`() {
-        assertThat(WebsiteBlocker.extractDomain("https://example.com/path/to/page?foo=bar"))
-            .isEqualTo("example.com")
-    }
-
-    @Test
-    fun `extractDomain strips port number`() {
-        assertThat(WebsiteBlocker.extractDomain("https://example.com:8080/path"))
-            .isEqualTo("example.com")
-    }
-
-    @Test
-    fun `extractDomain handles bare domain (no protocol)`() {
+    fun `extractDomain normalizes bare domain`() {
         assertThat(WebsiteBlocker.extractDomain("example.com/path"))
             .isEqualTo("example.com")
     }
 
     @Test
-    fun `extractDomain handles subdomain`() {
-        assertThat(WebsiteBlocker.extractDomain("https://blog.example.com/post"))
-            .isEqualTo("blog.example.com")
+    fun `extractDomain keeps subdomain`() {
+        assertThat(WebsiteBlocker.extractDomain("https://news.example.com/article"))
+            .isEqualTo("news.example.com")
     }
 
     @Test
-    fun `extractDomain handles youtube short URL youtu be`() {
-        val domain = WebsiteBlocker.extractDomain("https://youtu.be/abc123")
-        assertThat(domain).isEqualTo("youtu.be")
+    fun `extractDomain trims trailing dot`() {
+        assertThat(WebsiteBlocker.extractDomain("https://example.com./"))
+            .isEqualTo("example.com")
     }
 
     @Test
-    fun `extractDomain returns lowercase for malformed input`() {
-        // Não lança exceção; retorna algo em lowercase
-        val result = WebsiteBlocker.extractDomain("NOT_A_URL_AT_ALL")
-        assertThat(result).isEqualTo("not_a_url_at_all")
+    fun `extractDomain handles uppercase scheme`() {
+        assertThat(WebsiteBlocker.extractDomain("HTTPS://EXAMPLE.COM"))
+            .isEqualTo("example.com")
     }
 
     @Test
-    fun `extractDomain handles empty input`() {
-        val result = WebsiteBlocker.extractDomain("")
-        assertThat(result).isEmpty()
-    }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // isUrlBlocked
-    // ─────────────────────────────────────────────────────────────────────
-
-    @Test
-    fun `isUrlBlocked returns true for exact match`() {
-        val blocked = listOf("facebook.com")
-        assertThat(WebsiteBlocker.isUrlBlocked("facebook.com", blocked)).isTrue()
+    fun `extractDomain returns empty for empty input`() {
+        assertThat(WebsiteBlocker.extractDomain("   ")).isEmpty()
     }
 
     @Test
-    fun `isUrlBlocked returns true for subdomain of blocked domain`() {
+    fun `isValidUrl accepts domains and full urls`() {
+        assertThat(WebsiteBlocker.isValidUrl("example.com")).isTrue()
+        assertThat(WebsiteBlocker.isValidUrl("https://sub.example.com/path")).isTrue()
+    }
+
+    @Test
+    fun `isValidUrl rejects search phrases and malformed hosts`() {
+        assertThat(WebsiteBlocker.isValidUrl("pesquisa no google")).isFalse()
+        assertThat(WebsiteBlocker.isValidUrl("-example.com")).isFalse()
+        assertThat(WebsiteBlocker.isValidUrl("example-.com")).isFalse()
+        assertThat(WebsiteBlocker.isValidUrl("localhost")).isFalse()
+    }
+
+    @Test
+    fun `exact domain is blocked`() {
+        assertThat(WebsiteBlocker.isUrlBlocked("facebook.com", listOf("facebook.com")))
+            .isTrue()
+    }
+
+    @Test
+    fun `subdomains are blocked`() {
         val blocked = listOf("facebook.com")
         assertThat(WebsiteBlocker.isUrlBlocked("m.facebook.com", blocked)).isTrue()
-        assertThat(WebsiteBlocker.isUrlBlocked("www.facebook.com", blocked)).isTrue()
-        assertThat(WebsiteBlocker.isUrlBlocked("blog.facebook.com", blocked)).isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked("https://a.b.facebook.com/x", blocked)).isTrue()
     }
 
     @Test
-    fun `isUrlBlocked returns true for full URL with blocked domain`() {
-        val blocked = listOf("instagram.com")
-        assertThat(WebsiteBlocker.isUrlBlocked("https://www.instagram.com/explore", blocked)).isTrue()
-    }
-
-    @Test
-    fun `isUrlBlocked returns false for unrelated domain`() {
-        val blocked = listOf("facebook.com")
-        assertThat(WebsiteBlocker.isUrlBlocked("google.com", blocked)).isFalse()
-    }
-
-    @Test
-    fun `isUrlBlocked returns false for domain that ends with blocked but is not subdomain`() {
-        // Verifica anti-falso-positivo: "notfacebook.com" não deve ser bloqueado
-        // por "facebook.com"
+    fun `lookalike domains are not blocked`() {
         val blocked = listOf("facebook.com")
         assertThat(WebsiteBlocker.isUrlBlocked("notfacebook.com", blocked)).isFalse()
-        assertThat(WebsiteBlocker.isUrlBlocked("antifacebook.com", blocked)).isFalse()
+        assertThat(WebsiteBlocker.isUrlBlocked("facebook.com.evil.test", blocked)).isFalse()
     }
 
     @Test
-    fun `isUrlBlocked returns false for empty blocked list`() {
+    fun `blocked entries are normalized before matching`() {
+        assertThat(
+            WebsiteBlocker.isUrlBlocked(
+                "https://news.example.com",
+                listOf(" HTTPS://WWW.EXAMPLE.COM/path ")
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun `youtube short links are blocked by youtube domain`() {
+        assertThat(
+            WebsiteBlocker.isUrlBlocked("https://youtu.be/abc123", listOf("youtube.com"))
+        ).isTrue()
+    }
+
+    @Test
+    fun `twitter aliases are blocked`() {
+        val blocked = listOf("twitter.com")
+        assertThat(WebsiteBlocker.isUrlBlocked("https://x.com/user", blocked)).isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked("https://t.co/abc", blocked)).isTrue()
+    }
+
+    @Test
+    fun `matching is case insensitive`() {
+        assertThat(
+            WebsiteBlocker.isUrlBlocked("HTTPS://FACEBOOK.COM", listOf("FACEBOOK.COM"))
+        ).isTrue()
+    }
+
+    @Test
+    fun `empty blocklist never blocks`() {
         assertThat(WebsiteBlocker.isUrlBlocked("facebook.com", emptyList())).isFalse()
     }
 
     @Test
-    fun `isUrlBlocked matches against multiple blocked domains`() {
-        val blocked = listOf("facebook.com", "instagram.com", "twitter.com")
-        assertThat(WebsiteBlocker.isUrlBlocked("https://twitter.com/home", blocked)).isTrue()
-        assertThat(WebsiteBlocker.isUrlBlocked("https://tiktok.com", blocked)).isFalse()
+    fun `cache is isolated by blocklist contents`() {
+        val url = "https://facebook.com/home"
+        assertThat(WebsiteBlocker.isUrlBlocked(url, listOf("facebook.com"))).isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked(url, emptyList())).isFalse()
+        assertThat(WebsiteBlocker.isUrlBlocked(url, listOf("instagram.com"))).isFalse()
     }
 
     @Test
-    fun `isUrlBlocked is case insensitive for blocked domains`() {
-        val blocked = listOf("FACEBOOK.COM")
-        assertThat(WebsiteBlocker.isUrlBlocked("facebook.com", blocked)).isTrue()
+    fun `cache does not depend on blocklist order`() {
+        val url = "https://instagram.com/explore"
+        val first = listOf("facebook.com", "instagram.com")
+        val second = listOf("instagram.com", "facebook.com")
+        assertThat(WebsiteBlocker.isUrlBlocked(url, first)).isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked(url, second)).isTrue()
     }
 
     @Test
-    fun `isUrlBlocked handles youtube to youtu be special case`() {
-        // YouTube short URL deve ser bloqueado quando youtube.com está bloqueado
-        val blocked = listOf("youtube.com")
-        assertThat(WebsiteBlocker.isUrlBlocked("https://youtu.be/abc123", blocked)).isTrue()
-    }
-
-    @Test
-    fun `isUrlBlocked returns false for too-short domain`() {
-        // Domínio < 4 chars não deve ser bloqueado (evita falsos positivos)
-        val blocked = listOf("facebook.com")
-        assertThat(WebsiteBlocker.isUrlBlocked("ab", blocked)).isFalse()
-        assertThat(WebsiteBlocker.isUrlBlocked("abc", blocked)).isFalse()
-    }
-
-    @Test
-    fun `isUrlBlocked handles multiple subdomain levels`() {
-        val blocked = listOf("example.com")
-        assertThat(WebsiteBlocker.isUrlBlocked("a.b.c.example.com", blocked)).isTrue()
-    }
-
-    // ─────────────────────────────────────────────────────────────────────
-    // Cache O(1) — comportamento de caching do isUrlBlocked
-    // ─────────────────────────────────────────────────────────────────────
-
-    @Test
-    fun `isUrlBlocked caches result for repeated calls`() {
-        // Primeira chamada computa e armazena no cache
-        val blocked = listOf("facebook.com")
-        val first = WebsiteBlocker.isUrlBlocked("https://facebook.com/home", blocked)
-        // Segunda chamada com mesma URL retorna do cache — não importa que
-        // a blocklist agora está vazia (cache hit retorna o valor anterior)
-        val second = WebsiteBlocker.isUrlBlocked("https://facebook.com/home", emptyList())
-        assertThat(first).isTrue()
-        assertThat(second).isTrue() // cache hit, não recomputa
-    }
-
-    @Test
-    fun `clearCache forces recomputation on next call`() {
-        val blocked = listOf("facebook.com")
-        // Primeira chamada popula cache
-        WebsiteBlocker.isUrlBlocked("https://facebook.com", blocked)
-        // Limpa cache
+    fun `clearCache preserves correct recomputation`() {
+        val url = "https://facebook.com"
+        assertThat(WebsiteBlocker.isUrlBlocked(url, listOf("facebook.com"))).isTrue()
         WebsiteBlocker.clearCache()
-        // Próxima chamada com blocklist vazia deve retornar false (recomputou)
-        val result = WebsiteBlocker.isUrlBlocked("https://facebook.com", emptyList())
-        assertThat(result).isFalse()
-    }
-
-    @Test
-    fun `isUrlBlocked is case insensitive for url input`() {
-        // URL em uppercase deve dar mesmo resultado que lowercase
-        val blocked = listOf("facebook.com")
-        assertThat(WebsiteBlocker.isUrlBlocked("HTTPS://FACEBOOK.COM", blocked)).isTrue()
-        assertThat(WebsiteBlocker.isUrlBlocked("https://facebook.com", blocked)).isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked(url, listOf("instagram.com"))).isFalse()
     }
 }
