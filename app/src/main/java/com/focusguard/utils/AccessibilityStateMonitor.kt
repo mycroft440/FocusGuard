@@ -1,261 +1,193 @@
 package com.focusguard.utils
 
 import android.accessibilityservice.AccessibilityServiceInfo
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
 import android.content.BroadcastReceiver
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.provider.Settings
 import android.view.accessibility.AccessibilityManager
-import com.focusguard.utils.FocusGuardLogger
+import androidx.core.app.NotificationCompat
+import com.focusguard.R
+import com.focusguard.service.BlockingAccessibilityService
+import com.focusguard.ui.AccessibilityDisabledActivity
 
 /**
- * Monitor que detecta quando o BlockingAccessibilityService é desativado
- * por fora da UI interceptada (ex: via `adb shell settings put secure
- * enabled_accessibility_services ""`, ou via App Info → Force Stop).
- *
- * Estratégia híbrida de detecção:
- *
- * 1. **BroadcastReceiver** para `ACTION_STATE_CHANGED`
- *    — disparado pelo sistema quando o usuário ativa/desativa qualquer
- *    serviço de acessibilidade. Reação instantânea (~0ms).
- *
- * 2. **Polling periódico** via `AccessibilityManager.getEnabledAccessibilityServiceList()`
- *    — fallback caso o broadcast não dispare (alguns OEM ROMs suprimem).
- *    Roda a cada 30s quando o app está em foreground ou o Foreground Service
- *    está ativo.
- *
- * Quando detecta desativação:
- * - Loga o evento em FocusGuardLogs (para auditoria)
- * - Lança `AccessibilityDisabledActivity` (tela cheia de bloqueio)
- *   que exige que o usuário reative o serviço para usar o celular
+ * Detecta alterações no serviço de acessibilidade enquanto o processo do app
+ * está vivo. Não tenta prometer detecção após Force Stop, pois nesse cenário o
+ * Android encerra o próprio processo responsável pelo monitor.
  */
 object AccessibilityStateMonitor {
 
     private const val TAG = "A11yStateMonitor"
-    private const val POLL_INTERVAL_MS = 30_000L // 30 segundos
-
-    private val handler = Handler(Looper.getMainLooper())
-    private var isPolling = false
-    private var lastKnownEnabled = false
-
-    /**
-     * Broadcast action disparada pelo sistema quando o usuário ativa/desativa
-     * qualquer serviço de acessibilidade.
-     *
-     * NOTA: ACTION_STATE_CHANGED
-     * foi adicionado em API 33 (Android 13). Para compatibilidade com
-     * API 21+ (minSdk), usamos a string literal diretamente. O valor é
-     * estável desde Android 5.0.
-     */
+    private const val POLL_INTERVAL_MS = 30_000L
     private const val ACTION_STATE_CHANGED =
         "android.accessibilityservice.ACCESSIBILITY_SERVICE_STATE_CHANGED"
 
-    /**
-     * Nome esperado do serviço de acessibilidade do FocusGuard.
-     * Deve bater com o declarado em AndroidManifest.xml.
-     */
-    private const val EXPECTED_SERVICE_FLAT =
-        "com.focusguard.v2/com.focusguard.service.BlockingAccessibilityService"
+    private val handler = Handler(Looper.getMainLooper())
+    private var pollingRunnable: Runnable? = null
+    private var receiverRegistered = false
+    private var lastKnownEnabled: Boolean? = null
 
-    /**
-     * BroadcastReceiver para mudanças de estado de accessibility.
-     * Disparado pelo sistema em qualquer toggle de accessibility.
-     */
     private val stateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (context == null) return
-            if (intent?.action == ACTION_STATE_CHANGED) {
-                FocusGuardLogger.log(TAG, "STATE_CHANGED broadcast recebido — verificando serviço")
-                checkAndHandle(context)
+            if (context != null && intent?.action == ACTION_STATE_CHANGED) {
+                checkAndHandle(context.applicationContext)
             }
         }
     }
 
-    /**
-     * Inicia o monitor. Deve ser chamado no `onCreate` do FocusGuardApplication.
-     *
-     * Registra o BroadcastReceiver e (se o serviço estava ativo antes)
-     * inicia o polling periódico.
-     */
     fun start(context: Context) {
         val appContext = context.applicationContext
-        lastKnownEnabled = isAccessibilityServiceEnabled(appContext)
-
-        // Registra receiver para STATE_CHANGED
-        val filter = IntentFilter(ACTION_STATE_CHANGED)
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                appContext.registerReceiver(stateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-            } else {
-                @Suppress("DEPRECATION")
-                appContext.registerReceiver(stateReceiver, filter)
+        if (!receiverRegistered) {
+            try {
+                val filter = IntentFilter(ACTION_STATE_CHANGED)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    appContext.registerReceiver(
+                        stateReceiver,
+                        filter,
+                        Context.RECEIVER_NOT_EXPORTED
+                    )
+                } else {
+                    @Suppress("DEPRECATION")
+                    appContext.registerReceiver(stateReceiver, filter)
+                }
+                receiverRegistered = true
+            } catch (error: RuntimeException) {
+                FocusGuardLogger.logError(TAG, "Falha ao registrar monitor", error)
             }
-            FocusGuardLogger.log(TAG, "Monitor iniciado. Estado inicial: $lastKnownEnabled")
-        } catch (e: Throwable) {
-            FocusGuardLogger.logError(TAG, "Falha ao registrar stateReceiver", e)
         }
 
+        val enabled = isAccessibilityServiceEnabled(appContext)
+        lastKnownEnabled = enabled
+        if (!enabled && protectionWasConfigured(appContext)) {
+            onAccessibilityDisabled(appContext)
+        }
         startPolling(appContext)
     }
 
-    /**
-     * Para o monitor. Deve ser chamado no `onTerminate` do Application
-     * (embora na prática o Application nunca tenha onTerminate chamado
-     * em devices reais — usado apenas para testes).
-     */
     fun stop(context: Context) {
-        try {
-            context.applicationContext.unregisterReceiver(stateReceiver)
-        } catch (_: Throwable) {
-            // Receiver não registrado — ignore
+        if (receiverRegistered) {
+            runCatching { context.applicationContext.unregisterReceiver(stateReceiver) }
+            receiverRegistered = false
         }
-        stopPolling()
+        pollingRunnable?.let(handler::removeCallbacks)
+        pollingRunnable = null
+        lastKnownEnabled = null
     }
 
     private fun startPolling(context: Context) {
-        if (isPolling) return
-        isPolling = true
-        handler.postDelayed(object : Runnable {
+        if (pollingRunnable != null) return
+        val runnable = object : Runnable {
             override fun run() {
-                if (!isPolling) return
-                try {
-                    checkAndHandle(context.applicationContext)
-                } catch (e: Throwable) {
-                    FocusGuardLogger.logError(TAG, "Erro no poll", e)
-                }
-                if (isPolling) {
-                    handler.postDelayed(this, POLL_INTERVAL_MS)
-                }
+                checkAndHandle(context)
+                handler.postDelayed(this, POLL_INTERVAL_MS)
             }
-        }, POLL_INTERVAL_MS)
+        }
+        pollingRunnable = runnable
+        handler.postDelayed(runnable, POLL_INTERVAL_MS)
     }
 
-    private fun stopPolling() {
-        isPolling = false
-        handler.removeCallbacksAndMessages(null)
-    }
-
-    /**
-     * Verifica se o serviço está ativo agora. Se estava ativo antes e foi
-     * desativado, dispara o handler de desativação.
-     */
     private fun checkAndHandle(context: Context) {
-        val currentlyEnabled = isAccessibilityServiceEnabled(context)
-
-        if (lastKnownEnabled && !currentlyEnabled) {
-            // Serviço foi desativado enquanto o app rodava — bypass detectado!
+        val enabled = isAccessibilityServiceEnabled(context)
+        val previous = lastKnownEnabled
+        if (!enabled && protectionWasConfigured(context) && previous != false) {
             FocusGuardLogger.logError(
                 TAG,
-                "ALERTA: BlockingAccessibilityService foi DESATIVADO enquanto o app rodava. " +
-                    "Possível bypass via adb ou App Info → Force Stop.",
+                "BlockingAccessibilityService foi desativado enquanto o processo estava ativo",
                 null
             )
             onAccessibilityDisabled(context)
         }
-
-        lastKnownEnabled = currentlyEnabled
+        lastKnownEnabled = enabled
     }
 
-    /**
-     * Verifica via AccessibilityManager se o serviço do FocusGuard está
-     * na lista de serviços habilitados.
-     *
-     * Mais robusto que `PermissionUtils.isAccessibilityServiceEnabled` porque
-     * não depende de parsing de String do Settings.Secure — usa API nativa
-     * do AccessibilityManager.
-     */
     fun isAccessibilityServiceEnabled(context: Context): Boolean {
         return try {
-            val am = context.getSystemService(Context.ACCESSIBILITY_SERVICE)
+            val manager = context.getSystemService(Context.ACCESSIBILITY_SERVICE)
                 as? AccessibilityManager ?: return false
-            val enabledServices = am.getEnabledAccessibilityServiceList(
-                AccessibilityServiceInfo.FEEDBACK_GENERIC
-            ) ?: return false
-            enabledServices.any { it.resolveInfo.serviceInfo.packageName == context.packageName }
-        } catch (e: Throwable) {
-            FocusGuardLogger.logError(TAG, "Falha ao checar accessibility service", e)
-            // Em caso de erro, assume que ainda está ativo para evitar
-            // falsos positivos que bloqueariam o usuário indevidamente.
-            true
+            val expected = ComponentName(context, BlockingAccessibilityService::class.java)
+            manager.getEnabledAccessibilityServiceList(
+                AccessibilityServiceInfo.FEEDBACK_ALL_MASK
+            ).any { info ->
+                val serviceInfo = info.resolveInfo?.serviceInfo ?: return@any false
+                ComponentName(serviceInfo.packageName, serviceInfo.name) == expected
+            }
+        } catch (error: RuntimeException) {
+            FocusGuardLogger.logError(TAG, "Falha ao verificar serviço", error)
+            false
         }
     }
 
-    /**
-     * Chamado quando o serviço é detectado como desativado.
-     *
-     * Lança a Activity de bloqueio em tela cheia para forçar o usuário
-     * a reativar. Não pode ser silenciado — só fecha quando o serviço
-     * volta a ficar ativo.
-     */
+    private fun protectionWasConfigured(context: Context): Boolean {
+        return context.getSharedPreferences("FocusGuardPrefs", Context.MODE_PRIVATE)
+            .getBoolean("hasSeenOnboarding", false)
+    }
+
     private fun onAccessibilityDisabled(context: Context) {
         try {
-            val intent = Intent(context, com.focusguard.ui.AccessibilityDisabledActivity::class.java).apply {
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TASK or
-                    Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
-                )
-                // FLAG_ACTIVITY_SHOW_WHEN_LOCKED (0x00080000) e
-                // FLAG_ACTIVITY_TURN_SCREEN_ON (0x00100000) foram adicionados
-                // em API 27 (O_MR1). Em algumas versões do compileSdk eles
-                // não resolvem como constantes simbólicas — usamos os valores
-                // numéricos diretos para máxima compatibilidade.
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
-                    addFlags(0x00080000 or 0x00100000)
+            context.startActivity(
+                Intent(context, AccessibilityDisabledActivity::class.java).apply {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
+                    )
                 }
-            }
-            context.startActivity(intent)
-        } catch (e: Throwable) {
-            FocusGuardLogger.logError(TAG, "Falha ao lançar AccessibilityDisabledActivity", e)
-            // Fallback: enviar notificação crítica se a activity não puder ser lançada
+            )
+        } catch (error: RuntimeException) {
+            FocusGuardLogger.logError(TAG, "Falha ao abrir alerta de acessibilidade", error)
             sendCriticalNotification(context)
         }
     }
 
     private fun sendCriticalNotification(context: Context) {
         try {
-            val nm = context.getSystemService(Context.NOTIFICATION_SERVICE)
-                as? android.app.NotificationManager ?: return
+            val manager = context.getSystemService(Context.NOTIFICATION_SERVICE)
+                as? NotificationManager ?: return
             val channelId = "focusguard_critical"
-
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                val channel = android.app.NotificationChannel(
-                    channelId,
-                    "Alertas Críticos",
-                    android.app.NotificationManager.IMPORTANCE_HIGH
-                ).apply {
-                    description = "Avisos de bypass de proteção"
-                    enableVibration(true)
-                }
-                nm.createNotificationChannel(channel)
+                manager.createNotificationChannel(
+                    NotificationChannel(
+                        channelId,
+                        "Alertas críticos",
+                        NotificationManager.IMPORTANCE_HIGH
+                    ).apply {
+                        description = "Avisos sobre a proteção do FocusGuard"
+                        enableVibration(true)
+                    }
+                )
             }
 
-            val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            val pendingIntent = android.app.PendingIntent.getActivity(
-                context, 0, intent,
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            val settingsIntent = Intent(
+                android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                0,
+                settingsIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-
-            val notification = androidx.core.app.NotificationCompat.Builder(context, channelId)
-                .setSmallIcon(com.focusguard.R.drawable.ic_warning)
-                .setContentTitle("🚨 Proteção desativada!")
+            val notification = NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(R.drawable.ic_warning)
+                .setContentTitle("Proteção desativada")
                 .setContentText("Toque para reativar o FocusGuard")
-                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_MAX)
-                .setCategory(android.app.Notification.CATEGORY_ERROR)
+                .setPriority(NotificationCompat.PRIORITY_MAX)
+                .setCategory(Notification.CATEGORY_ERROR)
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(false)
                 .setOngoing(true)
                 .build()
-
-            nm.notify(9001, notification)
-        } catch (e: Throwable) {
-            FocusGuardLogger.logError(TAG, "Falha ao enviar notificação crítica", e)
+            manager.notify(9001, notification)
+        } catch (error: RuntimeException) {
+            FocusGuardLogger.logError(TAG, "Falha ao enviar notificação crítica", error)
         }
     }
 }
