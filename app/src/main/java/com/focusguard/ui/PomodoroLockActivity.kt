@@ -59,6 +59,7 @@ import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.AndroidEntryPoint
+import java.util.Locale
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
