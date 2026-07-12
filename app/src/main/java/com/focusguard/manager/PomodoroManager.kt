@@ -152,7 +152,8 @@ class PomodoroManager @Inject constructor(
                 val remaining = session.endTime - System.currentTimeMillis()
                 if (!session.isActive || remaining <= 0L) {
                     _timeLeftMillis.value = 0L
-                    stopSession(playSound = true)
+                    tickerJob = null
+                    scope.launch { stopSession(playSound = true) }
                     break
                 }
                 _timeLeftMillis.value = remaining
