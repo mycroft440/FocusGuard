@@ -8,18 +8,17 @@ import androidx.security.crypto.MasterKey
 /**
  * Preferências sensíveis do FocusGuard.
  *
- * Se a chave principal do Android Keystore ficar inválida, o arquivo original
- * não é apagado e nenhum dado passa a ser salvo em texto puro. Em vez disso, o
- * app cria um segundo cofre criptografado para recuperação. O usuário poderá
- * reconfigurar as credenciais, enquanto o arquivo anterior permanece intacto
- * para diagnóstico ou futura recuperação.
+ * O cofre principal continua usando o alias padrão histórico do Jetpack
+ * Security, garantindo compatibilidade com instalações existentes. Se essa
+ * chave ficar inválida, o arquivo original não é apagado e nenhum dado passa a
+ * ser salvo em texto puro: um segundo cofre criptografado é usado para
+ * recuperação.
  */
 class SecurePrefsManager(context: Context) {
 
     private val appContext = context.applicationContext
     private val primaryPrefsName = "focusguard_secure_prefs"
     private val recoveryPrefsName = "focusguard_secure_prefs_recovery"
-    private val primaryAlias = "focusguard_primary_master_key"
     private val recoveryAlias = "focusguard_recovery_master_key"
 
     private val result = createPrefs()
@@ -38,7 +37,7 @@ class SecurePrefsManager(context: Context) {
     private fun createPrefs(): PrefsResult {
         return try {
             PrefsResult(
-                prefs = createEncryptedPrefs(primaryPrefsName, primaryAlias),
+                prefs = createPrimaryEncryptedPrefs(),
                 usingRecovery = false
             )
         } catch (primaryError: Exception) {
@@ -49,7 +48,7 @@ class SecurePrefsManager(context: Context) {
             )
             try {
                 PrefsResult(
-                    prefs = createEncryptedPrefs(recoveryPrefsName, recoveryAlias),
+                    prefs = createRecoveryEncryptedPrefs(),
                     usingRecovery = true
                 )
             } catch (recoveryError: Exception) {
@@ -66,10 +65,22 @@ class SecurePrefsManager(context: Context) {
         }
     }
 
-    private fun createEncryptedPrefs(name: String, alias: String): SharedPreferences {
-        val key = MasterKey.Builder(appContext, alias)
+    /** Usa exatamente o mesmo alias padrão que as versões anteriores. */
+    private fun createPrimaryEncryptedPrefs(): SharedPreferences {
+        val key = MasterKey.Builder(appContext)
             .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
             .build()
+        return createEncryptedPrefs(primaryPrefsName, key)
+    }
+
+    private fun createRecoveryEncryptedPrefs(): SharedPreferences {
+        val key = MasterKey.Builder(appContext, recoveryAlias)
+            .setKeyScheme(MasterKey.KeyScheme.AES256_GCM)
+            .build()
+        return createEncryptedPrefs(recoveryPrefsName, key)
+    }
+
+    private fun createEncryptedPrefs(name: String, key: MasterKey): SharedPreferences {
         return EncryptedSharedPreferences.create(
             appContext,
             name,
