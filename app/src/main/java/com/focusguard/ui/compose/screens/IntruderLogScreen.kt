@@ -32,7 +32,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -116,15 +115,14 @@ fun IntruderLogScreen(onBack: () -> Unit) {
 
 @Composable
 fun IntruderPhotoCard(file: File) {
-    val bitmapState = produceState<ImageBitmap?>(
-        initialValue = null,
-        key1 = file.absolutePath,
-        key2 = file.lastModified()
-    ) {
-        val loadedBitmap = withContext(Dispatchers.IO) {
+    var bitmap by remember(file.absolutePath, file.lastModified()) {
+        mutableStateOf<ImageBitmap?>(null)
+    }
+
+    LaunchedEffect(file.absolutePath, file.lastModified()) {
+        bitmap = withContext(Dispatchers.IO) {
             decodeScaledBitmap(file)
         }
-        value = loadedBitmap
     }
 
     Card(
@@ -133,10 +131,10 @@ fun IntruderPhotoCard(file: File) {
         modifier = Modifier.fillMaxWidth().aspectRatio(0.75f)
     ) {
         Column {
-            val bitmap = bitmapState.value
-            if (bitmap != null) {
+            val loadedBitmap = bitmap
+            if (loadedBitmap != null) {
                 Image(
-                    bitmap = bitmap,
+                    bitmap = loadedBitmap,
                     contentDescription = stringResource(R.string.intruder_photo_desc),
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
