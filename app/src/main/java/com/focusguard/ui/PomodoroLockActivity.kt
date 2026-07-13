@@ -1,7 +1,5 @@
 package com.focusguard.ui
 
-import androidx.compose.runtime.*
-import androidx.compose.ui.platform.LocalContext
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
@@ -9,13 +7,8 @@ import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.KeyEvent
-import android.view.View
 import android.view.WindowManager
-import androidx.core.view.WindowCompat
-import androidx.core.view.WindowInsetsCompat
-import androidx.core.view.WindowInsetsControllerCompat
 import androidx.activity.ComponentActivity
-import dagger.hilt.android.AndroidEntryPoint
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
@@ -49,10 +42,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.lifecycle.lifecycleScope
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.manager.StrictPomodoroLock
-import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DarkBg
@@ -62,46 +58,35 @@ import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.utils.FocusGuardLogger
+import dagger.hilt.android.AndroidEntryPoint
+import java.util.Locale
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
-/**
- * Full-screen lock activity for strict Pomodoro mode.
- * Hardened against all bypass attempts:
- * - Back button disabled
- * - Home button intercepted via Lock Task Mode
- * - Recent apps blocked
- * - Auto-relaunches on pause/stop via AlarmManager
- * - Survives process kills via watchdog service
- */
 @AndroidEntryPoint
 class PomodoroLockActivity : ComponentActivity() {
+
     private lateinit var deviceOwnerManager: DeviceOwnerManager
     private lateinit var pomodoroManager: PomodoroManager
-
-    companion object {
-        private const val RELAUNCH_ALARM_CODE = 4001
-        private const val RELAUNCH_DELAY_MS = 800L
-    }
+    private var allowFinish = false
+    private var expirationHandled = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         deviceOwnerManager = DeviceOwnerManager.getInstance(applicationContext)
         pomodoroManager = PomodoroManager.getInstance(applicationContext)
 
-        // Fazer a activity aparecer sobre tudo - inclusive tela de bloqueio
         window.addFlags(
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON or
-                WindowManager.LayoutParams.FLAG_DISMISS_KEYGUARD
+                WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
         )
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
             setTurnScreenOn(true)
         }
         enableImmersiveMode()
 
-        // Bloquear botão voltar
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 enforceStrictLock()
@@ -112,9 +97,9 @@ class PomodoroLockActivity : ComponentActivity() {
             FocusGuardTheme {
                 StrictPomodoroLockScreen(
                     isDeviceOwner = deviceOwnerManager.isDeviceOwnerActive(),
-                    onEmergencyCall = { openEmergencyDialer() },
-                    onExpired = { finishStrictLock() },
-                    onEnforce = { enforceStrictLock() }
+                    onEmergencyCall = ::openEmergencyDialer,
+                    onExpired = ::handleExpiration,
+                    onEnforce = ::enforceStrictLock
                 )
             }
         }
@@ -133,90 +118,69 @@ class PomodoroLockActivity : ComponentActivity() {
     }
 
     override fun onPause() {
+        if (StrictPomodoroLock.isActive(applicationContext)) scheduleRelaunch()
         super.onPause()
-        // Se ainda ativo, agendar re-lançamento imediato como failsafe
-        if (StrictPomodoroLock.isActive(applicationContext)) {
-            scheduleRelaunch()
-        }
-    }
-
-    override fun onUserLeaveHint() {
-        super.onUserLeaveHint()
-        enforceStrictLock()
     }
 
     override fun onStop() {
+        if (StrictPomodoroLock.isActive(applicationContext)) scheduleRelaunch()
         super.onStop()
-        if (StrictPomodoroLock.isActive(applicationContext)) {
-            // Agendar re-lançamento como failsafe
-            scheduleRelaunch()
-            // Também lançar diretamente
-            try {
-                startActivity(
-                    Intent(applicationContext, PomodoroLockActivity::class.java)
-                        .addFlags(
-                            Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                            Intent.FLAG_ACTIVITY_CLEAR_TOP
-                        )
-                )
-            } catch (_: Exception) {}
-        }
     }
 
-        override fun onWindowFocusChanged(hasFocus: Boolean) {
+    override fun onUserLeaveHint() {
+        enforceStrictLock()
+        super.onUserLeaveHint()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         if (StrictPomodoroLock.isActive(applicationContext)) {
             enableImmersiveMode()
-            if (!hasFocus) {
-                enforceStrictLock()
-            }
+            if (!hasFocus) enforceStrictLock()
         }
     }
 
-    // Bloquear teclas de hardware (volume, etc. que poderiam acionar assistente)
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (StrictPomodoroLock.isActive(applicationContext)) {
-            return when (keyCode) {
+            when (keyCode) {
                 KeyEvent.KEYCODE_BACK,
                 KeyEvent.KEYCODE_HOME,
                 KeyEvent.KEYCODE_APP_SWITCH,
                 KeyEvent.KEYCODE_MENU -> {
                     enforceStrictLock()
-                    true
+                    return true
                 }
-                else -> super.onKeyDown(keyCode, event)
             }
         }
         return super.onKeyDown(keyCode, event)
     }
 
-
-    // Impedir finishAffinity durante bloqueio
     override fun finishAffinity() {
-        if (StrictPomodoroLock.isActive(applicationContext)) {
-            FocusGuardLogger.log("PomodoroLock", "finishAffinity bloqueado durante Pomodoro rigoroso")
-            return
-        }
+        if (!allowFinish && StrictPomodoroLock.isActive(applicationContext)) return
         super.finishAffinity()
     }
 
-    // Impedir finish durante bloqueio (exceto quando chamado internamente)
-    private var allowFinish = false
-
     override fun finish() {
-        if (!allowFinish && StrictPomodoroLock.isActive(applicationContext)) {
-            FocusGuardLogger.log("PomodoroLock", "finish() bloqueado durante Pomodoro rigoroso")
-            return
-        }
+        if (!allowFinish && StrictPomodoroLock.isActive(applicationContext)) return
         super.finish()
     }
 
-        private fun enableImmersiveMode() {
-        WindowCompat.setDecorFitsSystemWindows(window, false)
-        WindowInsetsControllerCompat(window, window.decorView).let { controller ->
-            controller.hide(WindowInsetsCompat.Type.systemBars())
-            controller.systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+    private fun handleExpiration() {
+        if (expirationHandled) return
+        expirationHandled = true
+        lifecycleScope.launch {
+            try {
+                pomodoroManager.stopSession()
+            } catch (error: Exception) {
+                FocusGuardLogger.logError(
+                    "PomodoroLock",
+                    "Falha ao concluir Pomodoro expirado",
+                    error
+                )
+                StrictPomodoroLock.clear(applicationContext)
+            } finally {
+                finishStrictLock()
+            }
         }
     }
 
@@ -227,66 +191,97 @@ class PomodoroLockActivity : ComponentActivity() {
         }
         deviceOwnerManager.prepareStrictPomodoroLockTaskPackages()
         runCatching { startLockTask() }
+            .onFailure {
+                FocusGuardLogger.logError("PomodoroLock", "Falha ao iniciar lock task", it)
+            }
     }
 
     private fun finishStrictLock() {
         runCatching { stopLockTask() }
         deviceOwnerManager.clearStrictPomodoroLockTaskPackages()
         cancelRelaunchAlarm()
-        if (!pomodoroManager.isPomodoroActive()) {
-            allowFinish = true
-            finish()
-        }
+        allowFinish = true
+        finish()
     }
 
     private fun openEmergencyDialer() {
-        runCatching { startActivity(Intent(Intent.ACTION_DIAL)) }
+        runCatching {
+            startActivity(Intent(Intent.ACTION_DIAL))
+        }.onFailure {
+            FocusGuardLogger.logError("PomodoroLock", "Falha ao abrir telefone", it)
+        }
     }
 
-    /**
-     * Agenda um alarme para relançar esta activity em caso de remoção forçada.
-     */
+    private fun enableImmersiveMode() {
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+    }
+
     private fun scheduleRelaunch() {
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val pendingIntent = relaunchPendingIntent()
+        val triggerAt = System.currentTimeMillis() + RELAUNCH_DELAY_MS
+
         try {
-            val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-            val intent = Intent(applicationContext, PomodoroLockActivity::class.java).apply {
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP
-                )
+            val exactAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+                alarmManager.canScheduleExactAlarms()
+            when {
+                exactAllowed && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ->
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerAt,
+                        pendingIntent
+                    )
+                exactAllowed ->
+                    alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.M ->
+                    alarmManager.setAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerAt,
+                        pendingIntent
+                    )
+                else -> alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
             }
-            val pendingIntent = PendingIntent.getActivity(
-                applicationContext,
-                RELAUNCH_ALARM_CODE,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        } catch (error: SecurityException) {
+            FocusGuardLogger.logError(
+                "PomodoroLock",
+                "Alarme exato negado; usando alarme comum",
+                error
             )
-            val triggerAt = System.currentTimeMillis() + RELAUNCH_DELAY_MS
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
-            } else {
-                alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+            runCatching {
+                alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
             }
-        } catch (e: SecurityException) {
-            FocusGuardLogger.logError("PomodoroLock", "Permissao de relancamento negada (Device Admin/Owner?)", e)
-        } catch (e: Exception) {
-            FocusGuardLogger.logError("PomodoroLock", "Falha critica ao agendar relancamento", e)
         }
     }
 
     private fun cancelRelaunchAlarm() {
-        try {
-            val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-            val intent = Intent(applicationContext, PomodoroLockActivity::class.java)
-            val pendingIntent = PendingIntent.getActivity(
-                applicationContext,
-                RELAUNCH_ALARM_CODE,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        val alarmManager = getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        runCatching { alarmManager.cancel(relaunchPendingIntent()) }
+    }
+
+    private fun relaunchPendingIntent(): PendingIntent {
+        val intent = Intent(applicationContext, PomodoroLockActivity::class.java).apply {
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP
             )
-            alarmManager.cancel(pendingIntent)
-        } catch (_: Exception) {}
+        }
+        return PendingIntent.getActivity(
+            applicationContext,
+            RELAUNCH_ALARM_CODE,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+    }
+
+    companion object {
+        private const val RELAUNCH_ALARM_CODE = 4001
+        private const val RELAUNCH_DELAY_MS = 800L
     }
 }
 
@@ -298,21 +293,20 @@ private fun StrictPomodoroLockScreen(
     onEnforce: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    var remainingMillis by remember { mutableLongStateOf(StrictPomodoroLock.remainingMillis(context)) }
-
-    LaunchedEffect(Unit) {
-        while (true) {
-            remainingMillis = StrictPomodoroLock.remainingMillis(context)
-            if (remainingMillis <= 0L) {
-                onExpired()
-                break
-            }
-            onEnforce()
-            delay(1000)
-        }
+    var remainingMillis by remember {
+        mutableLongStateOf(StrictPomodoroLock.remainingMillis(context))
     }
 
-    val totalSeconds = remainingMillis / 1000L
+    LaunchedEffect(Unit) {
+        while (remainingMillis > 0L) {
+            onEnforce()
+            delay(1_000L)
+            remainingMillis = StrictPomodoroLock.remainingMillis(context)
+        }
+        onExpired()
+    }
+
+    val totalSeconds = remainingMillis.coerceAtLeast(0L) / 1_000L
     val minutes = totalSeconds / 60L
     val seconds = totalSeconds % 60L
 
@@ -331,22 +325,41 @@ private fun StrictPomodoroLockScreen(
                 border = BorderStroke(1.dp, CardBorder),
                 modifier = Modifier.fillMaxWidth()
             ) {
-                Column(modifier = Modifier.padding(24.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
                     Icon(Icons.Default.Timer, contentDescription = null, tint = AccentCyan)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text("Bloqueio rigoroso ativo", color = TextPrimary, fontSize = 24.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                    Spacer(modifier = Modifier.height(10.dp))
-                    Text(String.format("%02d:%02d", minutes, seconds), color = AccentCyan, fontSize = 52.sp, fontWeight = FontWeight.Bold, textAlign = TextAlign.Center)
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(Modifier.height(16.dp))
                     Text(
-                        text = if (isDeviceOwner) "Modo kiosk real ativo. Você só poderá sair quando o tempo acabar." else "Atenção: sem Device Owner, o Android ainda pode permitir desafixar a tela.",
+                        "Bloqueio rigoroso ativo",
+                        color = TextPrimary,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Text(
+                        String.format(Locale.US, "%02d:%02d", minutes, seconds),
+                        color = AccentCyan,
+                        fontSize = 52.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Text(
+                        if (isDeviceOwner) {
+                            "Modo kiosk ativo. A sessão termina automaticamente no horário definido."
+                        } else {
+                            "Sem Device Owner, algumas telas do sistema ainda podem aparecer."
+                        },
                         color = if (isDeviceOwner) TextSecondary else TextHint,
                         fontSize = 13.sp,
                         textAlign = TextAlign.Center
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(28.dp))
+            Spacer(Modifier.height(28.dp))
             Button(
                 onClick = onEmergencyCall,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
@@ -354,8 +367,12 @@ private fun StrictPomodoroLockScreen(
                 shape = RoundedCornerShape(18.dp)
             ) {
                 Icon(Icons.Default.Phone, contentDescription = null, tint = DarkBg)
-                Spacer(modifier = Modifier.padding(4.dp))
-                Text("Abrir telefone para emergência", color = DarkBg, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.padding(4.dp))
+                Text(
+                    "Abrir telefone para emergência",
+                    color = DarkBg,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }

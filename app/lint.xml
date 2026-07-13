@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<lint>
+    <!--
+      Ambos os receivers usam Context.RECEIVER_NOT_EXPORTED em API 33+.
+      A chamada legada existe somente para APIs anteriores, nas quais a flag
+      ainda não faz parte da assinatura de registerReceiver.
+    -->
+    <issue id="UnspecifiedRegisterReceiverFlag">
+        <ignore path="src/main/java/com/focusguard/service/BlockingAccessibilityService.kt" />
+        <ignore path="src/main/java/com/focusguard/utils/AccessibilityStateMonitor.kt" />
+    </issue>
+
+    <!--
+      ACTION_REFRESH_BLOCKING contém o namespace do aplicativo, não carrega
+      extras sensíveis e só atualiza cache interno. O receiver de destino é
+      não exportado em APIs que suportam a flag.
+    -->
+    <issue id="UnsafeImplicitIntentLaunch">
+        <ignore path="src/main/java/com/focusguard/ui/compose/screens/LimitsSecurityScreen.kt" />
+    </issue>
+</lint>

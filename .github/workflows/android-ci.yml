@@ -1,149 +1,107 @@
 name: Android CI Pro
 
-# Triggers:
-# - push para main/master
-# - pull_request para main/master
-# - execução manual via Actions tab
 on:
   push:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
   pull_request:
-    branches: [ "main", "master" ]
+    branches: ["main", "master"]
   workflow_dispatch:
 
-# Cancela builds antigas quando um novo commit chega na mesma ref
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 permissions:
   contents: read
-  checks: write       # necessário para upload de test results
+  checks: write
   pull-requests: write
 
 jobs:
-  # ─────────────────────────────────────────────────────────────────────────
-  # JOB 1: Static Analysis (Lint + Detekt)
-  # Roda em paralelo com o build. Não bloqueia o build se falhar (ainda há
-  # débito técnico — vamos transformar em blocking aos poucos).
-  # ─────────────────────────────────────────────────────────────────────────
   static-analysis:
-    name: Lint + Detekt
+    name: Android Lint
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true   # transitional: ainda há débito técnico
-
     steps:
-      - name: Clonar repositório
-        uses: actions/checkout@v4
-
-      - name: Configurar JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Setup Gradle (com cache automático)
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Conceder permissão ao gradlew
-        run: chmod +x gradlew
-
-      - name: Run Detekt
-        run: ./gradlew detekt --no-daemon --stacktrace
-        continue-on-error: true   # config é maxIssues=0 e há 19 violações LongMethod
-
-      - name: Run Android Lint (debug)
-        run: ./gradlew lintDebug --no-daemon --stacktrace
-        continue-on-error: true
-
-      - name: Upload Lint reports
+          java-version: "17"
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v4
+      - run: chmod +x gradlew
+      - name: Run Android Lint
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew lintDebug --no-daemon --stacktrace 2>&1 | tee lint-gradle.log
+      - name: Upload Lint diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lint-reports
+          name: lint-diagnostics
           path: |
+            lint-gradle.log
             app/build/reports/lint-results-*.html
-            app/build/reports/detekt/
-          if-no-files-found: ignore
+            app/build/reports/lint-results-*.xml
+          if-no-files-found: error
           retention-days: 14
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # JOB 2: Unit tests
-  # Por enquanto o projeto NÃO tem testes unitários. Esse job serve como
-  # placeholder: assim que testes forem adicionados em app/src/test/, ele
-  # começa a rodar automaticamente.
-  # ─────────────────────────────────────────────────────────────────────────
   unit-tests:
     name: Unit Tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    continue-on-error: true   # ainda não há testes
-
     steps:
-      - name: Clonar repositório
-        uses: actions/checkout@v4
-
-      - name: Configurar JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Conceder permissão ao gradlew
-        run: chmod +x gradlew
-
+          java-version: "17"
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v4
+      - run: chmod +x gradlew
       - name: Run unit tests
-        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace --continue
-        continue-on-error: true
-
-      - name: Upload test results
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew testDebugUnitTest --no-daemon --stacktrace 2>&1 | tee unit-tests-gradle.log
+      - name: Upload unit-test diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: unit-test-results
+          name: unit-test-diagnostics
           path: |
+            unit-tests-gradle.log
             app/build/reports/tests/
             app/build/test-results/
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 14
 
-  # ─────────────────────────────────────────────────────────────────────────
-  # JOB 3: Build APKs (debug + release condicional)
-  # ─────────────────────────────────────────────────────────────────────────
   build:
-    name: Build APKs
+    name: Build Debug APK
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [static-analysis, unit-tests]
-    # Mesmo se static-analysis/unit-tests falharem (continue-on-error), o build
-    # ainda roda. Mudar para `if: always()` se quiser garantir.
-    if: always()
-
     steps:
-      - name: Clonar repositório
-        uses: actions/checkout@v4
-
-      - name: Configurar JDK 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Setup Gradle (com cache automático)
-        uses: gradle/actions/setup-gradle@v4
-
-      - name: Conceder permissão ao gradlew
-        run: chmod +x gradlew
-
-      # ── Debug APK ──────────────────────────────────────────────────────
-      - name: Compilar APK Debug
-        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
-
-      - name: Salvar APK Debug (Artefato)
+          java-version: "17"
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v4
+      - run: chmod +x gradlew
+      - name: Compile debug APK
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew clean assembleDebug --no-daemon --stacktrace 2>&1 | tee build-gradle.log
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-diagnostics
+          path: build-gradle.log
+          if-no-files-found: error
+          retention-days: 14
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: focusguard-debug-apk
@@ -151,9 +109,22 @@ jobs:
           retention-days: 14
           if-no-files-found: error
 
-      # ── Release APK (apenas se os secrets de assinatura estiverem configurados) ─
-      - name: Verificar secrets de assinatura Release
-        id: release_signing
+  release:
+    name: Build Signed Release APK
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: [build]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v4
+      - run: chmod +x gradlew
+      - name: Check release signing secrets
+        id: signing
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
@@ -161,43 +132,32 @@ jobs:
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: |
           if [ -n "$KEYSTORE_BASE64" ] && [ -n "$KEYSTORE_PASSWORD" ] && [ -n "$KEY_ALIAS" ] && [ -n "$KEY_PASSWORD" ]; then
-            echo "$KEYSTORE_BASE64" | tr -d '\n' | tr -d '\r' | base64 -d > ${{ github.workspace }}/release.jks
             echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "Release keystore configurado via GitHub Secrets."
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "Secrets de release ausentes — pulando assembleRelease (debug APK continua como check obrigatório)."
+            echo "Release signing secrets are not configured; signed release build skipped." >> "$GITHUB_STEP_SUMMARY"
           fi
-
-      - name: Compilar APK Release
-        if: steps.release_signing.outputs.enabled == 'true'
+      - name: Decode release keystore
+        if: steps.signing.outputs.enabled == 'true'
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+        run: echo "$KEYSTORE_BASE64" | tr -d '\n\r' | base64 -d > "$GITHUB_WORKSPACE/release.jks"
+      - name: Compile signed release APK
+        if: steps.signing.outputs.enabled == 'true'
         env:
           KEYSTORE_FILE: ${{ github.workspace }}/release.jks
           KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
           KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
           KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
         run: ./gradlew assembleRelease --no-daemon --stacktrace
-
-      - name: Remover Keystore físico (Segurança)
+      - name: Remove keystore
         if: always()
-        run: rm -f ${{ github.workspace }}/release.jks
-
-      - name: Salvar APK Release (Artefato)
-        if: steps.release_signing.outputs.enabled == 'true'
+        run: rm -f "$GITHUB_WORKSPACE/release.jks"
+      - name: Upload release APK
+        if: steps.signing.outputs.enabled == 'true'
         uses: actions/upload-artifact@v4
         with:
           name: focusguard-release-apk
           path: app/build/outputs/apk/release/*.apk
           retention-days: 30
           if-no-files-found: error
-
-      # ── Health check final ──────────────────────────────────────────────
-      - name: Resumo do build
-        if: always()
-        run: |
-          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "| Item | Status |" >> $GITHUB_STEP_SUMMARY
-          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
-          echo "| Debug APK | ${{ job.status }} |" >> $GITHUB_STEP_SUMMARY
-          echo "| Release APK | ${{ steps.release_signing.outputs.enabled == 'true' && 'built' || 'skipped (no signing secrets)' }} |" >> $GITHUB_STEP_SUMMARY

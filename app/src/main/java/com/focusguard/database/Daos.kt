@@ -71,8 +71,20 @@ interface BlockSessionDao {
     @Query("SELECT * FROM block_sessions WHERE isActive = 1")
     suspend fun getAllActiveSessionsStatic(): List<BlockSession>
 
+    @Query("SELECT * FROM block_sessions WHERE id = :sessionId AND isActive = 1 LIMIT 1")
+    suspend fun getActiveSessionById(sessionId: Int): BlockSession?
+
     @Query("SELECT * FROM block_sessions WHERE isActive = 1 ORDER BY startTime DESC LIMIT 1")
     fun getActiveSession(): Flow<BlockSession?>
+
+    @Query("UPDATE block_sessions SET isActive = 0 WHERE id = :sessionId AND isActive = 1")
+    suspend fun deactivateSession(sessionId: Int): Int
+
+    @Query("UPDATE block_sessions SET isActive = 0 WHERE isActive = 1 AND sessionType = :sessionType")
+    suspend fun deactivateActiveSessionsByType(sessionType: String): Int
+
+    @Query("UPDATE block_sessions SET isActive = 0 WHERE isActive = 1 AND endTime IS NOT NULL AND endTime <= :now")
+    suspend fun deactivateExpiredSessions(now: Long): Int
 
     @Query("DELETE FROM block_sessions WHERE isActive = 0 AND endTime < :threshold")
     suspend fun deleteOldInactiveSessions(threshold: Long)
@@ -103,6 +115,9 @@ interface SessionAppCrossRefDao {
     @Query("SELECT packageName FROM session_app_cross_ref WHERE sessionId IN (:sessionIds)")
     suspend fun getAppsForSessions(sessionIds: List<Int>): List<String>
 
+    @Query("SELECT sessionId FROM session_app_cross_ref WHERE packageName = :packageName")
+    suspend fun getSessionIdsForApp(packageName: String): List<Int>
+
     @Query("DELETE FROM session_app_cross_ref WHERE sessionId = :sessionId")
     suspend fun deleteForSession(sessionId: Int)
 
@@ -117,6 +132,9 @@ interface SessionWebsiteCrossRefDao {
 
     @Query("SELECT domain FROM session_website_cross_ref WHERE sessionId IN (:sessionIds)")
     suspend fun getWebsitesForSessions(sessionIds: List<Int>): List<String>
+
+    @Query("SELECT sessionId FROM session_website_cross_ref WHERE domain = :domain")
+    suspend fun getSessionIdsForWebsite(domain: String): List<Int>
 
     @Query("DELETE FROM session_website_cross_ref WHERE sessionId = :sessionId")
     suspend fun deleteForSession(sessionId: Int)
@@ -187,9 +205,27 @@ interface DailyUsageStatDao {
     @Query("SELECT * FROM daily_usage_stats WHERE date = :date")
     suspend fun getStatsForDateStatic(date: String): List<DailyUsageStat>
 
+    @Query("SELECT COALESCE(SUM(timeSpentMs), 0) FROM daily_usage_stats WHERE date = :date AND identifier = :identifier")
+    suspend fun getUsageMillis(identifier: String, date: String): Long
+
+    @Query("UPDATE daily_usage_stats SET timeSpentMs = timeSpentMs + :deltaMs WHERE date = :date AND identifier = :identifier")
+    suspend fun incrementExisting(identifier: String, date: String, deltaMs: Long): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(stat: DailyUsageStat)
+
+    @Transaction
+    suspend fun addUsage(identifier: String, date: String, deltaMs: Long) {
+        if (identifier.isBlank() || deltaMs <= 0L) return
+        if (incrementExisting(identifier, date, deltaMs) == 0) {
+            insert(DailyUsageStat(identifier = identifier, date = date, timeSpentMs = deltaMs))
+        }
+    }
+
+    @Query("DELETE FROM daily_usage_stats WHERE date < :oldestDate")
+    suspend fun deleteOlderThan(oldestDate: String)
 }
+
 @Dao
 interface AppPasswordDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
