@@ -34,8 +34,11 @@ import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -64,11 +67,15 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var defaultLauncherPackage: String? = null
     private var usageStatsManager: android.app.usage.UsageStatsManager? = null
 
-    private var trackedDomain: String? = null
-    private var trackedSinceMillis = 0L
+    private val websiteTrackingLock = Any()
+    @Volatile private var trackedDomain: String? = null
+    @Volatile private var trackedSinceMillis = 0L
+    private var websiteTrackingJob: Job? = null
 
     private val cacheTimeoutMillis = 5_000L
     private val browserDebounceMillis = 300L
+    private val websitePulseMillis = 5_000L
+    private val maxUsageDeltaMillis = 15_000L
     private val channelId = "focusguard_service_channel"
     private val notificationId = 101
     private val dateFormat = ThreadLocal.withInitial {
@@ -235,6 +242,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         defaultLauncherPackage = calculateDefaultLauncher()
         calculateBrowserPackages()
         refreshData()
+        scope.launch {
+            sessionManager.checkAndEnforce()
+        }
 
         serviceInfo = AccessibilityServiceInfo().apply {
             eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
@@ -334,7 +344,6 @@ class BlockingAccessibilityService : AccessibilityService() {
                     emptySet()
                 }
 
-                sessionManager.checkAndEnforce()
                 val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
                 val enforcingSessions = activeSessions.filter(sessionManager::isCurrentlyInBlockingWindow)
                 val enforcingIds = enforcingSessions.map { it.id }
@@ -545,54 +554,95 @@ class BlockingAccessibilityService : AccessibilityService() {
             return
         }
 
-        val previous = trackedDomain
-        if (previous == normalized) {
-            val delta = (now - trackedSinceMillis).coerceIn(0L, 30_000L)
-            if (delta >= 1_000L) {
-                persistWebsiteUsage(previous, delta)
+        var usageToPersist: Pair<String, Long>? = null
+        synchronized(websiteTrackingLock) {
+            val previous = trackedDomain
+            if (previous == normalized) {
+                val delta = (now - trackedSinceMillis).coerceIn(0L, maxUsageDeltaMillis)
+                if (delta >= 1_000L) {
+                    usageToPersist = previous to delta
+                    trackedSinceMillis = now
+                }
+            } else {
+                if (previous != null) {
+                    val delta = (now - trackedSinceMillis).coerceIn(0L, maxUsageDeltaMillis)
+                    if (delta >= 1_000L) usageToPersist = previous to delta
+                }
+                trackedDomain = normalized
                 trackedSinceMillis = now
             }
-            return
         }
+        usageToPersist?.let { (site, delta) -> persistWebsiteUsage(site, delta) }
+        startWebsiteTrackingPulse()
+    }
 
-        stopWebsiteTracking(now)
-        trackedDomain = normalized
-        trackedSinceMillis = now
+    private fun startWebsiteTrackingPulse() {
+        if (websiteTrackingJob?.isActive == true) return
+        websiteTrackingJob = scope.launch {
+            while (isActive) {
+                delay(websitePulseMillis)
+                var usageToPersist: Pair<String, Long>? = null
+                synchronized(websiteTrackingLock) {
+                    val domain = trackedDomain
+                    if (domain == null) {
+                        return@launch
+                    }
+                    val now = System.currentTimeMillis()
+                    val delta = (now - trackedSinceMillis).coerceIn(0L, maxUsageDeltaMillis)
+                    if (delta >= 1_000L) {
+                        trackedSinceMillis = now
+                        usageToPersist = domain to delta
+                    }
+                }
+                usageToPersist?.let { (site, delta) -> persistWebsiteUsageNow(site, delta) }
+            }
+        }
     }
 
     private fun stopWebsiteTracking(now: Long = System.currentTimeMillis()) {
-        val domain = trackedDomain ?: return
-        val delta = (now - trackedSinceMillis).coerceIn(0L, 30_000L)
-        if (delta >= 1_000L) persistWebsiteUsage(domain, delta)
-        trackedDomain = null
-        trackedSinceMillis = 0L
+        var usageToPersist: Pair<String, Long>? = null
+        synchronized(websiteTrackingLock) {
+            val domain = trackedDomain
+            if (domain != null) {
+                val delta = (now - trackedSinceMillis).coerceIn(0L, maxUsageDeltaMillis)
+                if (delta >= 1_000L) usageToPersist = domain to delta
+            }
+            trackedDomain = null
+            trackedSinceMillis = 0L
+        }
+        websiteTrackingJob?.cancel()
+        websiteTrackingJob = null
+        usageToPersist?.let { (site, delta) -> persistWebsiteUsage(site, delta) }
     }
 
     private fun persistWebsiteUsage(domain: String, deltaMillis: Long) {
         scope.launch {
-            try {
-                val today = dateFormat.get()!!.format(Date())
-                database.dailyUsageStatDao().addUsage(domain, today, deltaMillis)
-                val limit = database.websiteUsageLimitDao().getAllStatic()
-                    .firstOrNull {
-                        it.isEnabled && WebsiteBlocker.extractDomain(it.domain) == domain
-                    }
-                if (limit != null) {
-                    val total = database.dailyUsageStatDao().getUsageMillis(domain, today)
-                    if (total / 60_000L >= limit.dailyLimitMinutes) {
-                        lastLoadTime = 0L
-                        refreshData()
-                    }
+            persistWebsiteUsageNow(domain, deltaMillis)
+        }
+    }
+
+    private suspend fun persistWebsiteUsageNow(domain: String, deltaMillis: Long) {
+        try {
+            val today = dateFormat.get()!!.format(Date())
+            database.dailyUsageStatDao().addUsage(domain, today, deltaMillis)
+            val limit = database.websiteUsageLimitDao().getAllStatic()
+                .firstOrNull {
+                    it.isEnabled && WebsiteBlocker.extractDomain(it.domain) == domain
                 }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                FocusGuardLogger.logError(
-                    "A11y",
-                    "Falha ao registrar uso de $domain",
-                    error
-                )
+            if (limit != null) {
+                val total = database.dailyUsageStatDao().getUsageMillis(domain, today)
+                if (total / 60_000L >= limit.dailyLimitMinutes) {
+                    sessionManager.checkAndEnforce()
+                }
             }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            FocusGuardLogger.logError(
+                "A11y",
+                "Falha ao registrar uso de $domain",
+                error
+            )
         }
     }
 
@@ -722,7 +772,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         const val EXTRA_BLOCKED_DOMAIN = "BLOCKED_DOMAIN"
     }
 
-    /** Compatibilidade para evitar usar flags novas diretamente em APIs antigas. */
     private object PackageManagerCompat {
         const val MATCH_ALL: Int = 0x00020000
     }
