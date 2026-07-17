@@ -81,7 +81,7 @@
     <string name="auth_biometrics_button">Usar biometria</string>
 
     <!-- Permissões -->
-    <string name="permissions_welcome_title">Bem-vindo ao FocusGuard</string>
+    <string name="permissions_welcome_title">Configurar proteção</string>
     <string name="permissions_welcome_desc">Para bloquear aplicativos e sites que distraem você, precisamos de algumas permissões do sistema.</string>
     <string name="permissions_flow_desc">Primeiro, vamos ativar as duas permissões essenciais. Depois você escolhe as melhorias opcionais.</string>
     <string name="permissions_reviewed_desc">Confira o resultado. Você poderá alterar qualquer opção depois.</string>
@@ -101,20 +101,20 @@
     <string name="permissions_badge_advanced">Avançado</string>
     <string name="permission_accessibility_title">Acessibilidade</string>
     <string name="permission_accessibility_desc">Permite identificar apps e sites abertos para aplicar bloqueios.</string>
-    <string name="permission_accessibility_detail">Sem esta permissão, o bloqueio em tempo real pode não funcionar.</string>
+    <string name="permission_accessibility_detail">Na tela do Android, toque em FocusGuard e ative \"Usar serviço\".</string>
     <string name="permission_accessibility_action">Abrir acessibilidade</string>
     <string name="permission_accessibility_help">A opção não aparece?</string>
     <string name="permission_usage_access_title">Acesso de uso</string>
     <string name="permission_usage_access_desc">Permite medir o tempo gasto em apps e gerar insights.</string>
-    <string name="permission_usage_access_detail">Usado para limites diários, dashboard e relatórios de uso.</string>
+    <string name="permission_usage_access_detail">Na lista do Android, localize FocusGuard e habilite o acesso.</string>
     <string name="permission_usage_access_action">Abrir acesso de uso</string>
     <string name="permission_device_admin_title">Admin do dispositivo</string>
     <string name="permission_device_admin_desc">Adiciona proteção avançada contra remoção impulsiva.</string>
-    <string name="permission_device_admin_detail">Use apenas se quiser tornar o FocusGuard mais resistente à desinstalação.</string>
+    <string name="permission_device_admin_detail">Na tela do Android, toque em \"Ativar\". Use apenas se quiser proteção reforçada.</string>
     <string name="permission_device_admin_action">Ativar proteção avançada</string>
     <string name="permission_battery_title">Bateria irrestrita</string>
     <string name="permission_battery_desc">Ajuda a manter bloqueios ativos em segundo plano.</string>
-    <string name="permission_battery_detail">Reduz o risco de o Android encerrar o FocusGuard durante uma sessão.</string>
+    <string name="permission_battery_detail">Confirme \"Permitir\" no aviso do Android para reduzir interrupções em sessões.</string>
     <string name="permission_battery_action">Liberar uso da bateria</string>
     <string name="permission_restricted_title">A acessibilidade não aparece?</string>
     <string name="permission_restricted_steps_title">Siga estes passos:</string>

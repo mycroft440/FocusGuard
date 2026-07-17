@@ -125,11 +125,12 @@ fun FocusGuardNavHost(
     LaunchedEffect(resumeKey) {
         withContext(Dispatchers.IO) {
             val isA11yEnabled = PermissionUtils.isAccessibilityServiceEnabled(activity)
-            val isAdminActive = deviceOwnerManager.isDeviceAdminActive() || deviceOwnerManager.isDeviceOwnerActive()
             val isUsageAccessEnabled = PermissionUtils.isUsageAccessEnabled(activity)
-            val isBatteryIgnored = PermissionUtils.isBatteryOptimizationIgnored(activity)
             withContext(Dispatchers.Main) {
-                permissionsVisible = !isA11yEnabled || !isAdminActive || !isUsageAccessEnabled || !isBatteryIgnored
+                permissionsVisible = !PermissionUtils.hasEssentialPermissions(
+                    accessibilityEnabled = isA11yEnabled,
+                    usageAccessEnabled = isUsageAccessEnabled
+                )
             }
         }
     }

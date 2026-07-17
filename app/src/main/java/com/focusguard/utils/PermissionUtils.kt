@@ -4,7 +4,6 @@ import android.app.AppOpsManager
 import android.content.ComponentName
 import android.content.Context
 import android.os.Build
-import android.os.Process
 import android.provider.Settings
 import android.text.TextUtils
 
@@ -41,19 +40,19 @@ object PermissionUtils {
             val mode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 appOps.unsafeCheckOpNoThrow(
                     AppOpsManager.OPSTR_GET_USAGE_STATS,
-                    Process.myUid(),
+                    context.applicationInfo.uid,
                     context.packageName
                 )
             } else {
                 @Suppress("DEPRECATION")
                 appOps.checkOpNoThrow(
                     AppOpsManager.OPSTR_GET_USAGE_STATS,
-                    Process.myUid(),
+                    context.applicationInfo.uid,
                     context.packageName
                 )
             }
             mode == AppOpsManager.MODE_ALLOWED
-        } catch (e: Exception) {
+        } catch (_: Exception) {
             false
         }
     }
@@ -65,8 +64,17 @@ object PermissionUtils {
         return try {
             val powerManager = context.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
             powerManager.isIgnoringBatteryOptimizations(context.packageName)
-        } catch (e: Exception) {
-            true // Fallback to true if unsupported so UX doesn't break
+        } catch (_: Exception) {
+            false
         }
     }
+
+    /**
+     * The minimum permission set needed for live blocking, usage limits and Insights.
+     * Notification, unrestricted battery and device admin remain optional enhancements.
+     */
+    fun hasEssentialPermissions(
+        accessibilityEnabled: Boolean,
+        usageAccessEnabled: Boolean
+    ): Boolean = accessibilityEnabled && usageAccessEnabled
 }

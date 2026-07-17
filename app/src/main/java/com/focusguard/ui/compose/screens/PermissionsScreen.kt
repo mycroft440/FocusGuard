@@ -1,14 +1,10 @@
 package com.focusguard.ui.compose.screens
 
-import androidx.compose.runtime.*
-import android.app.AppOpsManager
-import androidx.compose.ui.res.stringResource
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
-import android.os.Process
 import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -18,7 +14,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -36,6 +31,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -43,7 +39,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -63,6 +58,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -95,10 +91,10 @@ private enum class PermissionStepType {
 }
 
 private val orderedSteps = listOf(
-    PermissionStepType.Notifications,
-    PermissionStepType.BatteryOptimization,
     PermissionStepType.Accessibility,
     PermissionStepType.UsageAccess,
+    PermissionStepType.Notifications,
+    PermissionStepType.BatteryOptimization,
     PermissionStepType.DeviceAdmin
 )
 
@@ -120,6 +116,7 @@ fun PermissionsScreen(onFinish: () -> Unit) {
     var permissionState by remember { mutableStateOf(readPermissionState(context, deviceOwnerManager)) }
     var currentStepIndex by rememberSaveable { mutableIntStateOf(0) }
     var pendingExternalStepName by rememberSaveable { mutableStateOf<String?>(null) }
+    var unsuccessfulStepName by rememberSaveable { mutableStateOf<String?>(null) }
     var showRestrictedDialog by remember { mutableStateOf(false) }
     var resumeCount by remember { mutableIntStateOf(0) }
 
@@ -130,6 +127,7 @@ fun PermissionsScreen(onFinish: () -> Unit) {
     }
 
     fun advanceToNextStep() {
+        unsuccessfulStepName = null
         currentStepIndex = (currentStepIndex + 1).coerceAtMost(steps.size)
     }
 
@@ -163,6 +161,7 @@ fun PermissionsScreen(onFinish: () -> Unit) {
                 advanceToNextStep()
                 skipAlreadyGrantedSteps(updated)
             } else {
+                unsuccessfulStepName = pendingStep.name
                 stayOnStep(pendingStep)
             }
         } else {
@@ -180,9 +179,12 @@ fun PermissionsScreen(onFinish: () -> Unit) {
         onDispose { lifecycleOwner.lifecycle.removeObserver(callback) }
     }
 
-    val grantedCount = countGranted(permissionState)
     val currentStep = steps.getOrNull(currentStepIndex)
-    val progress = currentStepIndex.coerceAtMost(steps.size).toFloat() / steps.size.toFloat()
+    val progress = if (currentStep == null) {
+        1f
+    } else {
+        (currentStepIndex + 1).toFloat() / steps.size.toFloat()
+    }
 
     val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
         val updated = refreshPermissions()
@@ -191,6 +193,7 @@ fun PermissionsScreen(onFinish: () -> Unit) {
     }
 
     fun markPending(step: PermissionStepType) {
+        unsuccessfulStepName = null
         pendingExternalStepName = step.name
     }
 
@@ -207,38 +210,21 @@ fun PermissionsScreen(onFinish: () -> Unit) {
             }
             PermissionStepType.BatteryOptimization -> {
                 markPending(step)
-                try {
-                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                        data = Uri.parse("package:${context.packageName}")
-                    }
-                    context.startActivity(intent)
-                } catch (_: Exception) {
-                    context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
-                }
+                openBatterySettings(context)
             }
             PermissionStepType.Accessibility -> {
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && isAccessibilityServiceRestricted(context)) {
-                    showRestrictedDialog = true
-                } else {
-                    markPending(step)
-                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                }
+                markPending(step)
+                openAccessibilitySettings(context)
             }
             PermissionStepType.UsageAccess -> {
                 markPending(step)
-                try {
-                    val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
-                        data = Uri.parse("package:${context.packageName}")
-                    }
-                    context.startActivity(intent)
-                } catch (_: Exception) {
-                    context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                }
+                openUsageAccessSettings(context)
             }
             PermissionStepType.DeviceAdmin -> {
-                // Deixa o sistema lidar com a restricao ou tenta direto
                 markPending(step)
-                deviceOwnerManager.requestDeviceAdmin()
+                if (!deviceOwnerManager.requestDeviceAdmin()) {
+                    unsuccessfulStepName = step.name
+                }
             }
         }
     }
@@ -248,19 +234,12 @@ fun PermissionsScreen(onFinish: () -> Unit) {
             onOpenAppSettings = {
                 showRestrictedDialog = false
                 markPending(PermissionStepType.Accessibility)
-                try {
-                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                        data = Uri.parse("package:${context.packageName}")
-                    }
-                    context.startActivity(intent)
-                } catch (_: Exception) {
-                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                }
+                openAppInfo(context)
             },
             onOpenAccessibilitySettings = {
                 showRestrictedDialog = false
                 markPending(PermissionStepType.Accessibility)
-                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                openAccessibilitySettings(context)
             },
             onDismiss = {
                 showRestrictedDialog = false
@@ -287,7 +266,15 @@ fun PermissionsScreen(onFinish: () -> Unit) {
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                text = "$grantedCount de ${steps.size} concedidas",
+                text = if (currentStep == null) {
+                    stringResource(R.string.permissions_review_complete)
+                } else {
+                    stringResource(
+                        R.string.permissions_step_progress,
+                        currentStepIndex + 1,
+                        steps.size
+                    )
+                },
                 color = TextSecondary,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Medium
@@ -301,7 +288,7 @@ fun PermissionsScreen(onFinish: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = "Bem-vindo ao FocusGuard",
+                text = stringResource(R.string.permissions_welcome_title),
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
@@ -310,9 +297,9 @@ fun PermissionsScreen(onFinish: () -> Unit) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = if (currentStep == null) {
-                    "Permissões revisadas. Você pode concluir agora."
+                    stringResource(R.string.permissions_reviewed_desc)
                 } else {
-                    "Vamos pedir uma permissão por vez. Ao permitir, negar ou voltar, a próxima etapa será exibida."
+                    stringResource(R.string.permissions_flow_desc)
                 },
                 fontSize = 14.sp,
                 color = TextSecondary,
@@ -330,6 +317,10 @@ fun PermissionsScreen(onFinish: () -> Unit) {
                     PermissionsSummaryCard(
                         permissionState = permissionState,
                         totalSteps = steps.size,
+                        onReviewEssentials = {
+                            unsuccessfulStepName = null
+                            currentStepIndex = firstMissingEssentialStepIndex(permissionState, steps)
+                        },
                         onFinish = onFinish
                     )
                 } else {
@@ -342,11 +333,18 @@ fun PermissionsScreen(onFinish: () -> Unit) {
                         detail = ui.detail,
                         badge = ui.badge,
                         badgeColor = ui.badgeColor,
+                        actionLabel = ui.actionLabel,
                         isGranted = isStepGranted(step, permissionState),
+                        unsuccessful = unsuccessfulStepName == step.name,
+                        showAccessibilityHelp = step == PermissionStepType.Accessibility &&
+                            unsuccessfulStepName == step.name &&
+                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
+                        onAccessibilityHelp = { showRestrictedDialog = true },
                         onAllow = { openCurrentStep(step) },
-                        onDeny = {
+                        onSkip = {
                             advanceToNextStep()
-                            refreshPermissions()
+                            val updated = refreshPermissions()
+                            skipAlreadyGrantedSteps(updated)
                         }
                     )
                 }
@@ -360,46 +358,52 @@ private data class PermissionStepUi(
     val description: String,
     val detail: String,
     val badge: String,
-    val badgeColor: Color
+    val badgeColor: Color,
+    val actionLabel: String
 )
 
 @Composable
 private fun permissionStepUi(step: PermissionStepType): PermissionStepUi {
     return when (step) {
         PermissionStepType.Notifications -> PermissionStepUi(
-            title = stringResource(R.string.notificacoes),
-            description = stringResource(R.string.permite_avisos_importantes_quando_sessoe),
-            detail = "Esta permissão pode ser aceita diretamente no app.",
-            badge = "Recomendado",
-            badgeColor = WarningAmber
+            title = stringResource(R.string.permission_notifications_title),
+            description = stringResource(R.string.permission_notifications_desc),
+            detail = stringResource(R.string.permission_notifications_detail),
+            badge = stringResource(R.string.permissions_badge_recommended),
+            badgeColor = WarningAmber,
+            actionLabel = stringResource(R.string.permission_notifications_action)
         )
         PermissionStepType.BatteryOptimization -> PermissionStepUi(
-            title = stringResource(R.string.bateria),
-            description = stringResource(R.string.evita_que_o_android_pause_o_focusguard_e),
-            detail = "Pode abrir uma confirmação do sistema para manter a proteção ativa.",
-            badge = "Recomendado",
-            badgeColor = WarningAmber
+            title = stringResource(R.string.permission_battery_title),
+            description = stringResource(R.string.permission_battery_desc),
+            detail = stringResource(R.string.permission_battery_detail),
+            badge = stringResource(R.string.permissions_badge_recommended),
+            badgeColor = WarningAmber,
+            actionLabel = stringResource(R.string.permission_battery_action)
         )
         PermissionStepType.Accessibility -> PermissionStepUi(
             title = stringResource(R.string.permission_accessibility_title),
             description = stringResource(R.string.permission_accessibility_desc),
-            detail = "Sem esta permissão, o bloqueio em tempo real pode não funcionar.",
-            badge = "Essencial",
-            badgeColor = DangerRed
+            detail = stringResource(R.string.permission_accessibility_detail),
+            badge = stringResource(R.string.permissions_badge_required),
+            badgeColor = DangerRed,
+            actionLabel = stringResource(R.string.permission_accessibility_action)
         )
         PermissionStepType.UsageAccess -> PermissionStepUi(
             title = stringResource(R.string.permission_usage_access_title),
-            description = stringResource(R.string.permite_medir_o_tempo_usado_em_cada_app),
-            detail = "Necessário para insights e limites diários.",
-            badge = "Essencial",
-            badgeColor = DangerRed
+            description = stringResource(R.string.permission_usage_access_desc),
+            detail = stringResource(R.string.permission_usage_access_detail),
+            badge = stringResource(R.string.permissions_badge_required),
+            badgeColor = DangerRed,
+            actionLabel = stringResource(R.string.permission_usage_access_action)
         )
         PermissionStepType.DeviceAdmin -> PermissionStepUi(
-            title = stringResource(R.string.administrador),
-            description = stringResource(R.string.reforca_o_bloqueio_e_reduz_formas_de_bur),
-            detail = "Recomendado para bloqueios rigorosos.",
-            badge = "Avançado",
-            badgeColor = AccentPurple
+            title = stringResource(R.string.permission_device_admin_title),
+            description = stringResource(R.string.permission_device_admin_desc),
+            detail = stringResource(R.string.permission_device_admin_detail),
+            badge = stringResource(R.string.permissions_badge_advanced),
+            badgeColor = AccentPurple,
+            actionLabel = stringResource(R.string.permission_device_admin_action)
         )
     }
 }
@@ -413,9 +417,13 @@ private fun SequentialPermissionCard(
     detail: String,
     badge: String,
     badgeColor: Color,
+    actionLabel: String,
     isGranted: Boolean,
+    unsuccessful: Boolean,
+    showAccessibilityHelp: Boolean,
+    onAccessibilityHelp: () -> Unit,
     onAllow: () -> Unit,
-    onDeny: () -> Unit
+    onSkip: () -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -437,35 +445,70 @@ private fun SequentialPermissionCard(
             }
             Spacer(modifier = Modifier.height(18.dp))
             Text(
-                text = "Etapa $stepNumber de $totalSteps",
+                text = stringResource(R.string.permissions_step_progress, stepNumber, totalSteps),
                 color = AccentCyan,
                 fontSize = 12.sp,
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(8.dp))
-            Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(
+                text = title,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            Surface(color = badgeColor.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
                 Text(
-                    text = title,
-                    fontSize = 20.sp,
+                    text = badge,
+                    color = badgeColor,
+                    fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    color = TextPrimary,
-                    textAlign = TextAlign.Center
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
                 )
-                Spacer(modifier = Modifier.width(8.dp))
-                Surface(color = badgeColor.copy(alpha = 0.14f), shape = RoundedCornerShape(50)) {
-                    Text(
-                        text = badge,
-                        color = badgeColor,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                    )
-                }
             }
             Spacer(modifier = Modifier.height(10.dp))
             Text(text = description, color = TextSecondary, fontSize = 14.sp, textAlign = TextAlign.Center, lineHeight = 20.sp)
             Spacer(modifier = Modifier.height(8.dp))
             Text(text = detail, color = TextHint, fontSize = 12.sp, textAlign = TextAlign.Center, lineHeight = 18.sp)
+
+            if (unsuccessful) {
+                Spacer(modifier = Modifier.height(14.dp))
+                Surface(
+                    color = WarningAmber.copy(alpha = 0.12f),
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = WarningAmber,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                stringResource(R.string.permission_not_detected),
+                                color = TextPrimary,
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                        if (showAccessibilityHelp) {
+                            TextButton(onClick = onAccessibilityHelp) {
+                                Text(
+                                    stringResource(R.string.permission_accessibility_help),
+                                    color = AccentCyan,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(20.dp))
 
             if (isGranted) {
@@ -473,27 +516,20 @@ private fun SequentialPermissionCard(
                     Row(modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Icon(Icons.Default.Check, contentDescription = null, tint = SuccessGreen, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("Concedida", color = SuccessGreen, fontWeight = FontWeight.Bold)
+                        Text(stringResource(R.string.permission_granted), color = SuccessGreen, fontWeight = FontWeight.Bold)
                     }
                 }
             } else {
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    OutlinedButton(
-                        onClick = onDeny,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(14.dp),
-                        border = BorderStroke(1.dp, CardBorder)
-                    ) {
-                        Text("Negar", color = TextSecondary)
-                    }
-                    Button(
-                        onClick = onAllow,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(14.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-                    ) {
-                        Text("Permitir", color = DarkBg, fontWeight = FontWeight.Bold)
-                    }
+                Button(
+                    onClick = onAllow,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                ) {
+                    Text(actionLabel, color = DarkBg, fontWeight = FontWeight.Bold)
+                }
+                TextButton(onClick = onSkip) {
+                    Text(stringResource(R.string.permissions_skip), color = TextSecondary)
                 }
             }
         }
@@ -501,8 +537,15 @@ private fun SequentialPermissionCard(
 }
 
 @Composable
-private fun PermissionsSummaryCard(permissionState: PermissionState, totalSteps: Int, onFinish: () -> Unit) {
+private fun PermissionsSummaryCard(
+    permissionState: PermissionState,
+    totalSteps: Int,
+    onReviewEssentials: () -> Unit,
+    onFinish: () -> Unit
+) {
     val grantedCount = countGranted(permissionState)
+    val essentialPermissionsGranted = permissionState.hasEssentialPermissions()
+    val statusColor = if (essentialPermissionsGranted) SuccessGreen else WarningAmber
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -510,17 +553,23 @@ private fun PermissionsSummaryCard(permissionState: PermissionState, totalSteps:
         border = BorderStroke(1.dp, CardBorder)
     ) {
         Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Surface(color = AccentCyan.copy(alpha = 0.12f), shape = RoundedCornerShape(22.dp)) {
+            Surface(color = statusColor.copy(alpha = 0.12f), shape = RoundedCornerShape(22.dp)) {
                 Icon(
-                    imageVector = Icons.Default.Check,
+                    imageVector = if (essentialPermissionsGranted) Icons.Default.Check else Icons.Default.Warning,
                     contentDescription = null,
-                    tint = AccentCyan,
+                    tint = statusColor,
                     modifier = Modifier.padding(18.dp).size(44.dp)
                 )
             }
             Spacer(modifier = Modifier.height(18.dp))
             Text(
-                text = "Configuração concluída",
+                text = stringResource(
+                    if (essentialPermissionsGranted) {
+                        R.string.permissions_ready_title
+                    } else {
+                        R.string.permissions_incomplete_title
+                    }
+                ),
                 color = TextPrimary,
                 fontSize = 22.sp,
                 fontWeight = FontWeight.Bold,
@@ -528,20 +577,38 @@ private fun PermissionsSummaryCard(permissionState: PermissionState, totalSteps:
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "$grantedCount de $totalSteps permissões estão ativas. Você pode ativar as demais depois em Configurações.",
+                text = if (essentialPermissionsGranted) {
+                    stringResource(R.string.permissions_ready_desc, grantedCount, totalSteps)
+                } else {
+                    stringResource(R.string.permissions_incomplete_desc)
+                },
                 color = TextSecondary,
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center,
                 lineHeight = 20.sp
             )
             Spacer(modifier = Modifier.height(24.dp))
-            Button(
-                onClick = onFinish,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-            ) {
-                Text("Concluir configuração", color = DarkBg, fontWeight = FontWeight.Bold)
+            if (essentialPermissionsGranted) {
+                Button(
+                    onClick = onFinish,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                ) {
+                    Text(stringResource(R.string.permissions_enter_app), color = DarkBg, fontWeight = FontWeight.Bold)
+                }
+            } else {
+                Button(
+                    onClick = onReviewEssentials,
+                    modifier = Modifier.fillMaxWidth().height(52.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                ) {
+                    Text(stringResource(R.string.permissions_review_essentials), color = DarkBg, fontWeight = FontWeight.Bold)
+                }
+                TextButton(onClick = onFinish) {
+                    Text(stringResource(R.string.permissions_continue_limited), color = TextSecondary)
+                }
             }
         }
     }
@@ -560,35 +627,40 @@ private fun RestrictedAccessibilityDialog(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(Icons.Default.Settings, contentDescription = null, tint = AccentCyan)
                 Spacer(Modifier.width(8.dp))
-                Text("Permissão restrita", fontWeight = FontWeight.Bold, fontSize = 18.sp, color = TextPrimary)
+                Text(
+                    stringResource(R.string.permission_restricted_title),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 18.sp,
+                    color = TextPrimary
+                )
             }
         },
         text = {
             Column {
                 Text(
-                    "O Android bloqueou o acesso a recursos sensíveis para este app porque ele foi instalado fora da Play Store.",
+                    stringResource(R.string.permission_restricted_intro),
                     fontSize = 14.sp,
                     color = TextPrimary
                 )
                 Spacer(Modifier.height(16.dp))
                 Text(
-                    "Siga estas etapas para desbloquear:",
+                    stringResource(R.string.permission_restricted_steps_title),
                     fontSize = 13.sp,
                     color = AccentCyan,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(Modifier.height(12.dp))
-                PermissionStep(number = 1, text = "Abra as 'Informações do App' (botão abaixo)")
+                PermissionStep(number = 1, text = stringResource(R.string.permission_restricted_step_1))
                 Spacer(Modifier.height(8.dp))
-                PermissionStep(number = 2, text = "Toque nos '3 pontos' (ou 'Mais') no topo direito")
+                PermissionStep(number = 2, text = stringResource(R.string.permission_restricted_step_2))
                 Spacer(Modifier.height(8.dp))
-                PermissionStep(number = 3, text = "Selecione 'Permitir configurações restritas'")
+                PermissionStep(number = 3, text = stringResource(R.string.permission_restricted_step_3))
                 Spacer(Modifier.height(8.dp))
-                PermissionStep(number = 4, text = "Confirme com sua senha/biometria e volte aqui")
+                PermissionStep(number = 4, text = stringResource(R.string.permission_restricted_step_4))
                 
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    "Nota: Em aparelhos Xiaomi/Samsung, procure por 'Configurações Adicionais' ou no final da lista de permissões.",
+                    stringResource(R.string.permission_restricted_tip),
                     fontSize = 11.sp,
                     color = TextSecondary,
                     lineHeight = 14.sp
@@ -597,12 +669,12 @@ private fun RestrictedAccessibilityDialog(
         },
         confirmButton = {
             Button(onClick = onOpenAppSettings, colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)) {
-                Text("Abrir configurações", color = DarkBg)
+                Text(stringResource(R.string.permission_open_app_info), color = DarkBg)
             }
         },
         dismissButton = {
             TextButton(onClick = onOpenAccessibilitySettings) {
-                Text("Abrir acessibilidade", color = TextSecondary)
+                Text(stringResource(R.string.permission_accessibility_action), color = TextSecondary)
             }
         }
     )
@@ -660,21 +732,64 @@ private fun isNotificationPermissionGranted(context: Context): Boolean {
     }
 }
 
-private fun isAccessibilityServiceRestricted(context: Context): Boolean {
-    return try {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            val appOps = context.getSystemService(AppOpsManager::class.java)
-            val mode = appOps.noteOpNoThrow(
-                "android:access_restricted_settings",
-                Process.myUid(),
-                context.packageName
-            )
-            mode != AppOpsManager.MODE_ALLOWED
-        } else {
-            false
-        }
-    } catch (_: Exception) {
-        true
+private fun PermissionState.hasEssentialPermissions(): Boolean {
+    return PermissionUtils.hasEssentialPermissions(accessibility, usageAccess)
+}
+
+private fun firstMissingEssentialStepIndex(
+    state: PermissionState,
+    steps: List<PermissionStepType>
+): Int {
+    val missingStep = when {
+        !state.accessibility -> PermissionStepType.Accessibility
+        !state.usageAccess -> PermissionStepType.UsageAccess
+        else -> return steps.size
+    }
+    return steps.indexOf(missingStep).coerceAtLeast(0)
+}
+
+private fun openAccessibilitySettings(context: Context) {
+    runCatching {
+        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+    }.recoverCatching {
+        context.startActivity(Intent(Settings.ACTION_SETTINGS))
+    }
+}
+
+private fun openUsageAccessSettings(context: Context) {
+    val appSettingsIntent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+        data = Uri.parse("package:${context.packageName}")
+    }
+    runCatching {
+        context.startActivity(appSettingsIntent)
+    }.recoverCatching {
+        context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+    }.recoverCatching {
+        context.startActivity(Intent(Settings.ACTION_SETTINGS))
+    }
+}
+
+private fun openBatterySettings(context: Context) {
+    val appSettingsIntent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+        data = Uri.parse("package:${context.packageName}")
+    }
+    runCatching {
+        context.startActivity(appSettingsIntent)
+    }.recoverCatching {
+        context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
+    }.recoverCatching {
+        context.startActivity(Intent(Settings.ACTION_SETTINGS))
+    }
+}
+
+private fun openAppInfo(context: Context) {
+    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+        data = Uri.parse("package:${context.packageName}")
+    }
+    runCatching {
+        context.startActivity(intent)
+    }.recoverCatching {
+        openAccessibilitySettings(context)
     }
 }
 

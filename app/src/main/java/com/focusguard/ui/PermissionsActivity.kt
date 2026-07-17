@@ -1,11 +1,14 @@
 package com.focusguard.ui
 
+import android.content.Context
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
-import dagger.hilt.android.AndroidEntryPoint
 import androidx.activity.compose.setContent
+import com.focusguard.MainActivity
 import com.focusguard.ui.compose.screens.PermissionsScreen
 import com.focusguard.ui.compose.theme.FocusGuardTheme
+import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class PermissionsActivity : ComponentActivity() {
@@ -14,14 +17,19 @@ class PermissionsActivity : ComponentActivity() {
         setContent {
             FocusGuardTheme {
                 PermissionsScreen(onFinish = {
-                    val prefs = getSharedPreferences("FocusGuardPrefs", android.content.Context.MODE_PRIVATE)
+                    val prefs = getSharedPreferences("FocusGuardPrefs", Context.MODE_PRIVATE)
                     prefs.edit().putBoolean("hasSeenOnboarding", true).apply()
-                    
-                    startActivity(android.content.Intent(this, com.focusguard.MainActivity::class.java))
+
+                    // Reutiliza a MainActivity existente quando esta tela foi
+                    // aberta pelo aviso de permissões e cria uma nova apenas no onboarding.
+                    startActivity(
+                        Intent(this, MainActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        }
+                    )
                     finish()
                 })
             }
         }
     }
 }
-

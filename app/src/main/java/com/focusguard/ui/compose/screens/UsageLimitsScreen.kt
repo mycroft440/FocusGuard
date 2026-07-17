@@ -46,12 +46,12 @@ fun UsageLimitsScreen(authManager: AuthManager, onBack: () -> Unit) {
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            val deviceOwnerManager = com.focusguard.admin.DeviceOwnerManager.getInstance(context)
             val isA11yEnabled = com.focusguard.utils.PermissionUtils.isAccessibilityServiceEnabled(context)
-            val isAdminActive = deviceOwnerManager.isDeviceAdminActive() || deviceOwnerManager.isDeviceOwnerActive()
             val isUsageAccessEnabled = com.focusguard.utils.PermissionUtils.isUsageAccessEnabled(context)
-            val isBatteryIgnored = com.focusguard.utils.PermissionUtils.isBatteryOptimizationIgnored(context)
-            permissionsMissing = !isA11yEnabled || !isAdminActive || !isUsageAccessEnabled || !isBatteryIgnored
+            permissionsMissing = !com.focusguard.utils.PermissionUtils.hasEssentialPermissions(
+                accessibilityEnabled = isA11yEnabled,
+                usageAccessEnabled = isUsageAccessEnabled
+            )
         }
     }
 
