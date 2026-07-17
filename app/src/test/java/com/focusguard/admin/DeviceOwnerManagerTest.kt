@@ -16,7 +16,7 @@ import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+@Config(sdk = [34])
 class DeviceOwnerManagerTest {
 
     private val context: Context = RuntimeEnvironment.getApplication().applicationContext
