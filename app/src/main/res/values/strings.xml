@@ -18,7 +18,7 @@
     <string name="cancel">Cancelar</string>
     <string name="nuclear_protection">Proteção nuclear</string>
     <string name="give_permissions">Dê o restante das permissões aqui</string>
-    <string name="permissions_warning_new">O bloqueio somente irá funcionar caso dê todas as permissões ao app</string>
+    <string name="permissions_warning_new">Ative Acessibilidade e Acesso de uso para liberar bloqueios e Insights.</string>
 
     <!-- Ações comuns e acessibilidade -->
     <string name="action_back">Voltar</string>
@@ -43,7 +43,7 @@
     <string name="focusguard_subtitle">Proteção digital</string>
     <string name="block_customization">Personalizar bloqueio</string>
     <string name="pending_permissions_title">Permissões pendentes</string>
-    <string name="pending_permissions_desc">O FocusGuard precisa de permissões para funcionar corretamente.</string>
+    <string name="pending_permissions_desc">Ative Acessibilidade e Acesso de uso para liberar a proteção completa.</string>
 
     <!-- Navegação -->
     <string name="nav_protection">Proteção</string>
@@ -83,36 +83,58 @@
     <!-- Permissões -->
     <string name="permissions_welcome_title">Bem-vindo ao FocusGuard</string>
     <string name="permissions_welcome_desc">Para bloquear aplicativos e sites que distraem você, precisamos de algumas permissões do sistema.</string>
+    <string name="permissions_flow_desc">Primeiro, vamos ativar as duas permissões essenciais. Depois você escolhe as melhorias opcionais.</string>
+    <string name="permissions_reviewed_desc">Confira o resultado. Você poderá alterar qualquer opção depois.</string>
+    <string name="permissions_step_progress">Etapa %1$d de %2$d</string>
+    <string name="permissions_review_complete">Revisão concluída</string>
     <string name="permissions_finish">Concluir configuração</string>
-    <string name="permissions_skip">Pular por enquanto</string>
+    <string name="permissions_skip">Agora não</string>
+    <string name="permissions_ready_title">Proteção essencial pronta</string>
+    <string name="permissions_ready_desc">%1$d de %2$d autorizações estão ativas. As restantes são melhorias opcionais.</string>
+    <string name="permissions_incomplete_title">Configuração essencial pendente</string>
+    <string name="permissions_incomplete_desc">Acessibilidade e Acesso de uso são necessários para bloquear em tempo real, medir limites e carregar os Insights.</string>
+    <string name="permissions_review_essentials">Revisar permissões essenciais</string>
+    <string name="permissions_continue_limited">Continuar com recursos limitados</string>
+    <string name="permissions_enter_app">Entrar no FocusGuard</string>
     <string name="permissions_badge_required">Essencial</string>
     <string name="permissions_badge_recommended">Recomendado</string>
     <string name="permissions_badge_advanced">Avançado</string>
     <string name="permission_accessibility_title">Acessibilidade</string>
     <string name="permission_accessibility_desc">Permite identificar apps e sites abertos para aplicar bloqueios.</string>
     <string name="permission_accessibility_detail">Sem esta permissão, o bloqueio em tempo real pode não funcionar.</string>
+    <string name="permission_accessibility_action">Abrir acessibilidade</string>
+    <string name="permission_accessibility_help">A opção não aparece?</string>
     <string name="permission_usage_access_title">Acesso de uso</string>
     <string name="permission_usage_access_desc">Permite medir o tempo gasto em apps e gerar insights.</string>
     <string name="permission_usage_access_detail">Usado para limites diários, dashboard e relatórios de uso.</string>
+    <string name="permission_usage_access_action">Abrir acesso de uso</string>
     <string name="permission_device_admin_title">Admin do dispositivo</string>
     <string name="permission_device_admin_desc">Adiciona proteção avançada contra remoção impulsiva.</string>
     <string name="permission_device_admin_detail">Use apenas se quiser tornar o FocusGuard mais resistente à desinstalação.</string>
+    <string name="permission_device_admin_action">Ativar proteção avançada</string>
     <string name="permission_battery_title">Bateria irrestrita</string>
     <string name="permission_battery_desc">Ajuda a manter bloqueios ativos em segundo plano.</string>
     <string name="permission_battery_detail">Reduz o risco de o Android encerrar o FocusGuard durante uma sessão.</string>
-    <string name="permission_restricted_title">Desbloquear acessibilidade</string>
-    <string name="permission_restricted_intro">O Android ocultou essa permissão por segurança. Para ativá-la, siga os passos:</string>
-    <string name="permission_restricted_step_1">Toque em \"Abrir configurações\" abaixo.</string>
+    <string name="permission_battery_action">Liberar uso da bateria</string>
+    <string name="permission_restricted_title">A acessibilidade não aparece?</string>
+    <string name="permission_restricted_steps_title">Siga estes passos:</string>
+    <string name="permission_restricted_intro">Se o Android informou que as configurações estão restritas, libere o FocusGuard nas informações do app.</string>
+    <string name="permission_restricted_step_1">Toque em \"Abrir informações do app\" abaixo.</string>
     <string name="permission_restricted_step_2">No canto superior direito, toque nos três pontinhos (⋮).</string>
     <string name="permission_restricted_step_3">Toque em \"Permitir configurações restritas\".</string>
-    <string name="permission_restricted_step_4">Volte para cá e tente ativar novamente.</string>
-    <string name="permission_restricted_tip">Dica: se a opção não aparecer, tente ativar a Acessibilidade primeiro para que o Android exiba o alerta.</string>
+    <string name="permission_restricted_step_4">Volte ao FocusGuard e abra Acessibilidade novamente.</string>
+    <string name="permission_restricted_tip">Essa etapa costuma ser necessária apenas em instalações feitas fora da loja do aparelho.</string>
     <string name="permission_open_settings">Abrir configurações</string>
+    <string name="permission_open_app_info">Abrir informações do app</string>
     <string name="permission_already_allowed">Já liberei, ativar agora</string>
     <string name="permission_battery_overlay_title">Bateria irrestrita</string>
     <string name="permission_battery_overlay_desc">Para garantir que o bloqueio não falhe, o Android precisa ignorar as restrições de bateria para o FocusGuard.</string>
     <string name="permission_notifications_title">Notificações de foco</string>
     <string name="permission_notifications_desc">Deseja permitir que o FocusGuard envie avisos sobre seus bloqueios ativos?</string>
+    <string name="permission_notifications_detail">Mostra o andamento de sessões e avisos importantes de proteção.</string>
+    <string name="permission_notifications_action">Permitir notificações</string>
+    <string name="permission_not_detected">Ainda não detectamos esta autorização. Ative-a no Android e volte ao FocusGuard.</string>
+    <string name="permission_granted">Concedida</string>
     <string name="permission_deny">Negar</string>
     <string name="permission_allow">Permitir</string>
 
@@ -183,10 +205,11 @@
     <string name="dashboard_title">Métricas e Uso</string>
     <string name="dashboard_load_error">Não foi possível carregar as métricas de uso.</string>
     <string name="dashboard_permission_title">Permissão necessária</string>
-    <string name="dashboard_permission_desc">Ative o acesso ao uso para visualizar os insights sem fechar o app.</string>
-    <string name="dashboard_open_settings">Abrir configurações</string>
+    <string name="dashboard_permission_desc">Ative o Acesso de uso. Ao voltar, os Insights serão carregados automaticamente.</string>
+    <string name="dashboard_open_settings">Ativar acesso de uso</string>
     <string name="dashboard_load_failed_title">Não foi possível carregar</string>
     <string name="dashboard_load_failed_desc">Tente novamente em instantes.</string>
+    <string name="dashboard_try_again">Tentar novamente</string>
     <string name="dashboard_phone_usage">Uso do Telefone</string>
     <string name="dashboard_vs_prev_week"> vs sem. ant.</string>
     <string name="dashboard_total_week">Total na Semana</string>

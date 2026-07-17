@@ -1,12 +1,11 @@
 package com.focusguard.ui.compose.screens
 
 import kotlin.OptIn
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.material3.ExperimentalMaterial3Api
+import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
+import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -23,7 +22,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -39,13 +37,12 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.LifecycleOwner
 import com.focusguard.R
 import com.focusguard.analytics.*
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Calendar
@@ -71,104 +68,74 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
     var neverUsedApps by remember { mutableStateOf<List<String>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var hasUsageAccess by remember { mutableStateOf(false) }
-    var loadError by remember { mutableStateOf<String?>(null) }
+    var loadFailed by remember { mutableStateOf(false) }
 
     var showAverageForMostUsed by remember { mutableStateOf(false) }
     var expandMostUsed by remember { mutableStateOf(false) }
     var expandOpenClose by remember { mutableStateOf(false) }
     var expandNeverUsed by remember { mutableStateOf(false) }
 
-    // Trigger que incrementa a cada ON_RESUME do lifecycle — usado para
-    // re-disparar o LaunchedEffect de carregamento. Sem isso, quando o
-    // usuário vai para Settings conceder Usage Access e volta, a tela
-    // continuava mostrando o fallback de "permissão necessária" porque o
-    // LaunchedEffect(Unit) só roda uma vez na entrada da composição.
-    //
-    // CORREÇÃO: usamos Lifecycle.Event.ON_RESUME observado via
-    // LifecycleEventObserver (em vez de DefaultLifecycleObserver com
-    // override onResume) para evitar o erro "The coroutine scope left
-    // the composition" que acontecia quando o callback disparava depois
-    // da composable ter saído da composição (ex: troca de aba rápida).
-    var reloadTrigger by remember { mutableStateOf(0) }
+    // Recarrega ao voltar das configurações sem manter um CoroutineScope
+    // pertencente a uma composição que já saiu da tela.
+    var reloadTrigger by remember { mutableIntStateOf(0) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME) {
-                // Só incrementa se a composable ainda estiver ativa.
-                // O try/catch protege contra IllegalStateException se o
-                // snapshot state mutação acontecer após disposal.
-                runCatching { reloadTrigger++ }
+                reloadTrigger++
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // Carrega dados iniciais + recarrega a cada ON_RESUME (via reloadTrigger).
-    // Usamos rememberUpdatedState para capturar o trigger atual de forma
-    // segura — evita race condition quando o LaunchedEffect é cancelado.
-    val currentReloadTrigger by rememberUpdatedState(reloadTrigger)
+    LaunchedEffect(reloadTrigger) {
+        isLoading = true
+        loadFailed = false
 
-    LaunchedEffect(currentReloadTrigger) {
-        // Guard: se a composable foi disposed, não faz nada.
-        // O LaunchedEffect já cancela automaticamente, mas extra safety.
-        runCatching {
-            isLoading = true
-            loadError = null
-            val result = runCatching {
-                hasUsageAccess = PermissionUtils.isUsageAccessEnabled(context)
-
-                if (!hasUsageAccess) {
-                    return@runCatching null
-                }
-
-                withContext(Dispatchers.IO) {
-                    val end = System.currentTimeMillis()
-                    val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -7) }
-                    val start7Days = cal.timeInMillis
-
-                    val calToday = Calendar.getInstance().apply {
-                        set(Calendar.HOUR_OF_DAY, 0)
-                        set(Calendar.MINUTE, 0)
-                        set(Calendar.SECOND, 0)
-                        set(Calendar.MILLISECOND, 0)
-                    }
-                    val startToday = calToday.timeInMillis
-
-                    UsageInsightsData(
-                        weeklyUsage = analytics.getPhoneUsageHistory(14),
-                        mostUsedApps = analytics.getMostUsedApps(start7Days, end),
-                        openCloseEvents = analytics.getAppOpenCloseCounts(startToday, end),
-                        neverUsedApps = analytics.getNeverUsedApps(start7Days, end)
-                    )
-                }
-            }
-
-            result
-                .onSuccess { data ->
-                    if (data != null) {
-                        weeklyUsage = data.weeklyUsage
-                        mostUsedApps = data.mostUsedApps
-                        openCloseEvents = data.openCloseEvents
-                        neverUsedApps = data.neverUsedApps
-                    }
-                }
-                .onFailure { e ->
-                    FocusGuardLogger.logError(
-                        "UsageStatsDashboard",
-                        "Falha ao carregar dados de insights",
-                        e
-                    )
-                    loadError = e.localizedMessage ?: e.javaClass.simpleName
-                }
-
+        hasUsageAccess = PermissionUtils.isUsageAccessEnabled(context)
+        if (!hasUsageAccess) {
             isLoading = false
-        }.onFailure { e ->
-            // "The coroutine scope left the composition" — ignora
-            // silenciosamente, é esperado quando a composable é disposed.
-            FocusGuardLogger.log("UsageStatsDashboard", "Reload cancelado (composable disposed): ${e.message}")
-            isLoading = false
+            return@LaunchedEffect
         }
+
+        runCancellableInsightsLoad {
+            withContext(Dispatchers.IO) {
+                val end = System.currentTimeMillis()
+                val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -7) }
+                val start7Days = cal.timeInMillis
+
+                val calToday = Calendar.getInstance().apply {
+                    set(Calendar.HOUR_OF_DAY, 0)
+                    set(Calendar.MINUTE, 0)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }
+                val startToday = calToday.timeInMillis
+
+                UsageInsightsData(
+                    weeklyUsage = analytics.getPhoneUsageHistory(14),
+                    mostUsedApps = analytics.getMostUsedApps(start7Days, end),
+                    openCloseEvents = analytics.getAppOpenCloseCounts(startToday, end),
+                    neverUsedApps = analytics.getNeverUsedApps(start7Days, end)
+                )
+            }
+        }
+            .onSuccess { data ->
+                weeklyUsage = data.weeklyUsage
+                mostUsedApps = data.mostUsedApps
+                openCloseEvents = data.openCloseEvents
+                neverUsedApps = data.neverUsedApps
+            }
+            .onFailure { error ->
+                FocusGuardLogger.logError(
+                    "UsageStatsDashboard",
+                    "Falha ao carregar dados de insights",
+                    error
+                )
+                loadFailed = true
+            }
+        isLoading = false
     }
 
     Scaffold(
@@ -200,21 +167,17 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                     title = stringResource(R.string.dashboard_permission_title),
                     message = stringResource(R.string.dashboard_permission_desc),
                     actionLabel = stringResource(R.string.dashboard_open_settings),
-                    onAction = {
-                        runCatching {
-                            context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
-                        }
-                    }
+                    onAction = { openUsageAccessSettings(context) }
                 )
             }
 
-            loadError != null -> {
+            loadFailed -> {
                 InsightsFallback(
                     modifier = Modifier.padding(padding),
                     title = stringResource(R.string.dashboard_load_failed_title),
-                    message = loadError ?: stringResource(R.string.dashboard_load_failed_desc),
-                    actionLabel = stringResource(R.string.action_back),
-                    onAction = onBack
+                    message = stringResource(R.string.dashboard_load_failed_desc),
+                    actionLabel = stringResource(R.string.dashboard_try_again),
+                    onAction = { reloadTrigger++ }
                 )
             }
 
@@ -610,4 +573,29 @@ private fun formatTime(millis: Long): String {
     val h = totalMinutes / 60
     val m = totalMinutes % 60
     return if (h > 0) "${h}h ${m}m" else "${m}m"
+}
+
+private fun openUsageAccessSettings(context: Context) {
+    val appSettingsIntent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
+        data = Uri.parse("package:${context.packageName}")
+    }
+    runCatching {
+        context.startActivity(appSettingsIntent)
+    }.recoverCatching {
+        context.startActivity(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
+    }.recoverCatching {
+        context.startActivity(Intent(Settings.ACTION_SETTINGS))
+    }
+}
+
+internal suspend fun <T> runCancellableInsightsLoad(block: suspend () -> T): Result<T> {
+    return try {
+        Result.success(block())
+    } catch (cancelled: CancellationException) {
+        // O Compose cancela LaunchedEffect ao trocar de aba ou sair da composição.
+        // Esse evento precisa continuar sendo cancelamento, nunca estado de erro.
+        throw cancelled
+    } catch (error: Exception) {
+        Result.failure(error)
+    }
 }
