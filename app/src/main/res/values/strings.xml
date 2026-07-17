@@ -112,6 +112,7 @@
     <string name="permission_device_admin_desc">Adiciona proteção avançada contra remoção impulsiva.</string>
     <string name="permission_device_admin_detail">Na tela do Android, toque em \"Ativar\". Use apenas se quiser proteção reforçada.</string>
     <string name="permission_device_admin_action">Ativar proteção avançada</string>
+    <string name="permission_device_admin_manual_action">Abrir lista de administradores</string>
     <string name="permission_battery_title">Bateria irrestrita</string>
     <string name="permission_battery_desc">Ajuda a manter bloqueios ativos em segundo plano.</string>
     <string name="permission_battery_detail">Confirme \"Permitir\" no aviso do Android para reduzir interrupções em sessões.</string>

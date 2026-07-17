@@ -80,6 +80,7 @@ import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.ui.compose.theme.WarningAmber
+import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
 
 private enum class PermissionStepType {
@@ -144,6 +145,16 @@ fun PermissionsScreen(onFinish: () -> Unit) {
         }
     }
 
+    fun applyPermissionResult(step: PermissionStepType, state: PermissionState) {
+        if (isStepGranted(step, state)) {
+            advanceToNextStep()
+            skipAlreadyGrantedSteps(state)
+        } else {
+            unsuccessfulStepName = step.name
+            stayOnStep(step)
+        }
+    }
+
     LaunchedEffect(Unit) {
         val updated = refreshPermissions()
         skipAlreadyGrantedSteps(updated)
@@ -157,13 +168,7 @@ fun PermissionsScreen(onFinish: () -> Unit) {
 
         if (pendingStep != null) {
             pendingExternalStepName = null
-            if (isStepGranted(pendingStep, updated)) {
-                advanceToNextStep()
-                skipAlreadyGrantedSteps(updated)
-            } else {
-                unsuccessfulStepName = pendingStep.name
-                stayOnStep(pendingStep)
-            }
+            applyPermissionResult(pendingStep, updated)
         } else {
             skipAlreadyGrantedSteps(updated)
         }
@@ -190,6 +195,12 @@ fun PermissionsScreen(onFinish: () -> Unit) {
         val updated = refreshPermissions()
         advanceToNextStep()
         skipAlreadyGrantedSteps(updated)
+    }
+
+    val deviceAdminLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        applyPermissionResult(PermissionStepType.DeviceAdmin, refreshPermissions())
     }
 
     fun markPending(step: PermissionStepType) {
@@ -221,9 +232,20 @@ fun PermissionsScreen(onFinish: () -> Unit) {
                 openUsageAccessSettings(context)
             }
             PermissionStepType.DeviceAdmin -> {
-                markPending(step)
-                if (!deviceOwnerManager.requestDeviceAdmin()) {
-                    unsuccessfulStepName = step.name
+                unsuccessfulStepName = null
+                runCatching {
+                    deviceAdminLauncher.launch(deviceOwnerManager.createDeviceAdminActivationIntent())
+                }.onFailure { error ->
+                    FocusGuardLogger.logError(
+                        "Permissions",
+                        "Falha ao abrir confirmação de Device Admin",
+                        error
+                    )
+                    markPending(step)
+                    if (!deviceOwnerManager.openDeviceAdminSettings(context)) {
+                        pendingExternalStepName = null
+                        unsuccessfulStepName = step.name
+                    }
                 }
             }
         }
@@ -336,10 +358,31 @@ fun PermissionsScreen(onFinish: () -> Unit) {
                         actionLabel = ui.actionLabel,
                         isGranted = isStepGranted(step, permissionState),
                         unsuccessful = unsuccessfulStepName == step.name,
-                        showAccessibilityHelp = step == PermissionStepType.Accessibility &&
-                            unsuccessfulStepName == step.name &&
-                            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU,
-                        onAccessibilityHelp = { showRestrictedDialog = true },
+                        manualHelpLabel = when {
+                            step == PermissionStepType.Accessibility &&
+                                unsuccessfulStepName == step.name &&
+                                Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU -> {
+                                stringResource(R.string.permission_accessibility_help)
+                            }
+                            step == PermissionStepType.DeviceAdmin &&
+                                unsuccessfulStepName == step.name -> {
+                                stringResource(R.string.permission_device_admin_manual_action)
+                            }
+                            else -> null
+                        },
+                        onManualHelp = {
+                            when (step) {
+                                PermissionStepType.Accessibility -> showRestrictedDialog = true
+                                PermissionStepType.DeviceAdmin -> {
+                                    markPending(step)
+                                    if (!deviceOwnerManager.openDeviceAdminSettings(context)) {
+                                        pendingExternalStepName = null
+                                        unsuccessfulStepName = step.name
+                                    }
+                                }
+                                else -> Unit
+                            }
+                        },
                         onAllow = { openCurrentStep(step) },
                         onSkip = {
                             advanceToNextStep()
@@ -420,8 +463,8 @@ private fun SequentialPermissionCard(
     actionLabel: String,
     isGranted: Boolean,
     unsuccessful: Boolean,
-    showAccessibilityHelp: Boolean,
-    onAccessibilityHelp: () -> Unit,
+    manualHelpLabel: String?,
+    onManualHelp: () -> Unit,
     onAllow: () -> Unit,
     onSkip: () -> Unit
 ) {
@@ -497,10 +540,10 @@ private fun SequentialPermissionCard(
                                 modifier = Modifier.weight(1f)
                             )
                         }
-                        if (showAccessibilityHelp) {
-                            TextButton(onClick = onAccessibilityHelp) {
+                        if (manualHelpLabel != null) {
+                            TextButton(onClick = onManualHelp) {
                                 Text(
-                                    stringResource(R.string.permission_accessibility_help),
+                                    manualHelpLabel,
                                     color = AccentCyan,
                                     fontWeight = FontWeight.Bold
                                 )
