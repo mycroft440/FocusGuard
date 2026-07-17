@@ -1,18 +1,19 @@
 package com.focusguard.admin
 
 import android.app.Activity
-import com.focusguard.R
 import android.app.admin.DevicePolicyManager
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.os.UserManager
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import com.focusguard.R
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.CoroutineScope
@@ -51,6 +52,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         }
 
         private const val MAX_MANAGED_URLS = 1_000
+        private const val ACTION_DEVICE_ADMIN_SETTINGS = "android.settings.DEVICE_ADMIN_SETTINGS"
         private const val SUSPENDED_APPS_PREFERENCES = "focusguard_suspended_apps"
         private const val MANAGED_SUSPENDED_APPS_KEY = "managed_packages"
         private val CHROME_MANAGED_PACKAGES = setOf(
@@ -125,62 +127,53 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     }
 
     /**
-     * Request Device Admin activation.
-     *
-     * Em Android 13+ (API 33), apps sideloaded (fora da Play Store) podem
-     * ter a tela de Device Admin bloqueada por "Restricted Settings".
-     * Nesse caso, capturamos a exceção e logamos instruções para o usuário
-     * ir em Settings → Apps → FocusGuard → ⋮ → Allow restricted settings.
-     *
-     * Adds FLAG_ACTIVITY_NEW_TASK for non-Activity contexts.
+     * Builds the system-owned confirmation screen for legacy Device Admin.
+     * The foreground Activity must launch this intent so its result and lifecycle
+     * stay tied to the permission screen instead of opening in a detached task.
      */
-    fun requestDeviceAdmin(): Boolean {
-        return try {
-            val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, componentName)
-                putExtra(
-                    DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                    "FocusGuard precisa de permissão de administrador para bloquear apps e sites"
-                )
-                if (context !is Activity) {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-            }
-            context.startActivity(intent)
-            true
-        } catch (e: android.content.ActivityNotFoundException) {
-            com.focusguard.utils.FocusGuardLogger.logError(
-                "DeviceOwner",
-                "Device Admin settings não encontrada. Em Android 13+ sideload, " +
-                    "vá em Settings → Apps → FocusGuard → ⋮ → Allow restricted settings",
-                e
+    fun createDeviceAdminActivationIntent(): Intent {
+        return Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
+            putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, componentName)
+            putExtra(
+                DevicePolicyManager.EXTRA_ADD_EXPLANATION,
+                context.getString(R.string.permission_device_admin_desc)
             )
-            // Fallback: abrir Settings do app diretamente
-            try {
-                val fallbackIntent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                    data = android.net.Uri.parse("package:${context.packageName}")
-                    if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(fallbackIntent)
-            } catch (_: Throwable) {
-                // Último recurso: Settings geral
-                val generalIntent = Intent(Settings.ACTION_SETTINGS).apply {
-                    if (context !is Activity) addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                context.startActivity(generalIntent)
-            }
-            false
-        } catch (e: SecurityException) {
-            com.focusguard.utils.FocusGuardLogger.logError(
-                "DeviceOwner",
-                "SecurityException ao abrir Device Admin. Restricted Settings ativo?",
-                e
-            )
-            false
-        } catch (e: Throwable) {
-            com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Erro ao abrir Device Admin", e)
-            false
         }
+    }
+
+    /**
+     * Opens the manufacturer's Device Admin list when the direct confirmation
+     * activity is unavailable or returns without showing a usable screen.
+     */
+    fun openDeviceAdminSettings(hostContext: Context): Boolean {
+        val candidates = listOf(
+            Intent(ACTION_DEVICE_ADMIN_SETTINGS),
+            Intent(Settings.ACTION_SECURITY_SETTINGS),
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:${context.packageName}")
+            },
+            Intent(Settings.ACTION_SETTINGS)
+        )
+
+        candidates.forEach { candidate ->
+            val launched = runCatching {
+                if (hostContext !is Activity) {
+                    candidate.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                hostContext.startActivity(candidate)
+                true
+            }.onFailure { error ->
+                FocusGuardLogger.logError(
+                    "DeviceOwner",
+                    "Falha ao abrir ${candidate.action}",
+                    error
+                )
+            }.getOrDefault(false)
+
+            if (launched) return true
+        }
+
+        return false
     }
 
     /**

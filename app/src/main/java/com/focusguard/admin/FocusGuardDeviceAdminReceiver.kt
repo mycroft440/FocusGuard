@@ -61,21 +61,5 @@ class FocusGuardDeviceAdminReceiver : DeviceAdminReceiver() {
             return dpm.isDeviceOwnerApp(context.packageName)
         }
 
-        /**
-         * Request device admin activation.
-         */
-        fun requestDeviceAdmin(context: Context) {
-            val intent = Intent(DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN).apply {
-                putExtra(DevicePolicyManager.EXTRA_DEVICE_ADMIN, getComponentName(context))
-                putExtra(
-                    DevicePolicyManager.EXTRA_ADD_EXPLANATION,
-                    "FocusGuard precisa de permissão de administrador para bloquear apps e sites"
-                )
-            }
-            if (context !is android.app.Activity) {
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            }
-            context.startActivity(intent)
-        }
     }
 }
