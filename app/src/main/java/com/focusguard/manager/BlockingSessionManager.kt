@@ -14,6 +14,8 @@ import com.focusguard.database.AppDatabase
 import com.focusguard.database.BlockSession
 import com.focusguard.database.SessionAppCrossRef
 import com.focusguard.database.SessionWebsiteCrossRef
+import com.focusguard.receiver.BlockingScheduleCalculator
+import com.focusguard.receiver.BlockingScheduleReceiver
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.utils.FocusGuardLogger
@@ -426,6 +428,28 @@ class BlockingSessionManager @Inject constructor(
 
                 val activeWebsiteLimits = database.websiteUsageLimitDao().getAllStatic()
                     .filter { it.isEnabled }
+                val policyExpirations = (
+                    activeAppLimits.mapNotNull { limit ->
+                        if (limit.lockMode.equals("TIME", ignoreCase = true)) {
+                            limit.lockUntilTimestamp?.takeIf { it > now }
+                        } else null
+                    } + activeWebsiteLimits.mapNotNull { limit ->
+                        if (limit.lockMode.equals("TIME", ignoreCase = true)) {
+                            limit.lockUntilTimestamp?.takeIf { it > now }
+                        } else null
+                    }
+                )
+                val nextDailyReset = if (
+                    activeAppLimits.isNotEmpty() || activeWebsiteLimits.isNotEmpty()
+                ) {
+                    BlockingScheduleCalculator.nextLocalMidnight(now)
+                } else null
+                BlockingScheduleReceiver.scheduleNext(
+                    context = context,
+                    sessions = activeSessions,
+                    additionalBoundaries = policyExpirations + listOfNotNull(nextDailyReset),
+                    nowMillis = now
+                )
                 val activeWebsiteDomains = WebsiteBlocker.normalizeDomains(
                     activeWebsiteLimits.map { it.domain }
                 )
@@ -538,13 +562,13 @@ class BlockingSessionManager @Inject constructor(
 
         return limits.filter { limit ->
             val usedMinutes = (usage[limit.packageName]?.totalTimeInForeground ?: 0L) / 60_000L
-            val mode = limit.lockMode.uppercase(Locale.ROOT)
-            val lockStillValid = mode != "TIME" || limit.lockUntilTimestamp == null ||
-                limit.lockUntilTimestamp > now
             usedMinutes >= limit.dailyLimitMinutes &&
                 limit.preventOpeningAfterLimit &&
-                mode != "WARNING" &&
-                lockStillValid
+                WebsiteUsageLimitPolicy.isBlockingModeActive(
+                    limit.lockMode,
+                    limit.lockUntilTimestamp,
+                    now
+                )
         }.map { it.packageName }
     }
 

@@ -62,6 +62,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     @Volatile private var limitedWebsiteDomains: Set<String> = emptySet()
     @Volatile private var isBlockingSessionActive = false
     @Volatile private var isPomodoroStrictActive = false
+    @Volatile private var lastEnforcementFingerprint: String? = null
 
     private var lastLoadTime = 0L
     private var lastBrowserCheck = 0L
@@ -265,8 +266,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED or
                 AccessibilityEvent.TYPE_VIEW_FOCUSED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-            flags = flags or AccessibilityServiceInfo.FLAG_DEFAULT or
-                AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
+            flags = flags or AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
                 AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
                 AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
             notificationTimeout = 80L
@@ -388,6 +388,16 @@ class BlockingAccessibilityService : AccessibilityService() {
                             websiteLimits.map { it.domain }
                         )
                         val exceededWebsiteDomains = calculateExceededWebsiteLimits(websiteLimits)
+                        val enforcementFingerprint = listOf(
+                            enforcingIds.sorted().joinToString(","),
+                            sessionApps.sorted().joinToString(","),
+                            sessionSites.sorted().joinToString(","),
+                            limitApps.sorted().joinToString(","),
+                            exceededWebsiteDomains.sorted().joinToString(",")
+                        ).joinToString("|")
+                        val shouldReconcilePolicies = lastEnforcementFingerprint?.let {
+                            it != enforcementFingerprint
+                        } == true
 
                         withContext(Dispatchers.Main) {
                             isPomodoroStrictActive = enforcingSessions.any {
@@ -402,7 +412,11 @@ class BlockingAccessibilityService : AccessibilityService() {
                                 limitApps.isNotEmpty() ||
                                 exceededWebsiteDomains.isNotEmpty() ||
                                 adultFilterEnabled
+                            lastEnforcementFingerprint = enforcementFingerprint
                             lastLoadTime = System.currentTimeMillis()
+                        }
+                        if (shouldReconcilePolicies) {
+                            sessionManager.checkAndEnforce()
                         }
                     } catch (cancelled: CancellationException) {
                         throw cancelled
@@ -433,13 +447,13 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         return limits.filter { limit ->
             val usedMinutes = (usage[limit.packageName]?.totalTimeInForeground ?: 0L) / 60_000L
-            val mode = limit.lockMode.uppercase(Locale.ROOT)
-            val lockValid = mode != "TIME" || limit.lockUntilTimestamp == null ||
-                limit.lockUntilTimestamp > now
             usedMinutes >= limit.dailyLimitMinutes &&
                 limit.preventOpeningAfterLimit &&
-                mode != "WARNING" &&
-                lockValid
+                WebsiteUsageLimitPolicy.isBlockingModeActive(
+                    limit.lockMode,
+                    limit.lockUntilTimestamp,
+                    now
+                )
         }.mapTo(mutableSetOf()) { it.packageName }
     }
 

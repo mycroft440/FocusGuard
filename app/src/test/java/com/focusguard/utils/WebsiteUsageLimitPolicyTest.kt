@@ -65,4 +65,28 @@ class WebsiteUsageLimitPolicyTest {
             )
         ).isTrue()
     }
+
+    @Test
+    fun `time mode without an expiration does not create a permanent lock`() {
+        assertThat(
+            WebsiteUsageLimitPolicy.shouldBlock(
+                usedMillis = 60 * 60_000L,
+                dailyLimitMinutes = 30,
+                lockMode = "TIME",
+                lockUntilTimestamp = null,
+                nowMillis = 1_000L
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `password mode remains active without an expiration`() {
+        assertThat(
+            WebsiteUsageLimitPolicy.isBlockingModeActive(
+                lockMode = "password",
+                lockUntilTimestamp = null,
+                nowMillis = 1_000L
+            )
+        ).isTrue()
+    }
 }

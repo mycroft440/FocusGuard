@@ -216,7 +216,10 @@ fun FocusGuardNavHost(
                 FocusGuardRoute.IntruderLog -> IntruderLogScreen(onBack = { currentRoute = FocusGuardRoute.Settings })
                 FocusGuardRoute.Language -> LanguageScreen(onBack = { currentRoute = FocusGuardRoute.Settings })
                 FocusGuardRoute.PasswordManagement -> PasswordManagementScreen(authManager = authManager, onBack = { currentRoute = FocusGuardRoute.Settings })
-                FocusGuardRoute.UsageLimits -> UsageLimitsScreen(onBack = { currentRoute = FocusGuardRoute.Home })
+                FocusGuardRoute.UsageLimits -> UsageLimitsScreen(
+                    authManager = authManager,
+                    onBack = { currentRoute = FocusGuardRoute.Home }
+                )
                 FocusGuardRoute.Dashboard -> UsageStatsDashboardScreen(onBack = { currentRoute = FocusGuardRoute.Home })
                 FocusGuardRoute.BlockCustomization -> BlockCustomizationScreen(onBack = { currentRoute = FocusGuardRoute.Settings })
                 FocusGuardRoute.SessionsList -> SessionsListScreen(sessionType = selectedSessionType, onBack = { currentRoute = FocusGuardRoute.Home })

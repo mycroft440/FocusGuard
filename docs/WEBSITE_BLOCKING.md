@@ -7,8 +7,8 @@ bloqueio combina as duas camadas nativas disponíveis no Android:
    - Aplica `URLBlocklist` ao Chrome e ao Microsoft Edge instalados.
    - Respeita o limite oficial de 1.000 filtros por navegador e mantém as
      regras originais antes de acrescentar aliases conhecidos.
-   - No Edge para Android, a política requer Android 11 (API 30) ou superior;
-     em versões anteriores permanece o fallback de acessibilidade.
+   - No Edge para Android, a política está disponível a partir da versão 30 do
+     navegador; não se trata do nível 30 da API do Android.
    - Desativa a navegação privada enquanto houver uma lista ativa.
    - O próprio navegador rejeita a navegação antes de renderizar a página.
    - A política é reaplicada quando um navegador é instalado ou atualizado.

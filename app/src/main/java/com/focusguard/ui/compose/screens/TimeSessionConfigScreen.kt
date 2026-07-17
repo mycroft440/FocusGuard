@@ -66,6 +66,13 @@ fun TimeSessionConfigScreen(
                     LimitType.HARD_BLOCK_NO_PASSWORD -> config.daysLimit.coerceIn(1, 120)
                     else -> 1
                 }
+                val lockUntilTimestamp = if (
+                    config.limitType == LimitType.HARD_BLOCK_NO_PASSWORD
+                ) {
+                    now + durationDays * 24L * 60L * 60L * 1000L
+                } else {
+                    null
+                }
 
                 apps.forEach { packageName ->
                     database.appUsageLimitDao().insert(
@@ -75,9 +82,7 @@ fun TimeSessionConfigScreen(
                             dailyLimitMinutes = dailyLimitMinutes,
                             isEnabled = true,
                             lockMode = lockMode,
-                            lockUntilTimestamp = if (config.limitType == LimitType.HARD_BLOCK_NO_PASSWORD) {
-                                now + durationDays * 24L * 60L * 60L * 1000L
-                            } else null,
+                            lockUntilTimestamp = lockUntilTimestamp,
                             createdAt = now,
                             lastResetDate = now,
                             preventOpeningAfterLimit = config.limitType != LimitType.WARNING_ONLY,
@@ -102,6 +107,7 @@ fun TimeSessionConfigScreen(
                             dailyLimitMinutes = dailyLimitMinutes,
                             isEnabled = true,
                             lockMode = lockMode,
+                            lockUntilTimestamp = lockUntilTimestamp,
                             createdAt = now
                         )
                     )

@@ -32,6 +32,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -53,6 +54,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.launch
 
 @Composable
 fun LimitSecuritySection(
@@ -550,11 +552,14 @@ private fun LimitSummary(label: String, minutes: Int, lockUntil: Long?) {
 @Composable
 fun ConfirmLimitPasswordDialog(
     expectedHash: String,
+    fallbackVerifier: (suspend (String) -> Boolean)? = null,
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
+    val scope = rememberCoroutineScope()
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf(false) }
+    var verifying by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -589,10 +594,21 @@ fun ConfirmLimitPasswordDialog(
         },
         confirmButton = {
             TextButton(
-                enabled = password.isNotBlank() && expectedHash.isNotBlank(),
+                enabled = password.isNotBlank() && !verifying &&
+                    (expectedHash.isNotBlank() || fallbackVerifier != null),
                 onClick = {
-                    if (verifyLimitPassword(password, expectedHash)) onConfirm()
-                    else error = true
+                    scope.launch {
+                        verifying = true
+                        val valid = runCatching {
+                            if (expectedHash.isNotBlank()) {
+                                verifyLimitPassword(password, expectedHash)
+                            } else {
+                                fallbackVerifier?.invoke(password) == true
+                            }
+                        }.getOrDefault(false)
+                        verifying = false
+                        if (valid) onConfirm() else error = true
+                    }
                 }
             ) {
                 Text(stringResource(R.string.sessions_confirm), color = AccentCyan)

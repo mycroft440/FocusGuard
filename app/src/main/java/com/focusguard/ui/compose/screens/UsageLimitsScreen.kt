@@ -28,6 +28,7 @@ import androidx.compose.ui.unit.sp
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.WebsiteUsageLimit
 import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.security.AuthManager
 import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.R
@@ -38,7 +39,7 @@ import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UsageLimitsScreen(onBack: () -> Unit) {
+fun UsageLimitsScreen(authManager: AuthManager, onBack: () -> Unit) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
     var permissionsMissing by remember { mutableStateOf(false) }
@@ -87,15 +88,15 @@ fun UsageLimitsScreen(onBack: () -> Unit) {
             }
 
             when (selectedTab) {
-                0 -> AppLimitsTab(permissionsMissing)
-                1 -> WebsiteLimitsTab(permissionsMissing)
+                0 -> AppLimitsTab(permissionsMissing, authManager)
+                1 -> WebsiteLimitsTab(permissionsMissing, authManager)
             }
         }
     }
 }
 
 @Composable
-fun AppLimitsTab(permissionsMissing: Boolean) {
+fun AppLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     // P2-2: usa Hilt EntryPoint via rememberAppDatabase()
@@ -243,6 +244,7 @@ fun AppLimitsTab(permissionsMissing: Boolean) {
     if (showPasswordConfirm && selectedApp != null) {
         ConfirmLimitPasswordDialog(
             expectedHash = selectedApp?.lockPasswordHash ?: "",
+            fallbackVerifier = authManager::verifyPassword,
             onDismiss = { showPasswordConfirm = false },
             onConfirm = { 
                 showPasswordConfirm = false
@@ -264,7 +266,7 @@ fun AppLimitsTab(permissionsMissing: Boolean) {
 }
 
 @Composable
-fun WebsiteLimitsTab(permissionsMissing: Boolean) {
+fun WebsiteLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     // P2-2: usa Hilt EntryPoint via rememberAppDatabase()
@@ -443,6 +445,7 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean) {
     if (showPasswordConfirm && selectedSite != null) {
         ConfirmLimitPasswordDialog(
             expectedHash = selectedSite?.lockPasswordHash ?: "",
+            fallbackVerifier = authManager::verifyPassword,
             onDismiss = { showPasswordConfirm = false },
             onConfirm = { 
                 showPasswordConfirm = false

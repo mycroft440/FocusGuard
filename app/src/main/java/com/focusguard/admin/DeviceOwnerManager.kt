@@ -429,13 +429,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         websitePolicyMutex.withLock {
             withContext(Dispatchers.IO) {
                 val chromePackages = CHROME_MANAGED_PACKAGES.filter(::isPackageInstalled)
-                val edgePackages = if (
-                    android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R
-                ) {
-                    EDGE_MANAGED_PACKAGES.filter(::isPackageInstalled)
-                } else {
-                    emptyList()
-                }
+                val edgePackages = EDGE_MANAGED_PACKAGES.filter(::isPackageInstalled)
                 val targets = (chromePackages + edgePackages).sorted()
                 val managedFilters = domains.map { domain ->
                     if (':' in domain) "[$domain]" else domain
