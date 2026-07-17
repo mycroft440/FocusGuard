@@ -24,6 +24,7 @@ import com.focusguard.ui.BlockNoticeActivity
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
+import com.focusguard.utils.WebsiteUsageLimitPolicy
 import dagger.hilt.android.AndroidEntryPoint
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -54,6 +55,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private val serviceJob = SupervisorJob()
     private val scope = CoroutineScope(serviceJob + Dispatchers.IO)
     private val isRefreshing = AtomicBoolean(false)
+    private val refreshRequested = AtomicBoolean(false)
 
     @Volatile private var blockedAppsSet: Set<String> = emptySet()
     @Volatile private var blockedWebsitesDomainSet: Set<String> = emptySet()
@@ -63,6 +65,8 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private var lastLoadTime = 0L
     private var lastBrowserCheck = 0L
+    private var lastWebsiteBlockTime = 0L
+    private var lastWebsiteBlockKey: String? = null
     private var lastToastTime = 0L
     private var defaultLauncherPackage: String? = null
     private var usageStatsManager: android.app.usage.UsageStatsManager? = null
@@ -73,7 +77,8 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var websiteTrackingJob: Job? = null
 
     private val cacheTimeoutMillis = 5_000L
-    private val browserDebounceMillis = 300L
+    private val browserDebounceMillis = 120L
+    private val websiteBlockCooldownMillis = 1_500L
     private val websitePulseMillis = 5_000L
     private val maxUsageDeltaMillis = 15_000L
     private val channelId = "focusguard_service_channel"
@@ -112,23 +117,19 @@ class BlockingAccessibilityService : AccessibilityService() {
         "AppControl"
     )
 
-    private val incognitoTerms = arrayOf(
-        "incognito",
-        "incógnito",
-        "anônimo",
-        "private browsing",
-        "navegação privada"
-    )
-
     private var browserPackages: Set<String> = emptySet()
     private val knownBrowserPackages = setOf(
         "com.android.chrome",
-        "com.android.chrome.beta",
-        "com.android.chrome.dev",
-        "com.android.chrome.canary",
+        "com.chrome.beta",
+        "com.chrome.dev",
+        "com.chrome.canary",
         "com.microsoft.emmx",
+        "com.microsoft.emmx.beta",
+        "com.microsoft.emmx.dev",
+        "com.microsoft.emmx.canary",
         "com.brave.browser",
         "com.brave.browser_beta",
+        "com.brave.browser_nightly",
         "com.kiwibrowser.browser",
         "com.kiwibrowser.browser.dev",
         "com.vivaldi.browser",
@@ -139,6 +140,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         "com.UCMobile.intl.mi",
         "org.mozilla.firefox",
         "org.mozilla.firefox_beta",
+        "org.mozilla.fenix",
         "org.mozilla.fennec_aurora",
         "org.mozilla.focus",
         "org.mozilla.klar",
@@ -148,12 +150,21 @@ class BlockingAccessibilityService : AccessibilityService() {
         "com.opera.gx",
         "com.sec.android.app.sbrowser",
         "com.sec.android.app.sbrowser.beta",
-        "com.duckduckgo.mobile.android"
+        "com.duckduckgo.mobile.android",
+        "com.google.android.googlequicksearchbox"
     )
 
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            val changedPackage = intent?.data?.schemeSpecificPart.orEmpty()
             calculateBrowserPackages()
+            lastLoadTime = 0L
+            scope.launch {
+                if (changedPackage in knownBrowserPackages) {
+                    deviceOwnerManager.invalidateWebsitePolicyCache()
+                }
+                sessionManager.checkAndEnforce()
+            }
         }
     }
 
@@ -246,13 +257,19 @@ class BlockingAccessibilityService : AccessibilityService() {
             sessionManager.checkAndEnforce()
         }
 
-        serviceInfo = AccessibilityServiceInfo().apply {
+        // Preserva capacidades estáticas carregadas do XML, especialmente
+        // canRetrieveWindowContent; apenas campos dinâmicos podem ser alterados aqui.
+        serviceInfo = serviceInfo.apply {
             eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
+                AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED or
+                AccessibilityEvent.TYPE_VIEW_FOCUSED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
-            flags = AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
+            flags = flags or AccessibilityServiceInfo.FLAG_DEFAULT or
+                AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
+                AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
                 AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-            notificationTimeout = 200L
+            notificationTimeout = 80L
         }
     }
 
@@ -311,8 +328,13 @@ class BlockingAccessibilityService : AccessibilityService() {
 
             when (event.eventType) {
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> handleWindowStateChanged(event)
-                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED -> {
-                    if (packageName in browserPackages && now - lastBrowserCheck >= browserDebounceMillis) {
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+                AccessibilityEvent.TYPE_VIEW_FOCUSED -> {
+                    val fastEvent = event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                    if (packageName in browserPackages &&
+                        (fastEvent || now - lastBrowserCheck >= browserDebounceMillis)
+                    ) {
                         lastBrowserCheck = now
                         handleBrowserEvent(event)
                     }
@@ -326,63 +348,71 @@ class BlockingAccessibilityService : AccessibilityService() {
     override fun onInterrupt() = Unit
 
     private fun refreshData() {
+        refreshRequested.set(true)
         if (!isRefreshing.compareAndSet(false, true)) return
         scope.launch {
             try {
-                val adultFilterEnabled = authManager.isAdultFilterEnabled()
-                val adultDomains = if (adultFilterEnabled) {
-                    com.focusguard.data.PredefinedApps.PREVENTIVE_APPS
-                        .asSequence()
-                        .filter {
-                            it.category == com.focusguard.data.PredefinedApps.CATEGORY_PORNOGRAPHY
+                do {
+                    refreshRequested.set(false)
+                    try {
+                        val adultFilterEnabled = authManager.isAdultFilterEnabled()
+                        val adultDomains = if (adultFilterEnabled) {
+                            WebsiteBlocker.normalizeDomains(
+                                com.focusguard.data.PredefinedApps.PREVENTIVE_APPS
+                                    .asSequence()
+                                    .filter {
+                                        it.category == com.focusguard.data.PredefinedApps.CATEGORY_PORNOGRAPHY
+                                    }
+                                    .mapNotNull { it.domain }
+                                    .toList()
+                            )
+                        } else {
+                            emptySet()
                         }
-                        .mapNotNull { it.domain }
-                        .map(WebsiteBlocker::extractDomain)
-                        .filter { it.isNotBlank() }
-                        .toSet()
-                } else {
-                    emptySet()
-                }
 
-                val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
-                val enforcingSessions = activeSessions.filter(sessionManager::isCurrentlyInBlockingWindow)
-                val enforcingIds = enforcingSessions.map { it.id }
+                        val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
+                        val enforcingSessions = activeSessions.filter(
+                            sessionManager::isCurrentlyInBlockingWindow
+                        )
+                        val enforcingIds = enforcingSessions.map { it.id }
 
-                val sessionApps = getAppsForSessions(enforcingIds).toSet()
-                val sessionSites = getSitesForSessions(enforcingIds)
-                    .map(WebsiteBlocker::extractDomain)
-                    .filter { it.isNotBlank() }
-                    .toSet()
+                        val sessionApps = getAppsForSessions(enforcingIds).toSet()
+                        val sessionSites = WebsiteBlocker.normalizeDomains(
+                            getSitesForSessions(enforcingIds)
+                        )
 
-                val limitApps = calculateExceededAppLimits()
-                val websiteLimits = database.websiteUsageLimitDao().getAllStatic()
-                    .filter { it.isEnabled }
-                val configuredWebsiteDomains = websiteLimits
-                    .map { WebsiteBlocker.extractDomain(it.domain) }
-                    .filter { it.isNotBlank() }
-                    .toSet()
-                val exceededWebsiteDomains = calculateExceededWebsiteLimits(websiteLimits)
+                        val limitApps = calculateExceededAppLimits()
+                        val websiteLimits = database.websiteUsageLimitDao().getAllStatic()
+                            .filter { it.isEnabled }
+                        val configuredWebsiteDomains = WebsiteBlocker.normalizeDomains(
+                            websiteLimits.map { it.domain }
+                        )
+                        val exceededWebsiteDomains = calculateExceededWebsiteLimits(websiteLimits)
 
-                withContext(Dispatchers.Main) {
-                    isPomodoroStrictActive = enforcingSessions.any {
-                        it.sessionType == "POMODORO" && it.isBlockingEnabled
+                        withContext(Dispatchers.Main) {
+                            isPomodoroStrictActive = enforcingSessions.any {
+                                it.sessionType == "POMODORO" && it.isBlockingEnabled
+                            }
+                            blockedAppsSet = sessionApps + limitApps
+                            blockedWebsitesDomainSet = WebsiteBlocker.normalizeDomains(
+                                sessionSites + exceededWebsiteDomains + adultDomains
+                            )
+                            limitedWebsiteDomains = configuredWebsiteDomains
+                            isBlockingSessionActive = enforcingSessions.isNotEmpty() ||
+                                limitApps.isNotEmpty() ||
+                                exceededWebsiteDomains.isNotEmpty() ||
+                                adultFilterEnabled
+                            lastLoadTime = System.currentTimeMillis()
+                        }
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: Exception) {
+                        FocusGuardLogger.logError("A11y", "Falha ao atualizar bloqueios", error)
                     }
-                    blockedAppsSet = sessionApps + limitApps
-                    blockedWebsitesDomainSet = sessionSites + exceededWebsiteDomains + adultDomains
-                    limitedWebsiteDomains = configuredWebsiteDomains
-                    isBlockingSessionActive = enforcingSessions.isNotEmpty() ||
-                        limitApps.isNotEmpty() ||
-                        exceededWebsiteDomains.isNotEmpty() ||
-                        adultFilterEnabled
-                    WebsiteBlocker.clearCache()
-                    lastLoadTime = System.currentTimeMillis()
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                FocusGuardLogger.logError("A11y", "Falha ao atualizar bloqueios", error)
+                } while (refreshRequested.get())
             } finally {
                 isRefreshing.set(false)
+                if (refreshRequested.get() && serviceJob.isActive) refreshData()
             }
         }
     }
@@ -418,18 +448,24 @@ class BlockingAccessibilityService : AccessibilityService() {
     ): Set<String> {
         if (limits.isEmpty()) return emptySet()
         val today = dateFormat.get()!!.format(Date())
-        val usage = database.dailyUsageStatDao().getStatsForDateStatic(today)
-            .groupBy { WebsiteBlocker.extractDomain(it.identifier) }
-            .mapValues { (_, rows) -> rows.sumOf { it.timeSpentMs } }
+        val limitDomains = WebsiteBlocker.normalizeDomains(limits.map { it.domain })
+        val usage = mutableMapOf<String, Long>()
+        database.dailyUsageStatDao().getStatsForDateStatic(today).forEach { row ->
+            WebsiteBlocker.findMatchingRule(row.identifier, limitDomains)?.let { rule ->
+                usage[rule] = (usage[rule] ?: 0L) + row.timeSpentMs
+            }
+        }
         val now = System.currentTimeMillis()
 
         return limits.filter { limit ->
             val domain = WebsiteBlocker.extractDomain(limit.domain)
-            val usedMinutes = (usage[domain] ?: 0L) / 60_000L
-            val mode = limit.lockMode.uppercase(Locale.ROOT)
-            val lockValid = mode != "TIME" || limit.lockUntilTimestamp == null ||
-                limit.lockUntilTimestamp > now
-            usedMinutes >= limit.dailyLimitMinutes && lockValid
+            WebsiteUsageLimitPolicy.shouldBlock(
+                usedMillis = usage[domain] ?: 0L,
+                dailyLimitMinutes = limit.dailyLimitMinutes,
+                lockMode = limit.lockMode,
+                lockUntilTimestamp = limit.lockUntilTimestamp,
+                nowMillis = now
+            )
         }.mapTo(mutableSetOf()) { WebsiteBlocker.extractDomain(it.domain) }
     }
 
@@ -516,40 +552,30 @@ class BlockingAccessibilityService : AccessibilityService() {
         val packageName = event.packageName?.toString() ?: return
         if (packageName !in browserPackages) return
 
-        val fastUrl = WebsiteBlocker.extractUrlFromEvent(event)
+        val fastUrl = WebsiteBlocker.extractUrlFromEvent(event, packageName)
         val root = if (fastUrl == null) rootInActiveWindow ?: event.source else null
-        val url = fastUrl ?: extractUrlFromRoot(root)
+        val url = fastUrl ?: WebsiteBlocker.extractUrlFromRoot(root, packageName)
         val now = System.currentTimeMillis()
 
         if (!url.isNullOrBlank()) {
             val domain = WebsiteBlocker.extractDomain(url)
             updateWebsiteTracking(domain, now)
-            if (WebsiteBlocker.isUrlBlocked(url, blockedWebsitesDomainSet)) {
-                blockWebsite(domain)
+            if (WebsiteBlocker.findMatchingRule(domain, blockedWebsitesDomainSet) != null) {
+                blockWebsite(domain, packageName)
                 recycleSafely(root)
                 return
             }
-        }
-
-        if (root != null && blockedWebsitesDomainSet.isNotEmpty() && isIncognitoMode(root)) {
-            blockWebsite(null)
+        } else if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            // Uma nova aba/tela interna sem URL não deve continuar somando o
+            // tempo do site visitado anteriormente.
+            stopWebsiteTracking(now)
         }
         recycleSafely(root)
     }
 
-    private fun extractUrlFromRoot(root: AccessibilityNodeInfo?): String? {
-        if (root == null) return null
-        val addressBar = WebsiteBlocker.findAddressBarNode(root) ?: return null
-        return try {
-            addressBar.text?.toString()?.trim()
-        } finally {
-            recycleSafely(addressBar)
-        }
-    }
-
     private fun updateWebsiteTracking(domain: String, now: Long) {
-        val normalized = WebsiteBlocker.extractDomain(domain)
-        if (normalized !in limitedWebsiteDomains) {
+        val matchedRule = WebsiteBlocker.findMatchingRule(domain, limitedWebsiteDomains)
+        if (matchedRule == null) {
             stopWebsiteTracking(now)
             return
         }
@@ -557,7 +583,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         var usageToPersist: Pair<String, Long>? = null
         synchronized(websiteTrackingLock) {
             val previous = trackedDomain
-            if (previous == normalized) {
+            if (previous == matchedRule) {
                 val delta = (now - trackedSinceMillis).coerceIn(0L, maxUsageDeltaMillis)
                 if (delta >= 1_000L) {
                     usageToPersist = previous to delta
@@ -568,7 +594,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                     val delta = (now - trackedSinceMillis).coerceIn(0L, maxUsageDeltaMillis)
                     if (delta >= 1_000L) usageToPersist = previous to delta
                 }
-                trackedDomain = normalized
+                trackedDomain = matchedRule
                 trackedSinceMillis = now
             }
         }
@@ -631,7 +657,14 @@ class BlockingAccessibilityService : AccessibilityService() {
                 }
             if (limit != null) {
                 val total = database.dailyUsageStatDao().getUsageMillis(domain, today)
-                if (total / 60_000L >= limit.dailyLimitMinutes) {
+                val shouldBlock = WebsiteUsageLimitPolicy.shouldBlock(
+                    usedMillis = total,
+                    dailyLimitMinutes = limit.dailyLimitMinutes,
+                    lockMode = limit.lockMode,
+                    lockUntilTimestamp = limit.lockUntilTimestamp,
+                    nowMillis = System.currentTimeMillis()
+                )
+                if (shouldBlock) {
                     sessionManager.checkAndEnforce()
                 }
             }
@@ -646,37 +679,21 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun isIncognitoMode(node: AccessibilityNodeInfo?): Boolean {
-        return checkIncognito(node, 0)
-    }
-
-    private fun checkIncognito(node: AccessibilityNodeInfo?, depth: Int): Boolean {
-        if (node == null || depth > 4) return false
-        try {
-            val text = node.text?.toString()?.lowercase(Locale.ROOT).orEmpty()
-            val description = node.contentDescription?.toString()
-                ?.lowercase(Locale.ROOT)
-                .orEmpty()
-            if (incognitoTerms.any { text.contains(it) || description.contains(it) }) return true
-
-            for (index in 0 until node.childCount) {
-                val child = node.getChild(index) ?: continue
-                val found = checkIncognito(child, depth + 1)
-                recycleSafely(child)
-                if (found) return true
-            }
-        } catch (error: RuntimeException) {
-            FocusGuardLogger.logError("A11y", "Falha ao detectar modo privado", error)
-        }
-        return false
-    }
-
     private fun blockApp(packageName: String) {
         launchBlockNotice(blockedPackage = packageName, blockedDomain = null)
     }
 
-    private fun blockWebsite(domain: String?) {
-        performGlobalAction(GLOBAL_ACTION_BACK)
+    private fun blockWebsite(domain: String, browserPackageName: String) {
+        val now = System.currentTimeMillis()
+        val blockKey = "$browserPackageName|$domain"
+        if (blockKey == lastWebsiteBlockKey &&
+            now - lastWebsiteBlockTime < websiteBlockCooldownMillis
+        ) return
+
+        lastWebsiteBlockKey = blockKey
+        lastWebsiteBlockTime = now
+        stopWebsiteTracking(now)
+        performGlobalAction(GLOBAL_ACTION_HOME)
         launchBlockNotice(blockedPackage = null, blockedDomain = domain)
     }
 

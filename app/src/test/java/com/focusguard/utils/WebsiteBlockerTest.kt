@@ -22,6 +22,8 @@ class WebsiteBlockerTest {
     fun `extractDomain normalizes bare domain`() {
         assertThat(WebsiteBlocker.extractDomain("example.com/path"))
             .isEqualTo("example.com")
+        assertThat(WebsiteBlocker.extractDomain("example.com:8443/path"))
+            .isEqualTo("example.com")
     }
 
     @Test
@@ -43,6 +45,32 @@ class WebsiteBlockerTest {
     }
 
     @Test
+    fun `extractDomain handles international domains and unicode separators`() {
+        assertThat(WebsiteBlocker.extractDomain("https://BÜCHER.de/path"))
+            .isEqualTo("xn--bcher-kva.de")
+        assertThat(WebsiteBlocker.extractDomain("example。com"))
+            .isEqualTo("example.com")
+        assertThat(WebsiteBlocker.extractDomain("https://example%2Ecom/path"))
+            .isEqualTo("example.com")
+    }
+
+    @Test
+    fun `extractDomain unwraps browser origin schemes`() {
+        assertThat(WebsiteBlocker.extractDomain("view-source:https://www.example.com/page"))
+            .isEqualTo("example.com")
+        assertThat(WebsiteBlocker.extractDomain("blob:https://sub.example.com/id"))
+            .isEqualTo("sub.example.com")
+    }
+
+    @Test
+    fun `extractDomain honors the real host after user info`() {
+        assertThat(WebsiteBlocker.extractDomain("https://example.com@evil.test/path"))
+            .isEqualTo("evil.test")
+        assertThat(WebsiteBlocker.extractDomain("https://example.com\\@evil.test/path"))
+            .isEqualTo("example.com")
+    }
+
+    @Test
     fun `extractDomain returns empty for empty input`() {
         assertThat(WebsiteBlocker.extractDomain("   ")).isEmpty()
     }
@@ -59,6 +87,35 @@ class WebsiteBlockerTest {
         assertThat(WebsiteBlocker.isValidUrl("-example.com")).isFalse()
         assertThat(WebsiteBlocker.isValidUrl("example-.com")).isFalse()
         assertThat(WebsiteBlocker.isValidUrl("localhost")).isFalse()
+        assertThat(WebsiteBlocker.isValidUrl("999.999.999.999")).isFalse()
+        assertThat(WebsiteBlocker.isValidUrl("javascript:example.com")).isFalse()
+        assertThat(WebsiteBlocker.isValidUrl("mailto:user@example.com")).isFalse()
+        assertThat(WebsiteBlocker.isValidUrl("user@example.com")).isFalse()
+        assertThat(WebsiteBlocker.extractDomain("https:example.com/path"))
+            .isEqualTo("example.com")
+        assertThat(WebsiteBlocker.extractDomain("https:\\\\example.com/path"))
+            .isEqualTo("example.com")
+    }
+
+    @Test
+    fun `isValidUrl accepts literal IPv4 addresses`() {
+        assertThat(WebsiteBlocker.isValidUrl("https://192.168.1.10:8443/path")).isTrue()
+        assertThat(WebsiteBlocker.extractDomain("https://192.168.1.10:8443/path"))
+            .isEqualTo("192.168.1.10")
+        assertThat(WebsiteBlocker.extractDomain("https://010.0.0.1/path"))
+            .isEqualTo("8.0.0.1")
+        assertThat(WebsiteBlocker.extractDomain("https://0x7f.1/path"))
+            .isEqualTo("127.0.0.1")
+        assertThat(WebsiteBlocker.extractDomain("https://2130706433/path"))
+            .isEqualTo("127.0.0.1")
+
+        val compressedIpv6 = WebsiteBlocker.extractDomain("https://[2001:db8::1]/path")
+        val expandedIpv6 = WebsiteBlocker.extractDomain(
+            "https://[2001:0db8:0:0:0:0:0:1]/path"
+        )
+        assertThat(compressedIpv6).isNotEmpty()
+        assertThat(expandedIpv6).isEqualTo(compressedIpv6)
+        assertThat(WebsiteBlocker.extractDomain(compressedIpv6)).isEqualTo(compressedIpv6)
     }
 
     @Test
@@ -103,6 +160,68 @@ class WebsiteBlockerTest {
         val blocked = listOf("twitter.com")
         assertThat(WebsiteBlocker.isUrlBlocked("https://x.com/user", blocked)).isTrue()
         assertThat(WebsiteBlocker.isUrlBlocked("https://t.co/abc", blocked)).isTrue()
+    }
+
+    @Test
+    fun `findMatchingRule returns most specific parent rule`() {
+        val rules = WebsiteBlocker.normalizeDomains(
+            listOf("example.com", "news.example.com")
+        )
+
+        assertThat(
+            WebsiteBlocker.findMatchingRule("https://a.news.example.com/story", rules)
+        ).isEqualTo("news.example.com")
+        assertThat(
+            WebsiteBlocker.findMatchingRule("https://shop.example.com", rules)
+        ).isEqualTo("example.com")
+    }
+
+    @Test
+    fun `equivalent IPv6 spellings match the same rule`() {
+        val rules = WebsiteBlocker.normalizeDomains(listOf("[2001:db8::1]"))
+
+        assertThat(
+            WebsiteBlocker.findMatchingRule(
+                "https://[2001:0db8:0:0:0:0:0:1]/path",
+                rules
+            )
+        ).isEqualTo(rules.single())
+    }
+
+    @Test
+    fun `findMatchingRule associates aliases with configured canonical domain`() {
+        val rules = WebsiteBlocker.normalizeDomains(listOf("youtube.com"))
+
+        assertThat(WebsiteBlocker.findMatchingRule("m.youtube.com", rules))
+            .isEqualTo("youtube.com")
+        assertThat(WebsiteBlocker.findMatchingRule("youtu.be/abc", rules))
+            .isEqualTo("youtube.com")
+    }
+
+    @Test
+    fun `expandDomainAliases keeps rules first and adds known bypass domains`() {
+        val expanded = WebsiteBlocker.expandDomainAliases(
+            listOf("youtube.com", "example.com", "twitter.com")
+        )
+
+        assertThat(expanded).containsExactly(
+            "youtube.com",
+            "example.com",
+            "twitter.com",
+            "youtu.be",
+            "x.com",
+            "t.co"
+        ).inOrder()
+    }
+
+    @Test
+    fun `extractUrlCandidate reads compound accessibility descriptions`() {
+        assertThat(
+            WebsiteBlocker.extractUrlCandidate(
+                "Address and search bar, https://www.Example.com/path?q=1"
+            )
+        ).isEqualTo("https://www.Example.com/path?q=1")
+        assertThat(WebsiteBlocker.extractUrlCandidate("Search or type web address")).isNull()
     }
 
     @Test

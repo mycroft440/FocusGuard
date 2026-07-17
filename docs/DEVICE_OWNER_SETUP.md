@@ -12,7 +12,6 @@ um app é Device Owner, ele pode:
 - ✅ **Impedir Safe Boot** (`DISALLOW_SAFE_BOOT`) — bloqueia modo de segurança
 - ✅ **Impedir Factory Reset** (`DISALLOW_FACTORY_RESET`)
 - ✅ **Bloquear URLs no Chrome/Edge** via Managed Configurations (`URLBlocklist`)
-- ✅ **Desativar DNS-over-HTTPS no Chrome/Edge** (`DnsOverHttpsMode=off`)
 - ✅ **Forçar Private DNS DoT** com servidor filtrante (CleanBrowsing Adult)
 - ✅ **Suspender apps** nativamente via `setPackagesSuspended` (0ms — ícone fica cinza)
 
@@ -134,11 +133,12 @@ SESSION_RESTRICTIONS = [
 ]
 ```
 
-### Bloqueio de sites (URLBlocklist + DoH off)
+### Bloqueio de sites (URLBlocklist, sem VPN)
 
 - Chrome e Edge respeitam `URLBlocklist` — bloqueio no renderer (0ms)
-- `DnsOverHttpsMode=off` desativa DoH no Chrome/Edge — fecha bypass DoH
-- Private DNS DoT via CleanBrowsing Adult Filter — bloqueio DNS universal
+- O modo privado é desativado enquanto houver regras ativas
+- Firefox, Brave, Opera e outros usam a camada de acessibilidade
+- Private DNS via CleanBrowsing é um filtro adulto separado e opcional
 
 ### Bloqueio de apps (setPackagesSuspended)
 
@@ -194,12 +194,11 @@ Verifique:
 | Bloqueio de apps (Accessibility) | ✅ reativo (ms) | ✅ reativo (ms) |
 | Bloqueio de apps (setPackagesSuspended) | ❌ | ✅ proativo (0ms) |
 | Bloqueio de sites (Accessibility) | ✅ | ✅ |
-| Bloqueio de sites (URLBlocklist Chrome) | ❌ | ✅ renderer-level |
-| Bypass DoH no Chrome | ❌ vulnerável | ✅ fechado |
+| Bloqueio preventivo no Chrome/Edge | ❌ | ✅ URLBlocklist, renderer-level |
 | Anti-desinstalação | ⚠️ reativo (onDisableRequested) | ✅ preventivo (botão cinza) |
 | Anti Safe Mode | ❌ vulnerável | ✅ bloqueado |
 | Anti Factory Reset | ❌ vulnerável | ✅ bloqueado |
-| DNS Adulto (CleanBrowsing) | ❌ | ✅ universal |
+| DNS Adulto (CleanBrowsing) | ❌ | ✅ Private DNS do sistema |
 
 ## 🔐 Segurança & Privacidade
 

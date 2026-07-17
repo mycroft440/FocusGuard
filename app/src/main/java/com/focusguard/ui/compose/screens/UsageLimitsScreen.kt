@@ -27,9 +27,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.WebsiteUsageLimit
+import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.R
+import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -267,6 +269,9 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean) {
     val scope = rememberCoroutineScope()
     // P2-2: usa Hilt EntryPoint via rememberAppDatabase()
     val db = rememberAppDatabase()
+    val blockingSessionManager = remember(context) {
+        BlockingSessionManager.getInstance(context)
+    }
     var sites by remember { mutableStateOf<List<WebsiteLimitUi>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var showAddDialog by remember { mutableStateOf(false) }
@@ -278,11 +283,33 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean) {
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
-            val today = java.text.SimpleDateFormat("yyyy-MM-dd", java.util.Locale.getDefault()).format(java.util.Date())
+            val today = java.text.SimpleDateFormat(
+                "yyyy-MM-dd",
+                java.util.Locale.US
+            ).format(java.util.Date())
             val allLimits = db.websiteUsageLimitDao().getAllStatic()
-            val usageStats = db.dailyUsageStatDao().getStatsForDateStatic(today).associate { it.identifier to it.timeSpentMs }
-            sites = allLimits.map { WebsiteLimitUi(it.domain, it.dailyLimitMinutes, it.isEnabled, usageStats[it.domain] ?: 0L, it.lockMode, it.lockPasswordHash, it.lockUntilTimestamp) }
-            withContext(Dispatchers.Main) { isLoading = false }
+            val limitDomains = WebsiteBlocker.normalizeDomains(allLimits.map { it.domain })
+            val usageStats = mutableMapOf<String, Long>()
+            db.dailyUsageStatDao().getStatsForDateStatic(today).forEach { row ->
+                WebsiteBlocker.findMatchingRule(row.identifier, limitDomains)?.let { rule ->
+                    usageStats[rule] = (usageStats[rule] ?: 0L) + row.timeSpentMs
+                }
+            }
+            val loadedSites = allLimits.map {
+                WebsiteLimitUi(
+                    it.domain,
+                    it.dailyLimitMinutes,
+                    it.isEnabled,
+                    usageStats[WebsiteBlocker.extractDomain(it.domain)] ?: 0L,
+                    it.lockMode,
+                    it.lockPasswordHash,
+                    it.lockUntilTimestamp
+                )
+            }
+            withContext(Dispatchers.Main) {
+                sites = loadedSites
+                isLoading = false
+            }
         }
     }
 
@@ -324,6 +351,7 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean) {
                                         val websiteDao = db.websiteUsageLimitDao()
                                         val existing = websiteDao.getAllStatic().find { it.domain == site.domain }
                                         if (existing != null) websiteDao.delete(existing)
+                                        blockingSessionManager.checkAndEnforce()
                                         withContext(Dispatchers.Main) { sites = sites.filter { it.domain != site.domain } }
                                     }
                                     Unit
@@ -347,20 +375,65 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean) {
         AddWebsiteLimitDialog(permissionsMissing = permissionsMissing, onDismiss = { showAddDialog = false }, onSave = { domain, minutes, lockMode, lockPassword, lockUntil ->
             scope.launch(Dispatchers.IO) {
                 val websiteDao = db.websiteUsageLimitDao()
-                val clean = domain.trim().lowercase().removePrefix("http://").removePrefix("https://").removePrefix("www.").trimEnd('/')
+                val clean = WebsiteBlocker.extractDomain(domain)
+                if (clean.isEmpty()) return@launch
+                websiteDao.getAllStatic()
+                    .filter { existing ->
+                        existing.domain != clean &&
+                            WebsiteBlocker.extractDomain(existing.domain) == clean
+                    }
+                    .forEach { websiteDao.delete(it) }
                 websiteDao.insert(WebsiteUsageLimit(clean, minutes, true, lockMode, lockPassword, lockUntil))
-                withContext(Dispatchers.Main) { sites = sites + WebsiteLimitUi(clean, minutes, true, 0L, lockMode, lockPassword, lockUntil); showAddDialog = false }
+                blockingSessionManager.checkAndEnforce()
+                withContext(Dispatchers.Main) {
+                    sites = sites.filterNot {
+                        WebsiteBlocker.extractDomain(it.domain) == clean
+                    } +
+                        WebsiteLimitUi(clean, minutes, true, 0L, lockMode, lockPassword, lockUntil)
+                    showAddDialog = false
+                }
             }
         })
     }
 
     if (showEditDialog && selectedSite != null) {
         EditWebsiteLimitDialog(site = selectedSite!!, permissionsMissing = permissionsMissing, onDismiss = { showEditDialog = false }, onSave = { minutes, enabled, lockMode, lockPassword, lockUntil ->
+            val siteToEdit = selectedSite ?: return@EditWebsiteLimitDialog
             scope.launch(Dispatchers.IO) {
                 val websiteDao = db.websiteUsageLimitDao()
-                websiteDao.insert(WebsiteUsageLimit(selectedSite!!.domain, minutes, enabled, lockMode, lockPassword, lockUntil))
+                val normalizedDomain = WebsiteBlocker.extractDomain(siteToEdit.domain)
+                if (normalizedDomain.isEmpty()) return@launch
+                if (normalizedDomain != siteToEdit.domain) {
+                    websiteDao.getAllStatic()
+                        .firstOrNull { it.domain == siteToEdit.domain }
+                        ?.let { websiteDao.delete(it) }
+                }
+                websiteDao.insert(
+                    WebsiteUsageLimit(
+                        normalizedDomain,
+                        minutes,
+                        enabled,
+                        lockMode,
+                        lockPassword,
+                        lockUntil
+                    )
+                )
+                blockingSessionManager.checkAndEnforce()
                 withContext(Dispatchers.Main) {
-                    sites = sites.map { if (it.domain == selectedSite!!.domain) it.copy(dailyLimitMinutes = minutes, isEnabled = enabled, lockMode = lockMode, lockPasswordHash = lockPassword, lockUntilTimestamp = lockUntil) else it }
+                    sites = sites.map {
+                        if (it.domain == siteToEdit.domain) {
+                            it.copy(
+                                domain = normalizedDomain,
+                                dailyLimitMinutes = minutes,
+                                isEnabled = enabled,
+                                lockMode = lockMode,
+                                lockPasswordHash = lockPassword,
+                                lockUntilTimestamp = lockUntil
+                            )
+                        } else {
+                            it
+                        }
+                    }
                     showEditDialog = false
                 }
             }

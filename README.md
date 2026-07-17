@@ -25,3 +25,6 @@ Para facilitar o desenvolvimento e economizar recursos computacionais (tokens), 
 ## 📋 Code Review
 
 Uma avaliação técnica completa do projeto está disponível em [`docs/CODE_REVIEW.md`](docs/CODE_REVIEW.md), cobrindo arquitetura, testes, code smells, i18n, segurança e plano de ação em 4 fases.
+
+O desenho e as limitações do bloqueio de sites sem VPN estão documentados em
+[`docs/WEBSITE_BLOCKING.md`](docs/WEBSITE_BLOCKING.md).

@@ -17,6 +17,7 @@ import com.focusguard.database.WebsiteUsageLimit
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
 import com.focusguard.ui.compose.rememberAppDatabase
+import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -86,8 +87,16 @@ fun TimeSessionConfigScreen(
                     )
                 }
 
-                sites.forEach { domain ->
-                    database.websiteUsageLimitDao().insert(
+                val websiteDao = database.websiteUsageLimitDao()
+                val existingWebsiteLimits = websiteDao.getAllStatic()
+                WebsiteBlocker.normalizeDomains(sites).forEach { domain ->
+                    existingWebsiteLimits
+                        .filter { existing ->
+                            existing.domain != domain &&
+                                WebsiteBlocker.extractDomain(existing.domain) == domain
+                        }
+                        .forEach { websiteDao.delete(it) }
+                    websiteDao.insert(
                         WebsiteUsageLimit(
                             domain = domain,
                             dailyLimitMinutes = dailyLimitMinutes,

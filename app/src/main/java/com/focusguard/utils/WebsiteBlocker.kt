@@ -1,75 +1,54 @@
 package com.focusguard.utils
 
+import android.icu.text.IDNA as AndroidIdna
+import android.text.InputType
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import java.net.IDN
+import java.net.Inet6Address
+import java.net.InetAddress
 import java.net.URI
-import java.util.Collections
+import java.net.URLDecoder
+import java.util.Locale
 
 /**
- * Utilitários para localizar a barra de endereço e comparar URLs com a lista de
- * domínios bloqueados.
+ * Normaliza regras de domínio e extrai a URL exposta pela barra de endereço do
+ * navegador. Esta é a camada de compatibilidade usada quando uma política
+ * gerenciada do navegador não está disponível.
  *
- * O cache inclui a assinatura da blocklist. Dessa forma, uma URL não mantém um
- * resultado antigo quando o usuário altera os sites bloqueados.
+ * A busca nunca trata texto arbitrário da página como URL: o nó precisa ter um
+ * id/descrição de barra de endereço ou declarar input do tipo URI. Isso evita
+ * bloquear uma página apenas porque um formulário ou notícia menciona um
+ * domínio bloqueado.
  */
 object WebsiteBlocker {
 
     private const val TAG = "WebsiteBlocker"
-    private const val MAX_CACHE_SIZE = 256
-    private const val MAX_DEPTH = 6
+    private const val MAX_TREE_DEPTH = 12
+    private const val MAX_TREE_NODES = 256
 
-    private data class CacheKey(
-        val normalizedUrl: String,
-        val blocklistSignature: Int
+    private val strongAddressBarEntryNames = listOf(
+        "url_bar",
+        "url_bar_edit_text",
+        "url_text",
+        "location_bar_edit_text",
+        "location_bar",
+        "url_field",
+        "url_edit_text",
+        "omnibarTextInput",
+        "omnibox_text",
+        "mozac_browser_toolbar_url_view",
+        "mozac_browser_toolbar_edit_url_view",
+        "browser_toolbar_url_view",
+        "address_bar"
     )
 
-    private val urlBlockedCache: MutableMap<CacheKey, Boolean> =
-        Collections.synchronizedMap(
-            object : LinkedHashMap<CacheKey, Boolean>(64, 0.75f, true) {
-                override fun removeEldestEntry(eldest: Map.Entry<CacheKey, Boolean>): Boolean {
-                    return size > MAX_CACHE_SIZE
-                }
-            }
-        )
-
-    fun clearCache() {
-        synchronized(urlBlockedCache) { urlBlockedCache.clear() }
-    }
-
-    private val addressBarIds: Set<String> = setOf(
-        "com.android.chrome:id/line_1",
-        "com.android.chrome:id/url_bar",
-        "com.android.chrome:id/search_box_text",
-        "com.android.chrome:id/url_bar_edit_text",
-        "com.android.chrome:id/location_bar_edit_text",
-        "com.android.chrome:id/url_text",
-        "com.microsoft.emmx:id/url_bar",
-        "com.microsoft.emmx:id/search_box_text",
-        "com.brave.browser:id/url_bar",
-        "com.brave.browser_secure:id/url_bar",
-        "com.sec.android.app.sbrowser:id/url_bar",
-        "com.sec.android.app.sbrowser:id/location_bar_edit_text",
-        "org.mozilla.firefox:id/mozac_browser_toolbar_url_view",
-        "org.mozilla.firefox:id/url_bar_title",
-        "org.mozilla.firefox.beta:id/mozac_browser_toolbar_url_view",
-        "org.mozilla.fennec_aurora:id/mozac_browser_toolbar_url_view",
-        "org.mozilla.focus:id/mozac_browser_toolbar_url_view",
-        "org.mozilla.klar:id/mozac_browser_toolbar_url_view",
-        "com.opera.browser:id/url_field",
-        "com.opera.mini.native:id/url_field",
-        "com.opera.gx:id/url_field",
-        "com.vivaldi.browser:id/url_bar",
-        "com.kiwibrowser.browser:id/url_bar",
-        "com.kiwibrowser.browser.dev:id/url_bar",
-        "com.duckduckgo.mobile.android:id/omnibarTextInput",
-        "com.duckduckgo.mobile.android:id/url_edit_text",
-        "com.UCMobile.intl:id/url_bar",
-        "com.yandex.browser:id/url_bar",
-        "com.ecosia.android:id/url_bar"
+    private val weakAddressBarEntryNames = setOf(
+        "search_box_text",
+        "line_1"
     )
 
-    private val commonDescriptions = setOf(
+    private val addressBarDescriptions = setOf(
         "address and search bar",
         "endereço e barra de pesquisa",
         "search or type web address",
@@ -80,91 +59,150 @@ object WebsiteBlocker {
         "barra de endereços"
     )
 
-    fun isValidUrl(text: String): Boolean {
-        val domain = extractDomain(text)
-        if (domain.length < 4 || !domain.contains('.')) return false
-        if (domain.any { it.isWhitespace() }) return false
-        return domain.split('.').all { label ->
-            label.isNotBlank() && label.length <= 63 &&
-                label.first() != '-' && label.last() != '-' &&
-                label.all { it.isLetterOrDigit() || it == '-' }
-        }
+    private val nestedUrlPrefixes = listOf(
+        "view-source:",
+        "blob:",
+        "filesystem:"
+    )
+
+    private val domainAliases = mapOf(
+        "youtube.com" to setOf("youtu.be"),
+        "twitter.com" to setOf("x.com", "t.co")
+    )
+
+    private val uts46Idna: AndroidIdna? by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        runCatching {
+            AndroidIdna.getUTS46Instance(
+                AndroidIdna.USE_STD3_RULES or
+                    AndroidIdna.CHECK_BIDI or
+                    AndroidIdna.CHECK_CONTEXTJ or
+                    AndroidIdna.NONTRANSITIONAL_TO_ASCII
+            )
+        }.getOrNull()
     }
+
+    /** Mantido por compatibilidade; o matcher atual não conserva estado. */
+    fun clearCache() = Unit
+
+    fun isValidUrl(text: String): Boolean = extractDomain(text).isNotEmpty()
 
     /**
      * Normaliza URL ou domínio para um host ASCII em minúsculas, sem `www.`,
-     * porta, ponto final, caminho, query ou fragmento.
+     * credenciais, porta, ponto final, caminho, query ou fragmento.
      */
     fun extractDomain(url: String): String {
-        val raw = url.trim()
+        var raw = sanitizeText(url)
         if (raw.isEmpty()) return ""
 
+        while (true) {
+            val prefix = nestedUrlPrefixes.firstOrNull {
+                raw.startsWith(it, ignoreCase = true)
+            } ?: break
+            raw = raw.substring(prefix.length).trim()
+        }
+
+        if ('@' in raw && !SCHEME_REGEX.containsMatchIn(raw)) return ""
+
+        if (raw.count { it == ':' } >= 2 &&
+            !SCHEME_REGEX.containsMatchIn(raw) &&
+            raw.none { it == '/' || it == '?' || it == '#' || it == '@' }
+        ) {
+            canonicalizeIpv6(raw.removeSurrounding("[", "]"))
+                .takeIf(String::isNotEmpty)
+                ?.let { return it }
+        }
+
+        SCHEME_COLON_REGEX.find(raw)?.let { match ->
+            if (!SCHEME_REGEX.containsMatchIn(raw)) {
+                val scheme = match.groupValues[1].lowercase(Locale.ROOT)
+                val valueAfterColon = raw.substring(match.value.length)
+                    .substringBefore('/')
+                    .substringBefore('?')
+                    .substringBefore('#')
+                if ('.' in scheme && valueAfterColon.toIntOrNull() != null) return@let
+                if (scheme != "http" && scheme != "https") return ""
+                raw = raw.substring(match.value.length).trimStart('/', '\\')
+            }
+        }
+
         val candidate = if (SCHEME_REGEX.containsMatchIn(raw)) raw else "https://$raw"
-        val host = runCatching { URI(candidate).host }
-            .getOrNull()
+        val uri = runCatching { URI(candidate) }.getOrNull()
+        val host = uri?.host
+            ?: authorityHost(uri?.rawAuthority)
             ?: fallbackHost(raw)
 
         return normalizeHost(host)
     }
 
-    fun isUrlBlocked(url: String, blockedDomains: Collection<String>): Boolean {
-        val normalizedUrl = url.trim().lowercase()
-        if (normalizedUrl.length < 4) return false
-
-        val normalizedBlocklist = blockedDomains.asSequence()
+    fun normalizeDomains(domains: Collection<String>): Set<String> {
+        return domains.asSequence()
             .map(::extractDomain)
-            .filter { it.length >= 4 }
-            .distinct()
-            .sorted()
-            .toList()
-
-        if (normalizedBlocklist.isEmpty()) return false
-
-        val cacheKey = CacheKey(normalizedUrl, normalizedBlocklist.hashCode())
-        synchronized(urlBlockedCache) {
-            urlBlockedCache[cacheKey]?.let { return it }
-        }
-
-        val domain = extractDomain(normalizedUrl)
-        val result = domain.length >= 4 && normalizedBlocklist.any { blocked ->
-            matchesDomain(domain, blocked)
-        }
-
-        synchronized(urlBlockedCache) { urlBlockedCache[cacheKey] = result }
-        return result
+            .filter(String::isNotEmpty)
+            .toCollection(linkedSetOf())
     }
 
-    private fun matchesDomain(domain: String, blocked: String): Boolean {
-        if (domain == blocked || domain.endsWith(".$blocked")) return true
-
-        return when (blocked) {
-            "youtube.com" -> domain == "youtu.be" || domain.endsWith(".youtu.be")
-            "twitter.com" -> domain == "x.com" || domain.endsWith(".x.com") ||
-                domain == "t.co" || domain.endsWith(".t.co")
-            else -> false
+    /** Expande somente aliases conhecidos que podem evitar a regra original. */
+    fun expandDomainAliases(normalizedDomains: Collection<String>): Set<String> {
+        val normalized = normalizeDomains(normalizedDomains)
+        val expanded = linkedSetOf<String>()
+        expanded.addAll(normalized)
+        normalized.forEach { rule ->
+            domainAliases[rule]?.let { aliases -> expanded.addAll(aliases) }
         }
+        return expanded
+    }
+
+    fun isUrlBlocked(url: String, blockedDomains: Collection<String>): Boolean {
+        return findMatchingRule(url, normalizeDomains(blockedDomains)) != null
     }
 
     /**
-     * Caminho rápido: aceita texto somente quando o evento veio de uma barra de
-     * endereço conhecida ou de um campo editável. Textos comuns da página não
-     * são tratados como URL, evitando falsos positivos em notícias e buscas.
+     * Retorna a regra normalizada responsável pelo bloqueio. O conjunto
+     * recebido deve ter sido produzido por [normalizeDomains]. A regra mais
+     * específica vence, e uma regra de domínio também cobre seus subdomínios.
      */
-    fun extractUrlFromEvent(event: AccessibilityEvent): String? {
+    fun findMatchingRule(
+        urlOrDomain: String,
+        normalizedBlockedDomains: Set<String>
+    ): String? {
+        if (normalizedBlockedDomains.isEmpty()) return null
+        val domain = extractDomain(urlOrDomain)
+        if (domain.isEmpty()) return null
+
+        if (isIpAddress(domain)) {
+            return domain.takeIf(normalizedBlockedDomains::contains)
+        }
+
+        var candidate = domain
+        while (true) {
+            if (candidate in normalizedBlockedDomains) return candidate
+            val separator = candidate.indexOf('.')
+            if (separator < 0) break
+            candidate = candidate.substring(separator + 1)
+        }
+
+        domainAliases.forEach { (canonical, aliases) ->
+            if (canonical !in normalizedBlockedDomains) return@forEach
+            if (aliases.any { alias -> domain == alias || domain.endsWith(".$alias") }) {
+                return canonical
+            }
+        }
+        return null
+    }
+
+    /** Caminho rápido para eventos originados diretamente na barra de URL. */
+    fun extractUrlFromEvent(
+        event: AccessibilityEvent,
+        browserPackageName: String
+    ): String? {
         val source = event.source ?: return null
         return try {
-            if (!looksLikeAddressBar(source)) return null
+            if (!isAddressBarNode(source, browserPackageName)) return null
 
-            val text = source.text?.toString()?.trim().orEmpty()
-            if (text.isNotEmpty() && isValidUrl(text)) return text
-
-            event.text.orEmpty().forEach { value ->
-                val candidate = value?.toString()?.trim().orEmpty()
-                if (candidate.isNotEmpty() && isValidUrl(candidate)) return candidate
-            }
-
-            val description = source.contentDescription?.toString()?.trim().orEmpty()
-            description.takeIf { it.isNotEmpty() && isValidUrl(it) }
+            extractCandidateFromNode(source)
+                ?: event.text.orEmpty().firstNotNullOfOrNull { value ->
+                    extractUrlCandidate(value?.toString().orEmpty())
+                }
         } catch (error: RuntimeException) {
             FocusGuardLogger.logError(TAG, "Falha ao ler URL do evento", error)
             null
@@ -173,23 +211,32 @@ object WebsiteBlocker {
         }
     }
 
-    fun findAddressBarNode(root: AccessibilityNodeInfo?): AccessibilityNodeInfo? {
-        if (root == null) return null
+    /**
+     * Procura a barra de endereço usando primeiro ids específicos do pacote e,
+     * como fallback, uma única travessia limitada da árvore de acessibilidade.
+     */
+    fun extractUrlFromRoot(
+        root: AccessibilityNodeInfo?,
+        browserPackageName: String
+    ): String? {
+        if (root == null || browserPackageName.isBlank()) return null
 
-        for (id in addressBarIds) {
-            val nodes = runCatching { root.findAccessibilityNodeInfosByViewId(id) }
+        strongAddressBarEntryNames.forEach { entryName ->
+            val fullId = "$browserPackageName:id/$entryName"
+            val nodes = runCatching { root.findAccessibilityNodeInfosByViewId(fullId) }
                 .getOrNull()
                 .orEmpty()
-            if (nodes.isNotEmpty()) {
-                nodes.drop(1).forEach(::recycleSafely)
-                return nodes.first()
+            try {
+                nodes.forEach { node ->
+                    extractCandidateFromNode(node)?.let { return it }
+                }
+            } finally {
+                nodes.forEach(::recycleSafely)
             }
         }
 
-        findAddressBarByDescription(root)?.let { return it }
-
         val startedAt = System.currentTimeMillis()
-        val result = findEditTextWithUrl(root, 0)
+        val result = findAddressBarValue(root, browserPackageName, 0, intArrayOf(0))
         val elapsed = System.currentTimeMillis() - startedAt
         if (elapsed > 50L) {
             FocusGuardLogger.log(TAG, "Busca da barra de URL demorou ${elapsed}ms")
@@ -197,53 +244,61 @@ object WebsiteBlocker {
         return result
     }
 
-    private fun looksLikeAddressBar(node: AccessibilityNodeInfo): Boolean {
-        val viewId = node.viewIdResourceName
-        if (viewId != null && viewId in addressBarIds) return true
-        if (node.isEditable || node.className == "android.widget.EditText") return true
-        val description = node.contentDescription?.toString()
-            ?.trim()
-            ?.lowercase()
-            .orEmpty()
-        return description in commonDescriptions
-    }
+    /**
+     * Extrai uma URL de textos compostos usados em contentDescription, como
+     * "Barra de endereços, example.com". Só deve ser chamado após o nó ter
+     * sido identificado como barra do navegador.
+     */
+    internal fun extractUrlCandidate(text: String): String? {
+        val sanitized = sanitizeText(text)
+        if (sanitized.isEmpty()) return null
 
-    private fun findAddressBarByDescription(root: AccessibilityNodeInfo): AccessibilityNodeInfo? {
-        for (description in commonDescriptions) {
-            val nodes = runCatching { root.findAccessibilityNodeInfosByText(description) }
-                .getOrNull()
-                .orEmpty()
-            for (node in nodes) {
-                if (looksLikeAddressBar(node)) {
-                    nodes.filter { it !== node }.forEach(::recycleSafely)
-                    return node
-                }
-                recycleSafely(node)
-            }
+        val candidates = sequence {
+            yield(sanitized)
+            for (segment in sanitized.split(SEGMENT_SEPARATOR_REGEX)) yield(segment)
+            for (segment in sanitized.split(WHITESPACE_REGEX)) yield(segment)
         }
-        return null
+
+        return candidates
+            .map { it.trim().trim(*CANDIDATE_TRIM_CHARS) }
+            .filter(String::isNotEmpty)
+            .distinct()
+            .firstOrNull(::isValidUrl)
     }
 
-    private fun findEditTextWithUrl(
+    private fun extractCandidateFromNode(node: AccessibilityNodeInfo): String? {
+        return extractUrlCandidate(node.text?.toString().orEmpty())
+            ?: extractUrlCandidate(node.contentDescription?.toString().orEmpty())
+            ?: extractUrlCandidate(node.hintText?.toString().orEmpty())
+    }
+
+    private fun findAddressBarValue(
         node: AccessibilityNodeInfo?,
-        depth: Int
-    ): AccessibilityNodeInfo? {
-        if (node == null || depth > MAX_DEPTH) return null
+        browserPackageName: String,
+        depth: Int,
+        visitedNodes: IntArray
+    ): String? {
+        if (node == null || depth > MAX_TREE_DEPTH) return null
+        visitedNodes[0] += 1
+        if (visitedNodes[0] > MAX_TREE_NODES) return null
 
         return try {
-            if (node.className == "android.widget.EditText") {
-                val text = node.text?.toString().orEmpty()
-                if (isValidUrl(text)) return node
+            if (isAddressBarNode(node, browserPackageName)) {
+                extractCandidateFromNode(node)?.let { return it }
             }
 
             for (index in 0 until node.childCount) {
                 val child = node.getChild(index) ?: continue
-                val found = findEditTextWithUrl(child, depth + 1)
-                if (found != null) {
-                    if (found !== child) recycleSafely(child)
-                    return found
+                try {
+                    findAddressBarValue(
+                        child,
+                        browserPackageName,
+                        depth + 1,
+                        visitedNodes
+                    )?.let { return it }
+                } finally {
+                    recycleSafely(child)
                 }
-                recycleSafely(child)
             }
             null
         } catch (error: RuntimeException) {
@@ -252,28 +307,216 @@ object WebsiteBlocker {
         }
     }
 
+    private fun isAddressBarNode(
+        node: AccessibilityNodeInfo,
+        browserPackageName: String
+    ): Boolean {
+        if (!node.isVisibleToUser) return false
+
+        val viewId = node.viewIdResourceName.orEmpty()
+        val resourcePackage = viewId.substringBefore(":id/", missingDelimiterValue = "")
+        val entryName = viewId.substringAfter(":id/", missingDelimiterValue = "")
+        val packageMatches = resourcePackage.isEmpty() || resourcePackage == browserPackageName
+
+        if (packageMatches && entryName in strongAddressBarEntryNames) return true
+        if (packageMatches && entryName in weakAddressBarEntryNames && node.isEditable) return true
+
+        val description = node.contentDescription?.toString()
+            ?.let(::sanitizeText)
+            ?.lowercase(Locale.ROOT)
+            .orEmpty()
+        if (addressBarDescriptions.any { label ->
+                description == label ||
+                    description.startsWith("$label,") ||
+                    description.startsWith("$label.") ||
+                    description.startsWith("$label ")
+            }
+        ) return true
+
+        val variation = node.inputType and InputType.TYPE_MASK_VARIATION
+        val uriInput = variation == InputType.TYPE_TEXT_VARIATION_URI
+        val hasBrowserResourceId = resourcePackage == browserPackageName
+        val idSuggestsAddressBar = entryName.lowercase(Locale.ROOT).let { id ->
+            id.contains("url") || id.contains("omnibox") ||
+                id.contains("address") || id.contains("location_bar")
+        }
+        return node.isEditable && packageMatches &&
+            (idSuggestsAddressBar || uriInput && hasBrowserResourceId)
+    }
+
+    private fun authorityHost(authority: String?): String? {
+        if (authority.isNullOrBlank()) return null
+        val withoutUserInfo = authority.substringAfterLast('@')
+        return if (withoutUserInfo.startsWith('[')) {
+            withoutUserInfo.substringAfter('[').substringBefore(']').takeIf(String::isNotBlank)
+        } else {
+            withoutUserInfo.substringBefore(':').takeIf(String::isNotBlank)
+        }
+    }
+
     private fun fallbackHost(raw: String): String {
-        return raw
+        val authority = raw
             .replace(SCHEME_PREFIX_REGEX, "")
+            .replace('\\', '/')
             .substringBefore('/')
             .substringBefore('?')
             .substringBefore('#')
-            .substringBefore(':')
+            .substringAfterLast('@')
+
+        return if (authority.startsWith('[')) {
+            authority.substringAfter('[').substringBefore(']')
+        } else {
+            authority.substringBefore(':')
+        }
     }
 
     private fun normalizeHost(host: String): String {
-        val lowered = host.trim().trimEnd('.').lowercase().removePrefix("www.")
-        if (lowered.isEmpty()) return ""
-        return runCatching { IDN.toASCII(lowered) }.getOrDefault(lowered)
+        val prepared = decodePercentEncodedHost(sanitizeText(host))
+            .replace('\u3002', '.')
+            .replace('\uFF0E', '.')
+            .replace('\uFF61', '.')
+            .trim()
+            .removeSurrounding("[", "]")
+            .trimEnd('.')
+            .lowercase(Locale.ROOT)
+            .removePrefix("www.")
+        if (prepared.isEmpty()) return ""
+
+        if (prepared.contains(':')) {
+            return canonicalizeIpv6(prepared)
+        }
+
+        val ascii = toAsciiDomain(prepared)
+        if (ascii.isEmpty() || ascii.length > 253) return ""
+
+        if (endsInIpv4Number(ascii)) {
+            return canonicalizeIpv4(ascii)
+        }
+
+        if (!ascii.contains('.')) return ""
+        val labels = ascii.split('.')
+        if (labels.any { label ->
+                label.isEmpty() || label.length > 63 ||
+                    label.first() == '-' || label.last() == '-' ||
+                    label.any { !it.isLetterOrDigit() && it != '-' }
+            }
+        ) return ""
+        return ascii
     }
 
+    private fun toAsciiDomain(host: String): String {
+        val processor = uts46Idna
+        if (processor != null) {
+            return runCatching {
+                val info = AndroidIdna.Info()
+                val output = processor.nameToASCII(host, StringBuilder(), info)
+                if (info.hasErrors()) "" else output.toString().lowercase(Locale.ROOT)
+            }.getOrDefault("")
+        }
+
+        // Fallback para testes JVM sem a implementação ICU do Android.
+        return runCatching {
+            IDN.toASCII(host, IDN.USE_STD3_ASCII_RULES).lowercase(Locale.ROOT)
+        }.getOrDefault("")
+    }
+
+    private fun decodePercentEncodedHost(host: String): String {
+        if ('%' !in host) return host
+        return runCatching {
+            // URLDecoder trata '+' como espaço; em host ele é literal e será
+            // rejeitado depois pela validação STD3.
+            URLDecoder.decode(host.replace("+", "%2B"), "UTF-8")
+        }.getOrDefault(host)
+    }
+
+    private fun isIpAddress(host: String): Boolean {
+        return canonicalizeIpv4(host).isNotEmpty() || canonicalizeIpv6(host).isNotEmpty()
+    }
+
+    private fun canonicalizeIpv4(host: String): String {
+        if (!endsInIpv4Number(host)) return ""
+        val parts = host.split('.').toMutableList().apply {
+            if (lastOrNull().isNullOrEmpty() && size > 1) removeAt(lastIndex)
+        }
+        if (parts.isEmpty() || parts.size > 4) return ""
+
+        val numbers = mutableListOf<Long>()
+        for (part in parts) {
+            numbers += parseIpv4Number(part) ?: return ""
+        }
+        if (numbers.dropLast(1).any { it > 255L }) return ""
+
+        val lastLimit = 1L shl (8 * (5 - numbers.size))
+        val last = numbers.last()
+        if (last >= lastLimit) return ""
+
+        var address = last
+        numbers.dropLast(1).forEachIndexed { index, number ->
+            address += number shl (8 * (3 - index))
+        }
+        return (3 downTo 0).joinToString(".") { shift ->
+            ((address shr (shift * 8)) and 0xFFL).toString()
+        }
+    }
+
+    private fun endsInIpv4Number(host: String): Boolean {
+        val last = host.trimEnd('.').substringAfterLast('.', missingDelimiterValue = host)
+        if (last.isEmpty()) return false
+        if (last.all(Char::isDigit)) return true
+        return last.startsWith("0x", ignoreCase = true) &&
+            last.drop(2).all { it.isHexDigit() }
+    }
+
+    private fun parseIpv4Number(part: String): Long? {
+        if (part.isEmpty()) return null
+        val (digits, radix) = when {
+            part.startsWith("0x", ignoreCase = true) -> part.drop(2) to 16
+            part.length >= 2 && part.startsWith('0') -> part.drop(1) to 8
+            else -> part to 10
+        }
+        if (digits.isEmpty()) return 0L
+        val valid = when (radix) {
+            8 -> digits.all { it in '0'..'7' }
+            10 -> digits.all(Char::isDigit)
+            else -> digits.all { it.isHexDigit() }
+        }
+        return if (valid) digits.toLongOrNull(radix) else null
+    }
+
+    private fun canonicalizeIpv6(host: String): String {
+        if (!host.contains(':') || host.contains('%')) return ""
+        return runCatching {
+            (InetAddress.getByName(host) as? Inet6Address)
+                ?.hostAddress
+                ?.substringBefore('%')
+                ?.lowercase(Locale.ROOT)
+                .orEmpty()
+        }.getOrDefault("")
+    }
+
+    private fun sanitizeText(value: String): String {
+        return value.replace(INVISIBLE_CHARACTER_REGEX, "").trim()
+    }
+
+    private fun Char.isHexDigit(): Boolean {
+        return isDigit() || lowercaseChar() in 'a'..'f'
+    }
+
+    @Suppress("DEPRECATION")
     private fun recycleSafely(node: AccessibilityNodeInfo) {
         runCatching { node.recycle() }
     }
 
     private val SCHEME_REGEX = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://")
+    private val SCHEME_COLON_REGEX = Regex("^([a-zA-Z][a-zA-Z0-9+.-]*):")
     private val SCHEME_PREFIX_REGEX = Regex(
         "^[a-zA-Z][a-zA-Z0-9+.-]*://",
         RegexOption.IGNORE_CASE
+    )
+    private val INVISIBLE_CHARACTER_REGEX = Regex("[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u206F\\uFEFF]")
+    private val SEGMENT_SEPARATOR_REGEX = Regex("[,;|\\n\\t]")
+    private val WHITESPACE_REGEX = Regex("\\s+")
+    private val CANDIDATE_TRIM_CHARS = charArrayOf(
+        '"', '\'', '(', ')', '[', ']', '{', '}', '<', '>', ',', ';'
     )
 }

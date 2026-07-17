@@ -18,6 +18,7 @@ import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
+import com.focusguard.utils.WebsiteUsageLimitPolicy
 import dagger.hilt.android.qualifiers.ApplicationContext
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -25,6 +26,7 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 import javax.inject.Inject
 import javax.inject.Singleton
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -32,6 +34,8 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 @Singleton
@@ -81,6 +85,7 @@ class BlockingSessionManager @Inject constructor(
     private val database = AppDatabase.getDatabase(context)
     private val deviceOwnerManager = DeviceOwnerManager.getInstance(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val enforcementMutex = Mutex()
 
     val activeSessionsFlow: Flow<List<BlockSession>> =
         database.blockSessionDao().getAllActiveSessions()
@@ -387,85 +392,103 @@ class BlockingSessionManager @Inject constructor(
     }
 
     suspend fun checkAndEnforce() {
-        try {
-            val now = System.currentTimeMillis()
-            val beforeExpiration = database.blockSessionDao().getAllActiveSessionsStatic()
-            val expiredPomodoro = beforeExpiration.any {
-                it.sessionType == "POMODORO" && it.endTime != null && it.endTime <= now
+        enforcementMutex.withLock {
+            try {
+                val now = System.currentTimeMillis()
+                val beforeExpiration = database.blockSessionDao().getAllActiveSessionsStatic()
+                val expiredPomodoro = beforeExpiration.any {
+                    it.sessionType == "POMODORO" && it.endTime != null && it.endTime <= now
+                }
+                database.blockSessionDao().deactivateExpiredSessions(now)
+                if (expiredPomodoro) {
+                    StrictPomodoroLock.clear(context)
+                    PomodoroForegroundService.stop(context)
+                }
+
+                val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
+                val enforcingSessions = activeSessions.filter(::isCurrentlyInBlockingWindow)
+                val enforcingIds = enforcingSessions.map { it.id }
+                val strictPomodoro = enforcingSessions.any {
+                    it.sessionType == "POMODORO" && it.isBlockingEnabled
+                }
+
+                setDoNotDisturbMode(strictPomodoro)
+
+                val sessionApps = if (strictPomodoro) {
+                    getInstalledUserAppsExceptPhone()
+                } else {
+                    getAppsForSessions(enforcingIds)
+                }
+                val sessionSites = getSitesForSessions(enforcingIds)
+
+                val activeAppLimits = database.appUsageLimitDao().getAllActiveLimitsStatic()
+                val limitApps = getExceededAppLimits(activeAppLimits, now)
+
+                val activeWebsiteLimits = database.websiteUsageLimitDao().getAllStatic()
+                    .filter { it.isEnabled }
+                val activeWebsiteDomains = WebsiteBlocker.normalizeDomains(
+                    activeWebsiteLimits.map { it.domain }
+                )
+                val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now)
+                val usageByWebsite = mutableMapOf<String, Long>()
+                database.dailyUsageStatDao().getStatsForDateStatic(today).forEach { row ->
+                    WebsiteBlocker.findMatchingRule(
+                        row.identifier,
+                        activeWebsiteDomains
+                    )?.let { rule ->
+                        usageByWebsite[rule] = (usageByWebsite[rule] ?: 0L) + row.timeSpentMs
+                    }
+                }
+                val limitSites = activeWebsiteLimits.filter { limit ->
+                    val normalizedDomain = WebsiteBlocker.extractDomain(limit.domain)
+                    WebsiteUsageLimitPolicy.shouldBlock(
+                        usedMillis = usageByWebsite[normalizedDomain] ?: 0L,
+                        dailyLimitMinutes = limit.dailyLimitMinutes,
+                        lockMode = limit.lockMode,
+                        lockUntilTimestamp = limit.lockUntilTimestamp,
+                        nowMillis = now
+                    )
+                }.map { WebsiteBlocker.extractDomain(it.domain) }
+
+                val appsToBlock = (sessionApps + limitApps).filter { it.isNotBlank() }.distinct()
+                val sitesToBlock = (sessionSites + limitSites)
+                    .map(WebsiteBlocker::extractDomain)
+                    .filter { it.isNotBlank() }
+                    .distinct()
+
+                val allSessionApps = getAppsForSessions(activeSessions.map { it.id })
+                val allKnownApps = (
+                    allSessionApps + activeAppLimits.map { it.packageName }
+                ).distinct()
+
+                deviceOwnerManager.syncSuspendedApps(allKnownApps, appsToBlock)
+
+                if (sitesToBlock.isEmpty()) {
+                    deviceOwnerManager.clearWebsiteRestrictions()
+                } else {
+                    deviceOwnerManager.enforceWebsiteRestrictions(sitesToBlock)
+                }
+
+                if (enforcingSessions.isEmpty() && appsToBlock.isEmpty() && sitesToBlock.isEmpty()) {
+                    deviceOwnerManager.clearBlockingPolicies()
+                } else {
+                    deviceOwnerManager.enforceBlockingPolicies()
+                }
+                deviceOwnerManager.applyNuclearShield()
+
+                context.sendBroadcast(
+                    Intent(BlockingAccessibilityService.ACTION_REFRESH_BLOCKING)
+                        .setPackage(context.packageName)
+                )
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                FocusGuardLogger.logError(
+                    "BlockingSessionManager",
+                    "Erro ao reconciliar bloqueios",
+                    error
+                )
             }
-            database.blockSessionDao().deactivateExpiredSessions(now)
-            if (expiredPomodoro) {
-                StrictPomodoroLock.clear(context)
-                PomodoroForegroundService.stop(context)
-            }
-
-            val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
-            val enforcingSessions = activeSessions.filter(::isCurrentlyInBlockingWindow)
-            val enforcingIds = enforcingSessions.map { it.id }
-            val strictPomodoro = enforcingSessions.any {
-                it.sessionType == "POMODORO" && it.isBlockingEnabled
-            }
-
-            setDoNotDisturbMode(strictPomodoro)
-
-            val sessionApps = if (strictPomodoro) {
-                getInstalledUserAppsExceptPhone()
-            } else {
-                getAppsForSessions(enforcingIds)
-            }
-            val sessionSites = getSitesForSessions(enforcingIds)
-
-            val activeAppLimits = database.appUsageLimitDao().getAllActiveLimitsStatic()
-            val limitApps = getExceededAppLimits(activeAppLimits, now)
-
-            val activeWebsiteLimits = database.websiteUsageLimitDao().getAllStatic()
-                .filter { it.isEnabled }
-            val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now)
-            val usageByWebsite = database.dailyUsageStatDao().getStatsForDateStatic(today)
-                .groupBy { it.identifier }
-                .mapValues { (_, values) -> values.sumOf { it.timeSpentMs } }
-            val limitSites = activeWebsiteLimits.filter { limit ->
-                val usageMinutes = (usageByWebsite[WebsiteBlocker.extractDomain(limit.domain)] ?: 0L) /
-                    60_000L
-                val lockStillValid = limit.lockMode.uppercase(Locale.ROOT) != "TIME" ||
-                    limit.lockUntilTimestamp == null || limit.lockUntilTimestamp > now
-                usageMinutes >= limit.dailyLimitMinutes && lockStillValid
-            }.map { WebsiteBlocker.extractDomain(it.domain) }
-
-            val appsToBlock = (sessionApps + limitApps).filter { it.isNotBlank() }.distinct()
-            val sitesToBlock = (sessionSites + limitSites)
-                .map(WebsiteBlocker::extractDomain)
-                .filter { it.isNotBlank() }
-                .distinct()
-
-            val allSessionApps = getAppsForSessions(activeSessions.map { it.id })
-            val allKnownApps = (allSessionApps + activeAppLimits.map { it.packageName }).distinct()
-
-            deviceOwnerManager.syncSuspendedApps(allKnownApps, appsToBlock)
-
-            if (sitesToBlock.isEmpty()) {
-                deviceOwnerManager.clearWebsiteRestrictions()
-            } else {
-                deviceOwnerManager.enforceWebsiteRestrictions(sitesToBlock)
-            }
-
-            if (enforcingSessions.isEmpty() && appsToBlock.isEmpty() && sitesToBlock.isEmpty()) {
-                deviceOwnerManager.clearBlockingPolicies()
-            } else {
-                deviceOwnerManager.enforceBlockingPolicies()
-            }
-            deviceOwnerManager.applyNuclearShield()
-
-            context.sendBroadcast(
-                Intent(BlockingAccessibilityService.ACTION_REFRESH_BLOCKING)
-                    .setPackage(context.packageName)
-            )
-        } catch (error: Exception) {
-            FocusGuardLogger.logError(
-                "BlockingSessionManager",
-                "Erro ao reconciliar bloqueios",
-                error
-            )
         }
     }
 

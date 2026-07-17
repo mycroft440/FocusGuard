@@ -127,6 +127,41 @@ class BlockSessionRepositoryTest {
     }
 
     @Test
+    fun `addSiteToSession stores a normalized domain`() = runTest {
+        repository.addSiteToSession(10, "HTTPS://WWW.Example.COM:8443/path")
+
+        coVerify(exactly = 1) {
+            sessionWebsiteCrossRefDao.insert(SessionWebsiteCrossRef(10, "example.com"))
+        }
+    }
+
+    @Test
+    fun `addSiteToSession replaces an equivalent legacy value`() = runTest {
+        val legacyValue = "HTTPS://WWW.Example.COM/path"
+        coEvery {
+            sessionWebsiteCrossRefDao.getWebsitesForSessions(listOf(10))
+        } returns listOf(legacyValue)
+
+        repository.addSiteToSession(10, "example.com")
+
+        coVerify(exactly = 1) {
+            sessionWebsiteCrossRefDao.deleteSpecificWebsite(10, legacyValue)
+        }
+        coVerify(exactly = 1) {
+            sessionWebsiteCrossRefDao.insert(SessionWebsiteCrossRef(10, "example.com"))
+        }
+    }
+
+    @Test
+    fun `addSiteToSession ignores invalid addresses`() = runTest {
+        repository.addSiteToSession(10, "pesquisa sem dominio")
+
+        coVerify(exactly = 0) {
+            sessionWebsiteCrossRefDao.insert(any())
+        }
+    }
+
+    @Test
     fun `removeSiteFromSession calls deleteSpecificWebsite on DAO`() = runTest {
         val sessionId = 10
         val domain = "example.com"
@@ -135,6 +170,19 @@ class BlockSessionRepositoryTest {
 
         coVerify(exactly = 1) {
             sessionWebsiteCrossRefDao.deleteSpecificWebsite(sessionId, domain)
+        }
+    }
+
+    @Test
+    fun `removeSiteFromSession normalizes before deleting`() = runTest {
+        val legacyValue = "https://www.Example.com/path"
+        repository.removeSiteFromSession(10, legacyValue)
+
+        coVerify(exactly = 1) {
+            sessionWebsiteCrossRefDao.deleteSpecificWebsite(10, "example.com")
+        }
+        coVerify(exactly = 1) {
+            sessionWebsiteCrossRefDao.deleteSpecificWebsite(10, legacyValue)
         }
     }
 }

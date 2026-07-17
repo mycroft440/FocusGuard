@@ -6,6 +6,7 @@ import com.focusguard.database.SessionAppCrossRef
 import com.focusguard.database.SessionAppCrossRefDao
 import com.focusguard.database.SessionWebsiteCrossRef
 import com.focusguard.database.SessionWebsiteCrossRefDao
+import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
@@ -62,11 +63,26 @@ class BlockSessionRepository @Inject constructor(
 
     /** Adiciona um site a uma sessão. */
     suspend fun addSiteToSession(sessionId: Int, domain: String) = withContext(Dispatchers.IO) {
-        sessionWebsiteCrossRefDao.insert(SessionWebsiteCrossRef(sessionId, domain))
+        val normalized = WebsiteBlocker.extractDomain(domain)
+        if (normalized.isEmpty()) return@withContext
+        sessionWebsiteCrossRefDao.getWebsitesForSessions(listOf(sessionId))
+            .filter { existing ->
+                existing != normalized && WebsiteBlocker.extractDomain(existing) == normalized
+            }
+            .forEach { legacyValue ->
+                sessionWebsiteCrossRefDao.deleteSpecificWebsite(sessionId, legacyValue)
+            }
+        sessionWebsiteCrossRefDao.insert(SessionWebsiteCrossRef(sessionId, normalized))
     }
 
     /** Remove um site de uma sessão. */
     suspend fun removeSiteFromSession(sessionId: Int, domain: String) = withContext(Dispatchers.IO) {
-        sessionWebsiteCrossRefDao.deleteSpecificWebsite(sessionId, domain)
+        val normalized = WebsiteBlocker.extractDomain(domain)
+        if (normalized.isEmpty()) return@withContext
+        sessionWebsiteCrossRefDao.deleteSpecificWebsite(sessionId, normalized)
+        val legacyValue = domain.trim()
+        if (legacyValue != normalized) {
+            sessionWebsiteCrossRefDao.deleteSpecificWebsite(sessionId, legacyValue)
+        }
     }
 }

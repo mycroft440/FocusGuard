@@ -13,11 +13,15 @@ import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
+import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
-import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /**
  * Manager for Device Owner Mode functionality.
@@ -28,6 +32,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     private val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
     private val componentName = FocusGuardDeviceAdminReceiver.getComponentName(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private val websitePolicyMutex = Mutex()
+    private var lastWebsitePolicySignature: String? = null
 
     companion object {
         @Volatile
@@ -39,8 +45,19 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             }
         }
 
-        private val sotaAttempts = AtomicInteger(0)
-        private const val MAX_SOTA_DOMAINS = 500
+        private const val MAX_MANAGED_URLS = 1_000
+        private val CHROME_MANAGED_PACKAGES = setOf(
+            "com.android.chrome",
+            "com.chrome.beta",
+            "com.chrome.dev",
+            "com.chrome.canary"
+        )
+        private val EDGE_MANAGED_PACKAGES = setOf(
+            "com.microsoft.emmx",
+            "com.microsoft.emmx.beta",
+            "com.microsoft.emmx.dev",
+            "com.microsoft.emmx.canary"
+        )
         private val SACRED_WHITELIST = setOf(
             "com.android.systemui",
             "com.android.settings",
@@ -368,78 +385,153 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     }
 
     /**
-     * Enforce SOTA Website Blocking via Managed Configurations (URLBlocklist).
+     * Aplica bloqueio preventivo no renderer dos navegadores gerenciáveis.
      *
-     * Aplica 3 policies no Chrome/Edge:
-     * 1. URLBlocklist — lista de domínios bloqueados (bloqueio no renderer)
-     * 2. DnsOverHttpsMode=off — DESATIVA DoH no Chrome/Edge. Sem isso, o
-     *    usuário pode ativar "Secure DNS" no Chrome e burlar o Private DNS
-     *    DoT do sistema (CleanBrowsing/NextDNS). Com DoH off, todo DNS do
-     *    Chrome passa pelo DoT Private DNS do FocusGuard → bloqueio
-     *    universal efetivo dentro do Chrome/Edge.
-     * 3. DnsOverHttpsTemplates="" — limpa templates DoH que o Chrome possa
-     *    ter cached (Cloudflare, Google, etc.).
-     *
-     * Cobertura: Chrome + Edge (Chromium-based que suportam managed config).
-     * Firefox/Brave/Opera não suportam URLBlocklist — cobertura vem da
-     * camada Accessibility.
+     * `URLBlocklist` é a camada mais forte disponível sem VPN para Chrome e
+     * Edge em um aparelho Device Owner. A navegação privada também é suspensa
+     * enquanto há regras ativas, evitando uma superfície de bypass. Os demais
+     * navegadores continuam protegidos pelo AccessibilityService.
      */
-    fun enforceWebsiteRestrictions(domains: List<String>) {
-        if (!isDeviceOwnerActive()) return
+    suspend fun enforceWebsiteRestrictions(domains: List<String>) {
+        if (!isDeviceOwnerActive()) {
+            invalidateWebsitePolicyCache()
+            return
+        }
+        val normalizedDomains = WebsiteBlocker.normalizeDomains(domains).sorted()
+        val allManagedDomains = WebsiteBlocker.expandDomainAliases(normalizedDomains).toList()
+        val managedDomains = allManagedDomains.take(MAX_MANAGED_URLS)
+        if (managedDomains.size < allManagedDomains.size) {
+            Log.w(
+                "FocusGuardNuclear",
+                "URLBlocklist limitada aos primeiros $MAX_MANAGED_URLS domínios"
+            )
+        }
+        applyWebsiteRestrictions(managedDomains)
+    }
 
-        scope.launch {
-            try {
-                val limitedDomains = if (domains.size > MAX_SOTA_DOMAINS) {
-                    Log.w("FocusGuardNuclear", "Aviso: Lista de dominios excedeu o limite Binder ($MAX_SOTA_DOMAINS). Truncando.")
-                    domains.take(MAX_SOTA_DOMAINS)
+    /** Remove somente as políticas de navegador controladas pelo FocusGuard. */
+    suspend fun clearWebsiteRestrictions() {
+        if (!isDeviceOwnerActive()) {
+            invalidateWebsitePolicyCache()
+            return
+        }
+        applyWebsiteRestrictions(emptyList())
+    }
+
+    /** Força nova sincronização após instalação, remoção ou atualização do navegador. */
+    suspend fun invalidateWebsitePolicyCache() {
+        websitePolicyMutex.withLock {
+            lastWebsitePolicySignature = null
+        }
+    }
+
+    private suspend fun applyWebsiteRestrictions(domains: List<String>) {
+        websitePolicyMutex.withLock {
+            withContext(Dispatchers.IO) {
+                val chromePackages = CHROME_MANAGED_PACKAGES.filter(::isPackageInstalled)
+                val edgePackages = if (
+                    android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R
+                ) {
+                    EDGE_MANAGED_PACKAGES.filter(::isPackageInstalled)
                 } else {
-                    domains
+                    emptyList()
+                }
+                val targets = (chromePackages + edgePackages).sorted()
+                val managedFilters = domains.map { domain ->
+                    if (':' in domain) "[$domain]" else domain
+                }
+                val signature = managedFilters.joinToString("\u0000") +
+                    "|" + targets.joinToString("\u0000")
+                if (signature == lastWebsitePolicySignature) return@withContext
+
+                var allWritesSucceeded = true
+                targets.forEach { packageName ->
+                    val privateModePolicy = if (packageName in EDGE_MANAGED_PACKAGES) {
+                        "InPrivateModeAvailability"
+                    } else {
+                        "IncognitoModeAvailability"
+                    }
+
+                    try {
+                        val restrictions = Bundle(
+                            dpm.getApplicationRestrictions(componentName, packageName)
+                        ).apply {
+                            remove("URLBlocklist")
+                            remove("IncognitoModeAvailability")
+                            remove("InPrivateModeAvailability")
+                            // Limpa chaves gravadas por versões antigas. O
+                            // bloqueio de sites não precisa alterar o DNS do navegador.
+                            remove("DnsOverHttpsMode")
+                            remove("DnsOverHttpsTemplates")
+                            if (managedFilters.isNotEmpty()) {
+                                putStringArray("URLBlocklist", managedFilters.toTypedArray())
+                                putInt(privateModePolicy, 1)
+                            }
+                        }
+                        dpm.setApplicationRestrictions(componentName, packageName, restrictions)
+                        val stored = dpm.getApplicationRestrictions(componentName, packageName)
+                        val storedDomains = stored.getStringArray("URLBlocklist")?.toList().orEmpty()
+                        val legacyDnsPolicyCleared =
+                            !stored.containsKey("DnsOverHttpsMode") &&
+                                !stored.containsKey("DnsOverHttpsTemplates")
+                        val verified = if (managedFilters.isEmpty()) {
+                            !stored.containsKey("URLBlocklist") &&
+                                !stored.containsKey("IncognitoModeAvailability") &&
+                                !stored.containsKey("InPrivateModeAvailability") &&
+                                legacyDnsPolicyCleared
+                        } else {
+                            storedDomains == managedFilters &&
+                                stored.getInt(privateModePolicy, -1) == 1 &&
+                                legacyDnsPolicyCleared
+                        }
+                        if (!verified) {
+                            allWritesSucceeded = false
+                            FocusGuardLogger.log(
+                                "DeviceOwner",
+                                "O navegador $packageName não confirmou a política de URLs"
+                            )
+                        }
+                    } catch (error: android.os.TransactionTooLargeException) {
+                        allWritesSucceeded = false
+                        FocusGuardLogger.logError(
+                            "DeviceOwner",
+                            "URLBlocklist excedeu o limite Binder em $packageName",
+                            error
+                        )
+                    } catch (error: Exception) {
+                        allWritesSucceeded = false
+                        FocusGuardLogger.logError(
+                            "DeviceOwner",
+                            "Falha ao aplicar URLBlocklist em $packageName",
+                            error
+                        )
+                    }
                 }
 
-                val restrictions = Bundle().apply {
-                    // 1. URL Blocklist — bloqueio no renderer do Chrome/Edge
-                    putStringArray("URLBlocklist", limitedDomains.toTypedArray())
-                    // 2. Desativar DNS-over-HTTPS no browser — fecha bypass DoH
-                    //    que permitiria ignorar o Private DNS DoT do FocusGuard.
-                    //    Valores válidos: "off" | "automatic" | "secure".
-                    //    "off" = nunca usar DoH (mesmo se o servidor suportar).
-                    putString("DnsOverHttpsMode", "off")
-                    // 3. Limpar templates DoH — garante que nenhum servidor DoH
-                    //    (Cloudflare 1.1.1.1, Google 8.8.8.8, etc.) fique cached.
-                    putString("DnsOverHttpsTemplates", "")
+                if (allWritesSucceeded) {
+                    lastWebsitePolicySignature = signature
+                    Log.d(
+                        "FocusGuardNuclear",
+                        "URLBlocklist sincronizada: ${managedFilters.size} filtros em " +
+                            "${targets.size} navegadores"
+                    )
                 }
-
-                val attempt = sotaAttempts.incrementAndGet()
-                if (attempt <= 5) {
-                    Log.d("FocusGuardNuclear", "Tentativa SOTA (Managed Config) $attempt: ${limitedDomains.size} dominios + DoH off")
-                }
-
-                dpm.setApplicationRestrictions(componentName, "com.android.chrome", restrictions)
-                dpm.setApplicationRestrictions(componentName, "com.microsoft.emmx", restrictions)
-            } catch (e: android.os.TransactionTooLargeException) {
-                com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Erro: Limite de Binder excedido na restricao de URLs", e)
-            } catch (e: Throwable) {
-                com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Falha na operacao de Device Owner", e)
             }
         }
     }
 
-
-    /**
-     * Clear SOTA Website Blocking via Managed Configurations
-     */
-    fun clearWebsiteRestrictions() {
-        if (!isDeviceOwnerActive()) return
-
-        scope.launch {
-            try {
-                val emptyRestrictions = Bundle()
-                dpm.setApplicationRestrictions(componentName, "com.android.chrome", emptyRestrictions)
-                dpm.setApplicationRestrictions(componentName, "com.microsoft.emmx", emptyRestrictions)
-            } catch (e: Exception) {
-                com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Erro na operação de Device Owner", e)
+    @Suppress("DEPRECATION")
+    private fun isPackageInstalled(packageName: String): Boolean {
+        return runCatching {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getPackageInfo(
+                    packageName,
+                    android.content.pm.PackageManager.PackageInfoFlags.of(0L)
+                )
+            } else {
+                context.packageManager.getPackageInfo(packageName, 0)
             }
-        }
+        }.isSuccess
     }
 
     /**
