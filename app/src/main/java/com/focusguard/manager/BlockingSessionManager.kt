@@ -474,18 +474,33 @@ class BlockingSessionManager @Inject constructor(
                     )
                 }.map { WebsiteBlocker.extractDomain(it.domain) }
 
-                val appsToBlock = (sessionApps + limitApps).filter { it.isNotBlank() }.distinct()
                 val sitesToBlock = (sessionSites + limitSites)
                     .map(WebsiteBlocker::extractDomain)
                     .filter { it.isNotBlank() }
                     .distinct()
+                val websiteAppsToBlock = WebsiteBlocker.appPackageDomainsFor(sitesToBlock)
+                    .keys
+                    .filter(::isPackageInstalled)
+                val appsToBlock = (sessionApps + limitApps + websiteAppsToBlock)
+                    .filter { it.isNotBlank() }
+                    .distinct()
 
                 val allSessionApps = getAppsForSessions(activeSessions.map { it.id })
+                val allSessionSites = getSitesForSessions(activeSessions.map { it.id })
+                val allKnownWebsiteApps = WebsiteBlocker.appPackageDomainsFor(
+                    allSessionSites + activeWebsiteLimits.map { it.domain }
+                ).keys.filter(::isPackageInstalled)
                 val allKnownApps = (
-                    allSessionApps + activeAppLimits.map { it.packageName }
+                    allSessionApps +
+                        activeAppLimits.map { it.packageName } +
+                        allKnownWebsiteApps
                 ).distinct()
 
-                deviceOwnerManager.syncSuspendedApps(allKnownApps, appsToBlock)
+                deviceOwnerManager.syncSuspendedApps(
+                    allAppsInSessions = allKnownApps,
+                    appsToBlockNow = appsToBlock,
+                    allowedSystemApps = websiteAppsToBlock.toSet()
+                )
 
                 if (sitesToBlock.isEmpty()) {
                     deviceOwnerManager.clearWebsiteRestrictions()
@@ -597,6 +612,30 @@ class BlockingSessionManager @Inject constructor(
                 error
             )
             emptyList()
+        }
+    }
+
+    @Suppress("DEPRECATION")
+    private fun isPackageInstalled(packageName: String): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.packageManager.getApplicationInfo(
+                    packageName,
+                    PackageManager.ApplicationInfoFlags.of(0L)
+                )
+            } else {
+                context.packageManager.getApplicationInfo(packageName, 0)
+            }
+            true
+        } catch (_: PackageManager.NameNotFoundException) {
+            false
+        } catch (error: RuntimeException) {
+            FocusGuardLogger.logError(
+                "BlockingSessionManager",
+                "Falha ao verificar pacote associado a site",
+                error
+            )
+            false
         }
     }
 

@@ -9,6 +9,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.net.Uri
 import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -59,7 +60,9 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     @Volatile private var blockedAppsSet: Set<String> = emptySet()
     @Volatile private var blockedWebsitesDomainSet: Set<String> = emptySet()
+    @Volatile private var blockedWebsiteAppDomains: Map<String, String> = emptyMap()
     @Volatile private var limitedWebsiteDomains: Set<String> = emptySet()
+    @Volatile private var limitedWebsiteAppDomains: Map<String, String> = emptyMap()
     @Volatile private var isBlockingSessionActive = false
     @Volatile private var isPomodoroStrictActive = false
     @Volatile private var lastEnforcementFingerprint: String? = null
@@ -74,8 +77,15 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private val websiteTrackingLock = Any()
     @Volatile private var trackedDomain: String? = null
+    @Volatile private var trackedPackageName: String? = null
     @Volatile private var trackedSinceMillis = 0L
     private var websiteTrackingJob: Job? = null
+
+    private data class WebsiteUsageSlice(
+        val domain: String,
+        val deltaMillis: Long,
+        val packageName: String
+    )
 
     private val cacheTimeoutMillis = 5_000L
     private val browserDebounceMillis = 120L
@@ -316,7 +326,11 @@ class BlockingAccessibilityService : AccessibilityService() {
             val packageName = event.packageName?.toString().orEmpty()
             if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                 if (handleSettingsInterception(event)) return
-                if (packageName !in browserPackages) stopWebsiteTracking(now)
+                if (packageName !in browserPackages &&
+                    packageName !in limitedWebsiteAppDomains
+                ) {
+                    stopWebsiteTracking(now)
+                }
             }
 
             if (isPomodoroStrictActive && event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
@@ -388,6 +402,15 @@ class BlockingAccessibilityService : AccessibilityService() {
                             websiteLimits.map { it.domain }
                         )
                         val exceededWebsiteDomains = calculateExceededWebsiteLimits(websiteLimits)
+                        val blockedWebsiteDomains = WebsiteBlocker.normalizeDomains(
+                            sessionSites + exceededWebsiteDomains + adultDomains
+                        )
+                        val configuredWebsiteApps = WebsiteBlocker.appPackageDomainsFor(
+                            configuredWebsiteDomains
+                        )
+                        val blockedWebsiteApps = WebsiteBlocker.appPackageDomainsFor(
+                            sessionSites + exceededWebsiteDomains
+                        )
                         val enforcementFingerprint = listOf(
                             enforcingIds.sorted().joinToString(","),
                             sessionApps.sorted().joinToString(","),
@@ -404,10 +427,10 @@ class BlockingAccessibilityService : AccessibilityService() {
                                 it.sessionType == "POMODORO" && it.isBlockingEnabled
                             }
                             blockedAppsSet = sessionApps + limitApps
-                            blockedWebsitesDomainSet = WebsiteBlocker.normalizeDomains(
-                                sessionSites + exceededWebsiteDomains + adultDomains
-                            )
+                            blockedWebsitesDomainSet = blockedWebsiteDomains
+                            blockedWebsiteAppDomains = blockedWebsiteApps
                             limitedWebsiteDomains = configuredWebsiteDomains
+                            limitedWebsiteAppDomains = configuredWebsiteApps
                             isBlockingSessionActive = enforcingSessions.isNotEmpty() ||
                                 limitApps.isNotEmpty() ||
                                 exceededWebsiteDomains.isNotEmpty() ||
@@ -489,8 +512,16 @@ class BlockingAccessibilityService : AccessibilityService() {
         if (className.contains("Toast") || className.contains("PopupWindow")) return
         if (packageName == this.packageName || packageName == defaultLauncherPackage) return
 
+        val blockedWebsiteDomain = blockedWebsiteAppDomains[packageName]
+        val limitedWebsiteDomain = limitedWebsiteAppDomains[packageName]
         when {
+            blockedWebsiteDomain != null -> blockWebsiteApp(blockedWebsiteDomain, packageName)
             packageName in blockedAppsSet -> blockApp(packageName)
+            limitedWebsiteDomain != null -> updateWebsiteTracking(
+                domain = limitedWebsiteDomain,
+                packageName = packageName,
+                now = System.currentTimeMillis()
+            )
             packageName in browserPackages &&
                 (blockedWebsitesDomainSet.isNotEmpty() || limitedWebsiteDomains.isNotEmpty()) ->
                 handleBrowserEvent(event)
@@ -573,7 +604,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         if (!url.isNullOrBlank()) {
             val domain = WebsiteBlocker.extractDomain(url)
-            updateWebsiteTracking(domain, now)
+            updateWebsiteTracking(domain, packageName, now)
             if (WebsiteBlocker.findMatchingRule(domain, blockedWebsitesDomainSet) != null) {
                 blockWebsite(domain, packageName)
                 recycleSafely(root)
@@ -587,32 +618,40 @@ class BlockingAccessibilityService : AccessibilityService() {
         recycleSafely(root)
     }
 
-    private fun updateWebsiteTracking(domain: String, now: Long) {
+    private fun updateWebsiteTracking(domain: String, packageName: String, now: Long) {
         val matchedRule = WebsiteBlocker.findMatchingRule(domain, limitedWebsiteDomains)
         if (matchedRule == null) {
             stopWebsiteTracking(now)
             return
         }
 
-        var usageToPersist: Pair<String, Long>? = null
+        var usageToPersist: WebsiteUsageSlice? = null
         synchronized(websiteTrackingLock) {
-            val previous = trackedDomain
-            if (previous == matchedRule) {
+            val previousDomain = trackedDomain
+            val previousPackage = trackedPackageName
+            if (previousDomain == matchedRule && previousPackage == packageName) {
                 val delta = (now - trackedSinceMillis).coerceIn(0L, maxUsageDeltaMillis)
                 if (delta >= 1_000L) {
-                    usageToPersist = previous to delta
+                    usageToPersist = WebsiteUsageSlice(matchedRule, delta, packageName)
                     trackedSinceMillis = now
                 }
             } else {
-                if (previous != null) {
+                if (previousDomain != null && previousPackage != null) {
                     val delta = (now - trackedSinceMillis).coerceIn(0L, maxUsageDeltaMillis)
-                    if (delta >= 1_000L) usageToPersist = previous to delta
+                    if (delta >= 1_000L) {
+                        usageToPersist = WebsiteUsageSlice(
+                            previousDomain,
+                            delta,
+                            previousPackage
+                        )
+                    }
                 }
                 trackedDomain = matchedRule
+                trackedPackageName = packageName
                 trackedSinceMillis = now
             }
         }
-        usageToPersist?.let { (site, delta) -> persistWebsiteUsage(site, delta) }
+        usageToPersist?.let(::persistWebsiteUsage)
         startWebsiteTrackingPulse()
     }
 
@@ -621,56 +660,65 @@ class BlockingAccessibilityService : AccessibilityService() {
         websiteTrackingJob = scope.launch {
             while (isActive) {
                 delay(websitePulseMillis)
-                var usageToPersist: Pair<String, Long>? = null
+                var usageToPersist: WebsiteUsageSlice? = null
                 synchronized(websiteTrackingLock) {
                     val domain = trackedDomain
-                    if (domain == null) {
+                    val packageName = trackedPackageName
+                    if (domain == null || packageName == null) {
                         return@launch
                     }
                     val now = System.currentTimeMillis()
                     val delta = (now - trackedSinceMillis).coerceIn(0L, maxUsageDeltaMillis)
                     if (delta >= 1_000L) {
                         trackedSinceMillis = now
-                        usageToPersist = domain to delta
+                        usageToPersist = WebsiteUsageSlice(domain, delta, packageName)
                     }
                 }
-                usageToPersist?.let { (site, delta) -> persistWebsiteUsageNow(site, delta) }
+                usageToPersist?.let { persistWebsiteUsageNow(it) }
             }
         }
     }
 
     private fun stopWebsiteTracking(now: Long = System.currentTimeMillis()) {
-        var usageToPersist: Pair<String, Long>? = null
+        var usageToPersist: WebsiteUsageSlice? = null
         synchronized(websiteTrackingLock) {
             val domain = trackedDomain
-            if (domain != null) {
+            val packageName = trackedPackageName
+            if (domain != null && packageName != null) {
                 val delta = (now - trackedSinceMillis).coerceIn(0L, maxUsageDeltaMillis)
-                if (delta >= 1_000L) usageToPersist = domain to delta
+                if (delta >= 1_000L) {
+                    usageToPersist = WebsiteUsageSlice(domain, delta, packageName)
+                }
             }
             trackedDomain = null
+            trackedPackageName = null
             trackedSinceMillis = 0L
         }
         websiteTrackingJob?.cancel()
         websiteTrackingJob = null
-        usageToPersist?.let { (site, delta) -> persistWebsiteUsage(site, delta) }
+        usageToPersist?.let(::persistWebsiteUsage)
     }
 
-    private fun persistWebsiteUsage(domain: String, deltaMillis: Long) {
+    private fun persistWebsiteUsage(usage: WebsiteUsageSlice) {
         scope.launch {
-            persistWebsiteUsageNow(domain, deltaMillis)
+            persistWebsiteUsageNow(usage)
         }
     }
 
-    private suspend fun persistWebsiteUsageNow(domain: String, deltaMillis: Long) {
+    private suspend fun persistWebsiteUsageNow(usage: WebsiteUsageSlice) {
         try {
             val today = dateFormat.get()!!.format(Date())
-            database.dailyUsageStatDao().addUsage(domain, today, deltaMillis)
+            database.dailyUsageStatDao().addUsage(
+                usage.domain,
+                today,
+                usage.deltaMillis
+            )
             val limit = database.websiteUsageLimitDao().getAllStatic()
                 .firstOrNull {
-                    it.isEnabled && WebsiteBlocker.extractDomain(it.domain) == domain
+                    it.isEnabled && WebsiteBlocker.extractDomain(it.domain) == usage.domain
                 }
             if (limit != null) {
-                val total = database.dailyUsageStatDao().getUsageMillis(domain, today)
+                val total = database.dailyUsageStatDao().getUsageMillis(usage.domain, today)
                 val shouldBlock = WebsiteUsageLimitPolicy.shouldBlock(
                     usedMillis = total,
                     dailyLimitMinutes = limit.dailyLimitMinutes,
@@ -679,6 +727,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                     nowMillis = System.currentTimeMillis()
                 )
                 if (shouldBlock) {
+                    enforceExceededWebsiteImmediately(usage)
                     sessionManager.checkAndEnforce()
                 }
             }
@@ -687,9 +736,27 @@ class BlockingAccessibilityService : AccessibilityService() {
         } catch (error: Exception) {
             FocusGuardLogger.logError(
                 "A11y",
-                "Falha ao registrar uso de $domain",
+                "Falha ao registrar uso de ${usage.domain}",
                 error
             )
+        }
+    }
+
+    private fun enforceExceededWebsiteImmediately(usage: WebsiteUsageSlice) {
+        scope.launch(Dispatchers.Main) {
+            val stillActive = synchronized(websiteTrackingLock) {
+                trackedDomain == usage.domain && trackedPackageName == usage.packageName
+            }
+            if (!stillActive) return@launch
+
+            blockedWebsitesDomainSet = blockedWebsitesDomainSet + usage.domain
+            if (usage.packageName in browserPackages) {
+                blockWebsite(usage.domain, usage.packageName)
+            } else {
+                blockedWebsiteAppDomains = blockedWebsiteAppDomains +
+                    (usage.packageName to usage.domain)
+                blockWebsiteApp(usage.domain, usage.packageName)
+            }
         }
     }
 
@@ -698,17 +765,54 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun blockWebsite(domain: String, browserPackageName: String) {
+        if (!beginWebsiteBlock(domain, browserPackageName)) return
+        if (!redirectBrowserToSafePage(browserPackageName)) {
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            performGlobalAction(GLOBAL_ACTION_HOME)
+        }
+        launchBlockNotice(blockedPackage = null, blockedDomain = domain)
+    }
+
+    private fun blockWebsiteApp(domain: String, packageName: String) {
+        if (!beginWebsiteBlock(domain, packageName)) return
+        performGlobalAction(GLOBAL_ACTION_HOME)
+        launchBlockNotice(blockedPackage = null, blockedDomain = domain)
+    }
+
+    private fun beginWebsiteBlock(domain: String, packageName: String): Boolean {
         val now = System.currentTimeMillis()
-        val blockKey = "$browserPackageName|$domain"
+        val blockKey = "$packageName|$domain"
         if (blockKey == lastWebsiteBlockKey &&
             now - lastWebsiteBlockTime < websiteBlockCooldownMillis
-        ) return
+        ) return false
 
         lastWebsiteBlockKey = blockKey
         lastWebsiteBlockTime = now
         stopWebsiteTracking(now)
-        performGlobalAction(GLOBAL_ACTION_HOME)
-        launchBlockNotice(blockedPackage = null, blockedDomain = domain)
+        return true
+    }
+
+    private fun redirectBrowserToSafePage(browserPackageName: String): Boolean {
+        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(SAFE_REDIRECT_URL)).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+            setPackage(browserPackageName)
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            )
+        }
+        return runCatching {
+            startActivity(intent)
+            true
+        }.getOrElse { error ->
+            FocusGuardLogger.logError(
+                "A11y",
+                "Falha ao redirecionar navegador bloqueado",
+                error
+            )
+            false
+        }
     }
 
     private fun launchBlockNotice(blockedPackage: String?, blockedDomain: String?) {
@@ -797,6 +901,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     companion object {
+        private const val SAFE_REDIRECT_URL = "https://www.google.com"
         const val ACTION_REFRESH_BLOCKING = "com.focusguard.ACTION_REFRESH_BLOCKING"
         const val EXTRA_STRICT_BLOCK = "STRICT_BLOCK"
         const val EXTRA_BLOCKED_PACKAGE = "BLOCKED_PACKAGE"

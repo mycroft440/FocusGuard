@@ -153,6 +153,12 @@ class WebsiteBlockerTest {
         assertThat(
             WebsiteBlocker.isUrlBlocked("https://youtu.be/abc123", listOf("youtube.com"))
         ).isTrue()
+        assertThat(
+            WebsiteBlocker.isUrlBlocked(
+                "https://www.youtube-nocookie.com/embed/abc123",
+                listOf("youtube.com")
+            )
+        ).isTrue()
     }
 
     @Test
@@ -209,9 +215,19 @@ class WebsiteBlockerTest {
             "example.com",
             "twitter.com",
             "youtu.be",
+            "youtube-nocookie.com",
             "x.com",
             "t.co"
         ).inOrder()
+    }
+
+    @Test
+    fun `youtube website rule also covers the native app bypass`() {
+        assertThat(WebsiteBlocker.appPackageDomainsFor(listOf("youtube.com")))
+            .containsEntry("com.google.android.youtube", "youtube.com")
+        assertThat(WebsiteBlocker.appPackageDomainsFor(listOf("youtu.be")))
+            .containsEntry("com.google.android.youtube", "youtube.com")
+        assertThat(WebsiteBlocker.appPackageDomainsFor(listOf("example.com"))).isEmpty()
     }
 
     @Test

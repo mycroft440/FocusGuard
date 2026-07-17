@@ -33,6 +33,11 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     private val componentName = FocusGuardDeviceAdminReceiver.getComponentName(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val websitePolicyMutex = Mutex()
+    private val suspendedAppsMutex = Mutex()
+    private val suspendedAppsPreferences = context.getSharedPreferences(
+        SUSPENDED_APPS_PREFERENCES,
+        Context.MODE_PRIVATE
+    )
     private var lastWebsitePolicySignature: String? = null
 
     companion object {
@@ -46,6 +51,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         }
 
         private const val MAX_MANAGED_URLS = 1_000
+        private const val SUSPENDED_APPS_PREFERENCES = "focusguard_suspended_apps"
+        private const val MANAGED_SUSPENDED_APPS_KEY = "managed_packages"
         private val CHROME_MANAGED_PACKAGES = setOf(
             "com.android.chrome",
             "com.chrome.beta",
@@ -181,36 +188,67 @@ class DeviceOwnerManager private constructor(private val context: Context) {
      * Apps in the list will be suspended; apps NOT in the list will be unsuspended.
      * This prevents apps from being "stuck" suspended when a session ends.
      */
-    fun syncSuspendedApps(allAppsInSessions: List<String>, appsToBlockNow: List<String>) {
+    fun syncSuspendedApps(
+        allAppsInSessions: List<String>,
+        appsToBlockNow: List<String>,
+        allowedSystemApps: Set<String> = emptySet()
+    ) {
         if (!isDeviceOwnerActive()) return
 
         scope.launch {
-            try {
-                val myPkg = context.packageName
-                val pm = context.packageManager
+            suspendedAppsMutex.withLock {
+                try {
+                    val myPkg = context.packageName
+                    val pm = context.packageManager
+                    val previouslyManaged = managedSuspendedApps()
+                    val filteredToBlock = appsToBlockNow.distinct().filter { pkg ->
+                        if (pkg == myPkg || pkg == "com.focusguard") return@filter false
+                        if (SACRED_WHITELIST.contains(pkg)) return@filter false
+                        try {
+                            val appInfo = pm.getApplicationInfo(pkg, 0)
+                            val isSystemApp =
+                                (appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+                            !isSystemApp || pkg in allowedSystemApps
+                        } catch (_: android.content.pm.PackageManager.NameNotFoundException) {
+                            false
+                        }
+                    }
+                    val desired = filteredToBlock.toSet()
+                    val managedAfterSync = previouslyManaged.toMutableSet()
+                    val appsToUnblock = (allAppsInSessions + previouslyManaged)
+                        .distinct()
+                        .filter { it !in desired }
 
-                val appsToUnblock = allAppsInSessions.filter { !appsToBlockNow.contains(it) }
-                if (appsToUnblock.isNotEmpty()) {
-                    dpm.setPackagesSuspended(componentName, appsToUnblock.toTypedArray(), false)
-                    Log.d("FocusGuardAdmin", "Apps desbloqueados diferencialmente: ${appsToUnblock.size}")
-                }
+                    if (appsToUnblock.isNotEmpty()) {
+                        val failed = dpm.setPackagesSuspended(
+                            componentName,
+                            appsToUnblock.toTypedArray(),
+                            false
+                        ).toSet()
+                        managedAfterSync.removeAll(appsToUnblock.toSet() - failed)
+                        Log.d(
+                            "FocusGuardAdmin",
+                            "Apps desbloqueados diferencialmente: " +
+                                "${appsToUnblock.size - failed.size}"
+                        )
+                    }
 
-                val filteredToBlock = appsToBlockNow.filter { pkg ->
-                    if (pkg == myPkg || pkg == "com.focusguard") return@filter false
-                    if (SACRED_WHITELIST.contains(pkg)) return@filter false
-                    try {
-                        val appInfo = pm.getApplicationInfo(pkg, 0)
-                        if ((appInfo.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0) return@filter false
-                    } catch (_: Exception) {}
-                    true
+                    if (filteredToBlock.isNotEmpty()) {
+                        val failed = dpm.setPackagesSuspended(
+                            componentName,
+                            filteredToBlock.toTypedArray(),
+                            true
+                        ).toSet()
+                        managedAfterSync.addAll(filteredToBlock.toSet() - failed)
+                        Log.d(
+                            "FocusGuardAdmin",
+                            "Apps suspensos: ${filteredToBlock.size - failed.size}"
+                        )
+                    }
+                    saveManagedSuspendedApps(managedAfterSync)
+                } catch (error: Exception) {
+                    Log.e("FocusGuardAdmin", "Falha na sincronização diferencial de apps", error)
                 }
-
-                if (filteredToBlock.isNotEmpty()) {
-                    dpm.setPackagesSuspended(componentName, filteredToBlock.toTypedArray(), true)
-                    Log.d("FocusGuardAdmin", "Apps suspensos: ${filteredToBlock.size}")
-                }
-            } catch (e: Exception) {
-                Log.e("FocusGuardAdmin", "Falha na sincronização diferencial de apps", e)
             }
         }
     }
@@ -222,12 +260,34 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         if (!isDeviceOwnerActive() || packageNames.isEmpty()) return
 
         scope.launch {
-            try {
-                dpm.setPackagesSuspended(componentName, packageNames.toTypedArray(), false)
-            } catch (e: Exception) {
-                com.focusguard.utils.FocusGuardLogger.log("Admin", "Erro ao desbloquear apps: ${e.message}")
+            suspendedAppsMutex.withLock {
+                try {
+                    val failed = dpm.setPackagesSuspended(
+                        componentName,
+                        packageNames.toTypedArray(),
+                        false
+                    ).toSet()
+                    val remaining = managedSuspendedApps().toMutableSet()
+                    remaining.removeAll(packageNames.toSet() - failed)
+                    saveManagedSuspendedApps(remaining)
+                } catch (error: Exception) {
+                    FocusGuardLogger.logError("Admin", "Erro ao desbloquear apps", error)
+                }
             }
         }
+    }
+
+    private fun managedSuspendedApps(): Set<String> {
+        return suspendedAppsPreferences
+            .getStringSet(MANAGED_SUSPENDED_APPS_KEY, emptySet())
+            .orEmpty()
+            .toSet()
+    }
+
+    private fun saveManagedSuspendedApps(packageNames: Set<String>) {
+        suspendedAppsPreferences.edit()
+            .putStringSet(MANAGED_SUSPENDED_APPS_KEY, packageNames)
+            .apply()
     }
 
     /**

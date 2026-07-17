@@ -51,12 +51,15 @@ object WebsiteBlocker {
     private val addressBarDescriptions = setOf(
         "address and search bar",
         "endereço e barra de pesquisa",
+        "barra de endereço e pesquisa",
         "search or type web address",
         "pesquisar ou digitar endereço web",
         "url bar",
         "barra de url",
         "address bar",
-        "barra de endereços"
+        "barra de endereços",
+        "barra de endereço",
+        "endereço da página"
     )
 
     private val nestedUrlPrefixes = listOf(
@@ -66,8 +69,12 @@ object WebsiteBlocker {
     )
 
     private val domainAliases = mapOf(
-        "youtube.com" to setOf("youtu.be"),
+        "youtube.com" to setOf("youtu.be", "youtube-nocookie.com"),
         "twitter.com" to setOf("x.com", "t.co")
+    )
+
+    private val domainAppPackages = mapOf(
+        "youtube.com" to setOf("com.google.android.youtube")
     )
 
     private val uts46Idna: AndroidIdna? by lazy(LazyThreadSafetyMode.PUBLICATION) {
@@ -150,6 +157,26 @@ object WebsiteBlocker {
             domainAliases[rule]?.let { aliases -> expanded.addAll(aliases) }
         }
         return expanded
+    }
+
+    /**
+     * Relaciona sites a apps que normalmente abrem seus links no Android.
+     * Isso evita que um link bloqueado seja desviado para o app nativo.
+     */
+    fun appPackageDomainsFor(domains: Collection<String>): Map<String, String> {
+        val result = linkedMapOf<String, String>()
+        normalizeDomains(domains).forEach { rule ->
+            val canonical = domainAliases.entries.firstOrNull { (domain, aliases) ->
+                rule == domain || rule.endsWith(".$domain") || aliases.any { alias ->
+                    rule == alias || rule.endsWith(".$alias")
+                }
+            }?.key ?: rule
+
+            domainAppPackages[canonical].orEmpty().forEach { packageName ->
+                result.putIfAbsent(packageName, canonical)
+            }
+        }
+        return result
     }
 
     fun isUrlBlocked(url: String, blockedDomains: Collection<String>): Boolean {
