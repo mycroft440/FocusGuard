@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.security.AuthManager
+import com.focusguard.ui.CreateSessionActivity
 import com.focusguard.ui.PermissionsActivity
 import com.focusguard.ui.compose.screens.AuthScreen
 import com.focusguard.ui.compose.screens.BlockCustomizationScreen
@@ -178,15 +179,12 @@ fun FocusGuardNavHost(
                     onTabChange = { selectedTab = it },
                     permissionsVisible = permissionsVisible,
                     onPermissionsClick = { activity.startActivity(Intent(activity, PermissionsActivity::class.java)) },
-                    onPasswordSessionClick = {
-                        selectedSessionType = "PASSWORD"
-                        currentRoute = FocusGuardRoute.SessionsList
+                    onProtectionClick = {
+                        activity.startActivity(
+                            Intent(activity, CreateSessionActivity::class.java)
+                                .putExtra("SESSION_TYPE", "UNIFIED")
+                        )
                     },
-                    onTimeSessionClick = {
-                        selectedSessionType = "TIME"
-                        currentRoute = FocusGuardRoute.SessionsList
-                    },
-                    onAppUsageLimitsClick = { currentRoute = FocusGuardRoute.UsageLimits },
                     onSettingsClick = { currentRoute = FocusGuardRoute.Settings },
                     usageStatsContent = {
                         UsageStatsDashboardScreen(onBack = { currentRoute = FocusGuardRoute.Home }, showTopBar = false)
