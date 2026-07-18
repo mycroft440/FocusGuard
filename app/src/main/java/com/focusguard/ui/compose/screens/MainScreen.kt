@@ -37,9 +37,7 @@ fun MainScreen(
     onTabChange: (Int) -> Unit,
     permissionsVisible: Boolean,
     onPermissionsClick: () -> Unit,
-    onPasswordSessionClick: () -> Unit,
-    onTimeSessionClick: () -> Unit,
-    onAppUsageLimitsClick: () -> Unit,
+    onProtectionClick: () -> Unit,
     onSettingsClick: () -> Unit,
     usageStatsContent: @Composable () -> Unit,
     pomodoroContent: @Composable () -> Unit
@@ -122,9 +120,7 @@ fun MainScreen(
                     1 -> HomeContent(
                         permissionsVisible = permissionsVisible,
                         onPermissionsClick = onPermissionsClick,
-                        onPasswordSessionClick = onPasswordSessionClick,
-                        onTimeSessionClick = onTimeSessionClick,
-                        onAppUsageLimitsClick = onAppUsageLimitsClick,
+                        onProtectionClick = onProtectionClick,
                         pagerHint = false
                     )
                     2 -> pomodoroContent()
@@ -189,9 +185,7 @@ fun DrawerMenuButton(
 fun HomeContent(
     permissionsVisible: Boolean,
     onPermissionsClick: () -> Unit,
-    onPasswordSessionClick: () -> Unit,
-    onTimeSessionClick: () -> Unit,
-    onAppUsageLimitsClick: () -> Unit,
+    onProtectionClick: () -> Unit,
     pagerHint: Boolean
 ) {
     var visible by remember { mutableStateOf(false) }
@@ -261,28 +255,10 @@ fun HomeContent(
         ) {
             Column {
                 SessionCard(
-                    icon = Icons.Outlined.Lock,
-                    title = stringResource(id = R.string.password_block),
-                    subtitle = stringResource(id = R.string.password_block_sub),
-                    onClick = onPasswordSessionClick
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                SessionCard(
-                    icon = Icons.Outlined.Timer,
-                    title = stringResource(id = R.string.time_block),
-                    subtitle = stringResource(id = R.string.time_block_sub),
-                    onClick = onTimeSessionClick
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                SessionCard(
-                    icon = Icons.Outlined.HourglassEmpty,
-                    title = stringResource(id = R.string.usage_limits),
-                    subtitle = stringResource(id = R.string.usage_limits_sub),
-                    onClick = onAppUsageLimitsClick
+                    icon = Icons.Outlined.Shield,
+                    title = stringResource(id = R.string.protection_entry_title),
+                    subtitle = stringResource(id = R.string.protection_entry_subtitle),
+                    onClick = onProtectionClick
                 )
             }
         }
