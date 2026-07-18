@@ -80,25 +80,47 @@ class BlockNoticeActivity : ComponentActivity() {
     @Inject lateinit var authManager: AuthManager
     @Inject lateinit var blockingSessionManager: BlockingSessionManager
 
+    private var strictBlock = false
+    private var redirectBrowserPackage: String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        val strictBlock = intent.getBooleanExtra(
+        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                val browserPackage = redirectBrowserPackage
+                when {
+                    strictBlock -> Unit
+                    browserPackage != null -> redirectBlockedWebsite(browserPackage)
+                    else -> goHome()
+                }
+            }
+        })
+
+        showBlockNotice(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        showBlockNotice(intent)
+    }
+
+    private fun showBlockNotice(sourceIntent: Intent) {
+        strictBlock = sourceIntent.getBooleanExtra(
             BlockingAccessibilityService.EXTRA_STRICT_BLOCK,
             false
         )
-        val blockedPackage = intent.getStringExtra(
+        val blockedPackage = sourceIntent.getStringExtra(
             BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE
         )
-        val blockedDomain = intent.getStringExtra(
+        val blockedDomain = sourceIntent.getStringExtra(
             BlockingAccessibilityService.EXTRA_BLOCKED_DOMAIN
         )
-
-        onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
-            override fun handleOnBackPressed() {
-                if (!strictBlock) goHome()
-            }
-        })
+        redirectBrowserPackage = sourceIntent.getStringExtra(
+            BlockingAccessibilityService.EXTRA_REDIRECT_BROWSER_PACKAGE
+        )?.takeIf(String::isNotBlank)
+        val browserPackageForRedirect = redirectBrowserPackage
 
         setContent {
             FocusGuardTheme {
@@ -106,24 +128,52 @@ class BlockNoticeActivity : ComponentActivity() {
                     strictBlock = strictBlock,
                     blockedPackage = blockedPackage,
                     blockedDomain = blockedDomain,
+                    redirectBrowserPackage = browserPackageForRedirect,
                     authManager = authManager,
                     blockingSessionManager = blockingSessionManager,
                     onGoHome = ::goHome,
-                    onGoToPomodoroLock = {
-                        startActivity(
-                            Intent(this, PomodoroLockActivity::class.java).apply {
-                                addFlags(
-                                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                                        Intent.FLAG_ACTIVITY_CLEAR_TOP
-                                )
-                            }
-                        )
-                        finish()
-                    }
+                    onRedirectBlockedWebsite = ::redirectBlockedWebsite,
+                    onGoToPomodoroLock = ::goToPomodoroLock
                 )
             }
         }
+    }
+
+    private fun redirectBlockedWebsite(browserPackageName: String) {
+        val redirected = runCatching {
+            startActivity(
+                BlockingAccessibilityService.createSafeRedirectIntent(browserPackageName)
+            )
+            true
+        }.getOrElse { error ->
+            FocusGuardLogger.logError(
+                "BlockNotice",
+                "Falha ao redirecionar site bloqueado para o Google",
+                error
+            )
+            false
+        }
+
+        if (strictBlock) {
+            goToPomodoroLock()
+        } else if (redirected) {
+            finish()
+        } else {
+            goHome()
+        }
+    }
+
+    private fun goToPomodoroLock() {
+        startActivity(
+            Intent(this, PomodoroLockActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+                )
+            }
+        )
+        finish()
     }
 
     private fun goHome() {
@@ -142,9 +192,11 @@ private fun BlockNoticeContent(
     strictBlock: Boolean,
     blockedPackage: String?,
     blockedDomain: String?,
+    redirectBrowserPackage: String?,
     authManager: AuthManager,
     blockingSessionManager: BlockingSessionManager,
     onGoHome: () -> Unit,
+    onRedirectBlockedWebsite: (String) -> Unit,
     onGoToPomodoroLock: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
@@ -155,10 +207,24 @@ private fun BlockNoticeContent(
     var verifying by remember { mutableStateOf(false) }
     var unlocked by remember { mutableStateOf(false) }
 
-    LaunchedEffect(strictBlock) {
-        if (strictBlock) {
-            delay(1_000L)
-            onGoToPomodoroLock()
+    LaunchedEffect(
+        strictBlock,
+        redirectBrowserPackage,
+        showUnlockDialog,
+        unlocked
+    ) {
+        val shouldRedirectWebsite = redirectBrowserPackage != null &&
+            !unlocked &&
+            (strictBlock || !showUnlockDialog)
+        when {
+            shouldRedirectWebsite -> {
+                delay(BlockingAccessibilityService.WEBSITE_BLOCK_NOTICE_DURATION_MILLIS)
+                onRedirectBlockedWebsite(redirectBrowserPackage)
+            }
+            strictBlock -> {
+                delay(BlockingAccessibilityService.WEBSITE_BLOCK_NOTICE_DURATION_MILLIS)
+                onGoToPomodoroLock()
+            }
         }
     }
 
@@ -210,6 +276,15 @@ private fun BlockNoticeContent(
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center
             )
+            if (redirectBrowserPackage != null && !unlocked) {
+                Spacer(Modifier.height(12.dp))
+                Text(
+                    text = "Redirecionando para o Google…",
+                    color = TextHint,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
             Spacer(Modifier.height(28.dp))
 
             if (unlocked) {

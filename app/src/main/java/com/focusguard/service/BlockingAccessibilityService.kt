@@ -766,11 +766,15 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun blockWebsite(domain: String, browserPackageName: String) {
         if (!beginWebsiteBlock(domain, browserPackageName)) return
-        if (!redirectBrowserToSafePage(browserPackageName)) {
+        val noticeLaunched = launchBlockNotice(
+            blockedPackage = null,
+            blockedDomain = domain,
+            redirectBrowserPackage = browserPackageName
+        )
+        if (!noticeLaunched && !redirectBrowserToSafePage(browserPackageName)) {
             performGlobalAction(GLOBAL_ACTION_BACK)
             performGlobalAction(GLOBAL_ACTION_HOME)
         }
-        launchBlockNotice(blockedPackage = null, blockedDomain = domain)
     }
 
     private fun blockWebsiteApp(domain: String, packageName: String) {
@@ -793,17 +797,8 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun redirectBrowserToSafePage(browserPackageName: String): Boolean {
-        val intent = Intent(Intent.ACTION_VIEW, Uri.parse(SAFE_REDIRECT_URL)).apply {
-            addCategory(Intent.CATEGORY_BROWSABLE)
-            setPackage(browserPackageName)
-            addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP
-            )
-        }
         return runCatching {
-            startActivity(intent)
+            startActivity(createSafeRedirectIntent(browserPackageName))
             true
         }.getOrElse { error ->
             FocusGuardLogger.logError(
@@ -815,22 +810,26 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun launchBlockNotice(blockedPackage: String?, blockedDomain: String?) {
-        try {
-            val intent = Intent(this, BlockNoticeActivity::class.java).apply {
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                        Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
+    private fun launchBlockNotice(
+        blockedPackage: String?,
+        blockedDomain: String?,
+        redirectBrowserPackage: String? = null
+    ): Boolean {
+        return try {
+            startActivity(
+                createBlockNoticeIntent(
+                    context = this,
+                    strictBlock = isPomodoroStrictActive,
+                    blockedPackage = blockedPackage,
+                    blockedDomain = blockedDomain,
+                    redirectBrowserPackage = redirectBrowserPackage
                 )
-                putExtra(EXTRA_STRICT_BLOCK, isPomodoroStrictActive)
-                putExtra(EXTRA_BLOCKED_PACKAGE, blockedPackage)
-                putExtra(EXTRA_BLOCKED_DOMAIN, blockedDomain)
-            }
-            startActivity(intent)
+            )
+            true
         } catch (error: RuntimeException) {
             FocusGuardLogger.logError("A11y", "Falha ao abrir tela de bloqueio", error)
             performGlobalAction(GLOBAL_ACTION_HOME)
+            false
         }
     }
 
@@ -902,10 +901,45 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val SAFE_REDIRECT_URL = "https://www.google.com"
+        internal const val WEBSITE_BLOCK_NOTICE_DURATION_MILLIS = 1_000L
         const val ACTION_REFRESH_BLOCKING = "com.focusguard.ACTION_REFRESH_BLOCKING"
         const val EXTRA_STRICT_BLOCK = "STRICT_BLOCK"
         const val EXTRA_BLOCKED_PACKAGE = "BLOCKED_PACKAGE"
         const val EXTRA_BLOCKED_DOMAIN = "BLOCKED_DOMAIN"
+        const val EXTRA_REDIRECT_BROWSER_PACKAGE = "REDIRECT_BROWSER_PACKAGE"
+
+        internal fun createBlockNoticeIntent(
+            context: Context,
+            strictBlock: Boolean,
+            blockedPackage: String?,
+            blockedDomain: String?,
+            redirectBrowserPackage: String?
+        ): Intent = Intent(context, BlockNoticeActivity::class.java).apply {
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
+            )
+            putExtra(EXTRA_STRICT_BLOCK, strictBlock)
+            putExtra(EXTRA_BLOCKED_PACKAGE, blockedPackage)
+            putExtra(EXTRA_BLOCKED_DOMAIN, blockedDomain)
+            redirectBrowserPackage
+                ?.takeIf(String::isNotBlank)
+                ?.let { putExtra(EXTRA_REDIRECT_BROWSER_PACKAGE, it) }
+        }
+
+        internal fun createSafeRedirectIntent(browserPackageName: String): Intent {
+            require(browserPackageName.isNotBlank())
+            return Intent(Intent.ACTION_VIEW, Uri.parse(SAFE_REDIRECT_URL)).apply {
+                addCategory(Intent.CATEGORY_BROWSABLE)
+                setPackage(browserPackageName)
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            }
+        }
     }
 
     private object PackageManagerCompat {
