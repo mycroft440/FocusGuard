@@ -76,7 +76,7 @@ fun TimeBlockSessionConfigScreen(
         containerColor = DarkBg,
         topBar = {
             TopAppBar(
-                title = { Text("Bloqueio por tempo", color = TextPrimary) },
+                title = { Text(stringResource(R.string.dopamine_title), color = TextPrimary) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = TextPrimary)
@@ -97,14 +97,14 @@ fun TimeBlockSessionConfigScreen(
                 .padding(20.dp)
         ) {
             Text(
-                text = "Configurar bloqueio de $appName",
+                text = stringResource(R.string.dopamine_configure_for, appName),
                 color = TextPrimary,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "Essa tela bloqueia os aplicativos/sites selecionados por uma duração contínua. Ela não é a tela de Limites de uso diário.",
+                text = stringResource(R.string.dopamine_description),
                 color = TextSecondary,
                 fontSize = 14.sp
             )
@@ -118,7 +118,7 @@ fun TimeBlockSessionConfigScreen(
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text(
-                        text = "Por quanto tempo deseja manter o bloqueio ativo?",
+                        text = stringResource(R.string.dopamine_duration_question),
                         color = TextPrimary,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -128,7 +128,7 @@ fun TimeBlockSessionConfigScreen(
                             value = daysText,
                             onValueChange = { value -> daysText = value.filter { it.isDigit() }.take(3) },
                             modifier = Modifier.weight(1f),
-                            placeholder = { Text("Dias", color = TextHint) },
+                            placeholder = { Text(stringResource(R.string.create_session_days), color = TextHint) },
                             singleLine = true
                         )
                         Spacer(modifier = Modifier.padding(horizontal = 6.dp))
@@ -139,7 +139,7 @@ fun TimeBlockSessionConfigScreen(
                                 hoursText = digits.toIntOrNull()?.coerceIn(0, 23)?.toString() ?: digits
                             },
                             modifier = Modifier.weight(1f),
-                            placeholder = { Text("Horas", color = TextHint) },
+                            placeholder = { Text(stringResource(R.string.protection_hours), color = TextHint) },
                             singleLine = true
                         )
                     }
@@ -149,7 +149,7 @@ fun TimeBlockSessionConfigScreen(
                         shape = RoundedCornerShape(14.dp)
                     ) {
                         Text(
-                            text = "Aviso: enquanto esse bloqueio por tempo estiver ativo, ele não poderá ser revogado até o fim do período.",
+                            text = stringResource(R.string.dopamine_warning),
                             color = DangerRed,
                             modifier = Modifier.padding(12.dp),
                             textAlign = TextAlign.Start
@@ -182,13 +182,13 @@ fun TimeBlockSessionConfigScreen(
                 colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                 shape = RoundedCornerShape(16.dp)
             ) {
-                Text("Ativar bloqueio", color = DarkBg, fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.dopamine_activate), color = DarkBg, fontWeight = FontWeight.Bold)
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
             TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
-                Text("Voltar", color = TextSecondary)
+                Text(stringResource(R.string.common_back), color = TextSecondary)
             }
         }
     }
