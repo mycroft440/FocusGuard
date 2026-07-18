@@ -53,26 +53,33 @@ fun MainScreen(
                     .statusBarsPadding()
                     .height(64.dp)
             ) {
-                TextButton(
+                Card(
                     onClick = { onTabChange(0) },
                     modifier = Modifier
                         .align(Alignment.CenterStart)
-                        .padding(start = 8.dp),
-                    colors = ButtonDefaults.textButtonColors(
-                        contentColor = if (selectedTab == 0) AccentCyan
-                        else MaterialTheme.colorScheme.onBackground
-                    )
+                        .padding(start = 16.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = DarkCard),
+                    border = BorderStroke(1.dp, CardBorder)
                 ) {
-                    Icon(
-                        Icons.Default.BarChart,
-                        contentDescription = null,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(7.dp))
-                    Text(
-                        stringResource(R.string.nav_metrics),
-                        fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Medium
-                    )
+                    Row(
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            Icons.Default.Public,
+                            contentDescription = null,
+                            tint = AccentCyan,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Text(
+                            stringResource(R.string.nav_metrics),
+                            color = TextPrimary,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
 
                 IconButton(
