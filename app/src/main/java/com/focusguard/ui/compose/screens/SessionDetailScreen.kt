@@ -32,6 +32,7 @@ import com.focusguard.database.AppDatabase
 import com.focusguard.database.BlockSession
 import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.ui.compose.theme.*
+import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.*
@@ -311,6 +312,6 @@ fun SiteItemRow(domain: String) {
     ) {
         Icon(Icons.Default.Public, null, Modifier.size(24.dp), tint = AccentCyan.copy(alpha = 0.6f))
         Spacer(modifier = Modifier.width(12.dp))
-        Text(domain, fontSize = 14.sp, color = TextSecondary)
+        Text(WebsiteBlocker.displayRule(domain), fontSize = 14.sp, color = TextSecondary)
     }
 }

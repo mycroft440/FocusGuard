@@ -23,6 +23,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
 import com.focusguard.ui.compose.theme.*
+import com.focusguard.utils.WebsiteBlocker
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -196,7 +197,7 @@ fun ActiveSessionsScreen(
                             }
                             Spacer(modifier = Modifier.width(12.dp))
                             Text(
-                                text = site,
+                                text = WebsiteBlocker.displayRule(site),
                                 fontSize = 14.sp,
                                 color = TextPrimary,
                                 maxLines = 1,

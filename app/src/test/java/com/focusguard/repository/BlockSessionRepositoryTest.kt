@@ -136,6 +136,15 @@ class BlockSessionRepositoryTest {
     }
 
     @Test
+    fun `addSiteToSession stores a normalized domain keyword`() = runTest {
+        repository.addSiteToSession(10, "Porn")
+
+        coVerify(exactly = 1) {
+            sessionWebsiteCrossRefDao.insert(SessionWebsiteCrossRef(10, "keyword:porn"))
+        }
+    }
+
+    @Test
     fun `addSiteToSession replaces an equivalent legacy value`() = runTest {
         val legacyValue = "HTTPS://WWW.Example.COM/path"
         coEvery {
@@ -183,6 +192,15 @@ class BlockSessionRepositoryTest {
         }
         coVerify(exactly = 1) {
             sessionWebsiteCrossRefDao.deleteSpecificWebsite(10, legacyValue)
+        }
+    }
+
+    @Test
+    fun `removeSiteFromSession normalizes keyword before deleting`() = runTest {
+        repository.removeSiteFromSession(10, "*XXX*")
+
+        coVerify(exactly = 1) {
+            sessionWebsiteCrossRefDao.deleteSpecificWebsite(10, "keyword:xxx")
         }
     }
 }

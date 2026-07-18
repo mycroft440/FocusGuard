@@ -371,7 +371,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                     try {
                         val adultFilterEnabled = authManager.isAdultFilterEnabled()
                         val adultDomains = if (adultFilterEnabled) {
-                            WebsiteBlocker.normalizeDomains(
+                            WebsiteBlocker.normalizeRules(
                                 com.focusguard.data.PredefinedApps.PREVENTIVE_APPS
                                     .asSequence()
                                     .filter {
@@ -391,18 +391,18 @@ class BlockingAccessibilityService : AccessibilityService() {
                         val enforcingIds = enforcingSessions.map { it.id }
 
                         val sessionApps = getAppsForSessions(enforcingIds).toSet()
-                        val sessionSites = WebsiteBlocker.normalizeDomains(
+                        val sessionSites = WebsiteBlocker.normalizeRules(
                             getSitesForSessions(enforcingIds)
                         )
 
                         val limitApps = calculateExceededAppLimits()
                         val websiteLimits = database.websiteUsageLimitDao().getAllStatic()
                             .filter { it.isEnabled }
-                        val configuredWebsiteDomains = WebsiteBlocker.normalizeDomains(
+                        val configuredWebsiteDomains = WebsiteBlocker.normalizeRules(
                             websiteLimits.map { it.domain }
                         )
                         val exceededWebsiteDomains = calculateExceededWebsiteLimits(websiteLimits)
-                        val blockedWebsiteDomains = WebsiteBlocker.normalizeDomains(
+                        val blockedWebsiteDomains = WebsiteBlocker.normalizeRules(
                             sessionSites + exceededWebsiteDomains + adultDomains
                         )
                         val configuredWebsiteApps = WebsiteBlocker.appPackageDomainsFor(
@@ -485,7 +485,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     ): Set<String> {
         if (limits.isEmpty()) return emptySet()
         val today = dateFormat.get()!!.format(Date())
-        val limitDomains = WebsiteBlocker.normalizeDomains(limits.map { it.domain })
+        val limitDomains = WebsiteBlocker.normalizeRules(limits.map { it.domain })
         val usage = mutableMapOf<String, Long>()
         database.dailyUsageStatDao().getStatsForDateStatic(today).forEach { row ->
             WebsiteBlocker.findMatchingRule(row.identifier, limitDomains)?.let { rule ->
@@ -495,7 +495,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         val now = System.currentTimeMillis()
 
         return limits.filter { limit ->
-            val domain = WebsiteBlocker.extractDomain(limit.domain)
+            val domain = WebsiteBlocker.normalizeRule(limit.domain)
             WebsiteUsageLimitPolicy.shouldBlock(
                 usedMillis = usage[domain] ?: 0L,
                 dailyLimitMinutes = limit.dailyLimitMinutes,
@@ -503,7 +503,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 lockUntilTimestamp = limit.lockUntilTimestamp,
                 nowMillis = now
             )
-        }.mapTo(mutableSetOf()) { WebsiteBlocker.extractDomain(it.domain) }
+        }.mapTo(mutableSetOf()) { WebsiteBlocker.normalizeRule(it.domain) }
     }
 
     private fun handleWindowStateChanged(event: AccessibilityEvent) {
@@ -715,7 +715,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             )
             val limit = database.websiteUsageLimitDao().getAllStatic()
                 .firstOrNull {
-                    it.isEnabled && WebsiteBlocker.extractDomain(it.domain) == usage.domain
+                    it.isEnabled && WebsiteBlocker.normalizeRule(it.domain) == usage.domain
                 }
             if (limit != null) {
                 val total = database.dailyUsageStatDao().getUsageMillis(usage.domain, today)
@@ -768,7 +768,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         if (!beginWebsiteBlock(domain, browserPackageName)) return
         val noticeLaunched = launchBlockNotice(
             blockedPackage = null,
-            blockedDomain = domain,
+            blockedDomain = WebsiteBlocker.displayRule(domain),
             redirectBrowserPackage = browserPackageName
         )
         if (!noticeLaunched && !redirectBrowserToSafePage(browserPackageName)) {
@@ -780,7 +780,10 @@ class BlockingAccessibilityService : AccessibilityService() {
     private fun blockWebsiteApp(domain: String, packageName: String) {
         if (!beginWebsiteBlock(domain, packageName)) return
         performGlobalAction(GLOBAL_ACTION_HOME)
-        launchBlockNotice(blockedPackage = null, blockedDomain = domain)
+        launchBlockNotice(
+            blockedPackage = null,
+            blockedDomain = WebsiteBlocker.displayRule(domain)
+        )
     }
 
     private fun beginWebsiteBlock(domain: String, packageName: String): Boolean {

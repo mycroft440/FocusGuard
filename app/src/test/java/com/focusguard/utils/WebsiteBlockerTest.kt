@@ -119,6 +119,64 @@ class WebsiteBlockerTest {
     }
 
     @Test
+    fun `normalizeRule distinguishes domains from keywords`() {
+        assertThat(WebsiteBlocker.normalizeRule("HTTPS://WWW.Example.COM/path"))
+            .isEqualTo("example.com")
+        assertThat(WebsiteBlocker.normalizeRule("Porn")).isEqualTo("keyword:porn")
+        assertThat(WebsiteBlocker.normalizeRule("*XXX*")).isEqualTo("keyword:xxx")
+        assertThat(WebsiteBlocker.displayRule("keyword:porn")).isEqualTo("*porn*")
+    }
+
+    @Test
+    fun `keyword rules require one safe word with at least three characters`() {
+        assertThat(WebsiteBlocker.isValidRule("xxx")).isTrue()
+        assertThat(WebsiteBlocker.isValidRule("porn")).isTrue()
+        assertThat(WebsiteBlocker.isValidRule("ab")).isFalse()
+        assertThat(WebsiteBlocker.isValidRule("duas palavras")).isFalse()
+        assertThat(WebsiteBlocker.isValidRule("po*rn")).isFalse()
+    }
+
+    @Test
+    fun `keyword blocks any domain containing it`() {
+        val blocked = listOf("porn", "xxx")
+
+        assertThat(WebsiteBlocker.isUrlBlocked("https://examplepornsite.com", blocked)).isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked("https://safe.xxx-content.org", blocked)).isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked("https://PoRnHub.example", blocked)).isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked("https://safe-example.com", blocked)).isFalse()
+    }
+
+    @Test
+    fun `keyword matching inspects only the domain`() {
+        assertThat(
+            WebsiteBlocker.isUrlBlocked(
+                "https://safe-example.com/path/porn?query=xxx",
+                listOf("porn", "xxx")
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `domain rules win before keyword rules and longest keyword is deterministic`() {
+        val rules = WebsiteBlocker.normalizeRules(
+            listOf("exampleporn.com", "porn", "exampleporn")
+        )
+
+        assertThat(WebsiteBlocker.findMatchingRule("exampleporn.com", rules))
+            .isEqualTo("exampleporn.com")
+        assertThat(WebsiteBlocker.findMatchingRule("my-exampleporn-site.com", rules))
+            .isEqualTo("keyword:exampleporn")
+    }
+
+    @Test
+    fun `persisted keyword identifiers resolve to their configured rule`() {
+        val rules = WebsiteBlocker.normalizeRules(listOf("porn"))
+
+        assertThat(WebsiteBlocker.findMatchingRule("keyword:porn", rules))
+            .isEqualTo("keyword:porn")
+    }
+
+    @Test
     fun `exact domain is blocked`() {
         assertThat(WebsiteBlocker.isUrlBlocked("facebook.com", listOf("facebook.com")))
             .isTrue()
@@ -219,6 +277,14 @@ class WebsiteBlockerTest {
             "x.com",
             "t.co"
         ).inOrder()
+    }
+
+    @Test
+    fun `managed domain aliases and app mappings ignore keyword rules`() {
+        assertThat(WebsiteBlocker.expandDomainAliases(listOf("porn", "youtube.com")))
+            .containsExactly("youtube.com", "youtu.be", "youtube-nocookie.com")
+            .inOrder()
+        assertThat(WebsiteBlocker.appPackageDomainsFor(listOf("youtube"))).isEmpty()
     }
 
     @Test

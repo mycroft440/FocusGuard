@@ -4,9 +4,9 @@
     <string name="accessibility_service_description">Serviço de Acessibilidade FocusGuard - Bloqueia apps e sites que distraem</string>
     <string name="home_title">FocusGuard</string>
     <string name="blocked_apps_title">Apps Bloqueados</string>
-    <string name="blocked_websites_title">Sites Bloqueados</string>
+    <string name="blocked_websites_title">Sites e palavras bloqueados</string>
     <string name="add_app_button">Adicionar App</string>
-    <string name="add_website_button">Adicionar Site</string>
+    <string name="add_website_button">Adicionar site ou palavra</string>
     <string name="remove_button">Remover</string>
     <string name="enable_accessibility_service">Por favor, ative o Serviço de Acessibilidade nas Configurações</string>
     <string name="settings_title">Configurações</string>
@@ -169,16 +169,16 @@
     <string name="sessions_empty_desc">Toque no + para criar seu primeiro bloqueio.</string>
     <string name="sessions_active_header">Seus Bloqueios Ativos</string>
     <string name="sessions_add_new">Adicionar Novo</string>
-    <string name="sessions_details_title_password">Apps e Sites Bloqueados</string>
+    <string name="sessions_details_title_password">Apps, sites e palavras bloqueados</string>
     <string name="sessions_details_title_time">Blindagem Ativa</string>
     <string name="sessions_clear_all">Limpar Tudo</string>
     <string name="sessions_no_content">Nenhum conteúdo bloqueado.</string>
     <string name="sessions_category_apps">Aplicativos</string>
-    <string name="sessions_category_websites">Websites</string>
+    <string name="sessions_category_websites">Sites e palavras</string>
     <string name="sessions_remove_item">Remover</string>
     <string name="sessions_add_more">Adicionar Mais</string>
     <string name="sessions_add_content_title">Adicionar Conteúdo</string>
-    <string name="sessions_site_placeholder">Ex: site.com</string>
+    <string name="sessions_site_placeholder">Ex.: site.com, porn ou xxx</string>
     <string name="sessions_add_site_btn">ADD +</string>
     <string name="sessions_saving">Salvando…</string>
     <string name="sessions_save_content">Salvar Conteúdo</string>
@@ -200,7 +200,7 @@
     <string name="sessions_schedule_label">Horário: %1$s - %2$s</string>
     <string name="sessions_time_remaining">%1$dd %2$dh</string>
     <string name="sessions_apps_count">%1$d Apps</string>
-    <string name="sessions_sites_count">%1$d Sites</string>
+    <string name="sessions_sites_count">%1$d regras de site</string>
 
     <!-- Usage Stats Dashboard -->
     <string name="dashboard_title">Métricas e Uso</string>
@@ -240,7 +240,7 @@
     <string name="limits_other_section">Outros Aplicativos</string>
     <string name="limits_locked_alert_title">Limite Blindado</string>
     <string name="limits_locked_alert_desc">Este limite está blindado por tempo e não pode ser alterado até o fim do prazo.</string>
-    <string name="limits_add_site_btn">Adicionar Site</string>
+    <string name="limits_add_site_btn">Adicionar site ou palavra</string>
     <string name="limits_status_monitoring">Monitorando</string>
     <string name="limits_status_paused">Pausado</string>
     <string name="limits_status_none">Sem limite configurado</string>
@@ -272,7 +272,9 @@
     <string name="limits_add_days_warning">A opção de adicionar dias torna o bloqueio impossível de ser removido até o fim do prazo.</string>
     <string name="limits_daily_hours_label">Limite diário em horas</string>
     <string name="limits_extend_btn">Estender Bloqueio</string>
-    <string name="limits_domain_label">Domínio</string>
+    <string name="limits_domain_label">Domínio ou palavra</string>
+    <string name="website_rule_hint">Domínio completo ou palavra presente no domínio; mínimo de 3 caracteres.</string>
+    <string name="website_rule_invalid">Informe um domínio válido ou uma única palavra com 3 a 63 caracteres.</string>
     <string name="limits_app_limit_placeholder">Limites de Uso</string>
     <string name="action_no">Não</string>
     <string name="action_yes">Sim</string>
@@ -325,7 +327,7 @@
     <!-- Session Detail -->
     <string name="session_detail_add_new">Adicionar Novo Bloqueio</string>
     <string name="session_detail_apps_blocked">Aplicativos Bloqueados</string>
-    <string name="session_detail_sites_blocked">Sites Bloqueados</string>
+    <string name="session_detail_sites_blocked">Sites e palavras bloqueados</string>
 
     <!-- Password Management -->
     <string name="password_mgmt_confirm_change">Digite sua senha atual para confirmar a alteração.</string>
