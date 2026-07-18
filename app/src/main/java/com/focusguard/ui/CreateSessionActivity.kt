@@ -62,6 +62,7 @@ import com.focusguard.security.AuthManager
 import com.focusguard.ui.compose.screens.AppSelectionScreen
 import com.focusguard.ui.compose.screens.SelectableAppUi
 import com.focusguard.ui.compose.screens.TimeAwareFinalConfigStep
+import com.focusguard.ui.compose.screens.UnifiedProtectionSetupWizard
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
@@ -91,11 +92,18 @@ class CreateSessionActivity : ComponentActivity() {
 
         setContent {
             FocusGuardTheme {
-                CreateSessionWizard(
-                    sessionType = sessionType,
-                    authManager = authManager,
-                    onFinish = { finish() }
-                )
+                if (sessionType == "UNIFIED") {
+                    UnifiedProtectionSetupWizard(
+                        authManager = authManager,
+                        onFinish = { finish() }
+                    )
+                } else {
+                    CreateSessionWizard(
+                        sessionType = sessionType,
+                        authManager = authManager,
+                        onFinish = { finish() }
+                    )
+                }
             }
         }
     }
@@ -147,7 +155,9 @@ fun CreateSessionWizard(
 @Composable
 fun AppSelectionStep(
     onNext: (List<SelectableAppUi>) -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    initialSelectedPackages: Set<String> = emptySet(),
+    includeWebsiteSuggestions: Boolean = true
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val pm = context.packageManager
@@ -171,7 +181,7 @@ fun AppSelectionStep(
                     SelectableAppUi(
                         packageName = info.packageName,
                         appName = info.loadLabel(pm).toString(),
-                        isSelected = false,
+                        isSelected = info.packageName in initialSelectedPackages,
                         isInstalled = true
                     )
                 }
@@ -179,6 +189,7 @@ fun AppSelectionStep(
 
             val predefinedApps = PredefinedApps.PREVENTIVE_APPS
                 .filter { !installedPackageNames.contains(it.packageName) }
+                .filter { includeWebsiteSuggestions || !it.packageName.startsWith("site:") }
                 .map {
                     val iconUrl = if (!it.domain.isNullOrBlank()) {
                         "https://www.google.com/s2/favicons?domain=${it.domain}&sz=128"
@@ -187,7 +198,7 @@ fun AppSelectionStep(
                     SelectableAppUi(
                         packageName = it.packageName,
                         appName = it.appName,
-                        isSelected = false,
+                        isSelected = it.packageName in initialSelectedPackages,
                         isInstalled = false,
                         category = it.category,
                         iconUrl = iconUrl
