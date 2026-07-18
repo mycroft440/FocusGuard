@@ -53,6 +53,28 @@ fun MainScreen(
                     .statusBarsPadding()
                     .height(64.dp)
             ) {
+                TextButton(
+                    onClick = { onTabChange(0) },
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .padding(start = 8.dp),
+                    colors = ButtonDefaults.textButtonColors(
+                        contentColor = if (selectedTab == 0) AccentCyan
+                        else MaterialTheme.colorScheme.onBackground
+                    )
+                ) {
+                    Icon(
+                        Icons.Default.BarChart,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(7.dp))
+                    Text(
+                        stringResource(R.string.nav_metrics),
+                        fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Medium
+                    )
+                }
+
                 IconButton(
                     onClick = onSettingsClick,
                     modifier = Modifier
@@ -72,13 +94,6 @@ fun MainScreen(
                 containerColor = MaterialTheme.colorScheme.surface,
                 tonalElevation = 8.dp
             ) {
-                NavigationBarItem(
-                    selected = selectedTab == 0,
-                    onClick = { onTabChange(0) },
-                    icon = { Icon(Icons.Default.BarChart, contentDescription = stringResource(R.string.nav_insights)) },
-                    label = { Text(stringResource(R.string.nav_insights)) },
-                    colors = navigationItemColors()
-                )
                 NavigationBarItem(
                     selected = selectedTab == 1,
                     onClick = { onTabChange(1) },
@@ -105,13 +120,8 @@ fun MainScreen(
             AnimatedContent(
                 targetState = selectedTab,
                 transitionSpec = {
-                    if (targetState > initialState) {
-                        slideInHorizontally { width -> width } + fadeIn() togetherWith
-                                slideOutHorizontally { width -> -width } + fadeOut()
-                    } else {
-                        slideInHorizontally { width -> -width } + fadeIn() togetherWith
-                                slideOutHorizontally { width -> width } + fadeOut()
-                    }.using(SizeTransform(clip = false))
+                    fadeIn(animationSpec = tween(180)) togetherWith
+                        fadeOut(animationSpec = tween(180))
                 },
                 label = "MainContent"
             ) { targetTab ->
