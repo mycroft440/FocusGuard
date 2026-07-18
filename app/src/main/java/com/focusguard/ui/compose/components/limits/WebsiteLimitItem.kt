@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.ui.compose.theme.*
+import com.focusguard.utils.WebsiteBlocker
 
 data class WebsiteLimitUi(
     val domain: String,
@@ -38,6 +39,7 @@ fun WebsiteLimitItem(
     onClick: () -> Unit,
     onDelete: () -> Unit
 ) {
+    val ruleLabel = WebsiteBlocker.displayRule(site.domain)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -59,7 +61,7 @@ fun WebsiteLimitItem(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    site.domain.take(1).uppercase(),
+                    ruleLabel.take(1).uppercase(),
                     color = AccentCyan,
                     fontWeight = FontWeight.Bold
                 )
@@ -68,7 +70,7 @@ fun WebsiteLimitItem(
             Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(site.domain, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text(ruleLabel, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 15.sp)
                 val usageMin = site.usageMs / 60000L
                 Text(
                     stringResource(R.string.limits_daily_time_label, usageMin),

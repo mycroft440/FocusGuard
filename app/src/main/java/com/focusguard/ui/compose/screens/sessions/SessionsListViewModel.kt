@@ -86,7 +86,7 @@ class SessionsListViewModel @Inject constructor(
     fun removeSiteFromSession(sessionId: Int, domain: String) {
         viewModelScope.launch {
             runMutation("remover site da sessão $sessionId") {
-                repository.removeSiteFromSession(sessionId, WebsiteBlocker.extractDomain(domain))
+                repository.removeSiteFromSession(sessionId, WebsiteBlocker.normalizeRule(domain))
                 blockingSessionManager.checkAndEnforce()
                 loadSessionDetails(sessionId)
             }
@@ -106,8 +106,8 @@ class SessionsListViewModel @Inject constructor(
     }
 
     fun addPendingSite(): Boolean {
-        val site = WebsiteBlocker.extractDomain(_contentPickerState.value.siteInput)
-        if (!WebsiteBlocker.isValidUrl(site)) return false
+        val site = WebsiteBlocker.normalizeRule(_contentPickerState.value.siteInput)
+        if (!WebsiteBlocker.isValidRule(site)) return false
         if (site in _contentPickerState.value.sites) return false
 
         _contentPickerState.value = _contentPickerState.value.copy(
@@ -118,7 +118,7 @@ class SessionsListViewModel @Inject constructor(
     }
 
     fun removePendingSite(site: String) {
-        val normalized = WebsiteBlocker.extractDomain(site)
+        val normalized = WebsiteBlocker.normalizeRule(site)
         _contentPickerState.value = _contentPickerState.value.copy(
             sites = _contentPickerState.value.sites - normalized
         )

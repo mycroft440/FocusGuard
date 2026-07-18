@@ -94,11 +94,11 @@ fun TimeSessionConfigScreen(
 
                 val websiteDao = database.websiteUsageLimitDao()
                 val existingWebsiteLimits = websiteDao.getAllStatic()
-                WebsiteBlocker.normalizeDomains(sites).forEach { domain ->
+                WebsiteBlocker.normalizeRules(sites).forEach { domain ->
                     existingWebsiteLimits
                         .filter { existing ->
                             existing.domain != domain &&
-                                WebsiteBlocker.extractDomain(existing.domain) == domain
+                                WebsiteBlocker.normalizeRule(existing.domain) == domain
                         }
                         .forEach { websiteDao.delete(it) }
                     websiteDao.insert(

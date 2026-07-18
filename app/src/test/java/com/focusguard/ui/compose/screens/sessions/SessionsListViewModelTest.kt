@@ -146,7 +146,7 @@ class SessionsListViewModelTest {
     fun `addPendingSite rejects blank and invalid values`() {
         viewModel.updateSiteInput("   ")
         assertThat(viewModel.addPendingSite()).isFalse()
-        viewModel.updateSiteInput("foo")
+        viewModel.updateSiteInput("duas palavras")
         assertThat(viewModel.addPendingSite()).isFalse()
         assertThat(viewModel.contentPickerState.value.sites).isEmpty()
     }
@@ -159,6 +159,17 @@ class SessionsListViewModelTest {
 
         val state = viewModel.contentPickerState.value
         assertThat(state.sites).containsExactly("example.com")
+        assertThat(state.siteInput).isEmpty()
+    }
+
+    @Test
+    fun `addPendingSite accepts and normalizes a domain keyword`() {
+        viewModel.updateSiteInput("Porn")
+
+        assertThat(viewModel.addPendingSite()).isTrue()
+
+        val state = viewModel.contentPickerState.value
+        assertThat(state.sites).containsExactly("keyword:porn")
         assertThat(state.siteInput).isEmpty()
     }
 

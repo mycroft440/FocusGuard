@@ -63,11 +63,11 @@ class BlockSessionRepository @Inject constructor(
 
     /** Adiciona um site a uma sessão. */
     suspend fun addSiteToSession(sessionId: Int, domain: String) = withContext(Dispatchers.IO) {
-        val normalized = WebsiteBlocker.extractDomain(domain)
+        val normalized = WebsiteBlocker.normalizeRule(domain)
         if (normalized.isEmpty()) return@withContext
         sessionWebsiteCrossRefDao.getWebsitesForSessions(listOf(sessionId))
             .filter { existing ->
-                existing != normalized && WebsiteBlocker.extractDomain(existing) == normalized
+                existing != normalized && WebsiteBlocker.normalizeRule(existing) == normalized
             }
             .forEach { legacyValue ->
                 sessionWebsiteCrossRefDao.deleteSpecificWebsite(sessionId, legacyValue)
@@ -77,7 +77,7 @@ class BlockSessionRepository @Inject constructor(
 
     /** Remove um site de uma sessão. */
     suspend fun removeSiteFromSession(sessionId: Int, domain: String) = withContext(Dispatchers.IO) {
-        val normalized = WebsiteBlocker.extractDomain(domain)
+        val normalized = WebsiteBlocker.normalizeRule(domain)
         if (normalized.isEmpty()) return@withContext
         sessionWebsiteCrossRefDao.deleteSpecificWebsite(sessionId, normalized)
         val legacyValue = domain.trim()

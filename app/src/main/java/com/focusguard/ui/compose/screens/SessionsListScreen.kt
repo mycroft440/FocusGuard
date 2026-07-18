@@ -38,6 +38,7 @@ import com.focusguard.security.AuthManager
 import com.focusguard.ui.compose.screens.SelectableAppUi
 import com.focusguard.ui.compose.screens.sessions.SessionsListViewModel
 import com.focusguard.ui.compose.screens.sessions.AuthViewModel
+import com.focusguard.utils.WebsiteBlocker
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -304,7 +305,7 @@ fun SessionDetailsSheet(
                             ) {
                                 Icon(Icons.Default.Language, null, tint = TextHint, modifier = Modifier.size(20.dp))
                                 Spacer(Modifier.width(12.dp))
-                                Text(site, color = TextPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
+                                Text(WebsiteBlocker.displayRule(site), color = TextPrimary, fontSize = 15.sp, modifier = Modifier.weight(1f))
                                 if (session.sessionType != "TIME") {
                                     IconButton(onClick = {
                                         viewModel.removeSiteFromSession(session.id, site)
@@ -419,6 +420,9 @@ fun ContentPickerSheet(
                             value = pickerState.siteInput,
                             onValueChange = { viewModel.updateSiteInput(it) },
                             placeholder = { Text(stringResource(R.string.sessions_site_placeholder), color = TextHint) },
+                            supportingText = {
+                                Text(stringResource(R.string.website_rule_hint), color = TextHint)
+                            },
                             modifier = Modifier.fillMaxWidth(),
                             enabled = !pickerState.isSaving,
                             trailingIcon = {
@@ -437,7 +441,7 @@ fun ContentPickerSheet(
                                     modifier = Modifier.fillMaxWidth().background(DarkCard, RoundedCornerShape(12.dp)).padding(12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(site, color = TextPrimary, modifier = Modifier.weight(1f))
+                                    Text(WebsiteBlocker.displayRule(site), color = TextPrimary, modifier = Modifier.weight(1f))
                                     IconButton(onClick = { viewModel.removePendingSite(site) }, enabled = !pickerState.isSaving) {
                                         Icon(Icons.Default.Close, null, tint = DangerRed)
                                     }

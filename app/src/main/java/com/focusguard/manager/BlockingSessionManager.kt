@@ -124,6 +124,7 @@ class BlockingSessionManager @Inject constructor(
     ) {
         scope.launch {
             runCatching {
+                val normalizedSites = WebsiteBlocker.normalizeRules(sites)
                 database.withTransaction {
                     val session = BlockSession(
                         startTime = System.currentTimeMillis(),
@@ -135,7 +136,7 @@ class BlockingSessionManager @Inject constructor(
                         recurringEndMinute = endMinute,
                         recurringDaysOfWeek = daysOfWeek,
                         blockedAppsCount = apps.distinct().size,
-                        blockedWebsitesCount = sites.distinct().size,
+                        blockedWebsitesCount = normalizedSites.size,
                         sessionType = "PASSWORD",
                         isFixed24h = isFixed24h
                     )
@@ -143,11 +144,10 @@ class BlockingSessionManager @Inject constructor(
                     apps.distinct().forEach {
                         database.sessionAppCrossRefDao().insert(SessionAppCrossRef(sessionId, it))
                     }
-                    sites.map(WebsiteBlocker::extractDomain).filter { it.isNotBlank() }.distinct()
-                        .forEach {
-                            database.sessionWebsiteCrossRefDao()
-                                .insert(SessionWebsiteCrossRef(sessionId, it))
-                        }
+                    normalizedSites.forEach {
+                        database.sessionWebsiteCrossRefDao()
+                            .insert(SessionWebsiteCrossRef(sessionId, it))
+                    }
                 }
                 checkAndEnforce()
             }.onSuccess {
@@ -173,6 +173,7 @@ class BlockingSessionManager @Inject constructor(
     ) {
         scope.launch {
             runCatching {
+                val normalizedSites = WebsiteBlocker.normalizeRules(sites)
                 database.withTransaction {
                     val startMillis = System.currentTimeMillis()
                     val duration = TimeUnit.DAYS.toMillis(days.toLong()) +
@@ -189,7 +190,7 @@ class BlockingSessionManager @Inject constructor(
                         recurringEndMinute = endMinute,
                         recurringDaysOfWeek = daysOfWeek,
                         blockedAppsCount = apps.distinct().size,
-                        blockedWebsitesCount = sites.distinct().size,
+                        blockedWebsitesCount = normalizedSites.size,
                         sessionType = "TIME",
                         isFixed24h = isFixed24h
                     )
@@ -197,11 +198,10 @@ class BlockingSessionManager @Inject constructor(
                     apps.distinct().forEach {
                         database.sessionAppCrossRefDao().insert(SessionAppCrossRef(sessionId, it))
                     }
-                    sites.map(WebsiteBlocker::extractDomain).filter { it.isNotBlank() }.distinct()
-                        .forEach {
-                            database.sessionWebsiteCrossRefDao()
-                                .insert(SessionWebsiteCrossRef(sessionId, it))
-                        }
+                    normalizedSites.forEach {
+                        database.sessionWebsiteCrossRefDao()
+                            .insert(SessionWebsiteCrossRef(sessionId, it))
+                    }
                 }
                 checkAndEnforce()
             }.onSuccess {
@@ -289,17 +289,15 @@ class BlockingSessionManager @Inject constructor(
                 val addedMillis = TimeUnit.DAYS.toMillis(addedDays.toLong()) +
                     TimeUnit.HOURS.toMillis(addedHours.toLong())
                 require(addedMillis >= 0L) { "Extensão inválida" }
+                val normalizedAdditionalSites = WebsiteBlocker.normalizeRules(additionalSites)
                 database.withTransaction {
                     additionalApps.distinct().forEach {
                         database.sessionAppCrossRefDao().insert(SessionAppCrossRef(session.id, it))
                     }
-                    additionalSites.map(WebsiteBlocker::extractDomain)
-                        .filter { it.isNotBlank() }
-                        .distinct()
-                        .forEach {
-                            database.sessionWebsiteCrossRefDao()
-                                .insert(SessionWebsiteCrossRef(session.id, it))
-                        }
+                    normalizedAdditionalSites.forEach {
+                        database.sessionWebsiteCrossRefDao()
+                            .insert(SessionWebsiteCrossRef(session.id, it))
+                    }
                     val apps = database.sessionAppCrossRefDao()
                         .getAppsForSessions(listOf(session.id))
                     val sites = database.sessionWebsiteCrossRefDao()
@@ -450,7 +448,7 @@ class BlockingSessionManager @Inject constructor(
                     additionalBoundaries = policyExpirations + listOfNotNull(nextDailyReset),
                     nowMillis = now
                 )
-                val activeWebsiteDomains = WebsiteBlocker.normalizeDomains(
+                val activeWebsiteDomains = WebsiteBlocker.normalizeRules(
                     activeWebsiteLimits.map { it.domain }
                 )
                 val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now)
@@ -464,7 +462,7 @@ class BlockingSessionManager @Inject constructor(
                     }
                 }
                 val limitSites = activeWebsiteLimits.filter { limit ->
-                    val normalizedDomain = WebsiteBlocker.extractDomain(limit.domain)
+                    val normalizedDomain = WebsiteBlocker.normalizeRule(limit.domain)
                     WebsiteUsageLimitPolicy.shouldBlock(
                         usedMillis = usageByWebsite[normalizedDomain] ?: 0L,
                         dailyLimitMinutes = limit.dailyLimitMinutes,
@@ -472,10 +470,10 @@ class BlockingSessionManager @Inject constructor(
                         lockUntilTimestamp = limit.lockUntilTimestamp,
                         nowMillis = now
                     )
-                }.map { WebsiteBlocker.extractDomain(it.domain) }
+                }.map { WebsiteBlocker.normalizeRule(it.domain) }
 
                 val sitesToBlock = (sessionSites + limitSites)
-                    .map(WebsiteBlocker::extractDomain)
+                    .map(WebsiteBlocker::normalizeRule)
                     .filter { it.isNotBlank() }
                     .distinct()
                 val websiteAppsToBlock = WebsiteBlocker.appPackageDomainsFor(sitesToBlock)

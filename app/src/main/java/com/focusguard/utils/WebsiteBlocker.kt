@@ -26,6 +26,9 @@ object WebsiteBlocker {
     private const val TAG = "WebsiteBlocker"
     private const val MAX_TREE_DEPTH = 12
     private const val MAX_TREE_NODES = 256
+    private const val KEYWORD_RULE_PREFIX = "keyword:"
+    private const val MIN_KEYWORD_LENGTH = 3
+    private const val MAX_KEYWORD_LENGTH = 63
 
     private val strongAddressBarEntryNames = listOf(
         "url_bar",
@@ -94,6 +97,35 @@ object WebsiteBlocker {
     fun isValidUrl(text: String): Boolean = extractDomain(text).isNotEmpty()
 
     /**
+     * Normaliza uma regra informada pelo usuário. Endereços válidos são
+     * armazenados como domínio; uma palavra isolada é armazenada com prefixo
+     * interno para não ser confundida com um hostname.
+     */
+    fun normalizeRule(value: String): String {
+        val sanitized = sanitizeText(value)
+        if (sanitized.isEmpty()) return ""
+
+        if (sanitized.startsWith(KEYWORD_RULE_PREFIX, ignoreCase = true)) {
+            return normalizeKeyword(sanitized.substring(KEYWORD_RULE_PREFIX.length))
+        }
+
+        extractDomain(sanitized).takeIf(String::isNotEmpty)?.let { return it }
+        return normalizeKeyword(sanitized)
+    }
+
+    fun isValidRule(value: String): Boolean = normalizeRule(value).isNotEmpty()
+
+    fun isKeywordRule(rule: String): Boolean {
+        return rule.startsWith(KEYWORD_RULE_PREFIX, ignoreCase = true)
+    }
+
+    /** Formato amigável usado na UI sem expor o prefixo de persistência. */
+    fun displayRule(rule: String): String {
+        val normalized = normalizeRule(rule)
+        return keywordValue(normalized)?.let { "*$it*" } ?: normalized
+    }
+
+    /**
      * Normaliza URL ou domínio para um host ASCII em minúsculas, sem `www.`,
      * credenciais, porta, ponto final, caminho, query ou fragmento.
      */
@@ -141,16 +173,19 @@ object WebsiteBlocker {
         return normalizeHost(host)
     }
 
-    fun normalizeDomains(domains: Collection<String>): Set<String> {
-        return domains.asSequence()
-            .map(::extractDomain)
+    fun normalizeRules(rules: Collection<String>): Set<String> {
+        return rules.asSequence()
+            .map(::normalizeRule)
             .filter(String::isNotEmpty)
             .toCollection(linkedSetOf())
     }
 
+    /** Mantido como alias para os chamadores de versões anteriores. */
+    fun normalizeDomains(domains: Collection<String>): Set<String> = normalizeRules(domains)
+
     /** Expande somente aliases conhecidos que podem evitar a regra original. */
     fun expandDomainAliases(normalizedDomains: Collection<String>): Set<String> {
-        val normalized = normalizeDomains(normalizedDomains)
+        val normalized = normalizeRules(normalizedDomains).filterNot(::isKeywordRule)
         val expanded = linkedSetOf<String>()
         expanded.addAll(normalized)
         normalized.forEach { rule ->
@@ -165,7 +200,7 @@ object WebsiteBlocker {
      */
     fun appPackageDomainsFor(domains: Collection<String>): Map<String, String> {
         val result = linkedMapOf<String, String>()
-        normalizeDomains(domains).forEach { rule ->
+        normalizeRules(domains).filterNot(::isKeywordRule).forEach { rule ->
             val canonical = domainAliases.entries.firstOrNull { (domain, aliases) ->
                 rule == domain || rule.endsWith(".$domain") || aliases.any { alias ->
                     rule == alias || rule.endsWith(".$alias")
@@ -180,21 +215,30 @@ object WebsiteBlocker {
     }
 
     fun isUrlBlocked(url: String, blockedDomains: Collection<String>): Boolean {
-        return findMatchingRule(url, normalizeDomains(blockedDomains)) != null
+        return findMatchingRule(url, normalizeRules(blockedDomains)) != null
     }
 
     /**
      * Retorna a regra normalizada responsável pelo bloqueio. O conjunto
-     * recebido deve ter sido produzido por [normalizeDomains]. A regra mais
-     * específica vence, e uma regra de domínio também cobre seus subdomínios.
+     * recebido deve ter sido produzido por [normalizeRules]. A regra de
+     * domínio mais específica vence; na ausência dela, a palavra-chave mais
+     * longa que estiver contida no host é usada.
      */
     fun findMatchingRule(
         urlOrDomain: String,
         normalizedBlockedDomains: Set<String>
     ): String? {
         if (normalizedBlockedDomains.isEmpty()) return null
+
         val domain = extractDomain(urlOrDomain)
-        if (domain.isEmpty()) return null
+        if (domain.isEmpty()) {
+            // Identificadores de uso persistidos e rótulos da UI podem ser a
+            // própria regra, sem representar uma URL navegável.
+            val directRule = normalizeRule(urlOrDomain)
+            return directRule.takeIf {
+                isKeywordRule(it) && it in normalizedBlockedDomains
+            }
+        }
 
         if (isIpAddress(domain)) {
             return domain.takeIf(normalizedBlockedDomains::contains)
@@ -214,7 +258,12 @@ object WebsiteBlocker {
                 return canonical
             }
         }
-        return null
+
+        return normalizedBlockedDomains.asSequence()
+            .mapNotNull { rule -> keywordValue(rule)?.let { keyword -> rule to keyword } }
+            .filter { (_, keyword) -> domain.contains(keyword) }
+            .maxByOrNull { (_, keyword) -> keyword.length }
+            ?.first
     }
 
     /** Caminho rápido para eventos originados diretamente na barra de URL. */
@@ -525,6 +574,22 @@ object WebsiteBlocker {
         return value.replace(INVISIBLE_CHARACTER_REGEX, "").trim()
     }
 
+    private fun normalizeKeyword(value: String): String {
+        val candidate = sanitizeText(value).trim('*')
+        if (candidate.length !in MIN_KEYWORD_LENGTH..MAX_KEYWORD_LENGTH) return ""
+
+        val ascii = toAsciiDomain(candidate)
+        if (ascii.length !in MIN_KEYWORD_LENGTH..MAX_KEYWORD_LENGTH ||
+            !KEYWORD_REGEX.matches(ascii)
+        ) return ""
+        return "$KEYWORD_RULE_PREFIX$ascii"
+    }
+
+    private fun keywordValue(rule: String): String? {
+        if (!isKeywordRule(rule)) return null
+        return rule.substring(KEYWORD_RULE_PREFIX.length).takeIf(String::isNotEmpty)
+    }
+
     private fun Char.isHexDigit(): Boolean {
         return isDigit() || lowercaseChar() in 'a'..'f'
     }
@@ -543,6 +608,7 @@ object WebsiteBlocker {
     private val INVISIBLE_CHARACTER_REGEX = Regex("[\\u200B-\\u200F\\u202A-\\u202E\\u2060-\\u206F\\uFEFF]")
     private val SEGMENT_SEPARATOR_REGEX = Regex("[,;|\\n\\t]")
     private val WHITESPACE_REGEX = Regex("\\s+")
+    private val KEYWORD_REGEX = Regex("^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
     private val CANDIDATE_TRIM_CHARS = charArrayOf(
         '"', '\'', '(', ')', '[', ']', '{', '}', '<', '>', ',', ';'
     )

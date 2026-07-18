@@ -450,8 +450,10 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             invalidateWebsitePolicyCache()
             return
         }
-        val normalizedDomains = WebsiteBlocker.normalizeDomains(domains).sorted()
-        val allManagedDomains = WebsiteBlocker.expandDomainAliases(normalizedDomains).toList()
+        val normalizedRules = WebsiteBlocker.normalizeRules(domains).sorted()
+        // URLBlocklist aceita hostnames, mas não curingas no meio do host.
+        // Regras por palavra continuam sendo aplicadas pelo serviço de acessibilidade.
+        val allManagedDomains = WebsiteBlocker.expandDomainAliases(normalizedRules).toList()
         val managedDomains = allManagedDomains.take(MAX_MANAGED_URLS)
         if (managedDomains.size < allManagedDomains.size) {
             Log.w(

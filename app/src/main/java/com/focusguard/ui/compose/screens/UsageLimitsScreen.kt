@@ -290,7 +290,7 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
                 java.util.Locale.US
             ).format(java.util.Date())
             val allLimits = db.websiteUsageLimitDao().getAllStatic()
-            val limitDomains = WebsiteBlocker.normalizeDomains(allLimits.map { it.domain })
+            val limitDomains = WebsiteBlocker.normalizeRules(allLimits.map { it.domain })
             val usageStats = mutableMapOf<String, Long>()
             db.dailyUsageStatDao().getStatsForDateStatic(today).forEach { row ->
                 WebsiteBlocker.findMatchingRule(row.identifier, limitDomains)?.let { rule ->
@@ -302,7 +302,7 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
                     it.domain,
                     it.dailyLimitMinutes,
                     it.isEnabled,
-                    usageStats[WebsiteBlocker.extractDomain(it.domain)] ?: 0L,
+                    usageStats[WebsiteBlocker.normalizeRule(it.domain)] ?: 0L,
                     it.lockMode,
                     it.lockPasswordHash,
                     it.lockUntilTimestamp
@@ -377,19 +377,19 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
         AddWebsiteLimitDialog(permissionsMissing = permissionsMissing, onDismiss = { showAddDialog = false }, onSave = { domain, minutes, lockMode, lockPassword, lockUntil ->
             scope.launch(Dispatchers.IO) {
                 val websiteDao = db.websiteUsageLimitDao()
-                val clean = WebsiteBlocker.extractDomain(domain)
+                val clean = WebsiteBlocker.normalizeRule(domain)
                 if (clean.isEmpty()) return@launch
                 websiteDao.getAllStatic()
                     .filter { existing ->
                         existing.domain != clean &&
-                            WebsiteBlocker.extractDomain(existing.domain) == clean
+                            WebsiteBlocker.normalizeRule(existing.domain) == clean
                     }
                     .forEach { websiteDao.delete(it) }
                 websiteDao.insert(WebsiteUsageLimit(clean, minutes, true, lockMode, lockPassword, lockUntil))
                 blockingSessionManager.checkAndEnforce()
                 withContext(Dispatchers.Main) {
                     sites = sites.filterNot {
-                        WebsiteBlocker.extractDomain(it.domain) == clean
+                        WebsiteBlocker.normalizeRule(it.domain) == clean
                     } +
                         WebsiteLimitUi(clean, minutes, true, 0L, lockMode, lockPassword, lockUntil)
                     showAddDialog = false
@@ -403,7 +403,7 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
             val siteToEdit = selectedSite ?: return@EditWebsiteLimitDialog
             scope.launch(Dispatchers.IO) {
                 val websiteDao = db.websiteUsageLimitDao()
-                val normalizedDomain = WebsiteBlocker.extractDomain(siteToEdit.domain)
+                val normalizedDomain = WebsiteBlocker.normalizeRule(siteToEdit.domain)
                 if (normalizedDomain.isEmpty()) return@launch
                 if (normalizedDomain != siteToEdit.domain) {
                     websiteDao.getAllStatic()

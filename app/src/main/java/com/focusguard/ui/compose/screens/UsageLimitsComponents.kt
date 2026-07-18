@@ -350,8 +350,8 @@ fun AddWebsiteLimitDialog(
     var days by remember { mutableStateOf("") }
     var confirmed by remember { mutableStateOf(true) }
 
-    val normalizedDomain = WebsiteBlocker.extractDomain(domain)
-    val domainValid = WebsiteBlocker.isValidUrl(normalizedDomain)
+    val normalizedDomain = WebsiteBlocker.normalizeRule(domain)
+    val domainValid = WebsiteBlocker.isValidRule(normalizedDomain)
     val minutes = (hours.replace(',', '.').toDoubleOrNull()?.times(60))?.toInt() ?: 0
     val canSave = domainValid && minutes > 0 && (lockMode == "NONE" || confirmed)
 
@@ -374,7 +374,11 @@ fun AddWebsiteLimitDialog(
                     modifier = Modifier.fillMaxWidth(),
                     isError = domain.isNotBlank() && !domainValid,
                     supportingText = {
-                        if (domain.isNotBlank() && !domainValid) Text("Informe um domínio válido")
+                        if (domain.isNotBlank() && !domainValid) {
+                            Text(stringResource(R.string.website_rule_invalid))
+                        } else {
+                            Text(stringResource(R.string.website_rule_hint))
+                        }
                     }
                 )
                 Spacer(Modifier.height(8.dp))
@@ -439,7 +443,7 @@ fun EditWebsiteLimitDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
-                "Informações do limite: ${site.domain}",
+                "Informações do limite: ${WebsiteBlocker.displayRule(site.domain)}",
                 color = MaterialTheme.colorScheme.onSurface,
                 fontWeight = FontWeight.Bold
             )
