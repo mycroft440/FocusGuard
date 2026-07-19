@@ -160,7 +160,8 @@ fun CreateSessionWizard(
 fun AppSelectionStep(
     onNext: (List<SelectableAppUi>) -> Unit,
     onBack: () -> Unit,
-    initialSelectedPackages: Set<String> = emptySet()
+    initialSelectedPackages: Set<String> = emptySet(),
+    allowCompatibleProtection: Boolean = false
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val pm = context.packageManager
@@ -171,9 +172,13 @@ fun AppSelectionStep(
     LaunchedEffect(initialSelectedPackages) {
         withContext(Dispatchers.IO) {
             val blockedPackages = try {
-                BlockingSessionManager.getInstance(context)
+                val configured = BlockingSessionManager.getInstance(context)
                     .getConfiguredBlockedTargets()
-                    .appPackageNames
+                if (allowCompatibleProtection) {
+                    configured.unavailableAppPackageNames
+                } else {
+                    configured.allAppPackageNames
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {

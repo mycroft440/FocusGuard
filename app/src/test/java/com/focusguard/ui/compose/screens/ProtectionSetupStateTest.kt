@@ -1,5 +1,6 @@
 package com.focusguard.ui.compose.screens
 
+import com.focusguard.manager.BlockingSessionManager
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -60,6 +61,46 @@ class ProtectionSetupStateTest {
                 configuredRules = setOf("youtube.com")
             )
         ).isFalse()
+    }
+
+    @Test
+    fun `limit mode accepts password-only targets but rejects existing limits`() {
+        val configured = BlockingSessionManager.ConfiguredBlockedTargets(
+            passwordAppPackageNames = setOf("com.example.password"),
+            limitedAppPackageNames = setOf("com.example.limit"),
+            exclusiveAppPackageNames = setOf("com.example.exclusive")
+        )
+
+        assertThat(configuredAppPackagesForMode(ProtectionMode.LIMIT, configured))
+            .containsExactly("com.example.limit", "com.example.exclusive")
+    }
+
+    @Test
+    fun `password mode accepts limit-only targets but rejects existing passwords`() {
+        val configured = BlockingSessionManager.ConfiguredBlockedTargets(
+            passwordWebsiteRules = setOf("youtube.com"),
+            limitedWebsiteRules = setOf("reddit.com"),
+            exclusiveWebsiteRules = setOf("keyword:porn")
+        )
+
+        assertThat(configuredWebsiteRulesForMode(ProtectionMode.PASSWORD, configured))
+            .containsExactly("youtube.com", "keyword:porn")
+    }
+
+    @Test
+    fun `dopamine fast rejects every previously protected target`() {
+        val configured = BlockingSessionManager.ConfiguredBlockedTargets(
+            passwordAppPackageNames = setOf("com.example.password"),
+            limitedAppPackageNames = setOf("com.example.limit"),
+            exclusiveAppPackageNames = setOf("com.example.exclusive")
+        )
+
+        assertThat(configuredAppPackagesForMode(ProtectionMode.DOPAMINE_FAST, configured))
+            .containsExactly(
+                "com.example.password",
+                "com.example.limit",
+                "com.example.exclusive"
+            )
     }
 
     @Test

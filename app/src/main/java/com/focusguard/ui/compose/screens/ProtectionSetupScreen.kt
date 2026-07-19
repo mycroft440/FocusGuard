@@ -77,13 +77,11 @@ import coil.compose.SubcomposeAsyncImage
 import coil.request.ImageRequest
 import com.focusguard.R
 import com.focusguard.data.PredefinedWebsites
-import com.focusguard.database.AppUsageLimit
-import com.focusguard.database.WebsiteUsageLimit
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
 import com.focusguard.ui.AppSelectionStep
 import com.focusguard.ui.FinalConfigStep
-import com.focusguard.ui.compose.rememberAppDatabase
+import com.focusguard.ui.PasswordCreationDialog
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.AccentPurple
 import com.focusguard.ui.compose.theme.CardBorder
@@ -96,9 +94,7 @@ import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 private enum class ProtectionSetupPage {
     LIST,
@@ -141,9 +137,11 @@ fun UnifiedProtectionSetupWizard(
             configuredBlockedTargets
         }
         configuredBlockedTargets = latest
-        selectedApps = selectedApps.filterNot { it.packageName in latest.appPackageNames }
+        selectedApps = selectedApps.filterNot {
+            it.packageName in latest.unavailableAppPackageNames
+        }
         websiteRules = websiteRules.filterNot {
-            isWebsiteRuleAlreadyBlocked(it, latest.websiteRules)
+            isWebsiteRuleAlreadyBlocked(it, latest.unavailableWebsiteRules)
         }
         return latest
     }
@@ -232,7 +230,7 @@ fun UnifiedProtectionSetupWizard(
                     scope.launch {
                         val latest = refreshConfiguredBlockedTargets()
                         val availableApps = apps.filterNot {
-                            it.packageName in latest.appPackageNames
+                            it.packageName in latest.unavailableAppPackageNames
                         }
                         if (availableApps.size != apps.size) {
                             Toast.makeText(
@@ -246,17 +244,18 @@ fun UnifiedProtectionSetupWizard(
                     }
                 },
                 onBack = ::returnToList,
-                initialSelectedPackages = selectedApps.mapTo(linkedSetOf()) { it.packageName }
+                initialSelectedPackages = selectedApps.mapTo(linkedSetOf()) { it.packageName },
+                allowCompatibleProtection = true
             )
 
             ProtectionSetupPage.WEBSITE_PICKER -> WebsiteRuleSelectionScreen(
                 initialRules = websiteRules,
-                configuredBlockedRules = configuredBlockedTargets.websiteRules,
+                configuredBlockedRules = configuredBlockedTargets.unavailableWebsiteRules,
                 onSave = { rules ->
                     scope.launch {
                         val latest = refreshConfiguredBlockedTargets()
                         val availableRules = rules.filterNot {
-                            isWebsiteRuleAlreadyBlocked(it, latest.websiteRules)
+                            isWebsiteRuleAlreadyBlocked(it, latest.unavailableWebsiteRules)
                         }
                         if (availableRules.size != rules.size) {
                             Toast.makeText(
@@ -276,10 +275,45 @@ fun UnifiedProtectionSetupWizard(
                 draft = draft,
                 selectedCount = selectedApps.size + websiteRules.size,
                 onModeSelected = { mode ->
-                    page = when (mode) {
-                        ProtectionMode.LIMIT -> ProtectionSetupPage.DAILY_LIMIT
-                        ProtectionMode.PASSWORD -> ProtectionSetupPage.PASSWORD
-                        ProtectionMode.DOPAMINE_FAST -> ProtectionSetupPage.DOPAMINE_FAST
+                    scope.launch {
+                        val latest = refreshConfiguredBlockedTargets()
+                        val configuredApps = configuredAppPackagesForMode(mode, latest)
+                        val configuredRules = configuredWebsiteRulesForMode(mode, latest)
+                        val previousAppCount = selectedApps.size
+                        val previousWebsiteCount = websiteRules.size
+
+                        selectedApps = selectedApps.filterNot {
+                            it.packageName in configuredApps
+                        }
+                        websiteRules = websiteRules.filterNot {
+                            isWebsiteRuleAlreadyBlocked(it, configuredRules)
+                        }
+
+                        if (selectedApps.size < previousAppCount) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.app_already_blocked),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        if (websiteRules.size < previousWebsiteCount) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.site_already_blocked),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+
+                        if (selectedApps.isNotEmpty() || websiteRules.isNotEmpty()) {
+                            page = when (mode) {
+                                ProtectionMode.LIMIT -> ProtectionSetupPage.DAILY_LIMIT
+                                ProtectionMode.PASSWORD -> ProtectionSetupPage.PASSWORD
+                                ProtectionMode.DOPAMINE_FAST ->
+                                    ProtectionSetupPage.DOPAMINE_FAST
+                            }
+                        } else {
+                            returnToList()
+                        }
                     }
                 },
                 onBack = ::returnToList
@@ -288,6 +322,8 @@ fun UnifiedProtectionSetupWizard(
             ProtectionSetupPage.DAILY_LIMIT -> BatchDailyLimitConfigScreen(
                 apps = selectedApps,
                 websiteRules = websiteRules,
+                authManager = authManager,
+                configuredTargets = configuredBlockedTargets,
                 onBack = { page = ProtectionSetupPage.MODE },
                 onFinish = onFinish
             )
@@ -905,17 +941,33 @@ private fun ProtectionModeCard(
 private fun BatchDailyLimitConfigScreen(
     apps: List<SelectableAppUi>,
     websiteRules: List<String>,
+    authManager: AuthManager,
+    configuredTargets: BlockingSessionManager.ConfiguredBlockedTargets,
     onBack: () -> Unit,
     onFinish: () -> Unit
 ) {
     val context = LocalContext.current
-    val database = rememberAppDatabase()
     val manager = remember(context) { BlockingSessionManager.getInstance(context) }
     val scope = rememberCoroutineScope()
     var hoursText by remember { mutableStateOf("") }
     var minutesText by remember { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
+    var hasPassword by remember { mutableStateOf(false) }
+    var showPasswordCreationDialog by remember { mutableStateOf(false) }
+    val alreadyPasswordProtected = remember(apps, websiteRules, configuredTargets) {
+        apps.any { it.packageName in configuredTargets.passwordAppPackageNames } ||
+            websiteRules.any {
+                isWebsiteRuleAlreadyBlocked(it, configuredTargets.passwordWebsiteRules)
+            }
+    }
+    var protectWithPassword by remember(alreadyPasswordProtected) {
+        mutableStateOf(alreadyPasswordProtected)
+    }
     val dailyLimitMinutes = parseDailyLimitMinutes(hoursText, minutesText)
+
+    LaunchedEffect(Unit) {
+        hasPassword = authManager.hasPasswordSet()
+    }
 
     Scaffold(
         containerColor = DarkBg,
@@ -924,136 +976,295 @@ private fun BatchDailyLimitConfigScreen(
                 title = stringResource(R.string.protection_daily_limit_title),
                 onBack = onBack
             )
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(20.dp)
-        ) {
-            Text(
-                stringResource(R.string.protection_daily_limit_description),
-                color = TextSecondary,
-                fontSize = 15.sp
-            )
-            Spacer(Modifier.height(8.dp))
-            Text(
-                stringResource(R.string.protection_selected_count, apps.size + websiteRules.size),
-                color = AccentCyan,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(Modifier.height(24.dp))
+        },
+        bottomBar = {
+            Surface(color = DarkBg, tonalElevation = 8.dp) {
+                Button(
+                    onClick = {
+                        val minutes = dailyLimitMinutes ?: return@Button
+                        if (protectWithPassword && !hasPassword) {
+                            showPasswordCreationDialog = true
+                            return@Button
+                        }
+                        isSaving = true
+                        scope.launch {
+                            val result = runCatching {
+                                manager.configureDailyLimits(
+                                    apps = apps.map {
+                                        BlockingSessionManager.DailyLimitAppTarget(
+                                            packageName = it.packageName,
+                                            appName = it.appName
+                                        )
+                                    },
+                                    sites = websiteRules,
+                                    dailyLimitMinutes = minutes,
+                                    addPasswordProtection = protectWithPassword
+                                )
+                            }
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = DarkCard),
-                border = BorderStroke(1.dp, CardBorder),
-                shape = RoundedCornerShape(20.dp)
-            ) {
-                Column(Modifier.padding(18.dp)) {
-                    Text(
-                        stringResource(R.string.protection_daily_limit_question),
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(14.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        OutlinedTextField(
-                            value = hoursText,
-                            onValueChange = { value -> hoursText = value.filter { it.isDigit() }.take(2) },
-                            modifier = Modifier.weight(1f),
-                            label = { Text(stringResource(R.string.protection_hours)) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true
+                            isSaving = false
+                            if (result.isSuccess) {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(
+                                        if (protectWithPassword) {
+                                            R.string.protection_limit_password_success
+                                        } else {
+                                            R.string.protection_limit_success
+                                        }
+                                    ),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                                onFinish()
+                            } else {
+                                FocusGuardLogger.logError(
+                                    "ProtectionSetup",
+                                    "Falha ao salvar limite em lote",
+                                    result.exceptionOrNull() ?:
+                                        IllegalStateException("Erro desconhecido")
+                                )
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.protection_limit_error),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                    },
+                    enabled = dailyLimitMinutes != null && !isSaving,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 12.dp)
+                        .height(56.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                    shape = RoundedCornerShape(16.dp)
+                ) {
+                    if (isSaving) {
+                        CircularProgressIndicator(
+                            color = DarkBg,
+                            modifier = Modifier.size(22.dp),
+                            strokeWidth = 2.dp
                         )
-                        OutlinedTextField(
-                            value = minutesText,
-                            onValueChange = { value -> minutesText = value.filter { it.isDigit() }.take(2) },
-                            modifier = Modifier.weight(1f),
-                            label = { Text(stringResource(R.string.protection_minutes)) },
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            singleLine = true
+                    } else {
+                        Text(
+                            stringResource(
+                                if (protectWithPassword) {
+                                    R.string.protection_activate_limit_password
+                                } else {
+                                    R.string.protection_activate_limit
+                                }
+                            ),
+                            color = DarkBg,
+                            fontWeight = FontWeight.Bold
                         )
                     }
-                    if ((hoursText.isNotEmpty() || minutesText.isNotEmpty()) && dailyLimitMinutes == null) {
+                }
+            }
+        }
+    ) { padding ->
+        LazyColumn(
+            modifier = Modifier.fillMaxSize().padding(padding),
+            contentPadding = PaddingValues(20.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            item {
+                Column {
+                    Text(
+                        stringResource(R.string.protection_daily_limit_description),
+                        color = TextSecondary,
+                        fontSize = 15.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        stringResource(
+                            R.string.protection_selected_count,
+                            apps.size + websiteRules.size
+                        ),
+                        color = AccentCyan,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = DarkCard),
+                    border = BorderStroke(1.dp, CardBorder),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Column(Modifier.padding(18.dp)) {
                         Text(
-                            stringResource(R.string.protection_daily_limit_invalid),
-                            color = DangerRed,
+                            stringResource(R.string.protection_daily_limit_question),
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(14.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                            OutlinedTextField(
+                                value = hoursText,
+                                onValueChange = { value ->
+                                    hoursText = value.filter { it.isDigit() }.take(2)
+                                },
+                                modifier = Modifier.weight(1f),
+                                label = { Text(stringResource(R.string.protection_hours)) },
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number
+                                ),
+                                singleLine = true
+                            )
+                            OutlinedTextField(
+                                value = minutesText,
+                                onValueChange = { value ->
+                                    minutesText = value.filter { it.isDigit() }.take(2)
+                                },
+                                modifier = Modifier.weight(1f),
+                                label = { Text(stringResource(R.string.protection_minutes)) },
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Number
+                                ),
+                                singleLine = true
+                            )
+                        }
+                        Text(
+                            stringResource(R.string.protection_foreground_only),
+                            color = TextHint,
                             fontSize = 12.sp,
                             modifier = Modifier.padding(top = 10.dp)
                         )
+                        if (
+                            (hoursText.isNotEmpty() || minutesText.isNotEmpty()) &&
+                            dailyLimitMinutes == null
+                        ) {
+                            Text(
+                                stringResource(R.string.protection_daily_limit_invalid),
+                                color = DangerRed,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(top = 8.dp)
+                            )
+                        }
                     }
                 }
             }
 
-            Spacer(Modifier.weight(1f))
-
-            Button(
-                onClick = {
-                    val minutes = dailyLimitMinutes ?: return@Button
-                    isSaving = true
-                    scope.launch {
-                        val result = runCatching {
-                            withContext(Dispatchers.IO) {
-                                apps.forEach { app ->
-                                    database.appUsageLimitDao().insert(
-                                        AppUsageLimit(
-                                            packageName = app.packageName,
-                                            appName = app.appName,
-                                            dailyLimitMinutes = minutes,
-                                            isEnabled = true
-                                        )
-                                    )
-                                }
-                                WebsiteBlocker.normalizeRules(websiteRules).forEach { rule ->
-                                    database.websiteUsageLimitDao().insert(
-                                        WebsiteUsageLimit(
-                                            domain = rule,
-                                            dailyLimitMinutes = minutes,
-                                            isEnabled = true
-                                        )
-                                    )
-                                }
-                                manager.checkAndEnforce()
-                            }
-                        }
-
-                        isSaving = false
-                        if (result.isSuccess) {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.protection_limit_success),
-                                Toast.LENGTH_LONG
-                            ).show()
-                            onFinish()
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(containerColor = DarkCard),
+                    border = BorderStroke(
+                        1.dp,
+                        if (protectWithPassword) {
+                            AccentPurple.copy(alpha = 0.45f)
                         } else {
-                            FocusGuardLogger.logError(
-                                "ProtectionSetup",
-                                "Falha ao salvar limite em lote",
-                                result.exceptionOrNull() ?: IllegalStateException("Erro desconhecido")
-                            )
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.protection_limit_error),
-                                Toast.LENGTH_LONG
-                            ).show()
+                            CardBorder
                         }
+                    ),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(18.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .background(
+                                    AccentPurple.copy(alpha = 0.12f),
+                                    RoundedCornerShape(15.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = AccentPurple
+                            )
+                        }
+                        Spacer(Modifier.width(14.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.protection_combine_password_title),
+                                color = TextPrimary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(Modifier.height(3.dp))
+                            Text(
+                                stringResource(
+                                    if (alreadyPasswordProtected) {
+                                        R.string.protection_combine_password_existing
+                                    } else {
+                                        R.string.protection_combine_password_subtitle
+                                    }
+                                ),
+                                color = TextSecondary,
+                                fontSize = 12.sp
+                            )
+                        }
+                        Switch(
+                            checked = protectWithPassword,
+                            enabled = !alreadyPasswordProtected,
+                            onCheckedChange = { checked ->
+                                if (checked && !hasPassword) {
+                                    showPasswordCreationDialog = true
+                                } else {
+                                    protectWithPassword = checked
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = DarkBg,
+                                checkedTrackColor = AccentPurple,
+                                uncheckedThumbColor = TextHint,
+                                uncheckedTrackColor = DarkCard,
+                                uncheckedBorderColor = CardBorder
+                            )
+                        )
                     }
-                },
-                enabled = dailyLimitMinutes != null && !isSaving,
-                modifier = Modifier.fillMaxWidth().height(56.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                if (isSaving) {
-                    CircularProgressIndicator(color = DarkBg, modifier = Modifier.size(22.dp), strokeWidth = 2.dp)
-                } else {
+                }
+            }
+
+            if (protectWithPassword && !hasPassword) {
+                item {
                     Text(
-                        stringResource(R.string.protection_activate_limit),
-                        color = DarkBg,
-                        fontWeight = FontWeight.Bold
+                        stringResource(R.string.protection_combine_password_required),
+                        color = DangerRed,
+                        fontSize = 12.sp
                     )
                 }
             }
         }
+    }
+
+    if (showPasswordCreationDialog) {
+        PasswordCreationDialog(
+            onDismiss = { showPasswordCreationDialog = false },
+            onPasswordCreated = { password ->
+                scope.launch {
+                    val result = runCatching {
+                        authManager.addPasswordWithLabelSuspend(
+                            password,
+                            context.getString(R.string.protection_password_label)
+                        )
+                    }
+                    if (result.isSuccess) {
+                        hasPassword = true
+                        protectWithPassword = true
+                        showPasswordCreationDialog = false
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.senha_criada_com_sucesso),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } else {
+                        FocusGuardLogger.logError(
+                            "ProtectionSetup",
+                            "Falha ao criar senha para o limite",
+                            result.exceptionOrNull() ?:
+                                IllegalStateException("Erro desconhecido")
+                        )
+                    }
+                }
+            }
+        )
     }
 }
 
