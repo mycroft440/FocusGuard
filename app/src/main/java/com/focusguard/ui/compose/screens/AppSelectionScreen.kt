@@ -120,7 +120,7 @@ fun AppSelectionScreen(
                     if (uninstalledApps.isNotEmpty()) {
                         item {
                             Text(
-                                text = "Aplicativos e Sites predefinidos:",
+                                text = stringResource(R.string.app_selection_preventive),
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = AccentCyan,

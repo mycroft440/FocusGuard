@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,7 +23,6 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -42,8 +42,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -52,6 +50,8 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -65,13 +65,17 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.SubcomposeAsyncImage
+import coil.request.ImageRequest
 import com.focusguard.R
+import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.WebsiteUsageLimit
 import com.focusguard.manager.BlockingSessionManager
@@ -163,8 +167,7 @@ fun UnifiedProtectionSetupWizard(
                     returnToList()
                 },
                 onBack = ::returnToList,
-                initialSelectedPackages = selectedApps.mapTo(linkedSetOf()) { it.packageName },
-                includeWebsiteSuggestions = false
+                initialSelectedPackages = selectedApps.mapTo(linkedSetOf()) { it.packageName }
             )
 
             ProtectionSetupPage.WEBSITE_PICKER -> WebsiteRuleSelectionScreen(
@@ -446,7 +449,6 @@ private fun WebsiteRuleSelectionScreen(
     var input by remember { mutableStateOf("") }
     var rules by remember(initialRules) { mutableStateOf(initialRules.distinct()) }
     var invalidInput by remember { mutableStateOf(false) }
-    val suggestions = remember { listOf("youtube.com", "facebook.com", "reddit.com", "porn", "xxx") }
 
     fun addRule(value: String) {
         val normalized = WebsiteBlocker.normalizeRule(value)
@@ -538,28 +540,19 @@ private fun WebsiteRuleSelectionScreen(
                     modifier = Modifier.padding(top = 12.dp)
                 )
             }
-            item {
-                LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    items(suggestions) { suggestion ->
-                        val normalized = WebsiteBlocker.normalizeRule(suggestion)
-                        FilterChip(
-                            selected = normalized in rules,
-                            onClick = {
-                                rules = if (normalized in rules) {
-                                    rules.filterNot { it == normalized }
-                                } else {
-                                    (rules + normalized).distinct()
-                                }
-                            },
-                            label = { Text(WebsiteBlocker.displayRule(normalized)) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = AccentCyan.copy(alpha = 0.16f),
-                                selectedLabelColor = AccentCyan,
-                                labelColor = TextSecondary
-                            )
-                        )
+            items(PredefinedWebsites.POPULAR, key = { "preset_${it.domain}" }) { website ->
+                val normalized = WebsiteBlocker.normalizeRule(website.domain)
+                WebsitePresetRow(
+                    website = website,
+                    selected = normalized in rules,
+                    onToggle = {
+                        rules = if (normalized in rules) {
+                            rules.filterNot { it == normalized }
+                        } else {
+                            (rules + normalized).distinct()
+                        }
                     }
-                }
+                )
             }
             item {
                 HorizontalDivider(color = CardBorder, modifier = Modifier.padding(vertical = 8.dp))
@@ -587,6 +580,92 @@ private fun WebsiteRuleSelectionScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun WebsitePresetRow(
+    website: PredefinedWebsites.WebsiteInfo,
+    selected: Boolean,
+    onToggle: () -> Unit
+) {
+    val context = LocalContext.current
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) AccentCyan.copy(alpha = 0.08f) else DarkCard
+        ),
+        border = BorderStroke(
+            1.dp,
+            if (selected) AccentCyan.copy(alpha = 0.42f) else CardBorder
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier.size(48.dp),
+                shape = RoundedCornerShape(14.dp),
+                color = DarkBg
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxSize().padding(8.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    SubcomposeAsyncImage(
+                        model = ImageRequest.Builder(context)
+                            .data("https://www.google.com/s2/favicons?domain=${website.iconDomain}&sz=128")
+                            .crossfade(true)
+                            .build(),
+                        contentDescription = website.name,
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Fit,
+                        loading = {
+                            CircularProgressIndicator(
+                                color = AccentCyan,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(20.dp)
+                            )
+                        },
+                        error = {
+                            Text(
+                                website.name.take(1),
+                                color = AccentCyan,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 20.sp
+                            )
+                        }
+                    )
+                }
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    website.name,
+                    color = TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(website.domain, color = TextHint, fontSize = 12.sp)
+            }
+            Switch(
+                checked = selected,
+                onCheckedChange = { onToggle() },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = DarkBg,
+                    checkedTrackColor = AccentCyan,
+                    uncheckedThumbColor = TextHint,
+                    uncheckedTrackColor = DarkCard,
+                    uncheckedBorderColor = CardBorder
+                )
+            )
         }
     }
 }

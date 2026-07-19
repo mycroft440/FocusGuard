@@ -372,13 +372,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                         val adultFilterEnabled = authManager.isAdultFilterEnabled()
                         val adultDomains = if (adultFilterEnabled) {
                             WebsiteBlocker.normalizeRules(
-                                com.focusguard.data.PredefinedApps.PREVENTIVE_APPS
-                                    .asSequence()
-                                    .filter {
-                                        it.category == com.focusguard.data.PredefinedApps.CATEGORY_PORNOGRAPHY
-                                    }
-                                    .mapNotNull { it.domain }
-                                    .toList()
+                                com.focusguard.data.PredefinedWebsites.ADULT_DOMAINS
                             )
                         } else {
                             emptySet()

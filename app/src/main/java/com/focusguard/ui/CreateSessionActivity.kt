@@ -156,8 +156,7 @@ fun CreateSessionWizard(
 fun AppSelectionStep(
     onNext: (List<SelectableAppUi>) -> Unit,
     onBack: () -> Unit,
-    initialSelectedPackages: Set<String> = emptySet(),
-    includeWebsiteSuggestions: Boolean = true
+    initialSelectedPackages: Set<String> = emptySet()
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val pm = context.packageManager
@@ -189,7 +188,7 @@ fun AppSelectionStep(
 
             val predefinedApps = PredefinedApps.PREVENTIVE_APPS
                 .filter { !installedPackageNames.contains(it.packageName) }
-                .filter { includeWebsiteSuggestions || !it.packageName.startsWith("site:") }
+                .filterNot { it.packageName.startsWith("site:") }
                 .map {
                     val iconUrl = if (!it.domain.isNullOrBlank()) {
                         "https://www.google.com/s2/favicons?domain=${it.domain}&sz=128"

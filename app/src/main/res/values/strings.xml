@@ -65,7 +65,7 @@
     <string name="protection_sites_add_new">Adicionar novo</string>
     <string name="protection_sites_placeholder">Ex.: bet365.com, apostas, porn ou xxx</string>
     <string name="protection_sites_helper">Insira um domínio completo ou uma palavra presente no domínio.</string>
-    <string name="protection_sites_common">Sugestões rápidas</string>
+    <string name="protection_sites_common">Sites predefinidos</string>
     <string name="protection_sites_selected">Sites e palavras na lista</string>
     <string name="protection_sites_none">Nenhuma regra de site adicionada.</string>
     <string name="protection_save_list">Salvar lista</string>
@@ -350,7 +350,7 @@
 
     <!-- App Selection Wizard -->
     <string name="app_selection_title">Selecionar Aplicativos</string>
-    <string name="app_selection_preventive">Bloqueio Preventivo (Não Instalados)</string>
+    <string name="app_selection_preventive">Aplicativos predefinidos (não instalados)</string>
     <string name="app_selection_show_more">Mostrar Mais (+%1$s apps)</string>
     <string name="app_selection_show_less">Mostrar Menos</string>
     <string name="app_selection_installed">Aplicativos Instalados</string>
