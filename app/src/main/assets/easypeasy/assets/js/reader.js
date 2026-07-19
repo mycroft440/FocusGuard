@@ -3,6 +3,7 @@
 
   const root = document.documentElement;
   const reader = document.querySelector('.reader');
+  const sidebar = document.querySelector('.sidebar');
   const sidebarButton = document.querySelector('[data-action="sidebar"]');
   const themeButton = document.querySelector('[data-action="theme"]');
   const fontUpButton = document.querySelector('[data-action="font-up"]');
@@ -17,9 +18,24 @@
   root.dataset.theme = savedTheme;
   root.style.setProperty('--font-scale', String(Math.min(1.35, Math.max(.85, savedScale))));
 
+  const sidebarBackdrop = document.createElement('button');
+  sidebarBackdrop.type = 'button';
+  sidebarBackdrop.className = 'sidebar-backdrop';
+  sidebarBackdrop.setAttribute('aria-label', 'Fechar sumário');
+  reader?.insertBefore(sidebarBackdrop, sidebar);
+
+  function closeMobileSidebar() {
+    reader?.classList.remove('mobile-sidebar-open');
+    sidebarButton?.setAttribute('aria-expanded', 'false');
+  }
+
   function toggleSidebar() {
     if (window.matchMedia('(max-width: 880px)').matches) {
       reader.classList.toggle('mobile-sidebar-open');
+      sidebarButton?.setAttribute(
+        'aria-expanded',
+        String(reader.classList.contains('mobile-sidebar-open'))
+      );
     } else {
       reader.classList.toggle('sidebar-hidden');
     }
@@ -106,12 +122,16 @@
   }
 
   sidebarButton?.addEventListener('click', toggleSidebar);
+  sidebarBackdrop.addEventListener('click', closeMobileSidebar);
   themeButton?.addEventListener('click', () => setTheme(root.dataset.theme === 'night' ? 'light' : 'night'));
   fontUpButton?.addEventListener('click', () => changeFont(.05));
   fontDownButton?.addEventListener('click', () => changeFont(-.05));
   window.addEventListener('scroll', updateProgress, { passive: true });
   window.addEventListener('resize', updateProgress);
-  document.querySelectorAll('.summary a').forEach(link => link.addEventListener('click', () => reader.classList.remove('mobile-sidebar-open')));
+  document.querySelectorAll('.summary a').forEach(link => link.addEventListener('click', closeMobileSidebar));
+  document.addEventListener('keydown', event => {
+    if (event.key === 'Escape') closeMobileSidebar();
+  });
   document.addEventListener('click', event => {
     const link = event.target.closest?.('a[data-external="true"]');
     if (!link) return;

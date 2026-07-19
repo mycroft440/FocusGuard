@@ -121,7 +121,7 @@ fun MainScreen(
                     onClick = { onTabChange(3) },
                     icon = {
                         Icon(
-                            Icons.Default.HealthAndSafety,
+                            Icons.Outlined.VisibilityOff,
                             contentDescription = stringResource(R.string.nav_recovery)
                         )
                     },

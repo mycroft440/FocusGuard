@@ -10,6 +10,10 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.core.view.ViewCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.updatePadding
 import androidx.webkit.WebViewAssetLoader
 import com.focusguard.R
 
@@ -19,7 +23,24 @@ class OfflineBookActivity : ComponentActivity() {
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        WindowCompat.setDecorFitsSystemWindows(window, false)
         setContentView(R.layout.activity_offline_book)
+
+        val root = findViewById<android.view.View>(R.id.offlineBookRoot)
+        ViewCompat.setOnApplyWindowInsetsListener(root) { view, windowInsets ->
+            val safeArea = windowInsets.getInsets(
+                WindowInsetsCompat.Type.systemBars() or
+                    WindowInsetsCompat.Type.displayCutout()
+            )
+            view.updatePadding(
+                left = safeArea.left,
+                top = safeArea.top,
+                right = safeArea.right,
+                bottom = safeArea.bottom
+            )
+            windowInsets
+        }
+        ViewCompat.requestApplyInsets(root)
 
         webView = findViewById(R.id.bookWebView)
         val assetLoader = WebViewAssetLoader.Builder()
