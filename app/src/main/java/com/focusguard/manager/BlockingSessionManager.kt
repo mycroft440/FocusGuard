@@ -45,6 +45,11 @@ class BlockingSessionManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
 
+    data class ConfiguredBlockedTargets(
+        val appPackageNames: Set<String> = emptySet(),
+        val websiteRules: Set<String> = emptySet()
+    )
+
     enum class EndSessionResult {
         ENDED,
         NOT_FOUND,
@@ -75,6 +80,26 @@ class BlockingSessionManager @Inject constructor(
                         .also { legacyInstance = it }
                 }
             }
+        }
+
+        internal fun combineConfiguredBlockedTargets(
+            sessionAppPackages: Collection<String>,
+            sessionWebsiteRules: Collection<String>,
+            limitedAppPackages: Collection<String>,
+            limitedWebsiteRules: Collection<String>
+        ): ConfiguredBlockedTargets {
+            val websiteRules = WebsiteBlocker.normalizeRules(
+                sessionWebsiteRules + limitedWebsiteRules
+            )
+            val appPackageNames = (
+                sessionAppPackages +
+                    limitedAppPackages +
+                    WebsiteBlocker.appPackageDomainsFor(websiteRules).keys
+            ).filter(String::isNotBlank).toSet()
+            return ConfiguredBlockedTargets(
+                appPackageNames = appPackageNames,
+                websiteRules = websiteRules
+            )
         }
     }
 
@@ -111,6 +136,34 @@ class BlockingSessionManager @Inject constructor(
             }
         }
     }
+
+    /**
+     * Returns every target already configured by any protection mode.
+     *
+     * Active password/time sessions represent password blocks and dopamine fasts,
+     * while enabled usage limits represent the daily-limit mode. Expired sessions
+     * are ignored even if Room has not reconciled their `isActive` flag yet.
+     */
+    suspend fun getConfiguredBlockedTargets(): ConfiguredBlockedTargets =
+        withContext(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            val configuredSessions = database.blockSessionDao()
+                .getAllActiveSessionsStatic()
+                .filter { session -> session.endTime == null || session.endTime > now }
+            val sessionIds = configuredSessions.map { it.id }
+
+            combineConfiguredBlockedTargets(
+                sessionAppPackages = getAppsForSessions(sessionIds),
+                sessionWebsiteRules = getSitesForSessions(sessionIds),
+                limitedAppPackages = database.appUsageLimitDao()
+                    .getAllActiveLimitsStatic()
+                    .map { it.packageName },
+                limitedWebsiteRules = database.websiteUsageLimitDao()
+                    .getAllStatic()
+                    .filter { it.isEnabled }
+                    .map { it.domain }
+            )
+        }
 
     fun startPasswordSession(
         isFixed24h: Boolean,

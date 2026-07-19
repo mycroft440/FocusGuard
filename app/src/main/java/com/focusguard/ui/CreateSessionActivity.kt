@@ -7,6 +7,7 @@ import android.content.Intent
 import androidx.compose.ui.res.stringResource
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import dagger.hilt.android.AndroidEntryPoint
 import androidx.activity.compose.setContent
@@ -58,6 +59,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.data.PredefinedApps
+import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
 import com.focusguard.ui.compose.screens.AppSelectionScreen
 import com.focusguard.ui.compose.screens.SelectableAppUi
@@ -72,6 +74,8 @@ import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
+import com.focusguard.utils.FocusGuardLogger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -161,10 +165,25 @@ fun AppSelectionStep(
     val context = androidx.compose.ui.platform.LocalContext.current
     val pm = context.packageManager
     var apps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
+    var configuredBlockedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
     var isLoading by remember { mutableStateOf(true) }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(initialSelectedPackages) {
         withContext(Dispatchers.IO) {
+            val blockedPackages = try {
+                BlockingSessionManager.getInstance(context)
+                    .getConfiguredBlockedTargets()
+                    .appPackageNames
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                FocusGuardLogger.logError(
+                    "AppSelectionStep",
+                    "Falha ao carregar alvos já bloqueados",
+                    error
+                )
+                emptySet()
+            }
             val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
             val launchables = pm.queryIntentActivities(launcherIntent, 0).map { it.activityInfo.packageName }.toSet()
             val installedPackageNames = mutableSetOf<String>()
@@ -180,7 +199,8 @@ fun AppSelectionStep(
                     SelectableAppUi(
                         packageName = info.packageName,
                         appName = info.loadLabel(pm).toString(),
-                        isSelected = info.packageName in initialSelectedPackages,
+                        isSelected = info.packageName in initialSelectedPackages &&
+                            info.packageName !in blockedPackages,
                         isInstalled = true
                     )
                 }
@@ -197,7 +217,8 @@ fun AppSelectionStep(
                     SelectableAppUi(
                         packageName = it.packageName,
                         appName = it.appName,
-                        isSelected = it.packageName in initialSelectedPackages,
+                        isSelected = it.packageName in initialSelectedPackages &&
+                            it.packageName !in blockedPackages,
                         isInstalled = false,
                         category = it.category,
                         iconUrl = iconUrl
@@ -205,6 +226,7 @@ fun AppSelectionStep(
                 }
 
             withContext(Dispatchers.Main) {
+                configuredBlockedPackages = blockedPackages
                 apps = predefinedApps + installedApps
                 isLoading = false
             }
@@ -217,14 +239,37 @@ fun AppSelectionStep(
                 apps = apps,
                 isLoading = isLoading,
                 onToggleApp = { pkg ->
-                    apps = apps.map { if (it.packageName == pkg) it.copy(isSelected = !it.isSelected) else it }
+                    if (pkg in configuredBlockedPackages) {
+                        apps = apps.map {
+                            if (it.packageName == pkg) it.copy(isSelected = false) else it
+                        }
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.app_already_blocked),
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    } else {
+                        apps = apps.map {
+                            if (it.packageName == pkg) {
+                                it.copy(isSelected = !it.isSelected)
+                            } else {
+                                it
+                            }
+                        }
+                    }
                 },
                 onBack = onBack
             )
         }
 
         Button(
-            onClick = { onNext(apps.filter { it.isSelected }) },
+            onClick = {
+                onNext(
+                    apps.filter {
+                        it.isSelected && it.packageName !in configuredBlockedPackages
+                    }
+                )
+            },
             modifier = Modifier.fillMaxWidth().padding(16.dp).height(56.dp),
             colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
             shape = RoundedCornerShape(16.dp)

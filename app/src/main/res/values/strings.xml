@@ -68,6 +68,8 @@
     <string name="protection_sites_common">Sites predefinidos</string>
     <string name="protection_sites_selected">Sites e palavras na lista</string>
     <string name="protection_sites_none">Nenhuma regra de site adicionada.</string>
+    <string name="app_already_blocked">Aplicativo já bloqueado</string>
+    <string name="site_already_blocked">Site já bloqueado</string>
     <string name="protection_save_list">Salvar lista</string>
     <string name="protection_daily_limit_title">Definir limite diário</string>
     <string name="protection_daily_limit_description">O mesmo limite será aplicado aos apps e sites selecionados.</string>

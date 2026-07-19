@@ -56,6 +56,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -94,6 +95,7 @@ import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -113,9 +115,42 @@ fun UnifiedProtectionSetupWizard(
     authManager: AuthManager,
     onFinish: () -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val blockingSessionManager = remember(context) {
+        BlockingSessionManager.getInstance(context)
+    }
     var page by remember { mutableStateOf(ProtectionSetupPage.LIST) }
     var selectedApps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
     var websiteRules by remember { mutableStateOf<List<String>>(emptyList()) }
+    var configuredBlockedTargets by remember {
+        mutableStateOf(BlockingSessionManager.ConfiguredBlockedTargets())
+    }
+
+    suspend fun refreshConfiguredBlockedTargets(): BlockingSessionManager.ConfiguredBlockedTargets {
+        val latest = try {
+            blockingSessionManager.getConfiguredBlockedTargets()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            FocusGuardLogger.logError(
+                "ProtectionSetup",
+                "Falha ao atualizar alvos já bloqueados",
+                error
+            )
+            configuredBlockedTargets
+        }
+        configuredBlockedTargets = latest
+        selectedApps = selectedApps.filterNot { it.packageName in latest.appPackageNames }
+        websiteRules = websiteRules.filterNot {
+            isWebsiteRuleAlreadyBlocked(it, latest.websiteRules)
+        }
+        return latest
+    }
+
+    LaunchedEffect(Unit) {
+        refreshConfiguredBlockedTargets()
+    }
 
     val draft = ProtectionDraft(
         appPackageNames = selectedApps.mapTo(linkedSetOf()) { it.packageName },
@@ -147,8 +182,18 @@ fun UnifiedProtectionSetupWizard(
             ProtectionSetupPage.LIST -> ProtectionListBuilderScreen(
                 selectedApps = selectedApps,
                 websiteRules = websiteRules,
-                onAddApps = { page = ProtectionSetupPage.APP_PICKER },
-                onAddSites = { page = ProtectionSetupPage.WEBSITE_PICKER },
+                onAddApps = {
+                    scope.launch {
+                        refreshConfiguredBlockedTargets()
+                        page = ProtectionSetupPage.APP_PICKER
+                    }
+                },
+                onAddSites = {
+                    scope.launch {
+                        refreshConfiguredBlockedTargets()
+                        page = ProtectionSetupPage.WEBSITE_PICKER
+                    }
+                },
                 onRemoveApp = { packageName ->
                     selectedApps = selectedApps.filterNot { it.packageName == packageName }
                 },
@@ -156,15 +201,49 @@ fun UnifiedProtectionSetupWizard(
                     websiteRules = websiteRules.filterNot { it == rule }
                 },
                 onContinue = {
-                    if (draft.hasTargets) page = ProtectionSetupPage.MODE
+                    scope.launch {
+                        val previousAppCount = selectedApps.size
+                        val previousWebsiteCount = websiteRules.size
+                        refreshConfiguredBlockedTargets()
+                        if (selectedApps.size < previousAppCount) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.app_already_blocked),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        if (websiteRules.size < previousWebsiteCount) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.site_already_blocked),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        if (selectedApps.isNotEmpty() || websiteRules.isNotEmpty()) {
+                            page = ProtectionSetupPage.MODE
+                        }
+                    }
                 },
                 onBack = onFinish
             )
 
             ProtectionSetupPage.APP_PICKER -> AppSelectionStep(
                 onNext = { apps ->
-                    selectedApps = apps
-                    returnToList()
+                    scope.launch {
+                        val latest = refreshConfiguredBlockedTargets()
+                        val availableApps = apps.filterNot {
+                            it.packageName in latest.appPackageNames
+                        }
+                        if (availableApps.size != apps.size) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.app_already_blocked),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        selectedApps = availableApps
+                        returnToList()
+                    }
                 },
                 onBack = ::returnToList,
                 initialSelectedPackages = selectedApps.mapTo(linkedSetOf()) { it.packageName }
@@ -172,9 +251,23 @@ fun UnifiedProtectionSetupWizard(
 
             ProtectionSetupPage.WEBSITE_PICKER -> WebsiteRuleSelectionScreen(
                 initialRules = websiteRules,
+                configuredBlockedRules = configuredBlockedTargets.websiteRules,
                 onSave = { rules ->
-                    websiteRules = rules
-                    returnToList()
+                    scope.launch {
+                        val latest = refreshConfiguredBlockedTargets()
+                        val availableRules = rules.filterNot {
+                            isWebsiteRuleAlreadyBlocked(it, latest.websiteRules)
+                        }
+                        if (availableRules.size != rules.size) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.site_already_blocked),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        websiteRules = availableRules
+                        returnToList()
+                    }
                 },
                 onBack = ::returnToList
             )
@@ -443,17 +536,36 @@ private fun ProtectionTargetRow(
 @Composable
 private fun WebsiteRuleSelectionScreen(
     initialRules: List<String>,
+    configuredBlockedRules: Set<String>,
     onSave: (List<String>) -> Unit,
     onBack: () -> Unit
 ) {
+    val context = LocalContext.current
     var input by remember { mutableStateOf("") }
-    var rules by remember(initialRules) { mutableStateOf(initialRules.distinct()) }
+    var rules by remember(initialRules, configuredBlockedRules) {
+        mutableStateOf(
+            initialRules.distinct().filterNot {
+                isWebsiteRuleAlreadyBlocked(it, configuredBlockedRules)
+            }
+        )
+    }
     var invalidInput by remember { mutableStateOf(false) }
 
     fun addRule(value: String) {
         val normalized = WebsiteBlocker.normalizeRule(value)
         if (normalized.isEmpty()) {
             invalidInput = true
+            return
+        }
+        if (isWebsiteRuleAlreadyBlocked(normalized, configuredBlockedRules)) {
+            rules = rules.filterNot { WebsiteBlocker.normalizeRule(it) == normalized }
+            input = ""
+            invalidInput = false
+            Toast.makeText(
+                context,
+                context.getString(R.string.site_already_blocked),
+                Toast.LENGTH_SHORT
+            ).show()
             return
         }
         rules = (rules + normalized).distinct()
@@ -472,7 +584,13 @@ private fun WebsiteRuleSelectionScreen(
         bottomBar = {
             Surface(color = DarkBg, tonalElevation = 8.dp) {
                 Button(
-                    onClick = { onSave(rules) },
+                    onClick = {
+                        onSave(
+                            rules.filterNot {
+                                isWebsiteRuleAlreadyBlocked(it, configuredBlockedRules)
+                            }
+                        )
+                    },
                     modifier = Modifier.fillMaxWidth().padding(20.dp, 12.dp).height(54.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                     shape = RoundedCornerShape(16.dp)
@@ -546,10 +664,21 @@ private fun WebsiteRuleSelectionScreen(
                     website = website,
                     selected = normalized in rules,
                     onToggle = {
-                        rules = if (normalized in rules) {
-                            rules.filterNot { it == normalized }
+                        if (isWebsiteRuleAlreadyBlocked(normalized, configuredBlockedRules)) {
+                            rules = rules.filterNot {
+                                WebsiteBlocker.normalizeRule(it) == normalized
+                            }
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.site_already_blocked),
+                                Toast.LENGTH_SHORT
+                            ).show()
                         } else {
-                            (rules + normalized).distinct()
+                            rules = if (normalized in rules) {
+                                rules.filterNot { it == normalized }
+                            } else {
+                                (rules + normalized).distinct()
+                            }
                         }
                     }
                 )
