@@ -105,6 +105,7 @@ dependencies {
     implementation(libs.androidx.preference)
     implementation(libs.androidx.viewpager2)
     implementation(libs.androidx.biometric)
+    implementation(libs.androidx.webkit)
     implementation(libs.google.material)
 
     implementation(libs.androidx.lifecycle.runtime.ktx)
