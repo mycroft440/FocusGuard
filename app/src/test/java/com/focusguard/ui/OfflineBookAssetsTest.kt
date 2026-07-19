@@ -35,4 +35,15 @@ class OfflineBookAssetsTest {
         assertThat(File(bookAssets, "licenses/LICENSE-CONTENT").isFile).isTrue()
         assertThat(File(bookAssets, "licenses/LICENSE-CODE").isFile).isTrue()
     }
+
+    @Test
+    fun mobileChapterMenuCanBeDismissedWithoutNavigating() {
+        val script = File(bookAssets, "assets/js/reader.js").readText()
+        val styles = File(bookAssets, "assets/css/reader.css").readText()
+
+        assertThat(script).contains("sidebarBackdrop.addEventListener('click', closeMobileSidebar)")
+        assertThat(script).contains("if (event.key === 'Escape') closeMobileSidebar()")
+        assertThat(styles).contains(".reader.mobile-sidebar-open .sidebar-backdrop")
+        assertThat(styles).contains("pointer-events: auto")
+    }
 }
