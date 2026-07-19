@@ -40,7 +40,8 @@ fun MainScreen(
     onProtectionClick: () -> Unit,
     onSettingsClick: () -> Unit,
     usageStatsContent: @Composable () -> Unit,
-    pomodoroContent: @Composable () -> Unit
+    pomodoroContent: @Composable () -> Unit,
+    recoveryContent: @Composable () -> Unit
 ) {
     
 
@@ -115,6 +116,18 @@ fun MainScreen(
                     label = { Text(stringResource(R.string.nav_focus)) },
                     colors = navigationItemColors()
                 )
+                NavigationBarItem(
+                    selected = selectedTab == 3,
+                    onClick = { onTabChange(3) },
+                    icon = {
+                        Icon(
+                            Icons.Default.HealthAndSafety,
+                            contentDescription = stringResource(R.string.nav_recovery)
+                        )
+                    },
+                    label = { Text(stringResource(R.string.nav_recovery)) },
+                    colors = navigationItemColors()
+                )
             }
         }
     ) { paddingValues ->
@@ -141,6 +154,7 @@ fun MainScreen(
                         pagerHint = false
                     )
                     2 -> pomodoroContent()
+                    3 -> recoveryContent()
                 }
             }
         }

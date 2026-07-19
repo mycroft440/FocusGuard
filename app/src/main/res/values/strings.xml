@@ -93,7 +93,26 @@
     <string name="nav_protection">Proteção</string>
     <string name="nav_focus">Foco</string>
     <string name="nav_metrics">Métricas</string>
+    <string name="nav_recovery">Recuperação</string>
     <string name="nav_settings">Configurações</string>
+
+    <!-- Recuperação e EasyPeasy -->
+    <string name="recovery_title">Recuperação</string>
+    <string name="recovery_subtitle">Um espaço privado para fortalecer sua liberdade da pornografia.</string>
+    <string name="recovery_privacy_badge">Privado e disponível offline</string>
+    <string name="recovery_resources_title">Recursos para sua jornada</string>
+    <string name="recovery_ebook_title">E-book EasyPeasy Method</string>
+    <string name="recovery_ebook_card_subtitle">Guia completo em português, disponível sem internet</string>
+    <string name="recovery_ebook_description">EasyPeasy apresenta uma abordagem educativa para compreender o ciclo do vício em pornografia, questionar crenças que o mantêm e construir uma mudança duradoura sem depender apenas de força de vontade.</string>
+    <string name="recovery_offline_feature">37 páginas com capítulos e recursos</string>
+    <string name="recovery_search_feature">Sumário, pesquisa e ajuste de fonte</string>
+    <string name="recovery_progress_feature">Progresso de leitura salvo no aparelho</string>
+    <string name="recovery_start_reading">Começar a leitura</string>
+    <string name="recovery_continue_reading">Continuar leitura</string>
+    <string name="recovery_educational_notice">Material educativo; não substitui acompanhamento profissional.</string>
+    <string name="recovery_ebook_attribution">Obra original: Hackauthor². Tradução brasileira: HackAuthorBR e tradutores voluntários. Conteúdo CC BY-SA 4.0.</string>
+    <string name="recovery_book_back">Voltar para Recuperação</string>
+    <string name="recovery_open_details">Ver detalhes do e-book</string>
 
     <!-- Configurações -->
     <string name="settings_category_general">Geral</string>

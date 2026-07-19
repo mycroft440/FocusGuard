@@ -30,6 +30,7 @@ import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.security.AuthManager
 import com.focusguard.ui.CreateSessionActivity
+import com.focusguard.ui.OfflineBookActivity
 import com.focusguard.ui.PermissionsActivity
 import com.focusguard.ui.compose.screens.AuthScreen
 import com.focusguard.ui.compose.screens.BlockCustomizationScreen
@@ -39,6 +40,7 @@ import com.focusguard.ui.compose.screens.LimitsSecurityScreen
 import com.focusguard.ui.compose.screens.MainScreen
 import com.focusguard.ui.compose.screens.PasswordManagementScreen
 import com.focusguard.ui.compose.screens.PomodoroScreen
+import com.focusguard.ui.compose.screens.RecoveryHubScreen
 import com.focusguard.ui.compose.screens.SessionsListScreen
 import com.focusguard.ui.compose.screens.SettingsScreen
 import com.focusguard.ui.compose.screens.UsageLimitsScreen
@@ -194,6 +196,13 @@ fun FocusGuardNavHost(
                             pomodoroManager = pomodoroManager,
                             authManager = authManager,
                             onBack = { currentRoute = FocusGuardRoute.Home }
+                        )
+                    },
+                    recoveryContent = {
+                        RecoveryHubScreen(
+                            onReadBook = {
+                                activity.startActivity(Intent(activity, OfflineBookActivity::class.java))
+                            }
                         )
                     }
                 )
