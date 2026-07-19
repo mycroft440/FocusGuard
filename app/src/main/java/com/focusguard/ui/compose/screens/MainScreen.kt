@@ -225,18 +225,17 @@ fun HomeContent(
         visible = true
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 24.dp, vertical = 0.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .padding(horizontal = 24.dp)
     ) {
-        Spacer(modifier = Modifier.height(8.dp))
-
         // [F2] Agrupamento de animações do Header para reduzir overhead de RenderNode
         AnimatedVisibility(
             visible = visible,
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 8.dp),
             enter = fadeIn(animationSpec = tween(450)) + slideInVertically(animationSpec = tween(450)) { -20 }
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -252,39 +251,46 @@ fun HomeContent(
             }
         }
 
-        AnimatedVisibility(
-            visible = permissionsVisible,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
+        Column(
+            modifier = Modifier
+                .align(Alignment.Center)
+                .fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Card(
-                onClick = onPermissionsClick,
-                modifier = Modifier.fillMaxWidth().padding(bottom = 12.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = DangerRed.copy(alpha = 0.1f)),
-                border = BorderStroke(1.dp, DangerRed)
+            AnimatedVisibility(
+                visible = permissionsVisible,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
             ) {
-                Row(
-                    modifier = Modifier.padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Card(
+                    onClick = onPermissionsClick,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 12.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = DangerRed.copy(alpha = 0.1f)),
+                    border = BorderStroke(1.dp, DangerRed)
                 ) {
-                    Icon(Icons.Default.Warning, contentDescription = stringResource(R.string.content_warning), tint = DangerRed)
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(stringResource(id = R.string.pending_permissions_title), color = DangerRed, fontWeight = FontWeight.Bold)
-                        Text(stringResource(id = R.string.pending_permissions_desc), color = DangerRed.copy(alpha = 0.8f), fontSize = 12.sp)
+                    Row(
+                        modifier = Modifier.padding(14.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Warning, contentDescription = stringResource(R.string.content_warning), tint = DangerRed)
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(stringResource(id = R.string.pending_permissions_title), color = DangerRed, fontWeight = FontWeight.Bold)
+                            Text(stringResource(id = R.string.pending_permissions_desc), color = DangerRed.copy(alpha = 0.8f), fontSize = 12.sp)
+                        }
+                        Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.action_open), tint = DangerRed)
                     }
-                    Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.action_open), tint = DangerRed)
                 }
             }
-        }
 
-        // [F2] Agrupamento de cards de funcionalidade
-        AnimatedVisibility(
-            visible = visible,
-            enter = fadeIn(animationSpec = tween(500, delayMillis = 150)) + slideInVertically(animationSpec = tween(500, delayMillis = 150)) { 30 }
-        ) {
-            Column {
+            // [F2] Agrupamento de cards de funcionalidade
+            AnimatedVisibility(
+                visible = visible,
+                enter = fadeIn(animationSpec = tween(500, delayMillis = 150)) + slideInVertically(animationSpec = tween(500, delayMillis = 150)) { 30 }
+            ) {
                 SessionCard(
                     icon = Icons.Outlined.Shield,
                     title = stringResource(id = R.string.protection_entry_title),
@@ -294,10 +300,15 @@ fun HomeContent(
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-
         if (pagerHint) {
-            Text(stringResource(id = R.string.swipe_hint), fontSize = 12.sp, color = TextHint, modifier = Modifier.padding(top = 8.dp, bottom = 24.dp))
+            Text(
+                stringResource(id = R.string.swipe_hint),
+                fontSize = 12.sp,
+                color = TextHint,
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 24.dp)
+            )
         }
     }
 }
