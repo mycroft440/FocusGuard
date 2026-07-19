@@ -56,7 +56,7 @@
     <string name="protection_choose_mode_subtitle">A lista está pronta. Agora escolha como ela deve funcionar.</string>
     <string name="protection_selected_count">%1$d item(ns) selecionado(s)</string>
     <string name="protection_mode_limit_title">Limitar sites e apps</string>
-    <string name="protection_mode_limit_subtitle">Defina quanto tempo poderão ser usados por dia.</string>
+    <string name="protection_mode_limit_subtitle">Defina o tempo diário e, se quiser, combine com proteção por senha.</string>
     <string name="protection_mode_password_title">Bloquear sites e apps com senha</string>
     <string name="protection_mode_password_subtitle">Só permite encerrar o bloqueio com uma senha autorizada.</string>
     <string name="protection_mode_dopamine_title">Jejum de dopamina</string>
@@ -79,6 +79,14 @@
     <string name="protection_daily_limit_invalid">Informe um período entre 1 minuto e 24 horas.</string>
     <string name="protection_activate_limit">Ativar limite diário</string>
     <string name="protection_limit_success">Limite diário ativado para a lista.</string>
+    <string name="protection_foreground_only">Somente o tempo de uso em primeiro plano será contabilizado.</string>
+    <string name="protection_combine_password_title">Também proteger com senha</string>
+    <string name="protection_combine_password_subtitle">O bloqueio por senha e o limite diário ficarão ativos para a mesma lista.</string>
+    <string name="protection_combine_password_existing">Esta lista já possui proteção por senha; o limite será adicionado sem removê-la.</string>
+    <string name="protection_combine_password_required">Crie uma senha para ativar as duas proteções.</string>
+    <string name="protection_activate_limit_password">Ativar limite e senha</string>
+    <string name="protection_limit_password_success">Limite diário e bloqueio por senha ativados para a lista.</string>
+    <string name="protection_password_label">Limites e bloqueios</string>
     <string name="protection_limit_error">Não foi possível salvar o limite. Tente novamente.</string>
     <string name="dopamine_title">Jejum de dopamina</string>
     <string name="dopamine_configure_for">Configurar jejum para %1$s</string>

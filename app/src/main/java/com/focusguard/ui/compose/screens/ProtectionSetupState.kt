@@ -1,5 +1,6 @@
 package com.focusguard.ui.compose.screens
 
+import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.utils.WebsiteBlocker
 
 internal enum class ProtectionMode {
@@ -40,6 +41,32 @@ internal fun isWebsiteRuleAlreadyBlocked(
         normalizedCandidate,
         normalizedConfigured
     ) != null
+}
+
+/**
+ * Password protection and daily limits are compatible. A target is rejected
+ * only when it already has the mode being selected or an exclusive protection.
+ */
+internal fun configuredAppPackagesForMode(
+    mode: ProtectionMode,
+    configured: BlockingSessionManager.ConfiguredBlockedTargets
+): Set<String> = when (mode) {
+    ProtectionMode.LIMIT ->
+        configured.limitedAppPackageNames + configured.exclusiveAppPackageNames
+    ProtectionMode.PASSWORD ->
+        configured.passwordAppPackageNames + configured.exclusiveAppPackageNames
+    ProtectionMode.DOPAMINE_FAST -> configured.allAppPackageNames
+}
+
+internal fun configuredWebsiteRulesForMode(
+    mode: ProtectionMode,
+    configured: BlockingSessionManager.ConfiguredBlockedTargets
+): Set<String> = when (mode) {
+    ProtectionMode.LIMIT ->
+        configured.limitedWebsiteRules + configured.exclusiveWebsiteRules
+    ProtectionMode.PASSWORD ->
+        configured.passwordWebsiteRules + configured.exclusiveWebsiteRules
+    ProtectionMode.DOPAMINE_FAST -> configured.allWebsiteRules
 }
 
 /** Converte a duração informada na UI em um limite diário válido de até 24 horas. */

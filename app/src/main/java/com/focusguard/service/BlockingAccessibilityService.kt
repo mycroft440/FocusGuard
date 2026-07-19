@@ -11,6 +11,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
+import android.os.PowerManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
@@ -24,6 +25,7 @@ import com.focusguard.security.AuthManager
 import com.focusguard.ui.BlockNoticeActivity
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.utils.UsageLimitForegroundPolicy
 import com.focusguard.utils.WebsiteBlocker
 import com.focusguard.utils.WebsiteUsageLimitPolicy
 import dagger.hilt.android.AndroidEntryPoint
@@ -74,6 +76,8 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var lastToastTime = 0L
     private var defaultLauncherPackage: String? = null
     private var usageStatsManager: android.app.usage.UsageStatsManager? = null
+    private var powerManager: PowerManager? = null
+    @Volatile private var foregroundPackageName: String? = null
 
     private val websiteTrackingLock = Any()
     @Volatile private var trackedDomain: String? = null
@@ -186,6 +190,15 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
+    private val screenStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                foregroundPackageName = null
+                stopWebsiteTracking()
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         database = AppDatabase.getDatabase(this)
@@ -193,9 +206,11 @@ class BlockingAccessibilityService : AccessibilityService() {
         deviceOwnerManager = DeviceOwnerManager.getInstance(this)
         usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE)
             as? android.app.usage.UsageStatsManager
+        powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
 
         registerPackageReceiver()
         registerRefreshReceiver()
+        registerScreenStateReceiver()
         createNotificationChannel()
         startAsForeground()
     }
@@ -222,6 +237,16 @@ class BlockingAccessibilityService : AccessibilityService() {
         } else {
             @Suppress("DEPRECATION")
             registerReceiver(refreshReceiver, filter)
+        }
+    }
+
+    private fun registerScreenStateReceiver() {
+        val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(screenStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(screenStateReceiver, filter)
         }
     }
 
@@ -262,6 +287,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     override fun onServiceConnected() {
         super.onServiceConnected()
         defaultLauncherPackage = calculateDefaultLauncher()
+        foregroundPackageName = rootInActiveWindow?.packageName?.toString()
         calculateBrowserPackages()
         refreshData()
         scope.launch {
@@ -325,6 +351,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
             val packageName = event.packageName?.toString().orEmpty()
             if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                foregroundPackageName = packageName.takeIf(String::isNotBlank)
                 if (handleSettingsInterception(event)) return
                 if (packageName !in browserPackages &&
                     packageName !in limitedWebsiteAppDomains
@@ -359,7 +386,10 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
-    override fun onInterrupt() = Unit
+    override fun onInterrupt() {
+        foregroundPackageName = null
+        stopWebsiteTracking()
+    }
 
     private fun refreshData() {
         refreshRequested.set(true)
@@ -463,7 +493,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         val now = System.currentTimeMillis()
 
         return limits.filter { limit ->
-            val usedMinutes = (usage[limit.packageName]?.totalTimeInForeground ?: 0L) / 60_000L
+            val usedMinutes = UsageLimitForegroundPolicy.usedMinutes(
+                usage[limit.packageName]?.totalTimeInForeground ?: 0L
+            )
             usedMinutes >= limit.dailyLimitMinutes &&
                 limit.preventOpeningAfterLimit &&
                 WebsiteUsageLimitPolicy.isBlockingModeActive(
@@ -655,11 +687,25 @@ class BlockingAccessibilityService : AccessibilityService() {
             while (isActive) {
                 delay(websitePulseMillis)
                 var usageToPersist: WebsiteUsageSlice? = null
+                var shouldStopTracking = false
                 synchronized(websiteTrackingLock) {
                     val domain = trackedDomain
                     val packageName = trackedPackageName
                     if (domain == null || packageName == null) {
                         return@launch
+                    }
+                    if (
+                        !UsageLimitForegroundPolicy.shouldCountWebsiteUsage(
+                            trackedPackageName = packageName,
+                            foregroundPackageName = foregroundPackageName,
+                            isDeviceInteractive = powerManager?.isInteractive == true
+                        )
+                    ) {
+                        trackedDomain = null
+                        trackedPackageName = null
+                        trackedSinceMillis = 0L
+                        shouldStopTracking = true
+                        return@synchronized
                     }
                     val now = System.currentTimeMillis()
                     val delta = (now - trackedSinceMillis).coerceIn(0L, maxUsageDeltaMillis)
@@ -668,6 +714,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                         usageToPersist = WebsiteUsageSlice(domain, delta, packageName)
                     }
                 }
+                if (shouldStopTracking) return@launch
                 usageToPersist?.let { persistWebsiteUsageNow(it) }
             }
         }
@@ -875,6 +922,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         stopWebsiteTracking()
         runCatching { unregisterReceiver(packageReceiver) }
         runCatching { unregisterReceiver(refreshReceiver) }
+        runCatching { unregisterReceiver(screenStateReceiver) }
         scope.cancel()
         super.onDestroy()
 

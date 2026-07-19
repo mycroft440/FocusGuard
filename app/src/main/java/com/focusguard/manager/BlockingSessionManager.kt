@@ -11,14 +11,17 @@ import androidx.room.withTransaction
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.database.AppDatabase
+import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.BlockSession
 import com.focusguard.database.SessionAppCrossRef
 import com.focusguard.database.SessionWebsiteCrossRef
+import com.focusguard.database.WebsiteUsageLimit
 import com.focusguard.receiver.BlockingScheduleCalculator
 import com.focusguard.receiver.BlockingScheduleReceiver
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.utils.UsageLimitForegroundPolicy
 import com.focusguard.utils.WebsiteBlocker
 import com.focusguard.utils.WebsiteUsageLimitPolicy
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -46,8 +49,25 @@ class BlockingSessionManager @Inject constructor(
 ) {
 
     data class ConfiguredBlockedTargets(
-        val appPackageNames: Set<String> = emptySet(),
-        val websiteRules: Set<String> = emptySet()
+        val passwordAppPackageNames: Set<String> = emptySet(),
+        val passwordWebsiteRules: Set<String> = emptySet(),
+        val limitedAppPackageNames: Set<String> = emptySet(),
+        val limitedWebsiteRules: Set<String> = emptySet(),
+        val exclusiveAppPackageNames: Set<String> = emptySet(),
+        val exclusiveWebsiteRules: Set<String> = emptySet(),
+        val unavailableAppPackageNames: Set<String> = emptySet(),
+        val unavailableWebsiteRules: Set<String> = emptySet()
+    ) {
+        val allAppPackageNames: Set<String>
+            get() = passwordAppPackageNames + limitedAppPackageNames + exclusiveAppPackageNames
+
+        val allWebsiteRules: Set<String>
+            get() = passwordWebsiteRules + limitedWebsiteRules + exclusiveWebsiteRules
+    }
+
+    data class DailyLimitAppTarget(
+        val packageName: String,
+        val appName: String
     )
 
     enum class EndSessionResult {
@@ -83,23 +103,82 @@ class BlockingSessionManager @Inject constructor(
         }
 
         internal fun combineConfiguredBlockedTargets(
-            sessionAppPackages: Collection<String>,
-            sessionWebsiteRules: Collection<String>,
+            passwordSessionAppPackages: Collection<String>,
+            passwordSessionWebsiteRules: Collection<String>,
+            exclusiveSessionAppPackages: Collection<String>,
+            exclusiveSessionWebsiteRules: Collection<String>,
             limitedAppPackages: Collection<String>,
             limitedWebsiteRules: Collection<String>
         ): ConfiguredBlockedTargets {
-            val websiteRules = WebsiteBlocker.normalizeRules(
-                sessionWebsiteRules + limitedWebsiteRules
+            val passwordWebsiteRules = WebsiteBlocker.normalizeRules(
+                passwordSessionWebsiteRules
             )
-            val appPackageNames = (
-                sessionAppPackages +
-                    limitedAppPackages +
-                    WebsiteBlocker.appPackageDomainsFor(websiteRules).keys
-            ).filter(String::isNotBlank).toSet()
+            val normalizedLimitedWebsiteRules = WebsiteBlocker.normalizeRules(limitedWebsiteRules)
+            val exclusiveWebsiteRules = WebsiteBlocker.normalizeRules(
+                exclusiveSessionWebsiteRules
+            )
+            val passwordAppPackageNames = normalizeConfiguredAppPackages(
+                passwordSessionAppPackages,
+                passwordWebsiteRules
+            )
+            val normalizedLimitedAppPackages = normalizeConfiguredAppPackages(
+                limitedAppPackages,
+                normalizedLimitedWebsiteRules
+            )
+            val exclusiveAppPackageNames = normalizeConfiguredAppPackages(
+                exclusiveSessionAppPackages,
+                exclusiveWebsiteRules
+            )
+            val allWebsiteRules = WebsiteBlocker.normalizeRules(
+                passwordWebsiteRules + normalizedLimitedWebsiteRules + exclusiveWebsiteRules
+            )
+            val unavailableWebsiteRules = allWebsiteRules.filterTo(linkedSetOf()) { candidate ->
+                isWebsiteRuleCoveredBy(candidate, exclusiveWebsiteRules) ||
+                    (
+                        isWebsiteRuleCoveredBy(candidate, passwordWebsiteRules) &&
+                            isWebsiteRuleCoveredBy(candidate, normalizedLimitedWebsiteRules)
+                        )
+            }
+            val unavailableAppPackageNames = (
+                exclusiveAppPackageNames +
+                    passwordAppPackageNames.intersect(normalizedLimitedAppPackages) +
+                    WebsiteBlocker.appPackageDomainsFor(unavailableWebsiteRules).keys
+                ).filter(String::isNotBlank).toSet()
+
             return ConfiguredBlockedTargets(
-                appPackageNames = appPackageNames,
-                websiteRules = websiteRules
+                passwordAppPackageNames = passwordAppPackageNames,
+                passwordWebsiteRules = passwordWebsiteRules,
+                limitedAppPackageNames = normalizedLimitedAppPackages,
+                limitedWebsiteRules = normalizedLimitedWebsiteRules,
+                exclusiveAppPackageNames = exclusiveAppPackageNames,
+                exclusiveWebsiteRules = exclusiveWebsiteRules,
+                unavailableAppPackageNames = unavailableAppPackageNames,
+                unavailableWebsiteRules = unavailableWebsiteRules
             )
+        }
+
+        private fun normalizeConfiguredAppPackages(
+            packages: Collection<String>,
+            websiteRules: Collection<String>
+        ): Set<String> = (
+            packages + WebsiteBlocker.appPackageDomainsFor(websiteRules).keys
+            ).filter(String::isNotBlank).toSet()
+
+        internal fun isWebsiteRuleCoveredBy(
+            candidate: String,
+            configuredRules: Collection<String>
+        ): Boolean {
+            val normalizedCandidate = WebsiteBlocker.normalizeRule(candidate)
+            if (normalizedCandidate.isEmpty()) return false
+
+            val normalizedConfigured = WebsiteBlocker.normalizeRules(configuredRules)
+            if (normalizedCandidate in normalizedConfigured) return true
+            if (WebsiteBlocker.isKeywordRule(normalizedCandidate)) return false
+
+            return WebsiteBlocker.findMatchingRule(
+                normalizedCandidate,
+                normalizedConfigured
+            ) != null
         }
     }
 
@@ -138,11 +217,11 @@ class BlockingSessionManager @Inject constructor(
     }
 
     /**
-     * Returns every target already configured by any protection mode.
+     * Returns targets grouped by protection mode.
      *
-     * Active password/time sessions represent password blocks and dopamine fasts,
-     * while enabled usage limits represent the daily-limit mode. Expired sessions
-     * are ignored even if Room has not reconciled their `isActive` flag yet.
+     * Password and daily-limit protection may coexist. Time/Pomodoro sessions are
+     * exclusive, and targets that already have both compatible modes are exposed
+     * as unavailable for an additional protection.
      */
     suspend fun getConfiguredBlockedTargets(): ConfiguredBlockedTargets =
         withContext(Dispatchers.IO) {
@@ -150,11 +229,18 @@ class BlockingSessionManager @Inject constructor(
             val configuredSessions = database.blockSessionDao()
                 .getAllActiveSessionsStatic()
                 .filter { session -> session.endTime == null || session.endTime > now }
-            val sessionIds = configuredSessions.map { it.id }
+            val passwordSessionIds = configuredSessions
+                .filter { it.sessionType == "PASSWORD" }
+                .map { it.id }
+            val exclusiveSessionIds = configuredSessions
+                .filter { it.sessionType != "PASSWORD" }
+                .map { it.id }
 
             combineConfiguredBlockedTargets(
-                sessionAppPackages = getAppsForSessions(sessionIds),
-                sessionWebsiteRules = getSitesForSessions(sessionIds),
+                passwordSessionAppPackages = getAppsForSessions(passwordSessionIds),
+                passwordSessionWebsiteRules = getSitesForSessions(passwordSessionIds),
+                exclusiveSessionAppPackages = getAppsForSessions(exclusiveSessionIds),
+                exclusiveSessionWebsiteRules = getSitesForSessions(exclusiveSessionIds),
                 limitedAppPackages = database.appUsageLimitDao()
                     .getAllActiveLimitsStatic()
                     .map { it.packageName },
@@ -164,6 +250,91 @@ class BlockingSessionManager @Inject constructor(
                     .map { it.domain }
             )
         }
+
+    /** Saves a daily limit and, optionally, an always-on password session together. */
+    suspend fun configureDailyLimits(
+        apps: List<DailyLimitAppTarget>,
+        sites: List<String>,
+        dailyLimitMinutes: Int,
+        addPasswordProtection: Boolean
+    ) = withContext(Dispatchers.IO) {
+        require(dailyLimitMinutes in 1..24 * 60)
+        val appTargets = apps
+            .filter { it.packageName.isNotBlank() }
+            .distinctBy { it.packageName }
+        val normalizedSites = WebsiteBlocker.normalizeRules(sites)
+
+        database.withTransaction {
+            appTargets.forEach { app ->
+                database.appUsageLimitDao().insert(
+                    AppUsageLimit(
+                        packageName = app.packageName,
+                        appName = app.appName,
+                        dailyLimitMinutes = dailyLimitMinutes,
+                        isEnabled = true
+                    )
+                )
+            }
+            normalizedSites.forEach { rule ->
+                database.websiteUsageLimitDao().insert(
+                    WebsiteUsageLimit(
+                        domain = rule,
+                        dailyLimitMinutes = dailyLimitMinutes,
+                        isEnabled = true
+                    )
+                )
+            }
+
+            if (addPasswordProtection) {
+                val now = System.currentTimeMillis()
+                val passwordSessions = database.blockSessionDao()
+                    .getAllActiveSessionsStatic()
+                    .filter {
+                        it.sessionType == "PASSWORD" &&
+                            (it.endTime == null || it.endTime > now)
+                    }
+                val passwordSessionIds = passwordSessions.map { it.id }
+                val existingPasswordRules = WebsiteBlocker.normalizeRules(
+                    getSitesForSessions(passwordSessionIds)
+                )
+                val existingPasswordApps = (
+                    getAppsForSessions(passwordSessionIds) +
+                        WebsiteBlocker.appPackageDomainsFor(existingPasswordRules).keys
+                    ).toSet()
+                val appsToProtect = appTargets
+                    .map { it.packageName }
+                    .filterNot { it in existingPasswordApps }
+                val sitesToProtect = normalizedSites.filterNot {
+                    isWebsiteRuleCoveredBy(it, existingPasswordRules)
+                }
+
+                if (appsToProtect.isNotEmpty() || sitesToProtect.isNotEmpty()) {
+                    val session = BlockSession(
+                        startTime = now,
+                        isActive = true,
+                        isRecurring = false,
+                        blockedAppsCount = appsToProtect.size,
+                        blockedWebsitesCount = sitesToProtect.size,
+                        sessionType = "PASSWORD",
+                        isFixed24h = true
+                    )
+                    val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
+                    appsToProtect.forEach {
+                        database.sessionAppCrossRefDao().insert(
+                            SessionAppCrossRef(sessionId, it)
+                        )
+                    }
+                    sitesToProtect.forEach {
+                        database.sessionWebsiteCrossRefDao().insert(
+                            SessionWebsiteCrossRef(sessionId, it)
+                        )
+                    }
+                }
+            }
+        }
+
+        checkAndEnforce()
+    }
 
     fun startPasswordSession(
         isFixed24h: Boolean,
@@ -627,7 +798,9 @@ class BlockingSessionManager @Inject constructor(
         val usage = usageStatsManager.queryAndAggregateUsageStats(startOfDay, now)
 
         return limits.filter { limit ->
-            val usedMinutes = (usage[limit.packageName]?.totalTimeInForeground ?: 0L) / 60_000L
+            val usedMinutes = UsageLimitForegroundPolicy.usedMinutes(
+                usage[limit.packageName]?.totalTimeInForeground ?: 0L
+            )
             usedMinutes >= limit.dailyLimitMinutes &&
                 limit.preventOpeningAfterLimit &&
                 WebsiteUsageLimitPolicy.isBlockingModeActive(
