@@ -1,5 +1,7 @@
 package com.focusguard.ui.compose.screens
 
+import com.focusguard.utils.WebsiteBlocker
+
 internal enum class ProtectionMode {
     LIMIT,
     PASSWORD,
@@ -15,6 +17,29 @@ internal data class ProtectionDraft(
 
     val availableModes: List<ProtectionMode>
         get() = if (hasTargets) ProtectionMode.entries else emptyList()
+}
+
+/**
+ * A domain is already covered when it exactly matches an existing rule or is
+ * matched by an existing parent-domain/keyword rule. Broader new rules remain
+ * available (for example, adding `keyword:video` when only one video site is
+ * configured), because they protect additional targets.
+ */
+internal fun isWebsiteRuleAlreadyBlocked(
+    candidate: String,
+    configuredRules: Collection<String>
+): Boolean {
+    val normalizedCandidate = WebsiteBlocker.normalizeRule(candidate)
+    if (normalizedCandidate.isEmpty()) return false
+
+    val normalizedConfigured = WebsiteBlocker.normalizeRules(configuredRules)
+    if (normalizedCandidate in normalizedConfigured) return true
+    if (WebsiteBlocker.isKeywordRule(normalizedCandidate)) return false
+
+    return WebsiteBlocker.findMatchingRule(
+        normalizedCandidate,
+        normalizedConfigured
+    ) != null
 }
 
 /** Converte a duração informada na UI em um limite diário válido de até 24 horas. */
