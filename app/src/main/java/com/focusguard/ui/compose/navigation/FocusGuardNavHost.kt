@@ -40,6 +40,7 @@ import com.focusguard.ui.compose.screens.LimitsSecurityScreen
 import com.focusguard.ui.compose.screens.MainScreen
 import com.focusguard.ui.compose.screens.PasswordManagementScreen
 import com.focusguard.ui.compose.screens.PomodoroScreen
+import com.focusguard.ui.compose.screens.RecoveryBook
 import com.focusguard.ui.compose.screens.RecoveryHubScreen
 import com.focusguard.ui.compose.screens.SessionsListScreen
 import com.focusguard.ui.compose.screens.SettingsScreen
@@ -200,8 +201,16 @@ fun FocusGuardNavHost(
                     },
                     recoveryContent = {
                         RecoveryHubScreen(
-                            onReadBook = {
-                                activity.startActivity(Intent(activity, OfflineBookActivity::class.java))
+                            onReadBook = { book ->
+                                val offlineBook = when (book) {
+                                    RecoveryBook.CREATOR_INSTRUCTIONS ->
+                                        OfflineBookActivity.OfflineBook.CREATOR_INSTRUCTIONS
+                                    RecoveryBook.EASYPEASY ->
+                                        OfflineBookActivity.OfflineBook.EASYPEASY
+                                }
+                                activity.startActivity(
+                                    OfflineBookActivity.createIntent(activity, offlineBook)
+                                )
                             }
                         )
                     }

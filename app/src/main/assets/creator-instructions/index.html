@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <title>Instruções do Criador</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #101116;
+      color: #f3f4f8;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top, rgba(41, 199, 229, 0.13), transparent 34rem),
+        #101116;
+    }
+
+    main {
+      width: min(100%, 46rem);
+      margin: 0 auto;
+      padding: 3rem 1.5rem 5rem;
+    }
+
+    .cover {
+      min-height: calc(100vh - 8rem);
+      display: grid;
+      place-content: center;
+      text-align: center;
+    }
+
+    .book-mark {
+      width: 5rem;
+      height: 5rem;
+      margin: 0 auto 1.5rem;
+      display: grid;
+      place-items: center;
+      border: 1px solid rgba(83, 213, 238, 0.55);
+      border-radius: 1.5rem;
+      background: rgba(83, 213, 238, 0.1);
+      color: #53d5ee;
+      font-size: 2.25rem;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(2.25rem, 9vw, 4rem);
+      line-height: 1.05;
+      letter-spacing: -0.04em;
+    }
+
+    .subtitle {
+      max-width: 34rem;
+      margin: 1.25rem auto 0;
+      color: #b7bac5;
+      font-size: 1.15rem;
+      line-height: 1.65;
+    }
+
+    .status {
+      display: inline-flex;
+      margin-top: 2rem;
+      padding: 0.55rem 0.9rem;
+      border-radius: 999px;
+      background: rgba(83, 213, 238, 0.1);
+      color: #8de6f6;
+      font-size: 0.85rem;
+      font-weight: 700;
+    }
+
+    article {
+      margin-top: 3rem;
+      padding: 1.5rem;
+      border: 1px solid #343640;
+      border-radius: 1.25rem;
+      background: #1a1b21;
+    }
+
+    article h2 {
+      margin-top: 0;
+      font-size: 1.5rem;
+    }
+
+    article p {
+      margin-bottom: 0;
+      color: #c6c8d1;
+      font-size: 1.05rem;
+      line-height: 1.75;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <section class="cover" aria-labelledby="book-title">
+      <div class="book-mark" aria-hidden="true">✦</div>
+      <h1 id="book-title">Instruções do Criador</h1>
+      <p class="subtitle">Tudo que existe para sair da pornografia começa aqui.</p>
+      <span class="status">Disponível offline</span>
+    </section>
+
+    <article>
+      <h2>Apresentação</h2>
+      <p>Este espaço está preparado para receber as instruções e os capítulos escritos pelo criador do FocusGuard.</p>
+    </article>
+
+    <!-- Os próximos capítulos do livro podem ser adicionados abaixo deste ponto. -->
+  </main>
+
+  <script>
+    (() => {
+      const progressKey = 'creator-instructions-progress';
+      const savedPosition = Number(localStorage.getItem(progressKey) || 0);
+
+      window.addEventListener('load', () => window.scrollTo(0, savedPosition), { once: true });
+      window.addEventListener('pagehide', () => {
+        localStorage.setItem(progressKey, String(window.scrollY));
+      });
+    })();
+  </script>
+</body>
+</html>
