@@ -1,6 +1,8 @@
 package com.focusguard.ui
 
 import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.webkit.WebResourceRequest
@@ -19,10 +21,12 @@ import com.focusguard.R
 
 class OfflineBookActivity : ComponentActivity() {
     private lateinit var webView: WebView
+    private lateinit var bookAssetDirectory: String
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        bookAssetDirectory = selectedBook().assetDirectory
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContentView(R.layout.activity_offline_book)
 
@@ -83,7 +87,7 @@ class OfflineBookActivity : ComponentActivity() {
         })
 
         if (savedInstanceState == null) {
-            webView.loadUrl(BOOK_URL)
+            webView.loadUrl(bookUrl())
         } else {
             webView.restoreState(savedInstanceState)
         }
@@ -108,10 +112,26 @@ class OfflineBookActivity : ComponentActivity() {
     private fun Uri.isOfflineBookAsset(): Boolean =
         scheme == "https" &&
             host == WebViewAssetLoader.DEFAULT_DOMAIN &&
-            path?.startsWith("/assets/easypeasy/") == true
+            path?.startsWith("/assets/$bookAssetDirectory/") == true
+
+    private fun selectedBook(): OfflineBook =
+        OfflineBook.values().firstOrNull {
+            it.name == intent.getStringExtra(EXTRA_BOOK)
+        } ?: OfflineBook.EASYPEASY
+
+    private fun bookUrl(): String =
+        "https://${WebViewAssetLoader.DEFAULT_DOMAIN}/assets/$bookAssetDirectory/index.html"
 
     companion object {
-        private const val BOOK_URL =
-            "https://${WebViewAssetLoader.DEFAULT_DOMAIN}/assets/easypeasy/index.html"
+        private const val EXTRA_BOOK = "offline_book"
+
+        fun createIntent(context: Context, book: OfflineBook): Intent =
+            Intent(context, OfflineBookActivity::class.java)
+                .putExtra(EXTRA_BOOK, book.name)
+    }
+
+    enum class OfflineBook(val assetDirectory: String) {
+        CREATOR_INSTRUCTIONS("creator-instructions"),
+        EASYPEASY("easypeasy")
     }
 }

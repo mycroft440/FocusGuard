@@ -103,6 +103,12 @@
     <string name="recovery_subtitle">Um espaço privado para fortalecer sua liberdade da pornografia.</string>
     <string name="recovery_privacy_badge">Privado e disponível offline</string>
     <string name="recovery_resources_title">Recursos para sua jornada</string>
+    <string name="recovery_creator_ebook_title">Instruções do Criador</string>
+    <string name="recovery_creator_ebook_card_subtitle">Tudo que existe para sair da pornografia começa aqui</string>
+    <string name="recovery_creator_ebook_description">Tudo que existe para sair da pornografia começa aqui. Este e-book é um espaço autoral preparado para reunir as instruções do criador do FocusGuard.</string>
+    <string name="recovery_creator_content_feature">Conteúdo autoral do criador do FocusGuard</string>
+    <string name="recovery_creator_offline_feature">Leitura privada e disponível sem internet</string>
+    <string name="recovery_creator_ebook_note">O espaço do livro já está disponível no app e preparado para receber os capítulos escritos pelo criador.</string>
     <string name="recovery_ebook_title">E-book EasyPeasy Method</string>
     <string name="recovery_ebook_card_subtitle">Guia completo em português, disponível sem internet</string>
     <string name="recovery_ebook_description">EasyPeasy apresenta uma abordagem educativa para compreender o ciclo do vício em pornografia, questionar crenças que o mantêm e construir uma mudança duradoura sem depender apenas de força de vontade.</string>

@@ -3,10 +3,10 @@ package com.focusguard.ui.compose.screens
 import android.content.Context
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -58,34 +58,37 @@ import androidx.compose.ui.unit.sp
 import com.focusguard.R
 
 @Composable
-fun RecoveryHubScreen(onReadBook: () -> Unit) {
-    var showBookDetails by rememberSaveable { mutableStateOf(false) }
+fun RecoveryHubScreen(onReadBook: (RecoveryBook) -> Unit) {
+    var selectedBook by rememberSaveable { mutableStateOf<RecoveryBook?>(null) }
 
-    BackHandler(enabled = showBookDetails) {
-        showBookDetails = false
+    BackHandler(enabled = selectedBook != null) {
+        selectedBook = null
     }
 
     AnimatedContent(
-        targetState = showBookDetails,
+        targetState = selectedBook,
         transitionSpec = {
             fadeIn(animationSpec = tween(180)) togetherWith
                 fadeOut(animationSpec = tween(180))
         },
         label = "RecoveryContent"
-    ) { detailsVisible ->
-        if (detailsVisible) {
-            EasyPeasyDetails(
-                onBack = { showBookDetails = false },
-                onReadBook = onReadBook
+    ) { book ->
+        if (book != null) {
+            RecoveryBookDetails(
+                book = book,
+                onBack = { selectedBook = null },
+                onReadBook = {
+                    onReadBook(book)
+                }
             )
         } else {
-            RecoveryLanding(onOpenBook = { showBookDetails = true })
+            RecoveryLanding(onOpenBook = { selectedBook = it })
         }
     }
 }
 
 @Composable
-private fun RecoveryLanding(onOpenBook: () -> Unit) {
+private fun RecoveryLanding(onOpenBook: (RecoveryBook) -> Unit) {
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -160,74 +163,94 @@ private fun RecoveryLanding(onOpenBook: () -> Unit) {
         )
         Spacer(Modifier.height(12.dp))
 
-        Card(
-            onClick = onOpenBook,
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+        RecoveryBookCard(
+            book = RecoveryBook.CREATOR_INSTRUCTIONS,
+            onClick = { onOpenBook(RecoveryBook.CREATOR_INSTRUCTIONS) }
+        )
+        Spacer(Modifier.height(12.dp))
+        RecoveryBookCard(
+            book = RecoveryBook.EASYPEASY,
+            onClick = { onOpenBook(RecoveryBook.EASYPEASY) }
+        )
+    }
+}
+
+@Composable
+private fun RecoveryBookCard(
+    book: RecoveryBook,
+    onClick: () -> Unit
+) {
+    val content = book.content
+
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+    ) {
+        Row(
+            modifier = Modifier.padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Row(
-                modifier = Modifier.padding(18.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .background(
-                            brush = Brush.linearGradient(
-                                listOf(
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
-                                    MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f)
-                                )
-                            ),
-                            shape = RoundedCornerShape(17.dp)
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .background(
+                        brush = Brush.linearGradient(
+                            listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
+                                MaterialTheme.colorScheme.secondary.copy(alpha = 0.14f)
+                            )
                         ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        Icons.Outlined.MenuBook,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(30.dp)
-                    )
-                }
-                Spacer(Modifier.width(16.dp))
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        stringResource(R.string.recovery_ebook_title),
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Spacer(Modifier.height(5.dp))
-                    Text(
-                        stringResource(R.string.recovery_ebook_card_subtitle),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 13.sp,
-                        lineHeight = 18.sp
-                    )
-                }
-                Spacer(Modifier.width(8.dp))
+                        shape = RoundedCornerShape(17.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
                 Icon(
-                    Icons.Default.ChevronRight,
-                    contentDescription = stringResource(R.string.recovery_open_details),
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    content.cardIcon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(30.dp)
                 )
             }
+            Spacer(Modifier.width(16.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    stringResource(content.titleRes),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    stringResource(content.cardSubtitleRes),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                Icons.Default.ChevronRight,
+                contentDescription = stringResource(R.string.recovery_open_details),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
 
 @Composable
-private fun EasyPeasyDetails(
+private fun RecoveryBookDetails(
+    book: RecoveryBook,
     onBack: () -> Unit,
     onReadBook: () -> Unit
 ) {
+    val content = book.content
     val context = LocalContext.current
     val preferences = context.getSharedPreferences(RECOVERY_PREFS, Context.MODE_PRIVATE)
     var hasStartedReading by rememberSaveable {
-        mutableStateOf(preferences.getBoolean(EASYPEASY_STARTED, false))
+        mutableStateOf(preferences.getBoolean(content.startedPreferenceKey, false))
     }
 
     Column(
@@ -261,7 +284,7 @@ private fun EasyPeasyDetails(
         ) {
             Box(contentAlignment = Alignment.Center) {
                 Icon(
-                    Icons.Outlined.MenuBook,
+                    content.detailIcon,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(38.dp)
@@ -271,43 +294,45 @@ private fun EasyPeasyDetails(
 
         Spacer(Modifier.height(18.dp))
         Text(
-            text = stringResource(R.string.recovery_ebook_title),
+            text = stringResource(content.titleRes),
             color = MaterialTheme.colorScheme.onBackground,
             fontSize = 26.sp,
             fontWeight = FontWeight.Bold
         )
         Spacer(Modifier.height(12.dp))
         Text(
-            text = stringResource(R.string.recovery_ebook_description),
+            text = stringResource(content.descriptionRes),
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 15.sp,
             lineHeight = 23.sp
         )
 
         Spacer(Modifier.height(24.dp))
-        FeatureRow(Icons.Outlined.MenuBook, R.string.recovery_offline_feature)
-        FeatureRow(Icons.Outlined.Search, R.string.recovery_search_feature)
-        FeatureRow(Icons.Outlined.Bookmark, R.string.recovery_progress_feature)
+        content.features.forEach { (icon, textRes) ->
+            FeatureRow(icon, textRes)
+        }
 
-        Spacer(Modifier.height(20.dp))
-        Card(
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-            shape = RoundedCornerShape(16.dp)
-        ) {
-            Text(
-                text = stringResource(R.string.recovery_ebook_attribution),
-                modifier = Modifier.padding(16.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp,
-                lineHeight = 18.sp
-            )
+        content.attributionRes?.let { attributionRes ->
+            Spacer(Modifier.height(20.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+                shape = RoundedCornerShape(16.dp)
+            ) {
+                Text(
+                    text = stringResource(attributionRes),
+                    modifier = Modifier.padding(16.dp),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    lineHeight = 18.sp
+                )
+            }
         }
 
         Spacer(Modifier.height(24.dp))
         Button(
             onClick = {
-                preferences.edit().putBoolean(EASYPEASY_STARTED, true).apply()
+                preferences.edit().putBoolean(content.startedPreferenceKey, true).apply()
                 hasStartedReading = true
                 onReadBook()
             },
@@ -376,5 +401,54 @@ private fun FeatureRow(icon: ImageVector, textRes: Int) {
     }
 }
 
+enum class RecoveryBook {
+    CREATOR_INSTRUCTIONS,
+    EASYPEASY
+}
+
+private data class RecoveryBookContent(
+    val titleRes: Int,
+    val cardSubtitleRes: Int,
+    val descriptionRes: Int,
+    val cardIcon: ImageVector,
+    val detailIcon: ImageVector,
+    val features: List<Pair<ImageVector, Int>>,
+    val attributionRes: Int?,
+    val startedPreferenceKey: String
+)
+
+private val RecoveryBook.content: RecoveryBookContent
+    get() = when (this) {
+        RecoveryBook.CREATOR_INSTRUCTIONS -> RecoveryBookContent(
+            titleRes = R.string.recovery_creator_ebook_title,
+            cardSubtitleRes = R.string.recovery_creator_ebook_card_subtitle,
+            descriptionRes = R.string.recovery_creator_ebook_description,
+            cardIcon = Icons.Outlined.Bookmark,
+            detailIcon = Icons.Outlined.Bookmark,
+            features = listOf(
+                Icons.Outlined.MenuBook to R.string.recovery_creator_content_feature,
+                Icons.Outlined.CloudOff to R.string.recovery_creator_offline_feature,
+                Icons.Outlined.Bookmark to R.string.recovery_progress_feature
+            ),
+            attributionRes = R.string.recovery_creator_ebook_note,
+            startedPreferenceKey = CREATOR_INSTRUCTIONS_STARTED
+        )
+        RecoveryBook.EASYPEASY -> RecoveryBookContent(
+            titleRes = R.string.recovery_ebook_title,
+            cardSubtitleRes = R.string.recovery_ebook_card_subtitle,
+            descriptionRes = R.string.recovery_ebook_description,
+            cardIcon = Icons.Outlined.MenuBook,
+            detailIcon = Icons.Outlined.MenuBook,
+            features = listOf(
+                Icons.Outlined.MenuBook to R.string.recovery_offline_feature,
+                Icons.Outlined.Search to R.string.recovery_search_feature,
+                Icons.Outlined.Bookmark to R.string.recovery_progress_feature
+            ),
+            attributionRes = R.string.recovery_ebook_attribution,
+            startedPreferenceKey = EASYPEASY_STARTED
+        )
+    }
+
 private const val RECOVERY_PREFS = "recovery_preferences"
+private const val CREATOR_INSTRUCTIONS_STARTED = "creator_instructions_started"
 private const val EASYPEASY_STARTED = "easypeasy_started"
