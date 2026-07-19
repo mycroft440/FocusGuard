@@ -1,8 +1,6 @@
 package com.focusguard.data
 
 object PredefinedApps {
-    const val CATEGORY_PORNOGRAPHY = "Pornografia"
-
     data class AppInfo(
         val packageName: String,
         val appName: String,
@@ -56,24 +54,6 @@ object PredefinedApps {
         AppInfo("com.king.candycrushsaga", "Candy Crush", "Jogos", "king.com"),
         AppInfo("com.supercell.clashofclans", "Clash of Clans", "Jogos", "supercell.com"),
         AppInfo("com.mobile.legends", "Mobile Legends", "Jogos", "mobilelegends.com"),
-        AppInfo("com.riotgames.league.wildrift", "Wild Rift", "Jogos", "wildrift.leagueoflegends.com"),
-
-        // Sites Populares (Versão Web)
-        AppInfo("site:youtube.com", "YouTube (Site)", "Sites", "youtube.com"),
-        AppInfo("site:facebook.com", "Facebook (Site)", "Sites", "facebook.com"),
-        AppInfo("site:instagram.com", "Instagram (Site)", "Sites", "instagram.com"),
-        AppInfo("site:tiktok.com", "TikTok (Site)", "Sites", "tiktok.com"),
-        AppInfo("site:twitter.com", "X/Twitter (Site)", "Sites", "twitter.com"),
-
-        // Pornografia (Jejum de Dopamina Pesado)
-        AppInfo("site:pornhub.com", "Pornhub", CATEGORY_PORNOGRAPHY, "pornhub.com"),
-        AppInfo("site:xvideos.com", "XVideos", CATEGORY_PORNOGRAPHY, "xvideos.com"),
-        AppInfo("site:xnxx.com", "XNXX", CATEGORY_PORNOGRAPHY, "xnxx.com"),
-        AppInfo("site:redtube.com", "RedTube", CATEGORY_PORNOGRAPHY, "redtube.com"),
-        AppInfo("site:spankbang.com", "SpankBang", CATEGORY_PORNOGRAPHY, "spankbang.com"),
-        AppInfo("site:eporner.com", "EPorner", CATEGORY_PORNOGRAPHY, "eporner.com"),
-        AppInfo("site:xhamster.com", "xHamster", CATEGORY_PORNOGRAPHY, "xhamster.com"),
-        AppInfo("site:rule34.xxx", "Rule34", CATEGORY_PORNOGRAPHY, "rule34.xxx")
+        AppInfo("com.riotgames.league.wildrift", "Wild Rift", "Jogos", "wildrift.leagueoflegends.com")
     )
 }
-
