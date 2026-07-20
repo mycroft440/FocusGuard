@@ -53,6 +53,9 @@ import com.focusguard.ui.compose.theme.DarkCard
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
+import com.focusguard.utils.FocusGuardLogger
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -64,8 +67,11 @@ fun TimeBlockSessionConfigScreen(
     onFinish: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
     var daysText by remember { mutableStateOf("") }
     var hoursText by remember { mutableStateOf("") }
+    var isSaving by remember { mutableStateOf(false) }
 
     val days = daysText.toIntOrNull() ?: 0
     val hours = hoursText.toIntOrNull() ?: 0
@@ -162,22 +168,48 @@ fun TimeBlockSessionConfigScreen(
 
             Button(
                 onClick = {
-                    BlockingSessionManager.getInstance(context).startTimeSession(
-                        days = days,
-                        hours = hours,
-                        isFixed24h = true,
-                        startHour = 0,
-                        endHour = 24,
-                        startMinute = 0,
-                        endMinute = 0,
-                        daysOfWeek = "",
-                        apps = apps,
-                        sites = sites
-                    )
-                    Toast.makeText(context, context.getString(R.string.bloqueio_por_tempo_ativado), Toast.LENGTH_LONG).show()
-                    onFinish()
+                    if (isSaving) return@Button
+                    isSaving = true
+                    scope.launch {
+                        try {
+                            sessionManager.startTimeSession(
+                                days = days,
+                                hours = hours,
+                                isFixed24h = true,
+                                startHour = 0,
+                                endHour = 24,
+                                startMinute = 0,
+                                endMinute = 0,
+                                daysOfWeek = "",
+                                apps = apps,
+                                sites = sites
+                            )
+                            isSaving = false
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.bloqueio_por_tempo_ativado),
+                                Toast.LENGTH_LONG
+                            ).show()
+                            onFinish()
+                        } catch (cancelled: CancellationException) {
+                            isSaving = false
+                            throw cancelled
+                        } catch (error: Exception) {
+                            isSaving = false
+                            FocusGuardLogger.logError(
+                                "TimeBlockConfig",
+                                "Falha ao ativar bloqueio por tempo",
+                                error
+                            )
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.erro_ao_iniciar_sessao),
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
                 },
-                enabled = canSave,
+                enabled = canSave && !isSaving,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                 shape = RoundedCornerShape(16.dp)

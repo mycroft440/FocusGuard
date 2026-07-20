@@ -49,7 +49,6 @@ import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.utils.WebsiteBlocker
-import java.security.MessageDigest
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -633,19 +632,7 @@ private fun hashLimitPassword(password: String): String {
 }
 
 private fun verifyLimitPassword(password: String, stored: String): Boolean {
-    if (stored.isBlank()) return false
-    return try {
-        val expected = if (stored.contains(':')) {
-            val salt = stored.substringBefore(':')
-            val hash = stored.substringAfter(':')
-            AuthManager.hashPasswordWithSalt(password, salt) to hash
-        } else {
-            AuthManager.hashPasswordLegacy(password) to stored
-        }
-        MessageDigest.isEqual(expected.first.toByteArray(), expected.second.toByteArray())
-    } catch (_: Exception) {
-        false
-    }
+    return AuthManager.verifySerializedPassword(password, stored)
 }
 
 fun filteredApps(apps: List<UsageLimitAppUi>, query: String): List<UsageLimitAppUi> {

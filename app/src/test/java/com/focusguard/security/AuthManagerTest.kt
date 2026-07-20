@@ -133,4 +133,15 @@ class AuthManagerTest {
         val wrongAttemptHash = AuthManager.hashPasswordWithSalt(wrongPassword, salt)
         assertThat(wrongAttemptHash).isNotEqualTo(storedHash)
     }
+
+    @Test
+    fun `serialized limit password verifies only the configured password`() {
+        val password = "limite123"
+        val salt = AuthManager.generateSalt()
+        val stored = "$salt:${AuthManager.hashPasswordWithSalt(password, salt)}"
+
+        assertThat(AuthManager.verifySerializedPassword(password, stored)).isTrue()
+        assertThat(AuthManager.verifySerializedPassword("incorreta", stored)).isFalse()
+        assertThat(AuthManager.verifySerializedPassword(password, "inválido")).isFalse()
+    }
 }

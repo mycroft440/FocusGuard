@@ -249,10 +249,16 @@ class AuthManager(context: Context) {
 
     fun addPassword(newPassword: String) {
         scope.launch {
-            ensureMigrationDone()
-            val count = passwordDao.getAllStatic().size
-            insertPassword(password = newPassword, label = appContext.getString(R.string.senha_count_1))
+            addPasswordSuspend(newPassword)
         }
+    }
+
+    suspend fun addPasswordSuspend(newPassword: String) {
+        ensureMigrationDone()
+        insertPassword(
+            password = newPassword,
+            label = appContext.getString(R.string.senha_count_1)
+        )
     }
 
     suspend fun verifyPassword(passwordAttempt: String): Boolean {
@@ -343,6 +349,28 @@ class AuthManager(context: Context) {
             val md = MessageDigest.getInstance("SHA-256")
             val digest = md.digest(password.toByteArray())
             return digest.joinToString("") { "%02x".format(it) }
+        }
+
+        /** Verifica o formato `salt:hash` usado pelas senhas de limites. */
+        fun verifySerializedPassword(password: String, stored: String): Boolean {
+            if (stored.isBlank()) return false
+            return try {
+                val computed = if (stored.contains(':')) {
+                    val salt = stored.substringBefore(':')
+                    val expectedHash = stored.substringAfter(':')
+                    val hash = if (expectedHash.startsWith("v2:")) {
+                        hashPasswordWithSalt(password, salt)
+                    } else {
+                        hashPasswordLegacySalted(password, salt)
+                    }
+                    hash to expectedHash
+                } else {
+                    hashPasswordLegacy(password) to stored
+                }
+                constantTimeEquals(computed.first, computed.second)
+            } catch (_: Throwable) {
+                false
+            }
         }
 
         /**

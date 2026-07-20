@@ -45,6 +45,9 @@ import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
 import com.focusguard.ui.compose.theme.DarkCard
 import com.focusguard.ui.compose.theme.TextPrimary
+import com.focusguard.utils.FocusGuardLogger
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -57,8 +60,12 @@ fun FinalConfigStep(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
     var hasPassword by remember { mutableStateOf(false) }
     var showPasswordCreationDialog by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
+    var isCreatingPassword by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         hasPassword = authManager.hasPasswordSet()
@@ -116,21 +123,47 @@ fun FinalConfigStep(
                 onClick = {
                     if (!hasPassword) {
                         showPasswordCreationDialog = true
-                    } else {
-                        BlockingSessionManager.getInstance(context).startPasswordSession(
-                            isFixed24h = true,
-                            startHour = 0,
-                            endHour = 24,
-                            startMinute = 0,
-                            endMinute = 0,
-                            daysOfWeek = "",
-                            apps = apps,
-                            sites = sites
-                        )
-                        Toast.makeText(context, context.getString(R.string.bloqueio_ativado_com_sucesso), Toast.LENGTH_LONG).show()
-                        onFinish()
+                    } else if (!isSaving) {
+                        isSaving = true
+                        scope.launch {
+                            try {
+                                sessionManager.startPasswordSession(
+                                    isFixed24h = true,
+                                    startHour = 0,
+                                    endHour = 24,
+                                    startMinute = 0,
+                                    endMinute = 0,
+                                    daysOfWeek = "",
+                                    apps = apps,
+                                    sites = sites
+                                )
+                                isSaving = false
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.bloqueio_ativado_com_sucesso),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                                onFinish()
+                            } catch (cancelled: CancellationException) {
+                                isSaving = false
+                                throw cancelled
+                            } catch (error: Exception) {
+                                isSaving = false
+                                FocusGuardLogger.logError(
+                                    "FinalConfig",
+                                    "Falha ao ativar bloqueio por senha",
+                                    error
+                                )
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.erro_ao_iniciar_sessao),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
                     }
                 },
+                enabled = !isSaving,
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                 shape = RoundedCornerShape(16.dp)
@@ -142,12 +175,40 @@ fun FinalConfigStep(
 
     if (showPasswordCreationDialog) {
         PasswordCreationDialog(
-            onDismiss = { showPasswordCreationDialog = false },
+            isSaving = isCreatingPassword,
+            onDismiss = { if (!isCreatingPassword) showPasswordCreationDialog = false },
             onPasswordCreated = { password ->
-                authManager.addPassword(password)
-                hasPassword = true
-                showPasswordCreationDialog = false
-                Toast.makeText(context, context.getString(R.string.senha_criada_com_sucesso), Toast.LENGTH_LONG).show()
+                if (!isCreatingPassword) {
+                    isCreatingPassword = true
+                    scope.launch {
+                        try {
+                            authManager.addPasswordSuspend(password)
+                            isCreatingPassword = false
+                            hasPassword = true
+                            showPasswordCreationDialog = false
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.senha_criada_com_sucesso),
+                                Toast.LENGTH_LONG
+                            ).show()
+                        } catch (cancelled: CancellationException) {
+                            isCreatingPassword = false
+                            throw cancelled
+                        } catch (error: Exception) {
+                            isCreatingPassword = false
+                            FocusGuardLogger.logError(
+                                "FinalConfig",
+                                "Falha ao criar senha",
+                                error
+                            )
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.erro_ao_iniciar_sessao),
+                                Toast.LENGTH_LONG
+                            ).show()
+                        }
+                    }
+                }
             }
         )
     }

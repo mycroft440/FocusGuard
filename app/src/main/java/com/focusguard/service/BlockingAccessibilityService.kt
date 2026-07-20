@@ -5,6 +5,7 @@ import android.accessibilityservice.AccessibilityServiceInfo
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import android.app.usage.UsageStatsManager
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
@@ -67,6 +68,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     @Volatile private var limitedWebsiteAppDomains: Map<String, String> = emptyMap()
     @Volatile private var isBlockingSessionActive = false
     @Volatile private var isPomodoroStrictActive = false
+    @Volatile private var hasActiveAppLimits = false
     @Volatile private var lastEnforcementFingerprint: String? = null
 
     private var lastLoadTime = 0L
@@ -75,7 +77,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var lastWebsiteBlockKey: String? = null
     private var lastToastTime = 0L
     private var defaultLauncherPackage: String? = null
-    private var usageStatsManager: android.app.usage.UsageStatsManager? = null
+    private var usageStatsManager: UsageStatsManager? = null
     private var powerManager: PowerManager? = null
     @Volatile private var foregroundPackageName: String? = null
 
@@ -84,6 +86,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     @Volatile private var trackedPackageName: String? = null
     @Volatile private var trackedSinceMillis = 0L
     private var websiteTrackingJob: Job? = null
+    private var appLimitMonitoringJob: Job? = null
 
     private data class WebsiteUsageSlice(
         val domain: String,
@@ -95,6 +98,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private val browserDebounceMillis = 120L
     private val websiteBlockCooldownMillis = 1_500L
     private val websitePulseMillis = 5_000L
+    private val appLimitPulseMillis = 5_000L
     private val maxUsageDeltaMillis = 15_000L
     private val channelId = "focusguard_service_channel"
     private val notificationId = 101
@@ -204,8 +208,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         database = AppDatabase.getDatabase(this)
         sessionManager = BlockingSessionManager.getInstance(this)
         deviceOwnerManager = DeviceOwnerManager.getInstance(this)
-        usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE)
-            as? android.app.usage.UsageStatsManager
+        usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
         powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
 
         registerPackageReceiver()
@@ -290,6 +293,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         foregroundPackageName = rootInActiveWindow?.packageName?.toString()
         calculateBrowserPackages()
         refreshData()
+        startAppLimitMonitoringPulse()
         scope.launch {
             sessionManager.checkAndEnforce()
         }
@@ -409,9 +413,10 @@ class BlockingAccessibilityService : AccessibilityService() {
                         }
 
                         val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
-                        val enforcingSessions = activeSessions.filter(
-                            sessionManager::isCurrentlyInBlockingWindow
-                        )
+                        val enforcingSessions = activeSessions.filter {
+                            BlockingSessionManager.participatesInBlocking(it) &&
+                                sessionManager.isCurrentlyInBlockingWindow(it)
+                        }
                         val enforcingIds = enforcingSessions.map { it.id }
 
                         val sessionApps = getAppsForSessions(enforcingIds).toSet()
@@ -419,7 +424,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                             getSitesForSessions(enforcingIds)
                         )
 
-                        val limitApps = calculateExceededAppLimits()
+                        val activeAppLimits = database.appUsageLimitDao()
+                            .getAllActiveLimitsStatic()
+                        val limitApps = calculateExceededAppLimits(activeAppLimits)
                         val websiteLimits = database.websiteUsageLimitDao().getAllStatic()
                             .filter { it.isEnabled }
                         val configuredWebsiteDomains = WebsiteBlocker.normalizeRules(
@@ -455,6 +462,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                             blockedWebsiteAppDomains = blockedWebsiteApps
                             limitedWebsiteDomains = configuredWebsiteDomains
                             limitedWebsiteAppDomains = configuredWebsiteApps
+                            hasActiveAppLimits = activeAppLimits.isNotEmpty()
                             isBlockingSessionActive = enforcingSessions.isNotEmpty() ||
                                 limitApps.isNotEmpty() ||
                                 exceededWebsiteDomains.isNotEmpty() ||
@@ -479,7 +487,14 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private suspend fun calculateExceededAppLimits(): Set<String> {
-        val limits = database.appUsageLimitDao().getAllActiveLimitsStatic()
+        return calculateExceededAppLimits(
+            database.appUsageLimitDao().getAllActiveLimitsStatic()
+        )
+    }
+
+    private fun calculateExceededAppLimits(
+        limits: List<com.focusguard.database.AppUsageLimit>
+    ): Set<String> {
         val manager = usageStatsManager ?: return emptySet()
         if (limits.isEmpty()) return emptySet()
 
@@ -506,18 +521,54 @@ class BlockingAccessibilityService : AccessibilityService() {
         }.mapTo(mutableSetOf()) { it.packageName }
     }
 
+    private fun startAppLimitMonitoringPulse() {
+        if (appLimitMonitoringJob?.isActive == true) return
+        appLimitMonitoringJob = scope.launch {
+            while (isActive) {
+                delay(appLimitPulseMillis)
+                if (!hasActiveAppLimits || powerManager?.isInteractive != true) continue
+
+                try {
+                    val packageName = foregroundPackageName ?: continue
+                    val shouldEnforce = UsageLimitForegroundPolicy.shouldEnforceCurrentApp(
+                        foregroundPackageName = packageName,
+                        exceededPackages = calculateExceededAppLimits(),
+                        focusGuardPackageName = this@BlockingAccessibilityService.packageName,
+                        launcherPackageName = defaultLauncherPackage,
+                        isDeviceInteractive = true
+                    )
+                    if (!shouldEnforce) continue
+
+                    withContext(Dispatchers.Main) {
+                        if (foregroundPackageName != packageName) return@withContext
+                        blockedAppsSet = blockedAppsSet + packageName
+                        blockApp(packageName)
+                    }
+                    sessionManager.checkAndEnforce()
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    FocusGuardLogger.logError(
+                        "A11y",
+                        "Falha ao monitorar limite do app em primeiro plano",
+                        error
+                    )
+                }
+            }
+        }
+    }
+
     private suspend fun calculateExceededWebsiteLimits(
         limits: List<com.focusguard.database.WebsiteUsageLimit>
     ): Set<String> {
         if (limits.isEmpty()) return emptySet()
         val today = dateFormat.get()!!.format(Date())
-        val limitDomains = WebsiteBlocker.normalizeRules(limits.map { it.domain })
-        val usage = mutableMapOf<String, Long>()
-        database.dailyUsageStatDao().getStatsForDateStatic(today).forEach { row ->
-            WebsiteBlocker.findMatchingRule(row.identifier, limitDomains)?.let { rule ->
-                usage[rule] = (usage[rule] ?: 0L) + row.timeSpentMs
-            }
-        }
+        val usage = WebsiteUsageLimitPolicy.aggregateUsageByRule(
+            usageByIdentifier = database.dailyUsageStatDao()
+                .getStatsForDateStatic(today)
+                .map { it.identifier to it.timeSpentMs },
+            configuredRules = limits.map { it.domain }
+        )
         val now = System.currentTimeMillis()
 
         return limits.filter { limit ->
@@ -645,8 +696,9 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun updateWebsiteTracking(domain: String, packageName: String, now: Long) {
-        val matchedRule = WebsiteBlocker.findMatchingRule(domain, limitedWebsiteDomains)
-        if (matchedRule == null) {
+        val usageDomain = WebsiteBlocker.extractDomain(domain)
+            .ifBlank { WebsiteBlocker.normalizeRule(domain) }
+        if (WebsiteBlocker.findMatchingRules(usageDomain, limitedWebsiteDomains).isEmpty()) {
             stopWebsiteTracking(now)
             return
         }
@@ -655,10 +707,10 @@ class BlockingAccessibilityService : AccessibilityService() {
         synchronized(websiteTrackingLock) {
             val previousDomain = trackedDomain
             val previousPackage = trackedPackageName
-            if (previousDomain == matchedRule && previousPackage == packageName) {
+            if (previousDomain == usageDomain && previousPackage == packageName) {
                 val delta = (now - trackedSinceMillis).coerceIn(0L, maxUsageDeltaMillis)
                 if (delta >= 1_000L) {
-                    usageToPersist = WebsiteUsageSlice(matchedRule, delta, packageName)
+                    usageToPersist = WebsiteUsageSlice(usageDomain, delta, packageName)
                     trackedSinceMillis = now
                 }
             } else {
@@ -672,7 +724,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                         )
                     }
                 }
-                trackedDomain = matchedRule
+                trackedDomain = usageDomain
                 trackedPackageName = packageName
                 trackedSinceMillis = now
             }
@@ -754,23 +806,36 @@ class BlockingAccessibilityService : AccessibilityService() {
                 today,
                 usage.deltaMillis
             )
-            val limit = database.websiteUsageLimitDao().getAllStatic()
-                .firstOrNull {
-                    it.isEnabled && WebsiteBlocker.normalizeRule(it.domain) == usage.domain
+            val limits = database.websiteUsageLimitDao().getAllStatic()
+                .filter { it.isEnabled }
+            val matchingRules = WebsiteBlocker.findMatchingRules(
+                usage.domain,
+                WebsiteBlocker.normalizeRules(limits.map { it.domain })
+            )
+            if (matchingRules.isEmpty()) return
+
+            val usageByRule = WebsiteUsageLimitPolicy.aggregateUsageByRule(
+                usageByIdentifier = database.dailyUsageStatDao()
+                    .getStatsForDateStatic(today)
+                    .map { it.identifier to it.timeSpentMs },
+                configuredRules = limits.map { it.domain }
+            )
+            val now = System.currentTimeMillis()
+            val exceededRules = limits.mapNotNullTo(linkedSetOf()) { limit ->
+                val rule = WebsiteBlocker.normalizeRule(limit.domain)
+                rule.takeIf {
+                    rule in matchingRules && WebsiteUsageLimitPolicy.shouldBlock(
+                        usedMillis = usageByRule[rule] ?: 0L,
+                        dailyLimitMinutes = limit.dailyLimitMinutes,
+                        lockMode = limit.lockMode,
+                        lockUntilTimestamp = limit.lockUntilTimestamp,
+                        nowMillis = now
+                    )
                 }
-            if (limit != null) {
-                val total = database.dailyUsageStatDao().getUsageMillis(usage.domain, today)
-                val shouldBlock = WebsiteUsageLimitPolicy.shouldBlock(
-                    usedMillis = total,
-                    dailyLimitMinutes = limit.dailyLimitMinutes,
-                    lockMode = limit.lockMode,
-                    lockUntilTimestamp = limit.lockUntilTimestamp,
-                    nowMillis = System.currentTimeMillis()
-                )
-                if (shouldBlock) {
-                    enforceExceededWebsiteImmediately(usage)
-                    sessionManager.checkAndEnforce()
-                }
+            }
+            if (exceededRules.isNotEmpty()) {
+                enforceExceededWebsiteImmediately(usage, exceededRules)
+                sessionManager.checkAndEnforce()
             }
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -783,20 +848,24 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun enforceExceededWebsiteImmediately(usage: WebsiteUsageSlice) {
+    private fun enforceExceededWebsiteImmediately(
+        usage: WebsiteUsageSlice,
+        exceededRules: Set<String>
+    ) {
         scope.launch(Dispatchers.Main) {
             val stillActive = synchronized(websiteTrackingLock) {
                 trackedDomain == usage.domain && trackedPackageName == usage.packageName
             }
             if (!stillActive) return@launch
 
-            blockedWebsitesDomainSet = blockedWebsitesDomainSet + usage.domain
+            blockedWebsitesDomainSet = blockedWebsitesDomainSet + exceededRules
             if (usage.packageName in browserPackages) {
                 blockWebsite(usage.domain, usage.packageName)
             } else {
+                val displayRule = exceededRules.firstOrNull() ?: usage.domain
                 blockedWebsiteAppDomains = blockedWebsiteAppDomains +
-                    (usage.packageName to usage.domain)
-                blockWebsiteApp(usage.domain, usage.packageName)
+                    (usage.packageName to displayRule)
+                blockWebsiteApp(displayRule, usage.packageName)
             }
         }
     }

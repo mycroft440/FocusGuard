@@ -234,7 +234,7 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                     text = {
                         Column {
                             Text(
-                                "stringResource(R.string.sessions_end_desc)",
+                                stringResource(R.string.sessions_end_desc),
                                 color = TextSecondary, fontSize = 14.sp
                             )
                             Spacer(modifier = Modifier.height(16.dp))

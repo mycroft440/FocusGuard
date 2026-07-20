@@ -45,4 +45,36 @@ class UsageLimitForegroundPolicyTest {
             )
         ).isFalse()
     }
+
+    @Test
+    fun `an exceeded app is enforced while it remains in the foreground`() {
+        assertThat(
+            UsageLimitForegroundPolicy.shouldEnforceCurrentApp(
+                foregroundPackageName = "com.example.video",
+                exceededPackages = setOf("com.example.video"),
+                focusGuardPackageName = "com.focusguard.v2",
+                launcherPackageName = "com.example.launcher",
+                isDeviceInteractive = true
+            )
+        ).isTrue()
+
+        assertThat(
+            UsageLimitForegroundPolicy.shouldEnforceCurrentApp(
+                foregroundPackageName = "com.example.video",
+                exceededPackages = setOf("com.example.video"),
+                focusGuardPackageName = "com.focusguard.v2",
+                launcherPackageName = "com.example.launcher",
+                isDeviceInteractive = false
+            )
+        ).isFalse()
+        assertThat(
+            UsageLimitForegroundPolicy.shouldEnforceCurrentApp(
+                foregroundPackageName = "com.focusguard.v2",
+                exceededPackages = setOf("com.focusguard.v2"),
+                focusGuardPackageName = "com.focusguard.v2",
+                launcherPackageName = "com.example.launcher",
+                isDeviceInteractive = true
+            )
+        ).isFalse()
+    }
 }

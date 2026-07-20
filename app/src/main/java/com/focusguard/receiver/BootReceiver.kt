@@ -78,14 +78,7 @@ class BootReceiver : BroadcastReceiver() {
 
                 FocusGuardLogger.log("BootReceiver", "Status após boot: Sessões=$hasActiveSessions, Pomodoro=$isPomodoroActive")
 
-                if (isPomodoroActive && !isPomodoroStrictActive) {
-                    // Pomodoro ativo mas sem strict lock (caso edge)
-                    FocusGuardLogger.log("BootReceiver", "Restaurando tela de bloqueio rigoroso do Pomodoro.")
-                    PomodoroForegroundService.start(context)
-                    val i = Intent(context, PomodoroLockActivity::class.java)
-                    i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    context.startActivity(i)
-                } else if (hasActiveSessions && !isPomodoroActive) {
+                if (hasActiveSessions && !isPomodoroActive) {
                     FocusGuardLogger.log("BootReceiver", "Restaurando interface principal devido a bloqueio ativo.")
                     val i = Intent(context, MainActivity::class.java)
                     i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

@@ -1,6 +1,7 @@
 package com.focusguard.manager
 
 import android.app.NotificationManager
+import android.app.usage.UsageStatsManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -18,6 +19,7 @@ import com.focusguard.database.SessionWebsiteCrossRef
 import com.focusguard.database.WebsiteUsageLimit
 import com.focusguard.receiver.BlockingScheduleCalculator
 import com.focusguard.receiver.BlockingScheduleReceiver
+import com.focusguard.security.AuthManager
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.utils.FocusGuardLogger
@@ -78,7 +80,17 @@ class BlockingSessionManager @Inject constructor(
         FAILED
     }
 
+    enum class LimitUnlockResult {
+        UNLOCKED,
+        WRONG_PASSWORD,
+        NOT_FOUND,
+        FAILED
+    }
+
     companion object {
+        private const val STATE_PREFERENCES = "blocking_session_manager_state"
+        private const val PREVIOUS_DND_FILTER_KEY = "previous_dnd_filter"
+
         @Volatile
         private var legacyInstance: BlockingSessionManager? = null
 
@@ -180,6 +192,21 @@ class BlockingSessionManager @Inject constructor(
                 normalizedConfigured
             ) != null
         }
+
+        internal fun participatesInBlocking(session: BlockSession): Boolean {
+            return session.sessionType != "POMODORO" || session.isBlockingEnabled
+        }
+
+        internal fun matchesBlockedTarget(
+            blockedPackage: String?,
+            blockedDomain: String?,
+            sessionApps: Collection<String>,
+            sessionSites: Collection<String>
+        ): Boolean {
+            return (!blockedPackage.isNullOrBlank() && blockedPackage in sessionApps) ||
+                (!blockedDomain.isNullOrBlank() &&
+                    WebsiteBlocker.isUrlBlocked(blockedDomain, sessionSites))
+        }
     }
 
     @dagger.hilt.EntryPoint
@@ -192,12 +219,16 @@ class BlockingSessionManager @Inject constructor(
     private val deviceOwnerManager = DeviceOwnerManager.getInstance(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val enforcementMutex = Mutex()
+    private val statePreferences = context.getSharedPreferences(
+        STATE_PREFERENCES,
+        Context.MODE_PRIVATE
+    )
 
     val activeSessionsFlow: Flow<List<BlockSession>> =
         database.blockSessionDao().getAllActiveSessions()
 
     val isBlockingActiveFlow: Flow<Boolean> = activeSessionsFlow.map { sessions ->
-        sessions.any(::isCurrentlyInBlockingWindow)
+        sessions.any { participatesInBlocking(it) && isCurrentlyInBlockingWindow(it) }
     }
 
     val hasRegisteredSessionFlow: Flow<Boolean> = activeSessionsFlow.map { it.isNotEmpty() }
@@ -333,10 +364,10 @@ class BlockingSessionManager @Inject constructor(
             }
         }
 
-        checkAndEnforce()
+        checkAndEnforceOrThrow()
     }
 
-    fun startPasswordSession(
+    suspend fun startPasswordSession(
         isFixed24h: Boolean,
         startHour: Int = 0,
         startMinute: Int = 0,
@@ -345,45 +376,43 @@ class BlockingSessionManager @Inject constructor(
         daysOfWeek: String = "",
         apps: List<String>,
         sites: List<String>
-    ) {
-        scope.launch {
-            runCatching {
-                val normalizedSites = WebsiteBlocker.normalizeRules(sites)
-                database.withTransaction {
-                    val session = BlockSession(
-                        startTime = System.currentTimeMillis(),
-                        isActive = true,
-                        isRecurring = !isFixed24h,
-                        recurringStartHour = startHour,
-                        recurringStartMinute = startMinute,
-                        recurringEndHour = endHour,
-                        recurringEndMinute = endMinute,
-                        recurringDaysOfWeek = daysOfWeek,
-                        blockedAppsCount = apps.distinct().size,
-                        blockedWebsitesCount = normalizedSites.size,
-                        sessionType = "PASSWORD",
-                        isFixed24h = isFixed24h
-                    )
-                    val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
-                    apps.distinct().forEach {
-                        database.sessionAppCrossRefDao().insert(SessionAppCrossRef(sessionId, it))
-                    }
-                    normalizedSites.forEach {
-                        database.sessionWebsiteCrossRefDao()
-                            .insert(SessionWebsiteCrossRef(sessionId, it))
-                    }
+    ) = withContext(Dispatchers.IO) {
+        try {
+            val normalizedSites = WebsiteBlocker.normalizeRules(sites)
+            database.withTransaction {
+                val session = BlockSession(
+                    startTime = System.currentTimeMillis(),
+                    isActive = true,
+                    isRecurring = !isFixed24h,
+                    recurringStartHour = startHour,
+                    recurringStartMinute = startMinute,
+                    recurringEndHour = endHour,
+                    recurringEndMinute = endMinute,
+                    recurringDaysOfWeek = daysOfWeek,
+                    blockedAppsCount = apps.distinct().size,
+                    blockedWebsitesCount = normalizedSites.size,
+                    sessionType = "PASSWORD",
+                    isFixed24h = isFixed24h
+                )
+                val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
+                apps.distinct().forEach {
+                    database.sessionAppCrossRefDao().insert(SessionAppCrossRef(sessionId, it))
                 }
-                checkAndEnforce()
-            }.onSuccess {
-                showToast(R.string.bloqueio_por_senha_iniciado, Toast.LENGTH_LONG)
-            }.onFailure {
-                FocusGuardLogger.logError("BlockingSessionManager", "Erro ao iniciar sessão", it)
-                showToast(R.string.erro_ao_iniciar_sessao, Toast.LENGTH_SHORT)
+                normalizedSites.forEach {
+                    database.sessionWebsiteCrossRefDao()
+                        .insert(SessionWebsiteCrossRef(sessionId, it))
+                }
             }
+            checkAndEnforceOrThrow()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            FocusGuardLogger.logError("BlockingSessionManager", "Erro ao iniciar sessão", error)
+            throw error
         }
     }
 
-    fun startTimeSession(
+    suspend fun startTimeSession(
         days: Int,
         hours: Int,
         isFixed24h: Boolean,
@@ -394,50 +423,48 @@ class BlockingSessionManager @Inject constructor(
         daysOfWeek: String = "",
         apps: List<String>,
         sites: List<String>
-    ) {
-        scope.launch {
-            runCatching {
-                val normalizedSites = WebsiteBlocker.normalizeRules(sites)
-                database.withTransaction {
-                    val startMillis = System.currentTimeMillis()
-                    val duration = TimeUnit.DAYS.toMillis(days.toLong()) +
-                        TimeUnit.HOURS.toMillis(hours.toLong())
-                    require(duration > 0L) { "A duração da sessão deve ser positiva" }
-                    val session = BlockSession(
-                        startTime = startMillis,
-                        endTime = startMillis + duration,
-                        isActive = true,
-                        isRecurring = !isFixed24h,
-                        recurringStartHour = startHour,
-                        recurringStartMinute = startMinute,
-                        recurringEndHour = endHour,
-                        recurringEndMinute = endMinute,
-                        recurringDaysOfWeek = daysOfWeek,
-                        blockedAppsCount = apps.distinct().size,
-                        blockedWebsitesCount = normalizedSites.size,
-                        sessionType = "TIME",
-                        isFixed24h = isFixed24h
-                    )
-                    val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
-                    apps.distinct().forEach {
-                        database.sessionAppCrossRefDao().insert(SessionAppCrossRef(sessionId, it))
-                    }
-                    normalizedSites.forEach {
-                        database.sessionWebsiteCrossRefDao()
-                            .insert(SessionWebsiteCrossRef(sessionId, it))
-                    }
-                }
-                checkAndEnforce()
-            }.onSuccess {
-                showToast(R.string.bloqueio_por_tempo_iniciado, Toast.LENGTH_LONG)
-            }.onFailure {
-                FocusGuardLogger.logError(
-                    "BlockingSessionManager",
-                    "Erro ao iniciar sessão por tempo",
-                    it
+    ) = withContext(Dispatchers.IO) {
+        try {
+            val normalizedSites = WebsiteBlocker.normalizeRules(sites)
+            database.withTransaction {
+                val startMillis = System.currentTimeMillis()
+                val duration = TimeUnit.DAYS.toMillis(days.toLong()) +
+                    TimeUnit.HOURS.toMillis(hours.toLong())
+                require(duration > 0L) { "A duração da sessão deve ser positiva" }
+                val session = BlockSession(
+                    startTime = startMillis,
+                    endTime = startMillis + duration,
+                    isActive = true,
+                    isRecurring = !isFixed24h,
+                    recurringStartHour = startHour,
+                    recurringStartMinute = startMinute,
+                    recurringEndHour = endHour,
+                    recurringEndMinute = endMinute,
+                    recurringDaysOfWeek = daysOfWeek,
+                    blockedAppsCount = apps.distinct().size,
+                    blockedWebsitesCount = normalizedSites.size,
+                    sessionType = "TIME",
+                    isFixed24h = isFixed24h
                 )
-                showToast(R.string.erro_ao_iniciar_sessao, Toast.LENGTH_SHORT)
+                val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
+                apps.distinct().forEach {
+                    database.sessionAppCrossRefDao().insert(SessionAppCrossRef(sessionId, it))
+                }
+                normalizedSites.forEach {
+                    database.sessionWebsiteCrossRefDao()
+                        .insert(SessionWebsiteCrossRef(sessionId, it))
+                }
             }
+            checkAndEnforceOrThrow()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            FocusGuardLogger.logError(
+                "BlockingSessionManager",
+                "Erro ao iniciar sessão por tempo",
+                error
+            )
+            throw error
         }
     }
 
@@ -447,17 +474,19 @@ class BlockingSessionManager @Inject constructor(
                 require(durationMs > 0L) { "A duração do Pomodoro deve ser positiva" }
                 database.withTransaction {
                     database.blockSessionDao().deactivateActiveSessionsByType("POMODORO")
-                    val startMillis = System.currentTimeMillis()
-                    database.blockSessionDao().insertNewSession(
-                        BlockSession(
-                            startTime = startMillis,
-                            endTime = startMillis + durationMs,
-                            isActive = true,
-                            sessionType = "POMODORO",
-                            isFixed24h = true,
-                            isBlockingEnabled = isBlockingEnabled
+                    if (isBlockingEnabled) {
+                        val startMillis = System.currentTimeMillis()
+                        database.blockSessionDao().insertNewSession(
+                            BlockSession(
+                                startTime = startMillis,
+                                endTime = startMillis + durationMs,
+                                isActive = true,
+                                sessionType = "POMODORO",
+                                isFixed24h = true,
+                                isBlockingEnabled = true
+                            )
                         )
-                    )
+                    }
                 }
                 checkAndEnforce()
             }.onSuccess {
@@ -577,7 +606,7 @@ class BlockingSessionManager @Inject constructor(
                 database.blockSessionDao().deactivateSession(sessionId) == 0 ->
                     EndSessionResult.NOT_FOUND
                 else -> {
-                    checkAndEnforce()
+                    checkAndEnforceOrThrow()
                     EndSessionResult.ENDED
                 }
             }
@@ -600,24 +629,140 @@ class BlockingSessionManager @Inject constructor(
             .sortedByDescending { it.startTime }
 
         for (session in sessions) {
-            if (!blockedPackage.isNullOrBlank()) {
-                val apps = database.sessionAppCrossRefDao()
-                    .getAppsForSessions(listOf(session.id))
-                if (blockedPackage in apps) return session.id
+            val apps = if (blockedPackage.isNullOrBlank()) emptyList() else {
+                database.sessionAppCrossRefDao().getAppsForSessions(listOf(session.id))
             }
-            if (!blockedDomain.isNullOrBlank()) {
-                val sites = database.sessionWebsiteCrossRefDao()
-                    .getWebsitesForSessions(listOf(session.id))
-                if (WebsiteBlocker.isUrlBlocked(blockedDomain, sites)) return session.id
+            val sites = if (blockedDomain.isNullOrBlank()) emptyList() else {
+                database.sessionWebsiteCrossRefDao().getWebsitesForSessions(listOf(session.id))
             }
+            if (matchesBlockedTarget(blockedPackage, blockedDomain, apps, sites)) return session.id
         }
 
-        return sessions.singleOrNull()?.id
+        return null
+    }
+
+    suspend fun unlockPasswordProtectedLimit(
+        password: String,
+        blockedPackage: String?,
+        blockedDomain: String?
+    ): LimitUnlockResult = withContext(Dispatchers.IO) {
+        try {
+            val now = System.currentTimeMillis()
+            val unlockUntil = BlockingScheduleCalculator.nextLocalMidnight(now)
+
+            val appLimit = blockedPackage
+                ?.takeIf(String::isNotBlank)
+                ?.let { database.appUsageLimitDao().getLimitForPackage(it) }
+                ?.takeIf { limit ->
+                    limit.isEnabled &&
+                        limit.lockMode.equals("PASSWORD", ignoreCase = true) &&
+                        !limit.lockPasswordHash.isNullOrBlank() &&
+                        WebsiteUsageLimitPolicy.isBlockingModeActive(
+                            limit.lockMode,
+                            limit.lockUntilTimestamp,
+                            now
+                        )
+                }
+            if (appLimit != null &&
+                appLimit.packageName in getExceededAppLimits(listOf(appLimit), now)
+            ) {
+                if (!AuthManager.verifySerializedPassword(password, appLimit.lockPasswordHash!!)) {
+                    return@withContext LimitUnlockResult.WRONG_PASSWORD
+                }
+                database.appUsageLimitDao().update(
+                    appLimit.copy(lockUntilTimestamp = unlockUntil)
+                )
+                checkAndEnforceOrThrow()
+                return@withContext LimitUnlockResult.UNLOCKED
+            }
+
+            val websiteLimits = database.websiteUsageLimitDao().getAllStatic()
+                .filter { limit ->
+                    limit.isEnabled &&
+                        limit.lockMode.equals("PASSWORD", ignoreCase = true) &&
+                        !limit.lockPasswordHash.isNullOrBlank() &&
+                        WebsiteUsageLimitPolicy.isBlockingModeActive(
+                            limit.lockMode,
+                            limit.lockUntilTimestamp,
+                            now
+                        )
+                }
+            val websiteUsage = WebsiteUsageLimitPolicy.aggregateUsageByRule(
+                usageByIdentifier = database.dailyUsageStatDao()
+                    .getStatsForDateStatic(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now))
+                    .map { it.identifier to it.timeSpentMs },
+                configuredRules = websiteLimits.map { it.domain }
+            )
+            val blockingWebsiteLimits = websiteLimits.filter { limit ->
+                WebsiteUsageLimitPolicy.shouldBlock(
+                    usedMillis = websiteUsage[WebsiteBlocker.normalizeRule(limit.domain)] ?: 0L,
+                    dailyLimitMinutes = limit.dailyLimitMinutes,
+                    lockMode = limit.lockMode,
+                    lockUntilTimestamp = limit.lockUntilTimestamp,
+                    nowMillis = now
+                )
+            }
+            val matchingRules = blockedDomain
+                ?.takeIf(String::isNotBlank)
+                ?.let {
+                    WebsiteBlocker.findMatchingRules(
+                        it,
+                        WebsiteBlocker.normalizeRules(blockingWebsiteLimits.map { limit ->
+                            limit.domain
+                        })
+                    )
+                }
+                .orEmpty()
+            val matchingWebsiteLimits = matchingRules.mapNotNull { rule ->
+                blockingWebsiteLimits.firstOrNull {
+                    WebsiteBlocker.normalizeRule(it.domain) == rule
+                }
+            }
+            if (matchingWebsiteLimits.isNotEmpty()) {
+                val authenticatedLimits = matchingWebsiteLimits.filter { limit ->
+                    AuthManager.verifySerializedPassword(password, limit.lockPasswordHash!!)
+                }
+                if (authenticatedLimits.isEmpty()) {
+                    return@withContext LimitUnlockResult.WRONG_PASSWORD
+                }
+                authenticatedLimits.forEach { limit ->
+                    database.websiteUsageLimitDao().insert(
+                        limit.copy(lockUntilTimestamp = unlockUntil)
+                    )
+                }
+                checkAndEnforceOrThrow()
+                return@withContext LimitUnlockResult.UNLOCKED
+            }
+
+            LimitUnlockResult.NOT_FOUND
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            FocusGuardLogger.logError(
+                "BlockingSessionManager",
+                "Erro ao desbloquear limite protegido por senha",
+                error
+            )
+            LimitUnlockResult.FAILED
+        }
     }
 
     suspend fun checkAndEnforce() {
+        try {
+            checkAndEnforceOrThrow()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            FocusGuardLogger.logError(
+                "BlockingSessionManager",
+                "Erro ao reconciliar bloqueios",
+                error
+            )
+        }
+    }
+
+    private suspend fun checkAndEnforceOrThrow() {
         enforcementMutex.withLock {
-            try {
                 val now = System.currentTimeMillis()
                 val beforeExpiration = database.blockSessionDao().getAllActiveSessionsStatic()
                 val expiredPomodoro = beforeExpiration.any {
@@ -630,7 +775,9 @@ class BlockingSessionManager @Inject constructor(
                 }
 
                 val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
-                val enforcingSessions = activeSessions.filter(::isCurrentlyInBlockingWindow)
+                val enforcingSessions = activeSessions.filter {
+                    participatesInBlocking(it) && isCurrentlyInBlockingWindow(it)
+                }
                 val enforcingIds = enforcingSessions.map { it.id }
                 val strictPomodoro = enforcingSessions.any {
                     it.sessionType == "POMODORO" && it.isBlockingEnabled
@@ -676,15 +823,12 @@ class BlockingSessionManager @Inject constructor(
                     activeWebsiteLimits.map { it.domain }
                 )
                 val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now)
-                val usageByWebsite = mutableMapOf<String, Long>()
-                database.dailyUsageStatDao().getStatsForDateStatic(today).forEach { row ->
-                    WebsiteBlocker.findMatchingRule(
-                        row.identifier,
-                        activeWebsiteDomains
-                    )?.let { rule ->
-                        usageByWebsite[rule] = (usageByWebsite[rule] ?: 0L) + row.timeSpentMs
-                    }
-                }
+                val usageByWebsite = WebsiteUsageLimitPolicy.aggregateUsageByRule(
+                    usageByIdentifier = database.dailyUsageStatDao()
+                        .getStatsForDateStatic(today)
+                        .map { it.identifier to it.timeSpentMs },
+                    configuredRules = activeWebsiteDomains
+                )
                 val limitSites = activeWebsiteLimits.filter { limit ->
                     val normalizedDomain = WebsiteBlocker.normalizeRule(limit.domain)
                     WebsiteUsageLimitPolicy.shouldBlock(
@@ -741,15 +885,6 @@ class BlockingSessionManager @Inject constructor(
                     Intent(BlockingAccessibilityService.ACTION_REFRESH_BLOCKING)
                         .setPackage(context.packageName)
                 )
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                FocusGuardLogger.logError(
-                    "BlockingSessionManager",
-                    "Erro ao reconciliar bloqueios",
-                    error
-                )
-            }
         }
     }
 
@@ -782,13 +917,14 @@ class BlockingSessionManager @Inject constructor(
         }
     }
 
-    private suspend fun getExceededAppLimits(
+    private fun getExceededAppLimits(
         limits: List<com.focusguard.database.AppUsageLimit>,
         now: Long
     ): List<String> {
         if (limits.isEmpty()) return emptyList()
-        val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE)
-            as? android.app.usage.UsageStatsManager ?: return emptyList()
+        val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as?
+            UsageStatsManager
+        if (usageStatsManager == null) return emptyList()
         val startOfDay = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
@@ -879,10 +1015,27 @@ class BlockingSessionManager @Inject constructor(
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE)
                 as NotificationManager
             if (manager.isNotificationPolicyAccessGranted) {
-                manager.setInterruptionFilter(
-                    if (enabled) NotificationManager.INTERRUPTION_FILTER_PRIORITY
-                    else NotificationManager.INTERRUPTION_FILTER_ALL
-                )
+                if (enabled) {
+                    if (!statePreferences.contains(PREVIOUS_DND_FILTER_KEY)) {
+                        statePreferences.edit()
+                            .putInt(PREVIOUS_DND_FILTER_KEY, manager.currentInterruptionFilter)
+                            .apply()
+                    }
+                    manager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
+                } else if (statePreferences.contains(PREVIOUS_DND_FILTER_KEY)) {
+                    val savedFilter = statePreferences.getInt(
+                        PREVIOUS_DND_FILTER_KEY,
+                        NotificationManager.INTERRUPTION_FILTER_ALL
+                    )
+                    val previousFilter = savedFilter.takeIf {
+                        it == NotificationManager.INTERRUPTION_FILTER_ALL ||
+                            it == NotificationManager.INTERRUPTION_FILTER_PRIORITY ||
+                            it == NotificationManager.INTERRUPTION_FILTER_NONE ||
+                            it == NotificationManager.INTERRUPTION_FILTER_ALARMS
+                    } ?: NotificationManager.INTERRUPTION_FILTER_ALL
+                    manager.setInterruptionFilter(previousFilter)
+                    statePreferences.edit().remove(PREVIOUS_DND_FILTER_KEY).apply()
+                }
             }
         } catch (error: RuntimeException) {
             FocusGuardLogger.logError(

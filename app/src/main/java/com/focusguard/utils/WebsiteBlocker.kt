@@ -219,6 +219,57 @@ object WebsiteBlocker {
     }
 
     /**
+     * Retorna todas as regras que cobrem o domínio, da mais específica para a
+     * mais ampla. Isso permite que limites sobrepostos acumulem o mesmo uso
+     * sem alterar a precedência usada para decidir qual regra exibir.
+     */
+    fun findMatchingRules(
+        urlOrDomain: String,
+        normalizedBlockedDomains: Set<String>
+    ): Set<String> {
+        if (normalizedBlockedDomains.isEmpty()) return emptySet()
+
+        val matches = linkedSetOf<String>()
+        val domain = extractDomain(urlOrDomain)
+        if (domain.isEmpty()) {
+            // Identificadores de uso persistidos e rótulos da UI podem ser a
+            // própria regra, sem representar uma URL navegável.
+            val directRule = normalizeRule(urlOrDomain)
+            if (directRule in normalizedBlockedDomains) matches += directRule
+            return matches
+        }
+
+        if (isIpAddress(domain)) {
+            if (domain in normalizedBlockedDomains) matches += domain
+            return matches
+        }
+
+        var candidate = domain
+        while (true) {
+            if (candidate in normalizedBlockedDomains) matches += candidate
+            val separator = candidate.indexOf('.')
+            if (separator < 0) break
+            candidate = candidate.substring(separator + 1)
+        }
+
+        domainAliases.forEach { (canonical, aliases) ->
+            if (canonical in normalizedBlockedDomains &&
+                aliases.any { alias -> domain == alias || domain.endsWith(".$alias") }
+            ) {
+                matches += canonical
+            }
+        }
+
+        normalizedBlockedDomains.asSequence()
+            .mapNotNull { rule -> keywordValue(rule)?.let { keyword -> rule to keyword } }
+            .filter { (_, keyword) -> domain.contains(keyword) }
+            .sortedByDescending { (_, keyword) -> keyword.length }
+            .forEach { (rule, _) -> matches += rule }
+
+        return matches
+    }
+
+    /**
      * Retorna a regra normalizada responsável pelo bloqueio. O conjunto
      * recebido deve ter sido produzido por [normalizeRules]. A regra de
      * domínio mais específica vence; na ausência dela, a palavra-chave mais
@@ -227,44 +278,7 @@ object WebsiteBlocker {
     fun findMatchingRule(
         urlOrDomain: String,
         normalizedBlockedDomains: Set<String>
-    ): String? {
-        if (normalizedBlockedDomains.isEmpty()) return null
-
-        val domain = extractDomain(urlOrDomain)
-        if (domain.isEmpty()) {
-            // Identificadores de uso persistidos e rótulos da UI podem ser a
-            // própria regra, sem representar uma URL navegável.
-            val directRule = normalizeRule(urlOrDomain)
-            return directRule.takeIf {
-                isKeywordRule(it) && it in normalizedBlockedDomains
-            }
-        }
-
-        if (isIpAddress(domain)) {
-            return domain.takeIf(normalizedBlockedDomains::contains)
-        }
-
-        var candidate = domain
-        while (true) {
-            if (candidate in normalizedBlockedDomains) return candidate
-            val separator = candidate.indexOf('.')
-            if (separator < 0) break
-            candidate = candidate.substring(separator + 1)
-        }
-
-        domainAliases.forEach { (canonical, aliases) ->
-            if (canonical !in normalizedBlockedDomains) return@forEach
-            if (aliases.any { alias -> domain == alias || domain.endsWith(".$alias") }) {
-                return canonical
-            }
-        }
-
-        return normalizedBlockedDomains.asSequence()
-            .mapNotNull { rule -> keywordValue(rule)?.let { keyword -> rule to keyword } }
-            .filter { (_, keyword) -> domain.contains(keyword) }
-            .maxByOrNull { (_, keyword) -> keyword.length }
-            ?.first
-    }
+    ): String? = findMatchingRules(urlOrDomain, normalizedBlockedDomains).firstOrNull()
 
     /** Caminho rápido para eventos originados diretamente na barra de URL. */
     fun extractUrlFromEvent(

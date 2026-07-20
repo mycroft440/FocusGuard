@@ -241,6 +241,21 @@ class WebsiteBlockerTest {
     }
 
     @Test
+    fun `findMatchingRules returns every overlapping rule in precedence order`() {
+        val rules = WebsiteBlocker.normalizeRules(
+            listOf("example.com", "news.example.com", "keyword:news")
+        )
+
+        assertThat(
+            WebsiteBlocker.findMatchingRules("https://a.news.example.com/story", rules)
+        ).containsExactly(
+            "news.example.com",
+            "example.com",
+            "keyword:news"
+        ).inOrder()
+    }
+
+    @Test
     fun `equivalent IPv6 spellings match the same rule`() {
         val rules = WebsiteBlocker.normalizeDomains(listOf("[2001:db8::1]"))
 

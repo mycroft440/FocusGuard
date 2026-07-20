@@ -290,13 +290,12 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
                 java.util.Locale.US
             ).format(java.util.Date())
             val allLimits = db.websiteUsageLimitDao().getAllStatic()
-            val limitDomains = WebsiteBlocker.normalizeRules(allLimits.map { it.domain })
-            val usageStats = mutableMapOf<String, Long>()
-            db.dailyUsageStatDao().getStatsForDateStatic(today).forEach { row ->
-                WebsiteBlocker.findMatchingRule(row.identifier, limitDomains)?.let { rule ->
-                    usageStats[rule] = (usageStats[rule] ?: 0L) + row.timeSpentMs
-                }
-            }
+            val usageStats = com.focusguard.utils.WebsiteUsageLimitPolicy.aggregateUsageByRule(
+                usageByIdentifier = db.dailyUsageStatDao()
+                    .getStatsForDateStatic(today)
+                    .map { it.identifier to it.timeSpentMs },
+                configuredRules = allLimits.map { it.domain }
+            )
             val loadedSites = allLimits.map {
                 WebsiteLimitUi(
                     it.domain,

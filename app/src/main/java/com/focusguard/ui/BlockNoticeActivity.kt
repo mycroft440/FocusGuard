@@ -475,6 +475,21 @@ private suspend fun attemptUnlock(
     sessionManager: BlockingSessionManager
 ): UnlockResult {
     return try {
+        when (
+            sessionManager.unlockPasswordProtectedLimit(
+                password = password,
+                blockedPackage = blockedPackage,
+                blockedDomain = blockedDomain
+            )
+        ) {
+            BlockingSessionManager.LimitUnlockResult.UNLOCKED ->
+                return UnlockResult.SUCCESS
+            BlockingSessionManager.LimitUnlockResult.FAILED ->
+                return UnlockResult.FAILURE
+            BlockingSessionManager.LimitUnlockResult.WRONG_PASSWORD,
+            BlockingSessionManager.LimitUnlockResult.NOT_FOUND -> Unit
+        }
+
         if (!authManager.verifyPassword(password)) return UnlockResult.WRONG_PASSWORD
         val sessionId = sessionManager.findResponsibleSessionId(blockedPackage, blockedDomain)
             ?: return UnlockResult.NO_REVOCABLE_SESSION

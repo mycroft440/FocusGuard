@@ -14,4 +14,17 @@ object UsageLimitForegroundPolicy {
         isDeviceInteractive &&
             !trackedPackageName.isNullOrBlank() &&
             trackedPackageName == foregroundPackageName
+
+    fun shouldEnforceCurrentApp(
+        foregroundPackageName: String?,
+        exceededPackages: Set<String>,
+        focusGuardPackageName: String,
+        launcherPackageName: String?,
+        isDeviceInteractive: Boolean
+    ): Boolean =
+        isDeviceInteractive &&
+            !foregroundPackageName.isNullOrBlank() &&
+            foregroundPackageName != focusGuardPackageName &&
+            foregroundPackageName != launcherPackageName &&
+            foregroundPackageName in exceededPackages
 }

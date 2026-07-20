@@ -289,14 +289,15 @@ fun AppSelectionStep(
 @Composable
 fun PasswordCreationDialog(
     onDismiss: () -> Unit,
-    onPasswordCreated: (String) -> Unit
+    onPasswordCreated: (String) -> Unit,
+    isSaving: Boolean = false
 ) {
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
 
     AlertDialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = { if (!isSaving) onDismiss() },
         title = { Text(stringResource(R.string.final_config_create_password), color = TextPrimary) },
         text = {
             Column {
@@ -343,13 +344,14 @@ fun PasswordCreationDialog(
                         onPasswordCreated(password)
                     }
                 },
+                enabled = !isSaving,
                 colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
             ) {
                 Text(stringResource(R.string.create_password_save), color = DarkBg)
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
+            TextButton(onClick = onDismiss, enabled = !isSaving) {
                 Text(stringResource(R.string.create_password_cancel), color = TextSecondary)
             }
         },

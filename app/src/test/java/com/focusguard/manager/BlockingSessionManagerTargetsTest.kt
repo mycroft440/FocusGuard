@@ -1,5 +1,6 @@
 package com.focusguard.manager
 
+import com.focusguard.database.BlockSession
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -90,5 +91,44 @@ class BlockingSessionManagerTargetsTest {
             "com.google.android.youtube"
         )
         assertThat(targets.allWebsiteRules).containsExactly("youtube.com")
+    }
+
+    @Test
+    fun `non-blocking pomodoro does not participate in blocking policies`() {
+        assertThat(
+            BlockingSessionManager.participatesInBlocking(
+                BlockSession(sessionType = "POMODORO", isBlockingEnabled = false)
+            )
+        ).isFalse()
+        assertThat(
+            BlockingSessionManager.participatesInBlocking(
+                BlockSession(sessionType = "POMODORO", isBlockingEnabled = true)
+            )
+        ).isTrue()
+        assertThat(
+            BlockingSessionManager.participatesInBlocking(
+                BlockSession(sessionType = "PASSWORD", isBlockingEnabled = false)
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun `password session must match the blocked target`() {
+        assertThat(
+            BlockingSessionManager.matchesBlockedTarget(
+                blockedPackage = "com.example.blocked",
+                blockedDomain = null,
+                sessionApps = setOf("com.example.other"),
+                sessionSites = emptySet()
+            )
+        ).isFalse()
+        assertThat(
+            BlockingSessionManager.matchesBlockedTarget(
+                blockedPackage = null,
+                blockedDomain = "news.example.com",
+                sessionApps = emptySet(),
+                sessionSites = setOf("example.com")
+            )
+        ).isTrue()
     }
 }
