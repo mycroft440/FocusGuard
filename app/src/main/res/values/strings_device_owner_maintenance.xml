@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="device_owner_maintenance_title">Manutenção do Device Owner</string>
+    <string name="device_owner_maintenance_subtitle">Liberação controlada por 10 minutos</string>
+    <string name="device_owner_maintenance_active_subtitle">Manutenção ativa por mais %1$d min</string>
+    <string name="device_owner_maintenance_owner_required">Ative o FocusGuard como Device Owner para usar esta proteção.</string>
+    <string name="device_owner_maintenance_description">Libera temporariamente apenas os controles necessários para manutenção. Reset de fábrica, modo seguro e alteração manual da data continuam bloqueados.</string>
+    <string name="device_owner_maintenance_password_label">Senha de desativação ou código de recuperação</string>
+    <string name="device_owner_maintenance_open_password">Abrir com senha</string>
+    <string name="device_owner_maintenance_open_monthly">Usar janela mensal</string>
+    <string name="device_owner_maintenance_monthly_schedule">Janela mensal: dia 15, das 02:50 às 03:00. A liberação dura 10 minutos.</string>
+    <string name="device_owner_maintenance_active_description">As proteções de desinstalação, controle do app e force-stop estão temporariamente liberadas. As proteções críticas continuam ativas.</string>
+    <string name="device_owner_maintenance_end_now">Encerrar manutenção agora</string>
+    <string name="device_owner_maintenance_revoke">Revogar Device Owner</string>
+    <string name="device_owner_maintenance_revoke_title">Revogar Device Owner?</string>
+    <string name="device_owner_maintenance_revoke_description">O FocusGuard deixará de controlar as políticas do sistema e poderá ser desinstalado. Esta ação só é permitida dentro da janela autenticada.</string>
+    <string name="device_owner_maintenance_invalid_credential">Senha de desativação ou código de recuperação incorreto.</string>
+    <string name="device_owner_maintenance_credential_missing">Defina primeiro uma senha de desativação no menu de configurações.</string>
+    <string name="device_owner_maintenance_auto_time_required">Ative data, hora e fuso horário automáticos.</string>
+    <string name="device_owner_maintenance_outside_window">A janela mensal abre somente no dia 15, entre 02:50 e 03:00.</string>
+    <string name="device_owner_maintenance_opened">Manutenção liberada por 10 minutos.</string>
+    <string name="device_owner_maintenance_closed">Proteção completa reaplicada.</string>
+    <string name="device_owner_maintenance_required_to_revoke">Abra a manutenção por senha ou pela janela do dia 15 antes de revogar o Device Owner.</string>
+</resources>
