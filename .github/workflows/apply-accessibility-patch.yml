@@ -1,0 +1,32 @@
+name: Apply Accessibility Service Patch
+
+on:
+  push:
+    branches: ["agent/accessibility-protection-window"]
+    paths:
+      - ".github/patches/accessibility-service.patch"
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+      - name: Validate and apply patch
+        run: |
+          git apply --check .github/patches/accessibility-service.patch
+          git apply .github/patches/accessibility-service.patch
+          rm .github/patches/accessibility-service.patch
+      - name: Commit patched service
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt .github/patches/accessibility-service.patch
+          git commit -m "Apply accessibility service protection"
+          git push origin HEAD:${{ github.ref_name }}
