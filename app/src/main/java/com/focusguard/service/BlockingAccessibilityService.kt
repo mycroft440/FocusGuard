@@ -13,6 +13,7 @@ import android.content.IntentFilter
 import android.net.Uri
 import android.os.Build
 import android.os.PowerManager
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.Toast
@@ -22,6 +23,8 @@ import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.database.AppDatabase
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.StrictPomodoroLock
+import com.focusguard.security.AccessibilityProtectionGate
+import com.focusguard.security.AccessibilitySettingsPolicy
 import com.focusguard.security.AuthManager
 import com.focusguard.ui.BlockNoticeActivity
 import com.focusguard.ui.PomodoroLockActivity
@@ -123,18 +126,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         "com.samsung.android.sm_cn"
     )
 
-    private val criticalClassNames = arrayOf(
-        "InstalledAppDetails",
-        "AppDetailsActivity",
-        "SubSettings",
-        "AccessibilitySettings",
-        "AccessibilityServiceSettings",
-        "ManageApplications",
-        "AppPermissionsEditor",
-        "AppManager",
-        "AppDetail",
-        "AppControl"
-    )
+    private var pendingAccessibilityProtectionUntilElapsed = 0L
 
     private var browserPackages: Set<String> = emptySet()
     private val knownBrowserPackages = setOf(
@@ -303,13 +295,14 @@ class BlockingAccessibilityService : AccessibilityService() {
         serviceInfo = serviceInfo.apply {
             eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
                 AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
+                AccessibilityEvent.TYPE_VIEW_CLICKED or
                 AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED or
                 AccessibilityEvent.TYPE_VIEW_FOCUSED
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             flags = flags or AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
                 AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
                 AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-            notificationTimeout = 80L
+            notificationTimeout = 20L
         }
     }
 
@@ -354,9 +347,15 @@ class BlockingAccessibilityService : AccessibilityService() {
             if (now - lastLoadTime > cacheTimeoutMillis) refreshData()
 
             val packageName = event.packageName?.toString().orEmpty()
+            if (packageName in settingsPackages &&
+                event.eventType in settingsInterceptionEventTypes &&
+                handleSettingsInterception(event)
+            ) {
+                return
+            }
+
             if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
                 foregroundPackageName = packageName.takeIf(String::isNotBlank)
-                if (handleSettingsInterception(event)) return
                 if (packageName !in browserPackages &&
                     packageName !in limitedWebsiteAppDomains
                 ) {
@@ -633,32 +632,91 @@ class BlockingAccessibilityService : AccessibilityService() {
     private fun handleSettingsInterception(event: AccessibilityEvent): Boolean {
         val packageName = event.packageName?.toString() ?: return false
         if (packageName !in settingsPackages) return false
+        if (AccessibilityProtectionGate.isTemporarilyUnlocked(this)) return false
+
         if (isPomodoroStrictActive) {
             performGlobalAction(GLOBAL_ACTION_BACK)
             launchPomodoroLockScreen()
             return true
         }
 
+        val nowElapsed = SystemClock.elapsedRealtime()
         val className = event.className?.toString().orEmpty()
-        if (criticalClassNames.none { className.contains(it, ignoreCase = true) }) return false
+        val directAccessibilityScreen =
+            AccessibilitySettingsPolicy.classTargetsAccessibility(className)
+        val genericSubSettings = className.contains("SubSettings", ignoreCase = true)
+        val eventMentionsAccessibility =
+            AccessibilitySettingsPolicy.textTargetsAccessibility(eventTextValues(event))
+        val pendingProtection =
+            nowElapsed <= pendingAccessibilityProtectionUntilElapsed
 
-        val eventMentionsApp = event.text.orEmpty().any {
-            it?.toString()?.contains("FocusGuard", ignoreCase = true) == true
-        }
-        if (eventMentionsApp) {
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED &&
+            eventMentionsAccessibility
+        ) {
+            pendingAccessibilityProtectionUntilElapsed =
+                nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
             executeProtectionAction()
             return true
         }
 
+        if (pendingProtection &&
+            event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED
+        ) {
+            executeProtectionAction()
+            return true
+        }
+
+        if (directAccessibilityScreen) {
+            pendingAccessibilityProtectionUntilElapsed =
+                nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
+            executeProtectionAction()
+            return true
+        }
+
+        if (genericSubSettings &&
+            (eventMentionsAccessibility || rootMentionsAccessibility())
+        ) {
+            pendingAccessibilityProtectionUntilElapsed =
+                nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
+            executeProtectionAction()
+            return true
+        }
+
+        return false
+    }
+
+    private fun eventTextValues(event: AccessibilityEvent): List<CharSequence?> {
+        return buildList {
+            addAll(event.text.orEmpty())
+            add(event.contentDescription)
+            event.source?.let { source ->
+                add(source.text)
+                add(source.contentDescription)
+                add(source.viewIdResourceName)
+                recycleSafely(source)
+            }
+        }
+    }
+
+    private fun rootMentionsAccessibility(): Boolean {
         val root = rootInActiveWindow ?: return false
         return try {
-            val nodes = root.findAccessibilityNodeInfosByText("FocusGuard")
-            val found = nodes.isNotEmpty()
-            nodes.forEach(::recycleSafely)
-            if (found) executeProtectionAction()
-            found
+            AccessibilitySettingsPolicy.searchTerms.any { term ->
+                val nodes = root.findAccessibilityNodeInfosByText(term)
+                val found = nodes.any { node ->
+                    AccessibilitySettingsPolicy.textTargetsAccessibility(
+                        listOf(node.text, node.contentDescription, node.viewIdResourceName)
+                    )
+                }
+                nodes.forEach(::recycleSafely)
+                found
+            }
         } catch (error: RuntimeException) {
-            FocusGuardLogger.logError("A11y", "Falha ao inspecionar Configurações", error)
+            FocusGuardLogger.logError(
+                "A11y",
+                "Falha ao identificar tela de Acessibilidade",
+                error
+            )
             false
         } finally {
             recycleSafely(root)
@@ -667,7 +725,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun executeProtectionAction() {
         performGlobalAction(GLOBAL_ACTION_BACK)
-        showToastThrottled("Proteção ativa: ação restrita pelo FocusGuard")
+        showToastThrottled(getString(R.string.accessibility_protection_blocked_toast))
     }
 
     private fun handleBrowserEvent(event: AccessibilityEvent) {
@@ -1015,6 +1073,12 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val SAFE_REDIRECT_URL = "https://www.google.com"
+        private const val SETTINGS_TRANSITION_GUARD_MILLIS = 2_000L
+        private val settingsInterceptionEventTypes = setOf(
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_CLICKED
+        )
         internal const val WEBSITE_BLOCK_NOTICE_DURATION_MILLIS = 1_000L
         const val ACTION_REFRESH_BLOCKING = "com.focusguard.ACTION_REFRESH_BLOCKING"
         const val EXTRA_STRICT_BLOCK = "STRICT_BLOCK"

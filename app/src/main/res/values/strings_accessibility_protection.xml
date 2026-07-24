@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_protection_title">Proteção da Acessibilidade</string>
+    <string name="accessibility_protection_subtitle">Exige senha e libera as configurações por apenas 10 minutos</string>
+    <string name="accessibility_unlock_active">Acesso liberado por aproximadamente %1$d min</string>
+    <string name="accessibility_unlock_dialog_title">Liberar Acessibilidade por 10 minutos</string>
+    <string name="accessibility_unlock_dialog_description">A liberação exige a senha do FocusGuard. Data, hora e fuso horário precisam estar no modo automático. A janela fecha automaticamente após 10 minutos ou ao reiniciar o aparelho.</string>
+    <string name="accessibility_unlock_password_label">Senha do FocusGuard</string>
+    <string name="accessibility_unlock_action">Liberar por 10 minutos</string>
+    <string name="accessibility_unlock_cancel">Cancelar</string>
+    <string name="accessibility_unlock_wrong_password">Senha incorreta.</string>
+    <string name="accessibility_unlock_password_required">Crie uma senha em Gerenciar senhas antes de liberar a Acessibilidade.</string>
+    <string name="accessibility_unlock_auto_time_required">Ative data, hora e fuso horário automáticos para liberar.</string>
+    <string name="accessibility_unlock_open_date_settings">Abrir data e hora</string>
+    <string name="accessibility_unlock_manage_passwords">Gerenciar senhas</string>
+    <string name="accessibility_protection_blocked_toast">Proteção ativa: libere a Acessibilidade por 10 minutos dentro do FocusGuard.</string>
+</resources>
