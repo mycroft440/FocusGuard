@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
+import android.os.UserManager
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -58,5 +59,32 @@ class DeviceOwnerManagerTest {
         assertThat(adminInfo.usesPolicy(DeviceAdminInfo.USES_POLICY_DISABLE_CAMERA)).isFalse()
         assertThat(adminInfo.usesPolicy(DeviceAdminInfo.USES_POLICY_DISABLE_KEYGUARD_FEATURES))
             .isFalse()
+    }
+
+    @Test
+    fun `android 13 app control policies exclude grant admin restriction`() {
+        val restrictions = DeviceOwnerManager.appControlRestrictionsForSdk(33)
+
+        assertThat(restrictions).contains(UserManager.DISALLOW_UNINSTALL_APPS)
+        assertThat(restrictions).contains(UserManager.DISALLOW_APPS_CONTROL)
+        assertThat(restrictions).doesNotContain(UserManager.DISALLOW_GRANT_ADMIN)
+    }
+
+    @Test
+    fun `android 14 app control policies include grant admin restriction`() {
+        val restrictions = DeviceOwnerManager.appControlRestrictionsForSdk(34)
+
+        assertThat(restrictions).contains(UserManager.DISALLOW_GRANT_ADMIN)
+    }
+
+    @Test
+    fun `full shield keeps critical restrictions`() {
+        val restrictions = DeviceOwnerManager.allShieldRestrictionsForSdk(34)
+
+        assertThat(restrictions).contains(UserManager.DISALLOW_FACTORY_RESET)
+        assertThat(restrictions).contains(UserManager.DISALLOW_SAFE_BOOT)
+        assertThat(restrictions).contains(UserManager.DISALLOW_CONFIG_DATE_TIME)
+        assertThat(restrictions).contains(UserManager.DISALLOW_UNINSTALL_APPS)
+        assertThat(restrictions).contains(UserManager.DISALLOW_APPS_CONTROL)
     }
 }
