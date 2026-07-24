@@ -178,7 +178,17 @@ object DeviceOwnerMaintenanceGate {
     }
 
     private fun preferences(context: Context) =
-        context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+        storageContext(context).getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+
+    private fun storageContext(context: Context): Context {
+        val appContext = context.applicationContext
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+            runCatching { appContext.createDeviceProtectedStorageContext() }
+                .getOrDefault(appContext)
+        } else {
+            appContext
+        }
+    }
 
     private fun readBootCount(context: Context): Int {
         return runCatching {
