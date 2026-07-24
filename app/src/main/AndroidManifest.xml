@@ -125,6 +125,10 @@
             </intent-filter>
         </receiver>
 
+        <receiver
+            android:name=".receiver.DeviceOwnerMaintenanceExpiryReceiver"
+            android:exported="false" />
+
         <service
             android:name=".service.BlockingAccessibilityService"
             android:directBootAware="true"
