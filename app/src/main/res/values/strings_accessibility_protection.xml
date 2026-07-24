@@ -1,10 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="accessibility_protection_title">Proteção da Acessibilidade</string>
-    <string name="accessibility_protection_subtitle">Exige senha e libera as configurações por apenas 10 minutos</string>
+    <string name="accessibility_protection_subtitle">Exige senha de manutenção e libera por apenas 10 minutos</string>
     <string name="accessibility_unlock_active">Acesso liberado por aproximadamente %1$d min</string>
     <string name="accessibility_unlock_dialog_title">Liberar Acessibilidade por 10 minutos</string>
     <string name="accessibility_unlock_dialog_description">A liberação exige a senha do FocusGuard. Data, hora e fuso horário precisam estar no modo automático. A janela fecha automaticamente após 10 minutos ou ao reiniciar o aparelho.</string>
+    <string name="accessibility_unlock_dialog_description_maintenance">Use a senha separada de manutenção ou o código de recuperação. Data, hora e fuso horário precisam estar automáticos. A janela termina após 10 minutos ou ao reiniciar.</string>
     <string name="accessibility_unlock_password_label">Senha do FocusGuard</string>
     <string name="accessibility_unlock_action">Liberar por 10 minutos</string>
     <string name="accessibility_unlock_cancel">Cancelar</string>
@@ -14,4 +15,33 @@
     <string name="accessibility_unlock_open_date_settings">Abrir data e hora</string>
     <string name="accessibility_unlock_manage_passwords">Gerenciar senhas</string>
     <string name="accessibility_protection_blocked_toast">Proteção ativa: libere a Acessibilidade por 10 minutos dentro do FocusGuard.</string>
+
+    <string name="accessibility_maintenance_title">Senha de manutenção</string>
+    <string name="accessibility_maintenance_configured">Configurada separadamente da senha principal</string>
+    <string name="accessibility_maintenance_not_configured">Não configurada — necessária para liberar a Acessibilidade</string>
+    <string name="accessibility_maintenance_create">Criar senha de manutenção</string>
+    <string name="accessibility_maintenance_manage">Gerenciar senha de manutenção</string>
+    <string name="accessibility_maintenance_create_title">Criar senha de manutenção</string>
+    <string name="accessibility_maintenance_change_title">Alterar senha de manutenção</string>
+    <string name="accessibility_maintenance_description">Esta senha é exclusiva para manutenção da Acessibilidade e não substitui as senhas normais do FocusGuard. Somente verificadores criptográficos são armazenados.</string>
+    <string name="accessibility_maintenance_current_label">Senha atual ou código de recuperação</string>
+    <string name="accessibility_maintenance_new_label">Nova senha de manutenção</string>
+    <string name="accessibility_maintenance_confirm_label">Confirmar nova senha</string>
+    <string name="accessibility_maintenance_credential_label">Senha de manutenção ou código de recuperação</string>
+    <string name="accessibility_maintenance_save_action">Salvar</string>
+    <string name="accessibility_maintenance_required">Configure primeiro uma senha de manutenção.</string>
+    <string name="accessibility_maintenance_invalid">Senha de manutenção ou código de recuperação inválido.</string>
+    <string name="accessibility_maintenance_password_too_short">Use pelo menos %1$d caracteres.</string>
+    <string name="accessibility_maintenance_passwords_differ">As senhas não coincidem.</string>
+    <string name="accessibility_maintenance_save_failed">Não foi possível salvar a senha de manutenção.</string>
+
+    <string name="accessibility_recovery_title">Guarde o código de recuperação</string>
+    <string name="accessibility_recovery_description">Este código permite uma recuperação controlada caso a senha de manutenção seja esquecida. Anote-o em local seguro:</string>
+    <string name="accessibility_recovery_once_warning">O código é mostrado somente agora. Ao ser utilizado, ele é consumido e a senha de manutenção é apagada, exigindo uma nova configuração.</string>
+    <string name="accessibility_recovery_saved_action">Já guardei</string>
+    <string name="accessibility_recovery_consumed_toast">Código de recuperação utilizado. Crie uma nova senha de manutenção após concluir.</string>
+
+    <string name="device_owner_status_active">Device Owner ativo — proteção oficial reforçada</string>
+    <string name="device_admin_status_only">Somente Administrador do dispositivo — proteção limitada pelo Android</string>
+    <string name="device_owner_status_inactive">Administrador e Device Owner inativos</string>
 </resources>
