@@ -1,7 +1,9 @@
 package com.focusguard.ui.compose.screens
 
 import android.widget.Toast
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -18,15 +20,19 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.admin.DeviceOwnerProtectionAuditor
+import com.focusguard.admin.DeviceOwnerProtectionDiagnostics
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.DeviceOwnerMaintenanceGate
 import kotlinx.coroutines.delay
@@ -39,6 +45,7 @@ internal fun DeviceOwnerMaintenanceDialog(
 ) {
     val context = LocalContext.current
     val manager = remember(context) { DeviceOwnerManager.getInstance(context) }
+    val auditor = remember(context) { DeviceOwnerProtectionAuditor(context) }
     val credentialManager = remember(context) { DeactivationCredentialManager(context) }
 
     var credential by remember { mutableStateOf("") }
@@ -61,6 +68,9 @@ internal fun DeviceOwnerMaintenanceDialog(
     val maintenanceActive = remainingMillis > 0L
     val remainingMinutes = ceil(remainingMillis / 60_000.0).toInt().coerceAtLeast(1)
     val credentialConfigured = credentialManager.hasCredential()
+    val diagnostics = remember(revision, clockTick / 5, isDeviceOwner) {
+        auditor.inspect()
+    }
 
     val invalidCredential = stringResource(R.string.device_owner_maintenance_invalid_credential)
     val missingCredential = stringResource(R.string.device_owner_maintenance_credential_missing)
@@ -69,12 +79,16 @@ internal fun DeviceOwnerMaintenanceDialog(
     val openedMessage = stringResource(R.string.device_owner_maintenance_opened)
     val closedMessage = stringResource(R.string.device_owner_maintenance_closed)
 
+    fun refreshState() {
+        revision++
+        onStateChanged()
+    }
+
     fun handleUnlockResult(result: DeviceOwnerMaintenanceGate.UnlockResult) {
         errorMessage = when (result) {
             DeviceOwnerMaintenanceGate.UnlockResult.UNLOCKED -> {
                 credential = ""
-                revision++
-                onStateChanged()
+                refreshState()
                 Toast.makeText(context, openedMessage, Toast.LENGTH_SHORT).show()
                 null
             }
@@ -99,8 +113,7 @@ internal fun DeviceOwnerMaintenanceDialog(
                     onClick = {
                         showRevokeConfirmation = false
                         manager.renounceDeviceOwner()
-                        revision++
-                        onStateChanged()
+                        refreshState()
                         onDismiss()
                     }
                 ) {
@@ -124,6 +137,17 @@ internal fun DeviceOwnerMaintenanceDialog(
         title = { Text(stringResource(R.string.device_owner_maintenance_title)) },
         text = {
             Column {
+                DeviceOwnerDiagnosticsSection(
+                    diagnostics = diagnostics,
+                    maintenanceActive = maintenanceActive,
+                    onReapply = {
+                        manager.applyNuclearShield()
+                        refreshState()
+                    }
+                )
+
+                Spacer(Modifier.height(16.dp))
+
                 when {
                     !isDeviceOwner -> {
                         Text(
@@ -151,8 +175,7 @@ internal fun DeviceOwnerMaintenanceDialog(
                             modifier = Modifier.fillMaxWidth(),
                             onClick = {
                                 manager.endMaintenanceNow()
-                                revision++
-                                onStateChanged()
+                                refreshState()
                                 Toast.makeText(
                                     context,
                                     closedMessage,
@@ -262,4 +285,130 @@ internal fun DeviceOwnerMaintenanceDialog(
             }
         }
     )
+}
+
+@Composable
+private fun DeviceOwnerDiagnosticsSection(
+    diagnostics: DeviceOwnerProtectionDiagnostics,
+    maintenanceActive: Boolean,
+    onReapply: () -> Unit
+) {
+    Text(
+        text = stringResource(R.string.device_owner_diagnostics_title),
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold
+    )
+    Spacer(Modifier.height(6.dp))
+
+    val summary = when {
+        !diagnostics.deviceOwnerActive -> stringResource(
+            R.string.device_owner_diagnostics_not_owner
+        )
+        maintenanceActive -> stringResource(R.string.device_owner_diagnostics_maintenance)
+        diagnostics.isFullyProtected -> stringResource(R.string.device_owner_diagnostics_verified)
+        else -> stringResource(
+            R.string.device_owner_diagnostics_failed,
+            diagnostics.failedChecks
+        )
+    }
+    Text(
+        text = summary,
+        color = when {
+            diagnostics.isFullyProtected -> MaterialTheme.colorScheme.primary
+            maintenanceActive -> MaterialTheme.colorScheme.secondary
+            else -> MaterialTheme.colorScheme.error
+        },
+        fontSize = 12.sp
+    )
+
+    Spacer(Modifier.height(8.dp))
+    DiagnosticRow(
+        stringResource(R.string.device_owner_diagnostics_device_owner),
+        diagnostics.deviceOwnerActive
+    )
+    DiagnosticRow(
+        stringResource(R.string.device_owner_diagnostics_uninstall),
+        diagnostics.uninstallBlocked,
+        relaxedByMaintenance = maintenanceActive
+    )
+    DiagnosticRow(
+        stringResource(R.string.device_owner_diagnostics_user_control),
+        diagnostics.userControlDisabled,
+        relaxedByMaintenance = maintenanceActive
+    )
+    DiagnosticRow(
+        stringResource(R.string.device_owner_diagnostics_factory_reset),
+        diagnostics.factoryResetBlocked
+    )
+    DiagnosticRow(
+        stringResource(R.string.device_owner_diagnostics_safe_boot),
+        diagnostics.safeBootBlocked
+    )
+    DiagnosticRow(
+        stringResource(R.string.device_owner_diagnostics_date_time),
+        diagnostics.dateTimeChangesBlocked
+    )
+    DiagnosticRow(
+        stringResource(R.string.device_owner_diagnostics_grant_admin),
+        diagnostics.grantAdminBlocked,
+        relaxedByMaintenance = maintenanceActive
+    )
+    DiagnosticRow(
+        stringResource(R.string.device_owner_diagnostics_auto_time),
+        diagnostics.automaticTimeEnabled
+    )
+    DiagnosticRow(
+        stringResource(R.string.device_owner_diagnostics_auto_timezone),
+        diagnostics.automaticTimeZoneEnabled
+    )
+
+    if (diagnostics.deviceOwnerActive && !maintenanceActive && !diagnostics.isFullyProtected) {
+        Spacer(Modifier.height(6.dp))
+        TextButton(
+            modifier = Modifier.fillMaxWidth(),
+            onClick = onReapply
+        ) {
+            Text(stringResource(R.string.device_owner_diagnostics_reapply))
+        }
+    }
+}
+
+@Composable
+private fun DiagnosticRow(
+    label: String,
+    value: Boolean?,
+    relaxedByMaintenance: Boolean = false
+) {
+    val relaxed = relaxedByMaintenance && value == false
+    val statusText = when {
+        relaxed -> stringResource(R.string.device_owner_diagnostics_relaxed)
+        value == true -> stringResource(R.string.device_owner_diagnostics_ok)
+        value == false -> stringResource(R.string.device_owner_diagnostics_failed_state)
+        else -> stringResource(R.string.device_owner_diagnostics_unsupported)
+    }
+    val statusColor = when {
+        relaxed -> MaterialTheme.colorScheme.secondary
+        value == true -> MaterialTheme.colorScheme.primary
+        value == false -> MaterialTheme.colorScheme.error
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.weight(1f),
+            fontSize = 12.sp,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        Text(
+            text = statusText,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = statusColor
+        )
+    }
 }
