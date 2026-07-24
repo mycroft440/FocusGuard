@@ -3,6 +3,7 @@ package com.focusguard.ui.compose.screens.sessions
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.focusguard.repository.AuthRepository
+import com.focusguard.security.DeactivationCredentialManager
 import dagger.hilt.android.lifecycle.HiltViewModel
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
@@ -15,15 +16,21 @@ data class AuthPromptUiState(
     val password: String = "",
     val error: String? = null,
     val isVerifying: Boolean = false,
-    val isAuthenticated: Boolean = false
+    val isAuthenticated: Boolean = false,
+    val usesDeactivationCredential: Boolean = false
 )
 
 @HiltViewModel
 class AuthViewModel @Inject constructor(
-    private val authRepository: AuthRepository
+    private val authRepository: AuthRepository,
+    private val deactivationCredentialManager: DeactivationCredentialManager
 ) : ViewModel() {
 
-    private val _uiState = MutableStateFlow(AuthPromptUiState())
+    private val _uiState = MutableStateFlow(
+        AuthPromptUiState(
+            usesDeactivationCredential = deactivationCredentialManager.hasCredential()
+        )
+    )
     val uiState: StateFlow<AuthPromptUiState> = _uiState.asStateFlow()
 
     fun updatePassword(text: String) {
@@ -34,24 +41,37 @@ class AuthViewModel @Inject constructor(
         val password = _uiState.value.password
         if (password.isEmpty() || _uiState.value.isVerifying) return
 
-        // Atualiza antes de lançar a coroutine para que a UI desabilite o botão
-        // imediatamente e não permita duas verificações simultâneas.
         _uiState.value = _uiState.value.copy(isVerifying = true, error = null)
 
         viewModelScope.launch {
             try {
-                val success = authRepository.verifyPassword(password)
+                val dedicatedCredentialConfigured =
+                    deactivationCredentialManager.hasCredential()
+                val success = if (dedicatedCredentialConfigured) {
+                    when (deactivationCredentialManager.verify(password)) {
+                        DeactivationCredentialManager.VerificationResult.PASSWORD_ACCEPTED,
+                        DeactivationCredentialManager.VerificationResult.RECOVERY_ACCEPTED -> true
+                        DeactivationCredentialManager.VerificationResult.REJECTED,
+                        DeactivationCredentialManager.VerificationResult.NOT_CONFIGURED -> false
+                    }
+                } else {
+                    authRepository.verifyPassword(password)
+                }
+
                 _uiState.value = if (success) {
                     _uiState.value.copy(
                         isVerifying = false,
                         isAuthenticated = true,
-                        error = null
+                        error = null,
+                        usesDeactivationCredential =
+                            deactivationCredentialManager.hasCredential()
                     )
                 } else {
                     _uiState.value.copy(
                         isVerifying = false,
                         isAuthenticated = false,
-                        error = errorMessage
+                        error = errorMessage,
+                        usesDeactivationCredential = dedicatedCredentialConfigured
                     )
                 }
             } catch (cancelled: CancellationException) {
@@ -60,7 +80,9 @@ class AuthViewModel @Inject constructor(
                 _uiState.value = _uiState.value.copy(
                     isVerifying = false,
                     isAuthenticated = false,
-                    error = errorMessage
+                    error = errorMessage,
+                    usesDeactivationCredential =
+                        deactivationCredentialManager.hasCredential()
                 )
             }
         }
@@ -75,6 +97,8 @@ class AuthViewModel @Inject constructor(
     }
 
     fun reset() {
-        _uiState.value = AuthPromptUiState()
+        _uiState.value = AuthPromptUiState(
+            usesDeactivationCredential = deactivationCredentialManager.hasCredential()
+        )
     }
 }
