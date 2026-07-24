@@ -1,5 +1,7 @@
 package com.focusguard.ui.compose.screens
 
+import android.content.Intent
+import android.provider.Settings
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -105,7 +107,12 @@ fun SettingsScreen(
                 showAccessibilityUnlockDialog = false
                 showMaintenanceCredentialDialog = true
             },
-            onUnlocked = { showAccessibilityUnlockDialog = false }
+            onUnlocked = {
+                showAccessibilityUnlockDialog = false
+                runCatching {
+                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
+                }
+            }
         )
     }
 
