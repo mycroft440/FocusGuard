@@ -83,8 +83,10 @@ fun SettingsScreen(
     var showAccessibilityUnlockDialog by remember { mutableStateOf(false) }
     var showMaintenanceCredentialDialog by remember { mutableStateOf(false) }
     var showDeactivationCredentialDialog by remember { mutableStateOf(false) }
+    var showDeviceOwnerMaintenanceDialog by remember { mutableStateOf(false) }
     var credentialRevision by remember { mutableIntStateOf(0) }
     var deactivationCredentialRevision by remember { mutableIntStateOf(0) }
+    var deviceOwnerRevision by remember { mutableIntStateOf(0) }
 
     val isBlockingActive by blockingSessionManager.isBlockingActiveFlow.collectAsState(
         initial = false
@@ -116,9 +118,30 @@ fun SettingsScreen(
             else -> R.string.deactivation_password_not_configured
         }
     )
+    val isDeviceOwnerActive = remember(deviceOwnerRevision) {
+        deviceOwnerManager.isDeviceOwnerActive()
+    }
+    val deviceOwnerMaintenanceRemaining = remember(deviceOwnerRevision) {
+        deviceOwnerManager.maintenanceRemainingMillis()
+    }
+    val deviceOwnerMaintenanceSubtitle = when {
+        !isDeviceOwnerActive -> stringResource(
+            R.string.device_owner_maintenance_owner_required
+        )
+        deviceOwnerMaintenanceRemaining > 0L -> {
+            val remainingMinutes = ceil(
+                deviceOwnerMaintenanceRemaining / 60_000.0
+            ).toInt().coerceAtLeast(1)
+            stringResource(
+                R.string.device_owner_maintenance_active_subtitle,
+                remainingMinutes
+            )
+        }
+        else -> stringResource(R.string.device_owner_maintenance_subtitle)
+    }
     val deviceOwnerSubtitle = stringResource(
         when {
-            deviceOwnerManager.isDeviceOwnerActive() -> R.string.device_owner_status_active
+            isDeviceOwnerActive -> R.string.device_owner_status_active
             deviceOwnerManager.isDeviceAdminActive() -> R.string.device_admin_status_only
             else -> R.string.device_owner_status_inactive
         }
@@ -152,6 +175,13 @@ fun SettingsScreen(
             managementLocked = isBlockingActive,
             onDismiss = { showDeactivationCredentialDialog = false },
             onCredentialChanged = { deactivationCredentialRevision++ }
+        )
+    }
+
+    if (showDeviceOwnerMaintenanceDialog) {
+        DeviceOwnerMaintenanceDialog(
+            onDismiss = { showDeviceOwnerMaintenanceDialog = false },
+            onStateChanged = { deviceOwnerRevision++ }
         )
     }
 
@@ -220,6 +250,14 @@ fun SettingsScreen(
             FocusGuardSectionHeader(
                 stringResource(R.string.settings_category_danger),
                 color = DangerRed
+            )
+            SettingsItem(
+                Icons.Default.Security,
+                stringResource(R.string.device_owner_maintenance_title),
+                deviceOwnerMaintenanceSubtitle,
+                iconTint = DangerRed,
+                titleColor = DangerRed,
+                onClick = { showDeviceOwnerMaintenanceDialog = true }
             )
             SettingsItem(
                 Icons.Default.Warning,
