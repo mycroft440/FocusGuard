@@ -1,6 +1,7 @@
 package com.focusguard
 
 import android.app.Application
+import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.utils.AccessibilityStateMonitor
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.HiltAndroidApp
@@ -8,20 +9,20 @@ import dagger.hilt.android.HiltAndroidApp
 /**
  * Application class para o FocusGuard.
  *
- * `@HiltAndroidApp` habilita injeção de dependência em toda a árvore de componentes
- * do app (Activities, Fragments, Services, ViewModels). Antes da Fase 3, os managers
- * (PomodoroManager, AuthManager, BlockingSessionManager, DeviceOwnerManager) e
- * AppDatabase eram instanciados manualmente em cada tela — agora são fornecidos
- * pelo Hilt a partir dos modules em com.focusguard.di.
+ * `@HiltAndroidApp` habilita injeção de dependência em toda a árvore de componentes.
  */
 @HiltAndroidApp
 class FocusGuardApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         FocusGuardLogger.init(this)
+
+        // Reaplica as políticas oficiais do Android sempre que o processo inicia.
+        // Se uma janela de manutenção válida estiver ativa, o manager preserva apenas
+        // as liberações temporárias e mantém as proteções críticas.
+        DeviceOwnerManager.getInstance(this).applyNuclearShield()
+
         // Inicia monitor de desativação do Accessibility Service.
-        // Detecta bypass via adb, App Info → Force Stop, etc., e lança
-        // AccessibilityDisabledActivity para forçar reativação.
         AccessibilityStateMonitor.start(this)
     }
 }
