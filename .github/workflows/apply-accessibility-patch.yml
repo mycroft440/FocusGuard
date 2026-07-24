@@ -1,36 +1,26 @@
-name: Apply Accessibility Service Patch
+name: Remove Temporary Accessibility Workflow
 
 on:
   push:
     branches: ["agent/accessibility-protection-window"]
     paths:
-      - ".github/patches/accessibility-service.patch"
-  pull_request:
-    branches: ["main"]
-    paths:
-      - ".github/patches/accessibility-service.patch"
+      - ".github/workflows/apply-accessibility-patch.yml"
 
 permissions:
   contents: write
 
 jobs:
-  apply-patch:
+  cleanup:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/accessibility-protection-window
-          fetch-depth: 0
-      - name: Validate and apply patch
+      - name: Remove temporary workflow
         run: |
-          git apply --check .github/patches/accessibility-service.patch
-          git apply .github/patches/accessibility-service.patch
-          rm .github/patches/accessibility-service.patch
-      - name: Commit patched service
-        run: |
+          rm .github/workflows/apply-accessibility-patch.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt .github/patches/accessibility-service.patch
-          git commit -m "Apply accessibility service protection"
+          git add .github/workflows/apply-accessibility-patch.yml
+          git commit -m "Remove temporary accessibility workflow"
           git push origin HEAD:agent/accessibility-protection-window
