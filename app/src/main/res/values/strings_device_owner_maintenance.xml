@@ -21,4 +21,24 @@
     <string name="device_owner_maintenance_opened">Manutenção liberada por 10 minutos.</string>
     <string name="device_owner_maintenance_closed">Proteção completa reaplicada.</string>
     <string name="device_owner_maintenance_required_to_revoke">Abra a manutenção por senha ou pela janela do dia 15 antes de revogar o Device Owner.</string>
+
+    <string name="device_owner_diagnostics_title">Diagnóstico da proteção</string>
+    <string name="device_owner_diagnostics_verified">Proteção completa confirmada pelo Android.</string>
+    <string name="device_owner_diagnostics_failed">%1$d verificações de proteção falharam.</string>
+    <string name="device_owner_diagnostics_maintenance">Manutenção ativa: algumas proteções estão liberadas temporariamente.</string>
+    <string name="device_owner_diagnostics_not_owner">Administrador comum não impede a desativação pelo sistema. Provisione o FocusGuard como Device Owner.</string>
+    <string name="device_owner_diagnostics_device_owner">Device Owner real</string>
+    <string name="device_owner_diagnostics_uninstall">Desinstalação do FocusGuard bloqueada</string>
+    <string name="device_owner_diagnostics_user_control">Forçar parada e limpar dados bloqueados</string>
+    <string name="device_owner_diagnostics_factory_reset">Reset de fábrica pelas configurações bloqueado</string>
+    <string name="device_owner_diagnostics_safe_boot">Modo de segurança bloqueado</string>
+    <string name="device_owner_diagnostics_date_time">Alteração manual de data e hora bloqueada</string>
+    <string name="device_owner_diagnostics_grant_admin">Concessão de novos administradores bloqueada</string>
+    <string name="device_owner_diagnostics_auto_time">Data e hora automáticas</string>
+    <string name="device_owner_diagnostics_auto_timezone">Fuso horário automático</string>
+    <string name="device_owner_diagnostics_ok">Ativo</string>
+    <string name="device_owner_diagnostics_failed_state">Falhou</string>
+    <string name="device_owner_diagnostics_unsupported">Não verificável</string>
+    <string name="device_owner_diagnostics_relaxed">Liberado na manutenção</string>
+    <string name="device_owner_diagnostics_reapply">Reaplicar e verificar</string>
 </resources>
