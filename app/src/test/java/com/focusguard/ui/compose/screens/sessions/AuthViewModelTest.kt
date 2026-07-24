@@ -1,9 +1,11 @@
 package com.focusguard.ui.compose.screens.sessions
 
 import com.focusguard.repository.AuthRepository
+import com.focusguard.security.DeactivationCredentialManager
 import com.google.common.truth.Truth.assertThat
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -15,31 +17,21 @@ import org.junit.After
 import org.junit.Before
 import org.junit.Test
 
-/**
- * Testes unitários para [AuthViewModel].
- *
- * Valida:
- *  - Estado inicial vazio
- *  - updatePassword atualiza o campo e limpa erro
- *  - verifyPassword com senha correta seta isAuthenticated = true
- *  - verifyPassword com senha errada seta erro
- *  - verifyPassword com senha vazia não faz nada
- *  - isVerifying transiciona durante verificação
- *  - onAuthenticatedHandled reseta a flag
- *  - reset limpa todo o estado
- *  - setError define mensagem de erro (ex: biometria falhou)
- */
+/** Testes unitários para [AuthViewModel]. */
 @OptIn(ExperimentalCoroutinesApi::class)
 class AuthViewModelTest {
 
     private val authRepository: AuthRepository = mockk(relaxed = true)
+    private val deactivationCredentialManager: DeactivationCredentialManager =
+        mockk(relaxed = true)
     private val testDispatcher = StandardTestDispatcher()
     private lateinit var viewModel: AuthViewModel
 
     @Before
     fun setUp() {
         Dispatchers.setMain(testDispatcher)
-        viewModel = AuthViewModel(authRepository)
+        every { deactivationCredentialManager.hasCredential() } returns false
+        viewModel = AuthViewModel(authRepository, deactivationCredentialManager)
     }
 
     @After
@@ -54,6 +46,7 @@ class AuthViewModelTest {
         assertThat(state.error).isNull()
         assertThat(state.isVerifying).isFalse()
         assertThat(state.isAuthenticated).isFalse()
+        assertThat(state.usesDeactivationCredential).isFalse()
     }
 
     @Test
@@ -72,18 +65,55 @@ class AuthViewModelTest {
     }
 
     @Test
-    fun `verifyPassword with correct password sets isAuthenticated true`() = runTest(testDispatcher) {
-        val password = "senhaCorreta"
-        coEvery { authRepository.verifyPassword(password) } returns true
+    fun `verifyPassword with correct password sets isAuthenticated true`() =
+        runTest(testDispatcher) {
+            val password = "senhaCorreta"
+            coEvery { authRepository.verifyPassword(password) } returns true
 
-        viewModel.updatePassword(password)
-        viewModel.verifyPassword("errorMsg")
-        testScheduler.advanceUntilIdle()
+            viewModel.updatePassword(password)
+            viewModel.verifyPassword("errorMsg")
+            testScheduler.advanceUntilIdle()
 
-        assertThat(viewModel.uiState.value.isAuthenticated).isTrue()
-        assertThat(viewModel.uiState.value.isVerifying).isFalse()
-        assertThat(viewModel.uiState.value.error).isNull()
-    }
+            assertThat(viewModel.uiState.value.isAuthenticated).isTrue()
+            assertThat(viewModel.uiState.value.isVerifying).isFalse()
+            assertThat(viewModel.uiState.value.error).isNull()
+        }
+
+    @Test
+    fun `configured deactivation password is used instead of general password`() =
+        runTest(testDispatcher) {
+            every { deactivationCredentialManager.hasCredential() } returns true
+            every {
+                deactivationCredentialManager.verify("senha-desativacao")
+            } returns DeactivationCredentialManager.VerificationResult.PASSWORD_ACCEPTED
+            viewModel = AuthViewModel(authRepository, deactivationCredentialManager)
+
+            viewModel.updatePassword("senha-desativacao")
+            viewModel.verifyPassword("Senha incorreta")
+            testScheduler.advanceUntilIdle()
+
+            assertThat(viewModel.uiState.value.isAuthenticated).isTrue()
+            assertThat(viewModel.uiState.value.usesDeactivationCredential).isTrue()
+            coVerify(exactly = 0) { authRepository.verifyPassword(any()) }
+        }
+
+    @Test
+    fun `wrong configured deactivation password does not fall back to general password`() =
+        runTest(testDispatcher) {
+            every { deactivationCredentialManager.hasCredential() } returns true
+            every {
+                deactivationCredentialManager.verify("senha-errada")
+            } returns DeactivationCredentialManager.VerificationResult.REJECTED
+            viewModel = AuthViewModel(authRepository, deactivationCredentialManager)
+
+            viewModel.updatePassword("senha-errada")
+            viewModel.verifyPassword("Senha incorreta")
+            testScheduler.advanceUntilIdle()
+
+            assertThat(viewModel.uiState.value.isAuthenticated).isFalse()
+            assertThat(viewModel.uiState.value.error).isEqualTo("Senha incorreta")
+            coVerify(exactly = 0) { authRepository.verifyPassword(any()) }
+        }
 
     @Test
     fun `verifyPassword with wrong password sets error`() = runTest(testDispatcher) {
@@ -104,39 +134,37 @@ class AuthViewModelTest {
         viewModel.updatePassword("")
         viewModel.verifyPassword("errorMsg")
 
-        // Não chama o repository
         coVerify(exactly = 0) { authRepository.verifyPassword(any()) }
         assertThat(viewModel.uiState.value.isAuthenticated).isFalse()
         assertThat(viewModel.uiState.value.error).isNull()
     }
 
     @Test
-    fun `verifyPassword delegates to repository with correct password`() = runTest(testDispatcher) {
-        val password = "minhaSenha"
-        coEvery { authRepository.verifyPassword(password) } returns true
+    fun `verifyPassword delegates to repository with correct password`() =
+        runTest(testDispatcher) {
+            val password = "minhaSenha"
+            coEvery { authRepository.verifyPassword(password) } returns true
 
-        viewModel.updatePassword(password)
-        viewModel.verifyPassword("errorMsg")
-        testScheduler.advanceUntilIdle()
+            viewModel.updatePassword(password)
+            viewModel.verifyPassword("errorMsg")
+            testScheduler.advanceUntilIdle()
 
-        coVerify(exactly = 1) { authRepository.verifyPassword(password) }
-    }
+            coVerify(exactly = 1) { authRepository.verifyPassword(password) }
+        }
 
     @Test
-    fun `verifyPassword sets isVerifying true during verification`() = runTest(testDispatcher) {
-        val password = "senha"
-        coEvery { authRepository.verifyPassword(password) } returns true
+    fun `verifyPassword sets isVerifying true during verification`() =
+        runTest(testDispatcher) {
+            val password = "senha"
+            coEvery { authRepository.verifyPassword(password) } returns true
 
-        viewModel.updatePassword(password)
-        viewModel.verifyPassword("errorMsg")
+            viewModel.updatePassword(password)
+            viewModel.verifyPassword("errorMsg")
 
-        // Antes de advanceUntilIdle, isVerifying deve ser true
-        assertThat(viewModel.uiState.value.isVerifying).isTrue()
-
-        testScheduler.advanceUntilIdle()
-
-        assertThat(viewModel.uiState.value.isVerifying).isFalse()
-    }
+            assertThat(viewModel.uiState.value.isVerifying).isTrue()
+            testScheduler.advanceUntilIdle()
+            assertThat(viewModel.uiState.value.isVerifying).isFalse()
+        }
 
     @Test
     fun `verifyPassword handles exception from repository`() = runTest(testDispatcher) {
@@ -154,17 +182,13 @@ class AuthViewModelTest {
 
     @Test
     fun `onAuthenticatedHandled resets isAuthenticated flag`() = runTest(testDispatcher) {
-        // Setup: authenticate first
         coEvery { authRepository.verifyPassword(any()) } returns true
         viewModel.updatePassword("senha")
         viewModel.verifyPassword("errorMsg")
         testScheduler.advanceUntilIdle()
         assertThat(viewModel.uiState.value.isAuthenticated).isTrue()
 
-        // Action
         viewModel.onAuthenticatedHandled()
-
-        // Assert
         assertThat(viewModel.uiState.value.isAuthenticated).isFalse()
     }
 
@@ -176,7 +200,6 @@ class AuthViewModelTest {
 
     @Test
     fun `reset clears all state`() = runTest(testDispatcher) {
-        // Setup: populate state
         coEvery { authRepository.verifyPassword(any()) } returns false
         viewModel.updatePassword("senha")
         viewModel.verifyPassword("erro")
@@ -184,10 +207,8 @@ class AuthViewModelTest {
         assertThat(viewModel.uiState.value.password).isNotEmpty()
         assertThat(viewModel.uiState.value.error).isNotNull()
 
-        // Action
         viewModel.reset()
 
-        // Assert
         val state = viewModel.uiState.value
         assertThat(state.password).isEmpty()
         assertThat(state.error).isNull()
