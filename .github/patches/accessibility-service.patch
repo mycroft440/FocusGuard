@@ -86,7 +86,7 @@
          val className = event.className?.toString().orEmpty()
 -        if (criticalClassNames.none { className.contains(it, ignoreCase = true) }) return false
 -
--        val eventMentionsApp = event.text.orempty().any {
+-        val eventMentionsApp = event.text.orEmpty().any {
 -            it?.toString()?.contains("FocusGuard", ignoreCase = true) == true
 -        }
 -        if (eventMentionsApp) {
