@@ -7,6 +7,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.os.UserManager
 import android.provider.Settings
@@ -14,6 +15,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import com.focusguard.R
+import com.focusguard.security.DeviceOwnerMaintenanceGate
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.CoroutineScope
@@ -90,23 +92,31 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             "com.oplus.dialer"
         )
 
-        private val GLOBAL_SHIELD_RESTRICTIONS = listOf(
+        /** Restrictions that remain active even during the ten-minute maintenance window. */
+        private val ALWAYS_ON_RESTRICTIONS = listOf(
             UserManager.DISALLOW_FACTORY_RESET,
             UserManager.DISALLOW_SAFE_BOOT,
-            UserManager.DISALLOW_UNINSTALL_APPS,
-            UserManager.DISALLOW_APPS_CONTROL
+            UserManager.DISALLOW_CONFIG_DATE_TIME
         )
 
         private val SESSION_RESTRICTIONS = listOf(
             UserManager.DISALLOW_ADD_USER,
-            UserManager.DISALLOW_REMOVE_USER,
-            UserManager.DISALLOW_CONFIG_DATE_TIME
+            UserManager.DISALLOW_REMOVE_USER
         )
+
+        internal fun appControlRestrictionsForSdk(sdkInt: Int): List<String> = buildList {
+            add(UserManager.DISALLOW_UNINSTALL_APPS)
+            add(UserManager.DISALLOW_APPS_CONTROL)
+            if (sdkInt >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                add(UserManager.DISALLOW_GRANT_ADMIN)
+            }
+        }
+
+        internal fun allShieldRestrictionsForSdk(sdkInt: Int): List<String> =
+            ALWAYS_ON_RESTRICTIONS + appControlRestrictionsForSdk(sdkInt)
     }
 
-    /**
-     * Check if Device Owner Mode is active.
-     */
+    /** Check if Device Owner Mode is active. */
     fun isDeviceOwnerActive(): Boolean {
         return try {
             dpm.isDeviceOwnerApp(context.packageName)
@@ -115,15 +125,48 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         }
     }
 
-    /**
-     * Check if Device Admin is active.
-     */
+    /** Check if Device Admin is active. */
     fun isDeviceAdminActive(): Boolean {
         return try {
             dpm.isAdminActive(componentName)
         } catch (_: Exception) {
             false
         }
+    }
+
+    fun isMaintenanceActive(): Boolean =
+        isDeviceOwnerActive() && DeviceOwnerMaintenanceGate.isTemporarilyUnlocked(context)
+
+    fun maintenanceRemainingMillis(): Long =
+        if (isDeviceOwnerActive()) DeviceOwnerMaintenanceGate.remainingMillis(context) else 0L
+
+    fun requestMaintenanceWithCredential(
+        credential: String
+    ): DeviceOwnerMaintenanceGate.UnlockResult {
+        if (!isDeviceOwnerActive()) {
+            return DeviceOwnerMaintenanceGate.UnlockResult.INVALID_CREDENTIAL
+        }
+        val result = DeviceOwnerMaintenanceGate.requestWithCredential(context, credential)
+        if (result == DeviceOwnerMaintenanceGate.UnlockResult.UNLOCKED) {
+            applyNuclearShield()
+        }
+        return result
+    }
+
+    fun requestMonthlyMaintenance(): DeviceOwnerMaintenanceGate.UnlockResult {
+        if (!isDeviceOwnerActive()) {
+            return DeviceOwnerMaintenanceGate.UnlockResult.OUTSIDE_MONTHLY_WINDOW
+        }
+        val result = DeviceOwnerMaintenanceGate.requestMonthlyWindow(context)
+        if (result == DeviceOwnerMaintenanceGate.UnlockResult.UNLOCKED) {
+            applyNuclearShield()
+        }
+        return result
+    }
+
+    fun endMaintenanceNow() {
+        DeviceOwnerMaintenanceGate.revoke(context)
+        applyNuclearShield()
     }
 
     /**
@@ -141,10 +184,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         }
     }
 
-    /**
-     * Opens the manufacturer's Device Admin list when the direct confirmation
-     * activity is unavailable or returns without showing a usable screen.
-     */
+    /** Opens the manufacturer's Device Admin list when the direct screen is unavailable. */
     fun openDeviceAdminSettings(hostContext: Context): Boolean {
         val candidates = listOf(
             Intent(ACTION_DEVICE_ADMIN_SETTINGS),
@@ -179,7 +219,6 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     /**
      * Update the suspended apps list to match exactly the provided list.
      * Apps in the list will be suspended; apps NOT in the list will be unsuspended.
-     * This prevents apps from being "stuck" suspended when a session ends.
      */
     suspend fun syncSuspendedApps(
         allAppsInSessions: List<String>,
@@ -245,9 +284,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         }
     }
 
-    /**
-     * Unblock applications.
-     */
+    /** Unblock applications. */
     fun unblockApps(packageNames: List<String>) {
         if (!isDeviceOwnerActive() || packageNames.isEmpty()) return
 
@@ -282,22 +319,17 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             .apply()
     }
 
-    /**
-     * Lock the device.
-     */
+    /** Lock the device. */
     fun lockDevice() {
         if (!isDeviceAdminActive()) return
         try {
             dpm.lockNow()
         } catch (e: Exception) {
-            com.focusguard.utils.FocusGuardLogger.log("Admin", "Erro ao travar dispositivo: ${e.message}")
+            FocusGuardLogger.log("Admin", "Erro ao travar dispositivo: ${e.message}")
         }
     }
 
-    /**
-     * Configura o Lock Task para o Pomodoro rigoroso.
-     * Em Device Owner, isso impede sair do FocusGuard e permite somente o discador/telefone.
-     */
+    /** Configura o Lock Task para o Pomodoro rigoroso. */
     fun prepareStrictPomodoroLockTaskPackages() {
         if (!isDeviceOwnerActive()) return
         try {
@@ -312,45 +344,41 @@ class DeviceOwnerManager private constructor(private val context: Context) {
                 }
 
             dpm.setLockTaskPackages(componentName, allowedPackages.toTypedArray())
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
                 dpm.setLockTaskFeatures(componentName, DevicePolicyManager.LOCK_TASK_FEATURE_NONE)
             }
             Log.d("FocusGuardAdmin", "Lock Task rigoroso preparado: $allowedPackages")
         } catch (e: Exception) {
-            com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Falha ao preparar Lock Task rigoroso", e)
+            FocusGuardLogger.logError("DeviceOwner", "Falha ao preparar Lock Task rigoroso", e)
         }
     }
 
-    /**
-     * Mantém somente o FocusGuard no allowlist após o fim do Pomodoro rigoroso.
-     */
+    /** Mantém somente o FocusGuard no allowlist após o fim do Pomodoro rigoroso. */
     fun clearStrictPomodoroLockTaskPackages() {
         if (!isDeviceOwnerActive()) return
         try {
             dpm.setLockTaskPackages(componentName, arrayOf(context.packageName))
             Log.d("FocusGuardAdmin", "Lock Task rigoroso limpo")
         } catch (e: Exception) {
-            com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Falha ao limpar Lock Task rigoroso", e)
+            FocusGuardLogger.logError("DeviceOwner", "Falha ao limpar Lock Task rigoroso", e)
         }
     }
 
-    /**
-     * Show Device Owner setup instructions dialog.
-     * The singleton stores applicationContext, so callers should pass the foreground Activity.
-     */
+    /** Show Device Owner setup instructions dialog. */
     fun setAsDeviceOwner(activity: Activity? = null) {
         val hostActivity = activity ?: context as? Activity ?: return
-        val adbCommand = "adb shell dpm set-device-owner ${context.packageName}/com.focusguard.admin.FocusGuardDeviceAdminReceiver"
+        val adbCommand =
+            "adb shell dpm set-device-owner ${context.packageName}/com.focusguard.admin.FocusGuardDeviceAdminReceiver"
 
         val tutorialMessage = "Proteção Nuclear (Device Owner) impede a desinstalação burlando os bloqueios.\n\n" +
-                "Siga os passos abaixo no seu computador:\n\n" +
-                "1. Ative a 'Depuração USB' nas Opções de Desenvolvedor do Android.\n" +
-                "2. Conecte o celular via cabo USB ao PC.\n" +
-                "3. IMPORTANTE: Remova temporariamente TODAS as suas contas Google/Samsung logadas (Ajustes > Contas). Sem isso, o Android recusa o comando.\n" +
-                "4. Baixe ou abra o ADB (Terminal/CMD) no PC.\n" +
-                "5. Cole e rode o comando ADB copiado no botão abaixo.\n" +
-                "6. Se houver sucesso ('Success'), você pode logar nas suas contas novamente.\n\n" +
-                adbCommand
+            "Siga os passos abaixo no seu computador:\n\n" +
+            "1. Ative a 'Depuração USB' nas Opções de Desenvolvedor do Android.\n" +
+            "2. Conecte o celular via cabo USB ao PC.\n" +
+            "3. IMPORTANTE: Remova temporariamente TODAS as suas contas Google/Samsung logadas (Ajustes > Contas). Sem isso, o Android recusa o comando.\n" +
+            "4. Baixe ou abra o ADB (Terminal/CMD) no PC.\n" +
+            "5. Cole e rode o comando ADB copiado no botão abaixo.\n" +
+            "6. Se houver sucesso ('Success'), você pode logar nas suas contas novamente.\n\n" +
+            adbCommand
 
         AlertDialog.Builder(hostActivity)
             .setTitle("Tutorial: Proteção Nuclear (ADB)")
@@ -359,80 +387,136 @@ class DeviceOwnerManager private constructor(private val context: Context) {
                 val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
                 val clip = ClipData.newPlainText("ADB Command", adbCommand)
                 clipboard.setPrimaryClip(clip)
-                Toast.makeText(hostActivity, context.getString(R.string.comando_adb_copiado), Toast.LENGTH_LONG).show()
+                Toast.makeText(
+                    hostActivity,
+                    context.getString(R.string.comando_adb_copiado),
+                    Toast.LENGTH_LONG
+                ).show()
             }
             .setNegativeButton("Fechar", null)
             .show()
     }
 
-    /**
-     * Get Device Owner status information.
-     */
+    /** Get Device Owner status information. */
     fun getStatusInfo(): String {
         val isAdmin = isDeviceAdminActive()
         val isOwner = isDeviceOwnerActive()
+        val maintenance = maintenanceRemainingMillis()
 
         return buildString {
             appendLine("Device Admin Ativo: $isAdmin")
             appendLine("Device Owner Ativo: $isOwner")
+            appendLine("Manutenção restante: ${maintenance / 1_000}s")
         }
     }
 
-    /**
-     * Enforce strict device policies during an active block session.
-     */
+    /** Enforce strict device policies during an active block session. */
     fun enforceBlockingPolicies() {
         if (!isDeviceOwnerActive()) return
         try {
-            // Primeiro aplica o Shield Global (Persistente)
             applyNuclearShield()
-            
-            // Depois aplica as restrições temporárias da sessão
             SESSION_RESTRICTIONS.forEach { dpm.addUserRestriction(componentName, it) }
             Log.d("FocusGuardAdmin", "Políticas de sessão aplicadas")
         } catch (e: Exception) {
-            com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Falha ao aplicar políticas de sessão", e)
+            FocusGuardLogger.logError("DeviceOwner", "Falha ao aplicar políticas de sessão", e)
         }
     }
 
-    /**
-     * Clear strict device policies when block session ends.
-     * Note: Does NOT clear the Nuclear Shield if it's meant to be persistent.
-     */
+    /** Clear strict device policies when block session ends. */
     fun clearBlockingPolicies() {
         if (!isDeviceOwnerActive()) return
         try {
             SESSION_RESTRICTIONS.forEach { dpm.clearUserRestriction(componentName, it) }
             Log.d("FocusGuardAdmin", "Políticas de sessão removidas")
         } catch (e: Exception) {
-            com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Falha ao remover políticas de sessão", e)
+            FocusGuardLogger.logError("DeviceOwner", "Falha ao remover políticas de sessão", e)
         }
     }
 
     /**
-     * Aplica a Proteção Nuclear Permanente (Anti-Desinstalação e Anti-SafeBoot).
-     * Deve ser chamada sempre que o app estiver em execução e for Device Owner.
+     * Applies the persistent Device Owner shield or its reduced maintenance state.
+     * Factory reset, safe boot and manual date/time changes remain blocked during maintenance.
      */
     fun applyNuclearShield() {
         if (!isDeviceOwnerActive()) return
-        try {
-            GLOBAL_SHIELD_RESTRICTIONS.forEach { dpm.addUserRestriction(componentName, it) }
-            Log.d("FocusGuardAdmin", "Nuclear Shield (Permanente) aplicado")
-        } catch (e: Exception) {
-            com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Falha ao aplicar Nuclear Shield", e)
+
+        enforceTrustedAutomaticTime()
+        ALWAYS_ON_RESTRICTIONS.forEach { restriction ->
+            applyPolicySafely("add:$restriction") {
+                dpm.addUserRestriction(componentName, restriction)
+            }
+        }
+
+        if (DeviceOwnerMaintenanceGate.isTemporarilyUnlocked(context)) {
+            relaxAppControlForMaintenance()
+            Log.d("FocusGuardAdmin", "Nuclear Shield em modo de manutenção temporária")
+        } else {
+            enforceAppControlProtection()
+            Log.d("FocusGuardAdmin", "Nuclear Shield completo aplicado")
         }
     }
 
-    /**
-     * Revoga a Proteção Nuclear. Usado apenas quando o usuário deseja desinstalar o app legitimamente.
-     */
+    private fun enforceTrustedAutomaticTime() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        applyPolicySafely("auto_time") { dpm.setAutoTimeEnabled(componentName, true) }
+        applyPolicySafely("auto_timezone") { dpm.setAutoTimeZoneEnabled(componentName, true) }
+    }
+
+    private fun enforceAppControlProtection() {
+        appControlRestrictionsForSdk(Build.VERSION.SDK_INT).forEach { restriction ->
+            applyPolicySafely("add:$restriction") {
+                dpm.addUserRestriction(componentName, restriction)
+            }
+        }
+        applyPolicySafely("uninstall_blocked") {
+            dpm.setUninstallBlocked(componentName, context.packageName, true)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            applyPolicySafely("user_control_disabled") {
+                dpm.setUserControlDisabledPackages(componentName, listOf(context.packageName))
+            }
+        }
+    }
+
+    private fun relaxAppControlForMaintenance() {
+        appControlRestrictionsForSdk(Build.VERSION.SDK_INT).forEach { restriction ->
+            applyPolicySafely("clear:$restriction") {
+                dpm.clearUserRestriction(componentName, restriction)
+            }
+        }
+        applyPolicySafely("uninstall_allowed") {
+            dpm.setUninstallBlocked(componentName, context.packageName, false)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            applyPolicySafely("user_control_enabled") {
+                dpm.setUserControlDisabledPackages(componentName, emptyList())
+            }
+        }
+    }
+
+    /** Clears every FocusGuard Device Owner policy before a legitimate renounce. */
     fun revokeNuclearShield() {
-        if (!isDeviceOwnerActive()) return
-        try {
-            GLOBAL_SHIELD_RESTRICTIONS.forEach { dpm.clearUserRestriction(componentName, it) }
-            Log.d("FocusGuardAdmin", "Nuclear Shield revogado")
-        } catch (e: Exception) {
-            com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Falha ao revogar Nuclear Shield", e)
+        if (!isDeviceOwnerActive() || !isMaintenanceActive()) return
+
+        allShieldRestrictionsForSdk(Build.VERSION.SDK_INT).forEach { restriction ->
+            applyPolicySafely("clear:$restriction") {
+                dpm.clearUserRestriction(componentName, restriction)
+            }
+        }
+        applyPolicySafely("uninstall_allowed") {
+            dpm.setUninstallBlocked(componentName, context.packageName, false)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            applyPolicySafely("user_control_enabled") {
+                dpm.setUserControlDisabledPackages(componentName, emptyList())
+            }
+        }
+        Log.d("FocusGuardAdmin", "Nuclear Shield revogado para remoção legítima")
+    }
+
+    private inline fun applyPolicySafely(name: String, operation: () -> Unit) {
+        runCatching(operation).onFailure { error ->
+            FocusGuardLogger.logError("DeviceOwner", "Falha na política $name", error)
         }
     }
 
@@ -450,8 +534,6 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             return
         }
         val normalizedRules = WebsiteBlocker.normalizeRules(domains).sorted()
-        // URLBlocklist aceita hostnames, mas não curingas no meio do host.
-        // Regras por palavra continuam sendo aplicadas pelo serviço de acessibilidade.
         val allManagedDomains = WebsiteBlocker.expandDomainAliases(normalizedRules).toList()
         val managedDomains = allManagedDomains.take(MAX_MANAGED_URLS)
         if (managedDomains.size < allManagedDomains.size) {
@@ -507,8 +589,6 @@ class DeviceOwnerManager private constructor(private val context: Context) {
                             remove("URLBlocklist")
                             remove("IncognitoModeAvailability")
                             remove("InPrivateModeAvailability")
-                            // Limpa chaves gravadas por versões antigas. O
-                            // bloqueio de sites não precisa alterar o DNS do navegador.
                             remove("DnsOverHttpsMode")
                             remove("DnsOverHttpsTemplates")
                             if (managedFilters.isNotEmpty()) {
@@ -571,7 +651,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     @Suppress("DEPRECATION")
     private fun isPackageInstalled(packageName: String): Boolean {
         return runCatching {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 context.packageManager.getPackageInfo(
                     packageName,
                     android.content.pm.PackageManager.PackageInfoFlags.of(0L)
@@ -582,54 +662,70 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         }.isSuccess
     }
 
-    /**
-     * Enforce Global Private DNS using CleanBrowsing Adult Filter
-     */
+    /** Enforce Global Private DNS using CleanBrowsing Adult Filter. */
     fun enforceAdultDns(): Boolean {
         if (!isDeviceOwnerActive()) return false
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
-                val result = dpm.setGlobalPrivateDnsModeSpecifiedHost(componentName, "adult-filter-dns.cleanbrowsing.org")
+                val result = dpm.setGlobalPrivateDnsModeSpecifiedHost(
+                    componentName,
+                    "adult-filter-dns.cleanbrowsing.org"
+                )
                 if (result == DevicePolicyManager.PRIVATE_DNS_SET_NO_ERROR) {
                     Log.d("FocusGuardAdmin", "DNS Adulto aplicado com sucesso via DPM")
                     return true
                 }
             } catch (e: Exception) {
-                com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Erro ao aplicar DNS", e)
+                FocusGuardLogger.logError("DeviceOwner", "Erro ao aplicar DNS", e)
             }
         } else {
-            com.focusguard.utils.FocusGuardLogger.log("DeviceOwner", "DNS Global não suportado nesta versão do Android")
+            FocusGuardLogger.log("DeviceOwner", "DNS Global não suportado nesta versão do Android")
         }
         return false
     }
 
-    /**
-     * Clear Global Private DNS to Opportunistic Mode
-     */
+    /** Clear Global Private DNS to Opportunistic Mode. */
     fun clearAdultDns() {
         if (!isDeviceOwnerActive()) return
-        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
                 dpm.setGlobalPrivateDnsModeOpportunistic(componentName)
                 Log.d("FocusGuardAdmin", "DNS Global removido via DPM")
             } catch (e: Exception) {
-                com.focusguard.utils.FocusGuardLogger.logError("DeviceOwner", "Erro ao remover DNS", e)
+                FocusGuardLogger.logError("DeviceOwner", "Erro ao remover DNS", e)
             }
         }
     }
 
-    /**
-     * Renounce Device Owner privileges natively.
-     */
+    /** Renounce Device Owner privileges only from an authenticated maintenance window. */
+    @Suppress("DEPRECATION")
     fun renounceDeviceOwner() {
         if (!isDeviceOwnerActive()) return
+        if (!isMaintenanceActive()) {
+            Toast.makeText(
+                context,
+                context.getString(R.string.device_owner_maintenance_required_to_revoke),
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+
         try {
             clearBlockingPolicies()
             revokeNuclearShield()
             dpm.clearDeviceOwnerApp(context.packageName)
-            Toast.makeText(context, context.getString(R.string.acesso_device_owner_revogado), Toast.LENGTH_SHORT).show()
+            DeviceOwnerMaintenanceGate.revoke(context)
+            Toast.makeText(
+                context,
+                context.getString(R.string.acesso_device_owner_revogado),
+                Toast.LENGTH_SHORT
+            ).show()
         } catch (e: Exception) {
-            Toast.makeText(context, context.getString(R.string.falha_ao_revogar_device_owner_e_message), Toast.LENGTH_LONG).show()
+            Toast.makeText(
+                context,
+                context.getString(R.string.falha_ao_revogar_device_owner_e_message),
+                Toast.LENGTH_LONG
+            ).show()
         }
     }
 }
