@@ -1,7 +1,5 @@
 package com.focusguard.ui.compose.screens
 
-import android.content.Intent
-import android.provider.Settings
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -45,8 +43,6 @@ import com.focusguard.BuildConfig
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.BlockingSessionManager
-import com.focusguard.security.AccessibilityMaintenanceCredentialManager
-import com.focusguard.security.AccessibilityProtectionGate
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.ui.compose.layout.FocusGuardScreenScaffold
 import com.focusguard.ui.compose.layout.FocusGuardScrollableContent
@@ -67,9 +63,6 @@ fun SettingsScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val maintenanceManager = remember(context) {
-        AccessibilityMaintenanceCredentialManager(context)
-    }
     val deactivationCredentialManager = remember(context) {
         DeactivationCredentialManager(context)
     }
@@ -80,37 +73,17 @@ fun SettingsScreen(
         DeviceOwnerManager.getInstance(context)
     }
 
-    var showAccessibilityUnlockDialog by remember { mutableStateOf(false) }
-    var showMaintenanceCredentialDialog by remember { mutableStateOf(false) }
     var showDeactivationCredentialDialog by remember { mutableStateOf(false) }
     var showDeviceOwnerMaintenanceDialog by remember { mutableStateOf(false) }
-    var credentialRevision by remember { mutableIntStateOf(0) }
     var deactivationCredentialRevision by remember { mutableIntStateOf(0) }
     var deviceOwnerRevision by remember { mutableIntStateOf(0) }
 
     val isBlockingActive by blockingSessionManager.isBlockingActiveFlow.collectAsState(
         initial = false
     )
-    val maintenanceConfigured = remember(credentialRevision) {
-        maintenanceManager.hasCredential()
-    }
     val deactivationCredentialConfigured = remember(deactivationCredentialRevision) {
         deactivationCredentialManager.hasCredential()
     }
-    val remainingUnlockMillis = AccessibilityProtectionGate.remainingMillis(context)
-    val accessibilitySubtitle = if (remainingUnlockMillis > 0L) {
-        val remainingMinutes = ceil(remainingUnlockMillis / 60_000.0).toInt().coerceAtLeast(1)
-        stringResource(R.string.accessibility_unlock_active, remainingMinutes)
-    } else {
-        stringResource(R.string.accessibility_protection_subtitle)
-    }
-    val maintenanceSubtitle = stringResource(
-        if (maintenanceConfigured) {
-            R.string.accessibility_maintenance_configured
-        } else {
-            R.string.accessibility_maintenance_not_configured
-        }
-    )
     val deactivationPasswordSubtitle = stringResource(
         when {
             isBlockingActive -> R.string.deactivation_password_locked_subtitle
@@ -146,29 +119,6 @@ fun SettingsScreen(
             else -> R.string.device_owner_status_inactive
         }
     )
-
-    if (showAccessibilityUnlockDialog) {
-        AccessibilityUnlockDialog(
-            onDismiss = { showAccessibilityUnlockDialog = false },
-            onManageCredential = {
-                showAccessibilityUnlockDialog = false
-                showMaintenanceCredentialDialog = true
-            },
-            onUnlocked = {
-                showAccessibilityUnlockDialog = false
-                runCatching {
-                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
-                }
-            }
-        )
-    }
-
-    if (showMaintenanceCredentialDialog) {
-        AccessibilityMaintenanceCredentialDialog(
-            onDismiss = { showMaintenanceCredentialDialog = false },
-            onCredentialChanged = { credentialRevision++ }
-        )
-    }
 
     if (showDeactivationCredentialDialog) {
         DeactivationCredentialDialog(
@@ -221,18 +171,6 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(24.dp))
             FocusGuardSectionHeader(stringResource(R.string.settings_category_advanced_security))
-            SettingsItem(
-                Icons.Default.Lock,
-                stringResource(R.string.accessibility_maintenance_title),
-                maintenanceSubtitle,
-                onClick = { showMaintenanceCredentialDialog = true }
-            )
-            SettingsItem(
-                Icons.Default.Security,
-                stringResource(R.string.accessibility_protection_title),
-                accessibilitySubtitle,
-                onClick = { showAccessibilityUnlockDialog = true }
-            )
             SettingsItem(
                 Icons.Default.Security,
                 stringResource(R.string.limits_and_security),
