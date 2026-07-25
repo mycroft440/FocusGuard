@@ -8,7 +8,6 @@ class AccessibilityProtectionGateTest {
     @Test
     fun `window remains open for exactly ten minutes`() {
         val remaining = AccessibilityProtectionGate.evaluateRemainingMillis(
-            automaticDateTimeEnabled = true,
             nowElapsedMillis = 1_000L,
             deadlineElapsedMillis =
                 1_000L + AccessibilityProtectionGate.UNLOCK_DURATION_MILLIS,
@@ -22,7 +21,6 @@ class AccessibilityProtectionGateTest {
     @Test
     fun `window expires at deadline`() {
         val remaining = AccessibilityProtectionGate.evaluateRemainingMillis(
-            automaticDateTimeEnabled = true,
             nowElapsedMillis = 601_000L,
             deadlineElapsedMillis = 601_000L,
             storedBootCount = 7,
@@ -33,22 +31,20 @@ class AccessibilityProtectionGateTest {
     }
 
     @Test
-    fun `manual date or time invalidates window`() {
+    fun `window uses monotonic time and does not depend on wall clock settings`() {
         val remaining = AccessibilityProtectionGate.evaluateRemainingMillis(
-            automaticDateTimeEnabled = false,
-            nowElapsedMillis = 1_000L,
+            nowElapsedMillis = 301_000L,
             deadlineElapsedMillis = 601_000L,
             storedBootCount = 7,
             currentBootCount = 7
         )
 
-        assertThat(remaining).isEqualTo(0L)
+        assertThat(remaining).isEqualTo(300_000L)
     }
 
     @Test
     fun `reboot invalidates window`() {
         val remaining = AccessibilityProtectionGate.evaluateRemainingMillis(
-            automaticDateTimeEnabled = true,
             nowElapsedMillis = 1_000L,
             deadlineElapsedMillis = 601_000L,
             storedBootCount = 7,

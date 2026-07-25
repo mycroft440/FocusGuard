@@ -267,6 +267,9 @@ class AuthManager(context: Context) {
         for (entry in entries) {
             if (verifyPasswordHash(passwordAttempt, entry.salt, entry.passwordHash)) {
                 resetFailedAttempts()
+                // A mesma senha que desbloqueia apps também autoriza, por dez
+                // minutos, o acesso às configurações de Acessibilidade.
+                AccessibilityProtectionGate.requestTemporaryUnlock(appContext)
                 return true
             }
         }
