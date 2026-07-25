@@ -15,7 +15,8 @@ object SensitivePermissionsConsent {
     private const val ACCEPTED_VERSION_KEY = "accepted_version"
 
     fun hasAccepted(context: Context): Boolean {
-        return preferences(context).getInt(ACCEPTED_VERSION_KEY, 0) >= CURRENT_VERSION
+        val storedVersion = preferences(context).getInt(ACCEPTED_VERSION_KEY, 0)
+        return isAcceptedVersion(storedVersion)
     }
 
     fun accept(context: Context) {
@@ -23,6 +24,9 @@ object SensitivePermissionsConsent {
             .putInt(ACCEPTED_VERSION_KEY, CURRENT_VERSION)
             .apply()
     }
+
+    internal fun isAcceptedVersion(storedVersion: Int): Boolean =
+        storedVersion >= CURRENT_VERSION
 
     private fun preferences(context: Context) =
         context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
