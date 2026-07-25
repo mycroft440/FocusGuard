@@ -89,6 +89,14 @@
             android:theme="@style/Theme.FocusGuard"
             android:turnScreenOn="true" />
 
+        <activity
+            android:name=".ui.AccessibilityUnlockActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.FocusGuard"
+            android:windowSoftInputMode="adjustResize" />
+
         <receiver
             android:name=".admin.FocusGuardDeviceAdminReceiver"
             android:exported="true"
