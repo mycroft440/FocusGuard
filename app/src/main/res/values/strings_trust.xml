@@ -18,4 +18,8 @@
     <string name="trust_privacy_summary">O FocusGuard usa somente os acessos necessários para recursos escolhidos por você.</string>
 
     <string name="accessibility_service_description_transparent">O FocusGuard observa o aplicativo ou navegador em primeiro plano e o conteúdo visível da janela para aplicar bloqueios e limites configurados pelo usuário. O processamento é local, não controla o aparelho remotamente e não impede a desativação do serviço nas configurações do Android.</string>
+    <string name="accessibility_paused_channel">Status da proteção</string>
+    <string name="accessibility_paused_channel_description">Avisos quando uma permissão necessária para bloqueio em tempo real é desativada.</string>
+    <string name="accessibility_paused_title">Proteção em tempo real pausada</string>
+    <string name="accessibility_paused_message">A Acessibilidade do FocusGuard está desativada. Toque para reativá-la ou dispense este aviso para continuar sem o bloqueio em tempo real.</string>
 </resources>
