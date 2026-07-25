@@ -2,16 +2,28 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <!--
+        O FocusGuard precisa conhecer somente apps que o usuário consegue abrir
+        e navegadores compatíveis. Esta visibilidade direcionada substitui
+        QUERY_ALL_PACKAGES e evita acesso ao inventário completo do aparelho.
+    -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="https" />
+        </intent>
+    </queries>
+
     <uses-permission
         android:name="android.permission.PACKAGE_USAGE_STATS"
         tools:ignore="ProtectedPermissions" />
-    <uses-permission
-        android:name="android.permission.QUERY_ALL_PACKAGES"
-        tools:ignore="QueryAllPackagesPermission" />
     <uses-permission android:name="android.permission.INTERNET" />
-    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission
@@ -29,12 +41,14 @@
     <application
         android:name=".FocusGuardApplication"
         android:allowBackup="false"
+        android:allowAudioPlaybackCapture="false"
         android:fullBackupContent="false"
         android:icon="@mipmap/ic_launcher"
         android:label="@string/app_name"
         android:networkSecurityConfig="@xml/network_security_config"
         android:supportsRtl="true"
-        android:theme="@style/Theme.FocusGuard">
+        android:theme="@style/Theme.FocusGuard"
+        android:usesCleartextTraffic="false">
 
         <activity
             android:name=".MainActivity"
@@ -79,16 +93,6 @@
             android:noHistory="true"
             android:theme="@style/Theme.FocusGuard" />
 
-        <activity
-            android:name=".ui.AccessibilityDisabledActivity"
-            android:exported="false"
-            android:excludeFromRecents="true"
-            android:launchMode="singleTask"
-            android:showWhenLocked="true"
-            android:taskAffinity="com.focusguard.a11ydisabled"
-            android:theme="@style/Theme.FocusGuard"
-            android:turnScreenOn="true" />
-
         <receiver
             android:name=".admin.FocusGuardDeviceAdminReceiver"
             android:exported="true"
@@ -104,7 +108,7 @@
         <receiver
             android:name=".receiver.BootReceiver"
             android:directBootAware="true"
-            android:exported="true">
+            android:exported="false">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.LOCKED_BOOT_COMPLETED" />
@@ -143,7 +147,7 @@
                 android:resource="@xml/accessibility_service_config" />
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="FocusGuard Protection and Session Enforcement" />
+                android:value="User-enabled local enforcement of user-selected app and website limits, with a persistent notification and no remote control" />
         </service>
 
         <service
@@ -153,7 +157,7 @@
             android:stopWithTask="false">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Pomodoro Strict Lock Watchdog" />
+                android:value="Maintains a user-started focus timer and its visible status notification until the selected session ends" />
         </service>
 
     </application>

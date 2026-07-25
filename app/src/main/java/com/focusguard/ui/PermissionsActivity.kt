@@ -5,31 +5,54 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import com.focusguard.MainActivity
+import com.focusguard.security.SensitivePermissionsConsent
 import com.focusguard.ui.compose.screens.PermissionsScreen
+import com.focusguard.ui.compose.screens.SensitivePermissionsDisclosureScreen
 import com.focusguard.ui.compose.theme.FocusGuardTheme
 import dagger.hilt.android.AndroidEntryPoint
 
 @AndroidEntryPoint
 class PermissionsActivity : ComponentActivity() {
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             FocusGuardTheme {
-                PermissionsScreen(onFinish = {
-                    val prefs = getSharedPreferences("FocusGuardPrefs", Context.MODE_PRIVATE)
-                    prefs.edit().putBoolean("hasSeenOnboarding", true).apply()
+                var consentAccepted by remember {
+                    mutableStateOf(SensitivePermissionsConsent.hasAccepted(this))
+                }
 
-                    // Reutiliza a MainActivity existente quando esta tela foi
-                    // aberta pelo aviso de permissões e cria uma nova apenas no onboarding.
-                    startActivity(
-                        Intent(this, MainActivity::class.java).apply {
-                            addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                        }
+                if (consentAccepted) {
+                    PermissionsScreen(onFinish = ::finishPermissionFlow)
+                } else {
+                    SensitivePermissionsDisclosureScreen(
+                        onAccept = {
+                            SensitivePermissionsConsent.accept(this)
+                            consentAccepted = true
+                        },
+                        onDecline = ::finishPermissionFlow
                     )
-                    finish()
-                })
+                }
             }
         }
+    }
+
+    private fun finishPermissionFlow() {
+        getSharedPreferences("FocusGuardPrefs", Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean("hasSeenOnboarding", true)
+            .apply()
+
+        startActivity(
+            Intent(this, MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+        )
+        finish()
     }
 }

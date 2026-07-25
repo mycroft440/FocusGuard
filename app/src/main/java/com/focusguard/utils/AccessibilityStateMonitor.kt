@@ -1,7 +1,6 @@
 package com.focusguard.utils
 
 import android.accessibilityservice.AccessibilityServiceInfo
-import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
@@ -17,12 +16,13 @@ import android.view.accessibility.AccessibilityManager
 import androidx.core.app.NotificationCompat
 import com.focusguard.R
 import com.focusguard.service.BlockingAccessibilityService
-import com.focusguard.ui.AccessibilityDisabledActivity
 
 /**
- * Detecta alterações no serviço de acessibilidade enquanto o processo do app
- * está vivo. Não tenta prometer detecção após Force Stop, pois nesse cenário o
- * Android encerra o próprio processo responsável pelo monitor.
+ * Observes Accessibility state while the FocusGuard process is alive.
+ *
+ * Disabling the service never opens a blocking activity or prevents normal use
+ * of the device. The user receives a clear, dismissible notification explaining
+ * that real-time blocking is paused and can choose whether to reactivate it.
  */
 object AccessibilityStateMonitor {
 
@@ -30,6 +30,8 @@ object AccessibilityStateMonitor {
     private const val POLL_INTERVAL_MS = 30_000L
     private const val ACTION_STATE_CHANGED =
         "android.accessibilityservice.ACCESSIBILITY_SERVICE_STATE_CHANGED"
+    private const val CHANNEL_ID = "focusguard_permission_status"
+    private const val NOTIFICATION_ID = 9001
 
     private val handler = Handler(Looper.getMainLooper())
     private var pollingRunnable: Runnable? = null
@@ -67,8 +69,10 @@ object AccessibilityStateMonitor {
 
         val enabled = isAccessibilityServiceEnabled(appContext)
         lastKnownEnabled = enabled
-        if (!enabled && protectionWasConfigured(appContext)) {
-            onAccessibilityDisabled(appContext)
+        if (enabled) {
+            cancelPausedNotification(appContext)
+        } else if (protectionWasConfigured(appContext)) {
+            sendPausedNotification(appContext)
         }
         startPolling(appContext)
     }
@@ -98,13 +102,15 @@ object AccessibilityStateMonitor {
     private fun checkAndHandle(context: Context) {
         val enabled = isAccessibilityServiceEnabled(context)
         val previous = lastKnownEnabled
-        if (!enabled && protectionWasConfigured(context) && previous != false) {
-            FocusGuardLogger.logError(
-                TAG,
-                "BlockingAccessibilityService foi desativado enquanto o processo estava ativo",
-                null
-            )
-            onAccessibilityDisabled(context)
+        when {
+            enabled && previous != true -> cancelPausedNotification(context)
+            !enabled && previous != false && protectionWasConfigured(context) -> {
+                FocusGuardLogger.log(
+                    TAG,
+                    "Acessibilidade desativada; bloqueio em tempo real pausado"
+                )
+                sendPausedNotification(context)
+            }
         }
         lastKnownEnabled = enabled
     }
@@ -131,37 +137,20 @@ object AccessibilityStateMonitor {
             .getBoolean("hasSeenOnboarding", false)
     }
 
-    private fun onAccessibilityDisabled(context: Context) {
-        try {
-            context.startActivity(
-                Intent(context, AccessibilityDisabledActivity::class.java).apply {
-                    addFlags(
-                        Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                            Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
-                    )
-                }
-            )
-        } catch (error: RuntimeException) {
-            FocusGuardLogger.logError(TAG, "Falha ao abrir alerta de acessibilidade", error)
-            sendCriticalNotification(context)
-        }
-    }
-
-    private fun sendCriticalNotification(context: Context) {
+    private fun sendPausedNotification(context: Context) {
         try {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE)
                 as? NotificationManager ?: return
-            val channelId = "focusguard_critical"
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 manager.createNotificationChannel(
                     NotificationChannel(
-                        channelId,
-                        "Alertas críticos",
-                        NotificationManager.IMPORTANCE_HIGH
+                        CHANNEL_ID,
+                        context.getString(R.string.accessibility_paused_channel),
+                        NotificationManager.IMPORTANCE_DEFAULT
                     ).apply {
-                        description = "Avisos sobre a proteção do FocusGuard"
-                        enableVibration(true)
+                        description = context.getString(
+                            R.string.accessibility_paused_channel_description
+                        )
                     }
                 )
             }
@@ -175,19 +164,30 @@ object AccessibilityStateMonitor {
                 settingsIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            val notification = NotificationCompat.Builder(context, channelId)
+            val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_warning)
-                .setContentTitle("Proteção desativada")
-                .setContentText("Toque para reativar o FocusGuard")
-                .setPriority(NotificationCompat.PRIORITY_MAX)
-                .setCategory(Notification.CATEGORY_ERROR)
+                .setContentTitle(context.getString(R.string.accessibility_paused_title))
+                .setContentText(context.getString(R.string.accessibility_paused_message))
+                .setStyle(
+                    NotificationCompat.BigTextStyle().bigText(
+                        context.getString(R.string.accessibility_paused_message)
+                    )
+                )
+                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setContentIntent(pendingIntent)
-                .setAutoCancel(false)
-                .setOngoing(true)
+                .setAutoCancel(true)
+                .setOngoing(false)
                 .build()
-            manager.notify(9001, notification)
+            manager.notify(NOTIFICATION_ID, notification)
         } catch (error: RuntimeException) {
-            FocusGuardLogger.logError(TAG, "Falha ao enviar notificação crítica", error)
+            FocusGuardLogger.logError(TAG, "Falha ao enviar aviso de acessibilidade", error)
+        }
+    }
+
+    private fun cancelPausedNotification(context: Context) {
+        runCatching {
+            (context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)
+                ?.cancel(NOTIFICATION_ID)
         }
     }
 }

@@ -14,8 +14,8 @@ android {
         applicationId = "com.focusguard.v2"
         minSdk = 26
         targetSdk = 35
-        versionCode = 9
-        versionName = "2.4.0-toolchain"
+        versionCode = 10
+        versionName = "2.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ksp {
             arg("room.schemaLocation", "$projectDir/schemas")
@@ -46,8 +46,12 @@ android {
                 storePassword = releaseKeystorePassword
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword
-                enableV1Signing = true
+                // Android 8+ is the minimum supported version. Modern schemes
+                // provide stronger integrity while Play App Signing preserves the
+                // trusted update identity across releases.
+                enableV1Signing = false
                 enableV2Signing = true
+                enableV3Signing = true
             }
         }
     }
