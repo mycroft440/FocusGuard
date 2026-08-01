@@ -15,6 +15,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import com.focusguard.R
+import com.focusguard.security.AuthManager
 import com.focusguard.security.DeviceOwnerMaintenanceGate
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
@@ -57,6 +58,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         private const val ACTION_DEVICE_ADMIN_SETTINGS = "android.settings.DEVICE_ADMIN_SETTINGS"
         private const val SUSPENDED_APPS_PREFERENCES = "focusguard_suspended_apps"
         private const val MANAGED_SUSPENDED_APPS_KEY = "managed_packages"
+        internal const val ADULT_DNS_HOST = "adult-filter-dns.cleanbrowsing.org"
         private val CHROME_MANAGED_PACKAGES = setOf(
             "com.android.chrome",
             "com.chrome.beta",
@@ -112,8 +114,37 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             }
         }
 
+        internal fun adultContentRestrictionsForSdk(sdkInt: Int): List<String> = buildList {
+            add(UserManager.DISALLOW_CONFIG_VPN)
+            if (sdkInt >= Build.VERSION_CODES.Q) {
+                add(UserManager.DISALLOW_CONFIG_PRIVATE_DNS)
+            }
+        }
+
         internal fun allShieldRestrictionsForSdk(sdkInt: Int): List<String> =
-            ALWAYS_ON_RESTRICTIONS + appControlRestrictionsForSdk(sdkInt)
+            ALWAYS_ON_RESTRICTIONS +
+                appControlRestrictionsForSdk(sdkInt) +
+                adultContentRestrictionsForSdk(sdkInt)
+
+        internal fun buildManagedBrowserRestrictions(
+            existing: Bundle,
+            managedFilters: List<String>,
+            privateModePolicy: String,
+            requireSystemDns: Boolean
+        ): Bundle = Bundle(existing).apply {
+            remove("URLBlocklist")
+            remove("IncognitoModeAvailability")
+            remove("InPrivateModeAvailability")
+            remove("DnsOverHttpsMode")
+            remove("DnsOverHttpsTemplates")
+            if (requireSystemDns) {
+                putString("DnsOverHttpsMode", "off")
+            }
+            if (managedFilters.isNotEmpty()) {
+                putStringArray("URLBlocklist", managedFilters.toTypedArray())
+                putInt(privateModePolicy, 1)
+            }
+        }
     }
 
     /** Check if Device Owner Mode is active. */
@@ -449,9 +480,11 @@ class DeviceOwnerManager private constructor(private val context: Context) {
 
         if (DeviceOwnerMaintenanceGate.isTemporarilyUnlocked(context)) {
             relaxAppControlForMaintenance()
+            relaxAdultContentForMaintenance()
             Log.d("FocusGuardAdmin", "Nuclear Shield em modo de manutenção temporária")
         } else {
             enforceAppControlProtection()
+            reconcileAdultContentProtection()
             Log.d("FocusGuardAdmin", "Nuclear Shield completo aplicado")
         }
     }
@@ -490,6 +523,31 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             applyPolicySafely("user_control_enabled") {
                 dpm.setUserControlDisabledPackages(componentName, emptyList())
+            }
+        }
+    }
+
+    private fun reconcileAdultContentProtection() {
+        if (AuthManager.isAdultFilterConfigured(context)) {
+            if (!enforceAdultDns()) {
+                FocusGuardLogger.log(
+                    "DeviceOwner",
+                    "Filtro adulto configurado, mas o Android não confirmou a política DNS"
+                )
+            }
+        } else {
+            clearAdultContentRestrictions()
+        }
+    }
+
+    private fun relaxAdultContentForMaintenance() {
+        clearAdultContentRestrictions()
+    }
+
+    private fun clearAdultContentRestrictions() {
+        adultContentRestrictionsForSdk(Build.VERSION.SDK_INT).forEach { restriction ->
+            applyPolicySafely("clear:$restriction") {
+                dpm.clearUserRestriction(componentName, restriction)
             }
         }
     }
@@ -542,7 +600,10 @@ class DeviceOwnerManager private constructor(private val context: Context) {
                 "URLBlocklist limitada aos primeiros $MAX_MANAGED_URLS domínios"
             )
         }
-        applyWebsiteRestrictions(managedDomains)
+        applyWebsiteRestrictions(
+            domains = managedDomains,
+            requireSystemDns = AuthManager.isAdultFilterConfigured(context)
+        )
     }
 
     /** Remove somente as políticas de navegador controladas pelo FocusGuard. */
@@ -551,7 +612,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             invalidateWebsitePolicyCache()
             return
         }
-        applyWebsiteRestrictions(emptyList())
+        applyWebsiteRestrictions(domains = emptyList(), requireSystemDns = false)
     }
 
     /** Força nova sincronização após instalação, remoção ou atualização do navegador. */
@@ -561,7 +622,10 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         }
     }
 
-    private suspend fun applyWebsiteRestrictions(domains: List<String>) {
+    private suspend fun applyWebsiteRestrictions(
+        domains: List<String>,
+        requireSystemDns: Boolean
+    ) {
         websitePolicyMutex.withLock {
             withContext(Dispatchers.IO) {
                 val chromePackages = CHROME_MANAGED_PACKAGES.filter(::isPackageInstalled)
@@ -571,7 +635,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
                     if (':' in domain) "[$domain]" else domain
                 }
                 val signature = managedFilters.joinToString("\u0000") +
-                    "|" + targets.joinToString("\u0000")
+                    "|" + targets.joinToString("\u0000") +
+                    "|systemDns=$requireSystemDns"
                 if (signature == lastWebsitePolicySignature) return@withContext
 
                 var allWritesSucceeded = true
@@ -583,34 +648,34 @@ class DeviceOwnerManager private constructor(private val context: Context) {
                     }
 
                     try {
-                        val restrictions = Bundle(
-                            dpm.getApplicationRestrictions(componentName, packageName)
-                        ).apply {
-                            remove("URLBlocklist")
-                            remove("IncognitoModeAvailability")
-                            remove("InPrivateModeAvailability")
-                            remove("DnsOverHttpsMode")
-                            remove("DnsOverHttpsTemplates")
-                            if (managedFilters.isNotEmpty()) {
-                                putStringArray("URLBlocklist", managedFilters.toTypedArray())
-                                putInt(privateModePolicy, 1)
-                            }
-                        }
+                        val restrictions = buildManagedBrowserRestrictions(
+                            existing = dpm.getApplicationRestrictions(
+                                componentName,
+                                packageName
+                            ),
+                            managedFilters = managedFilters,
+                            privateModePolicy = privateModePolicy,
+                            requireSystemDns = requireSystemDns
+                        )
                         dpm.setApplicationRestrictions(componentName, packageName, restrictions)
                         val stored = dpm.getApplicationRestrictions(componentName, packageName)
                         val storedDomains = stored.getStringArray("URLBlocklist")?.toList().orEmpty()
-                        val legacyDnsPolicyCleared =
+                        val dnsPolicyVerified = if (requireSystemDns) {
+                            stored.getString("DnsOverHttpsMode") == "off" &&
+                                !stored.containsKey("DnsOverHttpsTemplates")
+                        } else {
                             !stored.containsKey("DnsOverHttpsMode") &&
                                 !stored.containsKey("DnsOverHttpsTemplates")
+                        }
                         val verified = if (managedFilters.isEmpty()) {
                             !stored.containsKey("URLBlocklist") &&
                                 !stored.containsKey("IncognitoModeAvailability") &&
                                 !stored.containsKey("InPrivateModeAvailability") &&
-                                legacyDnsPolicyCleared
+                                dnsPolicyVerified
                         } else {
                             storedDomains == managedFilters &&
                                 stored.getInt(privateModePolicy, -1) == 1 &&
-                                legacyDnsPolicyCleared
+                                dnsPolicyVerified
                         }
                         if (!verified) {
                             allWritesSucceeded = false
@@ -662,19 +727,50 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         }.isSuccess
     }
 
-    /** Enforce Global Private DNS using CleanBrowsing Adult Filter. */
+    /** Enforce and lock Global Private DNS using CleanBrowsing Adult Filter. */
     fun enforceAdultDns(): Boolean {
         if (!isDeviceOwnerActive()) return false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
-                val result = dpm.setGlobalPrivateDnsModeSpecifiedHost(
-                    componentName,
-                    "adult-filter-dns.cleanbrowsing.org"
-                )
-                if (result == DevicePolicyManager.PRIVATE_DNS_SET_NO_ERROR) {
-                    Log.d("FocusGuardAdmin", "DNS Adulto aplicado com sucesso via DPM")
-                    return true
+                val alreadyConfigured =
+                    dpm.getGlobalPrivateDnsMode(componentName) ==
+                        DevicePolicyManager.PRIVATE_DNS_MODE_PROVIDER_HOSTNAME &&
+                        dpm.getGlobalPrivateDnsHost(componentName) == ADULT_DNS_HOST
+                if (!alreadyConfigured) {
+                    val result = dpm.setGlobalPrivateDnsModeSpecifiedHost(
+                        componentName,
+                        ADULT_DNS_HOST
+                    )
+                    if (result != DevicePolicyManager.PRIVATE_DNS_SET_NO_ERROR) {
+                        FocusGuardLogger.log(
+                            "DeviceOwner",
+                            "Android recusou o DNS adulto (código=$result)"
+                        )
+                        return false
+                    }
                 }
+
+                dpm.addUserRestriction(componentName, UserManager.DISALLOW_CONFIG_PRIVATE_DNS)
+                dpm.addUserRestriction(componentName, UserManager.DISALLOW_CONFIG_VPN)
+                val restrictions = dpm.getUserRestrictions(componentName)
+                val verified =
+                    dpm.getGlobalPrivateDnsMode(componentName) ==
+                        DevicePolicyManager.PRIVATE_DNS_MODE_PROVIDER_HOSTNAME &&
+                        dpm.getGlobalPrivateDnsHost(componentName) == ADULT_DNS_HOST &&
+                        restrictions.getBoolean(UserManager.DISALLOW_CONFIG_PRIVATE_DNS, false) &&
+                        restrictions.getBoolean(UserManager.DISALLOW_CONFIG_VPN, false)
+                if (verified) {
+                    Log.d(
+                        "FocusGuardAdmin",
+                        "DNS adulto aplicado; alterações de DNS e VPN bloqueadas"
+                    )
+                } else {
+                    FocusGuardLogger.log(
+                        "DeviceOwner",
+                        "Android não confirmou o DNS adulto ou as proteções anti-bypass"
+                    )
+                }
+                return verified
             } catch (e: Exception) {
                 FocusGuardLogger.logError("DeviceOwner", "Erro ao aplicar DNS", e)
             }
@@ -689,6 +785,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         if (!isDeviceOwnerActive()) return
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
+                clearAdultContentRestrictions()
                 dpm.setGlobalPrivateDnsModeOpportunistic(componentName)
                 Log.d("FocusGuardAdmin", "DNS Global removido via DPM")
             } catch (e: Exception) {
@@ -713,6 +810,9 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         try {
             clearBlockingPolicies()
             revokeNuclearShield()
+            if (AuthManager.isAdultFilterConfigured(context)) {
+                clearAdultDns()
+            }
             dpm.clearDeviceOwnerApp(context.packageName)
             DeviceOwnerMaintenanceGate.revoke(context)
             Toast.makeText(

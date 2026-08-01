@@ -30,12 +30,15 @@ class DeviceOwnerProtectionDiagnosticsTest {
         val diagnostics = protectedDiagnostics().copy(
             maintenanceActive = true,
             uninstallBlocked = false,
+            appsControlBlocked = false,
             userControlDisabled = false,
-            grantAdminBlocked = false
+            grantAdminBlocked = false,
+            privateDnsChangesBlocked = false,
+            vpnConfigurationBlocked = false
         )
 
         assertThat(diagnostics.isFullyProtected).isFalse()
-        assertThat(diagnostics.failedChecks).isEqualTo(3)
+        assertThat(diagnostics.failedChecks).isEqualTo(6)
     }
 
     @Test
@@ -51,17 +54,46 @@ class DeviceOwnerProtectionDiagnosticsTest {
         assertThat(diagnostics.failedChecks).isEqualTo(0)
     }
 
+    @Test
+    fun `a failed supported API query can never report full protection`() {
+        val diagnostics = protectedDiagnostics().copy(
+            userControlDisabled = false,
+            automaticTimeEnabled = false,
+            automaticTimeZoneEnabled = false
+        )
+
+        assertThat(diagnostics.isFullyProtected).isFalse()
+        assertThat(diagnostics.failedChecks).isEqualTo(3)
+    }
+
+    @Test
+    fun `enabled adult filter requires verified dns and settings lock`() {
+        val diagnostics = protectedDiagnostics().copy(
+            adultDnsEnforced = false,
+            privateDnsChangesBlocked = false,
+            vpnConfigurationBlocked = false
+        )
+
+        assertThat(diagnostics.isFullyProtected).isFalse()
+        assertThat(diagnostics.failedChecks).isEqualTo(3)
+    }
+
     private fun protectedDiagnostics() = DeviceOwnerProtectionDiagnostics(
         deviceAdminActive = true,
         deviceOwnerActive = true,
         maintenanceActive = false,
         uninstallBlocked = true,
+        appsControlBlocked = true,
         userControlDisabled = true,
         factoryResetBlocked = true,
         safeBootBlocked = true,
         dateTimeChangesBlocked = true,
         grantAdminBlocked = true,
         automaticTimeEnabled = true,
-        automaticTimeZoneEnabled = true
+        automaticTimeZoneEnabled = true,
+        adultFilterEnabled = true,
+        adultDnsEnforced = true,
+        privateDnsChangesBlocked = true,
+        vpnConfigurationBlocked = true
     )
 }

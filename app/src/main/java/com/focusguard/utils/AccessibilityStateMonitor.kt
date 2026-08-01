@@ -15,14 +15,21 @@ import android.os.Looper
 import android.view.accessibility.AccessibilityManager
 import androidx.core.app.NotificationCompat
 import com.focusguard.R
+import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.service.BlockingAccessibilityService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Observes Accessibility state while the FocusGuard process is alive.
  *
  * Disabling the service never opens a blocking activity or prevents normal use
- * of the device. The user receives a clear, dismissible notification explaining
- * that real-time blocking is paused and can choose whether to reactivate it.
+ * of the device. The user receives a clear notification explaining that real-time
+ * blocking is paused. On Device Owner installations, native policies are reconciled
+ * immediately and the warning remains visible until Accessibility is restored.
  */
 object AccessibilityStateMonitor {
 
@@ -34,6 +41,7 @@ object AccessibilityStateMonitor {
     private const val NOTIFICATION_ID = 9001
 
     private val handler = Handler(Looper.getMainLooper())
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var pollingRunnable: Runnable? = null
     private var receiverRegistered = false
     private var lastKnownEnabled: Boolean? = null
@@ -71,8 +79,8 @@ object AccessibilityStateMonitor {
         lastKnownEnabled = enabled
         if (enabled) {
             cancelPausedNotification(appContext)
-        } else if (protectionWasConfigured(appContext)) {
-            sendPausedNotification(appContext)
+        } else if (protectionShouldBeMonitored(appContext)) {
+            handlePausedProtection(appContext)
         }
         startPolling(appContext)
     }
@@ -104,12 +112,12 @@ object AccessibilityStateMonitor {
         val previous = lastKnownEnabled
         when {
             enabled && previous != true -> cancelPausedNotification(context)
-            !enabled && previous != false && protectionWasConfigured(context) -> {
+            !enabled && previous != false && protectionShouldBeMonitored(context) -> {
                 FocusGuardLogger.log(
                     TAG,
                     "Acessibilidade desativada; bloqueio em tempo real pausado"
                 )
-                sendPausedNotification(context)
+                handlePausedProtection(context)
             }
         }
         lastKnownEnabled = enabled
@@ -132,12 +140,28 @@ object AccessibilityStateMonitor {
         }
     }
 
-    private fun protectionWasConfigured(context: Context): Boolean {
-        return context.getSharedPreferences("FocusGuardPrefs", Context.MODE_PRIVATE)
+    private fun protectionShouldBeMonitored(context: Context): Boolean {
+        val onboardingCompleted = context
+            .getSharedPreferences("FocusGuardPrefs", Context.MODE_PRIVATE)
             .getBoolean("hasSeenOnboarding", false)
+        return onboardingCompleted || DeviceOwnerManager.getInstance(context).isDeviceOwnerActive()
     }
 
-    private fun sendPausedNotification(context: Context) {
+    private fun handlePausedProtection(context: Context) {
+        val deviceOwnerActive = DeviceOwnerManager.getInstance(context).isDeviceOwnerActive()
+        sendPausedNotification(context, deviceOwnerActive)
+        if (!deviceOwnerActive) return
+
+        scope.launch {
+            FocusGuardLogger.log(
+                TAG,
+                "Reconciliando políticas nativas após pausa da Acessibilidade"
+            )
+            BlockingSessionManager.getInstance(context).checkAndEnforce()
+        }
+    }
+
+    private fun sendPausedNotification(context: Context, deviceOwnerActive: Boolean) {
         try {
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE)
                 as? NotificationManager ?: return
@@ -164,19 +188,28 @@ object AccessibilityStateMonitor {
                 settingsIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
+            val message = context.getString(
+                if (deviceOwnerActive) {
+                    R.string.accessibility_paused_device_owner_message
+                } else {
+                    R.string.accessibility_paused_message
+                }
+            )
             val notification = NotificationCompat.Builder(context, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_warning)
                 .setContentTitle(context.getString(R.string.accessibility_paused_title))
-                .setContentText(context.getString(R.string.accessibility_paused_message))
-                .setStyle(
-                    NotificationCompat.BigTextStyle().bigText(
-                        context.getString(R.string.accessibility_paused_message)
-                    )
+                .setContentText(message)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                .setPriority(
+                    if (deviceOwnerActive) {
+                        NotificationCompat.PRIORITY_HIGH
+                    } else {
+                        NotificationCompat.PRIORITY_DEFAULT
+                    }
                 )
-                .setPriority(NotificationCompat.PRIORITY_DEFAULT)
                 .setContentIntent(pendingIntent)
-                .setAutoCancel(true)
-                .setOngoing(false)
+                .setAutoCancel(!deviceOwnerActive)
+                .setOngoing(deviceOwnerActive)
                 .build()
             manager.notify(NOTIFICATION_ID, notification)
         } catch (error: RuntimeException) {

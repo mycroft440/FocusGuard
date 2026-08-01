@@ -844,6 +844,7 @@ class BlockingSessionManager @Inject constructor(
                     .map(WebsiteBlocker::normalizeRule)
                     .filter { it.isNotBlank() }
                     .distinct()
+                val adultFilterEnabled = AuthManager.isAdultFilterConfigured(context)
                 val websiteAppsToBlock = WebsiteBlocker.appPackageDomainsFor(sitesToBlock)
                     .keys
                     .filter(::isPackageInstalled)
@@ -868,7 +869,7 @@ class BlockingSessionManager @Inject constructor(
                     allowedSystemApps = websiteAppsToBlock.toSet()
                 )
 
-                if (sitesToBlock.isEmpty()) {
+                if (sitesToBlock.isEmpty() && !adultFilterEnabled) {
                     deviceOwnerManager.clearWebsiteRestrictions()
                 } else {
                     deviceOwnerManager.enforceWebsiteRestrictions(sitesToBlock)

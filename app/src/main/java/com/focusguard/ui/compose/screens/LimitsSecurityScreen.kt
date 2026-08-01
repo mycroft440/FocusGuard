@@ -33,6 +33,7 @@ import com.focusguard.R
 import kotlin.OptIn
 import com.focusguard.security.AuthManager
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.ui.compose.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,6 +41,8 @@ import com.focusguard.ui.compose.theme.*
 fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
     val context = LocalContext.current
     val deviceOwnerManager = remember { DeviceOwnerManager.getInstance(context) }
+    val blockingSessionManager = remember { BlockingSessionManager.getInstance(context) }
+    val policyScope = rememberCoroutineScope()
     var limitText by remember { mutableStateOf(authManager.getMaxPasswordAttempts().toString()) }
     var photoEnabled by remember { mutableStateOf(authManager.isPhotoCaptureEnabled()) }
 
@@ -378,9 +381,15 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                         Switch(
                             checked = adultFilterEnabled,
                             onCheckedChange = { enable ->
-                                // [S2] Block changes if Safety Mode is active
-                                if (safetyModeEnabled) {
-                                    Toast.makeText(context, context.getString(R.string.limits_safety_mode_toast_dns), Toast.LENGTH_LONG).show()
+                                val maintenanceActive = deviceOwnerManager.isMaintenanceActive()
+                                if (!enable && !maintenanceActive) {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(
+                                            R.string.limits_adult_filter_maintenance_required
+                                        ),
+                                        Toast.LENGTH_LONG
+                                    ).show()
                                     return@Switch
                                 }
 
@@ -388,21 +397,31 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                                     if (!deviceOwnerManager.isDeviceOwnerActive()) {
                                         Toast.makeText(context, context.getString(R.string.limits_nuclear_required), Toast.LENGTH_LONG).show()
                                     } else {
+                                        authManager.setAdultFilterEnabled(true)
                                         val success = deviceOwnerManager.enforceAdultDns()
                                         if (success) {
                                             adultFilterEnabled = true
-                                            authManager.setAdultFilterEnabled(true)
-                                            context.sendBroadcast(android.content.Intent(com.focusguard.service.BlockingAccessibilityService.ACTION_REFRESH_BLOCKING))
+                                            policyScope.launch {
+                                                blockingSessionManager.checkAndEnforce()
+                                            }
                                         } else {
+                                            authManager.setAdultFilterEnabled(false)
                                             Toast.makeText(context, context.getString(R.string.limits_dns_injection_failed), Toast.LENGTH_LONG).show()
                                         }
                                     }
                                 } else {
+                                    authManager.setAdultFilterEnabled(false)
                                     deviceOwnerManager.clearAdultDns()
                                     adultFilterEnabled = false
-                                    authManager.setAdultFilterEnabled(false)
-                                    context.sendBroadcast(android.content.Intent(com.focusguard.service.BlockingAccessibilityService.ACTION_REFRESH_BLOCKING))
+                                    policyScope.launch {
+                                        blockingSessionManager.checkAndEnforce()
+                                    }
                                 }
+                                context.sendBroadcast(
+                                    android.content.Intent(
+                                        com.focusguard.service.BlockingAccessibilityService.ACTION_REFRESH_BLOCKING
+                                    ).setPackage(context.packageName)
+                                )
                             },
                             colors = SwitchDefaults.colors(
                                 checkedThumbColor = DarkBg,

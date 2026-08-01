@@ -138,7 +138,8 @@ SESSION_RESTRICTIONS = [
 - Chrome e Edge respeitam `URLBlocklist` — bloqueio no renderer (0ms)
 - O modo privado é desativado enquanto houver regras ativas
 - Firefox, Brave, Opera e outros usam a camada de acessibilidade
-- Private DNS via CleanBrowsing é um filtro adulto separado e opcional
+- Private DNS via CleanBrowsing é um filtro adulto separado e opcional. Quando
+  habilitado, o FocusGuard o reaplica e bloqueia alterações fora da manutenção.
 
 ### Bloqueio de apps (setPackagesSuspended)
 
@@ -151,8 +152,9 @@ SESSION_RESTRICTIONS = [
 Se você quiser desinstalar o FocusGuard no futuro:
 
 1. Abra FocusGuard → Settings → Proteção Nuclear
-2. Toque em "Revogar Device Owner"
-3. Confirme
+2. Abra a manutenção com a senha de desativação ou na janela mensal
+3. Toque em "Revogar Device Owner"
+4. Confirme
 
 Ou via ADB:
 ```bash
@@ -184,8 +186,9 @@ Verifique:
 ### "Private DNS não aplica"
 
 - Verifique se Device Owner está ativo
-- Verifique se Android é 9.0+ (Private DNS DoT é API 28+)
-- Em Settings → Network → Private DNS, deve mostrar "dns.cleanbrowsing.org"
+- Verifique se Android é 10+ (as APIs Device Owner para Private DNS são API 29+)
+- Em Settings → Network → Private DNS, deve mostrar
+  `adult-filter-dns.cleanbrowsing.org`
 
 ## 📊 Comparação: com vs sem Device Owner
 
@@ -195,7 +198,7 @@ Verifique:
 | Bloqueio de apps (setPackagesSuspended) | ❌ | ✅ proativo (0ms) |
 | Bloqueio de sites (Accessibility) | ✅ | ✅ |
 | Bloqueio preventivo no Chrome/Edge | ❌ | ✅ URLBlocklist, renderer-level |
-| Anti-desinstalação | ⚠️ reativo (onDisableRequested) | ✅ preventivo (botão cinza) |
+| Anti-desinstalação | ⚠️ aviso e bloqueio de tela; o Android ainda permite desativar | ✅ preventivo (botão cinza) |
 | Anti Safe Mode | ❌ vulnerável | ✅ bloqueado |
 | Anti Factory Reset | ❌ vulnerável | ✅ bloqueado |
 | DNS Adulto (CleanBrowsing) | ❌ | ✅ Private DNS do sistema |

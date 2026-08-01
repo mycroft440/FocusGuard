@@ -29,6 +29,7 @@
     <string name="device_owner_diagnostics_not_owner">Administrador comum não impede a desativação pelo sistema. Provisione o FocusGuard como Device Owner.</string>
     <string name="device_owner_diagnostics_device_owner">Device Owner real</string>
     <string name="device_owner_diagnostics_uninstall">Desinstalação do FocusGuard bloqueada</string>
+    <string name="device_owner_diagnostics_apps_control">Desativar, limpar dados e controlar apps bloqueado</string>
     <string name="device_owner_diagnostics_user_control">Forçar parada e limpar dados bloqueados</string>
     <string name="device_owner_diagnostics_factory_reset">Reset de fábrica pelas configurações bloqueado</string>
     <string name="device_owner_diagnostics_safe_boot">Modo de segurança bloqueado</string>
@@ -36,6 +37,9 @@
     <string name="device_owner_diagnostics_grant_admin">Concessão de novos administradores bloqueada</string>
     <string name="device_owner_diagnostics_auto_time">Data e hora automáticas</string>
     <string name="device_owner_diagnostics_auto_timezone">Fuso horário automático</string>
+    <string name="device_owner_diagnostics_adult_dns">DNS com filtro adulto confirmado</string>
+    <string name="device_owner_diagnostics_private_dns_lock">Alteração manual do DNS privado bloqueada</string>
+    <string name="device_owner_diagnostics_vpn_lock">Configuração de VPN bloqueada contra desvio do filtro</string>
     <string name="device_owner_diagnostics_ok">Ativo</string>
     <string name="device_owner_diagnostics_failed_state">Falhou</string>
     <string name="device_owner_diagnostics_unsupported">Não verificável</string>

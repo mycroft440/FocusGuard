@@ -76,7 +76,14 @@ class AuthManager(context: Context) {
     }
 
     private fun migratePrefsToSecure() {
-        val keysToMigrate = listOf("max_password_attempts", "photo_capture_enabled", "safety_mode_enabled", "failed_password_attempts", "preferred_auth_type", "adult_filter_enabled")
+        val keysToMigrate = listOf(
+            "max_password_attempts",
+            "photo_capture_enabled",
+            "safety_mode_enabled",
+            "failed_password_attempts",
+            "preferred_auth_type",
+            ADULT_FILTER_ENABLED_KEY
+        )
         keysToMigrate.forEach { key ->
             if (prefs.contains(key) && !securePrefs.prefs.contains(key)) {
                 when (val value = prefs.all[key]) {
@@ -144,11 +151,15 @@ class AuthManager(context: Context) {
     }
 
     fun isAdultFilterEnabled(): Boolean {
-        return securePrefs.getBoolean("adult_filter_enabled", false)
+        return if (securePrefs.prefs.contains(ADULT_FILTER_ENABLED_KEY)) {
+            securePrefs.getBoolean(ADULT_FILTER_ENABLED_KEY, false)
+        } else {
+            prefs.getBoolean(ADULT_FILTER_ENABLED_KEY, false)
+        }
     }
 
     fun setAdultFilterEnabled(enabled: Boolean) {
-        securePrefs.putBoolean("adult_filter_enabled", enabled)
+        securePrefs.putBoolean(ADULT_FILTER_ENABLED_KEY, enabled)
     }
 
     fun getFailedAttempts(): Int {
@@ -284,6 +295,9 @@ class AuthManager(context: Context) {
     }
 
     companion object {
+        private const val AUTH_PREFERENCES = "FocusGuardAuth"
+        private const val ADULT_FILTER_ENABLED_KEY = "adult_filter_enabled"
+
         // Guarda de migração companion-level — garante que múltiplas instâncias
         // de AuthManager (criadas por callers legados) não disparem migração
         // em paralelo. Quando todos os callers forem migrados para Hilt, isso
@@ -294,6 +308,36 @@ class AuthManager(context: Context) {
         private val migrationMutex = kotlinx.coroutines.sync.Mutex()
         @Volatile
         private var migrationCompleted = false
+
+        /**
+         * Reads the adult-filter choice without constructing the Room-backed manager.
+         *
+         * Device Owner policy reconciliation runs very early during process startup,
+         * before the asynchronous legacy-preference migration is guaranteed to finish.
+         * Falling back to the legacy store keeps the policy enabled across upgrades.
+         */
+        internal fun isAdultFilterConfigured(context: Context): Boolean {
+            val appContext = context.applicationContext
+            val legacyValue = appContext
+                .getSharedPreferences(AUTH_PREFERENCES, Context.MODE_PRIVATE)
+                .getBoolean(ADULT_FILTER_ENABLED_KEY, false)
+
+            return runCatching {
+                val encryptedPreferences = SecurePrefsManager(appContext)
+                if (encryptedPreferences.prefs.contains(ADULT_FILTER_ENABLED_KEY)) {
+                    encryptedPreferences.getBoolean(ADULT_FILTER_ENABLED_KEY, false)
+                } else {
+                    legacyValue
+                }
+            }.getOrElse { error ->
+                com.focusguard.utils.FocusGuardLogger.logError(
+                    "AuthManager",
+                    "Falha ao ler estado do filtro adulto; usando preferência legada",
+                    error
+                )
+                legacyValue
+            }
+        }
 
         fun generateSalt(): String {
             val random = SecureRandom()

@@ -22,4 +22,6 @@
     <string name="accessibility_paused_channel_description">Avisos quando uma permissão necessária para bloqueio em tempo real é desativada.</string>
     <string name="accessibility_paused_title">Proteção em tempo real pausada</string>
     <string name="accessibility_paused_message">A Acessibilidade do FocusGuard está desativada. Toque para reativá-la ou dispense este aviso para continuar sem o bloqueio em tempo real.</string>
+    <string name="accessibility_paused_device_owner_message">A Acessibilidade do FocusGuard está desativada. Os bloqueios nativos do Device Owner continuam ativos, mas a proteção em tempo real em navegadores não gerenciados está pausada. Toque para reativar.</string>
+    <string name="device_admin_disable_warning">O administrador comum pode ser desativado pelo Android. Se continuar, o FocusGuard perderá a capacidade de bloquear a tela e ficará menos resistente a remoção. Para proteção forte, use o modo Device Owner.</string>
 </resources>

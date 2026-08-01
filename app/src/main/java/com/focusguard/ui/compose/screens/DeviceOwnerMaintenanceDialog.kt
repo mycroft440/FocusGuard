@@ -332,6 +332,11 @@ private fun DeviceOwnerDiagnosticsSection(
         relaxedByMaintenance = maintenanceActive
     )
     DiagnosticRow(
+        stringResource(R.string.device_owner_diagnostics_apps_control),
+        diagnostics.appsControlBlocked,
+        relaxedByMaintenance = maintenanceActive
+    )
+    DiagnosticRow(
         stringResource(R.string.device_owner_diagnostics_user_control),
         diagnostics.userControlDisabled,
         relaxedByMaintenance = maintenanceActive
@@ -361,6 +366,22 @@ private fun DeviceOwnerDiagnosticsSection(
         stringResource(R.string.device_owner_diagnostics_auto_timezone),
         diagnostics.automaticTimeZoneEnabled
     )
+    if (diagnostics.adultFilterEnabled) {
+        DiagnosticRow(
+            stringResource(R.string.device_owner_diagnostics_adult_dns),
+            diagnostics.adultDnsEnforced
+        )
+        DiagnosticRow(
+            stringResource(R.string.device_owner_diagnostics_private_dns_lock),
+            diagnostics.privateDnsChangesBlocked,
+            relaxedByMaintenance = maintenanceActive
+        )
+        DiagnosticRow(
+            stringResource(R.string.device_owner_diagnostics_vpn_lock),
+            diagnostics.vpnConfigurationBlocked,
+            relaxedByMaintenance = maintenanceActive
+        )
+    }
 
     if (diagnostics.deviceOwnerActive && !maintenanceActive && !diagnostics.isFullyProtected) {
         Spacer(Modifier.height(6.dp))

@@ -8,6 +8,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
+import android.os.Bundle
 import android.os.UserManager
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
@@ -78,6 +79,23 @@ class DeviceOwnerManagerTest {
     }
 
     @Test
+    fun `android 10 adult filter policy prevents private dns changes`() {
+        val restrictions = DeviceOwnerManager.adultContentRestrictionsForSdk(29)
+
+        assertThat(restrictions).containsExactly(
+            UserManager.DISALLOW_CONFIG_VPN,
+            UserManager.DISALLOW_CONFIG_PRIVATE_DNS
+        ).inOrder()
+    }
+
+    @Test
+    fun `android 9 blocks vpn but not unsupported private dns settings`() {
+        val restrictions = DeviceOwnerManager.adultContentRestrictionsForSdk(28)
+
+        assertThat(restrictions).containsExactly(UserManager.DISALLOW_CONFIG_VPN)
+    }
+
+    @Test
     fun `full shield keeps critical restrictions`() {
         val restrictions = DeviceOwnerManager.allShieldRestrictionsForSdk(34)
 
@@ -86,5 +104,38 @@ class DeviceOwnerManagerTest {
         assertThat(restrictions).contains(UserManager.DISALLOW_CONFIG_DATE_TIME)
         assertThat(restrictions).contains(UserManager.DISALLOW_UNINSTALL_APPS)
         assertThat(restrictions).contains(UserManager.DISALLOW_APPS_CONTROL)
+        assertThat(restrictions).contains(UserManager.DISALLOW_CONFIG_PRIVATE_DNS)
+    }
+
+    @Test
+    fun `adult filter forces managed browser to use system dns`() {
+        val restrictions = DeviceOwnerManager.buildManagedBrowserRestrictions(
+            existing = Bundle().apply {
+                putString("DnsOverHttpsMode", "secure")
+                putString("DnsOverHttpsTemplates", "https://bypass.example/dns-query")
+            },
+            managedFilters = emptyList(),
+            privateModePolicy = "IncognitoModeAvailability",
+            requireSystemDns = true
+        )
+
+        assertThat(restrictions.getString("DnsOverHttpsMode")).isEqualTo("off")
+        assertThat(restrictions.containsKey("DnsOverHttpsTemplates")).isFalse()
+    }
+
+    @Test
+    fun `disabling adult filter removes only focusguard dns browser policy`() {
+        val restrictions = DeviceOwnerManager.buildManagedBrowserRestrictions(
+            existing = Bundle().apply {
+                putString("UnrelatedPolicy", "preserved")
+                putString("DnsOverHttpsMode", "off")
+            },
+            managedFilters = emptyList(),
+            privateModePolicy = "IncognitoModeAvailability",
+            requireSystemDns = false
+        )
+
+        assertThat(restrictions.containsKey("DnsOverHttpsMode")).isFalse()
+        assertThat(restrictions.getString("UnrelatedPolicy")).isEqualTo("preserved")
     }
 }

@@ -362,7 +362,7 @@
     <string name="limits_locked_remaining_days">%1$s dias e %2$s h</string>
     <string name="limits_locked_remaining_hours">%1$s horas</string>
     <string name="limits_dns_filter_title">Blindagem Anti-Pornografia</string>
-    <string name="limits_dns_filter_desc">Ativa Filtro DNS (Rede) e varredura de URLs 24/7. Exige Proteção Nuclear ativa.</string>
+    <string name="limits_dns_filter_desc">Ativa filtro DNS e varredura de URLs 24/7. Fora da manutenção, impede alterar o DNS ou configurar VPN. Exige Proteção Nuclear ativa.</string>
 
     <!-- App Selection Wizard -->
     <string name="app_selection_title">Selecionar Aplicativos</string>
@@ -467,9 +467,9 @@
     <string name="limits_safety_mode_placeholder">digite sim</string>
     <string name="limits_safety_mode_disable_title">Desativar Modo Segurança?</string>
     <string name="limits_safety_mode_desc">Impede o uso de senha para burlar limites ativos. Bloqueio total e irreversível sem senha mestra.</string>
-    <string name="limits_safety_mode_toast_dns">Desative o Modo Segurança para alterar o Filtro DNS!</string>
     <string name="limits_nuclear_required">Ative a Proteção Nuclear nas configurações primeiro!</string>
     <string name="limits_dns_injection_failed">Falha ao injetar DNS. Sua versão do Android suporta?</string>
+    <string name="limits_adult_filter_maintenance_required">Abra a manutenção autenticada do Device Owner para desativar o filtro adulto.</string>
     <string name="limits_hidden_camera_active">Câmera oculta ativada</string>
     <string name="limits_permission_denied_feature">Permissão negada. Recurso desativado.</string>
     <string name="comando_adb_copiado">Comando ADB copiado!</string>

@@ -446,7 +446,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                             sessionApps.sorted().joinToString(","),
                             sessionSites.sorted().joinToString(","),
                             limitApps.sorted().joinToString(","),
-                            exceededWebsiteDomains.sorted().joinToString(",")
+                            exceededWebsiteDomains.sorted().joinToString(","),
+                            adultFilterEnabled.toString()
                         ).joinToString("|")
                         val shouldReconcilePolicies = lastEnforcementFingerprint?.let {
                             it != enforcementFingerprint

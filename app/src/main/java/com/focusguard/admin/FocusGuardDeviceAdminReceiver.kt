@@ -1,12 +1,12 @@
 package com.focusguard.admin
 
-import com.focusguard.R
 import android.app.admin.DeviceAdminReceiver
 import android.app.admin.DevicePolicyManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.widget.Toast
+import com.focusguard.R
 
 /**
  * Device Admin Receiver for FocusGuard.
@@ -25,7 +25,8 @@ class FocusGuardDeviceAdminReceiver : DeviceAdminReceiver() {
     }
 
     override fun onDisableRequested(context: Context, intent: Intent): CharSequence {
-        // Ação defensiva: Bloqueia o dispositivo imediatamente para impedir o clique em 'Desativar'
+        // O administrador legado não pode vetar a desativação. O bloqueio imediato
+        // acrescenta fricção e o texto retornado informa com precisão o impacto.
         try {
             val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
             dpm.lockNow()
@@ -34,7 +35,7 @@ class FocusGuardDeviceAdminReceiver : DeviceAdminReceiver() {
             android.util.Log.e("FocusGuardAdmin", "Falha ao bloquear dispositivo no onDisableRequested", e)
         }
         
-        return "Proteção Nuclear Ativa: O dispositivo foi bloqueado para impedir a desativação da proteção. Sua disciplina é nossa prioridade!"
+        return context.getString(R.string.device_admin_disable_warning)
     }
 
     companion object {

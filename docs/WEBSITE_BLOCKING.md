@@ -43,8 +43,14 @@ WebView embutido que esconda completamente a URL não pode ser identificado com
 garantia. Em aparelhos Device Owner, use Chrome ou Edge para obter a camada
 preventiva mais forte por `URLBlocklist`.
 
-O filtro DNS adulto é um recurso separado. Ele não é necessário para as regras
-de sites e não transforma o FocusGuard em VPN.
+O filtro DNS adulto é um recurso separado. Quando habilitado em um aparelho
+Device Owner, o FocusGuard reaplica o host filtrante após reinícios e impede
+alterações manuais do Private DNS fora da janela de manutenção. Chrome e Edge
+gerenciados também são obrigados a usar o resolvedor do sistema, evitando a
+troca para outro DNS seguro dentro do navegador. A configuração de VPN fica
+bloqueada fora da manutenção para evitar o desvio do filtro, e o próprio filtro
+só pode ser desativado durante uma manutenção autenticada. Ele não é
+necessário para as regras de sites e não transforma o FocusGuard em VPN.
 
 ## Verificação manual recomendada
 
