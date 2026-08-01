@@ -204,8 +204,18 @@ class BlockingSessionManager @Inject constructor(
         ): Boolean {
             return (!blockedPackage.isNullOrBlank() && blockedPackage in sessionApps) ||
                 (!blockedDomain.isNullOrBlank() &&
-                    WebsiteBlocker.isUrlBlocked(blockedDomain, sessionSites))
+                WebsiteBlocker.isUrlBlocked(blockedDomain, sessionSites))
         }
+
+        internal fun shouldArmSelfProtection(
+            hasEnforcingSessions: Boolean,
+            hasBlockedApps: Boolean,
+            hasBlockedSites: Boolean,
+            adultFilterEnabled: Boolean
+        ): Boolean = hasEnforcingSessions ||
+            hasBlockedApps ||
+            hasBlockedSites ||
+            adultFilterEnabled
     }
 
     @dagger.hilt.EntryPoint
@@ -877,10 +887,16 @@ class BlockingSessionManager @Inject constructor(
                     deviceOwnerManager.enforceWebsiteRestrictions(sitesToBlock)
                 }
 
-                if (enforcingSessions.isEmpty() && appsToBlock.isEmpty() && sitesToBlock.isEmpty()) {
-                    deviceOwnerManager.clearBlockingPolicies()
-                } else {
+                if (shouldArmSelfProtection(
+                        hasEnforcingSessions = enforcingSessions.isNotEmpty(),
+                        hasBlockedApps = appsToBlock.isNotEmpty(),
+                        hasBlockedSites = sitesToBlock.isNotEmpty(),
+                        adultFilterEnabled = adultFilterEnabled
+                    )
+                ) {
                     deviceOwnerManager.enforceBlockingPolicies()
+                } else {
+                    deviceOwnerManager.clearBlockingPolicies()
                 }
                 deviceOwnerManager.applyNuclearShield()
 

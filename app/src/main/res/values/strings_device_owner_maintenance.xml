@@ -33,6 +33,8 @@
     <string name="device_owner_diagnostics_user_control">Forçar parada e limpar dados bloqueados</string>
     <string name="device_owner_diagnostics_factory_reset">Reset de fábrica pelas configurações bloqueado</string>
     <string name="device_owner_diagnostics_safe_boot">Modo de segurança bloqueado</string>
+    <string name="device_owner_diagnostics_blocking_guard">Blindagem do bloqueio armada</string>
+    <string name="device_owner_diagnostics_debugging">ADB e recursos de depuração bloqueados</string>
     <string name="device_owner_diagnostics_date_time">Alteração manual de data e hora bloqueada</string>
     <string name="device_owner_diagnostics_grant_admin">Concessão de novos administradores bloqueada</string>
     <string name="device_owner_diagnostics_auto_time">Data e hora automáticas</string>

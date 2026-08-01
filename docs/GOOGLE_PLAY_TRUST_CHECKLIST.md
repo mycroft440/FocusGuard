@@ -14,6 +14,7 @@ Este checklist separa melhorias de código das etapas que somente o proprietári
 - [x] Não impedir a desativação da Acessibilidade em instalações pessoais.
 - [x] Substituir a tela coerciva de reativação por notificação dispensável.
 - [x] Manter anti-remoção forte somente no fluxo oficial de Device Owner.
+- [x] Limitar a interceptação de telas anti-remoção a Device Owner com bloqueio ativo e manutenção fechada.
 - [x] Usar assinatura APK v2 e v3 para versões de produção.
 - [x] Desativar backup e captura de áudio da interface do aplicativo.
 
@@ -43,6 +44,7 @@ Este checklist separa melhorias de código das etapas que somente o proprietári
 - [ ] Bloqueio de Chrome, Samsung Internet, Firefox, aplicativos comuns e sites.
 - [ ] Reinício do aparelho com sessões agendadas.
 - [ ] Device Owner em aparelho de teste dedicado.
+- [ ] Samsung One UI: tentar Acessibilidade, lista de administradores, informações do app e desinstalação durante bloqueio Device Owner.
 
 ## Observação importante
 

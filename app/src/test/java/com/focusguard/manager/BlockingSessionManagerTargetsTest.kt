@@ -148,4 +148,28 @@ class BlockingSessionManagerTargetsTest {
             )
         ).isTrue()
     }
+
+    @Test
+    fun `adult filter alone arms self protection`() {
+        assertThat(
+            BlockingSessionManager.shouldArmSelfProtection(
+                hasEnforcingSessions = false,
+                hasBlockedApps = false,
+                hasBlockedSites = false,
+                adultFilterEnabled = true
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun `self protection disarms only when no target is being blocked`() {
+        assertThat(
+            BlockingSessionManager.shouldArmSelfProtection(
+                hasEnforcingSessions = false,
+                hasBlockedApps = false,
+                hasBlockedSites = false,
+                adultFilterEnabled = false
+            )
+        ).isFalse()
+    }
 }

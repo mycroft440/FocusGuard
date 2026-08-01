@@ -64,6 +64,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         private const val SUSPENDED_APPS_PREFERENCES = "focusguard_suspended_apps"
         private const val MANAGED_SUSPENDED_APPS_KEY = "managed_packages"
         private const val POLICY_STATE_PREFERENCES = "focusguard_device_owner_policy_state"
+        private const val BLOCKING_PROTECTION_ARMED_KEY = "blocking_protection_armed"
         private const val PORNOGRAPHY_CATEGORY_ACTIVE_KEY = "pornography_category_active"
         private const val PREVIOUS_PRIVATE_DNS_CAPTURED_KEY = "previous_private_dns_captured"
         private const val PREVIOUS_PRIVATE_DNS_MODE_KEY = "previous_private_dns_mode"
@@ -111,9 +112,10 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             UserManager.DISALLOW_CONFIG_DATE_TIME
         )
 
-        private val SESSION_RESTRICTIONS = listOf(
+        internal val ACTIVE_BLOCK_RESTRICTIONS = listOf(
             UserManager.DISALLOW_ADD_USER,
-            UserManager.DISALLOW_REMOVE_USER
+            UserManager.DISALLOW_REMOVE_USER,
+            UserManager.DISALLOW_DEBUGGING_FEATURES
         )
 
         internal fun appControlRestrictionsForSdk(sdkInt: Int): List<String> = buildList {
@@ -134,7 +136,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         internal fun allShieldRestrictionsForSdk(sdkInt: Int): List<String> =
             ALWAYS_ON_RESTRICTIONS +
                 appControlRestrictionsForSdk(sdkInt) +
-                adultContentRestrictionsForSdk(sdkInt)
+                adultContentRestrictionsForSdk(sdkInt) +
+                ACTIVE_BLOCK_RESTRICTIONS
 
         internal fun requiresAdultDns(
             globalAdultFilterEnabled: Boolean,
@@ -182,6 +185,10 @@ class DeviceOwnerManager private constructor(private val context: Context) {
 
     fun isMaintenanceActive(): Boolean =
         isDeviceOwnerActive() && DeviceOwnerMaintenanceGate.isTemporarilyUnlocked(context)
+
+    /** True from the first effective blocked target until enforcement confirms it ended. */
+    fun isBlockingProtectionArmed(): Boolean =
+        policyStatePreferences.getBoolean(BLOCKING_PROTECTION_ARMED_KEY, false)
 
     fun maintenanceRemainingMillis(): Long =
         if (isDeviceOwnerActive()) DeviceOwnerMaintenanceGate.remainingMillis(context) else 0L
@@ -460,8 +467,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     fun enforceBlockingPolicies() {
         if (!isDeviceOwnerActive()) return
         try {
+            setBlockingProtectionArmed(true)
             applyNuclearShield()
-            SESSION_RESTRICTIONS.forEach { dpm.addUserRestriction(componentName, it) }
             Log.d("FocusGuardAdmin", "Políticas de sessão aplicadas")
         } catch (e: Exception) {
             FocusGuardLogger.logError("DeviceOwner", "Falha ao aplicar políticas de sessão", e)
@@ -472,7 +479,10 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     fun clearBlockingPolicies() {
         if (!isDeviceOwnerActive()) return
         try {
-            SESSION_RESTRICTIONS.forEach { dpm.clearUserRestriction(componentName, it) }
+            ACTIVE_BLOCK_RESTRICTIONS.forEach {
+                dpm.clearUserRestriction(componentName, it)
+            }
+            setBlockingProtectionArmed(false)
             Log.d("FocusGuardAdmin", "Políticas de sessão removidas")
         } catch (e: Exception) {
             FocusGuardLogger.logError("DeviceOwner", "Falha ao remover políticas de sessão", e)
@@ -494,11 +504,23 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         }
 
         if (DeviceOwnerMaintenanceGate.isTemporarilyUnlocked(context)) {
+            ACTIVE_BLOCK_RESTRICTIONS.forEach { restriction ->
+                applyPolicySafely("clear:$restriction") {
+                    dpm.clearUserRestriction(componentName, restriction)
+                }
+            }
             relaxAppControlForMaintenance()
             relaxAdultContentForMaintenance()
             Log.d("FocusGuardAdmin", "Nuclear Shield em modo de manutenção temporária")
         } else {
             enforceAppControlProtection()
+            if (isBlockingProtectionArmed()) {
+                ACTIVE_BLOCK_RESTRICTIONS.forEach { restriction ->
+                    applyPolicySafely("add:$restriction") {
+                        dpm.addUserRestriction(componentName, restriction)
+                    }
+                }
+            }
             reconcileAdultContentProtection()
             Log.d("FocusGuardAdmin", "Nuclear Shield completo aplicado")
         }
@@ -584,7 +606,20 @@ class DeviceOwnerManager private constructor(private val context: Context) {
                 dpm.setUserControlDisabledPackages(componentName, emptyList())
             }
         }
+        setBlockingProtectionArmed(false)
         Log.d("FocusGuardAdmin", "Nuclear Shield revogado para remoção legítima")
+    }
+
+    private fun setBlockingProtectionArmed(armed: Boolean) {
+        val saved = policyStatePreferences.edit()
+            .putBoolean(BLOCKING_PROTECTION_ARMED_KEY, armed)
+            .commit()
+        if (!saved) {
+            FocusGuardLogger.log(
+                "DeviceOwner",
+                "Não foi possível persistir o estado da proteção de bloqueio"
+            )
+        }
     }
 
     private inline fun applyPolicySafely(name: String, operation: () -> Unit) {

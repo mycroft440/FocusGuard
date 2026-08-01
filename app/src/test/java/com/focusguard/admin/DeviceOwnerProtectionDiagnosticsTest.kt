@@ -78,15 +78,28 @@ class DeviceOwnerProtectionDiagnosticsTest {
         assertThat(diagnostics.failedChecks).isEqualTo(3)
     }
 
+    @Test
+    fun `active blocking guard requires debugging routes to be closed`() {
+        val diagnostics = protectedDiagnostics().copy(
+            blockingProtectionArmed = true,
+            debuggingBlocked = false
+        )
+
+        assertThat(diagnostics.isFullyProtected).isFalse()
+        assertThat(diagnostics.failedChecks).isEqualTo(1)
+    }
+
     private fun protectedDiagnostics() = DeviceOwnerProtectionDiagnostics(
         deviceAdminActive = true,
         deviceOwnerActive = true,
         maintenanceActive = false,
+        blockingProtectionArmed = false,
         uninstallBlocked = true,
         appsControlBlocked = true,
         userControlDisabled = true,
         factoryResetBlocked = true,
         safeBootBlocked = true,
+        debuggingBlocked = false,
         dateTimeChangesBlocked = true,
         grantAdminBlocked = true,
         automaticTimeEnabled = true,

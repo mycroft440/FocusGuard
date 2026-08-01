@@ -21,17 +21,21 @@ class DeviceOwnerProtectionAuditor(context: Context) {
             dpm.isDeviceOwnerApp(appContext.packageName)
         }.getOrDefault(false)
         val adultFilterEnabled = AuthManager.isAdultFilterConfigured(appContext)
+        val blockingProtectionArmed = DeviceOwnerManager.getInstance(appContext)
+            .isBlockingProtectionArmed()
 
         if (!deviceOwnerActive) {
             return DeviceOwnerProtectionDiagnostics(
                 deviceAdminActive = deviceAdminActive,
                 deviceOwnerActive = false,
                 maintenanceActive = false,
+                blockingProtectionArmed = false,
                 uninstallBlocked = false,
                 appsControlBlocked = false,
                 userControlDisabled = null,
                 factoryResetBlocked = false,
                 safeBootBlocked = false,
+                debuggingBlocked = false,
                 dateTimeChangesBlocked = false,
                 grantAdminBlocked = null,
                 automaticTimeEnabled = null,
@@ -50,6 +54,7 @@ class DeviceOwnerProtectionAuditor(context: Context) {
             deviceAdminActive = deviceAdminActive,
             deviceOwnerActive = true,
             maintenanceActive = maintenanceActive,
+            blockingProtectionArmed = blockingProtectionArmed,
             uninstallBlocked = runCatching {
                 dpm.isUninstallBlocked(admin, appContext.packageName)
             }.getOrDefault(false),
@@ -63,6 +68,9 @@ class DeviceOwnerProtectionAuditor(context: Context) {
             },
             factoryResetBlocked = restrictions.policyState(UserManager.DISALLOW_FACTORY_RESET),
             safeBootBlocked = restrictions.policyState(UserManager.DISALLOW_SAFE_BOOT),
+            debuggingBlocked = restrictions.policyState(
+                UserManager.DISALLOW_DEBUGGING_FEATURES
+            ),
             dateTimeChangesBlocked = restrictions.policyState(
                 UserManager.DISALLOW_CONFIG_DATE_TIME
             ),

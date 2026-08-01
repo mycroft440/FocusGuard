@@ -349,6 +349,17 @@ private fun DeviceOwnerDiagnosticsSection(
         stringResource(R.string.device_owner_diagnostics_safe_boot),
         diagnostics.safeBootBlocked
     )
+    if (diagnostics.blockingProtectionArmed) {
+        DiagnosticRow(
+            stringResource(R.string.device_owner_diagnostics_blocking_guard),
+            true
+        )
+        DiagnosticRow(
+            stringResource(R.string.device_owner_diagnostics_debugging),
+            diagnostics.debuggingBlocked,
+            relaxedByMaintenance = maintenanceActive
+        )
+    }
     DiagnosticRow(
         stringResource(R.string.device_owner_diagnostics_date_time),
         diagnostics.dateTimeChangesBlocked

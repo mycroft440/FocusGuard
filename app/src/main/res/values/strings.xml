@@ -190,8 +190,8 @@
     <string name="permission_usage_access_detail">Na lista do Android, localize FocusGuard e habilite o acesso.</string>
     <string name="permission_usage_access_action">Abrir acesso de uso</string>
     <string name="permission_device_admin_title">Admin do dispositivo</string>
-    <string name="permission_device_admin_desc">Adiciona proteção avançada contra remoção impulsiva.</string>
-    <string name="permission_device_admin_detail">Na tela do Android, toque em \"Ativar\". Use apenas se quiser proteção reforçada.</string>
+    <string name="permission_device_admin_desc">Adiciona fricção contra remoção impulsiva, mas o Android ainda permite revogar um administrador comum.</string>
+    <string name="permission_device_admin_detail">Na tela do Android, toque em \"Ativar\". Para proteção anti-remoção oficial, provisione também o modo Device Owner.</string>
     <string name="permission_device_admin_action">Ativar proteção avançada</string>
     <string name="permission_device_admin_manual_action">Abrir lista de administradores</string>
     <string name="permission_battery_title">Bateria irrestrita</string>

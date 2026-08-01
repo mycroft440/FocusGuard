@@ -14,7 +14,7 @@ O FocusGuard é um aplicativo de foco e autocontrole que permite ao próprio usu
 
 Quando o usuário ativa voluntariamente o serviço de Acessibilidade, o FocusGuard pode identificar o aplicativo ou navegador visível e ler informações exibidas na janela, incluindo texto e endereços de sites. Esse acesso é usado somente para aplicar regras de bloqueio e limites configuradas pelo usuário.
 
-O serviço não é apresentado como ferramenta destinada a pessoas com deficiência, não controla o aparelho remotamente e não impede que o usuário desative o serviço nas configurações do Android.
+O serviço não é apresentado como ferramenta destinada a pessoas com deficiência e não controla o aparelho remotamente. Em instalações pessoais comuns, ele não impede que o usuário desative o serviço nas configurações do Android. Em um aparelho provisionado deliberadamente como Device Owner, enquanto houver um bloqueio ativo e a manutenção autenticada estiver fechada, ele também identifica e fecha telas do sistema que removeriam a Acessibilidade, o administrador ou o próprio FocusGuard. Esse comportamento de dispositivo gerenciado é configurado pelo proprietário do aparelho e pode ser liberado pela manutenção administrativa.
 
 ### Acesso de uso
 

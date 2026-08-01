@@ -16,7 +16,8 @@ um app é Device Owner, ele pode:
 - ✅ **Suspender apps** nativamente via `setPackagesSuspended` (0ms — ícone fica cinza)
 
 Sem Device Owner, o FocusGuard funciona com proteção padrão (Accessibility
-+ Device Admin), mas algumas defesas ficam indisponíveis.
++ Device Admin), mas o Android sempre permite revogar o administrador comum.
+Esse modo não deve ser interpretado como proteção anti-remoção garantida.
 
 ## ⚠️ Pré-requisitos CRÍTICOS
 
@@ -123,15 +124,33 @@ GLOBAL_SHIELD_RESTRICTIONS = [
 ]
 ```
 
+O app também chama `setUninstallBlocked()` para o próprio pacote e, no Android
+11 ou superior, `setUserControlDisabledPackages()` para impedir force-stop e
+limpeza de dados pelas Configurações.
+
 ### Policies por sessão de bloqueio
 
 ```kotlin
-SESSION_RESTRICTIONS = [
+ACTIVE_BLOCK_RESTRICTIONS = [
     DISALLOW_ADD_USER,
     DISALLOW_REMOVE_USER,
-    DISALLOW_CONFIG_DATE_TIME
+    DISALLOW_DEBUGGING_FEATURES
 ]
 ```
+
+Essas restrições são armadas assim que uma sessão, limite excedido, site ou o
+filtro adulto passa a bloquear algo. O estado é persistido e reaplicado após
+reinicialização. Enquanto estiver armado, ADB/depuração, modo seguro, reset pelas
+Configurações, desinstalação, force-stop e limpeza de dados ficam fechados. A
+AccessibilityService também volta da tela de Acessibilidade, da lista de
+administradores e das telas de desinstalação como defesa adicional contra falhas
+de interface de fabricantes. Essa interceptação só opera em um aparelho realmente
+provisionado como Device Owner e fora da manutenção autenticada.
+
+> O Android não oferece uma promessa matemática contra recuperação física,
+> firmware/recovery do fabricante ou falhas do próprio sistema. “Proteção
+> completa” neste projeto significa que todas as políticas oficiais auditáveis
+> abaixo foram confirmadas pelo Android.
 
 ### Bloqueio de sites (URLBlocklist, sem VPN)
 
@@ -159,7 +178,8 @@ Se você quiser desinstalar o FocusGuard no futuro:
 3. Toque em "Revogar Device Owner"
 4. Confirme
 
-Ou via ADB:
+Como último recurso, após abrir a manutenção (que libera a depuração), também é
+possível usar ADB:
 ```bash
 adb shell dpm remove-active-admin com.focusguard.v2/com.focusguard.admin.FocusGuardDeviceAdminReceiver
 ```

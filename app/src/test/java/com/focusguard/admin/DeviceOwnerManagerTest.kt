@@ -105,6 +105,16 @@ class DeviceOwnerManagerTest {
         assertThat(restrictions).contains(UserManager.DISALLOW_UNINSTALL_APPS)
         assertThat(restrictions).contains(UserManager.DISALLOW_APPS_CONTROL)
         assertThat(restrictions).contains(UserManager.DISALLOW_CONFIG_PRIVATE_DNS)
+        assertThat(restrictions).contains(UserManager.DISALLOW_DEBUGGING_FEATURES)
+    }
+
+    @Test
+    fun `active block closes user and adb bypass routes`() {
+        assertThat(DeviceOwnerManager.ACTIVE_BLOCK_RESTRICTIONS).containsExactly(
+            UserManager.DISALLOW_ADD_USER,
+            UserManager.DISALLOW_REMOVE_USER,
+            UserManager.DISALLOW_DEBUGGING_FEATURES
+        ).inOrder()
     }
 
     @Test

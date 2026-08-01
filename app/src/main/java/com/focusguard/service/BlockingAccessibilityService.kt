@@ -24,9 +24,9 @@ import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.AppDatabase
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.StrictPomodoroLock
-import com.focusguard.security.AccessibilityProtectionGate
 import com.focusguard.security.AccessibilitySettingsPolicy
 import com.focusguard.security.AuthManager
+import com.focusguard.security.ManagedSelfProtectionPolicy
 import com.focusguard.ui.BlockNoticeActivity
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.FocusGuardLogger
@@ -127,7 +127,16 @@ class BlockingAccessibilityService : AccessibilityService() {
         "com.samsung.android.sm_cn"
     )
 
-    private var pendingAccessibilityProtectionUntilElapsed = 0L
+    private val packageInstallerPackages = setOf(
+        "com.android.packageinstaller",
+        "com.google.android.packageinstaller",
+        "com.samsung.android.packageinstaller",
+        "com.miui.packageinstaller"
+    )
+
+    private val protectedSystemPackages = settingsPackages + packageInstallerPackages
+
+    private var pendingSettingsProtectionUntilElapsed = 0L
 
     private var browserPackages: Set<String> = emptySet()
     private val knownBrowserPackages = setOf(
@@ -348,7 +357,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             if (now - lastLoadTime > cacheTimeoutMillis) refreshData()
 
             val packageName = event.packageName?.toString().orEmpty()
-            if (packageName in settingsPackages &&
+            if (packageName in protectedSystemPackages &&
                 event.eventType in settingsInterceptionEventTypes &&
                 handleSettingsInterception(event)
             ) {
@@ -631,8 +640,17 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun handleSettingsInterception(event: AccessibilityEvent): Boolean {
         val packageName = event.packageName?.toString() ?: return false
-        if (packageName !in settingsPackages) return false
-        if (AccessibilityProtectionGate.isTemporarilyUnlocked(this)) return false
+        if (packageName !in protectedSystemPackages) return false
+
+        // Consumer Device Admin is intentionally not treated as irremovable: Android allows
+        // the user to revoke it and Google Play forbids using Accessibility to remove that
+        // platform escape. This guard is defense in depth for explicitly provisioned devices.
+        if (!deviceOwnerManager.isDeviceOwnerActive() ||
+            !deviceOwnerManager.isBlockingProtectionArmed() ||
+            deviceOwnerManager.isMaintenanceActive()
+        ) {
+            return false
+        }
 
         if (isPomodoroStrictActive) {
             performGlobalAction(GLOBAL_ACTION_BACK)
@@ -642,18 +660,33 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         val nowElapsed = SystemClock.elapsedRealtime()
         val className = event.className?.toString().orEmpty()
+        val eventValues = eventTextValues(event)
         val directAccessibilityScreen =
             AccessibilitySettingsPolicy.classTargetsAccessibility(className)
+        val directDeviceAdminScreen =
+            ManagedSelfProtectionPolicy.classTargetsDeviceAdmin(className)
+        val directAppDetailsScreen =
+            ManagedSelfProtectionPolicy.classTargetsAppDetails(className)
+        val directUninstallScreen =
+            ManagedSelfProtectionPolicy.classTargetsUninstall(className)
         val genericSubSettings = className.contains("SubSettings", ignoreCase = true)
         val eventMentionsAccessibility =
-            AccessibilitySettingsPolicy.textTargetsAccessibility(eventTextValues(event))
+            AccessibilitySettingsPolicy.textTargetsAccessibility(eventValues)
+        val eventMentionsDeviceAdmin =
+            ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(eventValues)
+        val eventMentionsFocusGuard =
+            ManagedSelfProtectionPolicy.textTargetsFocusGuard(eventValues)
+        val eventMentionsDestructiveControl =
+            ManagedSelfProtectionPolicy.textTargetsDestructiveControl(eventValues)
         val pendingProtection =
-            nowElapsed <= pendingAccessibilityProtectionUntilElapsed
+            nowElapsed <= pendingSettingsProtectionUntilElapsed
 
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED &&
-            eventMentionsAccessibility
+            (eventMentionsAccessibility ||
+                eventMentionsDeviceAdmin ||
+                (eventMentionsFocusGuard && eventMentionsDestructiveControl))
         ) {
-            pendingAccessibilityProtectionUntilElapsed =
+            pendingSettingsProtectionUntilElapsed =
                 nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
             executeProtectionAction()
             return true
@@ -667,7 +700,30 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
 
         if (directAccessibilityScreen) {
-            pendingAccessibilityProtectionUntilElapsed =
+            pendingSettingsProtectionUntilElapsed =
+                nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
+            executeProtectionAction()
+            return true
+        }
+
+        if (directDeviceAdminScreen ||
+            (genericSubSettings &&
+                (eventMentionsDeviceAdmin || rootMentionsDeviceAdmin()))
+        ) {
+            pendingSettingsProtectionUntilElapsed =
+                nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
+            executeProtectionAction()
+            return true
+        }
+
+        val focusGuardControlScreen =
+            (directAppDetailsScreen || directUninstallScreen ||
+                packageName in packageInstallerPackages) &&
+                (eventMentionsFocusGuard || rootMentionsFocusGuard()) &&
+                (directAppDetailsScreen || directUninstallScreen ||
+                    eventMentionsDestructiveControl || rootMentionsDestructiveControl())
+        if (focusGuardControlScreen) {
+            pendingSettingsProtectionUntilElapsed =
                 nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
             executeProtectionAction()
             return true
@@ -676,7 +732,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         if (genericSubSettings &&
             (eventMentionsAccessibility || rootMentionsAccessibility())
         ) {
-            pendingAccessibilityProtectionUntilElapsed =
+            pendingSettingsProtectionUntilElapsed =
                 nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
             executeProtectionAction()
             return true
@@ -699,14 +755,48 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun rootMentionsAccessibility(): Boolean {
+        return rootContainsAny(
+            searchTerms = AccessibilitySettingsPolicy.searchTerms,
+            classifier = AccessibilitySettingsPolicy::textTargetsAccessibility,
+            screenLabel = "Acessibilidade"
+        )
+    }
+
+    private fun rootMentionsDeviceAdmin(): Boolean {
+        return rootContainsAny(
+            searchTerms = ManagedSelfProtectionPolicy.deviceAdminSearchTerms,
+            classifier = ManagedSelfProtectionPolicy::textTargetsDeviceAdmin,
+            screenLabel = "Administrador do dispositivo"
+        )
+    }
+
+    private fun rootMentionsFocusGuard(): Boolean {
+        return rootContainsAny(
+            searchTerms = ManagedSelfProtectionPolicy.focusGuardSearchTerms,
+            classifier = ManagedSelfProtectionPolicy::textTargetsFocusGuard,
+            screenLabel = "controles do FocusGuard"
+        )
+    }
+
+    private fun rootMentionsDestructiveControl(): Boolean {
+        return rootContainsAny(
+            searchTerms = ManagedSelfProtectionPolicy.destructiveControlSearchTerms,
+            classifier = ManagedSelfProtectionPolicy::textTargetsDestructiveControl,
+            screenLabel = "ação destrutiva"
+        )
+    }
+
+    private fun rootContainsAny(
+        searchTerms: Iterable<String>,
+        classifier: (Iterable<CharSequence?>) -> Boolean,
+        screenLabel: String
+    ): Boolean {
         val root = rootInActiveWindow ?: return false
         return try {
-            AccessibilitySettingsPolicy.searchTerms.any { term ->
+            searchTerms.any { term ->
                 val nodes = root.findAccessibilityNodeInfosByText(term)
                 val found = nodes.any { node ->
-                    AccessibilitySettingsPolicy.textTargetsAccessibility(
-                        listOf(node.text, node.contentDescription, node.viewIdResourceName)
-                    )
+                    classifier(listOf(node.text, node.contentDescription, node.viewIdResourceName))
                 }
                 nodes.forEach(::recycleSafely)
                 found
@@ -714,7 +804,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         } catch (error: RuntimeException) {
             FocusGuardLogger.logError(
                 "A11y",
-                "Falha ao identificar tela de Acessibilidade",
+                "Falha ao identificar tela de $screenLabel",
                 error
             )
             false
