@@ -5,11 +5,13 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import com.focusguard.MainActivity
+import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.manager.StrictPomodoroLock
 import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.ui.PomodoroLockActivity
+import com.focusguard.utils.AccessibilityStateMonitor
 import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -17,12 +19,15 @@ import kotlinx.coroutines.launch
 /**
  * Boot receiver that restores FocusGuard blocking state after device reboot.
  * Supports Direct Boot (LOCKED_BOOT_COMPLETED) for pre-unlock restoration.
- * Immediately starts the watchdog service and lock activity for active Pomodoro sessions.
+ * Native policies are restored before unlock; credential-backed sessions and Pomodoro UI
+ * are restored only after BOOT_COMPLETED makes their storage available.
  */
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         val action = intent.action
-        if (action != Intent.ACTION_BOOT_COMPLETED && action != Intent.ACTION_LOCKED_BOOT_COMPLETED) return
+        if (action != Intent.ACTION_BOOT_COMPLETED &&
+            action != Intent.ACTION_LOCKED_BOOT_COMPLETED
+        ) return
 
         val isDirectBoot = action == Intent.ACTION_LOCKED_BOOT_COMPLETED
 
@@ -36,7 +41,23 @@ class BootReceiver : BroadcastReceiver() {
         FocusGuardLogger.init(storageContext)
         FocusGuardLogger.log("BootReceiver", "Boot detectado (action=$action, directBoot=$isDirectBoot)")
 
-        // Verificação rápida via SharedPreferences (funciona mesmo em Direct Boot)
+        val deviceOwnerManager = DeviceOwnerManager.getInstance(context)
+        if (isDirectBoot) {
+            // Room, Keystore and normal SharedPreferences are still unavailable here.
+            // Native Device Owner policy is sufficient to close removal/ADB bypasses
+            // until BOOT_COMPLETED performs the full session reconciliation.
+            deviceOwnerManager.applyDirectBootShield()
+            FocusGuardLogger.log(
+                "BootReceiver",
+                "Proteção nativa restaurada antes do primeiro desbloqueio"
+            )
+            return
+        }
+
+        deviceOwnerManager.applyNuclearShield()
+        AccessibilityStateMonitor.start(context)
+
+        // Após BOOT_COMPLETED, os dois armazenamentos estão disponíveis.
         val isPomodoroStrictActive = StrictPomodoroLock.isActive(storageContext)
         
         if (isPomodoroStrictActive) {

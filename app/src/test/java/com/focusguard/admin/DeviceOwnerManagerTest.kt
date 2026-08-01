@@ -10,6 +10,8 @@ import android.content.pm.PackageManager
 import android.content.pm.ResolveInfo
 import android.os.Bundle
 import android.os.UserManager
+import com.focusguard.receiver.BootReceiver
+import com.focusguard.service.BlockingAccessibilityService
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -115,6 +117,64 @@ class DeviceOwnerManagerTest {
             UserManager.DISALLOW_REMOVE_USER,
             UserManager.DISALLOW_DEBUGGING_FEATURES
         ).inOrder()
+    }
+
+    @Test
+    fun `policy state is available before the first unlock`() {
+        assertThat(manager.usesDeviceProtectedPolicyState()).isTrue()
+    }
+
+    @Test
+    fun `direct boot fails closed after interrupted maintenance`() {
+        assertThat(
+            DeviceOwnerManager.shouldRestoreActiveBlockAtDirectBoot(
+                blockingProtectionArmed = false,
+                interruptedMaintenance = true
+            )
+        ).isTrue()
+        assertThat(
+            DeviceOwnerManager.shouldRestoreActiveBlockAtDirectBoot(
+                blockingProtectionArmed = false,
+                interruptedMaintenance = false
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `direct boot restores adult dns from either persisted source`() {
+        assertThat(
+            DeviceOwnerManager.shouldRestoreAdultDnsAtDirectBoot(
+                adultContentProtectionArmed = true,
+                pornographyCategoryActive = false
+            )
+        ).isTrue()
+        assertThat(
+            DeviceOwnerManager.shouldRestoreAdultDnsAtDirectBoot(
+                adultContentProtectionArmed = false,
+                pornographyCategoryActive = true
+            )
+        ).isTrue()
+        assertThat(
+            DeviceOwnerManager.shouldRestoreAdultDnsAtDirectBoot(
+                adultContentProtectionArmed = false,
+                pornographyCategoryActive = false
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `only the native boot receiver runs before credential storage unlocks`() {
+        val bootReceiver = context.packageManager.getReceiverInfo(
+            ComponentName(context, BootReceiver::class.java),
+            0
+        )
+        val accessibilityService = context.packageManager.getServiceInfo(
+            ComponentName(context, BlockingAccessibilityService::class.java),
+            0
+        )
+
+        assertThat(bootReceiver.directBootAware).isTrue()
+        assertThat(accessibilityService.directBootAware).isFalse()
     }
 
     @Test

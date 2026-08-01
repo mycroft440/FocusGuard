@@ -147,6 +147,15 @@ administradores e das telas de desinstalação como defesa adicional contra falh
 de interface de fabricantes. Essa interceptação só opera em um aparelho realmente
 provisionado como Device Owner e fora da manutenção autenticada.
 
+Os sinalizadores mínimos dessa proteção ficam no armazenamento criptografado do
+dispositivo, disponível no `LOCKED_BOOT_COMPLETED`. Assim, antes do primeiro PIN
+após um reboot, o FocusGuard restaura as políticas nativas sem tentar abrir Room,
+Keystore ou preferências protegidas pela credencial. Se o aparelho for reiniciado
+durante manutenção, a janela é invalidada e ADB, controle de apps e remoção voltam
+a ser bloqueados nesse estágio. A reconciliação das sessões e a camada de
+Acessibilidade só iniciam após `BOOT_COMPLETED`, quando o Android libera o
+armazenamento do usuário.
+
 > O Android não oferece uma promessa matemática contra recuperação física,
 > firmware/recovery do fabricante ou falhas do próprio sistema. “Proteção
 > completa” neste projeto significa que todas as políticas oficiais auditáveis
@@ -205,6 +214,17 @@ Verifique:
 - ✅ Usage Access concedido em Settings → Apps → FocusGuard → Permissões
 - ✅ Battery optimization desativado para FocusGuard
 - ✅ FocusGuard não está no modo "App Restrito" (Android 13+ → Settings → Apps → FocusGuard → menu → Allow restricted settings)
+
+### Teste de reboot durante manutenção
+
+Em um aparelho de desenvolvimento provisionado como Device Owner:
+
+1. Ative um bloqueio e confirme nos diagnósticos que a proteção está armada.
+2. Abra a manutenção autenticada e reinicie o aparelho antes dos dez minutos.
+3. Antes do primeiro desbloqueio, confirme por um computador já autorizado que
+   novos comandos ADB são recusados.
+4. Após desbloquear, confirme que a manutenção expirou, o bloqueio continua ativo
+   e as telas de desinstalação/administrador permanecem indisponíveis.
 
 ### "Private DNS não aplica"
 

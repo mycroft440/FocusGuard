@@ -1,6 +1,7 @@
 package com.focusguard
 
 import android.app.Application
+import android.os.UserManager
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.utils.AccessibilityStateMonitor
 import com.focusguard.utils.FocusGuardLogger
@@ -15,14 +16,24 @@ import dagger.hilt.android.HiltAndroidApp
 class FocusGuardApplication : Application() {
     override fun onCreate() {
         super.onCreate()
-        FocusGuardLogger.init(this)
+        val userUnlocked = runCatching {
+            getSystemService(UserManager::class.java).isUserUnlocked
+        }.getOrDefault(true)
+        val startupContext = if (userUnlocked) {
+            this
+        } else {
+            runCatching { createDeviceProtectedStorageContext() }.getOrDefault(this)
+        }
+        FocusGuardLogger.init(startupContext)
 
-        // Reaplica as políticas oficiais do Android sempre que o processo inicia.
-        // Se uma janela de manutenção válida estiver ativa, o manager preserva apenas
-        // as liberações temporárias e mantém as proteções críticas.
-        DeviceOwnerManager.getInstance(this).applyNuclearShield()
-
-        // Inicia monitor de desativação do Accessibility Service.
-        AccessibilityStateMonitor.start(this)
+        val deviceOwnerManager = DeviceOwnerManager.getInstance(this)
+        if (userUnlocked) {
+            // Reaplica as políticas oficiais e inicia dependências que usam Room/Keystore.
+            deviceOwnerManager.applyNuclearShield()
+            AccessibilityStateMonitor.start(this)
+        } else {
+            // Antes do primeiro desbloqueio, usa somente DPM + Device Protected Storage.
+            deviceOwnerManager.applyDirectBootShield()
+        }
     }
 }

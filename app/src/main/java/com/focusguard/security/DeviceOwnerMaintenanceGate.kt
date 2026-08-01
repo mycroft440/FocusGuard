@@ -83,6 +83,14 @@ object DeviceOwnerMaintenanceGate {
 
     fun isTemporarilyUnlocked(context: Context): Boolean = remainingMillis(context) > 0L
 
+    /**
+     * True when a maintenance window was persisted before the current Direct Boot pass.
+     * A reboot always invalidates that window, but the native shield uses this signal to
+     * fail closed before clearing the stale deadline.
+     */
+    internal fun hasPersistedWindow(context: Context): Boolean =
+        preferences(context).contains(DEADLINE_ELAPSED_KEY)
+
     fun remainingMillis(context: Context): Long {
         val prefs = preferences(context)
         val remaining = evaluateRemainingMillis(

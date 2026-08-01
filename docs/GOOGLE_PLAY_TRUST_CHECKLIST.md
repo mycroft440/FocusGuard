@@ -43,6 +43,7 @@ Este checklist separa melhorias de código das etapas que somente o proprietári
 - [ ] Seleção de todos os aplicativos com ícone no launcher após remover `QUERY_ALL_PACKAGES`.
 - [ ] Bloqueio de Chrome, Samsung Internet, Firefox, aplicativos comuns e sites.
 - [ ] Reinício do aparelho com sessões agendadas.
+- [ ] Reinício durante a manutenção Device Owner, verificando restauração antes do primeiro desbloqueio.
 - [ ] Device Owner em aparelho de teste dedicado.
 - [ ] Samsung One UI: tentar Acessibilidade, lista de administradores, informações do app e desinstalação durante bloqueio Device Owner.
 

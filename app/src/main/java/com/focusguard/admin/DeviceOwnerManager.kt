@@ -39,11 +39,15 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val websitePolicyMutex = Mutex()
     private val suspendedAppsMutex = Mutex()
-    private val suspendedAppsPreferences = context.getSharedPreferences(
-        SUSPENDED_APPS_PREFERENCES,
-        Context.MODE_PRIVATE
-    )
-    private val policyStatePreferences = context.getSharedPreferences(
+    // The suspended-package inventory is credential protected and is never needed
+    // before the first unlock. Keeping it lazy prevents Direct Boot from touching it.
+    private val suspendedAppsPreferences by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+        context.getSharedPreferences(SUSPENDED_APPS_PREFERENCES, Context.MODE_PRIVATE)
+    }
+    private val policyStateContext = runCatching {
+        context.createDeviceProtectedStorageContext()
+    }.getOrDefault(context)
+    private val policyStatePreferences = policyStateContext.getSharedPreferences(
         POLICY_STATE_PREFERENCES,
         Context.MODE_PRIVATE
     )
@@ -64,7 +68,11 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         private const val SUSPENDED_APPS_PREFERENCES = "focusguard_suspended_apps"
         private const val MANAGED_SUSPENDED_APPS_KEY = "managed_packages"
         private const val POLICY_STATE_PREFERENCES = "focusguard_device_owner_policy_state"
+        private const val POLICY_STATE_STORAGE_VERSION_KEY = "device_protected_storage_version"
+        private const val POLICY_STATE_STORAGE_VERSION = 1
         private const val BLOCKING_PROTECTION_ARMED_KEY = "blocking_protection_armed"
+        private const val ADULT_CONTENT_PROTECTION_ARMED_KEY =
+            "adult_content_protection_armed"
         private const val PORNOGRAPHY_CATEGORY_ACTIVE_KEY = "pornography_category_active"
         private const val PREVIOUS_PRIVATE_DNS_CAPTURED_KEY = "previous_private_dns_captured"
         private const val PREVIOUS_PRIVATE_DNS_MODE_KEY = "previous_private_dns_mode"
@@ -144,6 +152,16 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             pornographyCategoryActive: Boolean
         ): Boolean = globalAdultFilterEnabled || pornographyCategoryActive
 
+        internal fun shouldRestoreActiveBlockAtDirectBoot(
+            blockingProtectionArmed: Boolean,
+            interruptedMaintenance: Boolean
+        ): Boolean = blockingProtectionArmed || interruptedMaintenance
+
+        internal fun shouldRestoreAdultDnsAtDirectBoot(
+            adultContentProtectionArmed: Boolean,
+            pornographyCategoryActive: Boolean
+        ): Boolean = adultContentProtectionArmed || pornographyCategoryActive
+
         internal fun buildManagedBrowserRestrictions(
             existing: Bundle,
             managedFilters: List<String>,
@@ -189,6 +207,9 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     /** True from the first effective blocked target until enforcement confirms it ended. */
     fun isBlockingProtectionArmed(): Boolean =
         policyStatePreferences.getBoolean(BLOCKING_PROTECTION_ARMED_KEY, false)
+
+    internal fun usesDeviceProtectedPolicyState(): Boolean =
+        policyStateContext.isDeviceProtectedStorage
 
     fun maintenanceRemainingMillis(): Long =
         if (isDeviceOwnerActive()) DeviceOwnerMaintenanceGate.remainingMillis(context) else 0L
@@ -490,10 +511,58 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     }
 
     /**
+     * Restores only policies whose state is available in device-encrypted storage.
+     * This method is safe during Direct Boot and deliberately avoids Room, encrypted
+     * preferences and every other credential-encrypted dependency.
+     */
+    fun applyDirectBootShield() {
+        if (!isDeviceOwnerActive()) return
+
+        val interruptedMaintenance = DeviceOwnerMaintenanceGate.hasPersistedWindow(context)
+        if (interruptedMaintenance) {
+            // Maintenance is never allowed to survive a reboot. Persisting the armed
+            // bit also closes the upgrade edge where the old value still lived in CE.
+            DeviceOwnerMaintenanceGate.revoke(context)
+            setBlockingProtectionArmed(true)
+        }
+
+        enforceTrustedAutomaticTime()
+        ALWAYS_ON_RESTRICTIONS.forEach { restriction ->
+            applyPolicySafely("direct_boot_add:$restriction") {
+                dpm.addUserRestriction(componentName, restriction)
+            }
+        }
+        enforceAppControlProtection()
+
+        if (shouldRestoreActiveBlockAtDirectBoot(
+                blockingProtectionArmed = isBlockingProtectionArmed(),
+                interruptedMaintenance = interruptedMaintenance
+            )
+        ) {
+            ACTIVE_BLOCK_RESTRICTIONS.forEach { restriction ->
+                applyPolicySafely("direct_boot_add:$restriction") {
+                    dpm.addUserRestriction(componentName, restriction)
+                }
+            }
+        }
+
+        if (shouldRestoreAdultDnsAtDirectBoot(
+                adultContentProtectionArmed = isAdultContentProtectionArmed(),
+                pornographyCategoryActive = isPornographyCategoryActive()
+            )
+        ) {
+            enforceAdultDns()
+        }
+
+        Log.d("FocusGuardAdmin", "Nuclear Shield restaurado no Direct Boot")
+    }
+
+    /**
      * Applies the persistent Device Owner shield or its reduced maintenance state.
      * Factory reset, safe boot and manual date/time changes remain blocked during maintenance.
      */
     fun applyNuclearShield() {
+        migratePolicyStateToDeviceProtectedStorage()
         if (!isDeviceOwnerActive()) return
 
         enforceTrustedAutomaticTime()
@@ -565,7 +634,9 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     }
 
     private fun reconcileAdultContentProtection() {
-        if (isAdultDnsProtectionRequired()) {
+        val protectionRequired = isAdultDnsProtectionRequired()
+        setAdultContentProtectionArmed(protectionRequired)
+        if (protectionRequired) {
             if (!enforceAdultDns()) {
                 FocusGuardLogger.log(
                     "DeviceOwner",
@@ -607,6 +678,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             }
         }
         setBlockingProtectionArmed(false)
+        setAdultContentProtectionArmed(false)
         Log.d("FocusGuardAdmin", "Nuclear Shield revogado para remoção legítima")
     }
 
@@ -621,6 +693,76 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             )
         }
     }
+
+    private fun isAdultContentProtectionArmed(): Boolean =
+        policyStatePreferences.getBoolean(ADULT_CONTENT_PROTECTION_ARMED_KEY, false)
+
+    private fun setAdultContentProtectionArmed(armed: Boolean) {
+        val saved = policyStatePreferences.edit()
+            .putBoolean(ADULT_CONTENT_PROTECTION_ARMED_KEY, armed)
+            .commit()
+        if (!saved) {
+            FocusGuardLogger.log(
+                "DeviceOwner",
+                "Não foi possível persistir o estado da proteção de conteúdo adulto"
+            )
+        }
+    }
+
+    /** Copies the non-sensitive policy flags written by versions before Direct Boot support. */
+    private fun migratePolicyStateToDeviceProtectedStorage() {
+        if (!policyStateContext.isDeviceProtectedStorage || !isUserUnlocked()) return
+        if (policyStatePreferences.getInt(
+                POLICY_STATE_STORAGE_VERSION_KEY,
+                0
+            ) >= POLICY_STATE_STORAGE_VERSION
+        ) return
+
+        val legacyPreferences = context.getSharedPreferences(
+            POLICY_STATE_PREFERENCES,
+            Context.MODE_PRIVATE
+        )
+        val editor = policyStatePreferences.edit()
+        listOf(
+            BLOCKING_PROTECTION_ARMED_KEY,
+            ADULT_CONTENT_PROTECTION_ARMED_KEY,
+            PORNOGRAPHY_CATEGORY_ACTIVE_KEY,
+            PREVIOUS_PRIVATE_DNS_CAPTURED_KEY
+        ).forEach { key ->
+            if (!policyStatePreferences.contains(key) && legacyPreferences.contains(key)) {
+                editor.putBoolean(key, legacyPreferences.getBoolean(key, false))
+            }
+        }
+        if (!policyStatePreferences.contains(PREVIOUS_PRIVATE_DNS_MODE_KEY) &&
+            legacyPreferences.contains(PREVIOUS_PRIVATE_DNS_MODE_KEY)
+        ) {
+            editor.putInt(
+                PREVIOUS_PRIVATE_DNS_MODE_KEY,
+                legacyPreferences.getInt(PREVIOUS_PRIVATE_DNS_MODE_KEY, 0)
+            )
+        }
+        if (!policyStatePreferences.contains(PREVIOUS_PRIVATE_DNS_HOST_KEY) &&
+            legacyPreferences.contains(PREVIOUS_PRIVATE_DNS_HOST_KEY)
+        ) {
+            editor.putString(
+                PREVIOUS_PRIVATE_DNS_HOST_KEY,
+                legacyPreferences.getString(PREVIOUS_PRIVATE_DNS_HOST_KEY, null)
+            )
+        }
+        val saved = editor
+            .putInt(POLICY_STATE_STORAGE_VERSION_KEY, POLICY_STATE_STORAGE_VERSION)
+            .commit()
+        if (!saved) {
+            FocusGuardLogger.log(
+                "DeviceOwner",
+                "Não foi possível migrar o estado de política para o Direct Boot"
+            )
+        }
+    }
+
+    private fun isUserUnlocked(): Boolean = runCatching {
+        (context.getSystemService(Context.USER_SERVICE) as UserManager).isUserUnlocked
+    }.getOrDefault(true)
 
     private inline fun applyPolicySafely(name: String, operation: () -> Unit) {
         runCatching(operation).onFailure { error ->
@@ -788,6 +930,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     /** Enforce and lock Global Private DNS using CleanBrowsing Family Filter. */
     fun enforceAdultDns(): Boolean {
         if (!isDeviceOwnerActive()) return false
+        setAdultContentProtectionArmed(true)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
                 val alreadyConfigured =
@@ -850,6 +993,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             policyStatePreferences.edit()
                 .putBoolean(PORNOGRAPHY_CATEGORY_ACTIVE_KEY, true)
                 .commit()
+            setAdultContentProtectionArmed(true)
             if (isDeviceOwnerActive() && !isMaintenanceActive()) {
                 enforceAdultDns()
             }
@@ -862,8 +1006,10 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         if (wasActive && isDeviceOwnerActive() &&
             !AuthManager.isAdultFilterConfigured(context)
         ) {
+            setAdultContentProtectionArmed(false)
             restorePrivateDnsAfterCategory()
         } else {
+            setAdultContentProtectionArmed(AuthManager.isAdultFilterConfigured(context))
             clearCapturedPrivateDnsState()
         }
     }
@@ -969,6 +1115,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             enforceAdultDns()
             return
         }
+        setAdultContentProtectionArmed(false)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
                 clearAdultContentRestrictions()

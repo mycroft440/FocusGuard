@@ -135,7 +135,6 @@
 
         <service
             android:name=".service.BlockingAccessibilityService"
-            android:directBootAware="true"
             android:exported="true"
             android:foregroundServiceType="specialUse"
             android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
