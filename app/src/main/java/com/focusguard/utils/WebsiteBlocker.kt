@@ -246,6 +246,7 @@ object WebsiteBlocker {
         return linkedSetOf<String>().apply {
             addAll(expandDomainAliases(normalized))
             if (normalized.any(::isPornographyRule)) {
+                addAll(GOOGLE_IMAGES_MANAGED_FILTERS)
                 PredefinedWebsites.PORNOGRAPHY_KEYWORDS.forEach { keyword ->
                     queryCaseVariants(keyword).forEach { variant ->
                         add("*?q=$variant*")
@@ -300,7 +301,8 @@ object WebsiteBlocker {
             val normalizedCandidate = normalizeRule(urlOrDomain)
             val pornographyMatched = isPornographyRule(normalizedCandidate) ||
                 findDirectMatchingRules(urlOrDomain, pornographyBlockingRules).isNotEmpty() ||
-                isPornographyGoogleSearchUrl(urlOrDomain)
+                isPornographyGoogleSearchUrl(urlOrDomain) ||
+                isGoogleImagesUrl(urlOrDomain)
             if (pornographyMatched) matches += PredefinedWebsites.PORNOGRAPHY_RULE
         }
         return matches
@@ -494,7 +496,7 @@ object WebsiteBlocker {
     fun isPornographySearchInput(text: String): Boolean {
         val candidateUrl = extractUrlCandidate(text)
         return if (candidateUrl != null) {
-            isPornographyGoogleSearchUrl(candidateUrl)
+            isPornographyGoogleSearchUrl(candidateUrl) || isGoogleImagesUrl(candidateUrl)
         } else {
             containsPornographySearchTerm(text)
         }
@@ -504,6 +506,30 @@ object WebsiteBlocker {
     fun isPornographyGoogleSearchUrl(url: String): Boolean {
         if (!isGoogleUrl(url)) return false
         return searchQueryValues(url).any(::containsPornographySearchTerm)
+    }
+
+    /**
+     * No modo estrito, qualquer superfície de pesquisa visual do Google fica
+     * indisponível enquanto a categoria Pornografia estiver ativa. Isso inclui
+     * a página inicial, resultados antigos e atuais, busca reversa e Lens.
+     */
+    fun isGoogleImagesUrl(url: String): Boolean {
+        if (!isGoogleUrl(url)) return false
+        val domain = extractDomain(url)
+        if (domain.startsWith("images.google.") || domain.startsWith("lens.google.")) {
+            return true
+        }
+
+        val path = parseUriCandidate(url)?.path.orEmpty().lowercase(Locale.ROOT)
+        if (GOOGLE_IMAGE_PATH_PREFIXES.any { prefix ->
+                path == prefix || path.startsWith("$prefix/")
+            }
+        ) return true
+
+        return urlQueryTokens(url).any { (key, value) ->
+            (key == "tbm" && value.equals("isch", ignoreCase = true)) ||
+                (key == "udm" && value == "2")
+        }
     }
 
     /** Usado para limitar a leitura de campos de página ao Google verificado pela URL. */
@@ -746,14 +772,15 @@ object WebsiteBlocker {
     }
 
     private fun searchQueryValues(url: String): List<String> {
+        return urlQueryTokens(url)
+            .filter { (key, _) -> key in SEARCH_QUERY_KEYS }
+            .map { (_, value) -> value }
+    }
+
+    private fun urlQueryTokens(url: String): List<Pair<String, String>> {
         val sanitized = sanitizeText(url)
         if (sanitized.isEmpty()) return emptyList()
-        val candidate = if (SCHEME_REGEX.containsMatchIn(sanitized)) {
-            sanitized
-        } else {
-            "https://$sanitized"
-        }
-        val uri = runCatching { URI(candidate) }.getOrNull()
+        val uri = parseUriCandidate(sanitized)
         val querySections = buildList {
             uri?.rawQuery?.let(::add)
             uri?.rawFragment
@@ -767,10 +794,26 @@ object WebsiteBlocker {
             query.split('&').mapNotNull { token ->
                 val rawKey = token.substringBefore('=', missingDelimiterValue = token)
                 val key = decodeSearchComponent(rawKey).lowercase(Locale.ROOT)
-                if (key !in SEARCH_QUERY_KEYS || '=' !in token) return@mapNotNull null
-                decodeSearchComponent(token.substringAfter('='))
+                if (key.isEmpty() || '=' !in token) return@mapNotNull null
+                key to decodeSearchComponent(token.substringAfter('='))
             }
         }
+    }
+
+    private fun parseUriCandidate(value: String): URI? {
+        var sanitized = sanitizeText(value)
+        while (true) {
+            val prefix = nestedUrlPrefixes.firstOrNull {
+                sanitized.startsWith(it, ignoreCase = true)
+            } ?: break
+            sanitized = sanitized.substring(prefix.length).trim()
+        }
+        val candidate = if (SCHEME_REGEX.containsMatchIn(sanitized)) {
+            sanitized
+        } else {
+            "https://$sanitized"
+        }
+        return runCatching { URI(candidate) }.getOrNull()
     }
 
     private fun decodeSearchComponent(value: String): String {
@@ -899,6 +942,24 @@ object WebsiteBlocker {
     private val KEYWORD_REGEX = Regex("^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
     private const val MAX_QUERY_DECODE_PASSES = 3
     private val SEARCH_QUERY_KEYS = setOf("q", "query", "oq")
+    private val GOOGLE_IMAGE_PATH_PREFIXES = setOf(
+        "/imghp",
+        "/imgres",
+        "/advanced_image_search",
+        "/searchbyimage",
+        "/lens"
+    )
+    private val GOOGLE_IMAGES_MANAGED_FILTERS = listOf(
+        "images.google.com",
+        "lens.google.com",
+        "*/imghp",
+        "*/imgres",
+        "*/advanced_image_search",
+        "*/searchbyimage",
+        "*/lens",
+        "*?tbm=isch",
+        "*?udm=2"
+    )
     private val GOOGLE_HOST_REGEX = Regex(
         "^(?:[a-z0-9-]+\\.)*google\\.(?:[a-z]{2,}|(?:co|com|net|org)\\.[a-z]{2})$",
         RegexOption.IGNORE_CASE

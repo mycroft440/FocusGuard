@@ -209,7 +209,7 @@ class WebsiteBlockerTest {
     }
 
     @Test
-    fun `pornography Google search matching avoids paths and innocent words`() {
+    fun `strict category blocks Google Images but permits innocent web searches`() {
         val category = listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
 
         assertThat(
@@ -221,6 +221,12 @@ class WebsiteBlockerTest {
         assertThat(
             WebsiteBlocker.isUrlBlocked(
                 "https://google.com/search?tbm=isch&q=Essex+Inglaterra",
+                category
+            )
+        ).isTrue()
+        assertThat(
+            WebsiteBlocker.isUrlBlocked(
+                "https://google.com/search?q=Essex+Inglaterra",
                 category
             )
         ).isFalse()
@@ -239,10 +245,43 @@ class WebsiteBlockerTest {
     }
 
     @Test
+    fun `strict category recognizes every Google Images entry surface`() {
+        val category = listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
+
+        assertThat(WebsiteBlocker.isUrlBlocked("https://images.google.com", category))
+            .isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked("https://www.google.com/imghp", category))
+            .isTrue()
+        assertThat(
+            WebsiteBlocker.isUrlBlocked(
+                "https://google.com.br/search?q=filhotes&udm=2",
+                category
+            )
+        ).isTrue()
+        assertThat(
+            WebsiteBlocker.isUrlBlocked(
+                "https://google.co.uk/imgres?imgurl=https%3A%2F%2Fsafe.example%2Fcat.jpg",
+                category
+            )
+        ).isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked("https://lens.google.com/search", category))
+            .isTrue()
+        assertThat(
+            WebsiteBlocker.isUrlBlocked(
+                "https://safe-example.com/search?q=filhotes&udm=2",
+                category
+            )
+        ).isFalse()
+    }
+
+    @Test
     fun `typed browser searches detect category terms before becoming urls`() {
         assertThat(WebsiteBlocker.isPornographySearchInput("free porn images")).isTrue()
         assertThat(WebsiteBlocker.isPornographySearchInput("conteúdo sexual")).isTrue()
         assertThat(WebsiteBlocker.isPornographySearchInput("x v i d e o s")).isTrue()
+        assertThat(
+            WebsiteBlocker.isPornographySearchInput("https://images.google.com")
+        ).isTrue()
         assertThat(WebsiteBlocker.isPornographySearchInput("Essex Inglaterra")).isFalse()
         assertThat(
             WebsiteBlocker.isPornographySearchInput("https://safe.example/path/sex")
@@ -444,7 +483,13 @@ class WebsiteBlockerTest {
             "*?q=PORN*",
             "*?q=xxx*",
             "*?q=sex*",
-            "*?q=xvideos*"
+            "*?q=xvideos*",
+            "images.google.com",
+            "lens.google.com",
+            "*/imghp",
+            "*/imgres",
+            "*?tbm=isch",
+            "*?udm=2"
         )
         assertThat(filters).doesNotContain(PredefinedWebsites.PORNOGRAPHY_RULE)
     }

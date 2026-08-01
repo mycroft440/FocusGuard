@@ -67,7 +67,7 @@
     <string name="protection_sites_helper">Insira um domínio completo ou uma palavra presente no domínio.</string>
     <string name="protection_sites_common">Sites predefinidos</string>
     <string name="protection_sites_pornography">Pornografia</string>
-    <string name="protection_sites_pornography_subtitle">Sites adultos + porn, xxx, sex e xvideos</string>
+    <string name="protection_sites_pornography_subtitle">Sites adultos + porn, xxx, sex, xvideos e Google Imagens</string>
     <string name="protection_sites_selected">Sites e palavras na lista</string>
     <string name="protection_sites_none">Nenhuma regra de site adicionada.</string>
     <string name="app_already_blocked">Aplicativo já bloqueado</string>

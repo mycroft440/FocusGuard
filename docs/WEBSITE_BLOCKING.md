@@ -46,6 +46,10 @@ bloqueio combina as duas camadas nativas disponíveis no Android:
   Imagens, inclusive em domínios regionais, parâmetros fora de ordem e texto
   percentualmente codificado. Variações iniciadas pelo termo, como
   `pornografia` e `sexual`, também correspondem; palavras como `Essex` não.
+- No modo estrito da categoria, o **Google Imagens inteiro fica bloqueado**,
+  mesmo para uma consulta segura. A cobertura inclui `images.google.*`, Lens,
+  `/imghp`, `/imgres`, busca reversa e os modos `udm=2` e `tbm=isch`. A busca
+  web comum do Google continua disponível quando não contém um termo proibido.
 - Em qualquer navegador que exponha sua interface à acessibilidade, a consulta
   é interrompida enquanto ainda está sendo digitada na barra de endereço. Em
   uma página do Google confirmada pela URL, o campo de busca editável também é
@@ -53,11 +57,12 @@ bloqueio combina as duas camadas nativas disponíveis no Android:
 - A categoria continua aparecendo como um único item em sessões, limites e
   telas de detalhes; as regras internas não são gravadas separadamente.
 - Em Device Owner, a lista local também é enviada à `URLBlocklist` do Chrome e
-  Edge, junto de filtros preventivos para consultas que começam com cada
-  palavra da categoria. Enquanto a categoria estiver efetivamente bloqueando,
-  o FocusGuard usa o CleanBrowsing Family Filter, bloqueia alterações de
-  DNS/VPN e desativa o DNS-over-HTTPS próprio desses navegadores. Ao fim do
-  bloqueio, a configuração de Private DNS que existia antes é restaurada.
+  Edge, junto de filtros preventivos para todas as superfícies do Google
+  Imagens e para consultas que começam com cada palavra da categoria. Enquanto
+  a categoria estiver efetivamente bloqueando, o FocusGuard usa o CleanBrowsing
+  Family Filter, bloqueia alterações de DNS/VPN e desativa o DNS-over-HTTPS
+  próprio desses navegadores. Ao fim do bloqueio, a configuração de Private DNS
+  que existia antes é restaurada.
 - O Family Filter acrescenta classificação atualizada de conteúdo adulto,
   bloqueio de sites mistos e de proxies/VPN e SafeSearch em mecanismos de busca
   e YouTube. A lista local permanece como fallback quando o DNS gerenciado não
@@ -99,8 +104,9 @@ Com uma sessão ativa bloqueando `example.com`, validar:
 - Chrome/Edge com e sem Device Owner;
 - Google Imagens com `q=porn`, `q=xxx`, `q=sex` e `q=xvideos`, digitado pela
   barra e pelo campo da página;
+- Google Imagens com uma consulta segura, que também deve ser bloqueada;
 - Chrome, Firefox, Brave, Samsung Internet e ao menos outro navegador instalado;
-- uma consulta segura como `Essex Inglaterra`, que deve permanecer liberada;
+- uma busca web comum como `Essex Inglaterra`, que deve permanecer liberada;
 - fim da sessão e remoção imediata da política;
 - reinício do aparelho durante uma sessão ativa.
 
@@ -113,6 +119,7 @@ Com uma sessão ativa bloqueando `example.com`, validar:
 - [Política URLBlocklist do Chrome](https://chromeenterprise.google/policies/url-blocklist/)
 - [Política de modo anônimo do Chrome](https://chromeenterprise.google/policies/incognito-mode-availability/)
 - [Formato dos filtros de URL do Chrome](https://support.google.com/chrome/a/answer/9942583?hl=pt-BR)
+- [Google Imagens](https://images.google.com/)
 - [Política URLBlocklist do Microsoft Edge](https://learn.microsoft.com/pt-br/deployedge/microsoft-edge-policies/urlblocklist)
 - [Política InPrivate do Microsoft Edge](https://learn.microsoft.com/pt-br/deployedge/microsoft-edge-policies/inprivatemodeavailability)
 - [Filtros DNS gratuitos do CleanBrowsing](https://cleanbrowsing.org/filters)

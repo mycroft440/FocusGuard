@@ -800,9 +800,12 @@ class BlockingAccessibilityService : AccessibilityService() {
             stopWebsiteTracking(now)
             return
         }
+        val pornographyGoogleSurface =
+            WebsiteBlocker.isPornographyGoogleSearchUrl(urlOrDomain) ||
+                WebsiteBlocker.isGoogleImagesUrl(urlOrDomain)
         val usageDomain = if (
             PredefinedWebsites.PORNOGRAPHY_RULE in matchingRules &&
-            WebsiteBlocker.isPornographyGoogleSearchUrl(urlOrDomain)
+            pornographyGoogleSurface
         ) {
             PredefinedWebsites.PORNOGRAPHY_RULE
         } else {
