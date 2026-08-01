@@ -14,8 +14,9 @@ bloqueio combina as duas camadas nativas disponíveis no Android:
    - A política é reaplicada quando um navegador é instalado ou atualizado.
 
 2. **Serviço de acessibilidade**
-   - É o fallback para Firefox, Brave, Samsung Internet, Opera, Vivaldi,
-     DuckDuckGo e outros navegadores detectados pelo Android.
+   - É a camada comum para qualquer navegador instalado que declare suporte a
+     links HTTPS, além de uma lista de compatibilidade para os navegadores mais
+     usados (Firefox, Brave, Samsung Internet, Opera, Vivaldi e DuckDuckGo).
    - Observa alterações da janela, do conteúdo e do texto da barra de endereço.
    - Localiza a barra por ids do pacote, descrição acessível ou input do tipo
      URI; texto comum da página não é interpretado como endereço.
@@ -29,7 +30,8 @@ bloqueio combina as duas camadas nativas disponíveis no Android:
 - Domínios parecidos, como `notexample.com` ou `example.com.evil.test`, não
   correspondem à regra.
 - Esquema, credenciais, porta, caminho, query e fragmento são removidos antes
-  da comparação.
+  da comparação de domínio. A categoria Pornografia tem uma verificação
+  adicional e deliberada dos parâmetros de busca do Google.
 - Domínios internacionais são convertidos para IDN ASCII (Punycode).
 - Endereços IPv4 e IPv6 literais são aceitos.
 - Limites de uso configurados para um domínio contabilizam seus subdomínios.
@@ -40,13 +42,22 @@ bloqueio combina as duas camadas nativas disponíveis no Android:
   como `category:pornography`.
 - Durante a fiscalização, essa categoria ativa em conjunto as palavras de
   domínio `porn`, `xxx`, `sex` e `xvideos` e a lista local de domínios adultos.
+- As mesmas palavras são verificadas na consulta `q=` do Google e Google
+  Imagens, inclusive em domínios regionais, parâmetros fora de ordem e texto
+  percentualmente codificado. Variações iniciadas pelo termo, como
+  `pornografia` e `sexual`, também correspondem; palavras como `Essex` não.
+- Em qualquer navegador que exponha sua interface à acessibilidade, a consulta
+  é interrompida enquanto ainda está sendo digitada na barra de endereço. Em
+  uma página do Google confirmada pela URL, o campo de busca editável também é
+  fiscalizado sem varrer texto comum da página.
 - A categoria continua aparecendo como um único item em sessões, limites e
   telas de detalhes; as regras internas não são gravadas separadamente.
 - Em Device Owner, a lista local também é enviada à `URLBlocklist` do Chrome e
-  Edge. Enquanto a categoria estiver efetivamente bloqueando, o FocusGuard usa
-  o CleanBrowsing Family Filter, bloqueia alterações de DNS/VPN e desativa o
-  DNS-over-HTTPS próprio desses navegadores. Ao fim do bloqueio, a configuração
-  de Private DNS que existia antes é restaurada.
+  Edge, junto de filtros preventivos para consultas que começam com cada
+  palavra da categoria. Enquanto a categoria estiver efetivamente bloqueando,
+  o FocusGuard usa o CleanBrowsing Family Filter, bloqueia alterações de
+  DNS/VPN e desativa o DNS-over-HTTPS próprio desses navegadores. Ao fim do
+  bloqueio, a configuração de Private DNS que existia antes é restaurada.
 - O Family Filter acrescenta classificação atualizada de conteúdo adulto,
   bloqueio de sites mistos e de proxies/VPN e SafeSearch em mecanismos de busca
   e YouTube. A lista local permanece como fallback quando o DNS gerenciado não
@@ -58,8 +69,17 @@ Sem VPN, proxy, extensão do navegador ou filtro DNS externo, um aplicativo não
 tem uma API pública para inspecionar todo o tráfego HTTPS de todos os apps. A
 camada de acessibilidade depende de o navegador expor a barra de endereço. Um
 WebView embutido que esconda completamente a URL não pode ser identificado com
-garantia. Em aparelhos Device Owner, use Chrome ou Edge para obter a camada
-preventiva mais forte por `URLBlocklist`.
+garantia. Por isso, “todos os navegadores” significa todos os navegadores HTTPS
+detectados que publiquem a URL ou seus campos à acessibilidade; não há garantia
+de zero requisição de rede em um navegador que esconda esses dados. Em aparelhos
+Device Owner, Chrome e Edge recebem a camada preventiva adicional por
+`URLBlocklist`.
+
+O DNS familiar impede a resolução dos domínios adultos classificados em todos
+os navegadores, mas DNS enxerga apenas o host. Ele não consegue ler a consulta
+`q=` dentro de HTTPS sem interceptar e descriptografar o tráfego. A consulta do
+Google é, portanto, coberta pela interface acessível e, onde disponível, pela
+política nativa do navegador.
 
 O filtro DNS também pode ser habilitado como blindagem global 24/7 em um
 aparelho Device Owner. Nesse modo, o FocusGuard reaplica o host familiar após
@@ -77,7 +97,10 @@ Com uma sessão ativa bloqueando `example.com`, validar:
 - navegação por link, digitação direta, recarregamento e troca de aba;
 - modo privado;
 - Chrome/Edge com e sem Device Owner;
-- ao menos um navegador da camada de acessibilidade;
+- Google Imagens com `q=porn`, `q=xxx`, `q=sex` e `q=xvideos`, digitado pela
+  barra e pelo campo da página;
+- Chrome, Firefox, Brave, Samsung Internet e ao menos outro navegador instalado;
+- uma consulta segura como `Essex Inglaterra`, que deve permanecer liberada;
 - fim da sessão e remoção imediata da política;
 - reinício do aparelho durante uma sessão ativa.
 

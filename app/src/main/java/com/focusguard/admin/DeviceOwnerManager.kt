@@ -612,16 +612,16 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             domains
         }
         val normalizedRules = WebsiteBlocker.normalizeRules(configuredRules).sorted()
-        val allManagedDomains = WebsiteBlocker.expandDomainAliases(normalizedRules).toList()
-        val managedDomains = allManagedDomains.take(MAX_MANAGED_URLS)
-        if (managedDomains.size < allManagedDomains.size) {
+        val allManagedFilters = WebsiteBlocker.managedBrowserFiltersFor(normalizedRules).toList()
+        val managedFilters = allManagedFilters.take(MAX_MANAGED_URLS)
+        if (managedFilters.size < allManagedFilters.size) {
             Log.w(
                 "FocusGuardNuclear",
-                "URLBlocklist limitada aos primeiros $MAX_MANAGED_URLS domínios"
+                "URLBlocklist limitada aos primeiros $MAX_MANAGED_URLS filtros"
             )
         }
         applyWebsiteRestrictions(
-            domains = managedDomains,
+            domains = managedFilters,
             requireSystemDns = isAdultDnsProtectionRequired()
         )
     }

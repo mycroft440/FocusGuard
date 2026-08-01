@@ -179,6 +179,77 @@ class WebsiteBlockerTest {
     }
 
     @Test
+    fun `pornography category blocks adult Google and Google Images searches`() {
+        val category = listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
+
+        assertThat(
+            WebsiteBlocker.isUrlBlocked(
+                "https://www.google.com/search?tbm=isch&q=porn",
+                category
+            )
+        ).isTrue()
+        assertThat(
+            WebsiteBlocker.isUrlBlocked(
+                "https://google.com.br/search?udm=2&client=mobile&q=free+XXX+images",
+                category
+            )
+        ).isTrue()
+        assertThat(
+            WebsiteBlocker.isUrlBlocked(
+                "https://images.google.co.uk/search?q=conteudo+sexual",
+                category
+            )
+        ).isTrue()
+        assertThat(
+            WebsiteBlocker.isUrlBlocked(
+                "https://google.com/search?q=%2570ornografia",
+                category
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun `pornography Google search matching avoids paths and innocent words`() {
+        val category = listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
+
+        assertThat(
+            WebsiteBlocker.isUrlBlocked(
+                "https://google.com/search/porn?q=filhotes",
+                category
+            )
+        ).isFalse()
+        assertThat(
+            WebsiteBlocker.isUrlBlocked(
+                "https://google.com/search?tbm=isch&q=Essex+Inglaterra",
+                category
+            )
+        ).isFalse()
+        assertThat(
+            WebsiteBlocker.isUrlBlocked(
+                "https://safe-example.com/search?q=porn",
+                category
+            )
+        ).isFalse()
+        assertThat(
+            WebsiteBlocker.isUrlBlocked(
+                "https://google.evil.com/search?q=porn",
+                category
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `typed browser searches detect category terms before becoming urls`() {
+        assertThat(WebsiteBlocker.isPornographySearchInput("free porn images")).isTrue()
+        assertThat(WebsiteBlocker.isPornographySearchInput("conteúdo sexual")).isTrue()
+        assertThat(WebsiteBlocker.isPornographySearchInput("x v i d e o s")).isTrue()
+        assertThat(WebsiteBlocker.isPornographySearchInput("Essex Inglaterra")).isFalse()
+        assertThat(
+            WebsiteBlocker.isPornographySearchInput("https://safe.example/path/sex")
+        ).isFalse()
+    }
+
+    @Test
     fun `pornography category maps effective keyword identifiers back to one rule`() {
         val rules = WebsiteBlocker.normalizeRules(
             listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
@@ -358,6 +429,24 @@ class WebsiteBlockerTest {
         assertThat(WebsiteBlocker.appPackageDomainsFor(
             listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
         )).isEmpty()
+    }
+
+    @Test
+    fun `managed browser filters add preventive pornography query prefixes`() {
+        val filters = WebsiteBlocker.managedBrowserFiltersFor(
+            listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
+        )
+
+        assertThat(filters).containsAtLeast(
+            "xvideos.com",
+            "*?q=porn*",
+            "*?q=Porn*",
+            "*?q=PORN*",
+            "*?q=xxx*",
+            "*?q=sex*",
+            "*?q=xvideos*"
+        )
+        assertThat(filters).doesNotContain(PredefinedWebsites.PORNOGRAPHY_RULE)
     }
 
     @Test

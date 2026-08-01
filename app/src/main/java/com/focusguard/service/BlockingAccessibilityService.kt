@@ -20,6 +20,7 @@ import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.AppDatabase
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.StrictPomodoroLock
@@ -593,7 +594,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             blockedWebsiteDomain != null -> blockWebsiteApp(blockedWebsiteDomain, packageName)
             packageName in blockedAppsSet -> blockApp(packageName)
             limitedWebsiteDomain != null -> updateWebsiteTracking(
-                domain = limitedWebsiteDomain,
+                urlOrDomain = limitedWebsiteDomain,
                 packageName = packageName,
                 now = System.currentTimeMillis()
             )
@@ -731,16 +732,54 @@ class BlockingAccessibilityService : AccessibilityService() {
         val packageName = event.packageName?.toString() ?: return
         if (packageName !in browserPackages) return
 
-        val fastUrl = WebsiteBlocker.extractUrlFromEvent(event, packageName)
+        val pornographyCategoryActive = blockedWebsitesDomainSet.any(
+            WebsiteBlocker::isPornographyRule
+        )
+        val fastAddressText = WebsiteBlocker.extractAddressBarTextFromEvent(
+            event,
+            packageName
+        )
+        val fastUrl = fastAddressText?.let(WebsiteBlocker::extractUrlCandidate)
+            ?: WebsiteBlocker.extractUrlFromEvent(event, packageName)
         val root = if (fastUrl == null) rootInActiveWindow ?: event.source else null
         val url = fastUrl ?: WebsiteBlocker.extractUrlFromRoot(root, packageName)
+        val addressText = fastAddressText
+            ?: WebsiteBlocker.extractAddressBarTextFromRoot(root, packageName)
         val now = System.currentTimeMillis()
+
+        if (pornographyCategoryActive) {
+            val addressBarHasBlockedSearch = addressText?.let(
+                WebsiteBlocker::isPornographySearchInput
+            ) == true
+            val googlePageFieldHasBlockedSearch = fastAddressText == null &&
+                url?.let(WebsiteBlocker::isGoogleUrl) == true &&
+                WebsiteBlocker.extractEditableTextFromEvent(event)?.let(
+                    WebsiteBlocker::containsPornographySearchTerm
+                ) == true
+            if (addressBarHasBlockedSearch || googlePageFieldHasBlockedSearch) {
+                blockWebsite(
+                    PredefinedWebsites.PORNOGRAPHY_RULE,
+                    packageName
+                )
+                recycleSafely(root)
+                return
+            }
+        }
 
         if (!url.isNullOrBlank()) {
             val domain = WebsiteBlocker.extractDomain(url)
-            updateWebsiteTracking(domain, packageName, now)
-            if (WebsiteBlocker.findMatchingRule(domain, blockedWebsitesDomainSet) != null) {
-                blockWebsite(domain, packageName)
+            updateWebsiteTracking(url, packageName, now)
+            val matchingRule = WebsiteBlocker.findMatchingRule(
+                url,
+                blockedWebsitesDomainSet
+            )
+            if (matchingRule != null) {
+                val blockTarget = if (WebsiteBlocker.isPornographyRule(matchingRule)) {
+                    matchingRule
+                } else {
+                    domain
+                }
+                blockWebsite(blockTarget, packageName)
                 recycleSafely(root)
                 return
             }
@@ -752,12 +791,23 @@ class BlockingAccessibilityService : AccessibilityService() {
         recycleSafely(root)
     }
 
-    private fun updateWebsiteTracking(domain: String, packageName: String, now: Long) {
-        val usageDomain = WebsiteBlocker.extractDomain(domain)
-            .ifBlank { WebsiteBlocker.normalizeRule(domain) }
-        if (WebsiteBlocker.findMatchingRules(usageDomain, limitedWebsiteDomains).isEmpty()) {
+    private fun updateWebsiteTracking(urlOrDomain: String, packageName: String, now: Long) {
+        val matchingRules = WebsiteBlocker.findMatchingRules(
+            urlOrDomain,
+            limitedWebsiteDomains
+        )
+        if (matchingRules.isEmpty()) {
             stopWebsiteTracking(now)
             return
+        }
+        val usageDomain = if (
+            PredefinedWebsites.PORNOGRAPHY_RULE in matchingRules &&
+            WebsiteBlocker.isPornographyGoogleSearchUrl(urlOrDomain)
+        ) {
+            PredefinedWebsites.PORNOGRAPHY_RULE
+        } else {
+            WebsiteBlocker.extractDomain(urlOrDomain)
+                .ifBlank { WebsiteBlocker.normalizeRule(urlOrDomain) }
         }
 
         var usageToPersist: WebsiteUsageSlice? = null
