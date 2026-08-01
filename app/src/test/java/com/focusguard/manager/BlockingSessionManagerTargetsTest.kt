@@ -1,5 +1,6 @@
 package com.focusguard.manager
 
+import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.BlockSession
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
@@ -73,6 +74,22 @@ class BlockingSessionManagerTargetsTest {
 
         assertThat(targets.unavailableWebsiteRules).containsExactly("example-porn-site.com")
         assertThat(targets.unavailableWebsiteRules).doesNotContain("keyword:porn")
+    }
+
+    @Test
+    fun `pornography category semantically covers its internal rules`() {
+        assertThat(
+            BlockingSessionManager.isWebsiteRuleCoveredBy(
+                "keyword:xvideos",
+                listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
+            )
+        ).isTrue()
+        assertThat(
+            BlockingSessionManager.isWebsiteRuleCoveredBy(
+                "onlyfans.com",
+                listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
+            )
+        ).isTrue()
     }
 
     @Test

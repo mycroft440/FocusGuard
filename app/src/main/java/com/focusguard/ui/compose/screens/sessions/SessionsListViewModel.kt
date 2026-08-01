@@ -2,6 +2,7 @@ package com.focusguard.ui.compose.screens.sessions
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.BlockSession
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.repository.BlockSessionRepository
@@ -115,6 +116,17 @@ class SessionsListViewModel @Inject constructor(
             siteInput = ""
         )
         return true
+    }
+
+    fun togglePendingPornography() {
+        val rule = PredefinedWebsites.PORNOGRAPHY_RULE
+        _contentPickerState.value = _contentPickerState.value.copy(
+            sites = if (rule in _contentPickerState.value.sites) {
+                _contentPickerState.value.sites - rule
+            } else {
+                _contentPickerState.value.sites + rule
+            }
+        )
     }
 
     fun removePendingSite(site: String) {

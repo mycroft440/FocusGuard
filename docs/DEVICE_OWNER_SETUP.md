@@ -12,7 +12,7 @@ um app é Device Owner, ele pode:
 - ✅ **Impedir Safe Boot** (`DISALLOW_SAFE_BOOT`) — bloqueia modo de segurança
 - ✅ **Impedir Factory Reset** (`DISALLOW_FACTORY_RESET`)
 - ✅ **Bloquear URLs no Chrome/Edge** via Managed Configurations (`URLBlocklist`)
-- ✅ **Forçar Private DNS DoT** com servidor filtrante (CleanBrowsing Adult)
+- ✅ **Forçar Private DNS DoT** com servidor filtrante (CleanBrowsing Family)
 - ✅ **Suspender apps** nativamente via `setPackagesSuspended` (0ms — ícone fica cinza)
 
 Sem Device Owner, o FocusGuard funciona com proteção padrão (Accessibility
@@ -138,8 +138,11 @@ SESSION_RESTRICTIONS = [
 - Chrome e Edge respeitam `URLBlocklist` — bloqueio no renderer (0ms)
 - O modo privado é desativado enquanto houver regras ativas
 - Firefox, Brave, Opera e outros usam a camada de acessibilidade
-- Private DNS via CleanBrowsing é um filtro adulto separado e opcional. Quando
-  habilitado, o FocusGuard o reaplica e bloqueia alterações fora da manutenção.
+- A opção única **Pornografia** expande palavras e domínios e, enquanto estiver
+  bloqueando, ativa o CleanBrowsing Family Filter. O DNS anterior é restaurado
+  quando esse bloqueio termina.
+- A blindagem anti-pornografia também pode manter o filtro familiar ativo 24/7;
+  nesse modo, o FocusGuard o reaplica e bloqueia alterações fora da manutenção.
 
 ### Bloqueio de apps (setPackagesSuspended)
 

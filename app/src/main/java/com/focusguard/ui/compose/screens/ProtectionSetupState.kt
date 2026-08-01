@@ -35,7 +35,6 @@ internal fun isWebsiteRuleAlreadyBlocked(
 
     val normalizedConfigured = WebsiteBlocker.normalizeRules(configuredRules)
     if (normalizedCandidate in normalizedConfigured) return true
-    if (WebsiteBlocker.isKeywordRule(normalizedCandidate)) return false
 
     return WebsiteBlocker.findMatchingRule(
         normalizedCandidate,

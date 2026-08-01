@@ -403,10 +403,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                     refreshRequested.set(false)
                     try {
                         val adultFilterEnabled = authManager.isAdultFilterEnabled()
-                        val adultDomains = if (adultFilterEnabled) {
-                            WebsiteBlocker.normalizeRules(
-                                com.focusguard.data.PredefinedWebsites.ADULT_DOMAINS
-                            )
+                        val adultRules = if (adultFilterEnabled) {
+                            setOf(com.focusguard.data.PredefinedWebsites.PORNOGRAPHY_RULE)
                         } else {
                             emptySet()
                         }
@@ -433,7 +431,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                         )
                         val exceededWebsiteDomains = calculateExceededWebsiteLimits(websiteLimits)
                         val blockedWebsiteDomains = WebsiteBlocker.normalizeRules(
-                            sessionSites + exceededWebsiteDomains + adultDomains
+                            sessionSites + exceededWebsiteDomains + adultRules
                         )
                         val configuredWebsiteApps = WebsiteBlocker.appPackageDomainsFor(
                             configuredWebsiteDomains

@@ -1,5 +1,6 @@
 package com.focusguard.ui.compose.screens.sessions
 
+import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.BlockSession
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.repository.BlockSessionRepository
@@ -189,6 +190,18 @@ class SessionsListViewModelTest {
         viewModel.addPendingSite()
 
         viewModel.removePendingSite("https://www.example.com/path")
+
+        assertThat(viewModel.contentPickerState.value.sites).isEmpty()
+    }
+
+    @Test
+    fun `pornography preset toggles one category rule`() {
+        viewModel.togglePendingPornography()
+
+        assertThat(viewModel.contentPickerState.value.sites)
+            .containsExactly(PredefinedWebsites.PORNOGRAPHY_RULE)
+
+        viewModel.togglePendingPornography()
 
         assertThat(viewModel.contentPickerState.value.sites).isEmpty()
     }

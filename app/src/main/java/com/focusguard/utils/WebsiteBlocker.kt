@@ -4,6 +4,7 @@ import android.icu.text.IDNA as AndroidIdna
 import android.text.InputType
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.focusguard.data.PredefinedWebsites
 import java.net.IDN
 import java.net.Inet6Address
 import java.net.InetAddress
@@ -27,6 +28,7 @@ object WebsiteBlocker {
     private const val MAX_TREE_DEPTH = 12
     private const val MAX_TREE_NODES = 256
     private const val KEYWORD_RULE_PREFIX = "keyword:"
+    private const val CATEGORY_RULE_PREFIX = "category:"
     private const val MIN_KEYWORD_LENGTH = 3
     private const val MAX_KEYWORD_LENGTH = 63
 
@@ -80,6 +82,12 @@ object WebsiteBlocker {
         "youtube.com" to setOf("com.google.android.youtube")
     )
 
+    private val pornographyBlockingRules: Set<String> by lazy(LazyThreadSafetyMode.PUBLICATION) {
+        normalizeRules(
+            PredefinedWebsites.ADULT_DOMAINS + PredefinedWebsites.PORNOGRAPHY_KEYWORDS
+        )
+    }
+
     private val uts46Idna: AndroidIdna? by lazy(LazyThreadSafetyMode.PUBLICATION) {
         runCatching {
             AndroidIdna.getUTS46Instance(
@@ -105,6 +113,12 @@ object WebsiteBlocker {
         val sanitized = sanitizeText(value)
         if (sanitized.isEmpty()) return ""
 
+        if (sanitized.equals(PredefinedWebsites.PORNOGRAPHY_RULE, ignoreCase = true)) {
+            return PredefinedWebsites.PORNOGRAPHY_RULE
+        }
+        // Não aceita categorias arbitrárias digitadas pelo usuário.
+        if (sanitized.startsWith(CATEGORY_RULE_PREFIX, ignoreCase = true)) return ""
+
         if (sanitized.startsWith(KEYWORD_RULE_PREFIX, ignoreCase = true)) {
             return normalizeKeyword(sanitized.substring(KEYWORD_RULE_PREFIX.length))
         }
@@ -119,9 +133,18 @@ object WebsiteBlocker {
         return rule.startsWith(KEYWORD_RULE_PREFIX, ignoreCase = true)
     }
 
+    fun isPornographyRule(rule: String): Boolean {
+        return rule.equals(PredefinedWebsites.PORNOGRAPHY_RULE, ignoreCase = true)
+    }
+
+    fun containsPornographyRule(rules: Collection<String>): Boolean {
+        return normalizeRules(rules).any(::isPornographyRule)
+    }
+
     /** Formato amigável usado na UI sem expor o prefixo de persistência. */
     fun displayRule(rule: String): String {
         val normalized = normalizeRule(rule)
+        if (isPornographyRule(normalized)) return PredefinedWebsites.PORNOGRAPHY_NAME
         return keywordValue(normalized)?.let { "*$it*" } ?: normalized
     }
 
@@ -183,12 +206,25 @@ object WebsiteBlocker {
     /** Mantido como alias para os chamadores de versões anteriores. */
     fun normalizeDomains(domains: Collection<String>): Set<String> = normalizeRules(domains)
 
-    /** Expande somente aliases conhecidos que podem evitar a regra original. */
+    /**
+     * Expande aliases e categorias para os domínios aceitos por URLBlocklist.
+     * Palavras-chave continuam na camada de acessibilidade, pois a política do
+     * Chromium não aceita curingas parciais no host.
+     */
     fun expandDomainAliases(normalizedDomains: Collection<String>): Set<String> {
-        val normalized = normalizeRules(normalizedDomains).filterNot(::isKeywordRule)
-        val expanded = linkedSetOf<String>()
-        expanded.addAll(normalized)
+        val normalized = normalizeRules(normalizedDomains)
+        val domains = linkedSetOf<String>()
         normalized.forEach { rule ->
+            when {
+                isPornographyRule(rule) -> domains.addAll(
+                    normalizeRules(PredefinedWebsites.ADULT_DOMAINS)
+                )
+                !isKeywordRule(rule) -> domains += rule
+            }
+        }
+        val expanded = linkedSetOf<String>()
+        expanded.addAll(domains)
+        domains.forEach { rule ->
             domainAliases[rule]?.let { aliases -> expanded.addAll(aliases) }
         }
         return expanded
@@ -200,17 +236,19 @@ object WebsiteBlocker {
      */
     fun appPackageDomainsFor(domains: Collection<String>): Map<String, String> {
         val result = linkedMapOf<String, String>()
-        normalizeRules(domains).filterNot(::isKeywordRule).forEach { rule ->
-            val canonical = domainAliases.entries.firstOrNull { (domain, aliases) ->
-                rule == domain || rule.endsWith(".$domain") || aliases.any { alias ->
-                    rule == alias || rule.endsWith(".$alias")
-                }
-            }?.key ?: rule
+        normalizeRules(domains)
+            .filterNot { isKeywordRule(it) || isPornographyRule(it) }
+            .forEach { rule ->
+                val canonical = domainAliases.entries.firstOrNull { (domain, aliases) ->
+                    rule == domain || rule.endsWith(".$domain") || aliases.any { alias ->
+                        rule == alias || rule.endsWith(".$alias")
+                    }
+                }?.key ?: rule
 
-            domainAppPackages[canonical].orEmpty().forEach { packageName ->
-                result.putIfAbsent(packageName, canonical)
+                domainAppPackages[canonical].orEmpty().forEach { packageName ->
+                    result.putIfAbsent(packageName, canonical)
+                }
             }
-        }
         return result
     }
 
@@ -224,6 +262,25 @@ object WebsiteBlocker {
      * sem alterar a precedência usada para decidir qual regra exibir.
      */
     fun findMatchingRules(
+        urlOrDomain: String,
+        normalizedBlockedDomains: Set<String>
+    ): Set<String> {
+        if (normalizedBlockedDomains.isEmpty()) return emptySet()
+
+        val directRules = normalizedBlockedDomains
+            .filterNot(::isPornographyRule)
+            .toSet()
+        val matches = findDirectMatchingRules(urlOrDomain, directRules).toMutableSet()
+        if (normalizedBlockedDomains.any(::isPornographyRule)) {
+            val normalizedCandidate = normalizeRule(urlOrDomain)
+            val pornographyMatched = isPornographyRule(normalizedCandidate) ||
+                findDirectMatchingRules(urlOrDomain, pornographyBlockingRules).isNotEmpty()
+            if (pornographyMatched) matches += PredefinedWebsites.PORNOGRAPHY_RULE
+        }
+        return matches
+    }
+
+    private fun findDirectMatchingRules(
         urlOrDomain: String,
         normalizedBlockedDomains: Set<String>
     ): Set<String> {

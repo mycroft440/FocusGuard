@@ -1,5 +1,6 @@
 package com.focusguard.ui.compose.screens
 
+import com.focusguard.data.PredefinedWebsites
 import com.focusguard.manager.BlockingSessionManager
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
@@ -51,6 +52,16 @@ class ProtectionSetupStateTest {
                 configuredRules = setOf("keyword:porn")
             )
         ).isTrue()
+    }
+
+    @Test
+    fun `pornography category covers its internal keywords and domains`() {
+        val configured = setOf(PredefinedWebsites.PORNOGRAPHY_RULE)
+
+        assertThat(isWebsiteRuleAlreadyBlocked("keyword:porn", configured)).isTrue()
+        assertThat(isWebsiteRuleAlreadyBlocked("keyword:sex", configured)).isTrue()
+        assertThat(isWebsiteRuleAlreadyBlocked("xhamster.com", configured)).isTrue()
+        assertThat(isWebsiteRuleAlreadyBlocked("safe-example.com", configured)).isFalse()
     }
 
     @Test

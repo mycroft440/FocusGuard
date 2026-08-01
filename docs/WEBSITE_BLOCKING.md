@@ -34,6 +34,24 @@ bloqueio combina as duas camadas nativas disponíveis no Android:
 - Endereços IPv4 e IPv6 literais são aceitos.
 - Limites de uso configurados para um domínio contabilizam seus subdomínios.
 
+## Categoria Pornografia
+
+- O seletor mostra uma única opção, **Pornografia**, persistida internamente
+  como `category:pornography`.
+- Durante a fiscalização, essa categoria ativa em conjunto as palavras de
+  domínio `porn`, `xxx`, `sex` e `xvideos` e a lista local de domínios adultos.
+- A categoria continua aparecendo como um único item em sessões, limites e
+  telas de detalhes; as regras internas não são gravadas separadamente.
+- Em Device Owner, a lista local também é enviada à `URLBlocklist` do Chrome e
+  Edge. Enquanto a categoria estiver efetivamente bloqueando, o FocusGuard usa
+  o CleanBrowsing Family Filter, bloqueia alterações de DNS/VPN e desativa o
+  DNS-over-HTTPS próprio desses navegadores. Ao fim do bloqueio, a configuração
+  de Private DNS que existia antes é restaurada.
+- O Family Filter acrescenta classificação atualizada de conteúdo adulto,
+  bloqueio de sites mistos e de proxies/VPN e SafeSearch em mecanismos de busca
+  e YouTube. A lista local permanece como fallback quando o DNS gerenciado não
+  está disponível.
+
 ## Limitações reais do Android
 
 Sem VPN, proxy, extensão do navegador ou filtro DNS externo, um aplicativo não
@@ -43,14 +61,12 @@ WebView embutido que esconda completamente a URL não pode ser identificado com
 garantia. Em aparelhos Device Owner, use Chrome ou Edge para obter a camada
 preventiva mais forte por `URLBlocklist`.
 
-O filtro DNS adulto é um recurso separado. Quando habilitado em um aparelho
-Device Owner, o FocusGuard reaplica o host filtrante após reinícios e impede
-alterações manuais do Private DNS fora da janela de manutenção. Chrome e Edge
-gerenciados também são obrigados a usar o resolvedor do sistema, evitando a
-troca para outro DNS seguro dentro do navegador. A configuração de VPN fica
-bloqueada fora da manutenção para evitar o desvio do filtro, e o próprio filtro
-só pode ser desativado durante uma manutenção autenticada. Ele não é
-necessário para as regras de sites e não transforma o FocusGuard em VPN.
+O filtro DNS também pode ser habilitado como blindagem global 24/7 em um
+aparelho Device Owner. Nesse modo, o FocusGuard reaplica o host familiar após
+reinícios e impede alterações manuais do Private DNS fora da janela de
+manutenção. Chrome e Edge gerenciados também são obrigados a usar o resolvedor
+do sistema. O filtro global só pode ser desativado durante manutenção
+autenticada e não transforma o FocusGuard em VPN.
 
 ## Verificação manual recomendada
 
@@ -76,3 +92,4 @@ Com uma sessão ativa bloqueando `example.com`, validar:
 - [Formato dos filtros de URL do Chrome](https://support.google.com/chrome/a/answer/9942583?hl=pt-BR)
 - [Política URLBlocklist do Microsoft Edge](https://learn.microsoft.com/pt-br/deployedge/microsoft-edge-policies/urlblocklist)
 - [Política InPrivate do Microsoft Edge](https://learn.microsoft.com/pt-br/deployedge/microsoft-edge-policies/inprivatemodeavailability)
+- [Filtros DNS gratuitos do CleanBrowsing](https://cleanbrowsing.org/filters)

@@ -416,6 +416,51 @@ fun ContentPickerSheet(
                     }
                 } else {
                     Column {
+                        val pornographySelected =
+                            com.focusguard.data.PredefinedWebsites.PORNOGRAPHY_RULE in
+                                pickerState.sites
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    if (pornographySelected) {
+                                        AccentCyan.copy(alpha = 0.08f)
+                                    } else {
+                                        DarkCard
+                                    },
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .clickable(enabled = !pickerState.isSaving) {
+                                    viewModel.togglePendingPornography()
+                                }
+                                .padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.Shield, null, tint = AccentCyan)
+                            Spacer(Modifier.width(12.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(
+                                    stringResource(R.string.protection_sites_pornography),
+                                    color = TextPrimary,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    stringResource(
+                                        R.string.protection_sites_pornography_subtitle
+                                    ),
+                                    color = TextHint,
+                                    fontSize = 12.sp
+                                )
+                            }
+                            Checkbox(
+                                checked = pornographySelected,
+                                onCheckedChange = null,
+                                colors = CheckboxDefaults.colors(checkedColor = AccentCyan)
+                            )
+                        }
+
+                        Spacer(Modifier.height(12.dp))
+
                         OutlinedTextField(
                             value = pickerState.siteInput,
                             onValueChange = { viewModel.updateSiteInput(it) },

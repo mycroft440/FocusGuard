@@ -1,5 +1,6 @@
 package com.focusguard.utils
 
+import com.focusguard.data.PredefinedWebsites
 import com.google.common.truth.Truth.assertThat
 import org.junit.Before
 import org.junit.Test
@@ -128,6 +129,15 @@ class WebsiteBlockerTest {
     }
 
     @Test
+    fun `pornography category stays one persisted and displayed rule`() {
+        assertThat(WebsiteBlocker.normalizeRule(PredefinedWebsites.PORNOGRAPHY_RULE))
+            .isEqualTo(PredefinedWebsites.PORNOGRAPHY_RULE)
+        assertThat(WebsiteBlocker.displayRule(PredefinedWebsites.PORNOGRAPHY_RULE))
+            .isEqualTo("Pornografia")
+        assertThat(WebsiteBlocker.normalizeRule("category:unknown")).isEmpty()
+    }
+
+    @Test
     fun `keyword rules require one safe word with at least three characters`() {
         assertThat(WebsiteBlocker.isValidRule("xxx")).isTrue()
         assertThat(WebsiteBlocker.isValidRule("porn")).isTrue()
@@ -144,6 +154,40 @@ class WebsiteBlockerTest {
         assertThat(WebsiteBlocker.isUrlBlocked("https://safe.xxx-content.org", blocked)).isTrue()
         assertThat(WebsiteBlocker.isUrlBlocked("https://PoRnHub.example", blocked)).isTrue()
         assertThat(WebsiteBlocker.isUrlBlocked("https://safe-example.com", blocked)).isFalse()
+    }
+
+    @Test
+    fun `pornography category activates every requested keyword and curated domains`() {
+        val category = listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
+
+        assertThat(WebsiteBlocker.isUrlBlocked("https://new-porn-domain.example", category))
+            .isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked("https://new-xxx-domain.example", category))
+            .isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked("https://new-sex-domain.example", category))
+            .isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked("https://mirror-xvideos.example", category))
+            .isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked("https://xhamster.com", category)).isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked("https://safe-example.com", category)).isFalse()
+        assertThat(
+            WebsiteBlocker.findMatchingRule(
+                "https://xhamster.com",
+                WebsiteBlocker.normalizeRules(category)
+            )
+        ).isEqualTo(PredefinedWebsites.PORNOGRAPHY_RULE)
+    }
+
+    @Test
+    fun `pornography category maps effective keyword identifiers back to one rule`() {
+        val rules = WebsiteBlocker.normalizeRules(
+            listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
+        )
+
+        assertThat(WebsiteBlocker.findMatchingRules("keyword:porn", rules))
+            .containsExactly(PredefinedWebsites.PORNOGRAPHY_RULE)
+        assertThat(WebsiteBlocker.findMatchingRules("keyword:sex", rules))
+            .containsExactly(PredefinedWebsites.PORNOGRAPHY_RULE)
     }
 
     @Test
@@ -300,6 +344,20 @@ class WebsiteBlockerTest {
             .containsExactly("youtube.com", "youtu.be", "youtube-nocookie.com")
             .inOrder()
         assertThat(WebsiteBlocker.appPackageDomainsFor(listOf("youtube"))).isEmpty()
+    }
+
+    @Test
+    fun `managed browser expansion keeps pornography category as domains only`() {
+        val expanded = WebsiteBlocker.expandDomainAliases(
+            listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
+        )
+
+        assertThat(expanded).containsAtLeast("xvideos.com", "xhamster.com", "onlyfans.com")
+        assertThat(expanded).doesNotContain(PredefinedWebsites.PORNOGRAPHY_RULE)
+        assertThat(expanded.none(WebsiteBlocker::isKeywordRule)).isTrue()
+        assertThat(WebsiteBlocker.appPackageDomainsFor(
+            listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
+        )).isEmpty()
     }
 
     @Test

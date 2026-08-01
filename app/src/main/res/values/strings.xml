@@ -63,9 +63,11 @@
     <string name="protection_mode_dopamine_subtitle">Bloqueio completo, sem liberação, até terminar o período escolhido.</string>
     <string name="protection_sites_title">Adicionar sites</string>
     <string name="protection_sites_add_new">Adicionar novo</string>
-    <string name="protection_sites_placeholder">Ex.: bet365.com, apostas, porn ou xxx</string>
+    <string name="protection_sites_placeholder">Ex.: site.com, porn, xxx, sex ou xvideos</string>
     <string name="protection_sites_helper">Insira um domínio completo ou uma palavra presente no domínio.</string>
     <string name="protection_sites_common">Sites predefinidos</string>
+    <string name="protection_sites_pornography">Pornografia</string>
+    <string name="protection_sites_pornography_subtitle">Sites adultos + porn, xxx, sex e xvideos</string>
     <string name="protection_sites_selected">Sites e palavras na lista</string>
     <string name="protection_sites_none">Nenhuma regra de site adicionada.</string>
     <string name="app_already_blocked">Aplicativo já bloqueado</string>
@@ -257,7 +259,7 @@
     <string name="sessions_remove_item">Remover</string>
     <string name="sessions_add_more">Adicionar Mais</string>
     <string name="sessions_add_content_title">Adicionar Conteúdo</string>
-    <string name="sessions_site_placeholder">Ex.: site.com, porn ou xxx</string>
+    <string name="sessions_site_placeholder">Ex.: site.com, porn, xxx, sex ou xvideos</string>
     <string name="sessions_add_site_btn">ADD +</string>
     <string name="sessions_saving">Salvando…</string>
     <string name="sessions_save_content">Salvar Conteúdo</string>
@@ -362,7 +364,7 @@
     <string name="limits_locked_remaining_days">%1$s dias e %2$s h</string>
     <string name="limits_locked_remaining_hours">%1$s horas</string>
     <string name="limits_dns_filter_title">Blindagem Anti-Pornografia</string>
-    <string name="limits_dns_filter_desc">Ativa filtro DNS e varredura de URLs 24/7. Fora da manutenção, impede alterar o DNS ou configurar VPN. Exige Proteção Nuclear ativa.</string>
+    <string name="limits_dns_filter_desc">Ativa o filtro familiar e a varredura de URLs 24/7, incluindo SafeSearch e sites de conteúdo misto. Fora da manutenção, impede alterar o DNS ou configurar VPN. Exige Proteção Nuclear ativa.</string>
 
     <!-- App Selection Wizard -->
     <string name="app_selection_title">Selecionar Aplicativos</string>

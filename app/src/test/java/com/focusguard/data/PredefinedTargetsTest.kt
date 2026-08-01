@@ -23,8 +23,18 @@ class PredefinedTargetsTest {
     }
 
     @Test
-    fun adultFilterDomainsRemainAvailableOutsideTheAppPicker() {
-        assertThat(PredefinedWebsites.ADULT_DOMAINS).hasSize(8)
-        assertThat(PredefinedWebsites.ADULT_DOMAINS).contains("rule34.xxx")
+    fun pornographyPresetCombinesKeywordsAndFallbackDomains() {
+        assertThat(WebsiteBlocker.normalizeRule(PredefinedWebsites.PORNOGRAPHY_RULE))
+            .isEqualTo(PredefinedWebsites.PORNOGRAPHY_RULE)
+        assertThat(PredefinedWebsites.PORNOGRAPHY_KEYWORDS)
+            .containsExactly("porn", "xxx", "sex", "xvideos")
+            .inOrder()
+        assertThat(PredefinedWebsites.ADULT_DOMAINS).containsAtLeast(
+            "xvideos.com",
+            "xhamster.com",
+            "rule34.xxx",
+            "onlyfans.com"
+        )
+        assertThat(PredefinedWebsites.ADULT_DOMAINS).containsNoDuplicates()
     }
 }

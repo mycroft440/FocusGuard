@@ -185,7 +185,6 @@ class BlockingSessionManager @Inject constructor(
 
             val normalizedConfigured = WebsiteBlocker.normalizeRules(configuredRules)
             if (normalizedCandidate in normalizedConfigured) return true
-            if (WebsiteBlocker.isKeywordRule(normalizedCandidate)) return false
 
             return WebsiteBlocker.findMatchingRule(
                 normalizedCandidate,
@@ -845,6 +844,9 @@ class BlockingSessionManager @Inject constructor(
                     .filter { it.isNotBlank() }
                     .distinct()
                 val adultFilterEnabled = AuthManager.isAdultFilterConfigured(context)
+                val pornographyCategoryActive =
+                    WebsiteBlocker.containsPornographyRule(sitesToBlock)
+                deviceOwnerManager.setPornographyCategoryActive(pornographyCategoryActive)
                 val websiteAppsToBlock = WebsiteBlocker.appPackageDomainsFor(sitesToBlock)
                     .keys
                     .filter(::isPackageInstalled)

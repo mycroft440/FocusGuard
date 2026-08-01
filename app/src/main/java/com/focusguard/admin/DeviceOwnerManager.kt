@@ -15,6 +15,7 @@ import android.util.Log
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import com.focusguard.R
+import com.focusguard.data.PredefinedWebsites
 import com.focusguard.security.AuthManager
 import com.focusguard.security.DeviceOwnerMaintenanceGate
 import com.focusguard.utils.FocusGuardLogger
@@ -42,6 +43,10 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         SUSPENDED_APPS_PREFERENCES,
         Context.MODE_PRIVATE
     )
+    private val policyStatePreferences = context.getSharedPreferences(
+        POLICY_STATE_PREFERENCES,
+        Context.MODE_PRIVATE
+    )
     private var lastWebsitePolicySignature: String? = null
 
     companion object {
@@ -58,7 +63,12 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         private const val ACTION_DEVICE_ADMIN_SETTINGS = "android.settings.DEVICE_ADMIN_SETTINGS"
         private const val SUSPENDED_APPS_PREFERENCES = "focusguard_suspended_apps"
         private const val MANAGED_SUSPENDED_APPS_KEY = "managed_packages"
-        internal const val ADULT_DNS_HOST = "adult-filter-dns.cleanbrowsing.org"
+        private const val POLICY_STATE_PREFERENCES = "focusguard_device_owner_policy_state"
+        private const val PORNOGRAPHY_CATEGORY_ACTIVE_KEY = "pornography_category_active"
+        private const val PREVIOUS_PRIVATE_DNS_CAPTURED_KEY = "previous_private_dns_captured"
+        private const val PREVIOUS_PRIVATE_DNS_MODE_KEY = "previous_private_dns_mode"
+        private const val PREVIOUS_PRIVATE_DNS_HOST_KEY = "previous_private_dns_host"
+        internal const val ADULT_DNS_HOST = "family-filter-dns.cleanbrowsing.org"
         private val CHROME_MANAGED_PACKAGES = setOf(
             "com.android.chrome",
             "com.chrome.beta",
@@ -125,6 +135,11 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             ALWAYS_ON_RESTRICTIONS +
                 appControlRestrictionsForSdk(sdkInt) +
                 adultContentRestrictionsForSdk(sdkInt)
+
+        internal fun requiresAdultDns(
+            globalAdultFilterEnabled: Boolean,
+            pornographyCategoryActive: Boolean
+        ): Boolean = globalAdultFilterEnabled || pornographyCategoryActive
 
         internal fun buildManagedBrowserRestrictions(
             existing: Bundle,
@@ -528,11 +543,11 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     }
 
     private fun reconcileAdultContentProtection() {
-        if (AuthManager.isAdultFilterConfigured(context)) {
+        if (isAdultDnsProtectionRequired()) {
             if (!enforceAdultDns()) {
                 FocusGuardLogger.log(
                     "DeviceOwner",
-                    "Filtro adulto configurado, mas o Android não confirmou a política DNS"
+                    "Filtro de pornografia ativo, mas o Android não confirmou a política DNS"
                 )
             }
         } else {
@@ -591,7 +606,12 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             invalidateWebsitePolicyCache()
             return
         }
-        val normalizedRules = WebsiteBlocker.normalizeRules(domains).sorted()
+        val configuredRules = if (AuthManager.isAdultFilterConfigured(context)) {
+            domains + PredefinedWebsites.PORNOGRAPHY_RULE
+        } else {
+            domains
+        }
+        val normalizedRules = WebsiteBlocker.normalizeRules(configuredRules).sorted()
         val allManagedDomains = WebsiteBlocker.expandDomainAliases(normalizedRules).toList()
         val managedDomains = allManagedDomains.take(MAX_MANAGED_URLS)
         if (managedDomains.size < allManagedDomains.size) {
@@ -602,7 +622,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         }
         applyWebsiteRestrictions(
             domains = managedDomains,
-            requireSystemDns = AuthManager.isAdultFilterConfigured(context)
+            requireSystemDns = isAdultDnsProtectionRequired()
         )
     }
 
@@ -612,7 +632,10 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             invalidateWebsitePolicyCache()
             return
         }
-        applyWebsiteRestrictions(domains = emptyList(), requireSystemDns = false)
+        applyWebsiteRestrictions(
+            domains = emptyList(),
+            requireSystemDns = isAdultDnsProtectionRequired()
+        )
     }
 
     /** Força nova sincronização após instalação, remoção ou atualização do navegador. */
@@ -727,7 +750,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         }.isSuccess
     }
 
-    /** Enforce and lock Global Private DNS using CleanBrowsing Adult Filter. */
+    /** Enforce and lock Global Private DNS using CleanBrowsing Family Filter. */
     fun enforceAdultDns(): Boolean {
         if (!isDeviceOwnerActive()) return false
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -780,9 +803,137 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         return false
     }
 
+    /**
+     * Mantém o DNS familiar somente enquanto a categoria Pornografia estiver
+     * em bloqueio efetivo. A escolha global de filtro adulto continua tendo
+     * precedência e permanece ativa 24/7.
+     */
+    fun setPornographyCategoryActive(active: Boolean) {
+        val wasActive = isPornographyCategoryActive()
+        if (active) {
+            capturePrivateDnsBeforeCategoryIfNeeded()
+            policyStatePreferences.edit()
+                .putBoolean(PORNOGRAPHY_CATEGORY_ACTIVE_KEY, true)
+                .commit()
+            if (isDeviceOwnerActive() && !isMaintenanceActive()) {
+                enforceAdultDns()
+            }
+            return
+        }
+
+        policyStatePreferences.edit()
+            .putBoolean(PORNOGRAPHY_CATEGORY_ACTIVE_KEY, false)
+            .commit()
+        if (wasActive && isDeviceOwnerActive() &&
+            !AuthManager.isAdultFilterConfigured(context)
+        ) {
+            restorePrivateDnsAfterCategory()
+        } else {
+            clearCapturedPrivateDnsState()
+        }
+    }
+
+    private fun isPornographyCategoryActive(): Boolean {
+        return policyStatePreferences.getBoolean(PORNOGRAPHY_CATEGORY_ACTIVE_KEY, false)
+    }
+
+    private fun isAdultDnsProtectionRequired(): Boolean {
+        return requiresAdultDns(
+            globalAdultFilterEnabled = AuthManager.isAdultFilterConfigured(context),
+            pornographyCategoryActive = isPornographyCategoryActive()
+        )
+    }
+
+    private fun capturePrivateDnsBeforeCategoryIfNeeded() {
+        if (!isDeviceOwnerActive() || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
+            AuthManager.isAdultFilterConfigured(context) ||
+            policyStatePreferences.getBoolean(PREVIOUS_PRIVATE_DNS_CAPTURED_KEY, false)
+        ) return
+
+        runCatching {
+            val previousMode = dpm.getGlobalPrivateDnsMode(componentName)
+            val previousHost = if (
+                previousMode == DevicePolicyManager.PRIVATE_DNS_MODE_PROVIDER_HOSTNAME
+            ) {
+                dpm.getGlobalPrivateDnsHost(componentName).orEmpty()
+            } else {
+                ""
+            }
+            policyStatePreferences.edit()
+                .putBoolean(PREVIOUS_PRIVATE_DNS_CAPTURED_KEY, true)
+                .putInt(PREVIOUS_PRIVATE_DNS_MODE_KEY, previousMode)
+                .putString(PREVIOUS_PRIVATE_DNS_HOST_KEY, previousHost)
+                .commit()
+        }.onFailure { error ->
+            FocusGuardLogger.logError(
+                "DeviceOwner",
+                "Falha ao guardar DNS anterior à categoria Pornografia",
+                error
+            )
+        }
+    }
+
+    private fun restorePrivateDnsAfterCategory() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            clearAdultContentRestrictions()
+            clearCapturedPrivateDnsState()
+            return
+        }
+
+        runCatching {
+            clearAdultContentRestrictions()
+            val captured = policyStatePreferences.getBoolean(
+                PREVIOUS_PRIVATE_DNS_CAPTURED_KEY,
+                false
+            )
+            val previousMode = policyStatePreferences.getInt(
+                PREVIOUS_PRIVATE_DNS_MODE_KEY,
+                DevicePolicyManager.PRIVATE_DNS_MODE_OPPORTUNISTIC
+            )
+            val previousHost = policyStatePreferences.getString(
+                PREVIOUS_PRIVATE_DNS_HOST_KEY,
+                ""
+            ).orEmpty()
+            if (captured &&
+                previousMode == DevicePolicyManager.PRIVATE_DNS_MODE_PROVIDER_HOSTNAME &&
+                previousHost.isNotBlank()
+            ) {
+                val result = dpm.setGlobalPrivateDnsModeSpecifiedHost(
+                    componentName,
+                    previousHost
+                )
+                if (result != DevicePolicyManager.PRIVATE_DNS_SET_NO_ERROR) {
+                    dpm.setGlobalPrivateDnsModeOpportunistic(componentName)
+                }
+            } else {
+                dpm.setGlobalPrivateDnsModeOpportunistic(componentName)
+            }
+            clearCapturedPrivateDnsState()
+            Log.d("FocusGuardAdmin", "DNS anterior restaurado após a categoria Pornografia")
+        }.onFailure { error ->
+            FocusGuardLogger.logError(
+                "DeviceOwner",
+                "Falha ao restaurar DNS após a categoria Pornografia",
+                error
+            )
+        }
+    }
+
+    private fun clearCapturedPrivateDnsState() {
+        policyStatePreferences.edit()
+            .remove(PREVIOUS_PRIVATE_DNS_CAPTURED_KEY)
+            .remove(PREVIOUS_PRIVATE_DNS_MODE_KEY)
+            .remove(PREVIOUS_PRIVATE_DNS_HOST_KEY)
+            .apply()
+    }
+
     /** Clear Global Private DNS to Opportunistic Mode. */
     fun clearAdultDns() {
         if (!isDeviceOwnerActive()) return
+        if (isPornographyCategoryActive()) {
+            enforceAdultDns()
+            return
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             try {
                 clearAdultContentRestrictions()
@@ -810,6 +961,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         try {
             clearBlockingPolicies()
             revokeNuclearShield()
+            setPornographyCategoryActive(false)
             if (AuthManager.isAdultFilterConfigured(context)) {
                 clearAdultDns()
             }

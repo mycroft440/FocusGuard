@@ -609,6 +609,26 @@ private fun WebsiteRuleSelectionScreen(
         invalidInput = false
     }
 
+    fun togglePresetRule(rule: String) {
+        val normalized = WebsiteBlocker.normalizeRule(rule)
+        if (isWebsiteRuleAlreadyBlocked(normalized, configuredBlockedRules)) {
+            rules = rules.filterNot {
+                WebsiteBlocker.normalizeRule(it) == normalized
+            }
+            Toast.makeText(
+                context,
+                context.getString(R.string.site_already_blocked),
+                Toast.LENGTH_SHORT
+            ).show()
+        } else {
+            rules = if (normalized in rules) {
+                rules.filterNot { it == normalized }
+            } else {
+                (rules + normalized).distinct()
+            }
+        }
+    }
+
     Scaffold(
         containerColor = DarkBg,
         topBar = {
@@ -694,29 +714,19 @@ private fun WebsiteRuleSelectionScreen(
                     modifier = Modifier.padding(top = 12.dp)
                 )
             }
+            item {
+                val pornographyRule = PredefinedWebsites.PORNOGRAPHY_RULE
+                PornographyPresetRow(
+                    selected = pornographyRule in rules,
+                    onToggle = { togglePresetRule(pornographyRule) }
+                )
+            }
             items(PredefinedWebsites.POPULAR, key = { "preset_${it.domain}" }) { website ->
                 val normalized = WebsiteBlocker.normalizeRule(website.domain)
                 WebsitePresetRow(
                     website = website,
                     selected = normalized in rules,
-                    onToggle = {
-                        if (isWebsiteRuleAlreadyBlocked(normalized, configuredBlockedRules)) {
-                            rules = rules.filterNot {
-                                WebsiteBlocker.normalizeRule(it) == normalized
-                            }
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.site_already_blocked),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        } else {
-                            rules = if (normalized in rules) {
-                                rules.filterNot { it == normalized }
-                            } else {
-                                (rules + normalized).distinct()
-                            }
-                        }
-                    }
+                    onToggle = { togglePresetRule(normalized) }
                 )
             }
             item {
@@ -745,6 +755,72 @@ private fun WebsiteRuleSelectionScreen(
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun PornographyPresetRow(
+    selected: Boolean,
+    onToggle: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onToggle),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) AccentCyan.copy(alpha = 0.08f) else DarkCard
+        ),
+        border = BorderStroke(
+            1.dp,
+            if (selected) AccentCyan.copy(alpha = 0.42f) else CardBorder
+        ),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Surface(
+                modifier = Modifier.size(48.dp),
+                shape = RoundedCornerShape(14.dp),
+                color = DarkBg
+            ) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Icon(
+                        Icons.Default.Shield,
+                        contentDescription = null,
+                        tint = AccentCyan,
+                        modifier = Modifier.size(26.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    stringResource(R.string.protection_sites_pornography),
+                    color = TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(2.dp))
+                Text(
+                    stringResource(R.string.protection_sites_pornography_subtitle),
+                    color = TextHint,
+                    fontSize = 12.sp
+                )
+            }
+            Switch(
+                checked = selected,
+                onCheckedChange = { onToggle() },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = DarkBg,
+                    checkedTrackColor = AccentCyan,
+                    uncheckedThumbColor = TextHint,
+                    uncheckedTrackColor = DarkCard,
+                    uncheckedBorderColor = CardBorder
+                )
+            )
         }
     }
 }

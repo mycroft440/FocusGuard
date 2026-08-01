@@ -124,6 +124,15 @@ class DeviceOwnerManagerTest {
     }
 
     @Test
+    fun `pornography category requires the same dns protection as global filter`() {
+        assertThat(DeviceOwnerManager.requiresAdultDns(false, false)).isFalse()
+        assertThat(DeviceOwnerManager.requiresAdultDns(true, false)).isTrue()
+        assertThat(DeviceOwnerManager.requiresAdultDns(false, true)).isTrue()
+        assertThat(DeviceOwnerManager.ADULT_DNS_HOST)
+            .isEqualTo("family-filter-dns.cleanbrowsing.org")
+    }
+
+    @Test
     fun `disabling adult filter removes only focusguard dns browser policy`() {
         val restrictions = DeviceOwnerManager.buildManagedBrowserRestrictions(
             existing = Bundle().apply {
