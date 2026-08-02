@@ -11,15 +11,24 @@ data class DeviceOwnerProtectionDiagnostics(
     val deviceAdminActive: Boolean,
     val deviceOwnerActive: Boolean,
     val maintenanceActive: Boolean,
+    val protectionArmed: Boolean,
     val blockingProtectionArmed: Boolean,
+    val adultContentProtectionArmed: Boolean,
     val uninstallBlocked: Boolean?,
     val appsControlBlocked: Boolean?,
     val userControlDisabled: Boolean?,
     val factoryResetBlocked: Boolean?,
     val safeBootBlocked: Boolean?,
-    val debuggingBlocked: Boolean?,
+    val addUserBlocked: Boolean?,
+    val removeUserBlocked: Boolean?,
+    val userSwitchBlocked: Boolean?,
+    val privateProfileCreationBlocked: Boolean?,
     val dateTimeChangesBlocked: Boolean?,
     val grantAdminBlocked: Boolean?,
+    val notificationPermissionLocked: Boolean?,
+    val accessibilityServiceEnabled: Boolean,
+    val usageAccessEnabled: Boolean,
+    val batteryOptimizationExempt: Boolean,
     val automaticTimeEnabled: Boolean?,
     val automaticTimeZoneEnabled: Boolean?,
     val adultFilterEnabled: Boolean,
@@ -28,46 +37,67 @@ data class DeviceOwnerProtectionDiagnostics(
     val vpnConfigurationBlocked: Boolean?
 ) {
     val isFullyProtected: Boolean
-        get() = deviceOwnerActive &&
-            !maintenanceActive &&
-            uninstallBlocked == true &&
-            appsControlBlocked == true &&
-            userControlDisabled != false &&
-            factoryResetBlocked == true &&
-            safeBootBlocked == true &&
-            blockingProtectionVerified &&
-            dateTimeChangesBlocked == true &&
-            grantAdminBlocked != false &&
-            automaticTimeEnabled != false &&
-            automaticTimeZoneEnabled != false &&
-            adultContentProtectionVerified
+        get() = deviceOwnerActive && when {
+            maintenanceActive -> false
+            !protectionArmed -> essentialPermissionsVerified
+            else -> uninstallBlocked == true &&
+                appsControlBlocked == true &&
+                userControlDisabled != false &&
+                factoryResetBlocked == true &&
+                safeBootBlocked == true &&
+                userIsolationVerified &&
+                dateTimeChangesBlocked == true &&
+                grantAdminBlocked != false &&
+                notificationPermissionLocked != false &&
+                essentialPermissionsVerified &&
+                automaticTimeEnabled != false &&
+                automaticTimeZoneEnabled != false &&
+                adultContentProtectionVerified
+        }
+
+    private val essentialPermissionsVerified: Boolean
+        get() = accessibilityServiceEnabled &&
+            usageAccessEnabled &&
+            batteryOptimizationExempt
 
     private val adultContentProtectionVerified: Boolean
-        get() = !adultFilterEnabled ||
+        get() = !adultContentProtectionArmed ||
             (adultDnsEnforced == true &&
                 privateDnsChangesBlocked == true &&
                 vpnConfigurationBlocked == true)
 
-    private val blockingProtectionVerified: Boolean
-        get() = !blockingProtectionArmed || debuggingBlocked == true
+    private val userIsolationVerified: Boolean
+        get() = addUserBlocked == true &&
+            removeUserBlocked == true &&
+            userSwitchBlocked != false &&
+            privateProfileCreationBlocked != false
 
     val failedChecks: Int
         get() = buildList<Boolean?> {
             add(deviceOwnerActive)
-            add(uninstallBlocked)
-            add(appsControlBlocked)
-            add(userControlDisabled)
-            add(factoryResetBlocked)
-            add(safeBootBlocked)
-            if (blockingProtectionArmed) add(debuggingBlocked ?: false)
-            add(dateTimeChangesBlocked)
-            add(grantAdminBlocked)
-            add(automaticTimeEnabled)
-            add(automaticTimeZoneEnabled)
-            if (adultFilterEnabled) {
-                add(adultDnsEnforced ?: false)
-                add(privateDnsChangesBlocked ?: false)
-                add(vpnConfigurationBlocked ?: false)
+            add(accessibilityServiceEnabled)
+            add(usageAccessEnabled)
+            add(batteryOptimizationExempt)
+            if (protectionArmed) {
+                add(uninstallBlocked)
+                add(appsControlBlocked)
+                add(userControlDisabled)
+                add(factoryResetBlocked)
+                add(safeBootBlocked)
+                add(addUserBlocked)
+                add(removeUserBlocked)
+                add(userSwitchBlocked)
+                add(privateProfileCreationBlocked)
+                add(dateTimeChangesBlocked)
+                add(grantAdminBlocked)
+                add(notificationPermissionLocked)
+                add(automaticTimeEnabled)
+                add(automaticTimeZoneEnabled)
+                if (adultContentProtectionArmed) {
+                    add(adultDnsEnforced ?: false)
+                    add(privateDnsChangesBlocked ?: false)
+                    add(vpnConfigurationBlocked ?: false)
+                }
             }
         }.count { it == false }
 }

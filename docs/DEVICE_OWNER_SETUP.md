@@ -11,6 +11,8 @@ um app é Device Owner, ele pode:
 - ✅ **Impedir desinstalação** (`DISALLOW_UNINSTALL_APPS`) — botão fica cinza
 - ✅ **Impedir Safe Boot** (`DISALLOW_SAFE_BOOT`) — bloqueia modo de segurança
 - ✅ **Impedir Factory Reset** (`DISALLOW_FACTORY_RESET`)
+- ✅ **Impedir troca/criação de usuários e perfis privados** durante um bloqueio
+- ✅ **Proteger notificações e controles do próprio app** durante um bloqueio
 - ✅ **Bloquear URLs no Chrome/Edge** via Managed Configurations (`URLBlocklist`)
 - ✅ **Forçar Private DNS DoT** com servidor filtrante (CleanBrowsing Family)
 - ✅ **Suspender apps** nativamente via `setPackagesSuspended` (0ms — ícone fica cinza)
@@ -113,14 +115,15 @@ Google normalmente. O Device Owner permanece ativo.
 
 Após Device Owner ativo, o FocusGuard aplica automaticamente:
 
-### Policies persistentes (Nuclear Shield)
+### Policies da blindagem armada (Nuclear Shield)
 
 ```kotlin
 GLOBAL_SHIELD_RESTRICTIONS = [
     DISALLOW_FACTORY_RESET,      // impede factory reset
     DISALLOW_SAFE_BOOT,          // impede modo de segurança
     DISALLOW_UNINSTALL_APPS,     // impede desinstalar apps
-    DISALLOW_APPS_CONTROL        // impede Force Stop / Disable
+    DISALLOW_APPS_CONTROL,       // impede Force Stop / Disable
+    DISALLOW_CONFIG_DATE_TIME    // impede encurtar o prazo mudando o relógio
 ]
 ```
 
@@ -134,24 +137,30 @@ limpeza de dados pelas Configurações.
 ACTIVE_BLOCK_RESTRICTIONS = [
     DISALLOW_ADD_USER,
     DISALLOW_REMOVE_USER,
-    DISALLOW_DEBUGGING_FEATURES
+    DISALLOW_USER_SWITCH,
+    DISALLOW_ADD_PRIVATE_PROFILE // Android 15+
 ]
 ```
 
 Essas restrições são armadas assim que uma sessão, limite excedido, site ou o
 filtro adulto passa a bloquear algo. O estado é persistido e reaplicado após
-reinicialização. Enquanto estiver armado, ADB/depuração, modo seguro, reset pelas
-Configurações, desinstalação, force-stop e limpeza de dados ficam fechados. A
-AccessibilityService também volta da tela de Acessibilidade, da lista de
-administradores e das telas de desinstalação como defesa adicional contra falhas
-de interface de fabricantes. Essa interceptação só opera em um aparelho realmente
-provisionado como Device Owner e fora da manutenção autenticada.
+reinicialização. Enquanto estiver armado, modo seguro, reset pelas Configurações,
+troca de usuário, desinstalação, force-stop e limpeza de dados ficam fechados pelas
+APIs oficiais do Android. Como defesa adicional, a AccessibilityService redireciona
+para a tela inicial apenas quando identifica as telas de Acessibilidade, administrador,
+desinstalação ou controles destrutivos do próprio FocusGuard. Essa interceptação é
+ativada somente com Device Owner real, blindagem armada e manutenção fechada.
+
+Por escolha do produto, a blindagem **não bloqueia USB, ADB/depuração, fontes
+desconhecidas nem a instalação de novos apps**. Essas rotas ficam fora do modelo
+de proteção e, por isso, o projeto não promete resistência a um computador ADB já
+autorizado ou a um navegador alternativo instalado para contornar uma regra de site.
 
 Os sinalizadores mínimos dessa proteção ficam no armazenamento criptografado do
 dispositivo, disponível no `LOCKED_BOOT_COMPLETED`. Assim, antes do primeiro PIN
 após um reboot, o FocusGuard restaura as políticas nativas sem tentar abrir Room,
 Keystore ou preferências protegidas pela credencial. Se o aparelho for reiniciado
-durante manutenção, a janela é invalidada e ADB, controle de apps e remoção voltam
+durante manutenção, a janela é invalidada e controle de apps e remoção voltam
 a ser bloqueados nesse estágio. A reconciliação das sessões e a camada de
 Acessibilidade só iniciam após `BOOT_COMPLETED`, quando o Android libera o
 armazenamento do usuário.
@@ -183,15 +192,10 @@ armazenamento do usuário.
 Se você quiser desinstalar o FocusGuard no futuro:
 
 1. Abra FocusGuard → Settings → Proteção Nuclear
-2. Abra a manutenção com a senha de desativação ou na janela mensal
+2. Se não houver bloqueio ativo, abra a manutenção com a senha de desativação.
+   Durante um bloqueio, somente a janela mensal do dia 15, 02:50–03:00, é aceita.
 3. Toque em "Revogar Device Owner"
 4. Confirme
-
-Como último recurso, após abrir a manutenção (que libera a depuração), também é
-possível usar ADB:
-```bash
-adb shell dpm remove-active-admin com.focusguard.v2/com.focusguard.admin.FocusGuardDeviceAdminReceiver
-```
 
 Após remover, você pode desinstalar normalmente.
 
@@ -221,8 +225,9 @@ Em um aparelho de desenvolvimento provisionado como Device Owner:
 
 1. Ative um bloqueio e confirme nos diagnósticos que a proteção está armada.
 2. Abra a manutenção autenticada e reinicie o aparelho antes dos dez minutos.
-3. Antes do primeiro desbloqueio, confirme por um computador já autorizado que
-   novos comandos ADB são recusados.
+3. Antes do primeiro desbloqueio, consulte `dumpsys device_policy` por um
+   computador de teste e confirme que as restrições críticas voltaram; ADB
+   permanece disponível.
 4. Após desbloquear, confirme que a manutenção expirou, o bloqueio continua ativo
    e as telas de desinstalação/administrador permanecem indisponíveis.
 

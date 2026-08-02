@@ -76,6 +76,9 @@ internal fun DeviceOwnerMaintenanceDialog(
     val missingCredential = stringResource(R.string.device_owner_maintenance_credential_missing)
     val automaticTimeRequired = stringResource(R.string.device_owner_maintenance_auto_time_required)
     val outsideWindow = stringResource(R.string.device_owner_maintenance_outside_window)
+    val activeBlockRequiresMonthly = stringResource(
+        R.string.device_owner_maintenance_active_block_requires_monthly
+    )
     val openedMessage = stringResource(R.string.device_owner_maintenance_opened)
     val closedMessage = stringResource(R.string.device_owner_maintenance_closed)
 
@@ -100,6 +103,8 @@ internal fun DeviceOwnerMaintenanceDialog(
                 invalidCredential
             DeviceOwnerMaintenanceGate.UnlockResult.OUTSIDE_MONTHLY_WINDOW ->
                 outsideWindow
+            DeviceOwnerMaintenanceGate.UnlockResult.ACTIVE_BLOCK_REQUIRES_MONTHLY_WINDOW ->
+                activeBlockRequiresMonthly
         }
     }
 
@@ -197,11 +202,23 @@ internal fun DeviceOwnerMaintenanceDialog(
                     }
                     else -> {
                         Text(
-                            text = stringResource(R.string.device_owner_maintenance_description),
+                            text = stringResource(
+                                if (diagnostics.protectionArmed) {
+                                    R.string.device_owner_maintenance_armed_description
+                                } else {
+                                    R.string.device_owner_maintenance_description
+                                }
+                            ),
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(Modifier.height(12.dp))
-                        if (credentialConfigured) {
+                        if (diagnostics.protectionArmed) {
+                            Text(
+                                text = activeBlockRequiresMonthly,
+                                color = MaterialTheme.colorScheme.error,
+                                fontSize = 12.sp
+                            )
+                        } else if (credentialConfigured) {
                             OutlinedTextField(
                                 value = credential,
                                 onValueChange = {
@@ -305,6 +322,9 @@ private fun DeviceOwnerDiagnosticsSection(
             R.string.device_owner_diagnostics_not_owner
         )
         maintenanceActive -> stringResource(R.string.device_owner_diagnostics_maintenance)
+        !diagnostics.protectionArmed && diagnostics.isFullyProtected -> stringResource(
+            R.string.device_owner_diagnostics_ready
+        )
         diagnostics.isFullyProtected -> stringResource(R.string.device_owner_diagnostics_verified)
         else -> stringResource(
             R.string.device_owner_diagnostics_failed,
@@ -327,74 +347,110 @@ private fun DeviceOwnerDiagnosticsSection(
         diagnostics.deviceOwnerActive
     )
     DiagnosticRow(
-        stringResource(R.string.device_owner_diagnostics_uninstall),
-        diagnostics.uninstallBlocked,
-        relaxedByMaintenance = maintenanceActive
+        stringResource(R.string.device_owner_diagnostics_accessibility),
+        diagnostics.accessibilityServiceEnabled
     )
     DiagnosticRow(
-        stringResource(R.string.device_owner_diagnostics_apps_control),
-        diagnostics.appsControlBlocked,
-        relaxedByMaintenance = maintenanceActive
+        stringResource(R.string.device_owner_diagnostics_usage_access),
+        diagnostics.usageAccessEnabled
     )
     DiagnosticRow(
-        stringResource(R.string.device_owner_diagnostics_user_control),
-        diagnostics.userControlDisabled,
-        relaxedByMaintenance = maintenanceActive
+        stringResource(R.string.device_owner_diagnostics_battery),
+        diagnostics.batteryOptimizationExempt
     )
-    DiagnosticRow(
-        stringResource(R.string.device_owner_diagnostics_factory_reset),
-        diagnostics.factoryResetBlocked
-    )
-    DiagnosticRow(
-        stringResource(R.string.device_owner_diagnostics_safe_boot),
-        diagnostics.safeBootBlocked
-    )
-    if (diagnostics.blockingProtectionArmed) {
+    if (diagnostics.protectionArmed) {
         DiagnosticRow(
-            stringResource(R.string.device_owner_diagnostics_blocking_guard),
-            true
-        )
-        DiagnosticRow(
-            stringResource(R.string.device_owner_diagnostics_debugging),
-            diagnostics.debuggingBlocked,
-            relaxedByMaintenance = maintenanceActive
-        )
-    }
-    DiagnosticRow(
-        stringResource(R.string.device_owner_diagnostics_date_time),
-        diagnostics.dateTimeChangesBlocked
-    )
-    DiagnosticRow(
-        stringResource(R.string.device_owner_diagnostics_grant_admin),
-        diagnostics.grantAdminBlocked,
-        relaxedByMaintenance = maintenanceActive
-    )
-    DiagnosticRow(
-        stringResource(R.string.device_owner_diagnostics_auto_time),
-        diagnostics.automaticTimeEnabled
-    )
-    DiagnosticRow(
-        stringResource(R.string.device_owner_diagnostics_auto_timezone),
-        diagnostics.automaticTimeZoneEnabled
-    )
-    if (diagnostics.adultFilterEnabled) {
-        DiagnosticRow(
-            stringResource(R.string.device_owner_diagnostics_adult_dns),
-            diagnostics.adultDnsEnforced
-        )
-        DiagnosticRow(
-            stringResource(R.string.device_owner_diagnostics_private_dns_lock),
-            diagnostics.privateDnsChangesBlocked,
+            stringResource(R.string.device_owner_diagnostics_uninstall),
+            diagnostics.uninstallBlocked,
             relaxedByMaintenance = maintenanceActive
         )
         DiagnosticRow(
-            stringResource(R.string.device_owner_diagnostics_vpn_lock),
-            diagnostics.vpnConfigurationBlocked,
+            stringResource(R.string.device_owner_diagnostics_apps_control),
+            diagnostics.appsControlBlocked,
             relaxedByMaintenance = maintenanceActive
         )
+        DiagnosticRow(
+            stringResource(R.string.device_owner_diagnostics_user_control),
+            diagnostics.userControlDisabled,
+            relaxedByMaintenance = maintenanceActive
+        )
+        DiagnosticRow(
+            stringResource(R.string.device_owner_diagnostics_factory_reset),
+            diagnostics.factoryResetBlocked
+        )
+        DiagnosticRow(
+            stringResource(R.string.device_owner_diagnostics_safe_boot),
+            diagnostics.safeBootBlocked
+        )
+        DiagnosticRow(
+            stringResource(R.string.device_owner_diagnostics_add_user),
+            diagnostics.addUserBlocked,
+            relaxedByMaintenance = maintenanceActive
+        )
+        DiagnosticRow(
+            stringResource(R.string.device_owner_diagnostics_remove_user),
+            diagnostics.removeUserBlocked,
+            relaxedByMaintenance = maintenanceActive
+        )
+        DiagnosticRow(
+            stringResource(R.string.device_owner_diagnostics_user_switch),
+            diagnostics.userSwitchBlocked,
+            relaxedByMaintenance = maintenanceActive
+        )
+        DiagnosticRow(
+            stringResource(R.string.device_owner_diagnostics_private_profile),
+            diagnostics.privateProfileCreationBlocked,
+            relaxedByMaintenance = maintenanceActive
+        )
+        DiagnosticRow(
+            stringResource(R.string.device_owner_diagnostics_date_time),
+            diagnostics.dateTimeChangesBlocked
+        )
+        DiagnosticRow(
+            stringResource(R.string.device_owner_diagnostics_grant_admin),
+            diagnostics.grantAdminBlocked,
+            relaxedByMaintenance = maintenanceActive
+        )
+        DiagnosticRow(
+            stringResource(R.string.device_owner_diagnostics_notifications),
+            diagnostics.notificationPermissionLocked,
+            relaxedByMaintenance = maintenanceActive
+        )
+        DiagnosticRow(
+            stringResource(R.string.device_owner_diagnostics_auto_time),
+            diagnostics.automaticTimeEnabled
+        )
+        DiagnosticRow(
+            stringResource(R.string.device_owner_diagnostics_auto_timezone),
+            diagnostics.automaticTimeZoneEnabled
+        )
+        if (diagnostics.blockingProtectionArmed) {
+            DiagnosticRow(
+                stringResource(R.string.device_owner_diagnostics_blocking_guard),
+                true
+            )
+        }
+        if (diagnostics.adultContentProtectionArmed) {
+            DiagnosticRow(
+                stringResource(R.string.device_owner_diagnostics_adult_dns),
+                diagnostics.adultDnsEnforced
+            )
+            DiagnosticRow(
+                stringResource(R.string.device_owner_diagnostics_private_dns_lock),
+                diagnostics.privateDnsChangesBlocked,
+                relaxedByMaintenance = maintenanceActive
+            )
+            DiagnosticRow(
+                stringResource(R.string.device_owner_diagnostics_vpn_lock),
+                diagnostics.vpnConfigurationBlocked,
+                relaxedByMaintenance = maintenanceActive
+            )
+        }
     }
 
-    if (diagnostics.deviceOwnerActive && !maintenanceActive && !diagnostics.isFullyProtected) {
+    if (diagnostics.deviceOwnerActive && diagnostics.protectionArmed &&
+        !maintenanceActive && !diagnostics.isFullyProtected
+    ) {
         Spacer(Modifier.height(6.dp))
         TextButton(
             modifier = Modifier.fillMaxWidth(),

@@ -504,6 +504,32 @@ class WebsiteBlockerTest {
     }
 
     @Test
+    fun `predefined social websites cover their native app bypasses`() {
+        assertThat(WebsiteBlocker.appPackageDomainsFor(listOf("instagram.com")))
+            .containsEntry("com.instagram.android", "instagram.com")
+        assertThat(WebsiteBlocker.appPackageDomainsFor(listOf("fb.watch")))
+            .containsEntry("com.facebook.katana", "facebook.com")
+        assertThat(WebsiteBlocker.appPackageDomainsFor(listOf("x.com")))
+            .containsEntry("com.twitter.android", "twitter.com")
+    }
+
+    @Test
+    fun `selected predefined apps add their matching website families`() {
+        assertThat(
+            WebsiteBlocker.domainRulesForAppPackages(
+                listOf("com.instagram.android", "com.reddit.frontpage", "unknown.package")
+            )
+        ).containsExactly("instagram.com", "reddit.com").inOrder()
+    }
+
+    @Test
+    fun `blocking an alias covers the rest of the same website family`() {
+        assertThat(WebsiteBlocker.isUrlBlocked("https://t.co/link", listOf("x.com"))).isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked("https://redd.it/post", listOf("reddit.com")))
+            .isTrue()
+    }
+
+    @Test
     fun `extractUrlCandidate reads compound accessibility descriptions`() {
         assertThat(
             WebsiteBlocker.extractUrlCandidate(

@@ -26,7 +26,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.security.AuthManager
 import com.focusguard.ui.CreateSessionActivity
@@ -69,7 +68,6 @@ private object FocusGuardRoute {
 @Composable
 fun FocusGuardNavHost(
     activity: AppCompatActivity,
-    deviceOwnerManager: DeviceOwnerManager,
     authManager: AuthManager,
     pomodoroManager: PomodoroManager
 ) {
@@ -221,7 +219,6 @@ fun FocusGuardNavHost(
                     onLanguageClick = { currentRoute = FocusGuardRoute.Language },
                     onPasswordManagementClick = { currentRoute = FocusGuardRoute.PasswordManagement },
                     onBlockCustomizationClick = { currentRoute = FocusGuardRoute.BlockCustomization },
-                    onDeviceOwnerClick = { deviceOwnerManager.setAsDeviceOwner(activity) },
                     onBack = { currentRoute = FocusGuardRoute.Home }
                 )
                 FocusGuardRoute.Pomodoro -> PomodoroScreen(

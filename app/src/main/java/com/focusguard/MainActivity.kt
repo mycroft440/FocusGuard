@@ -5,7 +5,6 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
-import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.security.AuthManager
 import com.focusguard.ui.PermissionsActivity
@@ -23,7 +22,6 @@ class MainActivity : AppCompatActivity() {
     // migrações em paralelo (AuthManager) ou multiplas instâncias de manager.
     @Inject lateinit var authManager: AuthManager
 
-    private lateinit var deviceOwnerManager: DeviceOwnerManager
     private lateinit var pomodoroManager: PomodoroManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -41,10 +39,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // DeviceOwnerManager e PomodoroManager ainda usam pattern getInstance()
-        // legado (P3-2/P3-3 não resolvidos). Quando migrados para Hilt, podem
-        // ser injetados igual ao AuthManager.
-        deviceOwnerManager = DeviceOwnerManager.getInstance(applicationContext)
+        // PomodoroManager ainda usa o singleton legado.
         pomodoroManager = PomodoroManager.getInstance(applicationContext)
 
         FocusGuardLogger.log("MainActivity", "Managers inicializados com sucesso")
@@ -53,7 +48,6 @@ class MainActivity : AppCompatActivity() {
             FocusGuardTheme {
                 FocusGuardNavHost(
                     activity = this,
-                    deviceOwnerManager = deviceOwnerManager,
                     authManager = authManager,
                     pomodoroManager = pomodoroManager
                 )

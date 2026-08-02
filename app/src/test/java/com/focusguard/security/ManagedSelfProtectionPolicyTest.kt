@@ -61,4 +61,23 @@ class ManagedSelfProtectionPolicyTest {
             )
         ).isFalse()
     }
+
+    @Test
+    fun `recognizes essential usage and battery protection settings`() {
+        assertThat(
+            ManagedSelfProtectionPolicy.classTargetsEssentialSpecialAccess(
+                "com.android.settings.Settings\$UsageAccessSettingsActivity"
+            )
+        ).isTrue()
+        assertThat(
+            ManagedSelfProtectionPolicy.textTargetsEssentialSpecialAccess(
+                listOf("Uso irrestrito da bateria")
+            )
+        ).isTrue()
+        assertThat(
+            ManagedSelfProtectionPolicy.textTargetsEssentialSpecialAccess(
+                listOf("Instalar apps desconhecidos")
+            )
+        ).isFalse()
+    }
 }

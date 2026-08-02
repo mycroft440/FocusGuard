@@ -11,6 +11,7 @@ import android.widget.Toast
 import androidx.room.withTransaction
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.admin.DeviceOwnerProtectionAuditor
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.BlockSession
@@ -23,6 +24,7 @@ import com.focusguard.security.AuthManager
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.utils.PermissionUtils
 import com.focusguard.utils.UsageLimitForegroundPolicy
 import com.focusguard.utils.WebsiteBlocker
 import com.focusguard.utils.WebsiteUsageLimitPolicy
@@ -49,6 +51,18 @@ import kotlinx.coroutines.withContext
 class BlockingSessionManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
+
+    class ArmoredProtectionUnavailableException(
+        val reason: Reason
+    ) : IllegalStateException(reason.name) {
+        enum class Reason {
+            DEVICE_OWNER_REQUIRED,
+            ACCESSIBILITY_REQUIRED,
+            USAGE_ACCESS_REQUIRED,
+            BATTERY_EXEMPTION_REQUIRED,
+            POLICIES_NOT_VERIFIED
+        }
+    }
 
     data class ConfiguredBlockedTargets(
         val passwordAppPackageNames: Set<String> = emptySet(),
@@ -90,6 +104,7 @@ class BlockingSessionManager @Inject constructor(
     companion object {
         private const val STATE_PREFERENCES = "blocking_session_manager_state"
         private const val PREVIOUS_DND_FILTER_KEY = "previous_dnd_filter"
+        private const val POLICY_RECONCILIATION_INTERVAL_MILLIS = 15L * 60L * 1_000L
 
         @Volatile
         private var legacyInstance: BlockingSessionManager? = null
@@ -123,11 +138,15 @@ class BlockingSessionManager @Inject constructor(
             limitedWebsiteRules: Collection<String>
         ): ConfiguredBlockedTargets {
             val passwordWebsiteRules = WebsiteBlocker.normalizeRules(
-                passwordSessionWebsiteRules
+                passwordSessionWebsiteRules +
+                    WebsiteBlocker.domainRulesForAppPackages(passwordSessionAppPackages)
             )
-            val normalizedLimitedWebsiteRules = WebsiteBlocker.normalizeRules(limitedWebsiteRules)
+            val normalizedLimitedWebsiteRules = WebsiteBlocker.normalizeRules(
+                limitedWebsiteRules + WebsiteBlocker.domainRulesForAppPackages(limitedAppPackages)
+            )
             val exclusiveWebsiteRules = WebsiteBlocker.normalizeRules(
-                exclusiveSessionWebsiteRules
+                exclusiveSessionWebsiteRules +
+                    WebsiteBlocker.domainRulesForAppPackages(exclusiveSessionAppPackages)
             )
             val passwordAppPackageNames = normalizeConfiguredAppPackages(
                 passwordSessionAppPackages,
@@ -433,13 +452,20 @@ class BlockingSessionManager @Inject constructor(
         apps: List<String>,
         sites: List<String>
     ) = withContext(Dispatchers.IO) {
+        val protectionWasAlreadyArmed = deviceOwnerManager.isBlockingProtectionArmed()
+        var sessionCreated = false
         try {
             val normalizedSites = WebsiteBlocker.normalizeRules(sites)
+            val normalizedApps = apps.filter(String::isNotBlank).distinct()
+            require(normalizedApps.isNotEmpty() || normalizedSites.isNotEmpty()) {
+                "O Jejum de Dopamina exige pelo menos um app ou site"
+            }
+            val duration = TimeUnit.DAYS.toMillis(days.toLong()) +
+                TimeUnit.HOURS.toMillis(hours.toLong())
+            require(duration > 0L) { "A duração da sessão deve ser positiva" }
+            ensureArmoredProtectionReady()
             database.withTransaction {
                 val startMillis = System.currentTimeMillis()
-                val duration = TimeUnit.DAYS.toMillis(days.toLong()) +
-                    TimeUnit.HOURS.toMillis(hours.toLong())
-                require(duration > 0L) { "A duração da sessão deve ser positiva" }
                 val session = BlockSession(
                     startTime = startMillis,
                     endTime = startMillis + duration,
@@ -450,13 +476,13 @@ class BlockingSessionManager @Inject constructor(
                     recurringEndHour = endHour,
                     recurringEndMinute = endMinute,
                     recurringDaysOfWeek = daysOfWeek,
-                    blockedAppsCount = apps.distinct().size,
+                    blockedAppsCount = normalizedApps.size,
                     blockedWebsitesCount = normalizedSites.size,
                     sessionType = "TIME",
                     isFixed24h = isFixed24h
                 )
                 val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
-                apps.distinct().forEach {
+                normalizedApps.forEach {
                     database.sessionAppCrossRefDao().insert(SessionAppCrossRef(sessionId, it))
                 }
                 normalizedSites.forEach {
@@ -464,16 +490,52 @@ class BlockingSessionManager @Inject constructor(
                         .insert(SessionWebsiteCrossRef(sessionId, it))
                 }
             }
+            sessionCreated = true
             checkAndEnforceOrThrow()
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
+            if (!sessionCreated && !protectionWasAlreadyArmed) {
+                deviceOwnerManager.clearBlockingPolicies()
+                deviceOwnerManager.applyNuclearShield()
+            }
             FocusGuardLogger.logError(
                 "BlockingSessionManager",
                 "Erro ao iniciar sessão por tempo",
                 error
             )
             throw error
+        }
+    }
+
+    private fun ensureArmoredProtectionReady() {
+        if (!deviceOwnerManager.isDeviceOwnerActive()) {
+            throw ArmoredProtectionUnavailableException(
+                ArmoredProtectionUnavailableException.Reason.DEVICE_OWNER_REQUIRED
+            )
+        }
+        if (!PermissionUtils.isAccessibilityServiceEnabled(context)) {
+            throw ArmoredProtectionUnavailableException(
+                ArmoredProtectionUnavailableException.Reason.ACCESSIBILITY_REQUIRED
+            )
+        }
+        if (!PermissionUtils.isUsageAccessEnabled(context)) {
+            throw ArmoredProtectionUnavailableException(
+                ArmoredProtectionUnavailableException.Reason.USAGE_ACCESS_REQUIRED
+            )
+        }
+        if (!PermissionUtils.isBatteryOptimizationIgnored(context)) {
+            throw ArmoredProtectionUnavailableException(
+                ArmoredProtectionUnavailableException.Reason.BATTERY_EXEMPTION_REQUIRED
+            )
+        }
+
+        deviceOwnerManager.enforceBlockingPolicies()
+        val diagnostics = DeviceOwnerProtectionAuditor(context).inspect()
+        if (!diagnostics.protectionArmed || !diagnostics.isFullyProtected) {
+            throw ArmoredProtectionUnavailableException(
+                ArmoredProtectionUnavailableException.Reason.POLICIES_NOT_VERIFIED
+            )
         }
     }
 
@@ -806,6 +868,7 @@ class BlockingSessionManager @Inject constructor(
 
                 val activeWebsiteLimits = database.websiteUsageLimitDao().getAllStatic()
                     .filter { it.isEnabled }
+                val adultFilterEnabled = AuthManager.isAdultFilterConfigured(context)
                 val policyExpirations = (
                     activeAppLimits.mapNotNull { limit ->
                         if (limit.lockMode.equals("TIME", ignoreCase = true)) {
@@ -822,10 +885,19 @@ class BlockingSessionManager @Inject constructor(
                 ) {
                     BlockingScheduleCalculator.nextLocalMidnight(now)
                 } else null
+                val nextReconciliation = if (
+                    activeSessions.isNotEmpty() ||
+                    activeAppLimits.isNotEmpty() ||
+                    activeWebsiteLimits.isNotEmpty() ||
+                    adultFilterEnabled
+                ) {
+                    now + POLICY_RECONCILIATION_INTERVAL_MILLIS
+                } else null
                 BlockingScheduleReceiver.scheduleNext(
                     context = context,
                     sessions = activeSessions,
-                    additionalBoundaries = policyExpirations + listOfNotNull(nextDailyReset),
+                    additionalBoundaries = policyExpirations +
+                        listOfNotNull(nextDailyReset, nextReconciliation),
                     nowMillis = now
                 )
                 val activeWebsiteDomains = WebsiteBlocker.normalizeRules(
@@ -849,11 +921,13 @@ class BlockingSessionManager @Inject constructor(
                     )
                 }.map { WebsiteBlocker.normalizeRule(it.domain) }
 
-                val sitesToBlock = (sessionSites + limitSites)
+                val appFamilySites = WebsiteBlocker.domainRulesForAppPackages(
+                    sessionApps + limitApps
+                )
+                val sitesToBlock = (sessionSites + limitSites + appFamilySites)
                     .map(WebsiteBlocker::normalizeRule)
                     .filter { it.isNotBlank() }
                     .distinct()
-                val adultFilterEnabled = AuthManager.isAdultFilterConfigured(context)
                 val pornographyCategoryActive =
                     WebsiteBlocker.containsPornographyRule(sitesToBlock)
                 deviceOwnerManager.setPornographyCategoryActive(pornographyCategoryActive)
@@ -878,7 +952,7 @@ class BlockingSessionManager @Inject constructor(
                 deviceOwnerManager.syncSuspendedApps(
                     allAppsInSessions = allKnownApps,
                     appsToBlockNow = appsToBlock,
-                    allowedSystemApps = websiteAppsToBlock.toSet()
+                    allowedSystemApps = appsToBlock.toSet()
                 )
 
                 if (sitesToBlock.isEmpty() && !adultFilterEnabled) {

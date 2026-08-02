@@ -17,6 +17,11 @@
     <string name="save">Salvar</string>
     <string name="cancel">Cancelar</string>
     <string name="nuclear_protection">Proteção nuclear</string>
+    <string name="dopamine_device_owner_required">O Jejum de Dopamina só pode começar com o FocusGuard ativado como Device Owner. Abra Configurações → Proteção nuclear e siga o passo a passo.</string>
+    <string name="dopamine_accessibility_required">Ative a Acessibilidade do FocusGuard antes de iniciar o Jejum de Dopamina.</string>
+    <string name="dopamine_usage_access_required">Conceda Acesso ao uso ao FocusGuard antes de iniciar o Jejum de Dopamina.</string>
+    <string name="dopamine_battery_required">Permita uso irrestrito da bateria para o FocusGuard antes de iniciar o Jejum de Dopamina.</string>
+    <string name="dopamine_policies_not_verified">O Android não confirmou todas as políticas da blindagem. Abra a manutenção, reaplique o diagnóstico e tente novamente.</string>
     <string name="give_permissions">Dê o restante das permissões aqui</string>
     <string name="permissions_warning_new">Ative Acessibilidade e Acesso de uso para liberar bloqueios e Insights.</string>
 

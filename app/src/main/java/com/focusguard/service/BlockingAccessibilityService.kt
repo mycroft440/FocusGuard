@@ -646,7 +646,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         // the user to revoke it and Google Play forbids using Accessibility to remove that
         // platform escape. This guard is defense in depth for explicitly provisioned devices.
         if (!deviceOwnerManager.isDeviceOwnerActive() ||
-            !deviceOwnerManager.isBlockingProtectionArmed() ||
+            !deviceOwnerManager.isArmoredProtectionArmed() ||
             deviceOwnerManager.isMaintenanceActive()
         ) {
             return false
@@ -669,6 +669,8 @@ class BlockingAccessibilityService : AccessibilityService() {
             ManagedSelfProtectionPolicy.classTargetsAppDetails(className)
         val directUninstallScreen =
             ManagedSelfProtectionPolicy.classTargetsUninstall(className)
+        val directEssentialSpecialAccessScreen =
+            ManagedSelfProtectionPolicy.classTargetsEssentialSpecialAccess(className)
         val genericSubSettings = className.contains("SubSettings", ignoreCase = true)
         val eventMentionsAccessibility =
             AccessibilitySettingsPolicy.textTargetsAccessibility(eventValues)
@@ -678,13 +680,16 @@ class BlockingAccessibilityService : AccessibilityService() {
             ManagedSelfProtectionPolicy.textTargetsFocusGuard(eventValues)
         val eventMentionsDestructiveControl =
             ManagedSelfProtectionPolicy.textTargetsDestructiveControl(eventValues)
+        val eventMentionsEssentialSpecialAccess =
+            ManagedSelfProtectionPolicy.textTargetsEssentialSpecialAccess(eventValues)
         val pendingProtection =
             nowElapsed <= pendingSettingsProtectionUntilElapsed
 
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED &&
             (eventMentionsAccessibility ||
                 eventMentionsDeviceAdmin ||
-                (eventMentionsFocusGuard && eventMentionsDestructiveControl))
+                (eventMentionsFocusGuard &&
+                    (eventMentionsDestructiveControl || eventMentionsEssentialSpecialAccess)))
         ) {
             pendingSettingsProtectionUntilElapsed =
                 nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
@@ -723,6 +728,16 @@ class BlockingAccessibilityService : AccessibilityService() {
                 (directAppDetailsScreen || directUninstallScreen ||
                     eventMentionsDestructiveControl || rootMentionsDestructiveControl())
         if (focusGuardControlScreen) {
+            pendingSettingsProtectionUntilElapsed =
+                nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
+            executeProtectionAction()
+            return true
+        }
+
+        if (directEssentialSpecialAccessScreen &&
+            (eventMentionsFocusGuard || rootMentionsFocusGuard()) &&
+            (eventMentionsEssentialSpecialAccess || rootMentionsEssentialSpecialAccess())
+        ) {
             pendingSettingsProtectionUntilElapsed =
                 nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
             executeProtectionAction()
@@ -786,6 +801,14 @@ class BlockingAccessibilityService : AccessibilityService() {
         )
     }
 
+    private fun rootMentionsEssentialSpecialAccess(): Boolean {
+        return rootContainsAny(
+            searchTerms = ManagedSelfProtectionPolicy.essentialSpecialAccessSearchTerms,
+            classifier = ManagedSelfProtectionPolicy::textTargetsEssentialSpecialAccess,
+            screenLabel = "acesso especial essencial"
+        )
+    }
+
     private fun rootContainsAny(
         searchTerms: Iterable<String>,
         classifier: (Iterable<CharSequence?>) -> Boolean,
@@ -815,6 +838,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun executeProtectionAction() {
         performGlobalAction(GLOBAL_ACTION_BACK)
+        performGlobalAction(GLOBAL_ACTION_HOME)
         showToastThrottled(getString(R.string.accessibility_protection_blocked_toast))
     }
 

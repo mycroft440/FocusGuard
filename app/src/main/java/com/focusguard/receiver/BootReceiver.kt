@@ -44,8 +44,8 @@ class BootReceiver : BroadcastReceiver() {
         val deviceOwnerManager = DeviceOwnerManager.getInstance(context)
         if (isDirectBoot) {
             // Room, Keystore and normal SharedPreferences are still unavailable here.
-            // Native Device Owner policy is sufficient to close removal/ADB bypasses
-            // until BOOT_COMPLETED performs the full session reconciliation.
+            // Native Device Owner policy restores app-removal protection before unlock.
+            // USB and ADB intentionally remain outside FocusGuard's restriction set.
             deviceOwnerManager.applyDirectBootShield()
             FocusGuardLogger.log(
                 "BootReceiver",

@@ -107,15 +107,36 @@ class DeviceOwnerManagerTest {
         assertThat(restrictions).contains(UserManager.DISALLOW_UNINSTALL_APPS)
         assertThat(restrictions).contains(UserManager.DISALLOW_APPS_CONTROL)
         assertThat(restrictions).contains(UserManager.DISALLOW_CONFIG_PRIVATE_DNS)
-        assertThat(restrictions).contains(UserManager.DISALLOW_DEBUGGING_FEATURES)
+        assertThat(restrictions).doesNotContain(UserManager.DISALLOW_DEBUGGING_FEATURES)
+        assertThat(restrictions).doesNotContain(UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES)
+        assertThat(restrictions).doesNotContain(UserManager.DISALLOW_INSTALL_APPS)
+        assertThat(restrictions).doesNotContain(UserManager.DISALLOW_USB_FILE_TRANSFER)
     }
 
     @Test
-    fun `active block closes user and adb bypass routes`() {
-        assertThat(DeviceOwnerManager.ACTIVE_BLOCK_RESTRICTIONS).containsExactly(
+    fun `android 8 active block isolates additional users without restricted features`() {
+        assertThat(DeviceOwnerManager.activeBlockRestrictionsForSdk(27)).containsExactly(
+            UserManager.DISALLOW_ADD_USER,
+            UserManager.DISALLOW_REMOVE_USER
+        ).inOrder()
+    }
+
+    @Test
+    fun `android 9 active block also prevents switching users`() {
+        assertThat(DeviceOwnerManager.activeBlockRestrictionsForSdk(28)).containsExactly(
             UserManager.DISALLOW_ADD_USER,
             UserManager.DISALLOW_REMOVE_USER,
-            UserManager.DISALLOW_DEBUGGING_FEATURES
+            UserManager.DISALLOW_USER_SWITCH
+        ).inOrder()
+    }
+
+    @Test
+    fun `android 15 active block also prevents private profiles`() {
+        assertThat(DeviceOwnerManager.activeBlockRestrictionsForSdk(35)).containsExactly(
+            UserManager.DISALLOW_ADD_USER,
+            UserManager.DISALLOW_REMOVE_USER,
+            UserManager.DISALLOW_USER_SWITCH,
+            UserManager.DISALLOW_ADD_PRIVATE_PROFILE
         ).inOrder()
     }
 

@@ -4,6 +4,7 @@ import android.icu.text.IDNA as AndroidIdna
 import android.text.InputType
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.focusguard.data.PredefinedApps
 import com.focusguard.data.PredefinedWebsites
 import java.net.IDN
 import java.net.Inet6Address
@@ -76,12 +77,29 @@ object WebsiteBlocker {
 
     private val domainAliases = mapOf(
         "youtube.com" to setOf("youtu.be", "youtube-nocookie.com"),
-        "twitter.com" to setOf("x.com", "t.co")
+        "twitter.com" to setOf("x.com", "t.co"),
+        "instagram.com" to setOf("instagr.am"),
+        "facebook.com" to setOf("fb.com", "fb.watch"),
+        "reddit.com" to setOf("redd.it"),
+        "pinterest.com" to setOf("pin.it"),
+        "telegram.org" to setOf("t.me", "telegram.me"),
+        "discord.com" to setOf("discord.gg", "discordapp.com"),
+        "spotify.com" to setOf("spotify.link"),
+        "snapchat.com" to setOf("snap.com")
     )
 
-    private val domainAppPackages = mapOf(
-        "youtube.com" to setOf("com.google.android.youtube")
-    )
+    private val domainAppPackages: Map<String, Set<String>> by lazy(
+        LazyThreadSafetyMode.PUBLICATION
+    ) {
+        PredefinedApps.PREVENTIVE_APPS
+            .mapNotNull { app ->
+                app.domain?.let(::normalizeRule)
+                    ?.takeIf(String::isNotEmpty)
+                    ?.let { domain -> domain to app.packageName }
+            }
+            .groupBy(keySelector = { it.first }, valueTransform = { it.second })
+            .mapValues { (_, packages) -> packages.toSet() }
+    }
 
     private val pornographyBlockingRules: Set<String> by lazy(LazyThreadSafetyMode.PUBLICATION) {
         normalizeRules(
@@ -216,17 +234,18 @@ object WebsiteBlocker {
         val normalized = normalizeRules(normalizedDomains)
         val domains = linkedSetOf<String>()
         normalized.forEach { rule ->
-            when {
-                isPornographyRule(rule) -> domains.addAll(
-                    normalizeRules(PredefinedWebsites.ADULT_DOMAINS)
-                )
-                !isKeywordRule(rule) -> domains += rule
+            if (isPornographyRule(rule)) {
+                domains.addAll(normalizeRules(PredefinedWebsites.ADULT_DOMAINS))
+            } else if (!isKeywordRule(rule)) {
+                domains.add(rule)
             }
         }
         val expanded = linkedSetOf<String>()
         expanded.addAll(domains)
         domains.forEach { rule ->
-            domainAliases[rule]?.let { aliases -> expanded.addAll(aliases) }
+            val canonical = canonicalDomainFor(rule)
+            if (canonical != rule) expanded += canonical
+            domainAliases[canonical]?.let { aliases -> expanded.addAll(aliases) }
         }
         return expanded
     }
@@ -265,17 +284,26 @@ object WebsiteBlocker {
         normalizeRules(domains)
             .filterNot { isKeywordRule(it) || isPornographyRule(it) }
             .forEach { rule ->
-                val canonical = domainAliases.entries.firstOrNull { (domain, aliases) ->
-                    rule == domain || rule.endsWith(".$domain") || aliases.any { alias ->
-                        rule == alias || rule.endsWith(".$alias")
-                    }
-                }?.key ?: rule
+                val canonical = canonicalDomainFor(rule)
 
                 domainAppPackages[canonical].orEmpty().forEach { packageName ->
                     result.putIfAbsent(packageName, canonical)
                 }
             }
         return result
+    }
+
+    /** Adds the web surface of every predefined native app selected for blocking. */
+    fun domainRulesForAppPackages(packageNames: Collection<String>): Set<String> {
+        val selected = packageNames.filter(String::isNotBlank).toSet()
+        if (selected.isEmpty()) return emptySet()
+
+        return PredefinedApps.PREVENTIVE_APPS.asSequence()
+            .filter { it.packageName in selected }
+            .mapNotNull { it.domain }
+            .map(::normalizeRule)
+            .filter(String::isNotEmpty)
+            .toCollection(linkedSetOf())
     }
 
     fun isUrlBlocked(url: String, blockedDomains: Collection<String>): Boolean {
@@ -338,10 +366,16 @@ object WebsiteBlocker {
         }
 
         domainAliases.forEach { (canonical, aliases) ->
-            if (canonical in normalizedBlockedDomains &&
-                aliases.any { alias -> domain == alias || domain.endsWith(".$alias") }
-            ) {
-                matches += canonical
+            val family = aliases + canonical
+            val candidateIsInFamily = family.any { member ->
+                domain == member || domain.endsWith(".$member")
+            }
+            if (candidateIsInFamily) {
+                normalizedBlockedDomains.filterTo(matches) { configuredRule ->
+                    family.any { member ->
+                        configuredRule == member || configuredRule.endsWith(".$member")
+                    }
+                }
             }
         }
 
@@ -352,6 +386,14 @@ object WebsiteBlocker {
             .forEach { (rule, _) -> matches += rule }
 
         return matches
+    }
+
+    private fun canonicalDomainFor(rule: String): String {
+        return domainAliases.entries.firstOrNull { (domain, aliases) ->
+            rule == domain || rule.endsWith(".$domain") || aliases.any { alias ->
+                rule == alias || rule.endsWith(".$alias")
+            }
+        }?.key ?: rule
     }
 
     /**

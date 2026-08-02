@@ -83,6 +83,7 @@ class BlockSessionRepositoryTest {
     @Test
     fun `clearAllBlockedContent calls deleteForSession on both DAOs`() = runTest {
         val sessionId = 99
+        coEvery { blockSessionDao.getActiveSessionById(sessionId) } returns null
 
         repository.clearAllBlockedContent(sessionId)
 
@@ -106,6 +107,7 @@ class BlockSessionRepositoryTest {
     fun `removeAppFromSession calls deleteSpecificApp on DAO`() = runTest {
         val sessionId = 5
         val packageName = "com.example.app"
+        coEvery { blockSessionDao.getActiveSessionById(sessionId) } returns null
 
         repository.removeAppFromSession(sessionId, packageName)
 
@@ -174,6 +176,7 @@ class BlockSessionRepositoryTest {
     fun `removeSiteFromSession calls deleteSpecificWebsite on DAO`() = runTest {
         val sessionId = 10
         val domain = "example.com"
+        coEvery { blockSessionDao.getActiveSessionById(sessionId) } returns null
 
         repository.removeSiteFromSession(sessionId, domain)
 
@@ -185,6 +188,7 @@ class BlockSessionRepositoryTest {
     @Test
     fun `removeSiteFromSession normalizes before deleting`() = runTest {
         val legacyValue = "https://www.Example.com/path"
+        coEvery { blockSessionDao.getActiveSessionById(10) } returns null
         repository.removeSiteFromSession(10, legacyValue)
 
         coVerify(exactly = 1) {
@@ -197,10 +201,31 @@ class BlockSessionRepositoryTest {
 
     @Test
     fun `removeSiteFromSession normalizes keyword before deleting`() = runTest {
+        coEvery { blockSessionDao.getActiveSessionById(10) } returns null
         repository.removeSiteFromSession(10, "*XXX*")
 
         coVerify(exactly = 1) {
             sessionWebsiteCrossRefDao.deleteSpecificWebsite(10, "keyword:xxx")
+        }
+    }
+
+    @Test
+    fun `active time session rejects destructive content mutations`() = runTest {
+        val sessionId = 15
+        coEvery { blockSessionDao.getActiveSessionById(sessionId) } returns BlockSession(
+            id = sessionId,
+            sessionType = "TIME",
+            isActive = true,
+            endTime = Long.MAX_VALUE
+        )
+
+        val failure = runCatching {
+            repository.removeAppFromSession(sessionId, "com.example.app")
+        }.exceptionOrNull()
+
+        assertThat(failure).isInstanceOf(ProtectedSessionMutationException::class.java)
+        coVerify(exactly = 0) {
+            sessionAppCrossRefDao.deleteSpecificApp(any(), any())
         }
     }
 }

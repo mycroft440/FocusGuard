@@ -6,12 +6,17 @@ import com.focusguard.database.SessionAppCrossRef
 import com.focusguard.database.SessionAppCrossRefDao
 import com.focusguard.database.SessionWebsiteCrossRef
 import com.focusguard.database.SessionWebsiteCrossRefDao
+import com.focusguard.security.SessionMutationPolicy
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
+
+class ProtectedSessionMutationException(sessionId: Int) : IllegalStateException(
+    "A sessão $sessionId está protegida até o término e não aceita remoções"
+)
 
 /**
  * Repository para BlockSessions e seus relacionamentos (apps/sites bloqueados).
@@ -47,6 +52,7 @@ class BlockSessionRepository @Inject constructor(
 
     /** Limpa todos os apps/sites bloqueados de uma sessão. */
     suspend fun clearAllBlockedContent(sessionId: Int) = withContext(Dispatchers.IO) {
+        requireDestructiveMutationAllowed(sessionId)
         sessionAppCrossRefDao.deleteForSession(sessionId)
         sessionWebsiteCrossRefDao.deleteForSession(sessionId)
     }
@@ -58,6 +64,7 @@ class BlockSessionRepository @Inject constructor(
 
     /** Remove um app de uma sessão. */
     suspend fun removeAppFromSession(sessionId: Int, packageName: String) = withContext(Dispatchers.IO) {
+        requireDestructiveMutationAllowed(sessionId)
         sessionAppCrossRefDao.deleteSpecificApp(sessionId, packageName)
     }
 
@@ -77,12 +84,20 @@ class BlockSessionRepository @Inject constructor(
 
     /** Remove um site de uma sessão. */
     suspend fun removeSiteFromSession(sessionId: Int, domain: String) = withContext(Dispatchers.IO) {
+        requireDestructiveMutationAllowed(sessionId)
         val normalized = WebsiteBlocker.normalizeRule(domain)
         if (normalized.isEmpty()) return@withContext
         sessionWebsiteCrossRefDao.deleteSpecificWebsite(sessionId, normalized)
         val legacyValue = domain.trim()
         if (legacyValue != normalized) {
             sessionWebsiteCrossRefDao.deleteSpecificWebsite(sessionId, legacyValue)
+        }
+    }
+
+    private suspend fun requireDestructiveMutationAllowed(sessionId: Int) {
+        val session = blockSessionDao.getActiveSessionById(sessionId)
+        if (!SessionMutationPolicy.canRemoveProtectedContent(session)) {
+            throw ProtectedSessionMutationException(sessionId)
         }
     }
 }

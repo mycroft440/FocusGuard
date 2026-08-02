@@ -111,6 +111,22 @@ class BlockingSessionManagerTargetsTest {
     }
 
     @Test
+    fun `predefined app selection reserves its website surface in the same mode`() {
+        val targets = BlockingSessionManager.combineConfiguredBlockedTargets(
+            passwordSessionAppPackages = emptyList(),
+            passwordSessionWebsiteRules = emptyList(),
+            exclusiveSessionAppPackages = listOf("com.instagram.android"),
+            exclusiveSessionWebsiteRules = emptyList(),
+            limitedAppPackages = emptyList(),
+            limitedWebsiteRules = emptyList()
+        )
+
+        assertThat(targets.exclusiveAppPackageNames).contains("com.instagram.android")
+        assertThat(targets.exclusiveWebsiteRules).contains("instagram.com")
+        assertThat(targets.unavailableWebsiteRules).contains("instagram.com")
+    }
+
+    @Test
     fun `non-blocking pomodoro does not participate in blocking policies`() {
         assertThat(
             BlockingSessionManager.participatesInBlocking(

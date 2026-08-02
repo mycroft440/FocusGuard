@@ -7,7 +7,7 @@ import java.util.Locale
  * Pure classifier for system screens that can weaken a fully managed FocusGuard device.
  *
  * The accessibility service only uses this policy while FocusGuard is the real Device Owner,
- * a block is being enforced and the authenticated maintenance window is closed.
+ * armored protection is active and the authenticated maintenance window is closed.
  */
 object ManagedSelfProtectionPolicy {
 
@@ -30,6 +30,14 @@ object ManagedSelfProtectionPolicy {
         "UninstallActivity",
         "UninstallAlertDialogActivity",
         "UninstallAppProgress"
+    )
+
+    private val essentialSpecialAccessClassMarkers = setOf(
+        "UsageAccessSettings",
+        "UsageAccessDetails",
+        "HighPowerApplicationsActivity",
+        "HighPowerDetail",
+        "BatteryOptimizationSettings"
     )
 
     internal val deviceAdminSearchTerms = listOf(
@@ -64,6 +72,17 @@ object ManagedSelfProtectionPolicy {
         "Borrar datos"
     )
 
+    internal val essentialSpecialAccessSearchTerms = listOf(
+        "Acesso ao uso",
+        "Acesso de uso",
+        "Usage access",
+        "Otimização da bateria",
+        "Uso irrestrito da bateria",
+        "Sem restrições de bateria",
+        "Battery optimization",
+        "Unrestricted battery"
+    )
+
     fun classTargetsDeviceAdmin(className: String): Boolean =
         containsAny(className, deviceAdminClassMarkers)
 
@@ -73,6 +92,9 @@ object ManagedSelfProtectionPolicy {
     fun classTargetsUninstall(className: String): Boolean =
         containsAny(className, uninstallClassMarkers)
 
+    fun classTargetsEssentialSpecialAccess(className: String): Boolean =
+        containsAny(className, essentialSpecialAccessClassMarkers)
+
     fun textTargetsDeviceAdmin(values: Iterable<CharSequence?>): Boolean =
         valuesContainAny(values, deviceAdminSearchTerms)
 
@@ -81,6 +103,9 @@ object ManagedSelfProtectionPolicy {
 
     fun textTargetsDestructiveControl(values: Iterable<CharSequence?>): Boolean =
         valuesContainAny(values, destructiveControlSearchTerms)
+
+    fun textTargetsEssentialSpecialAccess(values: Iterable<CharSequence?>): Boolean =
+        valuesContainAny(values, essentialSpecialAccessSearchTerms)
 
     private fun containsAny(value: String, markers: Iterable<String>): Boolean =
         markers.any { marker -> value.contains(marker, ignoreCase = true) }

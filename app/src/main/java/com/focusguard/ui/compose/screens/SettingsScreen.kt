@@ -59,7 +59,6 @@ fun SettingsScreen(
     onLanguageClick: () -> Unit,
     onPasswordManagementClick: () -> Unit,
     onBlockCustomizationClick: () -> Unit,
-    onDeviceOwnerClick: () -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -75,6 +74,7 @@ fun SettingsScreen(
 
     var showDeactivationCredentialDialog by remember { mutableStateOf(false) }
     var showDeviceOwnerMaintenanceDialog by remember { mutableStateOf(false) }
+    var showDeviceOwnerSetupGuideDialog by remember { mutableStateOf(false) }
     var deactivationCredentialRevision by remember { mutableIntStateOf(0) }
     var deviceOwnerRevision by remember { mutableIntStateOf(0) }
 
@@ -84,9 +84,13 @@ fun SettingsScreen(
     val deactivationCredentialConfigured = remember(deactivationCredentialRevision) {
         deactivationCredentialManager.hasCredential()
     }
+    val armoredProtectionArmed = remember(deviceOwnerRevision, isBlockingActive) {
+        deviceOwnerManager.isArmoredProtectionArmed()
+    }
+    val credentialManagementLocked = isBlockingActive || armoredProtectionArmed
     val deactivationPasswordSubtitle = stringResource(
         when {
-            isBlockingActive -> R.string.deactivation_password_locked_subtitle
+            credentialManagementLocked -> R.string.deactivation_password_locked_subtitle
             deactivationCredentialConfigured -> R.string.deactivation_password_configured
             else -> R.string.deactivation_password_not_configured
         }
@@ -122,7 +126,7 @@ fun SettingsScreen(
 
     if (showDeactivationCredentialDialog) {
         DeactivationCredentialDialog(
-            managementLocked = isBlockingActive,
+            managementLocked = credentialManagementLocked,
             onDismiss = { showDeactivationCredentialDialog = false },
             onCredentialChanged = { deactivationCredentialRevision++ }
         )
@@ -131,6 +135,13 @@ fun SettingsScreen(
     if (showDeviceOwnerMaintenanceDialog) {
         DeviceOwnerMaintenanceDialog(
             onDismiss = { showDeviceOwnerMaintenanceDialog = false },
+            onStateChanged = { deviceOwnerRevision++ }
+        )
+    }
+
+    if (showDeviceOwnerSetupGuideDialog) {
+        DeviceOwnerSetupGuideDialog(
+            onDismiss = { showDeviceOwnerSetupGuideDialog = false },
             onStateChanged = { deviceOwnerRevision++ }
         )
     }
@@ -203,7 +214,7 @@ fun SettingsScreen(
                 deviceOwnerSubtitle,
                 iconTint = DangerRed,
                 titleColor = DangerRed,
-                onClick = onDeviceOwnerClick
+                onClick = { showDeviceOwnerSetupGuideDialog = true }
             )
 
             Spacer(Modifier.height(32.dp))

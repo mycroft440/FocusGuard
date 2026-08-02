@@ -17,7 +17,7 @@ object PredefinedApps {
         // Redes Sociais & Comunicação Curta
         AppInfo("com.zhiliaoapp.musically", "TikTok", "Redes Sociais", "tiktok.com"),
         AppInfo("com.kwai.video", "Kwai", "Redes Sociais", "kwai.com"),
-        AppInfo("com.twitter.android", "X (Twitter)", "Redes Sociais", "x.com"),
+        AppInfo("com.twitter.android", "X (Twitter)", "Redes Sociais", "twitter.com"),
         AppInfo("com.snapchat.android", "Snapchat", "Redes Sociais", "snapchat.com"),
         AppInfo("com.pinterest", "Pinterest", "Redes Sociais", "pinterest.com"),
         AppInfo("com.reddit.frontpage", "Reddit", "Redes Sociais", "reddit.com"),
@@ -26,7 +26,7 @@ object PredefinedApps {
 
         // Streaming & Entretenimento
         AppInfo("com.netflix.mediaclient", "Netflix", "Streaming", "netflix.com"),
-        AppInfo("com.amazon.avod.thirdpartyclient", "Prime Video", "Streaming", "amazon.com"),
+        AppInfo("com.amazon.avod.thirdpartyclient", "Prime Video", "Streaming", "primevideo.com"),
         AppInfo("com.disney.disneyplus", "Disney+", "Streaming", "disneyplus.com"),
         AppInfo("com.hbomax.ninja", "Max (HBO)", "Streaming", "max.com"),
         AppInfo("tv.twitch.android.app", "Twitch", "Streaming", "twitch.tv"),

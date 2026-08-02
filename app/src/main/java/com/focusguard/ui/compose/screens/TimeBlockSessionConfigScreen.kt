@@ -46,6 +46,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.manager.BlockingSessionManager.ArmoredProtectionUnavailableException
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
@@ -76,7 +77,7 @@ fun TimeBlockSessionConfigScreen(
     val days = daysText.toIntOrNull() ?: 0
     val hours = hoursText.toIntOrNull() ?: 0
     val totalHours = days * 24 + hours
-    val canSave = totalHours > 0
+    val canSave = totalHours > 0 && (apps.isNotEmpty() || sites.isNotEmpty())
 
     Scaffold(
         containerColor = DarkBg,
@@ -194,6 +195,32 @@ fun TimeBlockSessionConfigScreen(
                         } catch (cancelled: CancellationException) {
                             isSaving = false
                             throw cancelled
+                        } catch (
+                            error: ArmoredProtectionUnavailableException
+                        ) {
+                            isSaving = false
+                            val message = when (error.reason) {
+                                ArmoredProtectionUnavailableException.Reason.DEVICE_OWNER_REQUIRED -> {
+                                    R.string.dopamine_device_owner_required
+                                }
+                                ArmoredProtectionUnavailableException.Reason.ACCESSIBILITY_REQUIRED -> {
+                                    R.string.dopamine_accessibility_required
+                                }
+                                ArmoredProtectionUnavailableException.Reason.USAGE_ACCESS_REQUIRED -> {
+                                    R.string.dopamine_usage_access_required
+                                }
+                                ArmoredProtectionUnavailableException.Reason.BATTERY_EXEMPTION_REQUIRED -> {
+                                    R.string.dopamine_battery_required
+                                }
+                                ArmoredProtectionUnavailableException.Reason.POLICIES_NOT_VERIFIED -> {
+                                    R.string.dopamine_policies_not_verified
+                                }
+                            }
+                            Toast.makeText(
+                                context,
+                                context.getString(message),
+                                Toast.LENGTH_LONG
+                            ).show()
                         } catch (error: Exception) {
                             isSaving = false
                             FocusGuardLogger.logError(

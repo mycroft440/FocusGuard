@@ -5,6 +5,7 @@
     <string name="device_owner_maintenance_active_subtitle">Manutenção ativa por mais %1$d min</string>
     <string name="device_owner_maintenance_owner_required">Ative o FocusGuard como Device Owner para usar esta proteção.</string>
     <string name="device_owner_maintenance_description">Libera temporariamente apenas os controles necessários para manutenção. Reset de fábrica, modo seguro e alteração manual da data continuam bloqueados.</string>
+    <string name="device_owner_maintenance_armed_description">Há uma proteção ativa. A senha comum fica desabilitada até o bloqueio terminar; durante o bloqueio, somente a janela mensal pode abrir a manutenção.</string>
     <string name="device_owner_maintenance_password_label">Senha de desativação ou código de recuperação</string>
     <string name="device_owner_maintenance_open_password">Abrir com senha</string>
     <string name="device_owner_maintenance_open_monthly">Usar janela mensal</string>
@@ -18,12 +19,14 @@
     <string name="device_owner_maintenance_credential_missing">Defina primeiro uma senha de desativação no menu de configurações.</string>
     <string name="device_owner_maintenance_auto_time_required">Ative data, hora e fuso horário automáticos.</string>
     <string name="device_owner_maintenance_outside_window">A janela mensal abre somente no dia 15, entre 02:50 e 03:00.</string>
+    <string name="device_owner_maintenance_active_block_requires_monthly">Durante um bloqueio ativo, a manutenção por senha é proibida. Aguarde o bloqueio terminar ou use a janela do dia 15.</string>
     <string name="device_owner_maintenance_opened">Manutenção liberada por 10 minutos.</string>
     <string name="device_owner_maintenance_closed">Proteção completa reaplicada.</string>
-    <string name="device_owner_maintenance_required_to_revoke">Abra a manutenção por senha ou pela janela do dia 15 antes de revogar o Device Owner.</string>
+    <string name="device_owner_maintenance_required_to_revoke">Fora de um bloqueio, abra a manutenção por senha. Durante um bloqueio, somente a janela do dia 15 permite revogar o Device Owner.</string>
 
     <string name="device_owner_diagnostics_title">Diagnóstico da proteção</string>
     <string name="device_owner_diagnostics_verified">Proteção completa confirmada pelo Android.</string>
+    <string name="device_owner_diagnostics_ready">Device Owner pronto. A blindagem será armada quando um bloqueio começar.</string>
     <string name="device_owner_diagnostics_failed">%1$d verificações de proteção falharam.</string>
     <string name="device_owner_diagnostics_maintenance">Manutenção ativa: algumas proteções estão liberadas temporariamente.</string>
     <string name="device_owner_diagnostics_not_owner">Administrador comum não impede a desativação pelo sistema. Provisione o FocusGuard como Device Owner.</string>
@@ -34,9 +37,16 @@
     <string name="device_owner_diagnostics_factory_reset">Reset de fábrica pelas configurações bloqueado</string>
     <string name="device_owner_diagnostics_safe_boot">Modo de segurança bloqueado</string>
     <string name="device_owner_diagnostics_blocking_guard">Blindagem do bloqueio armada</string>
-    <string name="device_owner_diagnostics_debugging">ADB e recursos de depuração bloqueados</string>
+    <string name="device_owner_diagnostics_add_user">Criação de usuários bloqueada</string>
+    <string name="device_owner_diagnostics_remove_user">Remoção de usuários bloqueada</string>
+    <string name="device_owner_diagnostics_user_switch">Troca de usuário bloqueada</string>
+    <string name="device_owner_diagnostics_private_profile">Criação de perfil privado bloqueada</string>
     <string name="device_owner_diagnostics_date_time">Alteração manual de data e hora bloqueada</string>
     <string name="device_owner_diagnostics_grant_admin">Concessão de novos administradores bloqueada</string>
+    <string name="device_owner_diagnostics_notifications">Permissão de notificações protegida</string>
+    <string name="device_owner_diagnostics_accessibility">Serviço de acessibilidade ativo</string>
+    <string name="device_owner_diagnostics_usage_access">Acesso ao uso ativo</string>
+    <string name="device_owner_diagnostics_battery">Uso irrestrito da bateria ativo</string>
     <string name="device_owner_diagnostics_auto_time">Data e hora automáticas</string>
     <string name="device_owner_diagnostics_auto_timezone">Fuso horário automático</string>
     <string name="device_owner_diagnostics_adult_dns">DNS com filtro adulto confirmado</string>

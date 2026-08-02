@@ -79,10 +79,39 @@ class DeviceOwnerProtectionDiagnosticsTest {
     }
 
     @Test
-    fun `active blocking guard requires debugging routes to be closed`() {
+    fun `active protection requires user switching routes to be closed`() {
         val diagnostics = protectedDiagnostics().copy(
             blockingProtectionArmed = true,
-            debuggingBlocked = false
+            userSwitchBlocked = false
+        )
+
+        assertThat(diagnostics.isFullyProtected).isFalse()
+        assertThat(diagnostics.failedChecks).isEqualTo(1)
+    }
+
+    @Test
+    fun `idle device owner is ready without pretending inactive policies are armed`() {
+        val diagnostics = protectedDiagnostics().copy(
+            protectionArmed = false,
+            adultContentProtectionArmed = false,
+            uninstallBlocked = false,
+            appsControlBlocked = false,
+            factoryResetBlocked = false,
+            adultDnsEnforced = null,
+            privateDnsChangesBlocked = null,
+            vpnConfigurationBlocked = null
+        )
+
+        assertThat(diagnostics.isFullyProtected).isTrue()
+        assertThat(diagnostics.failedChecks).isEqualTo(0)
+    }
+
+    @Test
+    fun `idle device owner reports a missing essential permission`() {
+        val diagnostics = protectedDiagnostics().copy(
+            protectionArmed = false,
+            adultContentProtectionArmed = false,
+            batteryOptimizationExempt = false
         )
 
         assertThat(diagnostics.isFullyProtected).isFalse()
@@ -93,15 +122,24 @@ class DeviceOwnerProtectionDiagnosticsTest {
         deviceAdminActive = true,
         deviceOwnerActive = true,
         maintenanceActive = false,
+        protectionArmed = true,
         blockingProtectionArmed = false,
+        adultContentProtectionArmed = true,
         uninstallBlocked = true,
         appsControlBlocked = true,
         userControlDisabled = true,
         factoryResetBlocked = true,
         safeBootBlocked = true,
-        debuggingBlocked = false,
+        addUserBlocked = true,
+        removeUserBlocked = true,
+        userSwitchBlocked = true,
+        privateProfileCreationBlocked = true,
         dateTimeChangesBlocked = true,
         grantAdminBlocked = true,
+        notificationPermissionLocked = true,
+        accessibilityServiceEnabled = true,
+        usageAccessEnabled = true,
+        batteryOptimizationExempt = true,
         automaticTimeEnabled = true,
         automaticTimeZoneEnabled = true,
         adultFilterEnabled = true,

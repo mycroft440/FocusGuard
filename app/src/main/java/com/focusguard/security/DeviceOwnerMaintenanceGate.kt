@@ -23,6 +23,7 @@ object DeviceOwnerMaintenanceGate {
     enum class UnlockResult {
         UNLOCKED,
         AUTOMATIC_DATE_TIME_REQUIRED,
+        ACTIVE_BLOCK_REQUIRES_MONTHLY_WINDOW,
         CREDENTIAL_NOT_CONFIGURED,
         INVALID_CREDENTIAL,
         OUTSIDE_MONTHLY_WINDOW
@@ -39,18 +40,26 @@ object DeviceOwnerMaintenanceGate {
     private const val DEADLINE_ELAPSED_KEY = "deadline_elapsed"
     private const val BOOT_COUNT_KEY = "boot_count"
     private const val UNLOCK_SOURCE_KEY = "unlock_source"
+    private const val PROTECTION_ARMED_WHEN_OPENED_KEY = "protection_armed_when_opened"
     private const val EXPIRY_REQUEST_CODE = 7301
 
-    fun requestWithCredential(context: Context, credential: String): UnlockResult {
+    fun requestWithCredential(
+        context: Context,
+        credential: String,
+        protectionArmed: Boolean
+    ): UnlockResult {
         if (!isAutomaticDateAndTimeEnabled(context)) {
             revoke(context)
             return UnlockResult.AUTOMATIC_DATE_TIME_REQUIRED
+        }
+        if (protectionArmed) {
+            return UnlockResult.ACTIVE_BLOCK_REQUIRES_MONTHLY_WINDOW
         }
 
         return when (DeactivationCredentialManager(context).verify(credential)) {
             DeactivationCredentialManager.VerificationResult.PASSWORD_ACCEPTED,
             DeactivationCredentialManager.VerificationResult.RECOVERY_ACCEPTED -> {
-                openWindow(context, "credential")
+                openWindow(context, "credential", protectionArmed = false)
                 UnlockResult.UNLOCKED
             }
             DeactivationCredentialManager.VerificationResult.NOT_CONFIGURED ->
@@ -62,6 +71,7 @@ object DeviceOwnerMaintenanceGate {
 
     fun requestMonthlyWindow(
         context: Context,
+        protectionArmed: Boolean,
         calendar: Calendar = Calendar.getInstance()
     ): UnlockResult {
         if (!isAutomaticDateAndTimeEnabled(context)) {
@@ -77,7 +87,7 @@ object DeviceOwnerMaintenanceGate {
             return UnlockResult.OUTSIDE_MONTHLY_WINDOW
         }
 
-        openWindow(context, "monthly_window")
+        openWindow(context, "monthly_window", protectionArmed)
         return UnlockResult.UNLOCKED
     }
 
@@ -90,6 +100,10 @@ object DeviceOwnerMaintenanceGate {
      */
     internal fun hasPersistedWindow(context: Context): Boolean =
         preferences(context).contains(DEADLINE_ELAPSED_KEY)
+
+    /** Preserves whether an interrupted maintenance window belonged to an active commitment. */
+    internal fun wasProtectionArmedWhenOpened(context: Context): Boolean =
+        preferences(context).getBoolean(PROTECTION_ARMED_WHEN_OPENED_KEY, false)
 
     fun remainingMillis(context: Context): Long {
         val prefs = preferences(context)
@@ -140,12 +154,13 @@ object DeviceOwnerMaintenanceGate {
         return max(0L, deadlineElapsedMillis - nowElapsedMillis)
     }
 
-    private fun openWindow(context: Context, source: String) {
+    private fun openWindow(context: Context, source: String, protectionArmed: Boolean) {
         val deadline = SystemClock.elapsedRealtime() + UNLOCK_DURATION_MILLIS
         val saved = preferences(context).edit()
             .putLong(DEADLINE_ELAPSED_KEY, deadline)
             .putInt(BOOT_COUNT_KEY, readBootCount(context))
             .putString(UNLOCK_SOURCE_KEY, source)
+            .putBoolean(PROTECTION_ARMED_WHEN_OPENED_KEY, protectionArmed)
             .commit()
         check(saved) { "Não foi possível abrir a janela de manutenção" }
         scheduleExpiry(context, deadline)
