@@ -2,6 +2,7 @@ package com.focusguard.ui
 
 import android.content.Intent
 import android.os.Bundle
+import android.os.SystemClock
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
@@ -54,6 +55,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.view.doOnPreDraw
 import com.focusguard.R
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
@@ -136,6 +138,23 @@ class BlockNoticeActivity : ComponentActivity() {
                     onGoToPomodoroLock = ::goToPomodoroLock
                 )
             }
+        }
+
+        window.decorView.doOnPreDraw {
+            val detectedAt = sourceIntent.getLongExtra(
+                BlockingAccessibilityService.EXTRA_BLOCK_DETECTED_ELAPSED_REALTIME,
+                0L
+            )
+            if (detectedAt > 0L) {
+                FocusGuardLogger.log(
+                    "BlockNotice",
+                    "Tela pronta em ${SystemClock.elapsedRealtime() - detectedAt}ms"
+                )
+            }
+            sendBroadcast(
+                Intent(BlockingAccessibilityService.ACTION_BLOCK_NOTICE_READY)
+                    .setPackage(packageName)
+            )
         }
     }
 

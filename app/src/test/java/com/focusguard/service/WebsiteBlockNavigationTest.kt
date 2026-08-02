@@ -2,6 +2,7 @@ package com.focusguard.service
 
 import android.content.Context
 import android.content.Intent
+import android.view.accessibility.AccessibilityEvent
 import com.focusguard.ui.BlockNoticeActivity
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
@@ -15,6 +16,49 @@ import org.robolectric.annotation.Config
 class WebsiteBlockNavigationTest {
 
     private val context: Context = RuntimeEnvironment.getApplication().applicationContext
+
+    @Test
+    fun `accessibility window events are requested without delivery debounce`() {
+        val eventTypes = BlockingAccessibilityService.requestedAccessibilityEventTypes()
+
+        assertThat(
+            eventTypes and AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+        ).isNotEqualTo(0)
+        assertThat(
+            eventTypes and AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        ).isNotEqualTo(0)
+        assertThat(BlockingAccessibilityService.EVENT_NOTIFICATION_TIMEOUT_MILLIS)
+            .isEqualTo(0L)
+    }
+
+    @Test
+    fun `blocking refresh carries an immediate in-memory snapshot`() {
+        val intent = BlockingAccessibilityService.createRefreshBlockingIntent(
+            context = context,
+            blockedApps = listOf("com.example.blocked"),
+            blockedSites = listOf("https://www.YouTube.com/watch?v=1"),
+            blockingActive = true,
+            strictPomodoro = false
+        )
+
+        assertThat(intent.`package`).isEqualTo(context.packageName)
+        assertThat(
+            intent.getStringArrayListExtra(
+                BlockingAccessibilityService.EXTRA_BLOCKED_APPS_SNAPSHOT
+            )
+        ).containsExactly("com.example.blocked")
+        assertThat(
+            intent.getStringArrayListExtra(
+                BlockingAccessibilityService.EXTRA_BLOCKED_SITES_SNAPSHOT
+            )
+        ).containsExactly("youtube.com")
+        assertThat(
+            intent.getBooleanExtra(
+                BlockingAccessibilityService.EXTRA_BLOCKING_ACTIVE_SNAPSHOT,
+                false
+            )
+        ).isTrue()
+    }
 
     @Test
     fun `notice has a visible interval before the browser redirect`() {

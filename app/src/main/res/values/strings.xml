@@ -561,5 +561,7 @@
     <string name="block_notice_pomodoro_cannot_stop">O Pomodoro rigoroso não pode ser interrompido. Aguarde o tempo acabar.</string>
     <string name="block_notice_time_cannot_revoke">O bloqueio por tempo não pode ser revogado durante a janela ativa. Aguarde o tempo acabar.</string>
     <string name="block_notice_no_active_session">Nenhuma sessão ativa encontrada para encerrar.</string>
+    <string name="block_notice_instant_title">Bloqueado pelo FocusGuard</string>
+    <string name="block_notice_instant_content_description">Proteção instantânea do FocusGuard</string>
 
 </resources>

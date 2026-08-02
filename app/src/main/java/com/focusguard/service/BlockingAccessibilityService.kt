@@ -10,12 +10,22 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.graphics.Color
+import android.graphics.PixelFormat
 import android.net.Uri
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
+import android.view.Gravity
+import android.view.View
+import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import com.focusguard.R
@@ -83,7 +93,12 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var defaultLauncherPackage: String? = null
     private var usageStatsManager: UsageStatsManager? = null
     private var powerManager: PowerManager? = null
+    private var windowManager: WindowManager? = null
     @Volatile private var foregroundPackageName: String? = null
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var instantBlockCurtain: View? = null
+    private val instantCurtainFailsafe = Runnable { dismissInstantBlockCurtain() }
 
     private val websiteTrackingLock = Any()
     @Volatile private var trackedDomain: String? = null
@@ -191,8 +206,15 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private val refreshReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            intent?.let(::applyImmediateBlockingSnapshot)
             lastLoadTime = 0L
             refreshData()
+        }
+    }
+
+    private val blockNoticeReadyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            dismissInstantBlockCurtain()
         }
     }
 
@@ -212,9 +234,11 @@ class BlockingAccessibilityService : AccessibilityService() {
         deviceOwnerManager = DeviceOwnerManager.getInstance(this)
         usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
         powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+        windowManager = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
 
         registerPackageReceiver()
         registerRefreshReceiver()
+        registerBlockNoticeReadyReceiver()
         registerScreenStateReceiver()
         createNotificationChannel()
         startAsForeground()
@@ -242,6 +266,16 @@ class BlockingAccessibilityService : AccessibilityService() {
         } else {
             @Suppress("DEPRECATION")
             registerReceiver(refreshReceiver, filter)
+        }
+    }
+
+    private fun registerBlockNoticeReadyReceiver() {
+        val filter = IntentFilter(ACTION_BLOCK_NOTICE_READY)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            registerReceiver(blockNoticeReadyReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        } else {
+            @Suppress("DEPRECATION")
+            registerReceiver(blockNoticeReadyReceiver, filter)
         }
     }
 
@@ -303,16 +337,12 @@ class BlockingAccessibilityService : AccessibilityService() {
         // Preserva capacidades estáticas carregadas do XML, especialmente
         // canRetrieveWindowContent; apenas campos dinâmicos podem ser alterados aqui.
         serviceInfo = serviceInfo.apply {
-            eventTypes = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
-                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
-                AccessibilityEvent.TYPE_VIEW_CLICKED or
-                AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED or
-                AccessibilityEvent.TYPE_VIEW_FOCUSED
+            eventTypes = requestedAccessibilityEventTypes()
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             flags = flags or AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
                 AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
                 AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
-            notificationTimeout = 20L
+            notificationTimeout = EVENT_NOTIFICATION_TIMEOUT_MILLIS
         }
     }
 
@@ -350,13 +380,41 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun resolveEventPackageName(event: AccessibilityEvent): String {
+        val directPackage = event.packageName?.toString().orEmpty()
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED &&
+            directPackage.isNotBlank()
+        ) {
+            return directPackage
+        }
+
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) {
+            val eventWindowRoot = windows
+                .firstOrNull { window -> window.id == event.windowId }
+                ?.root
+            val eventWindowPackage = try {
+                eventWindowRoot?.packageName?.toString().orEmpty()
+            } finally {
+                recycleSafely(eventWindowRoot)
+            }
+            if (eventWindowPackage.isNotBlank()) return eventWindowPackage
+        }
+
+        val root = rootInActiveWindow
+        return try {
+            root?.packageName?.toString().orEmpty().ifBlank { directPackage }
+        } finally {
+            recycleSafely(root)
+        }
+    }
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         try {
             val now = System.currentTimeMillis()
             if (now - lastLoadTime > cacheTimeoutMillis) refreshData()
 
-            val packageName = event.packageName?.toString().orEmpty()
+            val packageName = resolveEventPackageName(event)
             if (packageName in protectedSystemPackages &&
                 event.eventType in settingsInterceptionEventTypes &&
                 handleSettingsInterception(event)
@@ -364,7 +422,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                 return
             }
 
-            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+            ) {
                 foregroundPackageName = packageName.takeIf(String::isNotBlank)
                 if (packageName !in browserPackages &&
                     packageName !in limitedWebsiteAppDomains
@@ -373,7 +433,10 @@ class BlockingAccessibilityService : AccessibilityService() {
                 }
             }
 
-            if (isPomodoroStrictActive && event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            if (isPomodoroStrictActive &&
+                (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED)
+            ) {
                 handleStrictPomodoro(packageName, event.className?.toString().orEmpty())
                 return
             }
@@ -381,7 +444,10 @@ class BlockingAccessibilityService : AccessibilityService() {
             if (!isBlockingSessionActive && limitedWebsiteDomains.isEmpty()) return
 
             when (event.eventType) {
-                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> handleWindowStateChanged(event)
+                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+                AccessibilityEvent.TYPE_WINDOWS_CHANGED -> {
+                    handleWindowStateChanged(event, packageName)
+                }
                 AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
                 AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
                 AccessibilityEvent.TYPE_VIEW_FOCUSED -> {
@@ -397,6 +463,30 @@ class BlockingAccessibilityService : AccessibilityService() {
         } catch (error: RuntimeException) {
             FocusGuardLogger.logError("A11y", "Erro no evento de acessibilidade", error)
         }
+    }
+
+    private fun applyImmediateBlockingSnapshot(intent: Intent) {
+        if (!intent.hasExtra(EXTRA_BLOCKING_SNAPSHOT_PRESENT)) return
+
+        val apps = intent.getStringArrayListExtra(EXTRA_BLOCKED_APPS_SNAPSHOT)
+            .orEmpty()
+            .filter(String::isNotBlank)
+            .toSet()
+        val sites = WebsiteBlocker.normalizeRules(
+            intent.getStringArrayListExtra(EXTRA_BLOCKED_SITES_SNAPSHOT).orEmpty()
+        )
+        blockedAppsSet = apps
+        blockedWebsitesDomainSet = sites
+        blockedWebsiteAppDomains = WebsiteBlocker.appPackageDomainsFor(sites)
+        isPomodoroStrictActive = intent.getBooleanExtra(
+            EXTRA_STRICT_POMODORO_SNAPSHOT,
+            false
+        )
+        isBlockingSessionActive = intent.getBooleanExtra(
+            EXTRA_BLOCKING_ACTIVE_SNAPSHOT,
+            apps.isNotEmpty() || sites.isNotEmpty()
+        )
+        lastLoadTime = System.currentTimeMillis()
     }
 
     override fun onInterrupt() {
@@ -591,8 +681,11 @@ class BlockingAccessibilityService : AccessibilityService() {
         }.mapTo(mutableSetOf()) { WebsiteBlocker.normalizeRule(it.domain) }
     }
 
-    private fun handleWindowStateChanged(event: AccessibilityEvent) {
-        val packageName = event.packageName?.toString() ?: return
+    private fun handleWindowStateChanged(
+        event: AccessibilityEvent,
+        packageName: String = event.packageName?.toString().orEmpty()
+    ) {
+        if (packageName.isBlank()) return
         val className = event.className?.toString().orEmpty()
         if (className.contains("Toast") || className.contains("PopupWindow")) return
         if (packageName == this.packageName || packageName == defaultLauncherPackage) return
@@ -1095,7 +1188,11 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun blockApp(packageName: String) {
-        launchBlockNotice(blockedPackage = packageName, blockedDomain = null)
+        launchBlockNotice(
+            blockedPackage = packageName,
+            blockedDomain = null,
+            leaveBlockedSurfaceImmediately = true
+        )
     }
 
     private fun blockWebsite(domain: String, browserPackageName: String) {
@@ -1103,7 +1200,8 @@ class BlockingAccessibilityService : AccessibilityService() {
         val noticeLaunched = launchBlockNotice(
             blockedPackage = null,
             blockedDomain = WebsiteBlocker.displayRule(domain),
-            redirectBrowserPackage = browserPackageName
+            redirectBrowserPackage = browserPackageName,
+            leaveBlockedSurfaceImmediately = false
         )
         if (!noticeLaunched && !redirectBrowserToSafePage(browserPackageName)) {
             performGlobalAction(GLOBAL_ACTION_BACK)
@@ -1113,10 +1211,10 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun blockWebsiteApp(domain: String, packageName: String) {
         if (!beginWebsiteBlock(domain, packageName)) return
-        performGlobalAction(GLOBAL_ACTION_HOME)
         launchBlockNotice(
             blockedPackage = null,
-            blockedDomain = WebsiteBlocker.displayRule(domain)
+            blockedDomain = WebsiteBlocker.displayRule(domain),
+            leaveBlockedSurfaceImmediately = true
         )
     }
 
@@ -1150,8 +1248,13 @@ class BlockingAccessibilityService : AccessibilityService() {
     private fun launchBlockNotice(
         blockedPackage: String?,
         blockedDomain: String?,
-        redirectBrowserPackage: String? = null
+        redirectBrowserPackage: String? = null,
+        leaveBlockedSurfaceImmediately: Boolean
     ): Boolean {
+        showInstantBlockCurtain()
+        if (leaveBlockedSurfaceImmediately) {
+            performGlobalAction(GLOBAL_ACTION_HOME)
+        }
         return try {
             startActivity(
                 createBlockNoticeIntent(
@@ -1168,6 +1271,98 @@ class BlockingAccessibilityService : AccessibilityService() {
             performGlobalAction(GLOBAL_ACTION_HOME)
             false
         }
+    }
+
+    private fun showInstantBlockCurtain() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(::showInstantBlockCurtain)
+            return
+        }
+
+        if (instantBlockCurtain == null) {
+            val density = resources.displayMetrics.density
+            val iconSize = (72 * density).toInt()
+            val spacing = (18 * density).toInt()
+            val curtain = LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                gravity = Gravity.CENTER
+                setBackgroundColor(Color.rgb(16, 17, 23))
+                isClickable = true
+                isFocusable = false
+                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+                contentDescription = getString(R.string.block_notice_instant_content_description)
+
+                addView(
+                    ImageView(this@BlockingAccessibilityService).apply {
+                        setImageResource(R.drawable.ic_shield)
+                        setColorFilter(Color.rgb(38, 198, 218))
+                    },
+                    LinearLayout.LayoutParams(iconSize, iconSize)
+                )
+                addView(
+                    TextView(this@BlockingAccessibilityService).apply {
+                        text = getString(R.string.block_notice_instant_title)
+                        setTextColor(Color.WHITE)
+                        textSize = 20f
+                        gravity = Gravity.CENTER
+                    },
+                    LinearLayout.LayoutParams(
+                        WindowManager.LayoutParams.WRAP_CONTENT,
+                        WindowManager.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        topMargin = spacing
+                    }
+                )
+            }
+            val params = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+                PixelFormat.OPAQUE
+            ).apply {
+                gravity = Gravity.TOP or Gravity.START
+                title = "FocusGuardInstantBlock"
+            }
+
+            try {
+                val manager = windowManager ?: return
+                manager.addView(curtain, params)
+                instantBlockCurtain = curtain
+            } catch (error: RuntimeException) {
+                FocusGuardLogger.logError(
+                    "A11y",
+                    "Falha ao exibir cortina instantânea",
+                    error
+                )
+            }
+        }
+
+        mainHandler.removeCallbacks(instantCurtainFailsafe)
+        mainHandler.postDelayed(
+            instantCurtainFailsafe,
+            INSTANT_CURTAIN_FAILSAFE_MILLIS
+        )
+    }
+
+    private fun dismissInstantBlockCurtain() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(::dismissInstantBlockCurtain)
+            return
+        }
+
+        mainHandler.removeCallbacks(instantCurtainFailsafe)
+        val curtain = instantBlockCurtain ?: return
+        instantBlockCurtain = null
+        runCatching { windowManager?.removeViewImmediate(curtain) }
+            .onFailure { error ->
+                FocusGuardLogger.logError(
+                    "A11y",
+                    "Falha ao remover cortina instantânea",
+                    error
+                )
+            }
     }
 
     private fun launchPomodoroLockScreen() {
@@ -1213,8 +1408,10 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         stopWebsiteTracking()
+        dismissInstantBlockCurtain()
         runCatching { unregisterReceiver(packageReceiver) }
         runCatching { unregisterReceiver(refreshReceiver) }
+        runCatching { unregisterReceiver(blockNoticeReadyReceiver) }
         runCatching { unregisterReceiver(screenStateReceiver) }
         scope.cancel()
         super.onDestroy()
@@ -1240,6 +1437,8 @@ class BlockingAccessibilityService : AccessibilityService() {
     companion object {
         private const val SAFE_REDIRECT_URL = "https://www.google.com"
         private const val SETTINGS_TRANSITION_GUARD_MILLIS = 2_000L
+        private const val INSTANT_CURTAIN_FAILSAFE_MILLIS = 5_000L
+        internal const val EVENT_NOTIFICATION_TIMEOUT_MILLIS = 0L
         private val settingsInterceptionEventTypes = setOf(
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
@@ -1247,17 +1446,54 @@ class BlockingAccessibilityService : AccessibilityService() {
         )
         internal const val WEBSITE_BLOCK_NOTICE_DURATION_MILLIS = 1_000L
         const val ACTION_REFRESH_BLOCKING = "com.focusguard.ACTION_REFRESH_BLOCKING"
+        const val ACTION_BLOCK_NOTICE_READY = "com.focusguard.ACTION_BLOCK_NOTICE_READY"
         const val EXTRA_STRICT_BLOCK = "STRICT_BLOCK"
         const val EXTRA_BLOCKED_PACKAGE = "BLOCKED_PACKAGE"
         const val EXTRA_BLOCKED_DOMAIN = "BLOCKED_DOMAIN"
         const val EXTRA_REDIRECT_BROWSER_PACKAGE = "REDIRECT_BROWSER_PACKAGE"
+        const val EXTRA_BLOCK_DETECTED_ELAPSED_REALTIME = "BLOCK_DETECTED_ELAPSED_REALTIME"
+        internal const val EXTRA_BLOCKING_SNAPSHOT_PRESENT = "BLOCKING_SNAPSHOT_PRESENT"
+        internal const val EXTRA_BLOCKED_APPS_SNAPSHOT = "BLOCKED_APPS_SNAPSHOT"
+        internal const val EXTRA_BLOCKED_SITES_SNAPSHOT = "BLOCKED_SITES_SNAPSHOT"
+        internal const val EXTRA_BLOCKING_ACTIVE_SNAPSHOT = "BLOCKING_ACTIVE_SNAPSHOT"
+        internal const val EXTRA_STRICT_POMODORO_SNAPSHOT = "STRICT_POMODORO_SNAPSHOT"
+
+        internal fun requestedAccessibilityEventTypes(): Int =
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
+                AccessibilityEvent.TYPE_WINDOWS_CHANGED or
+                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED or
+                AccessibilityEvent.TYPE_VIEW_CLICKED or
+                AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED or
+                AccessibilityEvent.TYPE_VIEW_FOCUSED
+
+        internal fun createRefreshBlockingIntent(
+            context: Context,
+            blockedApps: Collection<String>,
+            blockedSites: Collection<String>,
+            blockingActive: Boolean,
+            strictPomodoro: Boolean
+        ): Intent = Intent(ACTION_REFRESH_BLOCKING).apply {
+            setPackage(context.packageName)
+            putExtra(EXTRA_BLOCKING_SNAPSHOT_PRESENT, true)
+            putStringArrayListExtra(
+                EXTRA_BLOCKED_APPS_SNAPSHOT,
+                ArrayList(blockedApps.filter(String::isNotBlank).distinct())
+            )
+            putStringArrayListExtra(
+                EXTRA_BLOCKED_SITES_SNAPSHOT,
+                ArrayList(WebsiteBlocker.normalizeRules(blockedSites))
+            )
+            putExtra(EXTRA_BLOCKING_ACTIVE_SNAPSHOT, blockingActive)
+            putExtra(EXTRA_STRICT_POMODORO_SNAPSHOT, strictPomodoro)
+        }
 
         internal fun createBlockNoticeIntent(
             context: Context,
             strictBlock: Boolean,
             blockedPackage: String?,
             blockedDomain: String?,
-            redirectBrowserPackage: String?
+            redirectBrowserPackage: String?,
+            detectedElapsedRealtime: Long = SystemClock.elapsedRealtime()
         ): Intent = Intent(context, BlockNoticeActivity::class.java).apply {
             addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
@@ -1267,6 +1503,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             putExtra(EXTRA_STRICT_BLOCK, strictBlock)
             putExtra(EXTRA_BLOCKED_PACKAGE, blockedPackage)
             putExtra(EXTRA_BLOCKED_DOMAIN, blockedDomain)
+            putExtra(EXTRA_BLOCK_DETECTED_ELAPSED_REALTIME, detectedElapsedRealtime)
             redirectBrowserPackage
                 ?.takeIf(String::isNotBlank)
                 ?.let { putExtra(EXTRA_REDIRECT_BROWSER_PACKAGE, it) }

@@ -946,13 +946,13 @@ class BlockingSessionManager @Inject constructor(
                     deviceOwnerManager.enforceWebsiteRestrictions(sitesToBlock)
                 }
 
-                if (shouldArmSelfProtection(
-                        hasEnforcingSessions = enforcingSessions.isNotEmpty(),
-                        hasBlockedApps = appsToBlock.isNotEmpty(),
-                        hasBlockedSites = sitesToBlock.isNotEmpty(),
-                        adultFilterEnabled = adultFilterEnabled
-                    )
-                ) {
+                val selfProtectionRequired = shouldArmSelfProtection(
+                    hasEnforcingSessions = enforcingSessions.isNotEmpty(),
+                    hasBlockedApps = appsToBlock.isNotEmpty(),
+                    hasBlockedSites = sitesToBlock.isNotEmpty(),
+                    adultFilterEnabled = adultFilterEnabled
+                )
+                if (selfProtectionRequired) {
                     deviceOwnerManager.enforceBlockingPolicies()
                 } else {
                     deviceOwnerManager.clearBlockingPolicies()
@@ -960,8 +960,13 @@ class BlockingSessionManager @Inject constructor(
                 deviceOwnerManager.applyNuclearShield()
 
                 context.sendBroadcast(
-                    Intent(BlockingAccessibilityService.ACTION_REFRESH_BLOCKING)
-                        .setPackage(context.packageName)
+                    BlockingAccessibilityService.createRefreshBlockingIntent(
+                        context = context,
+                        blockedApps = appsToBlock,
+                        blockedSites = sitesToBlock,
+                        blockingActive = selfProtectionRequired,
+                        strictPomodoro = strictPomodoro
+                    )
                 )
         }
     }
