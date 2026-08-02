@@ -11,7 +11,6 @@ import android.widget.Toast
 import androidx.room.withTransaction
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
-import com.focusguard.admin.DeviceOwnerProtectionAuditor
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.BlockSession
@@ -21,6 +20,7 @@ import com.focusguard.database.WebsiteUsageLimit
 import com.focusguard.receiver.BlockingScheduleCalculator
 import com.focusguard.receiver.BlockingScheduleReceiver
 import com.focusguard.security.AuthManager
+import com.focusguard.security.DopamineStartPolicy
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.utils.FocusGuardLogger
@@ -52,15 +52,11 @@ class BlockingSessionManager @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
 
-    class ArmoredProtectionUnavailableException(
+    class BlockingProtectionUnavailableException(
         val reason: Reason
     ) : IllegalStateException(reason.name) {
         enum class Reason {
-            DEVICE_OWNER_REQUIRED,
-            ACCESSIBILITY_REQUIRED,
-            USAGE_ACCESS_REQUIRED,
-            BATTERY_EXEMPTION_REQUIRED,
-            POLICIES_NOT_VERIFIED
+            ACCESSIBILITY_REQUIRED
         }
     }
 
@@ -463,7 +459,7 @@ class BlockingSessionManager @Inject constructor(
             val duration = TimeUnit.DAYS.toMillis(days.toLong()) +
                 TimeUnit.HOURS.toMillis(hours.toLong())
             require(duration > 0L) { "A duração da sessão deve ser positiva" }
-            ensureArmoredProtectionReady()
+            ensureSimpleBlockingReady()
             database.withTransaction {
                 val startMillis = System.currentTimeMillis()
                 val session = BlockSession(
@@ -508,35 +504,24 @@ class BlockingSessionManager @Inject constructor(
         }
     }
 
-    private fun ensureArmoredProtectionReady() {
-        if (!deviceOwnerManager.isDeviceOwnerActive()) {
-            throw ArmoredProtectionUnavailableException(
-                ArmoredProtectionUnavailableException.Reason.DEVICE_OWNER_REQUIRED
+    private fun ensureSimpleBlockingReady() {
+        val protectionLevel = DopamineStartPolicy.protectionLevel(
+            DopamineStartPolicy.Capabilities(
+                accessibilityEnabled = PermissionUtils.isAccessibilityServiceEnabled(context),
+                usageAccessEnabled = PermissionUtils.isUsageAccessEnabled(context),
+                batteryOptimizationExempt = PermissionUtils.isBatteryOptimizationIgnored(context),
+                deviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive()
+            )
+        )
+        if (protectionLevel == DopamineStartPolicy.ProtectionLevel.UNAVAILABLE) {
+            throw BlockingProtectionUnavailableException(
+                BlockingProtectionUnavailableException.Reason.ACCESSIBILITY_REQUIRED
             )
         }
-        if (!PermissionUtils.isAccessibilityServiceEnabled(context)) {
-            throw ArmoredProtectionUnavailableException(
-                ArmoredProtectionUnavailableException.Reason.ACCESSIBILITY_REQUIRED
-            )
-        }
-        if (!PermissionUtils.isUsageAccessEnabled(context)) {
-            throw ArmoredProtectionUnavailableException(
-                ArmoredProtectionUnavailableException.Reason.USAGE_ACCESS_REQUIRED
-            )
-        }
-        if (!PermissionUtils.isBatteryOptimizationIgnored(context)) {
-            throw ArmoredProtectionUnavailableException(
-                ArmoredProtectionUnavailableException.Reason.BATTERY_EXEMPTION_REQUIRED
-            )
-        }
-
-        deviceOwnerManager.enforceBlockingPolicies()
-        val diagnostics = DeviceOwnerProtectionAuditor(context).inspect()
-        if (!diagnostics.protectionArmed || !diagnostics.isFullyProtected) {
-            throw ArmoredProtectionUnavailableException(
-                ArmoredProtectionUnavailableException.Reason.POLICIES_NOT_VERIFIED
-            )
-        }
+        FocusGuardLogger.log(
+            "BlockingSessionManager",
+            "Jejum iniciado com proteção ${protectionLevel.name.lowercase(Locale.US)}"
+        )
     }
 
     fun startPomodoroSession(durationMs: Long, isBlockingEnabled: Boolean = true) {

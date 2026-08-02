@@ -1,5 +1,6 @@
 package com.focusguard.ui.compose.screens
 
+import android.content.Intent
 import kotlin.OptIn
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.*
@@ -25,6 +26,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -46,7 +48,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.manager.BlockingSessionManager
-import com.focusguard.manager.BlockingSessionManager.ArmoredProtectionUnavailableException
+import com.focusguard.manager.BlockingSessionManager.BlockingProtectionUnavailableException
+import com.focusguard.ui.PermissionsActivity
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
@@ -73,11 +76,43 @@ fun TimeBlockSessionConfigScreen(
     var daysText by remember { mutableStateOf("") }
     var hoursText by remember { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
+    var pendingProtectionReason by remember {
+        mutableStateOf<BlockingProtectionUnavailableException.Reason?>(null)
+    }
 
     val days = daysText.toIntOrNull() ?: 0
     val hours = hoursText.toIntOrNull() ?: 0
     val totalHours = days * 24 + hours
     val canSave = totalHours > 0 && (apps.isNotEmpty() || sites.isNotEmpty())
+
+    pendingProtectionReason?.let { reason ->
+        val message = when (reason) {
+            BlockingProtectionUnavailableException.Reason.ACCESSIBILITY_REQUIRED -> {
+                R.string.dopamine_accessibility_required
+            }
+        }
+
+        AlertDialog(
+            onDismissRequest = { pendingProtectionReason = null },
+            title = { Text(stringResource(R.string.dopamine_requirement_title)) },
+            text = { Text(stringResource(message)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingProtectionReason = null
+                        context.startActivity(Intent(context, PermissionsActivity::class.java))
+                    }
+                ) {
+                    Text(stringResource(R.string.dopamine_open_permissions))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingProtectionReason = null }) {
+                    Text(stringResource(R.string.status_close))
+                }
+            }
+        )
+    }
 
     Scaffold(
         containerColor = DarkBg,
@@ -115,6 +150,18 @@ fun TimeBlockSessionConfigScreen(
                 color = TextSecondary,
                 fontSize = 14.sp
             )
+            Spacer(modifier = Modifier.height(12.dp))
+            Surface(
+                color = AccentCyan.copy(alpha = 0.10f),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.dopamine_simple_mode_info),
+                    color = TextSecondary,
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    fontSize = 13.sp
+                )
+            }
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -196,31 +243,10 @@ fun TimeBlockSessionConfigScreen(
                             isSaving = false
                             throw cancelled
                         } catch (
-                            error: ArmoredProtectionUnavailableException
+                            error: BlockingProtectionUnavailableException
                         ) {
                             isSaving = false
-                            val message = when (error.reason) {
-                                ArmoredProtectionUnavailableException.Reason.DEVICE_OWNER_REQUIRED -> {
-                                    R.string.dopamine_device_owner_required
-                                }
-                                ArmoredProtectionUnavailableException.Reason.ACCESSIBILITY_REQUIRED -> {
-                                    R.string.dopamine_accessibility_required
-                                }
-                                ArmoredProtectionUnavailableException.Reason.USAGE_ACCESS_REQUIRED -> {
-                                    R.string.dopamine_usage_access_required
-                                }
-                                ArmoredProtectionUnavailableException.Reason.BATTERY_EXEMPTION_REQUIRED -> {
-                                    R.string.dopamine_battery_required
-                                }
-                                ArmoredProtectionUnavailableException.Reason.POLICIES_NOT_VERIFIED -> {
-                                    R.string.dopamine_policies_not_verified
-                                }
-                            }
-                            Toast.makeText(
-                                context,
-                                context.getString(message),
-                                Toast.LENGTH_LONG
-                            ).show()
+                            pendingProtectionReason = error.reason
                         } catch (error: Exception) {
                             isSaving = false
                             FocusGuardLogger.logError(
