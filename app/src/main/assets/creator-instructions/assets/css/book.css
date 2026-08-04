@@ -1,0 +1,364 @@
+:root {
+  color-scheme: dark;
+  --bg: #101116;
+  --card: #1a1b21;
+  --card-2: #21232b;
+  --line: #343640;
+  --text: #f3f4f8;
+  --muted: #b7bac5;
+  --dim: #7c7f8d;
+  --accent: #53d5ee;
+  --accent-deep: #29c7e5;
+  --ink: #06232b;
+  --node: 56px;
+  --row: 132px;
+  font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top, rgba(41, 199, 229, .13), transparent 34rem),
+    var(--bg);
+}
+
+main {
+  width: min(100%, 46rem);
+  margin: 0 auto;
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+a { color: inherit; text-decoration: none; }
+button { font: inherit; }
+
+/* ---- Cabeçalho do mapa ------------------------------------------ */
+
+.book-mark {
+  width: 4rem;
+  height: 4rem;
+  margin: 0 auto 1.25rem;
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(83, 213, 238, .55);
+  border-radius: 1.25rem;
+  background: rgba(83, 213, 238, .1);
+  color: var(--accent);
+  font-size: 1.85rem;
+}
+
+.cover { text-align: center; margin-bottom: 2.5rem; }
+
+.cover h1 {
+  margin: 0;
+  font-size: clamp(2rem, 8vw, 3.25rem);
+  line-height: 1.05;
+  letter-spacing: -.04em;
+}
+
+.subtitle {
+  max-width: 32rem;
+  margin: 1rem auto 0;
+  color: var(--muted);
+  font-size: 1.08rem;
+  line-height: 1.6;
+}
+
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: .45rem;
+  margin-top: 1.5rem;
+  padding: .5rem .9rem;
+  border-radius: 999px;
+  background: rgba(83, 213, 238, .1);
+  color: #8de6f6;
+  font-size: .82rem;
+  font-weight: 700;
+}
+
+.status::before {
+  content: "";
+  width: .45rem;
+  height: .45rem;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+/* ---- Barra de progresso ----------------------------------------- */
+
+.progress { max-width: 26rem; margin: 0 auto 2.5rem; }
+
+.progress-label {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: .5rem;
+  color: var(--dim);
+  font-size: .82rem;
+}
+
+.progress-label strong { color: var(--text); font-weight: 700; }
+
+.progress-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.progress-value {
+  height: 100%;
+  width: 0;
+  border-radius: 3px;
+  background: linear-gradient(90deg, var(--accent-deep), var(--accent));
+  transition: width .45s cubic-bezier(.22, .61, .36, 1);
+}
+
+/* ---- A trilha ---------------------------------------------------- */
+
+.trail {
+  position: relative;
+  margin: 0 auto;
+  padding: .5rem 0 1rem;
+}
+
+.trail-svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.trail-seg { fill: none; stroke-width: 3; stroke-linecap: round; }
+.trail-seg.dim { stroke: var(--line); stroke-dasharray: 2 9; }
+.trail-seg.lit { stroke: var(--accent-deep); opacity: .75; }
+
+.node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 9.5rem;
+  margin-left: -4.75rem;
+  text-align: center;
+}
+
+.node-dot {
+  position: relative;
+  width: var(--node);
+  height: var(--node);
+  display: grid;
+  place-items: center;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  background: var(--card);
+  color: var(--dim);
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  transition: transform .18s ease, border-color .18s ease, background .18s ease;
+}
+
+.node-title {
+  margin-top: .6rem;
+  font-size: .92rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.node-summary {
+  margin-top: .2rem;
+  color: var(--dim);
+  font-size: .76rem;
+  line-height: 1.4;
+}
+
+.node-badge {
+  display: inline-block;
+  margin-top: .35rem;
+  padding: .12rem .5rem;
+  border-radius: 999px;
+  font-size: .66rem;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+}
+
+/* estados */
+
+.node.is-done .node-dot {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--ink);
+}
+
+.node.is-done .node-title { color: var(--muted); }
+
+.node.is-current .node-dot {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--card-2);
+  box-shadow: 0 0 0 6px rgba(83, 213, 238, .13);
+  animation: pulse 2.4s ease-in-out infinite;
+}
+
+.node.is-current .node-badge { background: rgba(83, 213, 238, .16); color: #8de6f6; }
+
+.node.is-open .node-dot { border-color: #4a4d5b; color: var(--muted); }
+
+.node.is-locked { opacity: .42; }
+.node.is-locked .node-dot { border-style: dashed; background: transparent; }
+.node.is-locked .node-badge { background: rgba(255, 255, 255, .06); color: var(--dim); }
+
+.node a { display: contents; }
+.node:not(.is-locked) a:hover .node-dot { transform: scale(1.07); border-color: var(--accent); }
+.node:not(.is-locked) a:focus-visible .node-dot { outline: 2px solid var(--accent); outline-offset: 4px; }
+
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 0 0 6px rgba(83, 213, 238, .13); }
+  50% { box-shadow: 0 0 0 11px rgba(83, 213, 238, .05); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .node.is-current .node-dot { animation: none; }
+  .progress-value { transition: none; }
+  .node-dot { transition: none; }
+}
+
+/* ---- Rodapé do mapa --------------------------------------------- */
+
+.trail-end {
+  margin-top: 1rem;
+  padding: 1.25rem;
+  border: 1px dashed var(--line);
+  border-radius: 1rem;
+  text-align: center;
+  color: var(--dim);
+  font-size: .88rem;
+  line-height: 1.6;
+}
+
+.map-foot { margin-top: 2rem; text-align: center; }
+
+.ghost-button {
+  padding: .55rem 1.1rem;
+  border: 1px solid var(--line);
+  border-radius: .6rem;
+  background: transparent;
+  color: var(--dim);
+  font-size: .82rem;
+  cursor: pointer;
+}
+
+.ghost-button:hover { color: var(--text); border-color: #4a4d5b; }
+
+/* ---- Página de capítulo ----------------------------------------- */
+
+.chapter-top {
+  display: flex;
+  align-items: center;
+  gap: .75rem;
+  margin-bottom: 2rem;
+}
+
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: .4rem;
+  padding: .45rem .8rem;
+  border: 1px solid var(--line);
+  border-radius: .6rem;
+  color: var(--muted);
+  font-size: .85rem;
+}
+
+.back-link:hover { color: var(--text); border-color: #4a4d5b; }
+
+.chapter-step {
+  color: var(--dim);
+  font-size: .82rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.chapter-head { margin-bottom: 2rem; }
+
+.chapter-eyebrow {
+  color: var(--accent);
+  font-size: .78rem;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+.chapter-head h1 {
+  margin: .5rem 0 0;
+  font-size: clamp(1.85rem, 6vw, 2.6rem);
+  line-height: 1.15;
+  letter-spacing: -.03em;
+}
+
+.prose { font-size: 1.05rem; line-height: 1.8; color: #dcdee6; }
+.prose > :first-child { margin-top: 0; }
+.prose h2 { margin: 2.4rem 0 .8rem; font-size: 1.45rem; line-height: 1.25; color: var(--text); }
+.prose h3 { margin: 2rem 0 .6rem; font-size: 1.15rem; color: var(--text); }
+.prose p { margin: 0 0 1.15rem; }
+.prose ul, .prose ol { margin: 0 0 1.3rem; padding-left: 1.5rem; }
+.prose li { margin: .4rem 0; }
+.prose strong { color: var(--text); }
+.prose blockquote {
+  margin: 1.6rem 0;
+  padding: .9rem 1.2rem;
+  border-left: 3px solid var(--accent);
+  border-radius: 0 .6rem .6rem 0;
+  background: var(--card);
+  color: var(--muted);
+}
+.prose img { max-width: 100%; height: auto; border-radius: .75rem; display: block; margin: 1.6rem auto; }
+.prose hr { border: 0; border-top: 1px solid var(--line); margin: 2.5rem 0; }
+
+/* ---- Conclusão do capítulo -------------------------------------- */
+
+.chapter-done {
+  margin-top: 3.5rem;
+  padding: 1.6rem;
+  border: 1px solid var(--line);
+  border-radius: 1.25rem;
+  background: var(--card);
+  text-align: center;
+}
+
+.chapter-done.is-done {
+  border-color: rgba(83, 213, 238, .4);
+  background: rgba(83, 213, 238, .07);
+}
+
+.chapter-done-title { margin: 0 0 .4rem; font-size: 1.15rem; font-weight: 700; }
+.chapter-done.is-done .chapter-done-title { color: var(--accent); }
+.chapter-done-hint { margin: 0 0 1.3rem; color: var(--muted); font-size: .93rem; line-height: 1.6; }
+
+.chapter-actions { display: flex; flex-wrap: wrap; gap: .6rem; justify-content: center; }
+
+.primary-button {
+  padding: .75rem 1.5rem;
+  border: 0;
+  border-radius: .7rem;
+  background: var(--accent);
+  color: var(--ink);
+  font-size: .95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary-button:hover { background: #6ee0f5; }
+
+@media (max-width: 30rem) {
+  main { padding: 2rem 1rem 3rem; }
+  .node { width: 8.5rem; margin-left: -4.25rem; }
+  :root { --node: 50px; --row: 124px; }
+}

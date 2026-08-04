@@ -1,0 +1,60 @@
+<!doctype html>
+<!-- ==================================================================
+     MODELO DE CAPÍTULO — copie este arquivo para criar um capítulo novo.
+
+     Três passos:
+       1. copie para, por exemplo, capitulo-03.html
+       2. troque o data-chapter abaixo pelo id do capítulo no chapters.js
+       3. escreva dentro de <div class="prose">
+
+     O título e o número do capítulo NÃO ficam aqui: vêm do chapters.js,
+     para o mapa e a página nunca discordarem.
+     ================================================================== -->
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="dark">
+  <meta name="referrer" content="no-referrer">
+  <title>Instruções do Criador</title>
+  <link rel="stylesheet" href="assets/css/book.css">
+</head>
+<body data-page="_modelo.html">
+  <main data-chapter="TROQUE-PELO-ID-DO-CAPITULO">
+    <div class="chapter-top">
+      <a class="back-link" href="index.html">← Caminho</a>
+      <span class="chapter-step" data-chapter-step></span>
+    </div>
+
+    <header class="chapter-head">
+      <span class="chapter-eyebrow" data-chapter-eyebrow></span>
+      <h1 data-chapter-title></h1>
+    </header>
+
+    <div class="prose">
+
+      <p>Escreva aqui. Cada parágrafo vai dentro de uma tag &lt;p&gt;.</p>
+
+      <h2>Um subtítulo</h2>
+
+      <p>Outro parágrafo. Para destacar uma palavra, use
+        <strong>negrito</strong>.</p>
+
+      <ul>
+        <li>item de lista</li>
+        <li>outro item</li>
+      </ul>
+
+      <blockquote>
+        <p>Uma citação, se quiser.</p>
+      </blockquote>
+
+    </div>
+
+    <section class="chapter-done" data-chapter-done></section>
+  </main>
+
+  <script src="assets/js/chapters.js"></script>
+  <script src="assets/js/book.js"></script>
+</body>
+</html>
