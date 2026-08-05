@@ -510,10 +510,17 @@ class AuthManager(context: Context) {
         return biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL) == BiometricManager.BIOMETRIC_SUCCESS
     }
 
+    /**
+     * @param title/[subtitle] override the prompt copy. Default to the app-unlock
+     *   wording; the blocked-app flow passes its own so the user knows which
+     *   decision the fingerprint is confirming.
+     */
     fun showBiometricPrompt(
         activity: FragmentActivity,
         onSuccess: () -> Unit,
-        onError: (String) -> Unit
+        onError: (String) -> Unit,
+        title: String = appContext.getString(R.string.biometric_prompt_default_title),
+        subtitle: String = appContext.getString(R.string.biometric_prompt_default_subtitle)
     ) {
         val biometricManager = BiometricManager.from(appContext)
         when (biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)) {
@@ -533,20 +540,20 @@ class AuthManager(context: Context) {
 
                         override fun onAuthenticationFailed() {
                             super.onAuthenticationFailed()
-                            onError("Falha na autenticação biométrica.")
+                            onError(appContext.getString(R.string.biometric_auth_failed))
                         }
                     })
 
                 val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                    .setTitle("Desbloquear FocusGuard")
-                    .setSubtitle("Confirme sua identidade para acessar o app")
+                    .setTitle(title)
+                    .setSubtitle(subtitle)
                     .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG or BiometricManager.Authenticators.DEVICE_CREDENTIAL)
                     .build()
 
                 biometricPrompt.authenticate(promptInfo)
             }
             else -> {
-                onError("Biometria indisponível. Use a senha.")
+                onError(appContext.getString(R.string.biometric_unavailable_use_password))
             }
         }
     }

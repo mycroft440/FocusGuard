@@ -20,6 +20,7 @@ import com.focusguard.database.WebsiteUsageLimit
 import com.focusguard.receiver.BlockingScheduleCalculator
 import com.focusguard.receiver.BlockingScheduleReceiver
 import com.focusguard.security.AuthManager
+import com.focusguard.security.BiometricAppUnlockPolicy
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.DopamineStartPolicy
 import com.focusguard.security.MasterCredentialPolicy
@@ -734,10 +735,86 @@ class BlockingSessionManager @Inject constructor(
         return null
     }
 
+    /**
+     * What kind of protection is holding this target closed, expressed only in
+     * terms a credential can act on.
+     *
+     * Returns null whenever nothing here is credential-unlockable — a dopamine
+     * fast, a time-hardened limit, or a limit with no password configured. The UI
+     * uses this to decide whether to offer the fingerprint at all, so failing
+     * closed is the safe direction: null hides the affordance.
+     */
+    suspend fun credentialUnlockOrigin(
+        blockedPackage: String?,
+        blockedDomain: String?,
+        strictPomodoroActive: Boolean
+    ): BiometricAppUnlockPolicy.BlockOrigin? {
+        if (strictPomodoroActive) return BiometricAppUnlockPolicy.BlockOrigin.STRICT_POMODORO
+        if (hasCredentialUnlockableLimit(blockedPackage, blockedDomain)) {
+            return BiometricAppUnlockPolicy.BlockOrigin.USAGE_LIMIT_PASSWORD_UNLOCK
+        }
+        // findResponsibleSessionId already restricts itself to PASSWORD sessions
+        // inside their blocking window, so a hit here is exactly that.
+        if (findResponsibleSessionId(blockedPackage, blockedDomain) != null) {
+            return BiometricAppUnlockPolicy.BlockOrigin.PASSWORD_SESSION
+        }
+        return null
+    }
+
+    /**
+     * True when a credential-unlockable limit is currently blocking this target.
+     *
+     * Probes through the shared unlock path with a verifier that always refuses,
+     * so eligibility can never drift from what a real unlock accepts. The refusal
+     * returns before any write, making the probe side-effect free.
+     */
+    private suspend fun hasCredentialUnlockableLimit(
+        blockedPackage: String?,
+        blockedDomain: String?
+    ): Boolean = unlockCredentialProtectedLimit(
+        blockedPackage = blockedPackage,
+        blockedDomain = blockedDomain
+    ) { false } == LimitUnlockResult.WRONG_PASSWORD
+
+    /** Unlocks a password-protected limit by typing the password. */
     suspend fun unlockPasswordProtectedLimit(
         password: String,
         blockedPackage: String?,
         blockedDomain: String?
+    ): LimitUnlockResult = unlockCredentialProtectedLimit(
+        blockedPackage = blockedPackage,
+        blockedDomain = blockedDomain
+    ) { storedHash -> AuthManager.verifySerializedPassword(password, storedHash) }
+
+    /**
+     * Unlocks a password-protected limit after identity was already proven by a
+     * BIOMETRIC_STRONG prompt, which cannot reproduce the typed password.
+     *
+     * Reaches exactly the same limits as [unlockPasswordProtectedLimit] because
+     * both funnel through [unlockCredentialProtectedLimit] and share its
+     * eligibility filter — only the verification step differs. That filter
+     * requires `lockMode == "PASSWORD"`, so a time-hardened limit is structurally
+     * out of reach here, with or without a fingerprint.
+     *
+     * Callers must have confirmed [BiometricAppUnlockPolicy.canAcceptBiometricResult]
+     * first; this method trusts that the prompt succeeded, not that it was allowed.
+     */
+    suspend fun unlockLimitWithVerifiedIdentity(
+        blockedPackage: String?,
+        blockedDomain: String?
+    ): LimitUnlockResult = unlockCredentialProtectedLimit(
+        blockedPackage = blockedPackage,
+        blockedDomain = blockedDomain
+    ) { true }
+
+    /**
+     * @param verifyStoredCredential receives the limit's stored verifier and
+     *   decides whether the caller proved the right to unlock it.
+     */
+    private suspend fun unlockCredentialProtectedLimit(
+        blockedPackage: String?,
+        blockedDomain: String?,
+        verifyStoredCredential: (storedHash: String) -> Boolean
     ): LimitUnlockResult = withContext(Dispatchers.IO) {
         try {
             val now = System.currentTimeMillis()
@@ -759,7 +836,7 @@ class BlockingSessionManager @Inject constructor(
             if (appLimit != null &&
                 appLimit.packageName in getExceededAppLimits(listOf(appLimit), now)
             ) {
-                if (!AuthManager.verifySerializedPassword(password, appLimit.lockPasswordHash!!)) {
+                if (!verifyStoredCredential(appLimit.lockPasswordHash!!)) {
                     return@withContext LimitUnlockResult.WRONG_PASSWORD
                 }
                 database.appUsageLimitDao().update(
@@ -813,7 +890,7 @@ class BlockingSessionManager @Inject constructor(
             }
             if (matchingWebsiteLimits.isNotEmpty()) {
                 val authenticatedLimits = matchingWebsiteLimits.filter { limit ->
-                    AuthManager.verifySerializedPassword(password, limit.lockPasswordHash!!)
+                    verifyStoredCredential(limit.lockPasswordHash!!)
                 }
                 if (authenticatedLimits.isEmpty()) {
                     return@withContext LimitUnlockResult.WRONG_PASSWORD
@@ -833,7 +910,7 @@ class BlockingSessionManager @Inject constructor(
         } catch (error: Exception) {
             FocusGuardLogger.logError(
                 "BlockingSessionManager",
-                "Erro ao desbloquear limite protegido por senha",
+                "Erro ao desbloquear limite protegido por credencial",
                 error
             )
             LimitUnlockResult.FAILED

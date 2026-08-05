@@ -280,8 +280,6 @@
     <string name="limits_locked_alert_desc">This limit is time-hardened and cannot be changed until the period ends.</string>
     <string name="limits_add_site_btn">Add site or keyword</string>
     <string name="limits_status_monitoring">Monitoring</string>
-    <string name="limits_confirm_password_title">Confirm Password</string>
-    <string name="limits_confirm_password_desc">Enter the password configured for this limit.</string>
     <string name="limits_security_mode">Security Mode</string>
     <string name="limits_security_mode_desc">Prevent the app from being opened after the time runs out</string>
     <string name="limits_security_mode_warning">Warning: when the time runs out you will not be able to unlock the app, not even with a password.</string>
@@ -430,6 +428,9 @@
     <string name="block_notice_unlock_desc">End the current block session by entering your password.</string>
     <string name="block_notice_unlock_success">Session ended successfully</string>
     <string name="block_notice_pomodoro_cannot_stop">The strict Pomodoro cannot be interrupted. Wait for the time to run out.</string>
+    <string name="block_notice_time_cannot_revoke">The time block cannot be revoked during the active window. Wait for the time to run out.</string>
+    <string name="block_notice_no_active_session">No active session found to end.</string>
+    <string name="block_notice_unlock_failed">Could not end the block.</string>
     <string name="block_notice_instant_title">Blocked by FocusGuard</string>
     <string name="block_notice_instant_content_description">FocusGuard instant protection</string>
 
@@ -464,7 +465,6 @@
     <string name="master_credential_required_to_change_limit">Enter the master password to change this limit.</string>
     <string name="master_credential_required_to_remove_limit">Enter the master password to remove this limit.</string>
     <string name="master_credential_not_configured">No master password configured. Create one in settings to manage limits.</string>
-    <string name="master_credential_blocked_by_time_hardening">This limit is time-hardened and cannot be changed until %1$s, not even with the master password.</string>
     <string name="master_credential_blocked_by_safety_mode">Security Mode is active. Turn it off first to change limits.</string>
     <string name="master_credential_wrong">Wrong master password.</string>
 
@@ -475,6 +475,10 @@
     <string name="biometric_app_unlock_prompt_title">Unlock app</string>
     <string name="biometric_app_unlock_prompt_subtitle">Confirm your identity to open this app.</string>
     <string name="biometric_app_unlock_action">Use fingerprint</string>
+    <string name="biometric_prompt_default_title">Unlock FocusGuard</string>
+    <string name="biometric_prompt_default_subtitle">Confirm your identity to access the app</string>
+    <string name="biometric_unavailable_use_password">Biometrics unavailable. Use your password.</string>
+    <string name="biometric_auth_failed">Biometric authentication failed.</string>
 
     <!-- Authenticated uninstall -->
     <string name="uninstall_app_title">Uninstall FocusGuard</string>
@@ -482,7 +486,6 @@
     <string name="uninstall_app_description">The master password releases removal protection and opens Android\'s uninstall screen. You can leave the app whenever you want.</string>
     <string name="uninstall_app_confirm">Release and uninstall</string>
     <string name="uninstall_app_blocked_by_active_block">An irreversible block is running. Uninstall becomes available when it ends — it is not an escape hatch from a fast in progress.</string>
-    <string name="uninstall_app_protection_released">Protection released. Finish the uninstall on the Android screen.</string>
     <string name="uninstall_app_failed">Could not release the uninstall.</string>
 
 </resources>

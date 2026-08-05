@@ -552,87 +552,13 @@ private fun LimitSummary(label: String, minutes: Int, lockUntil: Long?) {
     }
 }
 
-@Composable
-fun ConfirmLimitPasswordDialog(
-    expectedHash: String,
-    fallbackVerifier: (suspend (String) -> Boolean)? = null,
-    onDismiss: () -> Unit,
-    onConfirm: () -> Unit
-) {
-    val scope = rememberCoroutineScope()
-    var password by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf(false) }
-    var verifying by remember { mutableStateOf(false) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                stringResource(R.string.limits_confirm_password_title),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold
-            )
-        },
-        text = {
-            Column {
-                Text(
-                    stringResource(R.string.limits_confirm_password_desc),
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontSize = 14.sp
-                )
-                Spacer(Modifier.height(16.dp))
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = {
-                        password = it
-                        error = false
-                    },
-                    label = { Text(stringResource(R.string.sessions_password_hint)) },
-                    visualTransformation = PasswordVisualTransformation(),
-                    isError = error,
-                    colors = limitFieldColors(),
-                    modifier = Modifier.fillMaxWidth()
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = password.isNotBlank() && !verifying &&
-                    (expectedHash.isNotBlank() || fallbackVerifier != null),
-                onClick = {
-                    scope.launch {
-                        verifying = true
-                        val valid = runCatching {
-                            if (expectedHash.isNotBlank()) {
-                                verifyLimitPassword(password, expectedHash)
-                            } else {
-                                fallbackVerifier?.invoke(password) == true
-                            }
-                        }.getOrDefault(false)
-                        verifying = false
-                        if (valid) onConfirm() else error = true
-                    }
-                }
-            ) {
-                Text(stringResource(R.string.sessions_confirm), color = AccentCyan)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(stringResource(R.string.pomodoro_cancel_btn), color = TextHint)
-            }
-        },
-        containerColor = MaterialTheme.colorScheme.surface
-    )
-}
+// ConfirmLimitPasswordDialog foi removido: alterar ou remover um limite passou a
+// exigir a senha mestre (ConfirmMasterCredentialDialog). A senha do próprio
+// limite continua valendo para abrir o app bloqueado, não para editar a regra.
 
 private fun hashLimitPassword(password: String): String {
     val salt = AuthManager.generateSalt()
     return "$salt:${AuthManager.hashPasswordWithSalt(password, salt)}"
-}
-
-private fun verifyLimitPassword(password: String, stored: String): Boolean {
-    return AuthManager.verifySerializedPassword(password, stored)
 }
 
 fun filteredApps(apps: List<UsageLimitAppUi>, query: String): List<UsageLimitAppUi> {

@@ -29,6 +29,8 @@ import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.WebsiteUsageLimit
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
+import com.focusguard.security.DeactivationCredentialManager
+import com.focusguard.security.MasterCredentialPolicy
 import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.R
@@ -106,9 +108,49 @@ fun AppLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
     var isLoading by remember { mutableStateOf(true) }
     var selectedApp by remember { mutableStateOf<UsageLimitAppUi?>(null) }
     var showDialog by remember { mutableStateOf(false) }
-    var showPasswordConfirm by remember { mutableStateOf(false) }
+    var showMasterCredentialConfirm by remember { mutableStateOf(false) }
     var showTimeLockedAlert by remember { mutableStateOf(false) }
-    var pendingAction: (() -> Unit)? by remember { mutableStateOf(null) }
+    var showSafetyModeAlert by remember { mutableStateOf(false) }
+    var showCredentialMissingAlert by remember { mutableStateOf(false) }
+
+    val credentialManager = remember(context) { DeactivationCredentialManager(context) }
+
+    /**
+     * Single entry point for opening the edit dialog.
+     *
+     * Every path — active, paused or unconfigured — funnels through the policy, so
+     * a limit cannot be edited or removed by taking a different route through the
+     * list. Unbreakable refusals are reported before asking for a credential.
+     */
+    fun requestLimitEdit(app: UsageLimitAppUi) {
+        val gate = MasterCredentialPolicy.evaluateLimitMutation(
+            lockMode = app.lockMode,
+            lockUntilTimestamp = app.lockUntilTimestamp,
+            safetyModeEnabled = authManager.isSafetyModeEnabled(),
+            hasMasterCredential = credentialManager.hasCredential(),
+            masterCredentialVerified = false
+        )
+        when (gate) {
+            MasterCredentialPolicy.MutationGate.BLOCKED_BY_TIME_HARDENING ->
+                showTimeLockedAlert = true
+
+            MasterCredentialPolicy.MutationGate.BLOCKED_BY_SAFETY_MODE ->
+                showSafetyModeAlert = true
+
+            MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED ->
+                showCredentialMissingAlert = true
+
+            MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_REQUIRED -> {
+                selectedApp = app
+                showMasterCredentialConfirm = true
+            }
+
+            MasterCredentialPolicy.MutationGate.ALLOWED -> {
+                selectedApp = app
+                showDialog = true
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -181,25 +223,14 @@ fun AppLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
                 if (activeLimits.isNotEmpty()) {
                     item { Text(stringResource(R.string.limits_active_section), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = AccentCyan, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)) }
                     items(activeLimits, key = { "active_${it.packageName}" }) { app ->
-                        UsageLimitItem(app, isActive = true) { 
-                            if (app.lockMode == "TIME" && app.lockUntilTimestamp != null && System.currentTimeMillis() < app.lockUntilTimestamp) {
-                                showTimeLockedAlert = true
-                            } else if (app.lockMode == "PASSWORD") {
-                                pendingAction = { selectedApp = app; showDialog = true }
-                                showPasswordConfirm = true
-                            } else {
-                                selectedApp = app; showDialog = true 
-                            }
-                        }
+                        UsageLimitItem(app, isActive = true) { requestLimitEdit(app) }
                     }
                 }
 
                 if (inactiveLimits.isNotEmpty()) {
                     item { Text(stringResource(R.string.limits_paused_section), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextHint, modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)) }
                     items(inactiveLimits, key = { "inactive_${it.packageName}" }) { app ->
-                        UsageLimitItem(app, isActive = false) { 
-                            selectedApp = app; showDialog = true 
-                        }
+                        UsageLimitItem(app, isActive = false) { requestLimitEdit(app) }
                     }
                 }
 
@@ -208,9 +239,7 @@ fun AppLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
                         val sectionTitle = if (activeLimits.isEmpty() && inactiveLimits.isEmpty()) stringResource(R.string.limits_setup_section) else stringResource(R.string.limits_other_section)
                         Text(sectionTitle, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextSecondary, modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)) }
                     items(unconfiguredApps, key = { "unconf_${it.packageName}" }) { app ->
-                        UsageLimitItem(app, isActive = false) { 
-                            selectedApp = app; showDialog = true 
-                        }
+                        UsageLimitItem(app, isActive = false) { requestLimitEdit(app) }
                     }
                 }
             }
@@ -241,15 +270,13 @@ fun AppLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
         )
     }
 
-    if (showPasswordConfirm && selectedApp != null) {
-        ConfirmLimitPasswordDialog(
-            expectedHash = selectedApp?.lockPasswordHash ?: "",
-            fallbackVerifier = authManager::verifyPassword,
-            onDismiss = { showPasswordConfirm = false },
-            onConfirm = { 
-                showPasswordConfirm = false
-                pendingAction?.invoke()
-                pendingAction = null
+    if (showMasterCredentialConfirm && selectedApp != null) {
+        ConfirmMasterCredentialDialog(
+            promptRes = R.string.master_credential_required_to_change_limit,
+            onDismiss = { showMasterCredentialConfirm = false },
+            onConfirmed = {
+                showMasterCredentialConfirm = false
+                showDialog = true
             }
         )
     }
@@ -260,6 +287,44 @@ fun AppLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
             title = { Text(stringResource(R.string.limits_locked_alert_title), color = DangerRed) },
             text = { Text(stringResource(R.string.limits_locked_alert_desc), color = MaterialTheme.colorScheme.onSurface) },
             confirmButton = { TextButton({ showTimeLockedAlert = false }) { Text(stringResource(R.string.action_ok), color = AccentCyan) } },
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    }
+
+    if (showSafetyModeAlert) {
+        AlertDialog(
+            onDismissRequest = { showSafetyModeAlert = false },
+            title = { Text(stringResource(R.string.limits_security_mode), color = DangerRed) },
+            text = {
+                Text(
+                    stringResource(R.string.master_credential_blocked_by_safety_mode),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            confirmButton = {
+                TextButton({ showSafetyModeAlert = false }) {
+                    Text(stringResource(R.string.action_ok), color = AccentCyan)
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    }
+
+    if (showCredentialMissingAlert) {
+        AlertDialog(
+            onDismissRequest = { showCredentialMissingAlert = false },
+            title = { Text(stringResource(R.string.deactivation_password_title), color = DangerRed) },
+            text = {
+                Text(
+                    stringResource(R.string.master_credential_not_configured),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            confirmButton = {
+                TextButton({ showCredentialMissingAlert = false }) {
+                    Text(stringResource(R.string.action_ok), color = AccentCyan)
+                }
+            },
             containerColor = MaterialTheme.colorScheme.surface
         )
     }
@@ -279,9 +344,53 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
     var showAddDialog by remember { mutableStateOf(false) }
     var selectedSite by remember { mutableStateOf<WebsiteLimitUi?>(null) }
     var showEditDialog by remember { mutableStateOf(false) }
-    var showPasswordConfirm by remember { mutableStateOf(false) }
+    var showMasterCredentialConfirm by remember { mutableStateOf(false) }
+    var masterCredentialPromptRes by remember {
+        mutableIntStateOf(R.string.master_credential_required_to_change_limit)
+    }
     var showTimeLockedAlert by remember { mutableStateOf(false) }
+    var showSafetyModeAlert by remember { mutableStateOf(false) }
+    var showCredentialMissingAlert by remember { mutableStateOf(false) }
     var pendingAction: (() -> Unit)? by remember { mutableStateOf(null) }
+
+    val credentialManager = remember(context) { DeactivationCredentialManager(context) }
+
+    /**
+     * Gate for editing or deleting a website limit. Mirrors the app-limit path so
+     * both kinds of usage limit obey the same rules.
+     */
+    fun requestSiteMutation(
+        site: WebsiteLimitUi,
+        promptRes: Int,
+        action: () -> Unit
+    ) {
+        val gate = MasterCredentialPolicy.evaluateLimitMutation(
+            lockMode = site.lockMode,
+            lockUntilTimestamp = site.lockUntilTimestamp,
+            safetyModeEnabled = authManager.isSafetyModeEnabled(),
+            hasMasterCredential = credentialManager.hasCredential(),
+            masterCredentialVerified = false
+        )
+        when (gate) {
+            MasterCredentialPolicy.MutationGate.BLOCKED_BY_TIME_HARDENING ->
+                showTimeLockedAlert = true
+
+            MasterCredentialPolicy.MutationGate.BLOCKED_BY_SAFETY_MODE ->
+                showSafetyModeAlert = true
+
+            MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED ->
+                showCredentialMissingAlert = true
+
+            MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_REQUIRED -> {
+                selectedSite = site
+                masterCredentialPromptRes = promptRes
+                pendingAction = action
+                showMasterCredentialConfirm = true
+            }
+
+            MasterCredentialPolicy.MutationGate.ALLOWED -> action()
+        }
+    }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -334,35 +443,28 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
                     WebsiteLimitItem(
                         site = site,
                         onClick = {
-                            if (site.lockMode == "TIME" && site.lockUntilTimestamp != null && System.currentTimeMillis() < site.lockUntilTimestamp) {
-                                showTimeLockedAlert = true
-                            } else if (site.lockMode == "PASSWORD") {
-                                pendingAction = { selectedSite = site; showEditDialog = true }
-                                showPasswordConfirm = true
-                            } else {
-                                selectedSite = site; showEditDialog = true 
+                            requestSiteMutation(
+                                site = site,
+                                promptRes = R.string.master_credential_required_to_change_limit
+                            ) {
+                                selectedSite = site
+                                showEditDialog = true
                             }
                         },
                         onDelete = {
-                            if (site.lockMode == "TIME" && site.lockUntilTimestamp != null && System.currentTimeMillis() < site.lockUntilTimestamp) {
-                                showTimeLockedAlert = true
-                            } else {
-                                val action = {
-                                    scope.launch(Dispatchers.IO) {
-                                        val websiteDao = db.websiteUsageLimitDao()
-                                        val existing = websiteDao.getAllStatic().find { it.domain == site.domain }
-                                        if (existing != null) websiteDao.delete(existing)
-                                        blockingSessionManager.checkAndEnforce()
-                                        withContext(Dispatchers.Main) { sites = sites.filter { it.domain != site.domain } }
+                            requestSiteMutation(
+                                site = site,
+                                promptRes = R.string.master_credential_required_to_remove_limit
+                            ) {
+                                scope.launch(Dispatchers.IO) {
+                                    val websiteDao = db.websiteUsageLimitDao()
+                                    val existing = websiteDao.getAllStatic()
+                                        .find { it.domain == site.domain }
+                                    if (existing != null) websiteDao.delete(existing)
+                                    blockingSessionManager.checkAndEnforce()
+                                    withContext(Dispatchers.Main) {
+                                        sites = sites.filter { it.domain != site.domain }
                                     }
-                                    Unit
-                                }
-                                if (site.lockMode == "PASSWORD") {
-                                    selectedSite = site
-                                    pendingAction = action
-                                    showPasswordConfirm = true
-                                } else {
-                                    action()
                                 }
                             }
                         }
@@ -441,16 +543,58 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
         })
     }
 
-    if (showPasswordConfirm && selectedSite != null) {
-        ConfirmLimitPasswordDialog(
-            expectedHash = selectedSite?.lockPasswordHash ?: "",
-            fallbackVerifier = authManager::verifyPassword,
-            onDismiss = { showPasswordConfirm = false },
-            onConfirm = { 
-                showPasswordConfirm = false
+    if (showMasterCredentialConfirm && selectedSite != null) {
+        ConfirmMasterCredentialDialog(
+            promptRes = masterCredentialPromptRes,
+            onDismiss = {
+                showMasterCredentialConfirm = false
+                pendingAction = null
+            },
+            onConfirmed = {
+                showMasterCredentialConfirm = false
                 pendingAction?.invoke()
                 pendingAction = null
             }
+        )
+    }
+
+    if (showSafetyModeAlert) {
+        AlertDialog(
+            onDismissRequest = { showSafetyModeAlert = false },
+            title = { Text(stringResource(R.string.limits_security_mode), color = DangerRed) },
+            text = {
+                Text(
+                    stringResource(R.string.master_credential_blocked_by_safety_mode),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            confirmButton = {
+                TextButton({ showSafetyModeAlert = false }) {
+                    Text(stringResource(R.string.action_ok), color = AccentCyan)
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    }
+
+    if (showCredentialMissingAlert) {
+        AlertDialog(
+            onDismissRequest = { showCredentialMissingAlert = false },
+            title = {
+                Text(stringResource(R.string.deactivation_password_title), color = DangerRed)
+            },
+            text = {
+                Text(
+                    stringResource(R.string.master_credential_not_configured),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            confirmButton = {
+                TextButton({ showCredentialMissingAlert = false }) {
+                    Text(stringResource(R.string.action_ok), color = AccentCyan)
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surface
         )
     }
 

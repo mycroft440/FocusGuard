@@ -3,7 +3,7 @@ package com.focusguard.ui
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
-import androidx.activity.ComponentActivity
+import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.BorderStroke
@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material3.AlertDialog
@@ -58,7 +59,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.doOnPreDraw
 import com.focusguard.R
 import com.focusguard.manager.BlockingSessionManager
+import androidx.compose.ui.platform.LocalContext
+import androidx.fragment.app.FragmentActivity
 import com.focusguard.security.AuthManager
+import com.focusguard.security.BiometricAppUnlockPolicy
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
@@ -77,7 +81,9 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
-class BlockNoticeActivity : ComponentActivity() {
+// AppCompatActivity (não ComponentActivity) porque BiometricPrompt exige uma
+// FragmentActivity para hospedar seu fragmento, e é a mesma base da MainActivity.
+class BlockNoticeActivity : AppCompatActivity() {
 
     @Inject lateinit var authManager: AuthManager
     @Inject lateinit var blockingSessionManager: BlockingSessionManager
@@ -219,12 +225,43 @@ private fun BlockNoticeContent(
     onGoToPomodoroLock: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val focusRequester = remember { FocusRequester() }
     var showUnlockDialog by remember { mutableStateOf(false) }
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
     var verifying by remember { mutableStateOf(false) }
     var unlocked by remember { mutableStateOf(false) }
+
+    // Origem resolvida no banco: null significa que nenhuma credencial abre este
+    // bloqueio, e a digital nem aparece. Falha fechada de propósito.
+    var blockOrigin by remember {
+        mutableStateOf<BiometricAppUnlockPolicy.BlockOrigin?>(null)
+    }
+    LaunchedEffect(blockedPackage, blockedDomain, strictBlock) {
+        blockOrigin = runCatching {
+            blockingSessionManager.credentialUnlockOrigin(
+                blockedPackage = blockedPackage,
+                blockedDomain = blockedDomain,
+                strictPomodoroActive = strictBlock
+            )
+        }.getOrNull()
+    }
+
+    val biometricUnlockEnabled = remember { authManager.isBiometricAppUnlockEnabled() }
+    val offerBiometric = blockOrigin?.let { origin ->
+        BiometricAppUnlockPolicy.shouldOfferBiometricUnlock(
+            origin = origin,
+            biometricUnlockEnabled = biometricUnlockEnabled,
+            biometricAvailable = authManager.isBiometricAvailable()
+        )
+    } ?: false
+
+    val wrongPasswordMessage = stringResource(R.string.sessions_wrong_password)
+    val pomodoroMessage = stringResource(R.string.block_notice_pomodoro_cannot_stop)
+    val timeSessionMessage = stringResource(R.string.block_notice_time_cannot_revoke)
+    val noSessionMessage = stringResource(R.string.block_notice_no_active_session)
+    val failureMessage = stringResource(R.string.block_notice_unlock_failed)
 
     LaunchedEffect(
         strictBlock,
@@ -351,6 +388,62 @@ private fun BlockNoticeContent(
     }
 
     if (showUnlockDialog) {
+        /**
+         * Fingerprint stands in for the password. The prompt proves identity but
+         * cannot reproduce the typed password, so the unlock goes through the
+         * manager's identity-verified path — which shares the same eligibility
+         * filter as the password path and therefore cannot reach further.
+         */
+        fun submitWithBiometric() {
+            val origin = blockOrigin ?: return
+            val activity = context as? FragmentActivity ?: return
+            authManager.showBiometricPrompt(
+                activity = activity,
+                title = activity.getString(R.string.biometric_app_unlock_prompt_title),
+                subtitle = activity.getString(R.string.biometric_app_unlock_prompt_subtitle),
+                onError = { message -> error = message },
+                onSuccess = {
+                    // Re-checked after the prompt returns: the preference could have
+                    // been turned off, or a stricter block could have started while
+                    // the sheet was open.
+                    if (!BiometricAppUnlockPolicy.canAcceptBiometricResult(
+                            origin = origin,
+                            biometricUnlockEnabled = authManager.isBiometricAppUnlockEnabled()
+                        )
+                    ) {
+                        return@showBiometricPrompt
+                    }
+                    scope.launch {
+                        verifying = true
+                        error = null
+                        try {
+                            when (
+                                attemptUnlockWithVerifiedIdentity(
+                                    blockedPackage = blockedPackage,
+                                    blockedDomain = blockedDomain,
+                                    sessionManager = blockingSessionManager
+                                )
+                            ) {
+                                UnlockResult.SUCCESS -> {
+                                    showUnlockDialog = false
+                                    unlocked = true
+                                }
+                                UnlockResult.POMODORO -> error = pomodoroMessage
+                                UnlockResult.TIME_SESSION -> error = timeSessionMessage
+                                UnlockResult.NO_REVOCABLE_SESSION -> error = noSessionMessage
+                                UnlockResult.WRONG_PASSWORD,
+                                UnlockResult.FAILURE -> error = failureMessage
+                            }
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } finally {
+                            verifying = false
+                        }
+                    }
+                }
+            )
+        }
+
         fun submit() {
             if (password.isBlank() || verifying) return
             scope.launch {
@@ -370,16 +463,11 @@ private fun BlockNoticeContent(
                             showUnlockDialog = false
                             unlocked = true
                         }
-                        UnlockResult.WRONG_PASSWORD ->
-                            error = "Senha incorreta."
-                        UnlockResult.POMODORO ->
-                            error = "O Pomodoro rigoroso não pode ser interrompido."
-                        UnlockResult.TIME_SESSION ->
-                            error = "Este bloqueio por tempo ainda está ativo."
-                        UnlockResult.NO_REVOCABLE_SESSION ->
-                            error = "Nenhuma sessão revogável corresponde a este bloqueio."
-                        UnlockResult.FAILURE ->
-                            error = "Não foi possível encerrar o bloqueio."
+                        UnlockResult.WRONG_PASSWORD -> error = wrongPasswordMessage
+                        UnlockResult.POMODORO -> error = pomodoroMessage
+                        UnlockResult.TIME_SESSION -> error = timeSessionMessage
+                        UnlockResult.NO_REVOCABLE_SESSION -> error = noSessionMessage
+                        UnlockResult.FAILURE -> error = failureMessage
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -447,6 +535,25 @@ private fun BlockNoticeContent(
                             modifier = Modifier.padding(top = 8.dp)
                         )
                     }
+
+                    if (offerBiometric) {
+                        Spacer(Modifier.height(8.dp))
+                        TextButton(
+                            onClick = { if (!verifying) submitWithBiometric() },
+                            enabled = !verifying
+                        ) {
+                            Icon(
+                                Icons.Default.Fingerprint,
+                                contentDescription = null,
+                                tint = AccentCyan
+                            )
+                            Spacer(Modifier.width(8.dp))
+                            Text(
+                                stringResource(R.string.biometric_app_unlock_action),
+                                color = AccentCyan
+                            )
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -484,6 +591,51 @@ private enum class UnlockResult {
     TIME_SESSION,
     NO_REVOCABLE_SESSION,
     FAILURE
+}
+
+/**
+ * Mirror of [attemptUnlock] for a fingerprint that already proved identity.
+ *
+ * Identical to the password flow with exactly one step removed —
+ * `authManager.verifyPassword` — because the prompt has already established the
+ * user is who they claim. Everything downstream is unchanged, so the session-type
+ * refusals that keep a dopamine fast and a strict Pomodoro sealed still apply.
+ */
+private suspend fun attemptUnlockWithVerifiedIdentity(
+    blockedPackage: String?,
+    blockedDomain: String?,
+    sessionManager: BlockingSessionManager
+): UnlockResult {
+    return try {
+        when (
+            sessionManager.unlockLimitWithVerifiedIdentity(
+                blockedPackage = blockedPackage,
+                blockedDomain = blockedDomain
+            )
+        ) {
+            BlockingSessionManager.LimitUnlockResult.UNLOCKED ->
+                return UnlockResult.SUCCESS
+            BlockingSessionManager.LimitUnlockResult.FAILED ->
+                return UnlockResult.FAILURE
+            BlockingSessionManager.LimitUnlockResult.WRONG_PASSWORD,
+            BlockingSessionManager.LimitUnlockResult.NOT_FOUND -> Unit
+        }
+
+        val sessionId = sessionManager.findResponsibleSessionId(blockedPackage, blockedDomain)
+            ?: return UnlockResult.NO_REVOCABLE_SESSION
+        when (sessionManager.endSessionAndWait(sessionId)) {
+            BlockingSessionManager.EndSessionResult.ENDED -> UnlockResult.SUCCESS
+            BlockingSessionManager.EndSessionResult.POMODORO_NOT_REVOCABLE -> UnlockResult.POMODORO
+            BlockingSessionManager.EndSessionResult.TIME_NOT_REVOCABLE -> UnlockResult.TIME_SESSION
+            BlockingSessionManager.EndSessionResult.NOT_FOUND -> UnlockResult.NO_REVOCABLE_SESSION
+            BlockingSessionManager.EndSessionResult.FAILED -> UnlockResult.FAILURE
+        }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (error: Exception) {
+        FocusGuardLogger.logError("BlockNotice", "Erro ao desbloquear com digital", error)
+        UnlockResult.FAILURE
+    }
 }
 
 private suspend fun attemptUnlock(
