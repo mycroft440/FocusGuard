@@ -23,4 +23,8 @@
     <string name="accessibility_paused_message">FocusGuard Accessibility is turned off. Tap to re-enable it, or dismiss this alert to continue without real-time blocking.</string>
     <string name="accessibility_paused_device_owner_message">FocusGuard Accessibility is turned off. Native Device Owner blocks remain active, but real-time protection in unmanaged browsers is paused. Tap to re-enable.</string>
     <string name="device_admin_disable_warning">A standard administrator can be disabled by Android. If you continue, FocusGuard will lose the ability to lock the screen and will be less resistant to removal. For strong protection, use Device Owner mode.</string>
+
+    <string name="usage_access_paused_title">App limits paused</string>
+    <string name="usage_access_paused_message">FocusGuard\'s Usage access was revoked. Without it there is no way to measure screen time, and app limits stopped being enforced. Tap to re-enable.</string>
+    <string name="usage_access_paused_device_owner_message">FocusGuard\'s Usage access was revoked. App limits stopped being enforced because screen time cannot be measured. Password blocks and the Dopamine Fast remain active. Tap to re-enable.</string>
 </resources>

@@ -13,6 +13,7 @@ import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.AccessibilityStateMonitor
 import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.utils.UsageAccessStateMonitor
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -56,6 +57,7 @@ class BootReceiver : BroadcastReceiver() {
 
         deviceOwnerManager.applyNuclearShield()
         AccessibilityStateMonitor.start(context)
+        UsageAccessStateMonitor.start(context)
 
         // Após BOOT_COMPLETED, os dois armazenamentos estão disponíveis.
         val isPomodoroStrictActive = StrictPomodoroLock.isActive(storageContext)

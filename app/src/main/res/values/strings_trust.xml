@@ -23,4 +23,8 @@
     <string name="accessibility_paused_message">A Acessibilidade do FocusGuard está desativada. Toque para reativá-la ou dispense este aviso para continuar sem o bloqueio em tempo real.</string>
     <string name="accessibility_paused_device_owner_message">A Acessibilidade do FocusGuard está desativada. Os bloqueios nativos do Device Owner continuam ativos, mas a proteção em tempo real em navegadores não gerenciados está pausada. Toque para reativar.</string>
     <string name="device_admin_disable_warning">O administrador comum pode ser desativado pelo Android. Se continuar, o FocusGuard perderá a capacidade de bloquear a tela e ficará menos resistente a remoção. Para proteção forte, use o modo Device Owner.</string>
+
+    <string name="usage_access_paused_title">Limites de app pausados</string>
+    <string name="usage_access_paused_message">O Acesso de uso do FocusGuard foi revogado. Sem ele não há como medir o tempo de tela, e os limites de aplicativos pararam de ser aplicados. Toque para reativar.</string>
+    <string name="usage_access_paused_device_owner_message">O Acesso de uso do FocusGuard foi revogado. Os limites de aplicativos pararam de ser aplicados porque não há como medir o tempo de tela. Os bloqueios por senha e o Jejum de Dopamina continuam ativos. Toque para reativar.</string>
 </resources>

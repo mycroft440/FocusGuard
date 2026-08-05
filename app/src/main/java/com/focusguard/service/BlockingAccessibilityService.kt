@@ -38,9 +38,11 @@ import com.focusguard.security.AccessibilitySettingsPolicy
 import com.focusguard.security.AuthManager
 import com.focusguard.security.ManagedSelfProtectionPolicy
 import com.focusguard.security.SettingsInterceptionPolicy
+import com.focusguard.security.UsageAccessPausePolicy
 import com.focusguard.ui.BlockNoticeActivity
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.utils.PermissionUtils
 import com.focusguard.utils.UsageLimitForegroundPolicy
 import com.focusguard.utils.WebsiteBlocker
 import com.focusguard.utils.WebsiteUsageLimitPolicy
@@ -604,6 +606,23 @@ class BlockingAccessibilityService : AccessibilityService() {
     ): Set<String> {
         val manager = usageStatsManager ?: return emptySet()
         if (limits.isEmpty()) return emptySet()
+
+        // Without Usage Access, queryAndAggregateUsageStats returns an empty map and
+        // every limit below reads as "0 minutes used" — indistinguishable from a
+        // limit that is genuinely satisfied. Enforcement stops with nothing in the
+        // logs to say why, so record it explicitly. UsageAccessStateMonitor turns
+        // the same condition into a user-visible warning.
+        if (UsageAccessPausePolicy.measurementIsUnavailable(
+                usageAccessGranted = PermissionUtils.isUsageAccessEnabled(this),
+                enabledAppLimitCount = limits.size
+            )
+        ) {
+            FocusGuardLogger.log(
+                "A11y",
+                "Acesso de uso revogado: ${limits.size} limite(s) de app sem medicao"
+            )
+            return emptySet()
+        }
 
         val startOfDay = Calendar.getInstance().apply {
             set(Calendar.HOUR_OF_DAY, 0)

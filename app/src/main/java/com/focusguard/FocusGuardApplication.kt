@@ -5,6 +5,7 @@ import android.os.UserManager
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.utils.AccessibilityStateMonitor
 import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.utils.UsageAccessStateMonitor
 import dagger.hilt.android.HiltAndroidApp
 
 /**
@@ -31,6 +32,7 @@ class FocusGuardApplication : Application() {
             // Reaplica as políticas oficiais e inicia dependências que usam Room/Keystore.
             deviceOwnerManager.applyNuclearShield()
             AccessibilityStateMonitor.start(this)
+            UsageAccessStateMonitor.start(this)
         } else {
             // Antes do primeiro desbloqueio, usa somente DPM + Device Protected Storage.
             deviceOwnerManager.applyDirectBootShield()
