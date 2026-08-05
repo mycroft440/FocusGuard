@@ -2,56 +2,487 @@
 <resources>
     <string name="app_name">FocusGuard</string>
     <string name="accessibility_service_description">FocusGuard Accessibility Service - Blocks distracting apps and websites</string>
-    <string name="home_title">FocusGuard</string>
-    <string name="blocked_apps_title">Blocked Apps</string>
-    <string name="blocked_websites_title">Blocked Websites</string>
     <string name="add_app_button">Add App</string>
-    <string name="add_website_button">Add Website</string>
     <string name="remove_button">Remove</string>
-    <string name="enable_accessibility_service">Please enable the Accessibility Service in Settings</string>
-    <string name="settings_title">Settings</string>
-    <string name="about_title">About</string>
     <string name="manage_passwords">Manage App Passwords</string>
-    <string name="old_password">Old Password</string>
     <string name="new_password">New Password</string>
     <string name="save">Save</string>
     <string name="cancel">Cancel</string>
     <string name="nuclear_protection">Nuclear Protection</string>
-    <string name="give_permissions">Grant remaining permissions here</string>
+    <string name="dopamine_accessibility_required">Enable FocusGuard Accessibility before starting the Dopamine Fast.</string>
+    <string name="dopamine_requirement_title">Requirement pending</string>
+    <string name="dopamine_open_permissions">Open permissions</string>
+
+    <!-- Common actions and accessibility -->
     <string name="action_back">Back</string>
     <string name="action_open">Open</string>
-    <string name="action_enable">Grant</string>
-    <string name="action_granted">Granted</string>
-    <string name="focus_subtitle">Total Focus, Zero Distractions</string>
-    <string name="password_block">Password Block</string>
-    <string name="password_block_sub">Fixed or Period (Requires password to change)</string>
-    <string name="time_block">Time Block</string>
-    <string name="time_block_sub">Days and Hours (Impossible to cancel)</string>
-    <string name="view_active_sessions">View Active Sessions</string>
+    <string name="content_focusguard_logo">FocusGuard logo</string>
+    <string name="content_warning">Warning</string>
+    <string name="content_emergency_call">Make an emergency call</string>
+
+    <!-- Main screen -->
+    <string name="focus_subtitle">Total focus, zero distractions</string>
     <string name="swipe_hint">← Swipe to see statistics →</string>
+    <string name="protection_entry_title">Block, limit and protect apps and sites</string>
+    <string name="protection_entry_subtitle">Set up every restriction in one place</string>
+    <string name="protection_setup_title">Protection and limits</string>
+    <string name="protection_add_apps_title">Add apps to the list</string>
+    <string name="protection_add_apps_subtitle">Choose installed or preemptive apps</string>
+    <string name="protection_add_sites_title">Add sites to the list</string>
+    <string name="protection_add_sites_subtitle">Use a full domain or a keyword</string>
+    <string name="protection_block_list">Block list</string>
+    <string name="protection_empty_title">Empty</string>
+    <string name="protection_empty_description">You have not added any app or site to protect yet.</string>
+    <string name="protection_continue">Choose protection type</string>
+    <string name="protection_continue_hint">Add at least one app or site to continue.</string>
+    <string name="protection_choose_mode_title">How do you want to protect?</string>
+    <string name="protection_choose_mode_subtitle">The list is ready. Now choose how it should work.</string>
+    <string name="protection_selected_count">%1$d item(s) selected</string>
+    <string name="protection_mode_limit_title">Limit sites and apps</string>
+    <string name="protection_mode_limit_subtitle">Set the daily time and, if you want, combine it with password protection.</string>
+    <string name="protection_mode_password_title">Block sites and apps with a password</string>
+    <string name="protection_mode_password_subtitle">The block can only be ended with an authorized password.</string>
+    <string name="protection_mode_dopamine_title">Dopamine fast</string>
+    <string name="protection_mode_dopamine_subtitle">Complete block, with no release, until the chosen period ends.</string>
+    <string name="protection_sites_title">Add sites</string>
+    <string name="protection_sites_add_new">Add new</string>
+    <string name="protection_sites_placeholder">E.g.: site.com, porn, xxx, sex or xvideos</string>
+    <string name="protection_sites_helper">Enter a full domain or a word contained in the domain.</string>
+    <string name="protection_sites_common">Predefined sites</string>
+    <string name="protection_sites_pornography">Pornography</string>
+    <string name="protection_sites_pornography_subtitle">Adult sites + porn, xxx, sex, xvideos and Google Images</string>
+    <string name="protection_sites_selected">Sites and keywords in the list</string>
+    <string name="protection_sites_none">No site rule added.</string>
+    <string name="app_already_blocked">App already blocked</string>
+    <string name="site_already_blocked">Site already blocked</string>
+    <string name="protection_save_list">Save list</string>
+    <string name="protection_daily_limit_title">Set daily limit</string>
+    <string name="protection_daily_limit_description">The same limit will apply to the selected apps and sites.</string>
+    <string name="protection_daily_limit_question">How much time per day do you want to allow?</string>
+    <string name="protection_hours">Hours</string>
+    <string name="protection_minutes">Minutes</string>
+    <string name="protection_daily_limit_invalid">Enter a period between 1 minute and 24 hours.</string>
+    <string name="protection_activate_limit">Activate daily limit</string>
+    <string name="protection_limit_success">Daily limit activated for the list.</string>
+    <string name="protection_foreground_only">Only foreground usage time will be counted.</string>
+    <string name="protection_combine_password_title">Also protect with a password</string>
+    <string name="protection_combine_password_subtitle">Password block and daily limit will both be active for the same list.</string>
+    <string name="protection_combine_password_existing">This list already has password protection; the limit will be added without removing it.</string>
+    <string name="protection_combine_password_required">Create a password to activate both protections.</string>
+    <string name="protection_activate_limit_password">Activate limit and password</string>
+    <string name="protection_limit_password_success">Daily limit and password block activated for the list.</string>
+    <string name="protection_password_label">Limits and blocks</string>
+    <string name="protection_limit_error">Could not save the limit. Please try again.</string>
+    <string name="dopamine_title">Dopamine fast</string>
+    <string name="dopamine_configure_for">Configure fast for %1$s</string>
+    <string name="dopamine_description">The selected apps and sites will be completely blocked for the entire period.</string>
+    <string name="dopamine_simple_mode_info">Device Owner is optional. Without it, the Fast runs in simple mode through Accessibility; with it, you also get reinforced protection against removal.</string>
+    <string name="dopamine_duration_question">How long do you want to keep the fast active?</string>
+    <string name="dopamine_warning">Warning: once activated, this block cannot be ended even with a password. Wait for the period to finish.</string>
+    <string name="dopamine_activate">Activate dopamine fast</string>
+    <string name="block_customization">Customize block</string>
+    <string name="pending_permissions_title">Pending permissions</string>
+    <string name="pending_permissions_desc">Enable Accessibility and Usage access to unlock full protection.</string>
+
+    <!-- Navigation -->
+    <string name="nav_protection">Protection</string>
+    <string name="nav_focus">Focus</string>
+    <string name="nav_metrics">Metrics</string>
+    <string name="nav_recovery">AntiPorn</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- AntiPorn and EasyPeasy -->
+    <string name="recovery_title">AntiPorn</string>
+    <string name="recovery_subtitle">A private space to strengthen your freedom from pornography.</string>
+    <string name="recovery_privacy_badge">Private and available offline</string>
+    <string name="recovery_resources_title">Resources for your journey</string>
+    <string name="recovery_creator_ebook_title">Creator\'s Instructions</string>
+    <string name="recovery_creator_ebook_card_subtitle">Everything about leaving pornography starts here</string>
+    <string name="recovery_creator_ebook_description">Everything about leaving pornography starts here. This e-book is an original space prepared to gather the instructions from the creator of FocusGuard.</string>
+    <string name="recovery_creator_content_feature">Original content from the creator of FocusGuard</string>
+    <string name="recovery_creator_offline_feature">Private reading, available without internet</string>
+    <string name="recovery_creator_ebook_note">The book space is already available in the app and ready to receive the chapters written by the creator.</string>
+    <string name="recovery_ebook_title">EasyPeasy Method e-book</string>
+    <string name="recovery_ebook_card_subtitle">Complete guide in Portuguese, available without internet</string>
+    <string name="recovery_ebook_description">EasyPeasy offers an educational approach to understanding the cycle of pornography addiction, questioning the beliefs that sustain it and building lasting change without relying on willpower alone.</string>
+    <string name="recovery_offline_feature">37 pages with chapters and resources</string>
+    <string name="recovery_search_feature">Table of contents, search and font size</string>
+    <string name="recovery_progress_feature">Reading progress saved on the device</string>
+    <string name="recovery_start_reading">Start reading</string>
+    <string name="recovery_continue_reading">Continue reading</string>
+    <string name="recovery_educational_notice">Educational material; it does not replace professional support.</string>
+    <string name="recovery_ebook_attribution">Original work: Hackauthor². Brazilian translation: HackAuthorBR and volunteer translators. Content under CC BY-SA 4.0.</string>
+    <string name="recovery_book_back">Back to AntiPorn</string>
+    <string name="recovery_open_details">View e-book details</string>
+
+    <!-- Settings -->
+    <string name="settings_category_general">General</string>
+    <string name="settings_category_blocking">Blocking</string>
+    <string name="settings_category_advanced_security">Advanced security</string>
+    <string name="settings_category_danger">Danger zone</string>
+    <string name="settings_password_subtitle">Set up password and biometrics</string>
+    <string name="settings_language_subtitle">Change the app language</string>
+    <string name="settings_block_customization_subtitle">Block screen colors and styles</string>
     <string name="limits_and_security">Limits &amp; Security</string>
+    <string name="settings_limits_subtitle">Password attempts and limits</string>
     <string name="intruder_log">Intruder Log</string>
+    <string name="settings_intruder_log_subtitle">View photos of failed attempts</string>
     <string name="language_settings">Language</string>
+
+    <!-- Authentication -->
     <string name="auth_locked_content_description">App locked</string>
     <string name="auth_locked_title">App locked</string>
     <string name="auth_locked_description">Enter your password to access FocusGuard</string>
     <string name="auth_password_label">Password</string>
     <string name="auth_show_password">Show password</string>
     <string name="auth_hide_password">Hide password</string>
+    <string name="auth_wrong_password_limit">Wrong password! Attempt limit exceeded.</string>
+    <string name="auth_wrong_password_attempt">Wrong password. Attempt %1$d of %2$d</string>
     <string name="auth_wrong_password">Wrong password.</string>
     <string name="auth_unlock_button">Unlock</string>
     <string name="auth_biometrics_button">Use biometrics</string>
+
+    <!-- Permissions -->
+    <string name="permissions_welcome_title">Set up protection</string>
+    <string name="permissions_flow_desc">First, let\'s enable the two essential permissions. Then you choose the optional improvements.</string>
+    <string name="permissions_reviewed_desc">Review the result. You can change any option later.</string>
+    <string name="permissions_step_progress">Step %1$d of %2$d</string>
+    <string name="permissions_review_complete">Review complete</string>
+    <string name="permissions_skip">Not now</string>
+    <string name="permissions_ready_title">Essential protection ready</string>
+    <string name="permissions_ready_desc">%1$d of %2$d authorizations are active. The rest are optional improvements.</string>
+    <string name="permissions_incomplete_title">Essential setup pending</string>
+    <string name="permissions_incomplete_desc">Accessibility and Usage access are required to block in real time, measure limits and load Insights.</string>
+    <string name="permissions_review_essentials">Review essential permissions</string>
+    <string name="permissions_continue_limited">Continue with limited features</string>
+    <string name="permissions_enter_app">Enter FocusGuard</string>
+    <string name="permissions_badge_required">Essential</string>
+    <string name="permissions_badge_recommended">Recommended</string>
+    <string name="permissions_badge_advanced">Advanced</string>
+    <string name="permission_accessibility_title">Accessibility</string>
+    <string name="permission_accessibility_desc">Lets the app identify open apps and sites in order to apply blocks.</string>
+    <string name="permission_accessibility_detail">On the Android screen, tap FocusGuard and turn on \"Use service\".</string>
+    <string name="permission_accessibility_action">Open accessibility</string>
+    <string name="permission_accessibility_help">Option not showing up?</string>
+    <string name="permission_usage_access_title">Usage access</string>
+    <string name="permission_usage_access_desc">Lets the app measure time spent in apps and generate insights.</string>
+    <string name="permission_usage_access_detail">In the Android list, find FocusGuard and enable access.</string>
+    <string name="permission_usage_access_action">Open usage access</string>
+    <string name="permission_device_admin_title">Device admin</string>
+    <string name="permission_device_admin_desc">Adds friction against impulsive removal, but Android still allows revoking a standard administrator.</string>
+    <string name="permission_device_admin_detail">On the Android screen, tap \"Activate\". For official anti-removal protection, also provision Device Owner mode.</string>
+    <string name="permission_device_admin_action">Enable advanced protection</string>
+    <string name="permission_device_admin_manual_action">Open administrator list</string>
+    <string name="permission_battery_title">Unrestricted battery</string>
+    <string name="permission_battery_desc">Helps keep blocks active in the background.</string>
+    <string name="permission_battery_detail">Confirm \"Allow\" in the Android prompt to reduce interruptions during sessions.</string>
+    <string name="permission_battery_action">Allow battery usage</string>
+    <string name="permission_restricted_title">Accessibility not showing up?</string>
+    <string name="permission_restricted_steps_title">Follow these steps:</string>
+    <string name="permission_restricted_intro">If Android said settings are restricted, allow FocusGuard from the app info screen.</string>
+    <string name="permission_restricted_step_1">Tap \"Open app info\" below.</string>
+    <string name="permission_restricted_step_2">In the top right corner, tap the three dots (⋮).</string>
+    <string name="permission_restricted_step_3">Tap \"Allow restricted settings\".</string>
+    <string name="permission_restricted_step_4">Go back to FocusGuard and open Accessibility again.</string>
+    <string name="permission_restricted_tip">This step is usually only needed for installations made outside the device store.</string>
+    <string name="permission_open_app_info">Open app info</string>
+    <string name="permission_notifications_title">Focus notifications</string>
+    <string name="permission_notifications_desc">Do you want to let FocusGuard send alerts about your active blocks?</string>
+    <string name="permission_notifications_detail">Shows session progress and important protection alerts.</string>
+    <string name="permission_notifications_action">Allow notifications</string>
+    <string name="permission_not_detected">We have not detected this authorization yet. Enable it in Android and come back to FocusGuard.</string>
+    <string name="permission_granted">Granted</string>
+
+    <!-- Pomodoro -->
+    <string name="pomodoro_cancel_btn">Cancel</string>
+    <string name="pomodoro_status_focus">FocusGuard</string>
+    <string name="pomodoro_enable_block_switch">Strict Block</string>
+    <string name="pomodoro_enable_block_subtitle">Turn it on before starting to block exits and distractions.</string>
+    <string name="pomodoro_phone_btn">Emergency Call</string>
+    <string name="pomodoro_cancel_timer_btn">Cancel session</string>
+
+    <!-- Sessions Screen -->
+    <string name="sessions_title_password">Password Blocks</string>
+    <string name="sessions_title_time">Time Blocks</string>
+    <string name="sessions_empty_title">No block configured</string>
+    <string name="sessions_empty_desc">Tap + to create your first block.</string>
+    <string name="sessions_active_header">Your Active Blocks</string>
+    <string name="sessions_add_new">Add New</string>
+    <string name="sessions_details_title_password">Blocked apps, sites and keywords</string>
+    <string name="sessions_details_title_time">Hardening Active</string>
+    <string name="sessions_clear_all">Clear All</string>
+    <string name="sessions_no_content">No blocked content.</string>
+    <string name="sessions_category_apps">Apps</string>
+    <string name="sessions_category_websites">Sites and keywords</string>
+    <string name="sessions_remove_item">Remove</string>
+    <string name="sessions_add_more">Add More</string>
+    <string name="sessions_add_content_title">Add Content</string>
+    <string name="sessions_site_placeholder">E.g.: site.com, porn, xxx, sex or xvideos</string>
+    <string name="sessions_add_site_btn">ADD +</string>
+    <string name="sessions_saving">Saving…</string>
+    <string name="sessions_save_content">Save Content</string>
+    <string name="sessions_end_title">End Block</string>
+    <string name="sessions_end_desc">Enter your security password to end this block.</string>
+    <string name="sessions_password_hint">Password</string>
+    <string name="sessions_use_biometric">Use Fingerprint</string>
+    <string name="sessions_wrong_password">Wrong password</string>
+    <string name="sessions_confirm">Confirm</string>
+    <string name="sessions_type_password">Password Block</string>
+    <string name="sessions_type_time">Dopamine Fast</string>
+    <string name="sessions_mode_fixed">Mode: Fixed 24h</string>
+    <string name="sessions_mode_scheduled">Mode: Scheduled</string>
+    <string name="sessions_active_badge">ACTIVE NOW</string>
+    <string name="sessions_locked_toast">This block cannot be changed!</string>
+    <string name="sessions_menu_add">Add apps/sites</string>
+    <string name="sessions_menu_remove">Remove apps/sites</string>
+    <string name="sessions_menu_delete">Remove block</string>
+    <string name="sessions_schedule_label">Time: %1$s - %2$s</string>
+    <string name="sessions_time_remaining">%1$dd %2$dh</string>
+    <string name="sessions_apps_count">%1$d Apps</string>
+    <string name="sessions_sites_count">%1$d site rules</string>
+
+    <!-- Usage Stats Dashboard -->
+    <string name="dashboard_title">Metrics and Usage</string>
+    <string name="dashboard_permission_title">Permission required</string>
+    <string name="dashboard_permission_desc">Enable Usage access. When you come back, Insights will load automatically.</string>
+    <string name="dashboard_open_settings">Enable usage access</string>
+    <string name="dashboard_load_failed_title">Could not load</string>
+    <string name="dashboard_load_failed_desc">Try again in a moment.</string>
+    <string name="dashboard_try_again">Try again</string>
+    <string name="dashboard_phone_usage">Phone Usage</string>
+    <string name="dashboard_vs_prev_week"> vs prev. week</string>
+    <string name="dashboard_total_week">Weekly Total</string>
+    <string name="dashboard_daily_avg">Daily Average</string>
+    <string name="dashboard_most_used">Most Used Apps</string>
+    <string name="dashboard_no_data">No data found.</string>
+    <string name="dashboard_hide">Hide</string>
+    <string name="dashboard_show_all">See All (%1$d)</string>
+    <string name="dashboard_open_close_title">Opens and Closes (Today)</string>
+    <string name="dashboard_no_events">No events recorded today.</string>
+    <string name="dashboard_opened_count">%1$d opened</string>
+    <string name="dashboard_closed_count">%1$d closed</string>
+    <string name="dashboard_never_used">Never Used Apps (7 Days)</string>
+    <string name="dashboard_no_inactive">No inactive app found.</string>
+
+    <!-- Intruder Log -->
+    <string name="intruder_title">Intruder Log</string>
+    <string name="intruder_empty">No intruder recorded.</string>
+    <string name="intruder_photo_desc">Intruder</string>
+
+    <!-- Usage Limits -->
+    <string name="limits_title">Usage Limits</string>
+    <string name="limits_search_placeholder">Search app...</string>
+    <string name="limits_active_section">Active Limits</string>
+    <string name="limits_paused_section">Paused Limits</string>
+    <string name="limits_setup_section">Set Up Limits</string>
+    <string name="limits_other_section">Other Apps</string>
+    <string name="limits_locked_alert_title">Hardened Limit</string>
+    <string name="limits_locked_alert_desc">This limit is time-hardened and cannot be changed until the period ends.</string>
+    <string name="limits_add_site_btn">Add site or keyword</string>
+    <string name="limits_status_monitoring">Monitoring</string>
+    <string name="limits_confirm_password_title">Confirm Password</string>
+    <string name="limits_confirm_password_desc">Enter the password configured for this limit.</string>
+    <string name="limits_security_mode">Security Mode</string>
+    <string name="limits_security_mode_desc">Prevent the app from being opened after the time runs out</string>
+    <string name="limits_security_mode_warning">Warning: when the time runs out you will not be able to unlock the app, not even with a password.</string>
+    <string name="limits_security_days_label">For how many days do you want to limit the time?</string>
+    <string name="limits_security_password_question">Unlock the app with a password when the time runs out?</string>
+    <string name="limits_security_password_label">Set the unlock password</string>
+    <string name="limits_security_no_password_warning">Warning: if the block has no password, the app will be impossible to unlock until the next day or until the block days end.</string>
+    <string name="limits_security_agree_placeholder">Type \'yes\' to continue</string>
+    <string name="limits_daily_time_label">Configured daily time:</string>
+    <string name="limits_daily_time_website_label">Daily time:</string>
+    <string name="limits_add_more_days">Add more block days</string>
+    <string name="limits_add_days_warning">Adding days makes the block impossible to remove until the period ends.</string>
+    <string name="limits_daily_hours_label">Daily limit in hours</string>
+    <string name="limits_extend_btn">Extend Block</string>
+    <string name="limits_domain_label">Domain or keyword</string>
+    <string name="website_rule_hint">Full domain or a word contained in the domain; minimum of 3 characters.</string>
+    <string name="website_rule_invalid">Enter a valid domain or a single word with 3 to 63 characters.</string>
     <string name="action_no">No</string>
     <string name="action_yes">Yes</string>
     <string name="action_ok">OK</string>
+    <string name="limits_dns_filter_title">Anti-Pornography Hardening</string>
+    <string name="limits_dns_filter_desc">Enables the family filter and 24/7 URL scanning, including SafeSearch and mixed-content sites. Outside maintenance, it prevents changing DNS or configuring a VPN. Requires Nuclear Protection active.</string>
+
+    <!-- App Selection Wizard -->
     <string name="app_selection_title">Select Apps</string>
-    <string name="app_selection_preventive">Preventive Block (Not Installed)</string>
+    <string name="app_selection_preventive">Predefined apps (not installed)</string>
     <string name="app_selection_show_more">Show More (+%1$s apps)</string>
     <string name="app_selection_show_less">Show Less</string>
     <string name="app_selection_installed">Installed Apps</string>
-    <string name="ativar_bloqueio">Enable blocking</string>
+
+    <!-- Create Session Wizard -->
+    <string name="create_session_days">Days</string>
+    <string name="create_session_time_warning">WARNING: Time blocks cannot be cancelled, not even with a password, once started.</string>
+    <string name="create_session_new_password">New Password</string>
+    <string name="create_session_error_empty">The password cannot be empty</string>
+    <string name="create_session_error_mismatch">The passwords do not match</string>
+
+    <!-- Session Detail -->
+    <string name="session_detail_add_new">Add New Block</string>
+    <string name="session_detail_apps_blocked">Blocked Apps</string>
+    <string name="session_detail_sites_blocked">Blocked sites and keywords</string>
+
+    <!-- Password Management -->
+    <string name="password_mgmt_confirm_change">Enter your current password to confirm the change.</string>
+    <string name="password_mgmt_current_password">Current Password</string>
+    <string name="password_mgmt_label">Name/Label</string>
+    <string name="password_mgmt_password_numeric">Password (numbers)</string>
+    <string name="password_mgmt_confirm_delete">Confirm Deletion</string>
+    <string name="password_mgmt_confirm_delete_desc">Enter your current password to confirm deleting this password.</string>
+    <string name="session_detail_password_block">Password Block</string>
+    <string name="session_detail_time_block">Dopamine Fast</string>
+    <string name="session_detail_none_active">No active block</string>
+    <string name="session_detail_none_active_desc">Set up a new block to start protecting your focus.</string>
+    <string name="session_detail_password_session">Password Session</string>
+    <string name="session_detail_time_session">Time Session</string>
+    <string name="session_detail_fixed_24h">24h Block</string>
+    <string name="session_detail_scheduled">Scheduled Block</string>
+    <string name="session_detail_expires_in">Expires in: %1$s</string>
+    <string name="minutes_label">%1$s min</string>
+    <string name="minutes_ratio">%1$s / %2$s min</string>
+    <string name="pomodoro_status_ready">Ready to start?</string>
+    <string name="pomodoro_start_btn">Start Focus</string>
+    <string name="limits_usage_alert">Limit Approaching!</string>
+
+    <!-- Hardening &amp; UI New Strings -->
+    <string name="security_unlock_access">Unlock Access</string>
+    <string name="security_biometric_auth">Biometric Authentication</string>
+    <string name="security_master_password">Master Password</string>
+    <string name="security_none_saved">No password saved.</string>
+    <string name="security_saved_success">Saved successfully!</string>
+    <string name="security_updated_success">Password updated successfully!</string>
+
+    <string name="status_blocking_active">Block Active</string>
+    <string name="status_session_registered">Session Registered (Waiting for window)</string>
+    <string name="status_no_session">No Active Session</string>
+    <string name="status_safety_mode_warning">Security mode is active; it is not possible to bypass or change limit settings.</string>
+    <string name="status_end_password_block">End Password Block</string>
+    <string name="status_revoke_do_blocked">Cannot revoke (Block active)</string>
+    <string name="status_revoke_do">Revoke Device Owner</string>
+    <string name="status_close">Close</string>
+
+    <string name="limits_attempts_label">Password Attempt Limit (0 for unlimited)</string>
+    <string name="limits_intruder_selfie">Intruder Selfie</string>
+    <string name="limits_intruder_selfie_desc">Takes an invisible photo with the front camera when the limit is exceeded.</string>
+    <string name="limits_safety_mode_enable_title">Enable Security Mode?</string>
+    <string name="limits_safety_mode_confirm_text">To confirm, type \'yes\' below:</string>
+    <string name="limits_safety_mode_placeholder">type yes</string>
+    <string name="limits_safety_mode_disable_title">Disable Security Mode?</string>
+    <string name="limits_safety_mode_desc">Prevents using a password to bypass active limits. Full and irreversible block without the master password.</string>
+    <string name="limits_nuclear_required">Enable Nuclear Protection in settings first!</string>
+    <string name="limits_dns_injection_failed">Failed to inject DNS. Does your Android version support it?</string>
+    <string name="limits_adult_filter_maintenance_required">Open authenticated Device Owner maintenance to disable the adult filter.</string>
+    <string name="limits_hidden_camera_active">Hidden camera enabled</string>
+    <string name="limits_permission_denied_feature">Permission denied. Feature disabled.</string>
+    <string name="acesso_device_owner_revogado">Device Owner access revoked</string>
+    <string name="falha_ao_revogar_device_owner_e_message">Failed to revoke Device Owner: %1$s</string>
+    <string name="focusguard_device_admin_habilitado">FocusGuard Device Admin enabled</string>
+    <string name="focusguard_device_admin_desabilitado">FocusGuard Device Admin disabled</string>
+    <string name="erro_ao_iniciar_sessao">Error starting session</string>
+    <string name="modo_pomodoro_ativado_foco_total">POMODORO MODE ENABLED: Total Focus.</string>
+    <string name="bloqueios_por_senha_encerrados">Password Blocks ended</string>
+    <string name="senha_count_1">Password %1$d</string>
+    <string name="mantem_o_focusguard_ativo_para_garantir_">Keeps FocusGuard active to enforce your blocks</string>
+    <string name="servico_focusguard_parado">FocusGuard service stopped</string>
+    <string name="garante_que_o_bloqueio_rigoroso_do_pomod">Ensures the strict Pomodoro block stays active</string>
+    <string name="criar_senha">Create password</string>
+    <string name="confirmar_senha">Confirm password</string>
+    <string name="bloqueio_ativado_com_sucesso">Block enabled successfully</string>
+    <string name="senha_criada_com_sucesso">Password created successfully!</string>
     <string name="abrir_telefone_para_emergencia">Open phone for emergency</string>
-    <string name="abrir_acessibilidade">Open accessibility</string>
-    <string name="administrador">Administrator</string>
+    <string name="sessoes_ativas">Active Sessions</string>
+    <string name="personalizar_bloqueio">Customize Block</string>
+    <string name="salvar_configuracoes">Save Settings</string>
+    <string name="imagem_de_bloqueio">Block image</string>
+    <string name="configuracoes_salvas">Settings saved!</string>
+    <string name="idioma_language">Language / Idioma</string>
+    <string name="digite_sua_senha">Enter your password</string>
+    <string name="senha_incorreta">Wrong password!</string>
+    <string name="editar">Edit</string>
+    <string name="aviso_de_bloqueio_rigoroso">Strict Block Warning</string>
+    <string name="o_bloqueio_rigoroso_ira_impedir_que_voce">Strict Block will prevent you from closing the app or disabling restrictions during the session. Only the phone shortcut for calls will be available. Do you want to continue?</string>
     <string name="ativar">Enable</string>
+    <string name="bloqueio_por_tempo">Time block</string>
+    <string name="bloqueio_por_tempo_ativado">Dopamine Fast enabled</string>
+    <string name="limite_diario_ativado_com_sucesso">Daily limit enabled successfully</string>
+    <string name="ex_2">E.g.: 2</string>
+    <string name="quantidade_de_dias_max_120">Number of days (max. 120)</string>
+    <string name="eu_concordo_e_entendo_os_riscos">i agree and understand the risks</string>
+
+    <!-- FinalConfigStep / CreateSessionActivity i18n (P2-6, P2-8) -->
+    <string name="final_config_title">Set up password block</string>
+    <string name="final_config_password_block">Password block</string>
+    <string name="final_config_existing_password">Existing password found.</string>
+    <string name="final_config_no_password">No password found. Create a password to continue.</string>
+    <string name="final_config_create_password">Create password</string>
+    <string name="final_config_activate_block">Enable block</string>
+    <string name="final_config_proceed">Proceed</string>
+    <string name="create_password_subtitle">Create a password for authorized unlocks.</string>
+    <string name="create_password_save">Save</string>
+    <string name="create_password_cancel">Cancel</string>
+    <string name="common_back">Back</string>
+
+    <!-- BlockNoticeActivity unlock with password -->
+    <string name="block_notice_unlock_with_password">Unlock with password</string>
+    <string name="block_notice_unlock_title">Enter the password to unlock</string>
+    <string name="block_notice_unlock_desc">End the current block session by entering your password.</string>
+    <string name="block_notice_unlock_success">Session ended successfully</string>
+    <string name="block_notice_pomodoro_cannot_stop">The strict Pomodoro cannot be interrupted. Wait for the time to run out.</string>
+    <string name="block_notice_instant_title">Blocked by FocusGuard</string>
+    <string name="block_notice_instant_content_description">FocusGuard instant protection</string>
+
+    <!-- Extracted from text that was written directly in Kotlin -->
+    <string name="service_notification_title">FocusGuard Active</string>
+    <string name="service_notification_text">Distraction protection running</string>
+    <string name="block_customization_description">Customize the message and image shown when an app is blocked.</string>
+    <string name="limits_intrusion_security_title">Anti-Intrusion Security</string>
+    <string name="limits_intrusion_security_description">Set what happens when someone enters the app password wrong repeatedly.</string>
+    <string name="pomodoro_strict_calls_only_notice">You will only be able to use the phone for calls until the time runs out.</string>
+    <string name="usage_block_daily_limit_question">How much time per day do you want to allow for the selected app(s)?</string>
+    <string name="usage_block_daily_limit_warning">! Warning: you will only be able to use the app for the amount of time you set above.</string>
+    <string name="usage_block_type_question">What kind of limit do you want?</string>
+    <string name="usage_block_type_hard_no_password">I want the app blocked when the daily time runs out, with no way to unlock it, for as many days as I specify.</string>
+    <string name="usage_block_type_warning_only">I just want a warning that I have used the app too much, which blocks it for a few seconds and then releases it if I want to keep using it.</string>
+    <string name="usage_block_type_hard_with_password">I want the app blocked, but I want to be able to unlock it with a password when the time runs out.</string>
+    <string name="usage_block_password_title">Block with password</string>
+    <string name="usage_block_password_description">For a password block you can create a password or use an existing one. If you have no passwords, you will be required to create one.</string>
+    <string name="usage_block_password_missing">No password found. When you save, you will be taken to create one.</string>
+    <string name="usage_block_manage_password">Manage password</string>
+    <string name="usage_block_no_password_title">Block without password</string>
+    <string name="usage_block_no_password_description">For a block without a password, I must set how many days the block lasts, up to 120 days.</string>
+    <string name="usage_block_warning_heading">With a warning stating that:</string>
+    <string name="usage_block_irreversible_warning">If you agree, it will be impossible to use the app for more than the daily amount specified, and the block will last until the chosen days are over, with no way around it.</string>
+    <string name="usage_block_agreement_instruction">Type below: i agree and understand the risks.</string>
+    <string name="pomodoro_lock_kiosk_active">Kiosk mode active. The session ends automatically at the scheduled time.</string>
+    <string name="pomodoro_lock_no_device_owner">Without Device Owner, some system screens can still appear.</string>
+
+    <!-- Master password -->
+    <string name="master_credential_required_to_block">Set the master password before activating a block. It is the only authenticated way to manage limits and uninstall the app afterwards.</string>
+    <string name="master_credential_create_action">Set master password</string>
+    <string name="master_credential_required_to_change_limit">Enter the master password to change this limit.</string>
+    <string name="master_credential_required_to_remove_limit">Enter the master password to remove this limit.</string>
+    <string name="master_credential_not_configured">No master password configured. Create one in settings to manage limits.</string>
+    <string name="master_credential_blocked_by_time_hardening">This limit is time-hardened and cannot be changed until %1$s, not even with the master password.</string>
+    <string name="master_credential_blocked_by_safety_mode">Security Mode is active. Turn it off first to change limits.</string>
+    <string name="master_credential_wrong">Wrong master password.</string>
+
+    <!-- Fingerprint unlock -->
+    <string name="biometric_app_unlock_title">Unlock apps with fingerprint</string>
+    <string name="biometric_app_unlock_subtitle">Use your fingerprint instead of typing the password when opening a blocked app. Does not apply to Dopamine Fast or time-hardened limits.</string>
+    <string name="biometric_app_unlock_unavailable">No fingerprint enrolled on this device.</string>
+    <string name="biometric_app_unlock_prompt_title">Unlock app</string>
+    <string name="biometric_app_unlock_prompt_subtitle">Confirm your identity to open this app.</string>
+    <string name="biometric_app_unlock_action">Use fingerprint</string>
+
+    <!-- Authenticated uninstall -->
+    <string name="uninstall_app_title">Uninstall FocusGuard</string>
+    <string name="uninstall_app_subtitle">Requires the master password</string>
+    <string name="uninstall_app_description">The master password releases removal protection and opens Android\'s uninstall screen. You can leave the app whenever you want.</string>
+    <string name="uninstall_app_confirm">Release and uninstall</string>
+    <string name="uninstall_app_blocked_by_active_block">An irreversible block is running. Uninstall becomes available when it ends — it is not an escape hatch from a fast in progress.</string>
+    <string name="uninstall_app_protection_released">Protection released. Finish the uninstall on the Android screen.</string>
+    <string name="uninstall_app_failed">Could not release the uninstall.</string>
+
 </resources>

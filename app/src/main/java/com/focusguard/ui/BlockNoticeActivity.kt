@@ -326,7 +326,7 @@ private fun BlockNoticeContent(
                 }
             } else if (strictBlock) {
                 Text(
-                    text = "O bloqueio rigoroso só termina quando o Pomodoro expirar.",
+                    text = stringResource(R.string.block_notice_pomodoro_cannot_stop),
                     color = TextHint,
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center

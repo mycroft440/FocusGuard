@@ -5,7 +5,17 @@ Este checklist separa melhorias de código das etapas que somente o proprietári
 ## Código concluído no projeto
 
 - [x] Remover `QUERY_ALL_PACKAGES` e usar visibilidade direcionada com `<queries>`.
-- [x] Remover permissões não utilizadas de rede e a solicitação direta de isenção de bateria.
+- [x] Remover permissões não utilizadas de rede.
+- [ ] **Decidir sobre a solicitação direta de isenção de bateria.** Este item
+  estava marcado como concluído, mas a afirmação estava errada: o commit
+  `e9a271b` reintroduziu `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` com
+  `data = package:…` em `PermissionsScreen.kt:816`, e o teste
+  `BatteryOptimizationPermissionManifestTest` garante a permissão no manifest.
+  `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` tem lista fechada de usos aceitáveis no
+  Play e "app de foco/bloqueio" não está claramente nela. Escolher entre:
+  (a) remover a solicitação direta e mandar o usuário para
+  `ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS`, que não exige a permissão, ou
+  (b) manter e preparar a justificativa para a revisão.
 - [x] Manter tráfego HTTP sem criptografia desativado.
 - [x] Marcar o serviço como `isAccessibilityTool="false"`.
 - [x] Informar claramente o que a Acessibilidade observa e por quê.
@@ -30,7 +40,10 @@ Este checklist separa melhorias de código das etapas que somente o proprietári
 - [ ] Declarar e justificar Acesso de uso, alarme exato, Device Admin e serviço em primeiro plano quando solicitado pelo Play Console.
 - [ ] Usar uma faixa de teste interno antes da produção e instalar a versão diretamente pelo Google Play.
 - [ ] Ativar Play Integrity e verificar o veredito `PLAY_RECOGNIZED` na versão distribuída.
-- [ ] Atualizar `compileSdk` e `targetSdk` para a exigência vigente antes do envio à produção.
+- [ ] Atualizar `compileSdk` e `targetSdk` para a exigência vigente antes do
+  envio à produção. **Hoje ambos estão em 35.** O Play exige anualmente a API
+  mais recente −1, com corte em 31 de agosto; confirmar no Console se a
+  exigência vigente já é 36 (o SDK local já tem `android-36`).
 - [ ] Informar um e-mail público e verificável de suporte e privacidade.
 
 ## Testes físicos recomendados

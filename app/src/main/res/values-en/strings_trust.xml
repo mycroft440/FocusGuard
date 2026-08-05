@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trust_disclosure_title">Privacy and permissions</string>
+    <string name="trust_disclosure_intro">Before opening Android\'s sensitive permissions, review how FocusGuard works.</string>
+    <string name="trust_accessibility_title">Accessibility</string>
+    <string name="trust_accessibility_body">When enabled, it identifies the visible app or browser and can read the window text, including displayed addresses, solely to enforce the blocks and limits you configured.</string>
+    <string name="trust_usage_title">Usage access</string>
+    <string name="trust_usage_body">Reads app screen time to calculate daily limits and show metrics on the device itself.</string>
+    <string name="trust_local_title">Local processing</string>
+    <string name="trust_local_body">Passwords, sessions, block lists, metrics and accessibility events are processed locally. FocusGuard does not sell this data and contains no ad SDK.</string>
+    <string name="trust_camera_title">Optional camera</string>
+    <string name="trust_camera_body">The camera is only requested when you manually enable the access-attempt photo. Images stay stored inside the app.</string>
+    <string name="trust_network_title">Internet usage</string>
+    <string name="trust_network_body">The internet is used to load public resources such as website icons. Core protection and private data stay on the device.</string>
+    <string name="trust_choice_notice">You can continue without agreeing and use the features that do not depend on these permissions. Permissions can also be revoked in Android settings.</string>
+    <string name="trust_accept">Agree and continue</string>
+    <string name="trust_decline">Not now</string>
+
+    <string name="accessibility_service_description_transparent">FocusGuard observes the foreground app or browser and the visible window content to enforce blocks and limits configured by the user. Processing is local, it does not control the device remotely and it does not prevent the service from being disabled in Android settings.</string>
+    <string name="accessibility_paused_channel">Protection status</string>
+    <string name="accessibility_paused_channel_description">Alerts when a permission required for real-time blocking is turned off.</string>
+    <string name="accessibility_paused_title">Real-time protection paused</string>
+    <string name="accessibility_paused_message">FocusGuard Accessibility is turned off. Tap to re-enable it, or dismiss this alert to continue without real-time blocking.</string>
+    <string name="accessibility_paused_device_owner_message">FocusGuard Accessibility is turned off. Native Device Owner blocks remain active, but real-time protection in unmanaged browsers is paused. Tap to re-enable.</string>
+    <string name="device_admin_disable_warning">A standard administrator can be disabled by Android. If you continue, FocusGuard will lose the ability to lock the screen and will be less resistant to removal. For strong protection, use Device Owner mode.</string>
+</resources>

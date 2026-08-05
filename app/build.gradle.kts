@@ -20,12 +20,19 @@ android {
         ksp {
             arg("room.schemaLocation", "$projectDir/schemas")
         }
+        // Somente locales com tradução 100% completa. `values/` (pt-BR) é o
+        // default e é sempre mantido; "pt"/"pt-rBR" preservam também os recursos
+        // em português das bibliotecas (AppCompat), que o filtro descartaria.
+        resourceConfigurations += setOf("en", "pt", "pt-rBR")
     }
 
     lint {
         abortOnError = true
         checkReleaseBuilds = true
-        warning.add("MissingTranslation")
+        // Ambos como erro: os dois locales precisam ficar em paridade exata.
+        // Rebaixar MissingTranslation para warning já mascarou 591 strings
+        // não traduzidas passando pelo CI em verde.
+        error.add("MissingTranslation")
         error.add("ExtraTranslation")
     }
 

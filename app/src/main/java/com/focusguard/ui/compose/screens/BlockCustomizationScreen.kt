@@ -65,7 +65,7 @@ fun BlockCustomizationScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Personalizar Bloqueio", color = TextPrimary) },
+                title = { Text(stringResource(R.string.personalizar_bloqueio), color = TextPrimary) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = TextPrimary)
@@ -96,7 +96,7 @@ fun BlockCustomizationScreen(onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState())
         ) {
             Text(
-                text = "Personalize a mensagem e a imagem que aparecem quando um app é bloqueado.",
+                text = stringResource(R.string.block_customization_description),
                 fontSize = 14.sp,
                 color = TextSecondary,
                 modifier = Modifier.padding(bottom = 24.dp)
@@ -187,7 +187,11 @@ fun BlockCustomizationScreen(onBack: () -> Unit) {
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
             ) {
-                Text("Salvar Configurações", color = DarkBg, fontWeight = FontWeight.Bold)
+                Text(
+                    stringResource(R.string.salvar_configuracoes),
+                    color = DarkBg,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }

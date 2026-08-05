@@ -107,7 +107,7 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                         }
                         Spacer(modifier = Modifier.width(16.dp))
                         Text(
-                            text = "Segurança Anti-Invasão",
+                            text = stringResource(R.string.limits_intrusion_security_title),
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary
@@ -117,7 +117,7 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                     Spacer(modifier = Modifier.height(16.dp))
                     
                     Text(
-                        text = "Configure o que acontece quando alguém erra a senha do aplicativo repetidamente.",
+                        text = stringResource(R.string.limits_intrusion_security_description),
                         fontSize = 14.sp,
                         color = TextSecondary
                     )
@@ -233,7 +233,13 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                 AlertDialog(
                     onDismissRequest = { showDeactivateDialog = false },
                     containerColor = DarkSurface,
-                    title = { Text("Desativar Modo Segurança?", color = TextPrimary, fontWeight = FontWeight.Bold) },
+                    title = {
+                        Text(
+                            stringResource(R.string.limits_safety_mode_disable_title),
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    },
                     text = {
                         Column {
                             Text(
@@ -244,7 +250,9 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                             OutlinedTextField(
                                 value = deactivateInput,
                                 onValueChange = { deactivateInput = it },
-                                placeholder = { Text("Digite sua senha", color = TextHint) },
+                                placeholder = {
+                                    Text(stringResource(R.string.digite_sua_senha), color = TextHint)
+                                },
                                 singleLine = true,
                                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
                                 colors = OutlinedTextFieldDefaults.colors(focusedTextColor = TextPrimary, unfocusedTextColor = TextPrimary, focusedBorderColor = AccentCyan, unfocusedBorderColor = Border),

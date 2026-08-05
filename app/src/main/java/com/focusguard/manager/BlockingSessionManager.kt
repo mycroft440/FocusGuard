@@ -20,7 +20,9 @@ import com.focusguard.database.WebsiteUsageLimit
 import com.focusguard.receiver.BlockingScheduleCalculator
 import com.focusguard.receiver.BlockingScheduleReceiver
 import com.focusguard.security.AuthManager
+import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.DopamineStartPolicy
+import com.focusguard.security.MasterCredentialPolicy
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.utils.FocusGuardLogger
@@ -49,14 +51,40 @@ import kotlinx.coroutines.withContext
 
 @Singleton
 class BlockingSessionManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val deactivationCredentialManager: DeactivationCredentialManager
 ) {
 
     class BlockingProtectionUnavailableException(
         val reason: Reason
     ) : IllegalStateException(reason.name) {
         enum class Reason {
-            ACCESSIBILITY_REQUIRED
+            ACCESSIBILITY_REQUIRED,
+
+            /**
+             * No master credential configured. Password blocks and dopamine fasts
+             * cannot be armed without one — see [MasterCredentialPolicy].
+             */
+            MASTER_CREDENTIAL_REQUIRED
+        }
+    }
+
+    /**
+     * Refuses to arm a block until the master credential exists.
+     *
+     * Enforced here rather than only in the UI so no creation path — wizard,
+     * protection setup, or a future caller — can arm a block that the user has no
+     * authenticated way to manage afterwards.
+     */
+    private fun ensureMasterCredentialFor(sessionType: String) {
+        val gate = MasterCredentialPolicy.evaluateCreation(
+            sessionType = sessionType,
+            hasMasterCredential = deactivationCredentialManager.hasCredential()
+        )
+        if (gate == MasterCredentialPolicy.CreationGate.MASTER_CREDENTIAL_REQUIRED) {
+            throw BlockingProtectionUnavailableException(
+                BlockingProtectionUnavailableException.Reason.MASTER_CREDENTIAL_REQUIRED
+            )
         }
     }
 
@@ -119,8 +147,10 @@ class BlockingSessionManager @Inject constructor(
                     error
                 )
                 synchronized(this) {
-                    legacyInstance ?: BlockingSessionManager(context.applicationContext)
-                        .also { legacyInstance = it }
+                    legacyInstance ?: BlockingSessionManager(
+                        context.applicationContext,
+                        DeactivationCredentialManager(context.applicationContext)
+                    ).also { legacyInstance = it }
                 }
             }
         }
@@ -314,6 +344,11 @@ class BlockingSessionManager @Inject constructor(
         addPasswordProtection: Boolean
     ) = withContext(Dispatchers.IO) {
         require(dailyLimitMinutes in 1..24 * 60)
+        // Checado antes da transação: um limite salvo sem a sessão de senha que o
+        // usuário pediu deixaria a lista protegida pela metade.
+        if (addPasswordProtection) {
+            ensureMasterCredentialFor("PASSWORD")
+        }
         val appTargets = apps
             .filter { it.packageName.isNotBlank() }
             .distinctBy { it.packageName }
@@ -402,6 +437,7 @@ class BlockingSessionManager @Inject constructor(
         sites: List<String>
     ) = withContext(Dispatchers.IO) {
         try {
+            ensureMasterCredentialFor("PASSWORD")
             val normalizedSites = WebsiteBlocker.normalizeRules(sites)
             database.withTransaction {
                 val session = BlockSession(
@@ -451,6 +487,7 @@ class BlockingSessionManager @Inject constructor(
         val protectionWasAlreadyArmed = deviceOwnerManager.isBlockingProtectionArmed()
         var sessionCreated = false
         try {
+            ensureMasterCredentialFor("TIME")
             val normalizedSites = WebsiteBlocker.normalizeRules(sites)
             val normalizedApps = apps.filter(String::isNotBlank).distinct()
             require(normalizedApps.isNotEmpty() || normalizedSites.isNotEmpty()) {

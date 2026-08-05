@@ -1207,7 +1207,10 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         } catch (e: Exception) {
             Toast.makeText(
                 context,
-                context.getString(R.string.falha_ao_revogar_device_owner_e_message),
+                context.getString(
+                    R.string.falha_ao_revogar_device_owner_e_message,
+                    e.message ?: e.javaClass.simpleName
+                ),
                 Toast.LENGTH_LONG
             ).show()
         }

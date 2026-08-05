@@ -25,7 +25,7 @@ fun LanguageScreen(onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Idioma / Language", color = TextPrimary) },
+                title = { Text(stringResource(R.string.idioma_language), color = TextPrimary) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.Default.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = TextPrimary)
@@ -41,13 +41,11 @@ fun LanguageScreen(onBack: () -> Unit) {
                 .fillMaxSize()
                 .padding(paddingValues)
         ) {
-            LanguageItem("Automático do Sistema", "")
+            LanguageItem("Automático do Sistema / System default", "")
             Divider(color = CardBorder)
             LanguageItem("Português", "pt")
             Divider(color = CardBorder)
             LanguageItem("English", "en")
-            Divider(color = CardBorder)
-            LanguageItem("Español", "es")
             Divider(color = CardBorder)
         }
     }

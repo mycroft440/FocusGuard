@@ -37,6 +37,7 @@ import com.focusguard.manager.StrictPomodoroLock
 import com.focusguard.security.AccessibilitySettingsPolicy
 import com.focusguard.security.AuthManager
 import com.focusguard.security.ManagedSelfProtectionPolicy
+import com.focusguard.security.SettingsInterceptionPolicy
 import com.focusguard.ui.BlockNoticeActivity
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.FocusGuardLogger
@@ -134,22 +135,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         "com.samsung.android.incallui"
     )
 
-    private val settingsPackages = setOf(
-        "com.android.settings",
-        "com.miui.securitycenter",
-        "com.huawei.systemmanager",
-        "com.samsung.android.sm",
-        "com.samsung.android.sm_cn"
-    )
-
-    private val packageInstallerPackages = setOf(
-        "com.android.packageinstaller",
-        "com.google.android.packageinstaller",
-        "com.samsung.android.packageinstaller",
-        "com.miui.packageinstaller"
-    )
-
-    private val protectedSystemPackages = settingsPackages + packageInstallerPackages
+    // Fonte única em SettingsInterceptionPolicy — estas listas estavam duplicadas aqui.
+    private val settingsPackages = SettingsInterceptionPolicy.settingsPackages
+    private val protectedSystemPackages = SettingsInterceptionPolicy.protectedSystemPackages
 
     private var pendingSettingsProtectionUntilElapsed = 0L
 
@@ -304,8 +292,8 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun startAsForeground() {
         val notification = NotificationCompat.Builder(this, channelId)
-            .setContentTitle("FocusGuard Ativo")
-            .setContentText("Proteção contra distrações em execução")
+            .setContentTitle(getString(R.string.service_notification_title))
+            .setContentText(getString(R.string.service_notification_text))
             .setSmallIcon(R.drawable.ic_shield)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(Notification.CATEGORY_SERVICE)
@@ -733,120 +721,84 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun handleSettingsInterception(event: AccessibilityEvent): Boolean {
         val packageName = event.packageName?.toString() ?: return false
+
+        // Cheap guards stay ahead of the signal extraction below: this runs on every
+        // accessibility event, and eventTextValues() plus the classifiers are not free.
         if (packageName !in protectedSystemPackages) return false
 
         // Consumer Device Admin is intentionally not treated as irremovable: Android allows
         // the user to revoke it and Google Play forbids using Accessibility to remove that
         // platform escape. This guard is defense in depth for explicitly provisioned devices.
-        if (!deviceOwnerManager.isDeviceOwnerActive() ||
-            !deviceOwnerManager.isArmoredProtectionArmed() ||
-            deviceOwnerManager.isMaintenanceActive()
-        ) {
-            return false
-        }
-
-        if (isPomodoroStrictActive) {
-            performGlobalAction(GLOBAL_ACTION_BACK)
-            launchPomodoroLockScreen()
-            return true
-        }
+        val armoredProtectionEngaged = deviceOwnerManager.isDeviceOwnerActive() &&
+            deviceOwnerManager.isArmoredProtectionArmed() &&
+            !deviceOwnerManager.isMaintenanceActive()
+        if (!armoredProtectionEngaged) return false
 
         val nowElapsed = SystemClock.elapsedRealtime()
         val className = event.className?.toString().orEmpty()
         val eventValues = eventTextValues(event)
-        val directAccessibilityScreen =
-            AccessibilitySettingsPolicy.classTargetsAccessibility(className)
-        val directDeviceAdminScreen =
-            ManagedSelfProtectionPolicy.classTargetsDeviceAdmin(className)
-        val directAppDetailsScreen =
-            ManagedSelfProtectionPolicy.classTargetsAppDetails(className)
-        val directUninstallScreen =
-            ManagedSelfProtectionPolicy.classTargetsUninstall(className)
-        val directEssentialSpecialAccessScreen =
-            ManagedSelfProtectionPolicy.classTargetsEssentialSpecialAccess(className)
-        val genericSubSettings = className.contains("SubSettings", ignoreCase = true)
-        val eventMentionsAccessibility =
-            AccessibilitySettingsPolicy.textTargetsAccessibility(eventValues)
-        val eventMentionsDeviceAdmin =
-            ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(eventValues)
-        val eventMentionsFocusGuard =
-            ManagedSelfProtectionPolicy.textTargetsFocusGuard(eventValues)
-        val eventMentionsDestructiveControl =
-            ManagedSelfProtectionPolicy.textTargetsDestructiveControl(eventValues)
-        val eventMentionsEssentialSpecialAccess =
-            ManagedSelfProtectionPolicy.textTargetsEssentialSpecialAccess(eventValues)
-        val pendingProtection =
-            nowElapsed <= pendingSettingsProtectionUntilElapsed
 
-        if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED &&
-            (eventMentionsAccessibility ||
-                eventMentionsDeviceAdmin ||
-                (eventMentionsFocusGuard &&
-                    (eventMentionsDestructiveControl || eventMentionsEssentialSpecialAccess)))
-        ) {
-            pendingSettingsProtectionUntilElapsed =
-                nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
-            executeProtectionAction()
-            return true
+        val signals = SettingsInterceptionPolicy.EventSignals(
+            packageName = packageName,
+            isViewClickedEvent = event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED,
+            guardArmed = nowElapsed <= pendingSettingsProtectionUntilElapsed,
+            classTargetsAccessibility =
+                AccessibilitySettingsPolicy.classTargetsAccessibility(className),
+            classTargetsDeviceAdmin =
+                ManagedSelfProtectionPolicy.classTargetsDeviceAdmin(className),
+            classTargetsAppDetails =
+                ManagedSelfProtectionPolicy.classTargetsAppDetails(className),
+            classTargetsUninstall =
+                ManagedSelfProtectionPolicy.classTargetsUninstall(className),
+            classTargetsEssentialSpecialAccess =
+                ManagedSelfProtectionPolicy.classTargetsEssentialSpecialAccess(className),
+            isGenericSubSettings = className.contains("SubSettings", ignoreCase = true),
+            textMentionsAccessibility =
+                AccessibilitySettingsPolicy.textTargetsAccessibility(eventValues),
+            textMentionsDeviceAdmin =
+                ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(eventValues),
+            textMentionsFocusGuard =
+                ManagedSelfProtectionPolicy.textTargetsFocusGuard(eventValues),
+            textMentionsDestructiveControl =
+                ManagedSelfProtectionPolicy.textTargetsDestructiveControl(eventValues),
+            textMentionsEssentialSpecialAccess =
+                ManagedSelfProtectionPolicy.textTargetsEssentialSpecialAccess(eventValues)
+        )
+
+        val decision = SettingsInterceptionPolicy.decide(
+            signals = signals,
+            armoredProtectionEngaged = armoredProtectionEngaged,
+            strictPomodoroActive = isPomodoroStrictActive,
+            rootSignals = SettingsInterceptionPolicy.RootSignals(
+                mentionsAccessibility = ::rootMentionsAccessibility,
+                mentionsDeviceAdmin = ::rootMentionsDeviceAdmin,
+                mentionsFocusGuard = ::rootMentionsFocusGuard,
+                mentionsDestructiveControl = ::rootMentionsDestructiveControl,
+                mentionsEssentialSpecialAccess = ::rootMentionsEssentialSpecialAccess
+            )
+        )
+
+        return when (decision) {
+            SettingsInterceptionPolicy.Decision.IGNORE -> false
+
+            SettingsInterceptionPolicy.Decision.POMODORO_LOCK -> {
+                performGlobalAction(GLOBAL_ACTION_BACK)
+                launchPomodoroLockScreen()
+                true
+            }
+
+            SettingsInterceptionPolicy.Decision.PROTECT -> {
+                executeProtectionAction()
+                true
+            }
+
+            SettingsInterceptionPolicy.Decision.PROTECT_AND_ARM_GUARD -> {
+                pendingSettingsProtectionUntilElapsed =
+                    nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
+                executeProtectionAction()
+                true
+            }
         }
-
-        if (pendingProtection &&
-            event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED
-        ) {
-            executeProtectionAction()
-            return true
-        }
-
-        if (directAccessibilityScreen) {
-            pendingSettingsProtectionUntilElapsed =
-                nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
-            executeProtectionAction()
-            return true
-        }
-
-        if (directDeviceAdminScreen ||
-            (genericSubSettings &&
-                (eventMentionsDeviceAdmin || rootMentionsDeviceAdmin()))
-        ) {
-            pendingSettingsProtectionUntilElapsed =
-                nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
-            executeProtectionAction()
-            return true
-        }
-
-        val focusGuardControlScreen =
-            (directAppDetailsScreen || directUninstallScreen ||
-                packageName in packageInstallerPackages) &&
-                (eventMentionsFocusGuard || rootMentionsFocusGuard()) &&
-                (directAppDetailsScreen || directUninstallScreen ||
-                    eventMentionsDestructiveControl || rootMentionsDestructiveControl())
-        if (focusGuardControlScreen) {
-            pendingSettingsProtectionUntilElapsed =
-                nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
-            executeProtectionAction()
-            return true
-        }
-
-        if (directEssentialSpecialAccessScreen &&
-            (eventMentionsFocusGuard || rootMentionsFocusGuard()) &&
-            (eventMentionsEssentialSpecialAccess || rootMentionsEssentialSpecialAccess())
-        ) {
-            pendingSettingsProtectionUntilElapsed =
-                nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
-            executeProtectionAction()
-            return true
-        }
-
-        if (genericSubSettings &&
-            (eventMentionsAccessibility || rootMentionsAccessibility())
-        ) {
-            pendingSettingsProtectionUntilElapsed =
-                nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
-            executeProtectionAction()
-            return true
-        }
-
-        return false
     }
 
     private fun eventTextValues(event: AccessibilityEvent): List<CharSequence?> {

@@ -35,8 +35,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.focusguard.R
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
@@ -111,7 +113,7 @@ fun UsageBlockConfigScreen(
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text(
-                        text = "Deseja limitar o tempo de uso do(s) aplicativo(s) em quanto tempo por dia?",
+                        text = stringResource(R.string.usage_block_daily_limit_question),
                         color = TextPrimary,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -122,7 +124,7 @@ fun UsageBlockConfigScreen(
                         value = dailyLimitHoursText,
                         onValueChange = { value -> dailyLimitHoursText = value.filter { it.isDigit() } },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Ex: 2", color = TextHint) },
+                        placeholder = { Text(stringResource(R.string.ex_2), color = TextHint) },
                         singleLine = true
                     )
 
@@ -133,7 +135,7 @@ fun UsageBlockConfigScreen(
                         shape = RoundedCornerShape(14.dp)
                     ) {
                         Text(
-                            text = "! Aviso: você poderá usar o app somente a quantidade de tempo que você definir acima.",
+                            text = stringResource(R.string.usage_block_daily_limit_warning),
                             color = DangerRed,
                             modifier = Modifier.padding(12.dp)
                         )
@@ -150,7 +152,7 @@ fun UsageBlockConfigScreen(
             ) {
                 Column(modifier = Modifier.padding(18.dp)) {
                     Text(
-                        text = "Que tipo de limite deseja?",
+                        text = stringResource(R.string.usage_block_type_question),
                         color = TextPrimary,
                         fontWeight = FontWeight.Bold,
                         style = MaterialTheme.typography.titleMedium
@@ -161,7 +163,7 @@ fun UsageBlockConfigScreen(
                     LimitOption(
                         selected = selectedType == LimitType.HARD_BLOCK_NO_PASSWORD,
                         onSelect = { selectedType = LimitType.HARD_BLOCK_NO_PASSWORD },
-                        text = "Desejo bloquear o app quando o tempo acabar no dia de forma a não poder desbloquear, pelo período que eu dizer em dias."
+                        text = stringResource(R.string.usage_block_type_hard_no_password)
                     )
 
                     Spacer(modifier = Modifier.height(10.dp))
@@ -169,7 +171,7 @@ fun UsageBlockConfigScreen(
                     LimitOption(
                         selected = selectedType == LimitType.WARNING_ONLY,
                         onSelect = { selectedType = LimitType.WARNING_ONLY },
-                        text = "Desejo apenas receber um aviso que já usei o app demais, que irá bloquear o app por alguns segundos e depois irá liberá-lo caso eu queira usar mais."
+                        text = stringResource(R.string.usage_block_type_warning_only)
                     )
 
                     Spacer(modifier = Modifier.height(10.dp))
@@ -177,7 +179,7 @@ fun UsageBlockConfigScreen(
                     LimitOption(
                         selected = selectedType == LimitType.HARD_BLOCK_WITH_PASSWORD,
                         onSelect = { selectedType = LimitType.HARD_BLOCK_WITH_PASSWORD },
-                        text = "Desejo que o app seja bloqueado porém quero poder desbloqueá-lo com senha quando o tempo acabar."
+                        text = stringResource(R.string.usage_block_type_hard_with_password)
                     )
                 }
             }
@@ -192,7 +194,7 @@ fun UsageBlockConfigScreen(
                 ) {
                     Column(modifier = Modifier.padding(18.dp)) {
                         Text(
-                            text = "Bloqueio com senha",
+                            text = stringResource(R.string.usage_block_password_title),
                             color = TextPrimary,
                             fontWeight = FontWeight.Bold
                         )
@@ -200,14 +202,18 @@ fun UsageBlockConfigScreen(
                         Spacer(modifier = Modifier.height(10.dp))
 
                         Text(
-                            text = "Caso seja bloqueio por senha, é possível criar uma senha, ou usar senhas existentes. Se caso não tiver senhas, terá obrigatoriamente que criar uma.",
+                            text = stringResource(R.string.usage_block_password_description),
                             color = TextSecondary
                         )
 
                         Spacer(modifier = Modifier.height(12.dp))
 
                         Text(
-                            text = if (hasExistingPassword) "Senha existente encontrada." else "Nenhuma senha encontrada. Ao salvar, você será levado para criar uma senha.",
+                            text = if (hasExistingPassword) {
+                                stringResource(R.string.final_config_existing_password)
+                            } else {
+                                stringResource(R.string.usage_block_password_missing)
+                            },
                             color = if (hasExistingPassword) AccentCyan else DangerRed,
                             fontWeight = FontWeight.Medium
                         )
@@ -219,7 +225,14 @@ fun UsageBlockConfigScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                             shape = RoundedCornerShape(14.dp)
                         ) {
-                            Text(text = if (hasExistingPassword) "Gerenciar senha" else "Criar senha", color = DarkBg)
+                            Text(
+                                text = if (hasExistingPassword) {
+                                    stringResource(R.string.usage_block_manage_password)
+                                } else {
+                                    stringResource(R.string.criar_senha)
+                                },
+                                color = DarkBg
+                            )
                         }
                     }
                 }
@@ -235,7 +248,7 @@ fun UsageBlockConfigScreen(
                 ) {
                     Column(modifier = Modifier.padding(18.dp)) {
                         Text(
-                            text = "Bloqueio sem senha",
+                            text = stringResource(R.string.usage_block_no_password_title),
                             color = TextPrimary,
                             fontWeight = FontWeight.Bold
                         )
@@ -243,7 +256,7 @@ fun UsageBlockConfigScreen(
                         Spacer(modifier = Modifier.height(10.dp))
 
                         Text(
-                            text = "Caso seja bloqueio sem senha, eu devo definir quantos dias o bloqueio deve durar, no máximo 120 dias.",
+                            text = stringResource(R.string.usage_block_no_password_description),
                             color = TextSecondary
                         )
 
@@ -257,7 +270,12 @@ fun UsageBlockConfigScreen(
                                 daysToBlockText = parsed?.toString() ?: digits
                             },
                             modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("Quantidade de dias (máx. 120)", color = TextHint) },
+                            placeholder = {
+                                Text(
+                                    stringResource(R.string.quantidade_de_dias_max_120),
+                                    color = TextHint
+                                )
+                            },
                             singleLine = true
                         )
 
@@ -269,13 +287,13 @@ fun UsageBlockConfigScreen(
                         ) {
                             Column(modifier = Modifier.padding(12.dp)) {
                                 Text(
-                                    text = "Com um aviso, no qual diz que:",
+                                    text = stringResource(R.string.usage_block_warning_heading),
                                     color = DangerRed,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(6.dp))
                                 Text(
-                                    text = "Caso concorde será impossível utilizar o app mais do que o especificado diariamente e o bloqueio durará até os dias determinados acabarem, sendo impossível burlar.",
+                                    text = stringResource(R.string.usage_block_irreversible_warning),
                                     color = DangerRed
                                 )
                             }
@@ -284,7 +302,7 @@ fun UsageBlockConfigScreen(
                         Spacer(modifier = Modifier.height(14.dp))
 
                         Text(
-                            text = "Escreva abaixo: eu concordo e entendo os riscos.",
+                            text = stringResource(R.string.usage_block_agreement_instruction),
                             color = TextPrimary,
                             fontWeight = FontWeight.SemiBold
                         )
@@ -295,7 +313,12 @@ fun UsageBlockConfigScreen(
                             value = agreementText,
                             onValueChange = { agreementText = it },
                             modifier = Modifier.fillMaxWidth(),
-                            placeholder = { Text("eu concordo e entendo os riscos", color = TextHint) }
+                            placeholder = {
+                                Text(
+                                    stringResource(R.string.eu_concordo_e_entendo_os_riscos),
+                                    color = TextHint
+                                )
+                            }
                         )
                     }
                 }
@@ -313,7 +336,7 @@ fun UsageBlockConfigScreen(
                     onClick = onCancel,
                     modifier = Modifier.weight(1f)
                 ) {
-                    Text("Cancelar", color = TextSecondary)
+                    Text(stringResource(R.string.cancel), color = TextSecondary)
                 }
 
                 Button(
@@ -333,7 +356,7 @@ fun UsageBlockConfigScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                     shape = RoundedCornerShape(14.dp)
                 ) {
-                    Text("Salvar", color = DarkBg, fontWeight = FontWeight.Bold)
+                    Text(stringResource(R.string.save), color = DarkBg, fontWeight = FontWeight.Bold)
                 }
             }
 

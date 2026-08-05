@@ -19,9 +19,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.core.graphics.drawable.toBitmap
+import com.focusguard.R
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.utils.WebsiteBlocker
 
@@ -42,15 +44,15 @@ fun ActiveSessionsScreen(
 
     when {
         isBlocking -> {
-            statusText = "Bloqueio Ativo"
+            statusText = stringResource(R.string.status_blocking_active)
             statusColor = DangerRed
         }
         hasSession -> {
-            statusText = "Sessão Registrada (Aguardando janela)"
+            statusText = stringResource(R.string.status_session_registered)
             statusColor = WarningAmber
         }
         else -> {
-            statusText = "Nenhuma Sessão Ativa"
+            statusText = stringResource(R.string.status_no_session)
             statusColor = SuccessGreen
         }
     }
@@ -58,10 +60,14 @@ fun ActiveSessionsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Sessões Ativas", color = TextPrimary) },
+                title = { Text(stringResource(R.string.sessoes_ativas), color = TextPrimary) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Voltar", tint = TextPrimary)
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            stringResource(R.string.action_back),
+                            tint = TextPrimary
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBg)

@@ -138,7 +138,7 @@ fun PomodoroScreen(
                 if (isStrictBlockingActive) {
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(
-                        text = "Você só poderá usar o telefone para ligações até o tempo acabar.",
+                        text = stringResource(R.string.pomodoro_strict_calls_only_notice),
                         color = TextHint,
                         fontSize = 12.sp,
                         textAlign = TextAlign.Center

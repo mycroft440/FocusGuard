@@ -79,16 +79,38 @@ fun TimeBlockSessionConfigScreen(
     var pendingProtectionReason by remember {
         mutableStateOf<BlockingProtectionUnavailableException.Reason?>(null)
     }
+    var showMasterCredentialSetup by remember { mutableStateOf(false) }
 
     val days = daysText.toIntOrNull() ?: 0
     val hours = hoursText.toIntOrNull() ?: 0
     val totalHours = days * 24 + hours
     val canSave = totalHours > 0 && (apps.isNotEmpty() || sites.isNotEmpty())
 
+    if (showMasterCredentialSetup) {
+        // Configurar a senha mestre aqui mesmo: o usuário está tentando armar um
+        // bloqueio, mandá-lo navegar até Configurações perderia o contexto.
+        DeactivationCredentialDialog(
+            managementLocked = false,
+            onDismiss = { showMasterCredentialSetup = false },
+            onCredentialChanged = { showMasterCredentialSetup = false }
+        )
+    }
+
     pendingProtectionReason?.let { reason ->
         val message = when (reason) {
             BlockingProtectionUnavailableException.Reason.ACCESSIBILITY_REQUIRED -> {
                 R.string.dopamine_accessibility_required
+            }
+            BlockingProtectionUnavailableException.Reason.MASTER_CREDENTIAL_REQUIRED -> {
+                R.string.master_credential_required_to_block
+            }
+        }
+        val confirmLabel = when (reason) {
+            BlockingProtectionUnavailableException.Reason.ACCESSIBILITY_REQUIRED -> {
+                R.string.dopamine_open_permissions
+            }
+            BlockingProtectionUnavailableException.Reason.MASTER_CREDENTIAL_REQUIRED -> {
+                R.string.master_credential_create_action
             }
         }
 
@@ -100,10 +122,20 @@ fun TimeBlockSessionConfigScreen(
                 TextButton(
                     onClick = {
                         pendingProtectionReason = null
-                        context.startActivity(Intent(context, PermissionsActivity::class.java))
+                        when (reason) {
+                            BlockingProtectionUnavailableException
+                                .Reason.ACCESSIBILITY_REQUIRED ->
+                                context.startActivity(
+                                    Intent(context, PermissionsActivity::class.java)
+                                )
+
+                            BlockingProtectionUnavailableException
+                                .Reason.MASTER_CREDENTIAL_REQUIRED ->
+                                showMasterCredentialSetup = true
+                        }
                     }
                 ) {
-                    Text(stringResource(R.string.dopamine_open_permissions))
+                    Text(stringResource(confirmLabel))
                 }
             },
             dismissButton = {

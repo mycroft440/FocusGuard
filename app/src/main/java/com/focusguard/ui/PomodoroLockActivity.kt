@@ -38,6 +38,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -46,6 +47,7 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
+import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.manager.StrictPomodoroLock
@@ -349,9 +351,9 @@ private fun StrictPomodoroLockScreen(
                     Spacer(Modifier.height(12.dp))
                     Text(
                         if (isDeviceOwner) {
-                            "Modo kiosk ativo. A sessão termina automaticamente no horário definido."
+                            stringResource(R.string.pomodoro_lock_kiosk_active)
                         } else {
-                            "Sem Device Owner, algumas telas do sistema ainda podem aparecer."
+                            stringResource(R.string.pomodoro_lock_no_device_owner)
                         },
                         color = if (isDeviceOwner) TextSecondary else TextHint,
                         fontSize = 13.sp,
@@ -369,7 +371,7 @@ private fun StrictPomodoroLockScreen(
                 Icon(Icons.Default.Phone, contentDescription = null, tint = DarkBg)
                 Spacer(Modifier.padding(4.dp))
                 Text(
-                    "Abrir telefone para emergência",
+                    stringResource(R.string.abrir_telefone_para_emergencia),
                     color = DarkBg,
                     fontWeight = FontWeight.Bold
                 )

@@ -296,6 +296,10 @@ fun PasswordCreationDialog(
     var confirmPassword by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
 
+    // Içadas: stringResource é @Composable e não pode ser chamada dentro do onClick.
+    val emptyPasswordError = stringResource(R.string.create_session_error_empty)
+    val passwordMismatchError = stringResource(R.string.create_session_error_mismatch)
+
     AlertDialog(
         onDismissRequest = { if (!isSaving) onDismiss() },
         title = { Text(stringResource(R.string.final_config_create_password), color = TextPrimary) },
@@ -337,9 +341,9 @@ fun PasswordCreationDialog(
             Button(
                 onClick = {
                     if (password.isBlank()) {
-                        error = "A senha não pode estar vazia"
+                        error = emptyPasswordError
                     } else if (password != confirmPassword) {
-                        error = "As senhas não coincidem"
+                        error = passwordMismatchError
                     } else {
                         onPasswordCreated(password)
                     }

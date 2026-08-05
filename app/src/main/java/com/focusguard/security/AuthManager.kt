@@ -142,6 +142,23 @@ class AuthManager(context: Context) {
         securePrefs.putBoolean("photo_capture_enabled", enabled)
     }
 
+    /**
+     * Opt-in: allow a fingerprint to stand in for the password when opening a
+     * blocked app. Off by default — enabling it must be a deliberate choice,
+     * since it lowers the friction the user asked for.
+     *
+     * Scope is enforced by [BiometricAppUnlockPolicy], not here: this flag only
+     * expresses intent. It can never open a Dopamine Fast or a time-hardened
+     * limit, no matter its value.
+     */
+    fun isBiometricAppUnlockEnabled(): Boolean {
+        return securePrefs.getBoolean(BIOMETRIC_APP_UNLOCK_KEY, false)
+    }
+
+    fun setBiometricAppUnlockEnabled(enabled: Boolean) {
+        securePrefs.putBoolean(BIOMETRIC_APP_UNLOCK_KEY, enabled)
+    }
+
     fun isSafetyModeEnabled(): Boolean {
         return securePrefs.getBoolean("safety_mode_enabled", false)
     }
@@ -266,9 +283,10 @@ class AuthManager(context: Context) {
 
     suspend fun addPasswordSuspend(newPassword: String) {
         ensureMigrationDone()
+        val nextNumber = passwordDao.getAllStatic().size + 1
         insertPassword(
             password = newPassword,
-            label = appContext.getString(R.string.senha_count_1)
+            label = appContext.getString(R.string.senha_count_1, nextNumber)
         )
     }
 
@@ -294,6 +312,7 @@ class AuthManager(context: Context) {
     companion object {
         private const val AUTH_PREFERENCES = "FocusGuardAuth"
         private const val ADULT_FILTER_ENABLED_KEY = "adult_filter_enabled"
+        private const val BIOMETRIC_APP_UNLOCK_KEY = "biometric_app_unlock_enabled"
 
         // Guarda de migração companion-level — garante que múltiplas instâncias
         // de AuthManager (criadas por callers legados) não disparem migração

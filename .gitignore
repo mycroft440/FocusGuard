@@ -84,8 +84,11 @@ test.txt
 # ============================================================================
 # Agent tooling (NÃO commitar artefatos de geração de plano/scripts)
 # Estes arquivos poluem o source tree e não fazem parte do app Android.
+# `.gitignore` não desrastreia arquivos já commitados: se algum reaparecer no
+# `git status`, use `git rm --cached <arquivo>`.
 # ============================================================================
 .ag-agent/
+.ag-agent.config.json
 .ag-write-*.tmp
 *.ag.tmp
 scratch.py

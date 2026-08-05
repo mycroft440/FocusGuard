@@ -15,7 +15,6 @@
     <string name="trust_choice_notice">Você pode continuar sem concordar e usar os recursos que não dependem dessas permissões. As permissões também podem ser revogadas nas configurações do Android.</string>
     <string name="trust_accept">Concordo e continuar</string>
     <string name="trust_decline">Agora não</string>
-    <string name="trust_privacy_summary">O FocusGuard usa somente os acessos necessários para recursos escolhidos por você.</string>
 
     <string name="accessibility_service_description_transparent">O FocusGuard observa o aplicativo ou navegador em primeiro plano e o conteúdo visível da janela para aplicar bloqueios e limites configurados pelo usuário. O processamento é local, não controla o aparelho remotamente e não impede a desativação do serviço nas configurações do Android.</string>
     <string name="accessibility_paused_channel">Status da proteção</string>

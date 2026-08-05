@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="device_owner_setup_title">Enable Device Owner</string>
+    <string name="device_owner_setup_status_active">Status: Device Owner active</string>
+    <string name="device_owner_setup_status_admin_only">Status: standard administrator only — still removable</string>
+    <string name="device_owner_setup_status_inactive">Status: Device Owner inactive</string>
+    <string name="device_owner_setup_warning">Android does not let an app become Device Owner by tapping a button. Complete the provisioning below using a computer. On some devices, a factory reset is the only path the system accepts.</string>
+    <string name="device_owner_setup_step_backup">Back up your data. If Android refuses the provisioning, you may need to reset the device.</string>
+    <string name="device_owner_setup_step_accounts">Temporarily remove all Google, Samsung and other manufacturer accounts, secondary users and work profiles. Keep only the main user.</string>
+    <string name="device_owner_setup_step_debugging">Enable Developer options and USB debugging for the provisioning only. Connect the phone to the computer and accept the RSA key.</string>
+    <string name="device_owner_setup_step_install">Install ADB on the computer and confirm FocusGuard is already installed on the main user. Run “adb devices” and check that the device shows up as authorized.</string>
+    <string name="device_owner_setup_step_command">In the computer terminal, run exactly this command:</string>
+    <string name="device_owner_setup_step_finish">When “Success” appears, tap “Verify now”. You can then add your accounts back and disable USB debugging; FocusGuard will not block USB or ADB.</string>
+    <string name="device_owner_setup_copy">Copy command</string>
+    <string name="device_owner_setup_copied">Command copied.</string>
+    <string name="device_owner_setup_verify">Verify now</string>
+    <string name="device_owner_setup_errors_title">If the command fails</string>
+    <string name="device_owner_setup_errors">“Already has a device owner”: remove the existing Device Owner first. “Accounts on the device”: remove all accounts and profiles. “Not allowed” or device already set up: back up, reset the device, install FocusGuard before adding accounts and try again. Do not run the command with a package ID different from the one shown above.</string>
+    <string name="device_owner_setup_active_description">Android has confirmed FocusGuard as Device Owner. Hardening is armed automatically while an effective block is running and released only according to the maintenance policy.</string>
+</resources>
