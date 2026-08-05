@@ -33,6 +33,8 @@ import com.focusguard.ui.OfflineBookActivity
 import com.focusguard.ui.PermissionsActivity
 import com.focusguard.ui.compose.screens.AuthScreen
 import com.focusguard.ui.compose.screens.BlockCustomizationScreen
+import com.focusguard.ui.compose.screens.BlockTypeDetailScreen
+import com.focusguard.ui.compose.screens.BlockTypeUi
 import com.focusguard.ui.compose.screens.IntruderLogScreen
 import com.focusguard.ui.compose.screens.LanguageScreen
 import com.focusguard.ui.compose.screens.LimitsSecurityScreen
@@ -63,6 +65,7 @@ private object FocusGuardRoute {
     const val Dashboard = "DASHBOARD"
     const val BlockCustomization = "BLOCK_CUSTOMIZATION"
     const val SessionsList = "SESSIONS_LIST"
+    const val BlockTypeDetail = "BLOCK_TYPE_DETAIL"
 }
 
 @Composable
@@ -99,6 +102,7 @@ fun FocusGuardNavHost(
     }
 
     var currentRoute by remember { mutableStateOf(FocusGuardRoute.Home) }
+    var selectedBlockType by remember { mutableStateOf(BlockTypeUi.PASSWORD) }
     var selectedTab by remember { mutableIntStateOf(1) }
     var selectedSessionType by remember { mutableStateOf("PASSWORD") }
     var permissionsVisible by remember { mutableStateOf(false) }
@@ -180,11 +184,9 @@ fun FocusGuardNavHost(
                     onTabChange = { selectedTab = it },
                     permissionsVisible = permissionsVisible,
                     onPermissionsClick = { activity.startActivity(Intent(activity, PermissionsActivity::class.java)) },
-                    onProtectionClick = {
-                        activity.startActivity(
-                            Intent(activity, CreateSessionActivity::class.java)
-                                .putExtra("SESSION_TYPE", "UNIFIED")
-                        )
+                    onBlockTypeClick = { type ->
+                        selectedBlockType = type
+                        currentRoute = FocusGuardRoute.BlockTypeDetail
                     },
                     onSettingsClick = { currentRoute = FocusGuardRoute.Settings },
                     usageStatsContent = {
@@ -212,6 +214,30 @@ fun FocusGuardNavHost(
                             }
                         )
                     }
+                )
+                FocusGuardRoute.BlockTypeDetail -> BlockTypeDetailScreen(
+                    type = selectedBlockType,
+                    onAddClick = {
+                        when (selectedBlockType) {
+                            // Limites de uso já têm tela própria de configuração;
+                            // os outros dois entram no assistente com o tipo fixo,
+                            // em vez de perguntar de novo o que o usuário já disse
+                            // ao escolher o card.
+                            BlockTypeUi.DAILY_LIMIT ->
+                                currentRoute = FocusGuardRoute.UsageLimits
+
+                            BlockTypeUi.PASSWORD -> activity.startActivity(
+                                Intent(activity, CreateSessionActivity::class.java)
+                                    .putExtra("SESSION_TYPE", "PASSWORD")
+                            )
+
+                            BlockTypeUi.DOPAMINE_FAST -> activity.startActivity(
+                                Intent(activity, CreateSessionActivity::class.java)
+                                    .putExtra("SESSION_TYPE", "TIME")
+                            )
+                        }
+                    },
+                    onBack = { currentRoute = FocusGuardRoute.Home }
                 )
                 FocusGuardRoute.Settings -> SettingsScreen(
                     onLimitsClick = { currentRoute = FocusGuardRoute.Limits },

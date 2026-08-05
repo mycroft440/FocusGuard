@@ -25,6 +25,30 @@
     <string name="swipe_hint">← Deslize para ver estatísticas →</string>
     <string name="protection_entry_title">Bloquear, limitar e proteger apps e sites</string>
     <string name="protection_entry_subtitle">Configure todas as restrições em um só lugar</string>
+
+    <!-- Os três tipos de proteção, separados na tela inicial -->
+    <string name="block_type_password_title">Proteja apps com senha</string>
+    <string name="block_type_password_subtitle">Proteja apps para que pessoas desconhecidas não mexam</string>
+    <string name="block_type_password_empty">Nenhum app protegido por senha ainda.</string>
+    <string name="block_type_password_action">Proteger apps</string>
+
+    <string name="block_type_limit_title">Limitar uso de apps por dia</string>
+    <string name="block_type_limit_subtitle">Limite o quanto você usa apps viciantes</string>
+    <string name="block_type_limit_empty">Nenhum limite diário configurado ainda.</string>
+    <string name="block_type_limit_action">Limitar apps</string>
+
+    <string name="block_type_fast_title">Bloqueie sem senha por tempo</string>
+    <string name="block_type_fast_subtitle">Bloqueie pornografia, redes sociais ou qualquer app e site por meses. Não há senha: só termina quando o prazo acabar.</string>
+    <string name="block_type_fast_empty">Nenhum jejum de dopamina ativo.</string>
+    <string name="block_type_fast_action">Bloquear apps</string>
+
+    <string name="block_type_already_blocked">Já bloqueados (%1$d)</string>
+    <string name="block_type_daily_allowance">%1$d min por dia</string>
+    <string name="block_type_until_you_end_it">Até você encerrar com a senha</string>
+    <string name="block_type_remaining_days">Faltam %1$d dia(s) para o desbloqueio</string>
+    <string name="block_type_remaining_hours">Faltam %1$d hora(s) para o desbloqueio</string>
+    <string name="block_type_remaining_less_than_hour">Falta menos de uma hora</string>
+    <string name="block_type_remaining_elapsed">Prazo encerrado</string>
     <string name="protection_setup_title">Proteção e limites</string>
     <string name="protection_add_apps_title">Adicionar apps à lista</string>
     <string name="protection_add_apps_subtitle">Escolha aplicativos instalados ou preventivos</string>

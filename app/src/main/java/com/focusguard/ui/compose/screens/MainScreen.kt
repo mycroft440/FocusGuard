@@ -37,7 +37,7 @@ fun MainScreen(
     onTabChange: (Int) -> Unit,
     permissionsVisible: Boolean,
     onPermissionsClick: () -> Unit,
-    onProtectionClick: () -> Unit,
+    onBlockTypeClick: (BlockTypeUi) -> Unit,
     onSettingsClick: () -> Unit,
     usageStatsContent: @Composable () -> Unit,
     pomodoroContent: @Composable () -> Unit,
@@ -150,7 +150,7 @@ fun MainScreen(
                     1 -> HomeContent(
                         permissionsVisible = permissionsVisible,
                         onPermissionsClick = onPermissionsClick,
-                        onProtectionClick = onProtectionClick,
+                        onBlockTypeClick = onBlockTypeClick,
                         pagerHint = false
                     )
                     2 -> pomodoroContent()
@@ -216,7 +216,7 @@ fun DrawerMenuButton(
 fun HomeContent(
     permissionsVisible: Boolean,
     onPermissionsClick: () -> Unit,
-    onProtectionClick: () -> Unit,
+    onBlockTypeClick: (BlockTypeUi) -> Unit,
     pagerHint: Boolean
 ) {
     var visible by remember { mutableStateOf(false) }
@@ -287,16 +287,27 @@ fun HomeContent(
             }
 
             // [F2] Agrupamento de cards de funcionalidade
+            //
+            // Um card por tipo de proteção, em vez de uma entrada única: as três
+            // se comportam de formas muito diferentes — uma abre com senha, uma
+            // limita por dia, uma não abre de jeito nenhum até o prazo acabar — e
+            // escolher entre elas dentro de um assistente escondia essa diferença
+            // justamente de quem ainda não a conhece.
             AnimatedVisibility(
                 visible = visible,
                 enter = fadeIn(animationSpec = tween(500, delayMillis = 150)) + slideInVertically(animationSpec = tween(500, delayMillis = 150)) { 30 }
             ) {
-                SessionCard(
-                    icon = Icons.Outlined.Shield,
-                    title = stringResource(id = R.string.protection_entry_title),
-                    subtitle = stringResource(id = R.string.protection_entry_subtitle),
-                    onClick = onProtectionClick
-                )
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    BlockTypeUi.entries.forEach { type ->
+                        SessionCard(
+                            icon = type.icon,
+                            title = stringResource(id = type.titleRes),
+                            subtitle = stringResource(id = type.subtitleRes),
+                            accent = type.accent,
+                            onClick = { onBlockTypeClick(type) }
+                        )
+                    }
+                }
             }
         }
 
@@ -315,7 +326,15 @@ fun HomeContent(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SessionCard(icon: ImageVector, title: String, subtitle: String, onClick: () -> Unit) {
+fun SessionCard(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit,
+    // Cor própria por tipo de proteção, para o card ser reconhecível antes de o
+    // texto ser lido. O padrão mantém o visual das chamadas antigas.
+    accent: Color = AccentCyan
+) {
     var isPressed by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
         targetValue = if (isPressed) 0.96f else 1f,
@@ -340,9 +359,9 @@ fun SessionCard(icon: ImageVector, title: String, subtitle: String, onClick: () 
     ) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(Brush.linearGradient(colors = listOf(AccentCyan.copy(alpha = 0.15f), AccentPurple.copy(alpha = 0.15f)))),
+                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(Brush.linearGradient(colors = listOf(accent.copy(alpha = 0.18f), accent.copy(alpha = 0.06f)))),
                 contentAlignment = Alignment.Center
-            ) { Icon(icon, contentDescription = null, modifier = Modifier.size(26.dp), tint = AccentCyan) }
+            ) { Icon(icon, contentDescription = null, modifier = Modifier.size(26.dp), tint = accent) }
             Spacer(modifier = Modifier.width(16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)

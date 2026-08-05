@@ -89,6 +89,119 @@ class BlockingSessionManager @Inject constructor(
         }
     }
 
+    /**
+     * Read-only snapshot of what is currently blocked, grouped the way the user
+     * chose it — by the kind of protection, not by app.
+     *
+     * Separate from [ConfiguredBlockedTargets], which answers "can I still add
+     * this target?" during setup. This one answers "what is holding right now?"
+     * and therefore carries the deadline a dopamine fast needs.
+     */
+    data class BlockOverview(
+        val passwordEntries: List<Entry> = emptyList(),
+        val dailyLimitEntries: List<Entry> = emptyList(),
+        val dopamineFastEntries: List<Entry> = emptyList()
+    ) {
+        val isEmpty: Boolean
+            get() = passwordEntries.isEmpty() &&
+                dailyLimitEntries.isEmpty() &&
+                dopamineFastEntries.isEmpty()
+
+        /**
+         * @param identifier package name for an app, normalized rule for a site.
+         * @param dailyLimitMinutes only set for daily-limit entries.
+         * @param unlockAtMillis only set for time-bound blocks; null means the
+         *   block runs until the user ends it.
+         */
+        data class Entry(
+            val identifier: String,
+            val isWebsite: Boolean,
+            val dailyLimitMinutes: Int? = null,
+            val unlockAtMillis: Long? = null
+        )
+    }
+
+    /**
+     * Builds the overview shown by the "check blocks" screen.
+     *
+     * App labels are deliberately not resolved here: turning a package name into a
+     * display name needs a PackageManager lookup per entry, which belongs to the
+     * UI layer where it can be done lazily for the rows actually on screen.
+     */
+    suspend fun getBlockOverview(): BlockOverview = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
+            .filter { it.endTime == null || it.endTime > now }
+
+        val passwordIds = activeSessions
+            .filter { it.sessionType == "PASSWORD" }
+            .map { it.id }
+
+        // A fast can span several sessions; each target shows the deadline of the
+        // session that actually holds it, so two fasts started apart do not report
+        // a single misleading date.
+        val fastSessions = activeSessions.filter {
+            MasterCredentialPolicy.isIrreversibleSessionType(it.sessionType)
+        }
+
+        val passwordEntries = buildEntries(
+            appPackages = getAppsForSessions(passwordIds),
+            websiteRules = getSitesForSessions(passwordIds)
+        )
+
+        val fastEntries = fastSessions.flatMap { session ->
+            buildEntries(
+                appPackages = getAppsForSessions(listOf(session.id)),
+                websiteRules = getSitesForSessions(listOf(session.id)),
+                unlockAtMillis = session.endTime
+            )
+        }.distinctBy { it.identifier }
+
+        val appLimits = database.appUsageLimitDao().getAllActiveLimitsStatic()
+        val websiteLimits = database.websiteUsageLimitDao().getAllStatic().filter { it.isEnabled }
+        val limitEntries = appLimits.map { limit ->
+            BlockOverview.Entry(
+                identifier = limit.packageName,
+                isWebsite = false,
+                dailyLimitMinutes = limit.dailyLimitMinutes
+            )
+        } + websiteLimits.map { limit ->
+            BlockOverview.Entry(
+                identifier = WebsiteBlocker.normalizeRule(limit.domain),
+                isWebsite = true,
+                dailyLimitMinutes = limit.dailyLimitMinutes
+            )
+        }
+
+        BlockOverview(
+            passwordEntries = passwordEntries.sortedBy { it.identifier },
+            dailyLimitEntries = limitEntries.sortedBy { it.identifier },
+            dopamineFastEntries = fastEntries.sortedBy { it.identifier }
+        )
+    }
+
+    private fun buildEntries(
+        appPackages: List<String>,
+        websiteRules: List<String>,
+        unlockAtMillis: Long? = null
+    ): List<BlockOverview.Entry> {
+        val apps = appPackages.distinct().map { packageName ->
+            BlockOverview.Entry(
+                identifier = packageName,
+                isWebsite = false,
+                unlockAtMillis = unlockAtMillis
+            )
+        }
+        val sites = WebsiteBlocker.normalizeRules(websiteRules).map { rule ->
+            BlockOverview.Entry(
+                identifier = rule,
+                isWebsite = true,
+                unlockAtMillis = unlockAtMillis
+            )
+        }
+        return apps + sites
+    }
+
     data class ConfiguredBlockedTargets(
         val passwordAppPackageNames: Set<String> = emptySet(),
         val passwordWebsiteRules: Set<String> = emptySet(),

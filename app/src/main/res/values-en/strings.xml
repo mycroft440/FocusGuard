@@ -25,6 +25,30 @@
     <string name="swipe_hint">← Swipe to see statistics →</string>
     <string name="protection_entry_title">Block, limit and protect apps and sites</string>
     <string name="protection_entry_subtitle">Set up every restriction in one place</string>
+
+    <!-- The three protection types, separated on the home screen -->
+    <string name="block_type_password_title">Protect apps with a password</string>
+    <string name="block_type_password_subtitle">Protect apps so strangers cannot open them</string>
+    <string name="block_type_password_empty">No app protected by a password yet.</string>
+    <string name="block_type_password_action">Protect apps</string>
+
+    <string name="block_type_limit_title">Limit daily app usage</string>
+    <string name="block_type_limit_subtitle">Limit how much you use addictive apps</string>
+    <string name="block_type_limit_empty">No daily limit configured yet.</string>
+    <string name="block_type_limit_action">Limit apps</string>
+
+    <string name="block_type_fast_title">Block by time, with no password</string>
+    <string name="block_type_fast_subtitle">Block pornography, social media or any app and site for months. There is no password: it ends only when the period is over.</string>
+    <string name="block_type_fast_empty">No dopamine fast running.</string>
+    <string name="block_type_fast_action">Block apps</string>
+
+    <string name="block_type_already_blocked">Already blocked (%1$d)</string>
+    <string name="block_type_daily_allowance">%1$d min per day</string>
+    <string name="block_type_until_you_end_it">Until you end it with your password</string>
+    <string name="block_type_remaining_days">%1$d day(s) left until unlock</string>
+    <string name="block_type_remaining_hours">%1$d hour(s) left until unlock</string>
+    <string name="block_type_remaining_less_than_hour">Less than an hour left</string>
+    <string name="block_type_remaining_elapsed">Period ended</string>
     <string name="protection_setup_title">Protection and limits</string>
     <string name="protection_add_apps_title">Add apps to the list</string>
     <string name="protection_add_apps_subtitle">Choose installed or preemptive apps</string>
