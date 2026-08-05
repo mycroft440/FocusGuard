@@ -402,9 +402,30 @@ class BlockingAccessibilityService : AccessibilityService() {
             val now = System.currentTimeMillis()
             if (now - lastLoadTime > cacheTimeoutMillis) refreshData()
 
+            // Fast path: settings interception decides on `event.packageName` alone,
+            // before resolveEventPackageName() is allowed to touch the node tree.
+            //
+            // That resolution costs one or two synchronous binder calls into the
+            // inspected app (windows walk plus rootInActiveWindow), on every event.
+            // Those milliseconds are exactly the window in which the user can reach
+            // the switch that disables this service, so nothing that can block runs
+            // ahead of the decision to bounce them out.
+            val directPackage = event.packageName?.toString().orEmpty()
+            val eligibleForInterception = event.eventType in settingsInterceptionEventTypes
+            if (eligibleForInterception &&
+                directPackage in protectedSystemPackages &&
+                handleSettingsInterception(event)
+            ) {
+                return
+            }
+
             val packageName = resolveEventPackageName(event)
-            if (packageName in protectedSystemPackages &&
-                event.eventType in settingsInterceptionEventTypes &&
+            // Second chance: `event.packageName` is occasionally blank, and for
+            // TYPE_WINDOWS_CHANGED it can name a different window than the one that
+            // actually changed. Only reached when the fast path could not decide.
+            if (eligibleForInterception &&
+                packageName != directPackage &&
+                packageName in protectedSystemPackages &&
                 handleSettingsInterception(event)
             ) {
                 return
@@ -742,8 +763,8 @@ class BlockingAccessibilityService : AccessibilityService() {
             packageName = packageName,
             isViewClickedEvent = event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED,
             guardArmed = nowElapsed <= pendingSettingsProtectionUntilElapsed,
-            classTargetsAccessibility =
-                AccessibilitySettingsPolicy.classTargetsAccessibility(className),
+            classTargetsAccessibilityServiceToggle =
+                AccessibilitySettingsPolicy.classTargetsAccessibilityServiceToggle(className),
             classTargetsDeviceAdmin =
                 ManagedSelfProtectionPolicy.classTargetsDeviceAdmin(className),
             classTargetsAppDetails =
@@ -1388,10 +1409,36 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val SAFE_REDIRECT_URL = "https://www.google.com"
-        private const val SETTINGS_TRANSITION_GUARD_MILLIS = 2_000L
+        /**
+         * How long a relevant click keeps intercepting follow-up events.
+         *
+         * This is the main defence against the race the user can win: the click on
+         * the menu entry is seen *before* the destination screen exists, so the
+         * guard bounces the transition itself instead of waiting for the new
+         * window. Sized for a cold Settings start on a slow device — the cost of
+         * being generous is only that Settings stays interceptive for a few
+         * seconds after such a click.
+         */
+        private const val SETTINGS_TRANSITION_GUARD_MILLIS = 6_000L
         private const val INSTANT_CURTAIN_FAILSAFE_MILLIS = 5_000L
         internal const val EVENT_NOTIFICATION_TIMEOUT_MILLIS = 0L
+        /**
+         * Event types that can trigger settings interception.
+         *
+         * Ordered by how early they arrive, not by how much they tell us.
+         * TYPE_WINDOWS_CHANGED and TYPE_VIEW_FOCUSED carry almost no class name or
+         * text — on their own they decide nothing — but they are the first signals
+         * that a new window exists, and once the transition guard is armed by a
+         * click that is all it takes to bounce out. Waiting for
+         * TYPE_WINDOW_STATE_CHANGED costs the frames in which the switch is already
+         * on screen and tappable.
+         *
+         * All four are already in [requestedAccessibilityEventTypes], so this
+         * widens nothing about what the service observes.
+         */
         private val settingsInterceptionEventTypes = setOf(
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_FOCUSED,
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
             AccessibilityEvent.TYPE_VIEW_CLICKED
@@ -1409,6 +1456,12 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal const val EXTRA_BLOCKED_SITES_SNAPSHOT = "BLOCKED_SITES_SNAPSHOT"
         internal const val EXTRA_BLOCKING_ACTIVE_SNAPSHOT = "BLOCKING_ACTIVE_SNAPSHOT"
         internal const val EXTRA_STRICT_POMODORO_SNAPSHOT = "STRICT_POMODORO_SNAPSHOT"
+
+        internal fun settingsInterceptionEventTypesForTest(): Set<Int> =
+            settingsInterceptionEventTypes
+
+        internal fun settingsTransitionGuardMillisForTest(): Long =
+            SETTINGS_TRANSITION_GUARD_MILLIS
 
         internal fun requestedAccessibilityEventTypes(): Int =
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or

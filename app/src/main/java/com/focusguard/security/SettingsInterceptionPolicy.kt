@@ -62,7 +62,13 @@ object SettingsInterceptionPolicy {
         val packageName: String,
         val isViewClickedEvent: Boolean,
         val guardArmed: Boolean,
-        val classTargetsAccessibility: Boolean,
+
+        /**
+         * The per-service screen carrying an accessibility on/off switch. Note
+         * this is deliberately *not* "any accessibility screen": the section as a
+         * whole stays usable during a block.
+         */
+        val classTargetsAccessibilityServiceToggle: Boolean,
         val classTargetsDeviceAdmin: Boolean,
         val classTargetsAppDetails: Boolean,
         val classTargetsUninstall: Boolean,
@@ -106,6 +112,14 @@ object SettingsInterceptionPolicy {
 
         // A click on an entry point fires before the destination screen opens, so
         // arm a short guard and intercept the transition too.
+        //
+        // The Accessibility entry is blocked at the menu, without requiring the app
+        // to be named: it is the one choke point that does not depend on an OEM's
+        // class names, and it is where the switch that disables FocusGuard lives.
+        // The practical consequence is that the Accessibility section as a whole is
+        // unreachable while a block is armed — an explicit product decision, not an
+        // oversight. See `classTargetsAccessibilityServiceToggle` for the narrower
+        // rule that still guards the destination if this click is ever missed.
         if (signals.isViewClickedEvent &&
             (signals.textMentionsAccessibility ||
                 signals.textMentionsDeviceAdmin ||
@@ -120,7 +134,14 @@ object SettingsInterceptionPolicy {
             return Decision.PROTECT
         }
 
-        if (signals.classTargetsAccessibility) return Decision.PROTECT_AND_ARM_GUARD
+        // Only the screen that can switch FocusGuard's own service off, and only
+        // once the screen is confirmed to be about FocusGuard. Another service's
+        // toggle is none of our business.
+        if (signals.classTargetsAccessibilityServiceToggle &&
+            (signals.textMentionsFocusGuard || rootSignals.mentionsFocusGuard())
+        ) {
+            return Decision.PROTECT_AND_ARM_GUARD
+        }
 
         if (signals.classTargetsDeviceAdmin ||
             (signals.isGenericSubSettings &&
@@ -151,8 +172,13 @@ object SettingsInterceptionPolicy {
             return Decision.PROTECT_AND_ARM_GUARD
         }
 
+        // OEM skins often host the per-service toggle inside a generic SubSettings
+        // shell, so the class name alone gives nothing away. Requiring both the
+        // accessibility context *and* FocusGuard keeps that path covered without
+        // swallowing the rest of the section.
         if (signals.isGenericSubSettings &&
-            (signals.textMentionsAccessibility || rootSignals.mentionsAccessibility())
+            (signals.textMentionsAccessibility || rootSignals.mentionsAccessibility()) &&
+            (signals.textMentionsFocusGuard || rootSignals.mentionsFocusGuard())
         ) {
             return Decision.PROTECT_AND_ARM_GUARD
         }

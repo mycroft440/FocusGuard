@@ -32,6 +32,41 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
+    fun `settings interception listens to the earliest window signals`() {
+        // The race the user can win is measured in frames: every event type the
+        // guard ignores is time in which the switch that disables this service is
+        // already on screen. TYPE_WINDOWS_CHANGED and TYPE_VIEW_FOCUSED arrive
+        // before TYPE_WINDOW_STATE_CHANGED and cost nothing extra to observe.
+        val interceptionTypes = BlockingAccessibilityService.settingsInterceptionEventTypesForTest()
+
+        assertThat(interceptionTypes).containsAtLeast(
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_FOCUSED,
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_CLICKED
+        )
+    }
+
+    @Test
+    fun `every interception event type is actually subscribed`() {
+        // Listening for an event the service never receives would be a silent hole.
+        val requested = BlockingAccessibilityService.requestedAccessibilityEventTypes()
+
+        BlockingAccessibilityService.settingsInterceptionEventTypesForTest().forEach { type ->
+            assertThat(requested and type).isNotEqualTo(0)
+        }
+    }
+
+    @Test
+    fun `transition guard outlasts a cold settings start`() {
+        // Sized so the guard armed by the menu click still covers the destination
+        // window on a slow device.
+        assertThat(BlockingAccessibilityService.settingsTransitionGuardMillisForTest())
+            .isAtLeast(5_000L)
+    }
+
+    @Test
     fun `blocking refresh carries an immediate in-memory snapshot`() {
         val intent = BlockingAccessibilityService.createRefreshBlockingIntent(
             context = context,

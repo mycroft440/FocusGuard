@@ -9,14 +9,30 @@ import java.util.Locale
  */
 object AccessibilitySettingsPolicy {
 
-    private val accessibilityClassMarkers = setOf(
+    /**
+     * Screens that only *list* accessibility features. Browsing these is normal
+     * device use — font size, TalkBack, colour correction — and must stay
+     * reachable even while a block is running.
+     */
+    private val accessibilityListClassMarkers = setOf(
         "AccessibilitySettings",
+        "InstalledAccessibilityService"
+    )
+
+    /**
+     * Screens that expose a single accessibility service's on/off switch. These
+     * are the only accessibility screens worth intercepting, and only when the
+     * service in question is FocusGuard's own.
+     */
+    private val accessibilityServiceToggleClassMarkers = setOf(
         "AccessibilityServiceSettings",
         "AccessibilityDetailsSettings",
         "AccessibilityShortcutPreferenceFragment",
-        "ToggleAccessibilityServicePreferenceFragment",
-        "InstalledAccessibilityService"
+        "ToggleAccessibilityServicePreferenceFragment"
     )
+
+    private val accessibilityClassMarkers =
+        accessibilityListClassMarkers + accessibilityServiceToggleClassMarkers
 
     internal val searchTerms = listOf(
         "Acessibilidade",
@@ -33,6 +49,28 @@ object AccessibilitySettingsPolicy {
 
     fun classTargetsAccessibility(className: String): Boolean {
         return accessibilityClassMarkers.any { marker ->
+            className.contains(marker, ignoreCase = true)
+        }
+    }
+
+    /**
+     * True only for the per-service screen that carries an on/off switch.
+     *
+     * Interception is scoped to this screen — combined with evidence that the
+     * service shown is FocusGuard's — so the rest of the accessibility section
+     * stays usable during a block. Font size, TalkBack and colour correction are
+     * normal device use, and Google Play treats blocking the whole section as
+     * misuse of the Accessibility API.
+     */
+    fun classTargetsAccessibilityServiceToggle(className: String): Boolean {
+        return accessibilityServiceToggleClassMarkers.any { marker ->
+            className.contains(marker, ignoreCase = true)
+        }
+    }
+
+    /** True for list screens that merely enumerate accessibility features. */
+    fun classTargetsAccessibilityList(className: String): Boolean {
+        return accessibilityListClassMarkers.any { marker ->
             className.contains(marker, ignoreCase = true)
         }
     }

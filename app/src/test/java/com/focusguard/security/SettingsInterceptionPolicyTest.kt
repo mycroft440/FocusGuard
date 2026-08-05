@@ -17,7 +17,7 @@ class SettingsInterceptionPolicyTest {
         packageName: String = SETTINGS,
         isViewClickedEvent: Boolean = false,
         guardArmed: Boolean = false,
-        classTargetsAccessibility: Boolean = false,
+        classTargetsAccessibilityServiceToggle: Boolean = false,
         classTargetsDeviceAdmin: Boolean = false,
         classTargetsAppDetails: Boolean = false,
         classTargetsUninstall: Boolean = false,
@@ -32,7 +32,7 @@ class SettingsInterceptionPolicyTest {
         packageName = packageName,
         isViewClickedEvent = isViewClickedEvent,
         guardArmed = guardArmed,
-        classTargetsAccessibility = classTargetsAccessibility,
+        classTargetsAccessibilityServiceToggle = classTargetsAccessibilityServiceToggle,
         classTargetsDeviceAdmin = classTargetsDeviceAdmin,
         classTargetsAppDetails = classTargetsAppDetails,
         classTargetsUninstall = classTargetsUninstall,
@@ -83,7 +83,8 @@ class SettingsInterceptionPolicyTest {
         val decision = decide(
             signals(
                 packageName = "com.example.browser",
-                classTargetsAccessibility = true
+                classTargetsAccessibilityServiceToggle = true,
+                textMentionsFocusGuard = true
             )
         )
 
@@ -111,7 +112,10 @@ class SettingsInterceptionPolicyTest {
         // Consumer Device Admin must not intercept: Android allows revoking it and
         // Play forbids using Accessibility to block that escape hatch.
         val decision = decide(
-            signals(classTargetsAccessibility = true),
+            signals(
+                classTargetsAccessibilityServiceToggle = true,
+                textMentionsFocusGuard = true
+            ),
             armored = false
         )
 
@@ -136,7 +140,10 @@ class SettingsInterceptionPolicyTest {
     @Test
     fun `strict pomodoro takes precedence over any settings screen`() {
         val decision = decide(
-            signals(classTargetsAccessibility = true),
+            signals(
+                classTargetsAccessibilityServiceToggle = true,
+                textMentionsFocusGuard = true
+            ),
             strictPomodoro = true
         )
 
@@ -153,9 +160,40 @@ class SettingsInterceptionPolicyTest {
     // ------------------------------------------------------- click intercept
 
     @Test
-    fun `click mentioning accessibility arms the transition guard`() {
+    fun `click on the Accessibility menu entry is blocked at the entry point`() {
+        // Blocked without requiring the app to be named: this is the one choke
+        // point that does not depend on OEM class names. The section as a whole
+        // becomes unreachable while a block is armed, by product decision.
         val decision = decide(
             signals(isViewClickedEvent = true, textMentionsAccessibility = true)
+        )
+
+        assertThat(decision).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+    }
+
+    @Test
+    fun `click on the FocusGuard accessibility entry arms the transition guard`() {
+        val decision = decide(
+            signals(
+                isViewClickedEvent = true,
+                textMentionsAccessibility = true,
+                textMentionsFocusGuard = true
+            )
+        )
+
+        assertThat(decision).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+    }
+
+    @Test
+    fun `the narrower toggle rule still guards the destination if the click is missed`() {
+        // Defence in depth: if the entry-point click never fires (gesture
+        // navigation, deep link from a notification), the destination screen is
+        // still intercepted once identified as FocusGuard's.
+        val decision = decide(
+            signals(
+                classTargetsAccessibilityServiceToggle = true,
+                textMentionsFocusGuard = true
+            )
         )
 
         assertThat(decision).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
@@ -239,10 +277,36 @@ class SettingsInterceptionPolicyTest {
     // ------------------------------------------------------- direct screens
 
     @Test
-    fun `direct accessibility settings screen intercepts on class name alone`() {
-        val decision = decide(signals(classTargetsAccessibility = true))
+    fun `FocusGuard service toggle screen is intercepted`() {
+        val decision = decide(
+            signals(
+                classTargetsAccessibilityServiceToggle = true,
+                textMentionsFocusGuard = true
+            )
+        )
 
         assertThat(decision).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+    }
+
+    @Test
+    fun `another service's toggle screen is left alone`() {
+        // TalkBack's switch is none of our business.
+        val decision = decide(signals(classTargetsAccessibilityServiceToggle = true))
+
+        assertThat(decision).isEqualTo(Decision.IGNORE)
+    }
+
+    @Test
+    fun `service toggle falls back to the node tree to identify FocusGuard`() {
+        val roots = RecordingRoots(focusGuard = true)
+
+        val decision = decide(
+            signals(classTargetsAccessibilityServiceToggle = true),
+            roots = roots
+        )
+
+        assertThat(decision).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+        assertThat(roots.reads).contains("focusGuard")
     }
 
     @Test
@@ -274,12 +338,19 @@ class SettingsInterceptionPolicyTest {
     }
 
     @Test
-    fun `generic SubSettings intercepts when the node tree mentions accessibility`() {
-        val roots = RecordingRoots(accessibility = true)
+    fun `generic SubSettings needs accessibility and FocusGuard together`() {
+        // OEM skins host the per-service toggle inside a generic shell, so the
+        // class name gives nothing away. Accessibility context alone is not
+        // enough — that would swallow the whole section again.
+        val accessibilityOnly = RecordingRoots(accessibility = true)
+        assertThat(
+            decide(signals(isGenericSubSettings = true), roots = accessibilityOnly)
+        ).isEqualTo(Decision.IGNORE)
 
-        val decision = decide(signals(isGenericSubSettings = true), roots = roots)
-
-        assertThat(decision).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+        val both = RecordingRoots(accessibility = true, focusGuard = true)
+        assertThat(
+            decide(signals(isGenericSubSettings = true), roots = both)
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
     }
 
     @Test
