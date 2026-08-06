@@ -2,7 +2,10 @@ package com.focusguard.ui.compose.screens
 
 import android.content.Intent
 import kotlin.OptIn
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.ui.Alignment
+import com.focusguard.security.BlockDurationPolicy
 import androidx.compose.runtime.*
 import com.focusguard.R
 import android.widget.Toast
@@ -26,6 +29,8 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -73,18 +78,21 @@ fun TimeBlockSessionConfigScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
-    var daysText by remember { mutableStateOf("") }
-    var hoursText by remember { mutableStateOf("") }
+    var durationUnit by remember { mutableStateOf(BlockDurationPolicy.Unit.DAYS) }
+    var amountText by remember { mutableStateOf("") }
+    var termsAccepted by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
     var pendingProtectionReason by remember {
         mutableStateOf<BlockingProtectionUnavailableException.Reason?>(null)
     }
     var showMasterCredentialSetup by remember { mutableStateOf(false) }
 
-    val days = daysText.toIntOrNull() ?: 0
-    val hours = hoursText.toIntOrNull() ?: 0
-    val totalHours = days * 24 + hours
-    val canSave = totalHours > 0 && (apps.isNotEmpty() || sites.isNotEmpty())
+    val duration = BlockDurationPolicy.resolve(durationUnit, amountText.toIntOrNull())
+    // O aceite e obrigatorio: sem senha mestre, o consentimento informado e a
+    // unica coisa que autoriza armar um bloqueio irrevogavel.
+    val canSave = duration != null &&
+        termsAccepted &&
+        (apps.isNotEmpty() || sites.isNotEmpty())
 
     if (showMasterCredentialSetup) {
         // Configurar a senha mestre aqui mesmo: o usuário está tentando armar um
@@ -209,36 +217,85 @@ fun TimeBlockSessionConfigScreen(
                         fontWeight = FontWeight.SemiBold
                     )
                     Spacer(modifier = Modifier.height(14.dp))
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        OutlinedTextField(
-                            value = daysText,
-                            onValueChange = { value -> daysText = value.filter { it.isDigit() }.take(3) },
-                            modifier = Modifier.weight(1f),
-                            placeholder = { Text(stringResource(R.string.create_session_days), color = TextHint) },
-                            singleLine = true
-                        )
-                        Spacer(modifier = Modifier.padding(horizontal = 6.dp))
-                        OutlinedTextField(
-                            value = hoursText,
-                            onValueChange = { value ->
-                                val digits = value.filter { it.isDigit() }
-                                hoursText = digits.toIntOrNull()?.coerceIn(0, 23)?.toString() ?: digits
-                            },
-                            modifier = Modifier.weight(1f),
-                            placeholder = { Text(stringResource(R.string.protection_hours), color = TextHint) },
-                            singleLine = true
-                        )
-                    }
+                    BlockDurationPicker(
+                        unit = durationUnit,
+                        amountText = amountText,
+                        onUnitChange = { durationUnit = it },
+                        onAmountChange = { amountText = it },
+                        accent = DangerRed
+                    )
                     Spacer(modifier = Modifier.height(14.dp))
                     Surface(
                         color = DangerRed.copy(alpha = 0.10f),
                         shape = RoundedCornerShape(14.dp)
                     ) {
                         Text(
-                            text = stringResource(R.string.dopamine_warning),
+                            text = if (durationUnit == BlockDurationPolicy.Unit.FOREVER) {
+                                stringResource(R.string.dopamine_duration_forever_warning)
+                            } else {
+                                stringResource(R.string.dopamine_warning)
+                            },
                             color = DangerRed,
                             modifier = Modifier.padding(12.dp),
                             textAlign = TextAlign.Start
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(20.dp))
+
+            // Termo de aceite: o jejum nao pede senha mestre, entao o que autoriza
+            // arma-lo e o consentimento informado. O texto explica o mecanismo e a
+            // janela do dia 15 antes de o usuario poder marcar a caixa.
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(containerColor = DarkCard),
+                shape = RoundedCornerShape(20.dp)
+            ) {
+                Column(modifier = Modifier.padding(18.dp)) {
+                    Text(
+                        text = stringResource(R.string.dopamine_terms_title),
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 16.sp
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    listOf(
+                        R.string.dopamine_terms_intro,
+                        R.string.dopamine_terms_how,
+                        R.string.dopamine_terms_escape
+                    ).forEach { paragraph ->
+                        Text(
+                            text = stringResource(paragraph),
+                            color = TextSecondary,
+                            fontSize = 13.sp,
+                            modifier = Modifier.padding(bottom = 10.dp)
+                        )
+                    }
+                    Text(
+                        text = stringResource(R.string.dopamine_terms_question),
+                        color = TextPrimary,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 14.sp
+                    )
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { termsAccepted = !termsAccepted },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(
+                            checked = termsAccepted,
+                            onCheckedChange = { termsAccepted = it },
+                            colors = CheckboxDefaults.colors(checkedColor = DangerRed)
+                        )
+                        Spacer(modifier = Modifier.padding(horizontal = 2.dp))
+                        Text(
+                            text = stringResource(R.string.dopamine_terms_accept),
+                            color = TextPrimary,
+                            fontSize = 13.sp
                         )
                     }
                 }
@@ -252,9 +309,14 @@ fun TimeBlockSessionConfigScreen(
                     isSaving = true
                     scope.launch {
                         try {
+                            val resolved = duration ?: return@launch
                             sessionManager.startTimeSession(
-                                days = days,
-                                hours = hours,
+                                days = 0,
+                                hours = when (resolved) {
+                                    is BlockDurationPolicy.Duration.Finite -> resolved.totalHours
+                                    BlockDurationPolicy.Duration.Forever -> 0
+                                },
+                                openEnded = resolved is BlockDurationPolicy.Duration.Forever,
                                 isFixed24h = true,
                                 startHour = 0,
                                 endHour = 24,

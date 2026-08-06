@@ -590,6 +590,8 @@ class BlockingSessionManager @Inject constructor(
         days: Int,
         hours: Int,
         isFixed24h: Boolean,
+        /** Sem data final: o bloqueio só sai pela janela de manutenção do dia 15. */
+        openEnded: Boolean = false,
         startHour: Int = 0,
         startMinute: Int = 0,
         endHour: Int = 0,
@@ -601,7 +603,10 @@ class BlockingSessionManager @Inject constructor(
         val protectionWasAlreadyArmed = deviceOwnerManager.isBlockingProtectionArmed()
         var sessionCreated = false
         try {
-            ensureMasterCredentialFor("TIME")
+            // Sem gate de senha mestre aqui de propósito: o jejum não tem saída por
+            // credencial, então exigir uma seria pedir chave que não abre nada. O
+            // que ele exige é consentimento informado, coletado na UI antes de
+            // chegar até aqui — ver MasterCredentialPolicy.
             val normalizedSites = WebsiteBlocker.normalizeRules(sites)
             val normalizedApps = apps.filter(String::isNotBlank).distinct()
             require(normalizedApps.isNotEmpty() || normalizedSites.isNotEmpty()) {
@@ -609,13 +614,17 @@ class BlockingSessionManager @Inject constructor(
             }
             val duration = TimeUnit.DAYS.toMillis(days.toLong()) +
                 TimeUnit.HOURS.toMillis(hours.toLong())
-            require(duration > 0L) { "A duração da sessão deve ser positiva" }
+            // openEnded grava endTime nulo em vez de um prazo gigante: o resto do
+            // app ja trata null como "sem data final" (isCurrentlyInBlockingWindow,
+            // BlockCountdownPolicy), entao a UI diz "para sempre" em vez de contar
+            // regressivamente a partir de um numero arbitrario.
+            require(openEnded || duration > 0L) { "A duração da sessão deve ser positiva" }
             ensureSimpleBlockingReady()
             database.withTransaction {
                 val startMillis = System.currentTimeMillis()
                 val session = BlockSession(
                     startTime = startMillis,
-                    endTime = startMillis + duration,
+                    endTime = if (openEnded) null else startMillis + duration,
                     isActive = true,
                     isRecurring = !isFixed24h,
                     recurringStartHour = startHour,

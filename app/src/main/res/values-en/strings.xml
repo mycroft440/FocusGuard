@@ -49,6 +49,27 @@
     <string name="block_type_remaining_hours">%1$d hour(s) left until unlock</string>
     <string name="block_type_remaining_less_than_hour">Less than an hour left</string>
     <string name="block_type_remaining_elapsed">Period ended</string>
+
+    <!-- Duration picker -->
+    <string name="duration_unit_hours">hours</string>
+    <string name="duration_unit_days">days</string>
+    <string name="duration_unit_months">month(s)</string>
+    <string name="duration_unit_forever">Forever</string>
+
+    <!-- Dopamine fast terms -->
+    <string name="dopamine_terms_title">How the dopamine fast works</string>
+    <string name="dopamine_terms_intro">The dopamine fast was created for you, who feels addicted to social media or to anything technology-related, such as pornography.</string>
+    <string name="dopamine_terms_how">You choose what to block and for how many days — 365, for example. Whatever you put on the list stays blocked until the countdown ends, irrevocably.</string>
+    <string name="dopamine_terms_escape">To offset that, in an emergency where you genuinely need to remove something, on the 15th of every month at 03:00 the app releases the block and lets you remove some apps or sites. Only then.</string>
+    <string name="dopamine_terms_question">Do you agree with this?</string>
+    <string name="dopamine_terms_accept">I have read how the block works and I accept the terms</string>
+    <string name="dopamine_terms_required">Accept the terms to activate the fast.</string>
+    <string name="dopamine_duration_forever_warning">No end date: this block never expires on its own. The only way to remove it is the window on the 15th, at 03:00.</string>
+
+    <!-- Export intruder photo -->
+    <string name="intruder_export_action">Export to gallery</string>
+    <string name="intruder_export_success">Copy saved to the gallery, in Pictures/FocusGuard.</string>
+    <string name="intruder_export_failed">Could not export the photo.</string>
     <string name="protection_setup_title">Protection and limits</string>
     <string name="protection_add_apps_title">Add apps to the list</string>
     <string name="protection_add_apps_subtitle">Choose installed or preemptive apps</string>

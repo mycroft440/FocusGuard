@@ -49,6 +49,27 @@
     <string name="block_type_remaining_hours">Faltam %1$d hora(s) para o desbloqueio</string>
     <string name="block_type_remaining_less_than_hour">Falta menos de uma hora</string>
     <string name="block_type_remaining_elapsed">Prazo encerrado</string>
+
+    <!-- Seletor de duração -->
+    <string name="duration_unit_hours">horas</string>
+    <string name="duration_unit_days">dias</string>
+    <string name="duration_unit_months">mês(es)</string>
+    <string name="duration_unit_forever">Para sempre</string>
+
+    <!-- Termo do jejum de dopamina -->
+    <string name="dopamine_terms_title">Como o jejum de dopamina funciona</string>
+    <string name="dopamine_terms_intro">O bloqueio de jejum de dopamina foi criado justamente para você, que se sente viciado em redes sociais ou em qualquer coisa relacionada a tecnologia, como pornografia.</string>
+    <string name="dopamine_terms_how">Você seleciona o que quer bloquear e por quantos dias — por exemplo, 365. O que você colocar para bloquear nesse período ficará bloqueado até o fim da contagem, de forma irrevogável.</string>
+    <string name="dopamine_terms_escape">Para compensar isso, numa emergência em que você realmente precise remover algo, todo dia 15, às 03:00 da manhã, o app libera o bloqueio e permite remover alguns apps ou sites. Mas somente nesse horário.</string>
+    <string name="dopamine_terms_question">Você concorda com isso?</string>
+    <string name="dopamine_terms_accept">Eu li como o bloqueio funciona e concordo com os termos</string>
+    <string name="dopamine_terms_required">Aceite os termos para ativar o jejum.</string>
+    <string name="dopamine_duration_forever_warning">Sem prazo final: este bloqueio nunca expira sozinho. A única forma de removê-lo é a janela do dia 15, às 03:00.</string>
+
+    <!-- Exportar foto de intruso -->
+    <string name="intruder_export_action">Exportar para a galeria</string>
+    <string name="intruder_export_success">Cópia salva na galeria, em Imagens/FocusGuard.</string>
+    <string name="intruder_export_failed">Não foi possível exportar a foto.</string>
     <string name="protection_setup_title">Proteção e limites</string>
     <string name="protection_add_apps_title">Adicionar apps à lista</string>
     <string name="protection_add_apps_subtitle">Escolha aplicativos instalados ou preventivos</string>

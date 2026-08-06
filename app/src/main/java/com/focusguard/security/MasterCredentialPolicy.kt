@@ -33,24 +33,27 @@ object MasterCredentialPolicy {
     // ---------------------------------------------------------------- creation
 
     /**
-     * Every password block and every dopamine fast requires the master
-     * credential to exist *before* it starts.
+     * Only a password block requires the master credential up front, because the
+     * credential *is* its exit: arming one without it would create a block with
+     * no way out that the user never agreed to.
      *
-     * For a password block it is the only way out. For a dopamine fast there is
-     * no way out at all, so the credential is what still lets the user manage
-     * limits and uninstall the app afterwards — without it, an interrupted fast
-     * would leave them with no authenticated path anywhere.
+     * A dopamine fast deliberately does not require it. The fast has no
+     * credential exit by design — its escape hatch is the monthly maintenance
+     * window, which needs no password — so demanding one would be asking for a
+     * key that opens nothing. What the fast requires instead is informed consent:
+     * the user must read how it works and accept the terms before it is armed.
      *
-     * Pomodoro is deliberately excluded: it is a short focus timer the user
-     * starts many times a day, not one of the blocks the app presents as
-     * "bloqueio por tempo"/"bloqueio por senha". Demanding a password to start a
-     * 25-minute timer would be friction with no protective payoff. Note that it
-     * is still irreversible once running — see [isIrreversibleSessionType],
-     * which answers a different question (can this be *ended* early?).
+     * Pomodoro is excluded for a different reason: it is a short focus timer
+     * started many times a day, not one of the blocks the app presents as
+     * "bloqueio por tempo"/"bloqueio por senha".
+     *
+     * Note that both TIME and POMODORO remain irreversible once running — see
+     * [isIrreversibleSessionType], which answers a different question (can this
+     * be *ended* early?).
      */
     fun requiresMasterCredentialToCreate(sessionType: String): Boolean {
         return when (sessionType.uppercase()) {
-            SESSION_TYPE_TIME, SESSION_TYPE_PASSWORD -> true
+            SESSION_TYPE_PASSWORD -> true
             else -> false
         }
     }

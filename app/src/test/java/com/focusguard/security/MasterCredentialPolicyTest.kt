@@ -22,13 +22,23 @@ class MasterCredentialPolicyTest {
     }
 
     @Test
-    fun `dopamine fast cannot be armed without a master credential`() {
+    fun `dopamine fast does not demand a master credential`() {
+        // The fast has no credential exit by design — its escape hatch is the
+        // monthly maintenance window, which needs no password. Demanding one
+        // would be asking for a key that opens nothing. Informed consent is what
+        // gates the fast instead.
         val gate = MasterCredentialPolicy.evaluateCreation(
             sessionType = "TIME",
             hasMasterCredential = false
         )
 
-        assertThat(gate).isEqualTo(CreationGate.MASTER_CREDENTIAL_REQUIRED)
+        assertThat(gate).isEqualTo(CreationGate.ALLOWED)
+    }
+
+    @Test
+    fun `dopamine fast is still irreversible without a credential`() {
+        assertThat(MasterCredentialPolicy.requiresMasterCredentialToCreate("TIME")).isFalse()
+        assertThat(MasterCredentialPolicy.isIrreversibleSessionType("TIME")).isTrue()
     }
 
     @Test
@@ -53,20 +63,26 @@ class MasterCredentialPolicyTest {
 
     @Test
     fun `blocks are allowed once the master credential exists`() {
-        listOf("PASSWORD", "TIME").forEach { type ->
-            val gate = MasterCredentialPolicy.evaluateCreation(
-                sessionType = type,
-                hasMasterCredential = true
-            )
+        val gate = MasterCredentialPolicy.evaluateCreation(
+            sessionType = "PASSWORD",
+            hasMasterCredential = true
+        )
 
-            assertThat(gate).isEqualTo(CreationGate.ALLOWED)
-        }
+        assertThat(gate).isEqualTo(CreationGate.ALLOWED)
     }
 
     @Test
     fun `session type matching is case insensitive`() {
-        assertThat(MasterCredentialPolicy.requiresMasterCredentialToCreate("time")).isTrue()
         assertThat(MasterCredentialPolicy.requiresMasterCredentialToCreate("Password")).isTrue()
+        assertThat(MasterCredentialPolicy.requiresMasterCredentialToCreate("password")).isTrue()
+    }
+
+    @Test
+    fun `only the password block demands a credential up front`() {
+        // Guards against a new session type silently inheriting the requirement.
+        listOf("PASSWORD", "TIME", "POMODORO", "SOMETHING_ELSE")
+            .filter(MasterCredentialPolicy::requiresMasterCredentialToCreate)
+            .let { assertThat(it).containsExactly("PASSWORD") }
     }
 
     @Test
