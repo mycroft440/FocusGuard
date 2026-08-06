@@ -408,7 +408,7 @@
 
     <string name="limits_attempts_label">Password Attempt Limit (0 for unlimited)</string>
     <string name="limits_intruder_selfie">Intruder Selfie</string>
-    <string name="limits_intruder_selfie_desc">Takes an invisible photo with the front camera when the limit is exceeded.</string>
+    <string name="limits_intruder_selfie_desc">Takes a photo with the front camera when someone enters the wrong password while opening a protected app. It stays in the app; you choose whether to export it to the gallery.</string>
     <string name="limits_safety_mode_enable_title">Enable Security Mode?</string>
     <string name="limits_safety_mode_confirm_text">To confirm, type \'yes\' below:</string>
     <string name="limits_safety_mode_placeholder">type yes</string>

@@ -36,7 +36,6 @@ import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.launch
 import com.focusguard.R
 import com.focusguard.security.AuthManager
-import com.focusguard.security.CameraManager
 import com.focusguard.ui.compose.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -50,7 +49,6 @@ fun AuthScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
-    val cameraManager = remember { CameraManager(activity) }
     val biometricsAvailable = remember { authManager.isBiometricAvailable() }
 
     // [L1] Shake animation state
@@ -79,9 +77,11 @@ fun AuthScreen(
 
                     errorMessage = when {
                         limit > 0 && failed >= limit -> {
-                            if (authManager.isPhotoCaptureEnabled()) {
-                                cameraManager.setupAndCaptureSilent(activity) { _ -> }
-                            }
+                            // Sem selfie aqui: errar a propria senha na tela de
+                            // bloqueio do FocusGuard e rotineiro, e a foto sairia
+                            // do dono muito mais vezes que de um intruso. A captura
+                            // vale so ao abrir um app protegido — ver
+                            // IntruderCapturePolicy.
                             activity.getString(R.string.auth_wrong_password_limit)
                         }
                         limit > 0 -> activity.getString(R.string.auth_wrong_password_attempt, failed, limit)

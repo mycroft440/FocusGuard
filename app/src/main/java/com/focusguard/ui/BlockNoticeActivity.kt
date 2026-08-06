@@ -63,6 +63,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.fragment.app.FragmentActivity
 import com.focusguard.security.AuthManager
 import com.focusguard.security.BiometricAppUnlockPolicy
+import com.focusguard.security.CameraManager
+import com.focusguard.security.IntruderCapturePolicy
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
@@ -463,7 +465,28 @@ private fun BlockNoticeContent(
                             showUnlockDialog = false
                             unlocked = true
                         }
-                        UnlockResult.WRONG_PASSWORD -> error = wrongPasswordMessage
+                        UnlockResult.WRONG_PASSWORD -> {
+                            error = wrongPasswordMessage
+                            // O unico lugar onde a selfie faz sentido: alguem
+                            // tentando abrir um app que voce protegeu. Dispara na
+                            // primeira senha errada — ver IntruderCapturePolicy.
+                            //
+                            // Sem incrementFailedAttempts() aqui: aquele contador e
+                            // global e alimenta o limite da tela de bloqueio do
+                            // FocusGuard. Incrementa-lo a partir daqui faria uma
+                            // tentativa num app protegido contar contra o desbloqueio
+                            // do proprio app.
+                            if (IntruderCapturePolicy.shouldCapture(
+                                    surface = IntruderCapturePolicy
+                                        .Surface.BLOCKED_APP_UNLOCK,
+                                    photoCaptureEnabled = authManager.isPhotoCaptureEnabled()
+                                )
+                            ) {
+                                (context as? FragmentActivity)?.let { host ->
+                                    CameraManager(host).setupAndCaptureSilent(host) { _ -> }
+                                }
+                            }
+                        }
                         UnlockResult.POMODORO -> error = pomodoroMessage
                         UnlockResult.TIME_SESSION -> error = timeSessionMessage
                         UnlockResult.NO_REVOCABLE_SESSION -> error = noSessionMessage

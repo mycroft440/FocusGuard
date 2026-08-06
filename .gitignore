@@ -104,3 +104,6 @@ update_a11y.json
 security_hardening_plan.json
 security_hardening_plan_v2.json
 security_hardening.patch
+
+# Sessoes do compilador Kotlin (geradas a cada build)
+.kotlin/

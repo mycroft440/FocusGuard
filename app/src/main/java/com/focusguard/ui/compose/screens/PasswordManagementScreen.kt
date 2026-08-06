@@ -30,7 +30,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.launch
-import com.focusguard.security.CameraManager
 import com.focusguard.security.AuthManager
 import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.ui.compose.theme.*
@@ -52,7 +51,6 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val activity = context as? FragmentActivity
-    val cameraManager = remember { activity?.let { CameraManager(it) } }
     // P2-4: usa Hilt EntryPoint via rememberAppDatabase() — substitui 4
     // chamadas diretas a AppDatabase.getDatabase(context) neste arquivo.
     val db = rememberAppDatabase()
@@ -473,15 +471,18 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                                 
                                 shakeOffset = 20f // Trigger shake
 
+                                // Sem selfie aqui: esta area so e alcancavel depois
+                                // de autenticar, entao quem esta nela ja passou.
+                                // Ver IntruderCapturePolicy.
                                 authError = when {
-                                    limit > 0 && failed >= limit -> {
-                                        if (authManager.isPhotoCaptureEnabled()) {
-                                            activity?.let { cameraManager?.setupAndCaptureSilent(it) { _ -> } }
-                                        }
-                                        "Limite excedido! Foto capturada."
-                                    }
-                                    limit > 0 -> "Senha incorreta ($failed/$limit)"
-                                    else -> "Senha incorreta"
+                                    limit > 0 && failed >= limit ->
+                                        context.getString(R.string.auth_wrong_password_limit)
+                                    limit > 0 -> context.getString(
+                                        R.string.auth_wrong_password_attempt,
+                                        failed,
+                                        limit
+                                    )
+                                    else -> context.getString(R.string.auth_wrong_password)
                                 }
                             }
                         }

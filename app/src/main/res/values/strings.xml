@@ -408,7 +408,7 @@
     
     <string name="limits_attempts_label">Limite de Tentativas de Senha (0 para infinito)</string>
     <string name="limits_intruder_selfie">Selfie do Intruso</string>
-    <string name="limits_intruder_selfie_desc">Tira uma foto invisível com a câmera frontal quando o limite for excedido.</string>
+    <string name="limits_intruder_selfie_desc">Tira uma foto com a câmera frontal quando alguém erra a senha ao tentar abrir um app protegido. Fica guardada no app; você escolhe se exporta para a galeria.</string>
     <string name="limits_safety_mode_enable_title">Ativar Modo Segurança?</string>
     <string name="limits_safety_mode_confirm_text">Para confirmar, digite \'sim\' abaixo:</string>
     <string name="limits_safety_mode_placeholder">digite sim</string>
