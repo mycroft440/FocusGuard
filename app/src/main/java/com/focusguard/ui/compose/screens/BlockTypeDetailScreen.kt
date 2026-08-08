@@ -42,8 +42,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -54,12 +56,16 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.focusguard.R
+import com.focusguard.data.PredefinedApps
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
 import com.focusguard.security.BlockCountdownPolicy
@@ -128,12 +134,33 @@ fun BlockTypeDetailScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
     var entries by remember {
         mutableStateOf<List<BlockingSessionManager.BlockOverview.Entry>?>(null)
     }
 
-    LaunchedEffect(type) {
+    // O assistente de criação roda em outra Activity, então esta composição
+    // sobrevive à ida e à volta e um LaunchedEffect(type) sozinho nunca
+    // dispararia de novo: a tela reapareceria mostrando a lista de antes do
+    // bloqueio ser criado, como se o app ou site adicionado tivesse sumido.
+    // Recarregar a cada ON_RESUME faz a lista refletir o banco toda vez que a
+    // tela volta a ficar visível.
+    var reloadTrigger by remember { mutableIntStateOf(0) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                reloadTrigger++
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    // `entries` não volta a null nas recargas: manter a lista anterior na tela
+    // evita um piscar de spinner a cada retorno para uma tela que já tem dados.
+    LaunchedEffect(type, reloadTrigger) {
         entries = runCatching { type.entriesOf(sessionManager.getBlockOverview()) }
             .getOrDefault(emptyList())
     }
@@ -367,6 +394,31 @@ private fun EmptyBlockList(type: BlockTypeUi) {
     }
 }
 
+/**
+ * The name shown for a blocked entry.
+ *
+ * A preventive target is, by definition, an app that is not installed, so the
+ * PackageManager has no label for it and [installedLabel] comes back null. The
+ * catalogue answers for those before the package name does, so the row reads
+ * "Instagram" instead of "com.instagram.android" — a raw package id looks like a
+ * wrong entry to whoever just added the block.
+ *
+ * @param installedLabel what the PackageManager resolved, or null when the app
+ *   is not installed (or the entry is a website).
+ */
+internal fun blockedEntryLabel(
+    identifier: String,
+    isWebsite: Boolean,
+    installedLabel: String?
+): String {
+    if (isWebsite) return identifier
+    installedLabel?.takeIf { it.isNotBlank() }?.let { return it }
+    return PredefinedApps.PREVENTIVE_APPS
+        .firstOrNull { it.packageName == identifier }
+        ?.appName
+        ?: identifier
+}
+
 @Composable
 private fun BlockedEntryRow(
     entry: BlockingSessionManager.BlockOverview.Entry,
@@ -374,14 +426,18 @@ private fun BlockedEntryRow(
 ) {
     val context = LocalContext.current
     val label = remember(entry.identifier) {
-        if (entry.isWebsite) {
-            entry.identifier
-        } else {
-            runCatching {
-                val pm = context.packageManager
-                pm.getApplicationLabel(pm.getApplicationInfo(entry.identifier, 0)).toString()
-            }.getOrDefault(entry.identifier)
-        }
+        blockedEntryLabel(
+            identifier = entry.identifier,
+            isWebsite = entry.isWebsite,
+            installedLabel = if (entry.isWebsite) {
+                null
+            } else {
+                runCatching {
+                    val pm = context.packageManager
+                    pm.getApplicationLabel(pm.getApplicationInfo(entry.identifier, 0)).toString()
+                }.getOrNull()
+            }
+        )
     }
     val iconBitmap = remember(entry.identifier) {
         if (entry.isWebsite) {

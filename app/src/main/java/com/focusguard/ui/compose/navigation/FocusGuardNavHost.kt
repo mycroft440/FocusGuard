@@ -166,6 +166,7 @@ fun FocusGuardNavHost(
             FocusGuardRoute.Language,
             FocusGuardRoute.PasswordManagement,
             FocusGuardRoute.BlockCustomization -> FocusGuardRoute.Settings
+            FocusGuardRoute.UsageLimits -> FocusGuardRoute.BlockTypeDetail
             else -> FocusGuardRoute.Home
         }
     }
@@ -256,9 +257,11 @@ fun FocusGuardNavHost(
                 FocusGuardRoute.IntruderLog -> IntruderLogScreen(onBack = { currentRoute = FocusGuardRoute.Settings })
                 FocusGuardRoute.Language -> LanguageScreen(onBack = { currentRoute = FocusGuardRoute.Settings })
                 FocusGuardRoute.PasswordManagement -> PasswordManagementScreen(authManager = authManager, onBack = { currentRoute = FocusGuardRoute.Settings })
+                // Volta para a lista do tipo de bloqueio, não para a Home: é de lá
+                // que se chega aqui, e é lá que o limite recém-criado aparece.
                 FocusGuardRoute.UsageLimits -> UsageLimitsScreen(
                     authManager = authManager,
-                    onBack = { currentRoute = FocusGuardRoute.Home }
+                    onBack = { currentRoute = FocusGuardRoute.BlockTypeDetail }
                 )
                 FocusGuardRoute.Dashboard -> UsageStatsDashboardScreen(onBack = { currentRoute = FocusGuardRoute.Home })
                 FocusGuardRoute.BlockCustomization -> BlockCustomizationScreen(onBack = { currentRoute = FocusGuardRoute.Settings })
