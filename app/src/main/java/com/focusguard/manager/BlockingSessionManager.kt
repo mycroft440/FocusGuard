@@ -21,6 +21,7 @@ import com.focusguard.receiver.BlockingScheduleCalculator
 import com.focusguard.receiver.BlockingScheduleReceiver
 import com.focusguard.security.AuthManager
 import com.focusguard.security.BiometricAppUnlockPolicy
+import com.focusguard.security.BlockTargetPolicy
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.DopamineStartPolicy
 import com.focusguard.security.MasterCredentialPolicy
@@ -552,7 +553,21 @@ class BlockingSessionManager @Inject constructor(
     ) = withContext(Dispatchers.IO) {
         try {
             ensureMasterCredentialFor("PASSWORD")
-            val normalizedSites = WebsiteBlocker.normalizeRules(sites)
+            // Bloqueio por senha vale só para aplicativos: sua saída é a tela de
+            // senha que o app coloca na frente do alvo, e isso só é confiável
+            // para um app detectado em primeiro plano. Filtrado aqui, e não só
+            // na UI, para nenhum caminho de criação armar um bloqueio que
+            // promete uma senha que nunca aparece — ver BlockTargetPolicy.
+            val normalizedSites = BlockTargetPolicy.acceptedRulesForSessionType(
+                sessionType = BlockTargetPolicy.SESSION_TYPE_PASSWORD,
+                rules = sites
+            )
+            if (sites.isNotEmpty()) {
+                FocusGuardLogger.log(
+                    "BlockingSessionManager",
+                    "Bloqueio por senha ignora ${sites.size} regra(s) de site/palavra"
+                )
+            }
             database.withTransaction {
                 val session = BlockSession(
                     startTime = System.currentTimeMillis(),
@@ -607,7 +622,14 @@ class BlockingSessionManager @Inject constructor(
             // credencial, então exigir uma seria pedir chave que não abre nada. O
             // que ele exige é consentimento informado, coletado na UI antes de
             // chegar até aqui — ver MasterCredentialPolicy.
-            val normalizedSites = WebsiteBlocker.normalizeRules(sites)
+            //
+            // O jejum é o único bloqueio que aceita palavras além de apps e
+            // sites: é o mais rígido e o que as pessoas armam contra um hábito
+            // inteiro, então leva a rede mais larga.
+            val normalizedSites = BlockTargetPolicy.acceptedRulesForSessionType(
+                sessionType = BlockTargetPolicy.SESSION_TYPE_TIME,
+                rules = sites
+            )
             val normalizedApps = apps.filter(String::isNotBlank).distinct()
             require(normalizedApps.isNotEmpty() || normalizedSites.isNotEmpty()) {
                 "O Jejum de Dopamina exige pelo menos um app ou site"

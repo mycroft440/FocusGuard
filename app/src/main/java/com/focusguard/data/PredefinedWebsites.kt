@@ -25,6 +25,24 @@ object PredefinedWebsites {
         WebsiteInfo("Reddit", "reddit.com")
     )
 
+    /**
+     * Every site the app can offer as a shortcut: [POPULAR] first, then the
+     * website of each preventive app that is not already on it.
+     *
+     * The app catalogue already knows the domain behind each distraction it
+     * lists, so betting, dating and streaming sites are reachable without asking
+     * the user to remember how each one is spelled. [POPULAR] stays a short list
+     * for places too small to scroll — a dialog, a chip row.
+     */
+    val ALL_PRESETS: List<WebsiteInfo> by lazy {
+        val seen = POPULAR.mapTo(linkedSetOf()) { it.domain }
+        POPULAR + PredefinedApps.PREVENTIVE_APPS.mapNotNull { app ->
+            app.domain
+                ?.takeIf { it.isNotBlank() && seen.add(it) }
+                ?.let { WebsiteInfo(app.appName, it) }
+        }
+    }
+
     val PORNOGRAPHY_KEYWORDS = listOf(
         "porn",
         "xxx",

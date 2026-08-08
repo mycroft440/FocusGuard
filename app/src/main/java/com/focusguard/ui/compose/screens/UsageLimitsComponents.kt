@@ -3,7 +3,10 @@ package com.focusguard.ui.compose.screens
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,6 +22,8 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -43,6 +48,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
+import com.focusguard.data.PredefinedWebsites
 import com.focusguard.security.AuthManager
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
@@ -349,8 +355,11 @@ fun AddWebsiteLimitDialog(
     var days by remember { mutableStateOf("") }
     var confirmed by remember { mutableStateOf(true) }
 
-    val normalizedDomain = WebsiteBlocker.normalizeRule(domain)
-    val domainValid = WebsiteBlocker.isValidRule(normalizedDomain)
+    // Um limite de uso conta tempo gasto num alvo, e uma palavra não é um alvo em
+    // que se passa duas horas. Por isso aqui vale só domínio — extractDomain, e
+    // não normalizeRule, que aceitaria a palavra solta como regra de keyword.
+    val normalizedDomain = WebsiteBlocker.extractDomain(domain)
+    val domainValid = normalizedDomain.isNotEmpty()
     val minutes = (hours.replace(',', '.').toDoubleOrNull()?.times(60))?.toInt() ?: 0
     val canSave = domainValid && minutes > 0 && (lockMode == "NONE" || confirmed)
 
@@ -374,11 +383,16 @@ fun AddWebsiteLimitDialog(
                     isError = domain.isNotBlank() && !domainValid,
                     supportingText = {
                         if (domain.isNotBlank() && !domainValid) {
-                            Text(stringResource(R.string.website_rule_invalid))
+                            Text(stringResource(R.string.block_targets_site_invalid))
                         } else {
-                            Text(stringResource(R.string.website_rule_hint))
+                            Text(stringResource(R.string.block_targets_site_helper))
                         }
                     }
+                )
+                Spacer(Modifier.height(8.dp))
+                WebsitePresetChips(
+                    selectedDomain = normalizedDomain,
+                    onPick = { domain = it }
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedTextField(
@@ -426,6 +440,42 @@ fun AddWebsiteLimitDialog(
         },
         containerColor = MaterialTheme.colorScheme.surface
     )
+}
+
+/**
+ * One-tap shortcuts for the sites people most often limit.
+ *
+ * Typing a domain by hand still works and is the only way to reach anything off
+ * this list, but "YouTube" is a name and `youtube.com` is a spelling — the chips
+ * spare the user from having to know the second one.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WebsitePresetChips(
+    selectedDomain: String,
+    onPick: (String) -> Unit
+) {
+    Text(
+        stringResource(R.string.limits_preset_sites),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold
+    )
+    Spacer(Modifier.height(6.dp))
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        PredefinedWebsites.POPULAR.forEach { website ->
+            val selected = WebsiteBlocker.normalizeRule(website.domain) == selectedDomain
+            FilterChip(
+                selected = selected,
+                onClick = { onPick(website.domain) },
+                label = { Text(website.name, fontSize = 12.sp) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = AccentCyan.copy(alpha = 0.20f),
+                    selectedLabelColor = AccentCyan
+                )
+            )
+        }
+    }
 }
 
 @Composable

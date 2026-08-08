@@ -225,8 +225,10 @@ fun UnifiedProtectionSetupWizard(
                 onBack = onFinish
             )
 
+            // Este assistente tem uma tela própria de sites (WEBSITE_PICKER),
+            // então aqui só escolhe aplicativos e ignora as regras do seletor.
             ProtectionSetupPage.APP_PICKER -> AppSelectionStep(
-                onNext = { apps ->
+                onNext = { apps, _ ->
                     scope.launch {
                         val latest = refreshConfiguredBlockedTargets()
                         val availableApps = apps.filterNot {
@@ -539,7 +541,7 @@ private fun ProtectionEmptyState() {
 }
 
 @Composable
-private fun ProtectionTargetRow(
+internal fun ProtectionTargetRow(
     icon: ImageVector,
     title: String,
     subtitle: String,
@@ -760,7 +762,7 @@ private fun WebsiteRuleSelectionScreen(
 }
 
 @Composable
-private fun PornographyPresetRow(
+internal fun PornographyPresetRow(
     selected: Boolean,
     onToggle: () -> Unit
 ) {
@@ -826,7 +828,7 @@ private fun PornographyPresetRow(
 }
 
 @Composable
-private fun WebsitePresetRow(
+internal fun WebsitePresetRow(
     website: PredefinedWebsites.WebsiteInfo,
     selected: Boolean,
     onToggle: () -> Unit

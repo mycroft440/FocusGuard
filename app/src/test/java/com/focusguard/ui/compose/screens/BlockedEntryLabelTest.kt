@@ -1,5 +1,6 @@
 package com.focusguard.ui.compose.screens
 
+import com.focusguard.data.PredefinedWebsites
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -47,5 +48,27 @@ class BlockedEntryLabelTest {
         )
 
         assertThat(label).isEqualTo("instagram.com")
+    }
+
+    @Test
+    fun `keyword entries drop the persistence prefix`() {
+        val label = blockedEntryLabel(
+            identifier = "keyword:aposta",
+            isWebsite = true,
+            installedLabel = null
+        )
+
+        assertThat(label).isEqualTo("*aposta*")
+    }
+
+    @Test
+    fun `the pornography category shows its name`() {
+        val label = blockedEntryLabel(
+            identifier = PredefinedWebsites.PORNOGRAPHY_RULE,
+            isWebsite = true,
+            installedLabel = null
+        )
+
+        assertThat(label).isEqualTo(PredefinedWebsites.PORNOGRAPHY_NAME)
     }
 }

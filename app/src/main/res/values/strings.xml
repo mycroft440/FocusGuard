@@ -349,6 +349,21 @@
     <string name="limits_dns_filter_desc">Ativa o filtro familiar e a varredura de URLs 24/7, incluindo SafeSearch e sites de conteúdo misto. Fora da manutenção, impede alterar o DNS ou configurar VPN. Exige Proteção Nuclear ativa.</string>
 
     <!-- App Selection Wizard -->
+    <string name="block_targets_title">Selecionar alvos</string>
+    <string name="block_targets_tab_apps">Aplicativos</string>
+    <string name="block_targets_tab_sites">Sites</string>
+    <string name="block_targets_tab_keywords">Palavras</string>
+    <string name="block_targets_count">%1$d itens</string>
+    <string name="block_targets_fallback_name">aplicativo</string>
+    <string name="block_targets_site_placeholder">Ex.: youtube.com</string>
+    <string name="block_targets_site_helper">Digite um site avulso ou escolha um dos predefinidos abaixo.</string>
+    <string name="block_targets_site_invalid">Informe um endereço válido, como youtube.com.</string>
+    <string name="block_targets_keyword_placeholder">Ex.: aposta, cassino, porn</string>
+    <string name="block_targets_keyword_helper">A palavra bloqueia qualquer site cujo endereço a contenha.</string>
+    <string name="block_targets_keyword_invalid">Use uma única palavra de 3 a 63 caracteres, sem espaços.</string>
+    <string name="block_targets_keyword_selected">Palavras na lista</string>
+    <string name="block_targets_keyword_none">Nenhuma palavra adicionada.</string>
+    <string name="limits_preset_sites">Sites populares</string>
     <string name="app_selection_title">Selecionar Aplicativos</string>
     <string name="app_selection_preventive">Aplicativos predefinidos (não instalados)</string>
     <string name="app_selection_show_more">Mostrar Mais (+%1$s apps)</string>

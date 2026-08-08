@@ -82,10 +82,12 @@ fun UsageLimitsScreen(authManager: AuthManager, onBack: () -> Unit) {
                     onClick = { selectedTab = 0 },
                     text = { Text(stringResource(R.string.sessions_category_apps), color = if (selectedTab == 0) AccentCyan else TextHint, fontWeight = FontWeight.Bold) }
                 )
+                // "Sites", não "Sites e palavras": um limite conta tempo gasto
+                // num alvo, e palavra não é alvo de tempo — ver BlockTargetPolicy.
                 Tab(
                     selected = selectedTab == 1,
                     onClick = { selectedTab = 1 },
-                    text = { Text(stringResource(R.string.sessions_category_websites), color = if (selectedTab == 1) AccentCyan else TextHint, fontWeight = FontWeight.Bold) }
+                    text = { Text(stringResource(R.string.block_targets_tab_sites), color = if (selectedTab == 1) AccentCyan else TextHint, fontWeight = FontWeight.Bold) }
                 )
             }
 

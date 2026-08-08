@@ -349,6 +349,21 @@
     <string name="limits_dns_filter_desc">Enables the family filter and 24/7 URL scanning, including SafeSearch and mixed-content sites. Outside maintenance, it prevents changing DNS or configuring a VPN. Requires Nuclear Protection active.</string>
 
     <!-- App Selection Wizard -->
+    <string name="block_targets_title">Select targets</string>
+    <string name="block_targets_tab_apps">Apps</string>
+    <string name="block_targets_tab_sites">Sites</string>
+    <string name="block_targets_tab_keywords">Keywords</string>
+    <string name="block_targets_count">%1$d items</string>
+    <string name="block_targets_fallback_name">app</string>
+    <string name="block_targets_site_placeholder">e.g. youtube.com</string>
+    <string name="block_targets_site_helper">Type any site, or pick one of the presets below.</string>
+    <string name="block_targets_site_invalid">Enter a valid address, such as youtube.com.</string>
+    <string name="block_targets_keyword_placeholder">e.g. betting, casino, porn</string>
+    <string name="block_targets_keyword_helper">A keyword blocks any site whose address contains it.</string>
+    <string name="block_targets_keyword_invalid">Use a single word of 3 to 63 characters, no spaces.</string>
+    <string name="block_targets_keyword_selected">Keywords in the list</string>
+    <string name="block_targets_keyword_none">No keyword added.</string>
+    <string name="limits_preset_sites">Popular sites</string>
     <string name="app_selection_title">Select Apps</string>
     <string name="app_selection_preventive">Predefined apps (not installed)</string>
     <string name="app_selection_show_more">Show More (+%1$s apps)</string>

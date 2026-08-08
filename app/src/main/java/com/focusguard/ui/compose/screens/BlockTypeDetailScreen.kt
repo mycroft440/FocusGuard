@@ -78,6 +78,7 @@ import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.ui.compose.theme.WarningAmber
+import com.focusguard.utils.WebsiteBlocker
 
 /**
  * The three kinds of protection, as the user chooses between them.
@@ -411,7 +412,9 @@ internal fun blockedEntryLabel(
     isWebsite: Boolean,
     installedLabel: String?
 ): String {
-    if (isWebsite) return identifier
+    // displayRule desfaz os prefixos de persistência: "keyword:aposta" vira
+    // "*aposta*" e a categoria adulta vira "Pornografia".
+    if (isWebsite) return WebsiteBlocker.displayRule(identifier)
     installedLabel?.takeIf { it.isNotBlank() }?.let { return it }
     return PredefinedApps.PREVENTIVE_APPS
         .firstOrNull { it.packageName == identifier }

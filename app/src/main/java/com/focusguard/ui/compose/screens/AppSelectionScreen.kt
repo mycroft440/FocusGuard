@@ -51,6 +51,43 @@ fun AppSelectionScreen(
     onToggleApp: (String) -> Unit,
     onBack: () -> Unit
 ) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.app_selection_title), color = TextPrimary) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), tint = TextPrimary)
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBg)
+            )
+        },
+        containerColor = DarkBg
+    ) { padding ->
+        AppSelectionList(
+            apps = apps,
+            isLoading = isLoading,
+            onToggleApp = onToggleApp,
+            modifier = Modifier.padding(padding)
+        )
+    }
+}
+
+/**
+ * The searchable app list on its own, without a top bar.
+ *
+ * Split out from [AppSelectionScreen] so the block wizard can show it as one tab
+ * beside sites and words: those pickers need to sit under a shared top bar and a
+ * shared "continue" button, which a nested Scaffold would fight over.
+ */
+@Composable
+fun AppSelectionList(
+    apps: List<SelectableAppUi>,
+    isLoading: Boolean,
+    onToggleApp: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
     var searchQuery by remember { mutableStateOf("") }
     var expandUninstalled by remember { mutableStateOf(false) }
     var expandInstalled by remember { mutableStateOf(false) }
@@ -66,172 +103,157 @@ fun AppSelectionScreen(
     val installedApps = remember(filteredApps) { filteredApps.filter { it.isInstalled } }
     val uninstalledApps = remember(filteredApps) { filteredApps.filter { !it.isInstalled } }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(R.string.app_selection_title), color = TextPrimary) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), tint = TextPrimary)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBg)
-            )
-        },
-        containerColor = DarkBg
-    ) { padding ->
-        Column(
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .background(DarkBg)
+    ) {
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            placeholder = { Text(stringResource(R.string.limits_search_placeholder), color = TextHint) },
+            leadingIcon = {
+                Icon(Icons.Filled.Search, contentDescription = null, tint = TextHint)
+            },
             modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-        ) {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = { searchQuery = it },
-                placeholder = { Text(stringResource(R.string.limits_search_placeholder), color = TextHint) },
-                leadingIcon = {
-                    Icon(Icons.Filled.Search, contentDescription = null, tint = TextHint)
-                },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = AccentCyan,
-                    cursorColor = AccentCyan,
-                    unfocusedTextColor = TextPrimary,
-                    focusedTextColor = TextPrimary
-                ),
-                shape = RoundedCornerShape(16.dp),
-                singleLine = true
-            )
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = AccentCyan,
+                cursorColor = AccentCyan,
+                unfocusedTextColor = TextPrimary,
+                focusedTextColor = TextPrimary
+            ),
+            shape = RoundedCornerShape(16.dp),
+            singleLine = true
+        )
 
-            if (isLoading) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = AccentCyan)
-                }
-            } else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
-                ) {
-                    if (uninstalledApps.isNotEmpty()) {
+        if (isLoading) {
+            Box(
+                modifier = Modifier.fillMaxSize(),
+                contentAlignment = Alignment.Center
+            ) {
+                CircularProgressIndicator(color = AccentCyan)
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                if (uninstalledApps.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = stringResource(R.string.app_selection_preventive),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = AccentCyan,
+                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
+                        )
+                    }
+
+                    val visibleUninstalled = if (expandUninstalled || searchQuery.isNotBlank()) uninstalledApps else uninstalledApps.take(3)
+
+                    items(visibleUninstalled, key = { it.packageName }) { app ->
+                        AppSelectionItem(app = app, onToggle = { onToggleApp(app.packageName) })
+                    }
+
+                    if (!expandUninstalled && searchQuery.isBlank() && uninstalledApps.size > 3) {
                         item {
-                            Text(
-                                text = stringResource(R.string.app_selection_preventive),
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = AccentCyan,
-                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
-                            )
-                        }
-
-                        val visibleUninstalled = if (expandUninstalled || searchQuery.isNotBlank()) uninstalledApps else uninstalledApps.take(3)
-
-                        items(visibleUninstalled, key = { it.packageName }) { app ->
-                            AppSelectionItem(app = app, onToggle = { onToggleApp(app.packageName) })
-                        }
-
-                        if (!expandUninstalled && searchQuery.isBlank() && uninstalledApps.size > 3) {
-                            item {
-                                TextButton(
-                                    onClick = { expandUninstalled = true },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(stringResource(R.string.app_selection_show_more, uninstalledApps.size - 3), color = AccentCyan)
-                                }
+                            TextButton(
+                                onClick = { expandUninstalled = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.app_selection_show_more, uninstalledApps.size - 3), color = AccentCyan)
                             }
                         }
+                    }
 
-                        if (expandUninstalled && searchQuery.isBlank()) {
-                            item {
-                                TextButton(
-                                    onClick = { expandUninstalled = false },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(stringResource(R.string.app_selection_show_less), color = AccentCyan)
-                                }
-                            }
-                        }
-
+                    if (expandUninstalled && searchQuery.isBlank()) {
                         item {
-                            Spacer(modifier = Modifier.height(16.dp))
-                            HorizontalDivider(color = CardBorder, thickness = 1.dp)
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Text(
-                                text = stringResource(R.string.app_selection_installed),
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary,
-                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
-                            )
-                        }
-
-                        val visibleInstalled = if (expandInstalled || searchQuery.isNotBlank()) installedApps else installedApps.take(3)
-
-                        items(visibleInstalled, key = { it.packageName }) { app ->
-                            AppSelectionItem(app = app, onToggle = { onToggleApp(app.packageName) })
-                        }
-
-                        if (!expandInstalled && searchQuery.isBlank() && installedApps.size > 3) {
-                            item {
-                                TextButton(
-                                    onClick = { expandInstalled = true },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(stringResource(R.string.app_selection_show_more, installedApps.size - 3), color = TextPrimary.copy(alpha = 0.7f))
-                                }
+                            TextButton(
+                                onClick = { expandUninstalled = false },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.app_selection_show_less), color = AccentCyan)
                             }
                         }
+                    }
 
-                        if (expandInstalled && searchQuery.isBlank()) {
-                            item {
-                                TextButton(
-                                    onClick = { expandInstalled = false },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(stringResource(R.string.app_selection_show_less), color = TextPrimary.copy(alpha = 0.7f))
-                                }
-                            }
-                        }
-                    } else {
+                    item {
+                        Spacer(modifier = Modifier.height(16.dp))
+                        HorizontalDivider(color = CardBorder, thickness = 1.dp)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text(
+                            text = stringResource(R.string.app_selection_installed),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
+                        )
+                    }
+
+                    val visibleInstalled = if (expandInstalled || searchQuery.isNotBlank()) installedApps else installedApps.take(3)
+
+                    items(visibleInstalled, key = { it.packageName }) { app ->
+                        AppSelectionItem(app = app, onToggle = { onToggleApp(app.packageName) })
+                    }
+
+                    if (!expandInstalled && searchQuery.isBlank() && installedApps.size > 3) {
                         item {
-                            Text(
-                                text = stringResource(R.string.app_selection_installed),
-                                fontSize = 16.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary,
-                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
-                            )
-                        }
-
-                        val visibleInstalled = if (expandInstalled || searchQuery.isNotBlank()) installedApps else installedApps.take(3)
-
-                        items(visibleInstalled, key = { it.packageName }) { app ->
-                            AppSelectionItem(app = app, onToggle = { onToggleApp(app.packageName) })
-                        }
-
-                        if (!expandInstalled && searchQuery.isBlank() && installedApps.size > 3) {
-                            item {
-                                TextButton(
-                                    onClick = { expandInstalled = true },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(stringResource(R.string.app_selection_show_more, installedApps.size - 3), color = TextPrimary.copy(alpha = 0.7f))
-                                }
+                            TextButton(
+                                onClick = { expandInstalled = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.app_selection_show_more, installedApps.size - 3), color = TextPrimary.copy(alpha = 0.7f))
                             }
                         }
+                    }
 
-                        if (expandInstalled && searchQuery.isBlank()) {
-                            item {
-                                TextButton(
-                                    onClick = { expandInstalled = false },
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    Text(stringResource(R.string.app_selection_show_less), color = TextPrimary.copy(alpha = 0.7f))
-                                }
+                    if (expandInstalled && searchQuery.isBlank()) {
+                        item {
+                            TextButton(
+                                onClick = { expandInstalled = false },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.app_selection_show_less), color = TextPrimary.copy(alpha = 0.7f))
+                            }
+                        }
+                    }
+                } else {
+                    item {
+                        Text(
+                            text = stringResource(R.string.app_selection_installed),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
+                        )
+                    }
+
+                    val visibleInstalled = if (expandInstalled || searchQuery.isNotBlank()) installedApps else installedApps.take(3)
+
+                    items(visibleInstalled, key = { it.packageName }) { app ->
+                        AppSelectionItem(app = app, onToggle = { onToggleApp(app.packageName) })
+                    }
+
+                    if (!expandInstalled && searchQuery.isBlank() && installedApps.size > 3) {
+                        item {
+                            TextButton(
+                                onClick = { expandInstalled = true },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.app_selection_show_more, installedApps.size - 3), color = TextPrimary.copy(alpha = 0.7f))
+                            }
+                        }
+                    }
+
+                    if (expandInstalled && searchQuery.isBlank()) {
+                        item {
+                            TextButton(
+                                onClick = { expandInstalled = false },
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(stringResource(R.string.app_selection_show_less), color = TextPrimary.copy(alpha = 0.7f))
                             }
                         }
                     }
