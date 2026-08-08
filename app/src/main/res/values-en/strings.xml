@@ -138,9 +138,7 @@
 
     <!-- AntiPorn and EasyPeasy -->
     <string name="recovery_title">AntiPorn</string>
-    <string name="recovery_subtitle">A private space to strengthen your freedom from pornography.</string>
     <string name="recovery_privacy_badge">Private and available offline</string>
-    <string name="recovery_resources_title">Resources for your journey</string>
     <string name="recovery_creator_ebook_title">Creator\'s Instructions</string>
     <string name="recovery_creator_ebook_card_subtitle">Everything about leaving pornography starts here</string>
     <string name="recovery_creator_ebook_description">Everything about leaving pornography starts here. This e-book is an original space prepared to gather the instructions from the creator of FocusGuard.</string>
@@ -157,8 +155,27 @@
     <string name="recovery_continue_reading">Continue reading</string>
     <string name="recovery_educational_notice">Educational material; it does not replace professional support.</string>
     <string name="recovery_ebook_attribution">Original work: Hackauthor². Brazilian translation: HackAuthorBR and volunteer translators. Content under CC BY-SA 4.0.</string>
+    <string name="recovery_journey_subtitle">Four stages, one at a time. The next one opens when you close the current one.</string>
+    <string name="recovery_journey_progress">Stage %1$d of %2$d</string>
+    <string name="recovery_journey_all_done">Journey set up. Now keep going.</string>
+    <string name="recovery_stage_done">Done</string>
+    <string name="recovery_stage_current">Current stage</string>
+    <string name="recovery_stage_locked">Finish the previous stage to open</string>
+    <string name="recovery_stage_auto_checked">This stage completes on its own once the block is active.</string>
+    <string name="recovery_stage_understand_title">Understand the trap</string>
+    <string name="recovery_stage_understand_desc">Read the Creator Instructions. Before closing any door, it helps to know what keeps you at it.</string>
+    <string name="recovery_stage_understand_action">Open the instructions</string>
+    <string name="recovery_stage_understand_confirm">I have read it — finish stage</string>
+    <string name="recovery_stage_shield_title">Close the doors</string>
+    <string name="recovery_stage_shield_desc">Turn on the pornography block: known sites and words that show up in the address, in any browser.</string>
+    <string name="recovery_stage_shield_action">Turn on the block</string>
+    <string name="recovery_stage_rewire_title">Undo the brainwashing</string>
+    <string name="recovery_stage_rewire_desc">Read the EasyPeasy Method. The block holds the door; the reading removes the urge to open it.</string>
+    <string name="recovery_stage_rewire_action">Open the e-book</string>
+    <string name="recovery_stage_rewire_confirm">I have read it — finish stage</string>
+    <string name="recovery_stage_maintain_title">Stay free</string>
+    <string name="recovery_stage_maintain_desc">The doors are shut and the urge lost its argument. From here it is one day at a time.</string>
     <string name="recovery_book_back">Back to AntiPorn</string>
-    <string name="recovery_open_details">View e-book details</string>
 
     <!-- Settings -->
     <string name="settings_category_general">General</string>
@@ -548,4 +565,8 @@
     <string name="uninstall_app_blocked_by_active_block">An irreversible block is running. Uninstall becomes available when it ends — it is not an escape hatch from a fast in progress.</string>
     <string name="uninstall_app_failed">Could not release the uninstall.</string>
 
+    <plurals name="recovery_free_days">
+        <item quantity="one">day free</item>
+        <item quantity="other">days free</item>
+    </plurals>
 </resources>
