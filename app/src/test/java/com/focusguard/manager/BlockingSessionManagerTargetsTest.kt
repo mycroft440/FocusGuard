@@ -80,7 +80,7 @@ class BlockingSessionManagerTargetsTest {
     fun `pornography category semantically covers its internal rules`() {
         assertThat(
             BlockingSessionManager.isWebsiteRuleCoveredBy(
-                "keyword:xvideos",
+                "keyword:xvideo",
                 listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
             )
         ).isTrue()

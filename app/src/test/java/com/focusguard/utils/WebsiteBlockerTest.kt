@@ -483,7 +483,7 @@ class WebsiteBlockerTest {
             "*?q=PORN*",
             "*?q=xxx*",
             "*?q=sex*",
-            "*?q=xvideos*",
+            "*?q=xvideo*",
             "images.google.com",
             "lens.google.com",
             "*/imghp",

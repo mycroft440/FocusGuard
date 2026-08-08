@@ -91,6 +91,16 @@ fun WebsiteRulesTab(
         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
+        // Pornografia primeiro, e não perdida entre os predefinidos: é o motivo
+        // pelo qual boa parte das pessoas abre esta tela, e é o único atalho que
+        // cobre sites e palavras de uma vez — o resto da lista é um site cada.
+        item {
+            PornographyPresetRow(
+                selected = PredefinedWebsites.PORNOGRAPHY_RULE in rules,
+                onToggle = { toggle(PredefinedWebsites.PORNOGRAPHY_RULE) }
+            )
+        }
+        item { SectionLabel(stringResource(R.string.protection_sites_add_new)) }
         item {
             RuleInputRow(
                 value = input,
@@ -123,12 +133,6 @@ fun WebsiteRulesTab(
             )
         }
         item { SectionLabel(stringResource(R.string.protection_sites_common)) }
-        item {
-            PornographyPresetRow(
-                selected = PredefinedWebsites.PORNOGRAPHY_RULE in rules,
-                onToggle = { toggle(PredefinedWebsites.PORNOGRAPHY_RULE) }
-            )
-        }
         items(PredefinedWebsites.ALL_PRESETS, key = { "preset_${it.domain}" }) { website ->
             val normalized = WebsiteBlocker.normalizeRule(website.domain)
             WebsitePresetRow(
