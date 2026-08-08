@@ -62,7 +62,9 @@ fun BlockDurationPicker(
     onUnitChange: (BlockDurationPolicy.Unit) -> Unit,
     onAmountChange: (String) -> Unit,
     accent: Color = AccentCyan,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Unidades ofertadas; "para sempre" só aparece onde a política permite. */
+    units: List<BlockDurationPolicy.Unit> = BlockDurationPolicy.Unit.entries
 ) {
     var expanded by remember { mutableStateOf(false) }
     val showsAmount = BlockDurationPolicy.requiresAmount(unit)
@@ -114,7 +116,7 @@ fun BlockDurationPicker(
                 Icon(Icons.Default.ArrowDropDown, contentDescription = null, tint = accent)
             }
             DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                BlockDurationPolicy.Unit.entries.forEach { option ->
+                units.forEach { option ->
                     DropdownMenuItem(
                         text = { Text(stringResource(option.labelRes())) },
                         onClick = {

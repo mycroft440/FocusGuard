@@ -69,6 +69,12 @@ object SettingsInterceptionPolicy {
          * whole stays usable during a block.
          */
         val classTargetsAccessibilityServiceToggle: Boolean,
+
+        /**
+         * Qualquer tela que apenas lista recursos de acessibilidade. É de onde
+         * se chega ao interruptor do FocusGuard.
+         */
+        val classTargetsAccessibilityList: Boolean,
         val classTargetsDeviceAdmin: Boolean,
         val classTargetsAppDetails: Boolean,
         val classTargetsUninstall: Boolean,
@@ -115,6 +121,25 @@ object SettingsInterceptionPolicy {
         if (!selfProtectionEngaged) return Decision.IGNORE
 
         if (strictPomodoroActive) return Decision.POMODORO_LOCK
+
+        // Corte seco pela classe da tela, antes de qualquer texto ou leitura de
+        // árvore: acessibilidade e administradores do aparelho saem na primeira
+        // linha, sem depender de o FocusGuard estar nomeado na tela.
+        //
+        // É a decisão mais rápida que existe aqui — nenhum binder, nenhuma
+        // varredura — e é onde a velocidade importa: essas duas telas desligam a
+        // proteção em um toque, e qualquer condição extra a ser conferida antes
+        // é tempo que o usuário tem para alcançar o interruptor.
+        //
+        // O custo é que as seções inteiras ficam inacessíveis enquanto há
+        // bloqueio ativo, inclusive TalkBack e tamanho de fonte. É decisão de
+        // produto: sem isso, a proteção é contornável em dois toques.
+        if (signals.classTargetsAccessibilityList ||
+            signals.classTargetsAccessibilityServiceToggle ||
+            signals.classTargetsDeviceAdmin
+        ) {
+            return Decision.PROTECT_AND_ARM_GUARD
+        }
 
         // A click on an entry point fires before the destination screen opens, so
         // arm a short guard and intercept the transition too.

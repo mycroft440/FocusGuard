@@ -43,6 +43,8 @@
     <string name="block_type_fast_action">Bloquear apps</string>
 
     <string name="block_type_already_blocked">Já bloqueados (%1$d)</string>
+    <string name="block_type_section_apps">Aplicativos (%1$d)</string>
+    <string name="block_type_section_sites">Sites e palavras (%1$d)</string>
     <string name="block_type_daily_allowance">%1$d min por dia</string>
     <string name="block_type_until_you_end_it">Até você encerrar com a senha</string>
     <string name="block_type_remaining_days">Faltam %1$d dia(s) para o desbloqueio</string>

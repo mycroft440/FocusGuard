@@ -51,6 +51,35 @@ object ManagedSelfProtectionPolicy {
         "Administradores del dispositivo"
     )
 
+    /**
+     * Prefixos de "administrador" que aparecem abreviados nas telas.
+     *
+     * A One UI corta o rótulo para caber — "Apps do administr. do aparelho" — e
+     * nenhum termo escrito por extenso casa com isso. Em vez de tentar listar
+     * cada corte de cada fabricante, o casamento é feito por par: uma palavra
+     * que comece com um destes prefixos, mais uma palavra de aparelho na mesma
+     * frase. Sozinho, "admin" apareceria em contexto inocente demais.
+     */
+    private val deviceAdminWordPrefixes = listOf(
+        "admin",
+        "administr",
+        "administra"
+    )
+
+    /**
+     * Prefixos, e não palavras inteiras: a barra de título também corta o outro
+     * lado do rótulo — "Apps do administr. do aparel…" — então exigir "aparelho"
+     * completo deixaria passar justamente a tela que se quer barrar.
+     */
+    private val deviceWordPrefixes = listOf(
+        "aparel",
+        "dispositiv",
+        "device",
+        "telefon",
+        "phone",
+        "celular"
+    )
+
     internal val focusGuardSearchTerms = listOf(
         "FocusGuard",
         "Focus Guard",
@@ -96,7 +125,21 @@ object ManagedSelfProtectionPolicy {
         containsAny(className, essentialSpecialAccessClassMarkers)
 
     fun textTargetsDeviceAdmin(values: Iterable<CharSequence?>): Boolean =
-        valuesContainAny(values, deviceAdminSearchTerms)
+        valuesContainAny(values, deviceAdminSearchTerms) ||
+            values.any { value -> mentionsAbbreviatedDeviceAdmin(value?.toString().orEmpty()) }
+
+    /**
+     * "administr. do aparelho" e companhia: palavra de administração abreviada
+     * mais palavra de aparelho, no mesmo texto.
+     */
+    private fun mentionsAbbreviatedDeviceAdmin(value: String): Boolean {
+        val normalized = normalize(value)
+        if (normalized.isBlank()) return false
+        if (deviceWordPrefixes.none(normalized::contains)) return false
+        return normalized
+            .split(NON_LETTER_REGEX)
+            .any { word -> deviceAdminWordPrefixes.any(word::startsWith) }
+    }
 
     fun textTargetsFocusGuard(values: Iterable<CharSequence?>): Boolean =
         valuesContainAny(values, focusGuardSearchTerms)
@@ -125,4 +168,6 @@ object ManagedSelfProtectionPolicy {
         Normalizer.normalize(value, Normalizer.Form.NFD)
             .replace("\\p{M}+".toRegex(), "")
             .lowercase(Locale.ROOT)
+
+    private val NON_LETTER_REGEX = "[^a-z]+".toRegex()
 }

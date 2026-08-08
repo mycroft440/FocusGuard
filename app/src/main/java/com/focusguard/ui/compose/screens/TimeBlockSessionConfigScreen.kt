@@ -78,7 +78,17 @@ fun TimeBlockSessionConfigScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
+    // "Para sempre" só é ofertado quando o alvo é exclusivamente pornografia:
+    // é o único bloqueio sem volta que o usuário pede querendo não voltar.
+    val availableUnits = remember(apps, sites) {
+        BlockDurationPolicy.availableUnits(rules = sites, hasApps = apps.isNotEmpty())
+    }
     var durationUnit by remember { mutableStateOf(BlockDurationPolicy.Unit.DAYS) }
+    // Se o alvo mudar e a unidade escolhida deixar de existir, cai para dias em
+    // vez de continuar armando um prazo que a tela não oferece mais.
+    if (durationUnit !in availableUnits) {
+        durationUnit = BlockDurationPolicy.Unit.DAYS
+    }
     var amountText by remember { mutableStateOf("") }
     var termsAccepted by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
@@ -222,7 +232,8 @@ fun TimeBlockSessionConfigScreen(
                         amountText = amountText,
                         onUnitChange = { durationUnit = it },
                         onAmountChange = { amountText = it },
-                        accent = DangerRed
+                        accent = DangerRed,
+                        units = availableUnits
                     )
                     Spacer(modifier = Modifier.height(14.dp))
                     Surface(

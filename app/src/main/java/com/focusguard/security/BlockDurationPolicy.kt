@@ -1,5 +1,6 @@
 package com.focusguard.security
 
+import com.focusguard.utils.WebsiteBlocker
 import java.util.concurrent.TimeUnit
 
 /**
@@ -32,6 +33,34 @@ object BlockDurationPolicy {
 
     /** Whether the amount field should be shown at all. */
     fun requiresAmount(unit: Unit): Boolean = unit != Unit.FOREVER
+
+    /**
+     * "Para sempre" só existe para pornografia.
+     *
+     * Um bloqueio sem data final é a única decisão do app que o próprio usuário
+     * não consegue desfazer, e ela só se justifica onde a pessoa não quer voltar
+     * nunca. Prender Instagram ou um jogo para sempre é sobretudo uma armadilha
+     * — o arrependimento é provável e não há saída. Para pornografia é o pedido
+     * literal de quem arma o bloqueio.
+     *
+     * @param rules regras de site do alvo, já normalizadas ou não.
+     * @param hasApps se algum aplicativo foi escolhido junto. Um app na lista
+     *   basta para tirar o "para sempre": ele não é pornografia por categoria e
+     *   ficaria preso pelo mesmo prazo infinito.
+     */
+    fun allowsForever(rules: Collection<String>, hasApps: Boolean): Boolean {
+        if (hasApps) return false
+        val normalized = WebsiteBlocker.normalizeRules(rules)
+        return normalized.isNotEmpty() && normalized.all(WebsiteBlocker::isPornographyRule)
+    }
+
+    /** Unidades oferecidas ao usuário para o alvo escolhido. */
+    fun availableUnits(rules: Collection<String>, hasApps: Boolean): List<Unit> =
+        if (allowsForever(rules, hasApps)) {
+            Unit.entries
+        } else {
+            Unit.entries.filterNot { it == Unit.FOREVER }
+        }
 
     sealed interface Duration {
         /** Finite block; [totalHours] is what the session layer stores. */

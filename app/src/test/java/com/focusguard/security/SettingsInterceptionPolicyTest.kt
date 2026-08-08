@@ -18,6 +18,7 @@ class SettingsInterceptionPolicyTest {
         isViewClickedEvent: Boolean = false,
         guardArmed: Boolean = false,
         classTargetsAccessibilityServiceToggle: Boolean = false,
+        classTargetsAccessibilityList: Boolean = false,
         classTargetsDeviceAdmin: Boolean = false,
         classTargetsAppDetails: Boolean = false,
         classTargetsUninstall: Boolean = false,
@@ -33,6 +34,7 @@ class SettingsInterceptionPolicyTest {
         isViewClickedEvent = isViewClickedEvent,
         guardArmed = guardArmed,
         classTargetsAccessibilityServiceToggle = classTargetsAccessibilityServiceToggle,
+        classTargetsAccessibilityList = classTargetsAccessibilityList,
         classTargetsDeviceAdmin = classTargetsDeviceAdmin,
         classTargetsAppDetails = classTargetsAppDetails,
         classTargetsUninstall = classTargetsUninstall,
@@ -330,24 +332,43 @@ class SettingsInterceptionPolicyTest {
     }
 
     @Test
-    fun `another service's toggle screen is left alone`() {
-        // TalkBack's switch is none of our business.
-        val decision = decide(signals(classTargetsAccessibilityServiceToggle = true))
+    fun `the whole accessibility section is closed while protection is engaged`() {
+        // Antes só o interruptor do próprio FocusGuard era interceptado, e a
+        // seção seguia navegável — o que deixava chegar até ele. Agora a lista
+        // também sai, ao custo de TalkBack e tamanho de fonte ficarem fora do
+        // alcance enquanto há bloqueio. Decisão de produto, pedida explicitamente.
+        assertThat(
+            decide(signals(classTargetsAccessibilityList = true))
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
 
-        assertThat(decision).isEqualTo(Decision.IGNORE)
+        assertThat(
+            decide(signals(classTargetsAccessibilityServiceToggle = true))
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
     }
 
     @Test
-    fun `service toggle falls back to the node tree to identify FocusGuard`() {
-        val roots = RecordingRoots(focusGuard = true)
-
-        val decision = decide(
+    fun `accessibility and device admin decide without touching the node tree`() {
+        // Velocidade é o requisito destas duas telas: elas desligam a proteção
+        // em um toque, e ler a árvore custa binder síncrono. A decisão sai da
+        // classe da tela, sem nenhuma leitura.
+        listOf(
+            signals(classTargetsAccessibilityList = true),
             signals(classTargetsAccessibilityServiceToggle = true),
-            roots = roots
-        )
+            signals(classTargetsDeviceAdmin = true)
+        ).forEach { screen ->
+            val roots = RecordingRoots(focusGuard = true)
 
-        assertThat(decision).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
-        assertThat(roots.reads).contains("focusGuard")
+            assertThat(decide(screen, roots = roots))
+                .isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+            assertThat(roots.reads).isEmpty()
+        }
+    }
+
+    @Test
+    fun `the accessibility section reopens once nothing is being protected`() {
+        assertThat(
+            decide(signals(classTargetsAccessibilityList = true), engaged = false)
+        ).isEqualTo(Decision.IGNORE)
     }
 
     @Test

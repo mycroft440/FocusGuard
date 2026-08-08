@@ -235,12 +235,43 @@ fun BlockTypeDetailScreen(
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(bottom = 10.dp)
                     )
+                    // Aplicativos e sites em seções próprias: são coisas
+                    // diferentes de gerenciar — um se reconhece pelo ícone, o
+                    // outro pelo endereço — e misturados numa lista só a pessoa
+                    // precisa ler item a item para achar o que procura.
+                    val apps = current.filterNot { it.isWebsite }
+                    val sites = current.filter { it.isWebsite }
                     LazyColumn(
                         contentPadding = PaddingValues(bottom = 24.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        items(current, key = { it.identifier }) { entry ->
-                            BlockedEntryRow(entry = entry, accent = type.accent)
+                        if (apps.isNotEmpty()) {
+                            item(key = "header_apps") {
+                                BlockedSectionHeader(
+                                    text = stringResource(
+                                        R.string.block_type_section_apps,
+                                        apps.size
+                                    ),
+                                    accent = type.accent
+                                )
+                            }
+                            items(apps, key = { "app_${it.identifier}" }) { entry ->
+                                BlockedEntryRow(entry = entry, accent = type.accent)
+                            }
+                        }
+                        if (sites.isNotEmpty()) {
+                            item(key = "header_sites") {
+                                BlockedSectionHeader(
+                                    text = stringResource(
+                                        R.string.block_type_section_sites,
+                                        sites.size
+                                    ),
+                                    accent = type.accent
+                                )
+                            }
+                            items(sites, key = { "site_${it.identifier}" }) { entry ->
+                                BlockedEntryRow(entry = entry, accent = type.accent)
+                            }
                         }
                     }
                 }
@@ -420,6 +451,17 @@ internal fun blockedEntryLabel(
         .firstOrNull { it.packageName == identifier }
         ?.appName
         ?: identifier
+}
+
+@Composable
+private fun BlockedSectionHeader(text: String, accent: Color) {
+    Text(
+        text = text.uppercase(),
+        color = accent,
+        fontSize = 12.sp,
+        fontWeight = FontWeight.Bold,
+        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+    )
 }
 
 @Composable

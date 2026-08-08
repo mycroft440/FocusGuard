@@ -805,6 +805,8 @@ class BlockingAccessibilityService : AccessibilityService() {
             guardArmed = nowElapsed <= pendingSettingsProtectionUntilElapsed,
             classTargetsAccessibilityServiceToggle =
                 AccessibilitySettingsPolicy.classTargetsAccessibilityServiceToggle(className),
+            classTargetsAccessibilityList =
+                AccessibilitySettingsPolicy.classTargetsAccessibilityList(className),
             classTargetsDeviceAdmin =
                 ManagedSelfProtectionPolicy.classTargetsDeviceAdmin(className),
             classTargetsAppDetails =

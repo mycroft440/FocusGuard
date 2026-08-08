@@ -43,6 +43,8 @@
     <string name="block_type_fast_action">Block apps</string>
 
     <string name="block_type_already_blocked">Already blocked (%1$d)</string>
+    <string name="block_type_section_apps">Apps (%1$d)</string>
+    <string name="block_type_section_sites">Sites and keywords (%1$d)</string>
     <string name="block_type_daily_allowance">%1$d min per day</string>
     <string name="block_type_until_you_end_it">Until you end it with your password</string>
     <string name="block_type_remaining_days">%1$d day(s) left until unlock</string>

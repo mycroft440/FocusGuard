@@ -80,4 +80,37 @@ class ManagedSelfProtectionPolicyTest {
             )
         ).isFalse()
     }
+    @Test
+    fun `abbreviated device admin labels are recognised`() {
+        // A One UI corta o rótulo para caber na barra de título, e nenhum termo
+        // por extenso casava com o corte — era por aí que a tela passava.
+        assertThat(
+            ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(
+                listOf("Apps do administr. do aparel...")
+            )
+        ).isTrue()
+        assertThat(
+            ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(
+                listOf("Apps do administr. do aparelho")
+            )
+        ).isTrue()
+        assertThat(
+            ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(listOf("Admin apps do device"))
+        ).isTrue()
+    }
+
+    @Test
+    fun `administration wording alone does not target device admin`() {
+        // Sem palavra de aparelho na frase, "administração" é contexto inocente
+        // demais para derrubar o usuário da tela.
+        assertThat(
+            ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(
+                listOf("Configurações de administração da conta")
+            )
+        ).isFalse()
+        assertThat(
+            ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(listOf("Meu aparelho"))
+        ).isFalse()
+    }
+
 }

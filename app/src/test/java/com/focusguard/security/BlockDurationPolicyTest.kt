@@ -2,6 +2,7 @@ package com.focusguard.security
 
 import com.focusguard.security.BlockDurationPolicy.Duration
 import com.focusguard.security.BlockDurationPolicy.Unit
+import com.focusguard.data.PredefinedWebsites
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -88,4 +89,64 @@ class BlockDurationPolicyTest {
         assertThat(BlockDurationPolicy.resolve(Unit.DAYS, BlockDurationPolicy.MAX_DAYS))
             .isEqualTo(Duration.Finite(BlockDurationPolicy.MAX_DAYS * 24))
     }
+    @Test
+    fun `forever is offered only for a pornography-only target`() {
+        assertThat(
+            BlockDurationPolicy.allowsForever(
+                rules = listOf(PredefinedWebsites.PORNOGRAPHY_RULE),
+                hasApps = false
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun `anything other than pornography is capped to a finite block`() {
+        // Prender um app ou um site comum para sempre é sobretudo uma armadilha:
+        // o arrependimento é provável e não existe saída.
+        assertThat(
+            BlockDurationPolicy.allowsForever(listOf("youtube.com"), hasApps = false)
+        ).isFalse()
+        assertThat(
+            BlockDurationPolicy.allowsForever(listOf("keyword:aposta"), hasApps = false)
+        ).isFalse()
+        assertThat(BlockDurationPolicy.allowsForever(emptyList(), hasApps = true)).isFalse()
+        assertThat(BlockDurationPolicy.allowsForever(emptyList(), hasApps = false)).isFalse()
+    }
+
+    @Test
+    fun `one app alongside pornography already removes forever`() {
+        // O app não é pornografia por categoria e ficaria preso pelo mesmo
+        // prazo infinito, sem ter sido esse o pedido.
+        assertThat(
+            BlockDurationPolicy.allowsForever(
+                rules = listOf(PredefinedWebsites.PORNOGRAPHY_RULE),
+                hasApps = true
+            )
+        ).isFalse()
+        assertThat(
+            BlockDurationPolicy.allowsForever(
+                rules = listOf(PredefinedWebsites.PORNOGRAPHY_RULE, "youtube.com"),
+                hasApps = false
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `the unit list drops forever exactly when it is not allowed`() {
+        assertThat(
+            BlockDurationPolicy.availableUnits(
+                listOf(PredefinedWebsites.PORNOGRAPHY_RULE),
+                hasApps = false
+            )
+        ).contains(BlockDurationPolicy.Unit.FOREVER)
+
+        val capped = BlockDurationPolicy.availableUnits(listOf("youtube.com"), hasApps = false)
+        assertThat(capped).doesNotContain(BlockDurationPolicy.Unit.FOREVER)
+        assertThat(capped).containsAtLeast(
+            BlockDurationPolicy.Unit.HOURS,
+            BlockDurationPolicy.Unit.DAYS,
+            BlockDurationPolicy.Unit.MONTHS
+        )
+    }
+
 }
