@@ -371,10 +371,14 @@ object WebsiteBlocker {
                 domain == member || domain.endsWith(".$member")
             }
             if (candidateIsInFamily) {
+                // Só o membro em si cobre a família inteira. Uma regra mais
+                // específica que o visitado — `music.youtube.com` diante de
+                // `youtube.com` — não o cobre: aceitá-la fazia um limite no
+                // YouTube Music derrubar o YouTube todo, ao contrário do que
+                // acontece com domínios sem alias, onde a busca só sobe para os
+                // domínios-pai do visitado.
                 normalizedBlockedDomains.filterTo(matches) { configuredRule ->
-                    family.any { member ->
-                        configuredRule == member || configuredRule.endsWith(".$member")
-                    }
+                    configuredRule in family
                 }
             }
         }
@@ -537,11 +541,20 @@ object WebsiteBlocker {
      */
     fun isPornographySearchInput(text: String): Boolean {
         val candidateUrl = extractUrlCandidate(text)
-        return if (candidateUrl != null) {
-            isPornographyGoogleSearchUrl(candidateUrl) || isGoogleImagesUrl(candidateUrl)
-        } else {
-            containsPornographySearchTerm(text)
+        if (candidateUrl != null &&
+            (isPornographyGoogleSearchUrl(candidateUrl) || isGoogleImagesUrl(candidateUrl))
+        ) {
+            return true
         }
+
+        // A isenção vale só quando o texto inteiro é um endereço — é ela que
+        // evita derrubar example.com/sex. Uma consulta que apenas contém um
+        // domínio entre as palavras ("porn reddit.com") continua sendo consulta:
+        // antes, o domínio solto fazia a varredura de termos ser pulada e a
+        // busca passava batido em qualquer buscador que não fosse o Google.
+        if (isValidUrl(text)) return false
+
+        return containsPornographySearchTerm(text)
     }
 
     /** Detecta os termos da categoria em `q=` de qualquer domínio regional do Google. */

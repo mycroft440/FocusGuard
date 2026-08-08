@@ -540,6 +540,44 @@ class WebsiteBlockerTest {
     }
 
     @Test
+    fun `a query that merely contains a domain is still scanned for search terms`() {
+        // Regressão: o domínio solto no meio da consulta fazia a varredura de
+        // termos ser pulada, e a busca passava batido fora do Google.
+        assertThat(WebsiteBlocker.isPornographySearchInput("porn reddit.com")).isTrue()
+        assertThat(WebsiteBlocker.isPornographySearchInput("melhor site de porn")).isTrue()
+        assertThat(WebsiteBlocker.isPornographySearchInput("porn")).isTrue()
+    }
+
+    @Test
+    fun `a plain address is not treated as a pornography search`() {
+        // A isenção que evita falso positivo continua valendo para o texto que
+        // é inteiro um endereço.
+        assertThat(WebsiteBlocker.isPornographySearchInput("example.com/sex")).isFalse()
+        assertThat(WebsiteBlocker.isPornographySearchInput("https://example.com/sexta")).isFalse()
+        assertThat(WebsiteBlocker.isPornographySearchInput("noticias do dia")).isFalse()
+    }
+
+    @Test
+    fun `a rule on a subdomain does not block the rest of its alias family`() {
+        // Regressão: limitar o YouTube Music derrubava o YouTube inteiro, porque
+        // a família de aliases aceitava qualquer regra abaixo de um membro.
+        val musicOnly = listOf("music.youtube.com")
+
+        assertThat(WebsiteBlocker.isUrlBlocked("https://music.youtube.com/x", musicOnly)).isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked("https://youtube.com/watch", musicOnly)).isFalse()
+        assertThat(WebsiteBlocker.isUrlBlocked("https://youtu.be/abc", musicOnly)).isFalse()
+    }
+
+    @Test
+    fun `a rule on a family member still covers its subdomains and aliases`() {
+        val wholeSite = listOf("youtube.com")
+
+        assertThat(WebsiteBlocker.isUrlBlocked("https://music.youtube.com/x", wholeSite)).isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked("https://youtu.be/abc", wholeSite)).isTrue()
+        assertThat(WebsiteBlocker.isUrlBlocked("https://youtube.com", wholeSite)).isTrue()
+    }
+
+    @Test
     fun `matching is case insensitive`() {
         assertThat(
             WebsiteBlocker.isUrlBlocked("HTTPS://FACEBOOK.COM", listOf("FACEBOOK.COM"))

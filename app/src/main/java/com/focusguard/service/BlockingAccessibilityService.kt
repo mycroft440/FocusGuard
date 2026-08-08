@@ -416,7 +416,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             val eligibleForInterception = event.eventType in settingsInterceptionEventTypes
             if (eligibleForInterception &&
                 directPackage in protectedSystemPackages &&
-                handleSettingsInterception(event)
+                handleSettingsInterception(event, directPackage)
             ) {
                 return
             }
@@ -428,7 +428,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             if (eligibleForInterception &&
                 packageName != directPackage &&
                 packageName in protectedSystemPackages &&
-                handleSettingsInterception(event)
+                handleSettingsInterception(event, packageName)
             ) {
                 return
             }
@@ -759,9 +759,16 @@ class BlockingAccessibilityService : AccessibilityService() {
         blockApp(packageName)
     }
 
-    private fun handleSettingsInterception(event: AccessibilityEvent): Boolean {
-        val packageName = event.packageName?.toString() ?: return false
-
+    /**
+     * @param packageName o app já resolvido pelo chamador. Reler
+     *   `event.packageName` aqui anulava a segunda chance: ela existe justamente
+     *   para os eventos em que esse campo vem vazio ou nomeia outra janela, e o
+     *   guard abaixo então rejeitava todos eles.
+     */
+    private fun handleSettingsInterception(
+        event: AccessibilityEvent,
+        packageName: String
+    ): Boolean {
         // Cheap guards stay ahead of the signal extraction below: this runs on every
         // accessibility event, and eventTextValues() plus the classifiers are not free.
         if (packageName !in protectedSystemPackages) return false

@@ -11,6 +11,7 @@ import android.widget.Toast
 import androidx.room.withTransaction
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.BlockSession
@@ -467,25 +468,49 @@ class BlockingSessionManager @Inject constructor(
         val appTargets = apps
             .filter { it.packageName.isNotBlank() }
             .distinctBy { it.packageName }
-        val normalizedSites = WebsiteBlocker.normalizeRules(sites)
+        // Um limite conta tempo gasto num alvo, e palavra não é alvo de tempo:
+        // sem este filtro, uma palavra digitada virava um limite `keyword:` que
+        // bloqueava todo host que a contivesse ao estourar. Ver BlockTargetPolicy.
+        val normalizedSites = BlockTargetPolicy.acceptedRules(
+            kinds = BlockTargetPolicy.DAILY_LIMIT,
+            rules = sites
+        )
 
         database.withTransaction {
+            // Os DAOs inserem com REPLACE, então reescrever um alvo que já tinha
+            // limite apagaria o modo de proteção dele. Preservar deixa o limite
+            // continuar removível pela credencial que o usuário configurou.
+            val existingAppLimits = database.appUsageLimitDao()
+                .getAllStatic()
+                .associateBy { it.packageName }
+            val existingSiteLimits = database.websiteUsageLimitDao()
+                .getAllStatic()
+                .associateBy { WebsiteBlocker.normalizeRule(it.domain) }
+
             appTargets.forEach { app ->
+                val existing = existingAppLimits[app.packageName]
                 database.appUsageLimitDao().insert(
                     AppUsageLimit(
                         packageName = app.packageName,
                         appName = app.appName,
                         dailyLimitMinutes = dailyLimitMinutes,
-                        isEnabled = true
+                        isEnabled = true,
+                        lockMode = existing?.lockMode ?: MasterCredentialPolicy.LOCK_MODE_NONE,
+                        lockPasswordHash = existing?.lockPasswordHash,
+                        lockUntilTimestamp = existing?.lockUntilTimestamp
                     )
                 )
             }
             normalizedSites.forEach { rule ->
+                val existing = existingSiteLimits[rule]
                 database.websiteUsageLimitDao().insert(
                     WebsiteUsageLimit(
                         domain = rule,
                         dailyLimitMinutes = dailyLimitMinutes,
-                        isEnabled = true
+                        isEnabled = true,
+                        lockMode = existing?.lockMode ?: MasterCredentialPolicy.LOCK_MODE_NONE,
+                        lockPasswordHash = existing?.lockPasswordHash,
+                        lockUntilTimestamp = existing?.lockUntilTimestamp
                     )
                 )
             }
@@ -506,20 +531,21 @@ class BlockingSessionManager @Inject constructor(
                     getAppsForSessions(passwordSessionIds) +
                         WebsiteBlocker.appPackageDomainsFor(existingPasswordRules).keys
                     ).toSet()
+                // Só aplicativos: o bloqueio por senha não cobre site, e a
+                // sessão criada aqui é fixa de 24h. Gravar as regras de site
+                // nela deixava o site bloqueado o dia inteiro em vez de apenas
+                // depois de estourar o limite — o oposto do que foi pedido.
                 val appsToProtect = appTargets
                     .map { it.packageName }
                     .filterNot { it in existingPasswordApps }
-                val sitesToProtect = normalizedSites.filterNot {
-                    isWebsiteRuleCoveredBy(it, existingPasswordRules)
-                }
 
-                if (appsToProtect.isNotEmpty() || sitesToProtect.isNotEmpty()) {
+                if (appsToProtect.isNotEmpty()) {
                     val session = BlockSession(
                         startTime = now,
                         isActive = true,
                         isRecurring = false,
                         blockedAppsCount = appsToProtect.size,
-                        blockedWebsitesCount = sitesToProtect.size,
+                        blockedWebsitesCount = 0,
                         sessionType = "PASSWORD",
                         isFixed24h = true
                     )
@@ -527,11 +553,6 @@ class BlockingSessionManager @Inject constructor(
                     appsToProtect.forEach {
                         database.sessionAppCrossRefDao().insert(
                             SessionAppCrossRef(sessionId, it)
-                        )
-                    }
-                    sitesToProtect.forEach {
-                        database.sessionWebsiteCrossRefDao().insert(
-                            SessionWebsiteCrossRef(sessionId, it)
                         )
                     }
                 }
@@ -1167,7 +1188,19 @@ class BlockingSessionManager @Inject constructor(
                 val appFamilySites = WebsiteBlocker.domainRulesForAppPackages(
                     sessionApps + limitApps
                 )
-                val sitesToBlock = (sessionSites + limitSites + appFamilySites)
+                // O filtro adulto global entra aqui, e não só dentro de
+                // enforceWebsiteRestrictions: esta lista também vira o snapshot
+                // enviado ao AccessibilityService, que substitui o conjunto
+                // vigente e adia o próximo refresh. Sem a regra, o serviço
+                // passava a janela inteira até a próxima recarga sem bloquear
+                // pornografia — e num aparelho sem Device Owner ele é a única
+                // camada que sobra.
+                val adultFilterRules = if (adultFilterEnabled) {
+                    listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
+                } else {
+                    emptyList()
+                }
+                val sitesToBlock = (sessionSites + limitSites + appFamilySites + adultFilterRules)
                     .map(WebsiteBlocker::normalizeRule)
                     .filter { it.isNotBlank() }
                     .distinct()
