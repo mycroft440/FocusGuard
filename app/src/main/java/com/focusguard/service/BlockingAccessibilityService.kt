@@ -773,13 +773,27 @@ class BlockingAccessibilityService : AccessibilityService() {
         // accessibility event, and eventTextValues() plus the classifiers are not free.
         if (packageName !in protectedSystemPackages) return false
 
-        // Consumer Device Admin is intentionally not treated as irremovable: Android allows
-        // the user to revoke it and Google Play forbids using Accessibility to remove that
-        // platform escape. This guard is defense in depth for explicitly provisioned devices.
-        val armoredProtectionEngaged = deviceOwnerManager.isDeviceOwnerActive() &&
-            deviceOwnerManager.isArmoredProtectionArmed() &&
-            !deviceOwnerManager.isMaintenanceActive()
-        if (!armoredProtectionEngaged) return false
+        // A proteção contra a própria remoção vale em dois casos. O mais forte é
+        // o Device Owner blindado. O outro é o modo consumidor: sem Device Owner,
+        // mas com um bloqueio, limite ou o filtro adulto ativo agora — é o estado
+        // em que desativar o app derruba justamente o que o usuário pediu para
+        // segurar. `isBlockingSessionActive` já é a verdade em tempo real desse
+        // estado, atualizada pelo snapshot no mesmo instante em que um bloqueio é
+        // armado, então a defesa sobe junto com o bloqueio, sem depender de uma
+        // recarga posterior.
+        //
+        // O volátil barato vem antes das chamadas ao DevicePolicyManager: quando
+        // não há bloqueio ativo nem blindagem de Device Owner persistente, não há
+        // o que defender e saímos sem tocar em binder, mantendo o caminho quente
+        // enxuto — cada milissegundo aqui é margem para o usuário alcançar o botão.
+        val armorPersists = deviceOwnerManager.isDeviceOwnerActive() &&
+            deviceOwnerManager.isArmoredProtectionArmed()
+        if (!isBlockingSessionActive && !armorPersists) return false
+
+        // A janela de manutenção do Device Owner é a saída sancionada e desliga a
+        // defesa. Num aparelho sem Device Owner ela nunca abre, então lá a única
+        // saída é encerrar o bloqueio pelo próprio app — nunca pelas Configurações.
+        if (deviceOwnerManager.isMaintenanceActive()) return false
 
         val nowElapsed = SystemClock.elapsedRealtime()
         val className = event.className?.toString().orEmpty()
@@ -814,7 +828,9 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         val decision = SettingsInterceptionPolicy.decide(
             signals = signals,
-            armoredProtectionEngaged = armoredProtectionEngaged,
+            // Já confirmado pelas guardas acima; a política revalida por conta
+            // própria porque é testada isoladamente.
+            selfProtectionEngaged = true,
             strictPomodoroActive = isPomodoroStrictActive,
             rootSignals = SettingsInterceptionPolicy.RootSignals(
                 mentionsAccessibility = ::rootMentionsAccessibility,

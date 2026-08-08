@@ -94,19 +94,25 @@ object SettingsInterceptionPolicy {
     )
 
     /**
-     * @param armoredProtectionEngaged true only when the app is a true Device
-     *   Owner, hardening is armed, and maintenance is closed. Consumer Device
-     *   Admin deliberately does not qualify: Android lets the user revoke it and
-     *   Google Play forbids using Accessibility to block that escape hatch.
+     * @param selfProtectionEngaged true when the app should defend its own
+     *   removal right now. Two things turn it on:
+     *   - a true Device Owner with hardening armed and maintenance closed
+     *     (the strongest form), or
+     *   - consumer mode: no Device Owner, but a block, usage limit or the adult
+     *     filter is live at this moment. Off the moment nothing is being
+     *     protected, so a phone with no active block stays freely removable.
+     *
+     *   When it is off, every screen is ignored — the whole point is that the
+     *   app never traps a user who has nothing running.
      */
     fun decide(
         signals: EventSignals,
-        armoredProtectionEngaged: Boolean,
+        selfProtectionEngaged: Boolean,
         strictPomodoroActive: Boolean,
         rootSignals: RootSignals
     ): Decision {
         if (signals.packageName !in protectedSystemPackages) return Decision.IGNORE
-        if (!armoredProtectionEngaged) return Decision.IGNORE
+        if (!selfProtectionEngaged) return Decision.IGNORE
 
         if (strictPomodoroActive) return Decision.POMODORO_LOCK
 

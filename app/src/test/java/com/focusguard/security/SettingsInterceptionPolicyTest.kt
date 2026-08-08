@@ -66,12 +66,12 @@ class SettingsInterceptionPolicyTest {
 
     private fun decide(
         signals: SettingsInterceptionPolicy.EventSignals,
-        armored: Boolean = true,
+        engaged: Boolean = true,
         strictPomodoro: Boolean = false,
         roots: RecordingRoots = RecordingRoots()
     ) = SettingsInterceptionPolicy.decide(
         signals = signals,
-        armoredProtectionEngaged = armored,
+        selfProtectionEngaged = engaged,
         strictPomodoroActive = strictPomodoro,
         rootSignals = roots.asRootSignals()
     )
@@ -105,34 +105,75 @@ class SettingsInterceptionPolicyTest {
         )
     }
 
-    // ---------------------------------------------- gate: armored protection
+    // ---------------------------------------------- gate: self-protection
 
     @Test
-    fun `ignores everything when armored protection is not engaged`() {
-        // Consumer Device Admin must not intercept: Android allows revoking it and
-        // Play forbids using Accessibility to block that escape hatch.
+    fun `ignores everything when self-protection is not engaged`() {
+        // Nothing is being protected right now, so the app must stay removable —
+        // it never traps a user who has no block running.
         val decision = decide(
             signals(
                 classTargetsAccessibilityServiceToggle = true,
                 textMentionsFocusGuard = true
             ),
-            armored = false
+            engaged = false
         )
 
         assertThat(decision).isEqualTo(Decision.IGNORE)
     }
 
     @Test
-    fun `armored gate is checked before reading the node tree`() {
+    fun `the engagement gate is checked before reading the node tree`() {
         val roots = RecordingRoots(accessibility = true)
 
         decide(
             signals(isGenericSubSettings = true),
-            armored = false,
+            engaged = false,
             roots = roots
         )
 
         assertThat(roots.reads).isEmpty()
+    }
+
+    @Test
+    fun `the three self-removal surfaces are intercepted once protection is engaged`() {
+        // 1. FocusGuard's own accessibility toggle.
+        assertThat(
+            decide(
+                signals(
+                    classTargetsAccessibilityServiceToggle = true,
+                    textMentionsFocusGuard = true
+                )
+            )
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+
+        // 2. The device-admin screen.
+        assertThat(
+            decide(signals(classTargetsDeviceAdmin = true))
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+
+        // 3. FocusGuard's app details / uninstall entry.
+        assertThat(
+            decide(
+                signals(
+                    classTargetsAppDetails = true,
+                    textMentionsFocusGuard = true
+                )
+            )
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+    }
+
+    @Test
+    fun `those same surfaces stay open when nothing is being protected`() {
+        assertThat(
+            decide(signals(classTargetsDeviceAdmin = true), engaged = false)
+        ).isEqualTo(Decision.IGNORE)
+        assertThat(
+            decide(
+                signals(classTargetsAppDetails = true, textMentionsFocusGuard = true),
+                engaged = false
+            )
+        ).isEqualTo(Decision.IGNORE)
     }
 
     // ------------------------------------------------------ strict pomodoro
