@@ -105,8 +105,6 @@ fun FocusGuardNavHost(
     var selectedBlockType by remember { mutableStateOf(BlockTypeUi.PASSWORD) }
     var selectedTab by remember { mutableIntStateOf(1) }
     var selectedSessionType by remember { mutableStateOf("PASSWORD") }
-    // De onde a tela de limites foi aberta, para o voltar devolver para lá.
-    var limitsOrigin by remember { mutableStateOf(FocusGuardRoute.Settings) }
     var permissionsVisible by remember { mutableStateOf(false) }
 
     val currentPomodoro by pomodoroManager.currentSession.collectAsState()
@@ -163,7 +161,7 @@ fun FocusGuardNavHost(
 
     BackHandler(enabled = currentRoute != FocusGuardRoute.Home) {
         currentRoute = when (currentRoute) {
-            FocusGuardRoute.Limits -> limitsOrigin
+            FocusGuardRoute.Limits,
             FocusGuardRoute.IntruderLog,
             FocusGuardRoute.Language,
             FocusGuardRoute.PasswordManagement,
@@ -204,15 +202,6 @@ fun FocusGuardNavHost(
                     },
                     recoveryContent = {
                         RecoveryHubScreen(
-                            authManager = authManager,
-                            // A etapa do escudo manda para a tela do filtro, que
-                            // normalmente se abre a partir de Configurações. O
-                            // voltar precisa devolver para onde a pessoa estava,
-                            // e não para um menu por onde ela não passou.
-                            onOpenProtection = {
-                                limitsOrigin = FocusGuardRoute.Home
-                                currentRoute = FocusGuardRoute.Limits
-                            },
                             onReadBook = { book ->
                                 val offlineBook = when (book) {
                                     RecoveryBook.CREATOR_INSTRUCTIONS ->
@@ -252,10 +241,7 @@ fun FocusGuardNavHost(
                     onBack = { currentRoute = FocusGuardRoute.Home }
                 )
                 FocusGuardRoute.Settings -> SettingsScreen(
-                    onLimitsClick = {
-                    limitsOrigin = FocusGuardRoute.Settings
-                    currentRoute = FocusGuardRoute.Limits
-                },
+                    onLimitsClick = { currentRoute = FocusGuardRoute.Limits },
                     onIntruderLogClick = { currentRoute = FocusGuardRoute.IntruderLog },
                     onLanguageClick = { currentRoute = FocusGuardRoute.Language },
                     onPasswordManagementClick = { currentRoute = FocusGuardRoute.PasswordManagement },
@@ -267,10 +253,7 @@ fun FocusGuardNavHost(
                     authManager = authManager,
                     onBack = { currentRoute = FocusGuardRoute.Home }
                 )
-                FocusGuardRoute.Limits -> LimitsSecurityScreen(
-                    authManager = authManager,
-                    onBack = { currentRoute = limitsOrigin }
-                )
+                FocusGuardRoute.Limits -> LimitsSecurityScreen(authManager = authManager, onBack = { currentRoute = FocusGuardRoute.Settings })
                 FocusGuardRoute.IntruderLog -> IntruderLogScreen(onBack = { currentRoute = FocusGuardRoute.Settings })
                 FocusGuardRoute.Language -> LanguageScreen(onBack = { currentRoute = FocusGuardRoute.Settings })
                 FocusGuardRoute.PasswordManagement -> PasswordManagementScreen(authManager = authManager, onBack = { currentRoute = FocusGuardRoute.Settings })

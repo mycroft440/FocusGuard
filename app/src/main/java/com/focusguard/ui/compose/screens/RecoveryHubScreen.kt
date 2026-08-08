@@ -37,8 +37,6 @@ import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Search
-import androidx.compose.material.icons.outlined.Shield
-import androidx.compose.material.icons.outlined.Verified
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -67,7 +65,6 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
-import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -79,19 +76,9 @@ import com.focusguard.R
 import com.focusguard.data.RecoveryJourney
 import com.focusguard.data.RecoveryJourney.Stage
 import com.focusguard.data.RecoveryJourney.Status
-import com.focusguard.security.AuthManager
 
-/**
- * @param onOpenProtection leva à tela onde o filtro de pornografia é ligado. A
- *   etapa do escudo é a única que o app consegue conferir sozinho, então ela
- *   manda o usuário até lá em vez de pedir que ele se declare protegido.
- */
 @Composable
-fun RecoveryHubScreen(
-    authManager: AuthManager,
-    onReadBook: (RecoveryBook) -> Unit,
-    onOpenProtection: () -> Unit
-) {
+fun RecoveryHubScreen(onReadBook: (RecoveryBook) -> Unit) {
     var selectedBook by rememberSaveable { mutableStateOf<RecoveryBook?>(null) }
 
     BackHandler(enabled = selectedBook != null) {
@@ -113,35 +100,26 @@ fun RecoveryHubScreen(
                 onReadBook = { onReadBook(book) }
             )
         } else {
-            RecoveryLanding(
-                authManager = authManager,
-                onOpenBook = { selectedBook = it },
-                onOpenProtection = onOpenProtection
-            )
+            RecoveryLanding(onOpenBook = { selectedBook = it })
         }
     }
 }
 
 @Composable
-private fun RecoveryLanding(
-    authManager: AuthManager,
-    onOpenBook: (RecoveryBook) -> Unit,
-    onOpenProtection: () -> Unit
-) {
+private fun RecoveryLanding(onOpenBook: (RecoveryBook) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val preferences = remember(context) {
         context.getSharedPreferences(RECOVERY_PREFS, Context.MODE_PRIVATE)
     }
-    // A etapa do escudo se conclui sozinha quando o filtro é ligado, inclusive
-    // se isso acontecer em outra tela — daí reler no ON_RESUME em vez de só na
-    // primeira composição.
-    var completed by remember { mutableStateOf(preferences.readCompletedStages(authManager)) }
+    // Relido no ON_RESUME porque a leitura acontece fora daqui, noutra Activity:
+    // esta composição sobrevive à ida e à volta e não recarregaria sozinha.
+    var completed by remember { mutableStateOf(preferences.readCompletedStages()) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
-                completed = preferences.readCompletedStages(authManager)
+                completed = preferences.readCompletedStages()
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -164,21 +142,10 @@ private fun RecoveryLanding(
                 index = index,
                 status = RecoveryJourney.statusOf(stage, completed),
                 isLast = index == RecoveryJourney.stages.lastIndex,
-                daysFree = RecoveryJourney.daysFree(
-                    armedAtMillis = preferences.getLong(SHIELD_ARMED_AT, 0L),
-                    nowMillis = System.currentTimeMillis()
-                ),
-                onAction = {
-                    when (stage) {
-                        Stage.UNDERSTAND -> onOpenBook(RecoveryBook.CREATOR_INSTRUCTIONS)
-                        Stage.SHIELD -> onOpenProtection()
-                        Stage.REWIRE -> onOpenBook(RecoveryBook.EASYPEASY)
-                        Stage.MAINTAIN -> onOpenBook(RecoveryBook.EASYPEASY)
-                    }
-                },
+                onAction = { onOpenBook(stage.book) },
                 onMarkDone = {
                     preferences.edit().putBoolean(stage.doneKey, true).apply()
-                    completed = preferences.readCompletedStages(authManager)
+                    completed = preferences.readCompletedStages()
                 }
             )
         }
@@ -199,7 +166,7 @@ private fun RecoveryLanding(
 @Composable
 private fun JourneyHeader(completed: Set<Stage>) {
     val done = RecoveryJourney.completedCount(completed)
-    val total = RecoveryJourney.completableStages.size
+    val total = RecoveryJourney.stages.size
     val progress by animateFloatAsState(
         targetValue = RecoveryJourney.progress(completed),
         animationSpec = tween(600),
@@ -315,7 +282,6 @@ private fun StageRow(
     index: Int,
     status: Status,
     isLast: Boolean,
-    daysFree: Int?,
     onAction: () -> Unit,
     onMarkDone: () -> Unit
 ) {
@@ -351,8 +317,6 @@ private fun StageRow(
             StageCard(
                 content = content,
                 status = status,
-                daysFree = daysFree,
-                isFinal = RecoveryJourney.isFinal(stage),
                 accent = accent,
                 muted = muted,
                 onAction = onAction,
@@ -414,8 +378,6 @@ private fun StageBullet(index: Int, status: Status) {
 private fun StageCard(
     content: RecoveryStageContent,
     status: Status,
-    daysFree: Int?,
-    isFinal: Boolean,
     accent: Color,
     muted: Color,
     onAction: () -> Unit,
@@ -506,12 +468,7 @@ private fun StageCard(
                 )
             }
 
-            if (isFinal && current) {
-                Spacer(Modifier.height(14.dp))
-                FreeDaysBadge(daysFree = daysFree, accent = accent)
-            }
-
-            if (current && !isFinal) {
+            if (current) {
                 Spacer(Modifier.height(14.dp))
                 Button(
                     onClick = onAction,
@@ -529,66 +486,16 @@ private fun StageCard(
                     )
                 }
 
-                // O escudo se confere sozinho: o app sabe se o filtro está
-                // ligado, então oferecer "já fiz" ali seria deixar a pessoa
-                // destrancar a etapa seguinte sem ter feito nada.
-                if (content.confirmationRes != null) {
-                    TextButton(
-                        onClick = onMarkDone,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Text(
-                            stringResource(content.confirmationRes),
-                            color = muted,
-                            fontSize = 13.sp
-                        )
-                    }
-                } else {
-                    Spacer(Modifier.height(6.dp))
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Outlined.Verified,
-                            contentDescription = null,
-                            tint = muted,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            stringResource(R.string.recovery_stage_auto_checked),
-                            color = muted,
-                            fontSize = 11.sp,
-                            lineHeight = 15.sp
-                        )
-                    }
+                // O app não tem como saber se um capítulo foi lido, então quem
+                // fecha a etapa é o usuário. Fingir que sabe seria mentir para ele.
+                TextButton(onClick = onMarkDone, modifier = Modifier.fillMaxWidth()) {
+                    Text(
+                        stringResource(content.confirmationRes),
+                        color = muted,
+                        fontSize = 13.sp
+                    )
                 }
             }
-        }
-    }
-}
-
-@Composable
-private fun FreeDaysBadge(daysFree: Int?, accent: Color) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = accent.copy(alpha = 0.12f)
-    ) {
-        Column(
-            modifier = Modifier.padding(vertical = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(
-                text = "${daysFree ?: 0}",
-                color = accent,
-                fontSize = 40.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                text = pluralStringResource(R.plurals.recovery_free_days, daysFree ?: 0),
-                color = accent,
-                fontSize = 13.sp,
-                fontWeight = FontWeight.SemiBold
-            )
         }
     }
 }
@@ -756,25 +663,9 @@ private fun FeatureRow(icon: ImageVector, textRes: Int) {
     }
 }
 
-/**
- * Lê o progresso guardado e junta com o que dá para conferir de verdade.
- *
- * Duas etapas são declaradas pelo usuário — o app não tem como saber se um
- * capítulo foi lido — e a do escudo é conferida no próprio filtro. Registrar
- * quando ele foi armado dá a data-base da contagem de dias livres.
- */
-private fun SharedPreferences.readCompletedStages(authManager: AuthManager): Set<Stage> {
-    val shieldArmed = runCatching { authManager.isAdultFilterEnabled() }.getOrDefault(false)
-    if (shieldArmed && getLong(SHIELD_ARMED_AT, 0L) <= 0L) {
-        edit().putLong(SHIELD_ARMED_AT, System.currentTimeMillis()).apply()
-    }
-
-    return buildSet {
-        if (getBoolean(Stage.UNDERSTAND.doneKey, false)) add(Stage.UNDERSTAND)
-        if (shieldArmed) add(Stage.SHIELD)
-        if (getBoolean(Stage.REWIRE.doneKey, false)) add(Stage.REWIRE)
-    }
-}
+/** Etapas que o usuário já declarou concluídas. */
+private fun SharedPreferences.readCompletedStages(): Set<Stage> =
+    Stage.entries.filterTo(linkedSetOf()) { getBoolean(it.doneKey, false) }
 
 private val Stage.doneKey: String
     get() = "stage_${name.lowercase()}_done"
@@ -783,9 +674,8 @@ private data class RecoveryStageContent(
     val titleRes: Int,
     val descriptionRes: Int,
     val actionRes: Int,
-    val icon: ImageVector,
-    /** Null quando o app confere a etapa sozinho, em vez de o usuário declarar. */
-    val confirmationRes: Int?
+    val confirmationRes: Int,
+    val icon: ImageVector
 )
 
 private val Stage.content: RecoveryStageContent
@@ -794,30 +684,23 @@ private val Stage.content: RecoveryStageContent
             titleRes = R.string.recovery_stage_understand_title,
             descriptionRes = R.string.recovery_stage_understand_desc,
             actionRes = R.string.recovery_stage_understand_action,
-            icon = Icons.Outlined.Bookmark,
-            confirmationRes = R.string.recovery_stage_understand_confirm
-        )
-        Stage.SHIELD -> RecoveryStageContent(
-            titleRes = R.string.recovery_stage_shield_title,
-            descriptionRes = R.string.recovery_stage_shield_desc,
-            actionRes = R.string.recovery_stage_shield_action,
-            icon = Icons.Outlined.Shield,
-            confirmationRes = null
+            confirmationRes = R.string.recovery_stage_understand_confirm,
+            icon = Icons.Outlined.Bookmark
         )
         Stage.REWIRE -> RecoveryStageContent(
             titleRes = R.string.recovery_stage_rewire_title,
             descriptionRes = R.string.recovery_stage_rewire_desc,
             actionRes = R.string.recovery_stage_rewire_action,
-            icon = Icons.Outlined.MenuBook,
-            confirmationRes = R.string.recovery_stage_rewire_confirm
+            confirmationRes = R.string.recovery_stage_rewire_confirm,
+            icon = Icons.Outlined.MenuBook
         )
-        Stage.MAINTAIN -> RecoveryStageContent(
-            titleRes = R.string.recovery_stage_maintain_title,
-            descriptionRes = R.string.recovery_stage_maintain_desc,
-            actionRes = R.string.recovery_stage_rewire_action,
-            icon = Icons.Outlined.Verified,
-            confirmationRes = null
-        )
+    }
+
+/** O livro que a etapa abre. */
+private val Stage.book: RecoveryBook
+    get() = when (this) {
+        Stage.UNDERSTAND -> RecoveryBook.CREATOR_INSTRUCTIONS
+        Stage.REWIRE -> RecoveryBook.EASYPEASY
     }
 
 enum class RecoveryBook {
@@ -871,4 +754,3 @@ private val RecoveryBook.content: RecoveryBookContent
 private const val RECOVERY_PREFS = "recovery_preferences"
 private const val CREATOR_INSTRUCTIONS_STARTED = "creator_instructions_started"
 private const val EASYPEASY_STARTED = "easypeasy_started"
-private const val SHIELD_ARMED_AT = "shield_armed_at"

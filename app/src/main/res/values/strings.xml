@@ -155,26 +155,20 @@
     <string name="recovery_continue_reading">Continuar leitura</string>
     <string name="recovery_educational_notice">Material educativo; não substitui acompanhamento profissional.</string>
     <string name="recovery_ebook_attribution">Obra original: Hackauthor². Tradução brasileira: HackAuthorBR e tradutores voluntários. Conteúdo CC BY-SA 4.0.</string>
-    <string name="recovery_journey_subtitle">Quatro etapas, uma de cada vez. A próxima abre quando você fecha a atual.</string>
+    <string name="recovery_journey_subtitle">Duas leituras, na ordem. A segunda abre quando você conclui a primeira.</string>
     <string name="recovery_journey_progress">Etapa %1$d de %2$d</string>
     <string name="recovery_journey_all_done">Jornada montada. Agora é seguir.</string>
     <string name="recovery_stage_done">Concluída</string>
     <string name="recovery_stage_current">Etapa atual</string>
     <string name="recovery_stage_locked">Conclua a etapa anterior para abrir</string>
-    <string name="recovery_stage_auto_checked">Esta etapa se conclui sozinha quando o bloqueio estiver ativo.</string>
     <string name="recovery_stage_understand_title">Entenda a armadilha</string>
     <string name="recovery_stage_understand_desc">Leia as Instruções do Criador. Antes de fechar qualquer porta, vale saber o que prende você a ela.</string>
     <string name="recovery_stage_understand_action">Abrir as instruções</string>
     <string name="recovery_stage_understand_confirm">Já li — concluir etapa</string>
-    <string name="recovery_stage_shield_title">Feche as portas</string>
-    <string name="recovery_stage_shield_desc">Ative o bloqueio de pornografia: sites conhecidos e palavras que aparecem no endereço, em qualquer navegador.</string>
-    <string name="recovery_stage_shield_action">Ativar o bloqueio</string>
     <string name="recovery_stage_rewire_title">Desfaça a lavagem cerebral</string>
     <string name="recovery_stage_rewire_desc">Leia o EasyPeasy Method. O bloqueio segura a porta; a leitura tira a vontade de abrir.</string>
     <string name="recovery_stage_rewire_action">Abrir o e-book</string>
     <string name="recovery_stage_rewire_confirm">Já li — concluir etapa</string>
-    <string name="recovery_stage_maintain_title">Mantenha-se livre</string>
-    <string name="recovery_stage_maintain_desc">As portas estão fechadas e a vontade perdeu o argumento. Daqui em diante é um dia de cada vez.</string>
     <string name="recovery_book_back">Voltar para AntiPorn</string>
 
     <!-- Configurações -->
@@ -565,8 +559,4 @@
     <string name="uninstall_app_blocked_by_active_block">Há um bloqueio irreversível ativo. A desinstalação fica disponível quando ele terminar — ela não serve como saída de um jejum em andamento.</string>
     <string name="uninstall_app_failed">Não foi possível liberar a desinstalação.</string>
 
-    <plurals name="recovery_free_days">
-        <item quantity="one">dia livre</item>
-        <item quantity="other">dias livres</item>
-    </plurals>
 </resources>
