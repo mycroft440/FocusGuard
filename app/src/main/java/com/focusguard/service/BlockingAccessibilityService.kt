@@ -816,6 +816,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         val signals = SettingsInterceptionPolicy.EventSignals(
             packageName = packageName,
             isViewClickedEvent = event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED,
+            isWindowTransitionEvent =
+                event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED,
             guardArmed = nowElapsed <= pendingSettingsProtectionUntilElapsed,
             classTargetsAccessibilityServiceToggle =
                 AccessibilitySettingsPolicy.classTargetsAccessibilityServiceToggle(className),
@@ -832,6 +835,8 @@ class BlockingAccessibilityService : AccessibilityService() {
             isGenericSubSettings = className.contains("SubSettings", ignoreCase = true),
             textMentionsAccessibility =
                 AccessibilitySettingsPolicy.textTargetsAccessibility(eventValues),
+            textMentionsInstalledAccessibilityApps =
+                AccessibilitySettingsPolicy.textTargetsInstalledAccessibilityApps(eventValues),
             textMentionsDeviceAdmin =
                 ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(eventValues),
             textMentionsFocusGuard =
