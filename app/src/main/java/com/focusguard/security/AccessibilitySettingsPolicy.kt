@@ -75,11 +75,9 @@ object AccessibilitySettingsPolicy {
     /**
      * True only for the per-service screen that carries an on/off switch.
      *
-     * Interception is scoped to this screen — combined with evidence that the
-     * service shown is FocusGuard's — so the rest of the accessibility section
-     * stays usable during a block. Font size, TalkBack and colour correction are
-     * normal device use, and Google Play treats blocking the whole section as
-     * misuse of the Accessibility API.
+     * O classificador continua separado da tela de lista para testes e para
+     * registrar qual superfície foi detectada. A política de sessão bloqueia
+     * ambas durante uma proteção ativa.
      */
     fun classTargetsAccessibilityServiceToggle(className: String): Boolean {
         return accessibilityServiceToggleClassMarkers.any { marker ->
