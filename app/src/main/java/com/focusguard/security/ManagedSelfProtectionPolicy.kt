@@ -19,6 +19,11 @@ object ManagedSelfProtectionPolicy {
     )
 
     private val appDetailsClassMarkers = setOf(
+        // A lista Configurações > Aplicativos é a porta de entrada para os
+        // detalhes do FocusGuard. Cortá-la pela classe evita que a pessoa chegue
+        // à tela final por fabricantes que usam uma Activity genérica ali.
+        "ManageApplications",
+        "ApplicationsSettings",
         "InstalledAppDetails",
         "AppInfoDashboardFragment",
         "AppInfoDashboardActivity",
