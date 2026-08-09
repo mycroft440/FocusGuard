@@ -10,12 +10,16 @@ import java.util.Locale
 object AccessibilitySettingsPolicy {
 
     /**
-     * Screens that only *list* accessibility features. Browsing these is normal
-     * device use — font size, TalkBack, colour correction — and must stay
-     * reachable even while a block is running.
+     * Telas que listam recursos e serviços de acessibilidade. Durante um
+     * bloqueio elas também precisam ser fechadas, pois a One UI expõe nelas
+     * "Aplicativos instalados", caminho direto para desligar o FocusGuard.
      */
     private val accessibilityListClassMarkers = setOf(
         "AccessibilitySettings",
+        "AccessibilityActivity",
+        "AccessibilityDashboard",
+        "AccessibilityHomepage",
+        "AccessibilityHome",
         "InstalledAccessibilityService"
     )
 
@@ -47,6 +51,21 @@ object AccessibilitySettingsPolicy {
         "सुलभता"
     )
 
+    /**
+     * Rótulos do atalho que lista serviços de acessibilidade instalados.
+     * É um sinal separado de "apps instalados" genérico para que a política
+     * possa fechar exatamente a rota mostrada pela One UI.
+     */
+    internal val installedAccessibilityAppsTerms = listOf(
+        "Aplicativos instalados",
+        "Apps instalados",
+        "Serviços instalados",
+        "Installed apps",
+        "Installed services",
+        "Aplicaciones instaladas",
+        "Servicios instalados"
+    )
+
     fun classTargetsAccessibility(className: String): Boolean {
         return accessibilityClassMarkers.any { marker ->
             className.contains(marker, ignoreCase = true)
@@ -68,7 +87,7 @@ object AccessibilitySettingsPolicy {
         }
     }
 
-    /** True for list screens that merely enumerate accessibility features. */
+    /** True para telas que enumeram recursos ou serviços de acessibilidade. */
     fun classTargetsAccessibilityList(className: String): Boolean {
         return accessibilityListClassMarkers.any { marker ->
             className.contains(marker, ignoreCase = true)
@@ -76,11 +95,23 @@ object AccessibilitySettingsPolicy {
     }
 
     fun textTargetsAccessibility(values: Iterable<CharSequence?>): Boolean {
+        return valuesContainAny(values, searchTerms)
+    }
+
+    fun textTargetsInstalledAccessibilityApps(
+        values: Iterable<CharSequence?>
+    ): Boolean {
+        return valuesContainAny(values, installedAccessibilityAppsTerms)
+    }
+
+    private fun valuesContainAny(
+        values: Iterable<CharSequence?>,
+        terms: Iterable<String>
+    ): Boolean {
+        val normalizedTerms = terms.map(::normalize)
         return values.any { value ->
             val normalized = normalize(value?.toString().orEmpty())
-            normalized.isNotBlank() && searchTerms.any { term ->
-                normalized.contains(normalize(term))
-            }
+            normalized.isNotBlank() && normalizedTerms.any(normalized::contains)
         }
     }
 
