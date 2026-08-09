@@ -20,20 +20,23 @@ class BlockingSessionManagerTargetsTest {
 
         assertThat(targets.passwordAppPackageNames).containsAtLeast(
             "com.example.password",
-            "com.example.both",
-            "com.google.android.youtube"
+            "com.example.both"
         )
+        assertThat(targets.passwordAppPackageNames)
+            .doesNotContain("com.google.android.youtube")
         assertThat(targets.limitedAppPackageNames).containsAtLeast(
             "com.example.limit",
-            "com.example.both",
-            "com.google.android.youtube"
+            "com.example.both"
         )
+        assertThat(targets.limitedAppPackageNames)
+            .doesNotContain("com.google.android.youtube")
         assertThat(targets.exclusiveAppPackageNames).contains("com.example.dopamine")
         assertThat(targets.unavailableAppPackageNames).containsAtLeast(
             "com.example.both",
-            "com.example.dopamine",
-            "com.google.android.youtube"
+            "com.example.dopamine"
         )
+        assertThat(targets.unavailableAppPackageNames)
+            .doesNotContain("com.google.android.youtube")
         assertThat(targets.unavailableWebsiteRules).containsExactly(
             "youtube.com",
             "reddit.com"
@@ -103,27 +106,36 @@ class BlockingSessionManagerTargetsTest {
             limitedWebsiteRules = listOf("https://www.youtube.com/watch?v=1")
         )
 
-        assertThat(targets.allAppPackageNames).containsExactly(
-            "com.example.app",
-            "com.google.android.youtube"
-        )
+        assertThat(targets.allAppPackageNames).containsExactly("com.example.app")
         assertThat(targets.allWebsiteRules).containsExactly("youtube.com")
     }
 
     @Test
-    fun `predefined app selection reserves its website surface in the same mode`() {
-        val targets = BlockingSessionManager.combineConfiguredBlockedTargets(
-            passwordSessionAppPackages = emptyList(),
+    fun `YouTube app does not reserve the YouTube website surface`() {
+        val appOnly = BlockingSessionManager.combineConfiguredBlockedTargets(
+            passwordSessionAppPackages = listOf("com.google.android.youtube"),
             passwordSessionWebsiteRules = emptyList(),
-            exclusiveSessionAppPackages = listOf("com.instagram.android"),
+            exclusiveSessionAppPackages = emptyList(),
             exclusiveSessionWebsiteRules = emptyList(),
             limitedAppPackages = emptyList(),
             limitedWebsiteRules = emptyList()
         )
 
-        assertThat(targets.exclusiveAppPackageNames).contains("com.instagram.android")
-        assertThat(targets.exclusiveWebsiteRules).contains("instagram.com")
-        assertThat(targets.unavailableWebsiteRules).contains("instagram.com")
+        assertThat(appOnly.allAppPackageNames)
+            .containsExactly("com.google.android.youtube")
+        assertThat(appOnly.allWebsiteRules).isEmpty()
+
+        val siteOnly = BlockingSessionManager.combineConfiguredBlockedTargets(
+            passwordSessionAppPackages = emptyList(),
+            passwordSessionWebsiteRules = listOf("youtube.com"),
+            exclusiveSessionAppPackages = emptyList(),
+            exclusiveSessionWebsiteRules = emptyList(),
+            limitedAppPackages = emptyList(),
+            limitedWebsiteRules = emptyList()
+        )
+
+        assertThat(siteOnly.allWebsiteRules).containsExactly("youtube.com")
+        assertThat(siteOnly.allAppPackageNames).isEmpty()
     }
 
     @Test
