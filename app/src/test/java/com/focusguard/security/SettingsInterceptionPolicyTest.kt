@@ -425,30 +425,37 @@ class SettingsInterceptionPolicyTest {
     // ------------------------------------------- FocusGuard control surface
 
     @Test
-    fun `app details screen naming FocusGuard intercepts`() {
-        val decision = decide(
-            signals(classTargetsAppDetails = true, textMentionsFocusGuard = true)
-        )
+    fun `app details and uninstall are cut on arrival, before the name is known`() {
+        // A evidência de que a página é do FocusGuard só existe depois que a
+        // árvore renderiza, e esperar por ela era o intervalo em que dava para
+        // tocar em "Desinstalar" antes do bloqueio. Agora a classe basta.
+        val details = RecordingRoots(focusGuard = false)
+        assertThat(decide(signals(classTargetsAppDetails = true), roots = details))
+            .isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+        assertThat(details.reads).isEmpty()
 
-        assertThat(decision).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+        val uninstall = RecordingRoots(focusGuard = false)
+        assertThat(decide(signals(classTargetsUninstall = true), roots = uninstall))
+            .isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+        assertThat(uninstall.reads).isEmpty()
     }
 
     @Test
-    fun `uninstall screen naming FocusGuard intercepts`() {
-        val decision = decide(
-            signals(classTargetsUninstall = true, textMentionsFocusGuard = true)
-        )
-
-        assertThat(decision).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+    fun `the app details cut costs every app while a block is running`() {
+        // Preço assumido do corte por classe: sem saber de quem é a página, ela
+        // sai para qualquer aplicativo. Documentado aqui para a troca ficar
+        // explícita e não ser desfeita por engano.
+        assertThat(
+            decide(signals(classTargetsAppDetails = true, textMentionsFocusGuard = false))
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
     }
 
     @Test
-    fun `app details screen for another app is not intercepted`() {
-        val roots = RecordingRoots(focusGuard = false)
-
-        val decision = decide(signals(classTargetsAppDetails = true), roots = roots)
-
-        assertThat(decision).isEqualTo(Decision.IGNORE)
+    fun `app details and uninstall reopen once nothing is being protected`() {
+        assertThat(decide(signals(classTargetsAppDetails = true), engaged = false))
+            .isEqualTo(Decision.IGNORE)
+        assertThat(decide(signals(classTargetsUninstall = true), engaged = false))
+            .isEqualTo(Decision.IGNORE)
     }
 
     @Test

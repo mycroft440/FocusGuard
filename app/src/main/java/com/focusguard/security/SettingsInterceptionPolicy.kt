@@ -123,20 +123,26 @@ object SettingsInterceptionPolicy {
         if (strictPomodoroActive) return Decision.POMODORO_LOCK
 
         // Corte seco pela classe da tela, antes de qualquer texto ou leitura de
-        // árvore: acessibilidade e administradores do aparelho saem na primeira
-        // linha, sem depender de o FocusGuard estar nomeado na tela.
+        // árvore, e sem depender de o FocusGuard estar nomeado nela.
         //
         // É a decisão mais rápida que existe aqui — nenhum binder, nenhuma
-        // varredura — e é onde a velocidade importa: essas duas telas desligam a
-        // proteção em um toque, e qualquer condição extra a ser conferida antes
-        // é tempo que o usuário tem para alcançar o interruptor.
+        // varredura — e é onde a velocidade importa: cada uma destas telas
+        // desliga a proteção em um ou dois toques, e qualquer condição conferida
+        // antes é tempo que o usuário tem para alcançar o botão.
         //
-        // O custo é que as seções inteiras ficam inacessíveis enquanto há
-        // bloqueio ativo, inclusive TalkBack e tamanho de fonte. É decisão de
-        // produto: sem isso, a proteção é contornável em dois toques.
+        // Informações do app e o diálogo de desinstalação entram sem exigir o
+        // nome porque a evidência de que a página é do FocusGuard só existe
+        // depois que a árvore renderiza. Esperar por ela era exatamente o
+        // intervalo em que dava para tocar em "Desinstalar" antes do bloqueio.
+        //
+        // O preço é grosso e assumido: enquanto houver bloqueio ativo, nenhuma
+        // página de informações de app abre e nenhuma desinstalação acontece —
+        // nem de outros aplicativos. Fora de bloqueio, tudo volta ao normal.
         if (signals.classTargetsAccessibilityList ||
             signals.classTargetsAccessibilityServiceToggle ||
-            signals.classTargetsDeviceAdmin
+            signals.classTargetsDeviceAdmin ||
+            signals.classTargetsAppDetails ||
+            signals.classTargetsUninstall
         ) {
             return Decision.PROTECT_AND_ARM_GUARD
         }
