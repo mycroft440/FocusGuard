@@ -16,6 +16,7 @@ class SettingsInterceptionPolicyTest {
     private fun signals(
         packageName: String = SETTINGS,
         isViewClickedEvent: Boolean = false,
+        isWindowTransitionEvent: Boolean = false,
         guardArmed: Boolean = false,
         classTargetsAccessibilityServiceToggle: Boolean = false,
         classTargetsAccessibilityList: Boolean = false,
@@ -25,6 +26,7 @@ class SettingsInterceptionPolicyTest {
         classTargetsEssentialSpecialAccess: Boolean = false,
         isGenericSubSettings: Boolean = false,
         textMentionsAccessibility: Boolean = false,
+        textMentionsInstalledAccessibilityApps: Boolean = false,
         textMentionsDeviceAdmin: Boolean = false,
         textMentionsFocusGuard: Boolean = false,
         textMentionsDestructiveControl: Boolean = false,
@@ -32,6 +34,7 @@ class SettingsInterceptionPolicyTest {
     ) = SettingsInterceptionPolicy.EventSignals(
         packageName = packageName,
         isViewClickedEvent = isViewClickedEvent,
+        isWindowTransitionEvent = isWindowTransitionEvent,
         guardArmed = guardArmed,
         classTargetsAccessibilityServiceToggle = classTargetsAccessibilityServiceToggle,
         classTargetsAccessibilityList = classTargetsAccessibilityList,
@@ -41,6 +44,7 @@ class SettingsInterceptionPolicyTest {
         classTargetsEssentialSpecialAccess = classTargetsEssentialSpecialAccess,
         isGenericSubSettings = isGenericSubSettings,
         textMentionsAccessibility = textMentionsAccessibility,
+        textMentionsInstalledAccessibilityApps = textMentionsInstalledAccessibilityApps,
         textMentionsDeviceAdmin = textMentionsDeviceAdmin,
         textMentionsFocusGuard = textMentionsFocusGuard,
         textMentionsDestructiveControl = textMentionsDestructiveControl,
@@ -212,6 +216,39 @@ class SettingsInterceptionPolicyTest {
         )
 
         assertThat(decision).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+    }
+
+    @Test
+    fun `One UI accessibility screen is blocked on window transition`() {
+        val decision = decide(
+            signals(
+                isWindowTransitionEvent = true,
+                textMentionsAccessibility = true
+            )
+        )
+
+        assertThat(decision).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+    }
+
+    @Test
+    fun `One UI installed apps accessibility row is blocked directly`() {
+        val decision = decide(
+            signals(textMentionsInstalledAccessibilityApps = true)
+        )
+
+        assertThat(decision).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+    }
+
+    @Test
+    fun `accessibility label in an ordinary content event does not block all Settings`() {
+        val decision = decide(
+            signals(
+                isWindowTransitionEvent = false,
+                textMentionsAccessibility = true
+            )
+        )
+
+        assertThat(decision).isEqualTo(Decision.IGNORE)
     }
 
     @Test
