@@ -358,6 +358,15 @@
     <string name="limits_locked_alert_desc">This limit is time-hardened and cannot be changed until the period ends.</string>
     <string name="limits_add_site_btn">Add site or keyword</string>
     <string name="limits_status_monitoring">Monitoring</string>
+    <string name="limits_block_behavior_title">How should this limit be protected?</string>
+    <string name="limits_block_behavior_description">Choose what happens when the daily allowance runs out.</string>
+    <string name="limits_block_daily_no_password_option">Block without a password until tomorrow</string>
+    <string name="limits_block_daily_no_password_desc">The app becomes available when its daily allowance resets.</string>
+    <string name="limits_block_hardened_no_password_option">Block without a password for several days</string>
+    <string name="limits_block_hardened_no_password_desc">During the chosen period, no password can end the block early.</string>
+    <string name="limits_block_password_option">Allow unlocking with a password</string>
+    <string name="limits_block_password_desc">A password set here can release the app after its allowance runs out.</string>
+    <string name="limits_password_minimum">Use at least 4 characters</string>
     <string name="limits_security_mode">Security Mode</string>
     <string name="limits_security_mode_desc">Prevent the app from being opened after the time runs out</string>
     <string name="limits_security_mode_warning">Warning: when the time runs out you will not be able to unlock the app, not even with a password.</string>
