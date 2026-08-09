@@ -65,9 +65,9 @@ object SettingsInterceptionPolicy {
         val guardArmed: Boolean,
 
         /**
-         * The per-service screen carrying an accessibility on/off switch. Note
-         * this is deliberately *not* "any accessibility screen": the section as a
-         * whole stays usable during a block.
+         * Tela individual que contém o interruptor de um serviço. Mantida
+         * separada da lista principal para diagnóstico; durante um bloqueio
+         * ativo, ambas são protegidas.
          */
         val classTargetsAccessibilityServiceToggle: Boolean,
 
