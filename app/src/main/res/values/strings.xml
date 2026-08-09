@@ -358,6 +358,15 @@
     <string name="limits_locked_alert_desc">Este limite está blindado por tempo e não pode ser alterado até o fim do prazo.</string>
     <string name="limits_add_site_btn">Adicionar site ou palavra</string>
     <string name="limits_status_monitoring">Monitorando</string>
+    <string name="limits_block_behavior_title">Como o limite será protegido?</string>
+    <string name="limits_block_behavior_description">Escolha o que acontece quando o tempo diário terminar.</string>
+    <string name="limits_block_daily_no_password_option">Bloquear sem senha até o dia seguinte</string>
+    <string name="limits_block_daily_no_password_desc">O app volta a ficar disponível quando o limite diário reiniciar.</string>
+    <string name="limits_block_hardened_no_password_option">Bloquear sem senha por vários dias</string>
+    <string name="limits_block_hardened_no_password_desc">Durante o período escolhido, não haverá senha para antecipar o desbloqueio.</string>
+    <string name="limits_block_password_option">Permitir desbloqueio com senha</string>
+    <string name="limits_block_password_desc">Uma senha definida aqui poderá liberar o app após o limite.</string>
+    <string name="limits_password_minimum">Use pelo menos 4 caracteres</string>
     <string name="limits_security_mode">Modo de Segurança</string>
     <string name="limits_security_mode_desc">Impedir que o app seja aberto depois que o tempo acabar</string>
     <string name="limits_security_mode_warning">Aviso: quando o tempo acabar não será possível desbloquear o app nem com senha.</string>
