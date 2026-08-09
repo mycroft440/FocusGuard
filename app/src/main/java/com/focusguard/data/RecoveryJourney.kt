@@ -1,13 +1,11 @@
 package com.focusguard.data
 
 /**
- * A ordem de leitura da aba AntiPorn, transformada em etapas.
+ * A ordem da jornada AntiPorn, transformada em etapas.
  *
- * A sequência não é decoração: as Instruções do Criador dizem o que é a
- * armadilha, e o EasyPeasy desfaz a crença que a sustenta. Ler o segundo antes
- * do primeiro é começar a resposta sem ter ouvido a pergunta, então a segunda
- * etapa só abre quando a primeira fecha — a tela conduz um caminho em vez de
- * oferecer uma prateleira onde os dois parecem intercambiáveis.
+ * Primeiro a pessoa entende a armadilha, depois desfaz a crença que a sustenta
+ * e, só então, pode firmar o compromisso de proteção. A sequência conduz um
+ * caminho em vez de oferecer ações soltas que parecem intercambiáveis.
  */
 object RecoveryJourney {
 
@@ -16,11 +14,14 @@ object RecoveryJourney {
         UNDERSTAND,
 
         /** Ler o EasyPeasy: desfazer a crença que sustenta a vontade. */
-        REWIRE
+        REWIRE,
+
+        /** Ativar pornografia sem prazo e redes sociais por seis meses. */
+        PROTECT
     }
 
     enum class Status {
-        /** Já cumprida; continua acessível para revisitar. */
+        /** Já cumprida; leituras continuam acessíveis para revisitar. */
         DONE,
 
         /** A etapa da vez, a única acionável. */
@@ -33,11 +34,10 @@ object RecoveryJourney {
     val stages: List<Stage> = Stage.entries.toList()
 
     /**
-     * A etapa da vez, ou null quando as duas já foram concluídas.
+     * A etapa da vez, ou null quando as três já foram concluídas.
      *
-     * Tolera um conjunto fora de ordem — se por algum caminho a segunda for
-     * concluída antes da primeira, a primeira continua sendo a da vez, em vez
-     * de a tela pular um passo que a pessoa não deu.
+     * Tolera um conjunto fora de ordem: a primeira etapa ausente continua sendo
+     * a da vez, em vez de a tela pular um passo que a pessoa não deu.
      */
     fun currentStage(completed: Set<Stage>): Stage? =
         stages.firstOrNull { it !in completed }
