@@ -25,5 +25,5 @@ class BlockingAccessibilityServiceIntentTest {
         assertThat(intent.hasFlag(Intent.FLAG_ACTIVITY_NO_ANIMATION)).isTrue()
     }
 
-    private fun Intent.hasFlag(flag: Int): Boolean = flags and flag == flag
+    private fun Intent.hasFlag(flag: Int): Boolean = (flags and flag) == flag
 }
