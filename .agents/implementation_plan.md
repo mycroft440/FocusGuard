@@ -1,23 +1,24 @@
-# Plano de implementação — fluxo unificado de proteção
+# Plano de implementação — acessos diários por aplicativo
 
 ## Objetivo
 
-Substituir os três atalhos da tela Proteção por uma única entrada e mover a escolha do modo para depois da criação da lista de apps e sites.
+Contabilizar quantas vezes cada aplicativo foi efetivamente usado no dia. Um
+acesso corresponde a entrar no aplicativo e depois sair dele.
 
-## Jornada
+## Regra de contabilização
 
-1. A tela Proteção mostra somente o cartão “Bloquear, limitar e proteger apps e sites”.
-2. O usuário monta uma lista comum, adicionando aplicativos e regras de site/palavra-chave.
-3. A escolha do modo só é liberada quando a lista contém ao menos um item.
-4. O usuário escolhe entre:
-   - limite diário de uso;
-   - bloqueio revogável com senha;
-   - jejum de dopamina, irrevogável até o fim do período escolhido.
-5. A configuração selecionada reutiliza os mecanismos de bloqueio já existentes.
+1. Um evento de primeiro plano inicia uma sessão de acesso.
+2. A sessão só é contabilizada após a saída do aplicativo.
+3. Trocas de Activity dentro do mesmo app não geram novos acessos.
+4. Aplicativo ainda aberto no fim da consulta não é contabilizado até sair.
+5. Desligar a tela encerra a sessão de uso atual.
+6. Apps não inicializáveis, como componentes do sistema, não aparecem no ranking.
 
 ## Validação
 
-- Testar que uma lista vazia não expõe modos de proteção.
-- Testar que os três modos ficam disponíveis após adicionar app ou site.
-- Testar a conversão e os limites da duração diária.
-- Executar testes unitários, lint e compilação do APK.
+- Testar entrada e saída simples.
+- Testar app ainda aberto.
+- Testar troca de Activities no mesmo app.
+- Testar troca entre aplicativos.
+- Testar eventos incompletos e tela desligada.
+- Executar testes unitários, lint e compilação dos APKs.

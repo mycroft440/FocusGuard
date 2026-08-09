@@ -31,6 +31,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.res.pluralStringResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -50,7 +51,7 @@ import java.util.Calendar
 private data class UsageInsightsData(
     val weeklyUsage: List<DailyPhoneUsage>,
     val mostUsedApps: List<AppUsageStat>,
-    val openCloseEvents: List<AppEventStat>,
+    val mostOpenedApps: List<AppAccessStat>,
     val neverUsedApps: List<String>
 )
 
@@ -64,7 +65,7 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
 
     var weeklyUsage by remember { mutableStateOf<List<DailyPhoneUsage>>(emptyList()) }
     var mostUsedApps by remember { mutableStateOf<List<AppUsageStat>>(emptyList()) }
-    var openCloseEvents by remember { mutableStateOf<List<AppEventStat>>(emptyList()) }
+    var mostOpenedApps by remember { mutableStateOf<List<AppAccessStat>>(emptyList()) }
     var neverUsedApps by remember { mutableStateOf<List<String>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     var hasUsageAccess by remember { mutableStateOf(false) }
@@ -72,7 +73,7 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
 
     var showAverageForMostUsed by remember { mutableStateOf(false) }
     var expandMostUsed by remember { mutableStateOf(false) }
-    var expandOpenClose by remember { mutableStateOf(false) }
+    var expandMostOpened by remember { mutableStateOf(false) }
     var expandNeverUsed by remember { mutableStateOf(false) }
 
     // Recarrega ao voltar das configurações sem manter um CoroutineScope
@@ -116,7 +117,7 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                 UsageInsightsData(
                     weeklyUsage = analytics.getPhoneUsageHistory(14),
                     mostUsedApps = analytics.getMostUsedApps(start7Days, end),
-                    openCloseEvents = analytics.getAppOpenCloseCounts(startToday, end),
+                    mostOpenedApps = analytics.getMostOpenedApps(startToday, end),
                     neverUsedApps = analytics.getNeverUsedApps(start7Days, end)
                 )
             }
@@ -124,7 +125,7 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
             .onSuccess { data ->
                 weeklyUsage = data.weeklyUsage
                 mostUsedApps = data.mostUsedApps
-                openCloseEvents = data.openCloseEvents
+                mostOpenedApps = data.mostOpenedApps
                 neverUsedApps = data.neverUsedApps
             }
             .onFailure { error ->
@@ -203,12 +204,12 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                         )
                     }
 
-                    item(key = "open_close_events") {
-                        OpenCloseEventsSection(
-                            events = openCloseEvents,
+                    item(key = "most_opened_apps") {
+                        MostOpenedAppsSection(
+                            apps = mostOpenedApps,
                             pm = pm,
-                            expanded = expandOpenClose,
-                            onToggleExpand = { expandOpenClose = it }
+                            expanded = expandMostOpened,
+                            onToggleExpand = { expandMostOpened = it }
                         )
                     }
 
@@ -422,8 +423,8 @@ fun MostUsedAppsSection(
 }
 
 @Composable
-fun OpenCloseEventsSection(
-    events: List<AppEventStat>,
+fun MostOpenedAppsSection(
+    apps: List<AppAccessStat>,
     pm: PackageManager,
     expanded: Boolean,
     onToggleExpand: (Boolean) -> Unit
@@ -434,30 +435,36 @@ fun OpenCloseEventsSection(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(stringResource(R.string.dashboard_open_close_title), color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text(stringResource(R.string.dashboard_most_opened_title), color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(16.dp))
             
-            val displayList = if (expanded) events else events.take(5)
+            val displayList = if (expanded) apps else apps.take(5)
             
             if (displayList.isEmpty()) {
-                Text(stringResource(R.string.dashboard_no_events), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(stringResource(R.string.dashboard_no_accesses), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
-                displayList.forEach { event ->
+                displayList.forEach { app ->
                     Row(modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                        AppIcon(event.packageName, pm, 32)
+                        AppIcon(app.packageName, pm, 32)
                         Spacer(Modifier.width(12.dp))
-                        Text(getAppName(event.packageName, pm), color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1)
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(stringResource(R.string.dashboard_opened_count, event.openCount), color = DangerRed, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            Text(stringResource(R.string.dashboard_closed_count, event.closeCount), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                        }
+                        Text(getAppName(app.packageName, pm), color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f), maxLines = 1)
+                        Text(
+                            pluralStringResource(
+                                R.plurals.dashboard_access_count,
+                                app.accessCount,
+                                app.accessCount
+                            ),
+                            color = AccentCyan,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
             
-            if (events.size > 5) {
+            if (apps.size > 5) {
                 TextButton(onClick = { onToggleExpand(!expanded) }, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (expanded) stringResource(R.string.dashboard_hide) else stringResource(R.string.dashboard_show_all, events.size), color = AccentCyan)
+                    Text(if (expanded) stringResource(R.string.dashboard_hide) else stringResource(R.string.dashboard_show_all, apps.size), color = AccentCyan)
                 }
             }
         }

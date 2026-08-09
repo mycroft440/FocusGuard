@@ -14,10 +14,9 @@ data class AppUsageStat(
     val timeSpentMs: Long
 )
 
-data class AppEventStat(
+data class AppAccessStat(
     val packageName: String,
-    val openCount: Int,
-    val closeCount: Int
+    val accessCount: Int
 )
 
 data class DailyPhoneUsage(
@@ -48,9 +47,9 @@ class AdvancedUsageAnalytics(private val context: Context) {
         private var lastMostUsedTime: Long = 0
 
         @Volatile
-        private var cachedEvents: Pair<String, List<AppEventStat>>? = null
+        private var cachedMostOpened: Pair<String, List<AppAccessStat>>? = null
         @Volatile
-        private var lastEventsTime: Long = 0
+        private var lastMostOpenedTime: Long = 0
 
         @Volatile
         private var cachedNeverUsed: Pair<String, List<String>>? = null
@@ -161,12 +160,17 @@ class AdvancedUsageAnalytics(private val context: Context) {
         result
     }
 
-    suspend fun getAppOpenCloseCounts(startTime: Long, endTime: Long): List<AppEventStat> = withContext(Dispatchers.IO) {
+    /**
+     * Retorna acessos completos no intervalo: o app precisa entrar em primeiro
+     * plano e depois ser deixado. Eventos de Activity não são somados
+     * diretamente porque um único acesso pode abrir várias Activities.
+     */
+    suspend fun getMostOpenedApps(startTime: Long, endTime: Long): List<AppAccessStat> = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         val key = "$startTime-$endTime"
         synchronized(cacheLock) {
-            if (cachedEvents?.first == key && (now - lastEventsTime) < CACHE_TTL) {
-                return@withContext cachedEvents!!.second
+            if (cachedMostOpened?.first == key && (now - lastMostOpenedTime) < CACHE_TTL) {
+                return@withContext cachedMostOpened!!.second
             }
         }
 
@@ -179,41 +183,56 @@ class AdvancedUsageAnalytics(private val context: Context) {
         } ?: return@withContext emptyList()
 
         val event = UsageEvents.Event()
-
-        val openCounts = mutableMapOf<String, Int>()
-        val closeCounts = mutableMapOf<String, Int>()
+        val launchablePackages = mutableMapOf<String, Boolean>()
+        val accessAccumulator = AppAccessAccumulator { packageName ->
+            launchablePackages.getOrPut(packageName) {
+                try {
+                    pm.getLaunchIntentForPackage(packageName) != null
+                } catch (error: Throwable) {
+                    false
+                }
+            }
+        }
 
         try {
             while (events.hasNextEvent()) {
                 events.getNextEvent(event)
-                val pkg = event.packageName ?: continue
-                val hasLaunchIntent = try {
-                    pm.getLaunchIntentForPackage(pkg) != null
-                } catch (e: Throwable) {
-                    false
-                }
+                when (event.eventType) {
+                    UsageEvents.Event.ACTIVITY_RESUMED ->
+                        accessAccumulator.onActivityResumed(
+                            packageName = event.packageName,
+                            activityClassName = event.className
+                        )
 
-                if (hasLaunchIntent) {
-                    when (event.eventType) {
-                        UsageEvents.Event.ACTIVITY_RESUMED -> openCounts[pkg] = (openCounts[pkg] ?: 0) + 1
-                        UsageEvents.Event.ACTIVITY_PAUSED, UsageEvents.Event.ACTIVITY_STOPPED -> closeCounts[pkg] = (closeCounts[pkg] ?: 0) + 1
-                    }
+                    UsageEvents.Event.ACTIVITY_PAUSED ->
+                        accessAccumulator.onActivityPaused(
+                            packageName = event.packageName,
+                            activityClassName = event.className
+                        )
+
+                    UsageEvents.Event.SCREEN_NON_INTERACTIVE,
+                    UsageEvents.Event.KEYGUARD_SHOWN ->
+                        accessAccumulator.onDeviceBecameInactive()
                 }
             }
-        } catch (e: Throwable) {
+        } catch (error: Throwable) {
             // Em algumas ROMs OEM, hasNextEvent/getNextEvent podem lançar
             // exceções estranhas. Retorna o que já foi coletado.
-            FocusGuardLogger.logError("AdvancedUsageAnalytics", "Falha no loop de eventos", e)
+            FocusGuardLogger.logError("AdvancedUsageAnalytics", "Falha no loop de eventos", error)
         }
 
-        val allPkgs = (openCounts.keys + closeCounts.keys).toSet()
-        val result = allPkgs.map { pkg ->
-            AppEventStat(pkg, openCounts[pkg] ?: 0, closeCounts[pkg] ?: 0)
-        }.sortedByDescending { it.openCount }
+        val result = accessAccumulator.finish()
+            .map { (packageName, accessCount) ->
+                AppAccessStat(packageName, accessCount)
+            }
+            .sortedWith(
+                compareByDescending<AppAccessStat> { it.accessCount }
+                    .thenBy { it.packageName }
+            )
 
         synchronized(cacheLock) {
-            cachedEvents = key to result
-            lastEventsTime = now
+            cachedMostOpened = key to result
+            lastMostOpenedTime = now
         }
         result
     }
@@ -262,5 +281,4 @@ class AdvancedUsageAnalytics(private val context: Context) {
         result
     }
 }
-
 

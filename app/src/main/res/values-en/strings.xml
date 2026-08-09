@@ -335,10 +335,12 @@
     <string name="dashboard_no_data">No data found.</string>
     <string name="dashboard_hide">Hide</string>
     <string name="dashboard_show_all">See All (%1$d)</string>
-    <string name="dashboard_open_close_title">Opens and Closes (Today)</string>
-    <string name="dashboard_no_events">No events recorded today.</string>
-    <string name="dashboard_opened_count">%1$d opened</string>
-    <string name="dashboard_closed_count">%1$d closed</string>
+    <string name="dashboard_most_opened_title">Most opened apps today</string>
+    <string name="dashboard_no_accesses">No completed access today.</string>
+    <plurals name="dashboard_access_count">
+        <item quantity="one">%1$d access</item>
+        <item quantity="other">%1$d accesses</item>
+    </plurals>
     <string name="dashboard_never_used">Never Used Apps (7 Days)</string>
     <string name="dashboard_no_inactive">No inactive app found.</string>
 
