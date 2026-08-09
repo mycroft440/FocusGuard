@@ -39,7 +39,6 @@ import com.focusguard.ui.compose.screens.IntruderLogScreen
 import com.focusguard.ui.compose.screens.LanguageScreen
 import com.focusguard.ui.compose.screens.LimitsSecurityScreen
 import com.focusguard.ui.compose.screens.MainScreen
-import com.focusguard.ui.compose.screens.PasswordManagementScreen
 import com.focusguard.ui.compose.screens.PomodoroScreen
 import com.focusguard.ui.compose.screens.RecoveryBook
 import com.focusguard.ui.compose.screens.RecoveryHubScreen
@@ -60,7 +59,6 @@ private object FocusGuardRoute {
     const val Limits = "LIMITS"
     const val IntruderLog = "INTRUDER_LOG"
     const val Language = "LANGUAGE"
-    const val PasswordManagement = "PASSWORD_MANAGEMENT"
     const val UsageLimits = "USAGE_LIMITS"
     const val Dashboard = "DASHBOARD"
     const val BlockCustomization = "BLOCK_CUSTOMIZATION"
@@ -75,8 +73,9 @@ fun FocusGuardNavHost(
     pomodoroManager: PomodoroManager
 ) {
     var isUnlocked by remember { mutableStateOf<Boolean?>(null) }
-
-    LaunchedEffect(Unit) {
+    // Reavalia a trava em toda volta ao primeiro plano. Isso inclui o retorno
+    // do assistente logo após criar um bloqueio por senha.
+    LaunchedEffect(resumeKey) {
         withContext(Dispatchers.IO) {
             val locked = authManager.isAppLocked()
             withContext(Dispatchers.Main) {
@@ -162,10 +161,9 @@ fun FocusGuardNavHost(
     BackHandler(enabled = currentRoute != FocusGuardRoute.Home) {
         currentRoute = when (currentRoute) {
             FocusGuardRoute.Limits,
-            FocusGuardRoute.IntruderLog,
             FocusGuardRoute.Language,
-            FocusGuardRoute.PasswordManagement,
             FocusGuardRoute.BlockCustomization -> FocusGuardRoute.Settings
+            FocusGuardRoute.IntruderLog,
             FocusGuardRoute.UsageLimits -> FocusGuardRoute.BlockTypeDetail
             else -> FocusGuardRoute.Home
         }
@@ -238,13 +236,15 @@ fun FocusGuardNavHost(
                             )
                         }
                     },
+                    onIntruderLogClick = {
+                        selectedBlockType = BlockTypeUi.PASSWORD
+                        currentRoute = FocusGuardRoute.IntruderLog
+                    },
                     onBack = { currentRoute = FocusGuardRoute.Home }
                 )
                 FocusGuardRoute.Settings -> SettingsScreen(
                     onLimitsClick = { currentRoute = FocusGuardRoute.Limits },
-                    onIntruderLogClick = { currentRoute = FocusGuardRoute.IntruderLog },
                     onLanguageClick = { currentRoute = FocusGuardRoute.Language },
-                    onPasswordManagementClick = { currentRoute = FocusGuardRoute.PasswordManagement },
                     onBlockCustomizationClick = { currentRoute = FocusGuardRoute.BlockCustomization },
                     onBack = { currentRoute = FocusGuardRoute.Home }
                 )
@@ -254,9 +254,8 @@ fun FocusGuardNavHost(
                     onBack = { currentRoute = FocusGuardRoute.Home }
                 )
                 FocusGuardRoute.Limits -> LimitsSecurityScreen(authManager = authManager, onBack = { currentRoute = FocusGuardRoute.Settings })
-                FocusGuardRoute.IntruderLog -> IntruderLogScreen(onBack = { currentRoute = FocusGuardRoute.Settings })
+                FocusGuardRoute.IntruderLog -> IntruderLogScreen(onBack = { currentRoute = FocusGuardRoute.BlockTypeDetail })
                 FocusGuardRoute.Language -> LanguageScreen(onBack = { currentRoute = FocusGuardRoute.Settings })
-                FocusGuardRoute.PasswordManagement -> PasswordManagementScreen(authManager = authManager, onBack = { currentRoute = FocusGuardRoute.Settings })
                 // Volta para a lista do tipo de bloqueio, não para a Home: é de lá
                 // que se chega aqui, e é lá que o limite recém-criado aparece.
                 FocusGuardRoute.UsageLimits -> UsageLimitsScreen(
