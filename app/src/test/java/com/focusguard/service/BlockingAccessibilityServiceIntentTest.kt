@@ -9,7 +9,10 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
-@Config(sdk = [35])
+// Este teste valida apenas a composicao das flags do Intent. O Robolectric
+// 4.13 usado pelo projeto fornece o ambiente ate o SDK 34; forcar o SDK 35
+// fazia o runner falhar antes de executar qualquer uma das assercoes.
+@Config(sdk = [34])
 class BlockingAccessibilityServiceIntentTest {
 
     @Test
