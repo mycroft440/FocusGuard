@@ -1,7 +1,9 @@
 package com.focusguard.ui.compose.screens
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.animateFloatAsState
@@ -28,6 +30,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -37,15 +40,19 @@ import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -54,6 +61,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -67,6 +75,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -76,6 +86,13 @@ import com.focusguard.R
 import com.focusguard.data.RecoveryJourney
 import com.focusguard.data.RecoveryJourney.Stage
 import com.focusguard.data.RecoveryJourney.Status
+import com.focusguard.data.RecoveryProtectionPreset
+import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.manager.BlockingSessionManager.BlockingProtectionUnavailableException
+import com.focusguard.ui.PermissionsActivity
+import com.focusguard.utils.FocusGuardLogger
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 @Composable
 fun RecoveryHubScreen(onReadBook: (RecoveryBook) -> Unit) {
@@ -109,12 +126,21 @@ fun RecoveryHubScreen(onReadBook: (RecoveryBook) -> Unit) {
 private fun RecoveryLanding(onOpenBook: (RecoveryBook) -> Unit) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
     val preferences = remember(context) {
         context.getSharedPreferences(RECOVERY_PREFS, Context.MODE_PRIVATE)
     }
+    val sessionManager = remember(context) {
+        BlockingSessionManager.getInstance(context)
+    }
+
     // Relido no ON_RESUME porque a leitura acontece fora daqui, noutra Activity:
     // esta composição sobrevive à ida e à volta e não recarregaria sozinha.
     var completed by remember { mutableStateOf(preferences.readCompletedStages()) }
+    var showProtectionTerms by rememberSaveable { mutableStateOf(false) }
+    var showAccessibilityRequired by rememberSaveable { mutableStateOf(false) }
+    var isActivatingProtection by remember { mutableStateOf(false) }
+    var activationErrorRes by remember { mutableStateOf<Int?>(null) }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -124,6 +150,88 @@ private fun RecoveryLanding(onOpenBook: (RecoveryBook) -> Unit) {
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    if (showProtectionTerms) {
+        RecoveryProtectionTermsDialog(
+            isActivating = isActivatingProtection,
+            activationErrorRes = activationErrorRes,
+            onDismiss = {
+                if (!isActivatingProtection) {
+                    showProtectionTerms = false
+                    activationErrorRes = null
+                }
+            },
+            onActivate = { typedConsent ->
+                isActivatingProtection = true
+                activationErrorRes = null
+                scope.launch {
+                    try {
+                        sessionManager.startRecoveryProtectionPreset(typedConsent)
+                        preferences.edit()
+                            .putBoolean(Stage.PROTECT.doneKey, true)
+                            .apply()
+                        completed = preferences.readCompletedStages()
+                        showProtectionTerms = false
+                        Toast.makeText(
+                            context,
+                            R.string.recovery_protection_success,
+                            Toast.LENGTH_LONG
+                        ).show()
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (error: BlockingProtectionUnavailableException) {
+                        if (
+                            error.reason ==
+                            BlockingProtectionUnavailableException.Reason.ACCESSIBILITY_REQUIRED
+                        ) {
+                            showProtectionTerms = false
+                            showAccessibilityRequired = true
+                        } else {
+                            activationErrorRes = R.string.recovery_protection_failed
+                        }
+                    } catch (error: Exception) {
+                        FocusGuardLogger.logError(
+                            "RecoveryHub",
+                            "Falha ao ativar o atalho de proteção",
+                            error
+                        )
+                        activationErrorRes = R.string.recovery_protection_failed
+                    } finally {
+                        isActivatingProtection = false
+                    }
+                }
+            }
+        )
+    }
+
+    if (showAccessibilityRequired) {
+        AlertDialog(
+            onDismissRequest = { showAccessibilityRequired = false },
+            title = {
+                Text(stringResource(R.string.recovery_protection_permission_title))
+            },
+            text = {
+                Text(stringResource(R.string.recovery_protection_permission_body))
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showAccessibilityRequired = false
+                        context.startActivity(
+                            Intent(context, PermissionsActivity::class.java)
+                        )
+                    }
+                ) {
+                    Text(stringResource(R.string.recovery_protection_open_permissions))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showAccessibilityRequired = false }) {
+                    Text(stringResource(R.string.status_close))
+                }
+            }
+        )
     }
 
     Column(
@@ -137,15 +245,28 @@ private fun RecoveryLanding(onOpenBook: (RecoveryBook) -> Unit) {
         Spacer(Modifier.height(26.dp))
 
         RecoveryJourney.stages.forEachIndexed { index, stage ->
+            val status = RecoveryJourney.statusOf(stage, completed)
             StageRow(
                 stage = stage,
                 index = index,
-                status = RecoveryJourney.statusOf(stage, completed),
+                status = status,
                 isLast = index == RecoveryJourney.stages.lastIndex,
-                onAction = { onOpenBook(stage.book) },
+                onAction = {
+                    when (stage) {
+                        Stage.UNDERSTAND,
+                        Stage.REWIRE -> stage.bookOrNull?.let(onOpenBook)
+
+                        Stage.PROTECT -> if (status == Status.CURRENT) {
+                            activationErrorRes = null
+                            showProtectionTerms = true
+                        }
+                    }
+                },
                 onMarkDone = {
-                    preferences.edit().putBoolean(stage.doneKey, true).apply()
-                    completed = preferences.readCompletedStages()
+                    if (stage != Stage.PROTECT) {
+                        preferences.edit().putBoolean(stage.doneKey, true).apply()
+                        completed = preferences.readCompletedStages()
+                    }
                 }
             )
         }
@@ -274,7 +395,7 @@ private fun JourneyHeader(completed: Set<Stage>) {
  *
  * A linha vive dentro da mesma Row do cartão, e não entre as Rows, para ela
  * atravessar o espaçamento sem quebrar — é o que faz a coluna parecer um
- * caminho contínuo em vez de quatro cartões soltos.
+ * caminho contínuo em vez de três cartões soltos.
  */
 @Composable
 private fun StageRow(
@@ -385,14 +506,15 @@ private fun StageCard(
 ) {
     val locked = status == Status.LOCKED
     val current = status == Status.CURRENT
+    // Leituras concluídas continuam abertas para consulta. A proteção, depois
+    // de ativada, vira apenas um registro concluído e não pode ser duplicada.
+    val canOpen = !locked && (current || content.confirmationRes != null)
 
     Card(
         modifier = Modifier
             .fillMaxWidth()
             .then(
-                // Concluída ou em andamento continua clicável para revisitar; a
-                // trancada não responde ao toque, senão a tranca seria enfeite.
-                if (locked) Modifier else Modifier.clickable(onClick = onAction)
+                if (canOpen) Modifier.clickable(onClick = onAction) else Modifier
             ),
         shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
@@ -486,18 +608,162 @@ private fun StageCard(
                     )
                 }
 
-                // O app não tem como saber se um capítulo foi lido, então quem
-                // fecha a etapa é o usuário. Fingir que sabe seria mentir para ele.
-                TextButton(onClick = onMarkDone, modifier = Modifier.fillMaxWidth()) {
-                    Text(
-                        stringResource(content.confirmationRes),
-                        color = muted,
-                        fontSize = 13.sp
-                    )
+                // Só as leituras dependem da declaração manual de conclusão.
+                // A proteção conclui a etapa apenas após os dois blocos existirem.
+                content.confirmationRes?.let { confirmationRes ->
+                    TextButton(onClick = onMarkDone, modifier = Modifier.fillMaxWidth()) {
+                        Text(
+                            stringResource(confirmationRes),
+                            color = muted,
+                            fontSize = 13.sp
+                        )
+                    }
                 }
             }
         }
     }
+}
+
+@Composable
+private fun RecoveryProtectionTermsDialog(
+    isActivating: Boolean,
+    activationErrorRes: Int?,
+    onDismiss: () -> Unit,
+    onActivate: (String) -> Unit
+) {
+    var typedConsent by rememberSaveable { mutableStateOf("") }
+    var pasteBlocked by rememberSaveable { mutableStateOf(false) }
+    val consentAccepted = RecoveryProtectionPreset.isConsentAccepted(typedConsent)
+
+    AlertDialog(
+        onDismissRequest = {
+            if (!isActivating) onDismiss()
+        },
+        title = {
+            Text(stringResource(R.string.recovery_protection_terms_title))
+        },
+        text = {
+            Column(modifier = Modifier.verticalScroll(rememberScrollState())) {
+                Text(
+                    text = stringResource(R.string.recovery_protection_terms_intro),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+                Spacer(Modifier.height(12.dp))
+                ProtectionTermParagraph(R.string.recovery_protection_terms_porn)
+                ProtectionTermParagraph(R.string.recovery_protection_terms_social)
+                ProtectionTermParagraph(R.string.recovery_protection_terms_messengers)
+                ProtectionTermParagraph(R.string.recovery_protection_terms_duration)
+
+                Spacer(Modifier.height(14.dp))
+                Text(
+                    text = stringResource(R.string.recovery_protection_consent_instruction),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 13.sp,
+                    lineHeight = 19.sp
+                )
+                Spacer(Modifier.height(10.dp))
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                    border = BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.primary.copy(alpha = 0.35f)
+                    )
+                ) {
+                    Text(
+                        text = RecoveryProtectionPreset.CONSENT_PHRASE,
+                        modifier = Modifier.padding(12.dp),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                OutlinedTextField(
+                    value = typedConsent,
+                    onValueChange = { nextValue ->
+                        if (
+                            RecoveryProtectionPreset.acceptsTypedEdit(
+                                previous = typedConsent,
+                                next = nextValue
+                            )
+                        ) {
+                            typedConsent = nextValue
+                            pasteBlocked = false
+                        } else {
+                            pasteBlocked = true
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !isActivating,
+                    label = {
+                        Text(stringResource(R.string.recovery_protection_consent_label))
+                    },
+                    singleLine = true,
+                    isError = pasteBlocked,
+                    supportingText = {
+                        if (pasteBlocked) {
+                            Text(stringResource(R.string.recovery_protection_paste_blocked))
+                        }
+                    },
+                    keyboardOptions = KeyboardOptions(
+                        capitalization = KeyboardCapitalization.None,
+                        imeAction = ImeAction.Done
+                    )
+                )
+                activationErrorRes?.let { errorRes ->
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        text = stringResource(errorRes),
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onActivate(typedConsent) },
+                enabled = consentAccepted && !isActivating
+            ) {
+                if (isActivating) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp
+                    )
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.recovery_protection_activating))
+                } else {
+                    Text(stringResource(R.string.recovery_protection_activate))
+                }
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                enabled = !isActivating
+            ) {
+                Text(stringResource(R.string.status_close))
+            }
+        }
+    )
+}
+
+@Composable
+private fun ProtectionTermParagraph(textRes: Int) {
+    Text(
+        text = "• " + stringResource(textRes),
+        modifier = Modifier.padding(bottom = 8.dp),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontSize = 13.sp,
+        lineHeight = 19.sp
+    )
 }
 
 @Composable
@@ -674,7 +940,7 @@ private data class RecoveryStageContent(
     val titleRes: Int,
     val descriptionRes: Int,
     val actionRes: Int,
-    val confirmationRes: Int,
+    val confirmationRes: Int?,
     val icon: ImageVector
 )
 
@@ -694,13 +960,21 @@ private val Stage.content: RecoveryStageContent
             confirmationRes = R.string.recovery_stage_rewire_confirm,
             icon = Icons.Outlined.MenuBook
         )
+        Stage.PROTECT -> RecoveryStageContent(
+            titleRes = R.string.recovery_stage_protect_title,
+            descriptionRes = R.string.recovery_stage_protect_desc,
+            actionRes = R.string.recovery_stage_protect_action,
+            confirmationRes = null,
+            icon = Icons.Outlined.Shield
+        )
     }
 
-/** O livro que a etapa abre. */
-private val Stage.book: RecoveryBook
+/** O livro que a etapa abre; a proteção abre o termo de compromisso. */
+private val Stage.bookOrNull: RecoveryBook?
     get() = when (this) {
         Stage.UNDERSTAND -> RecoveryBook.CREATOR_INSTRUCTIONS
         Stage.REWIRE -> RecoveryBook.EASYPEASY
+        Stage.PROTECT -> null
     }
 
 enum class RecoveryBook {
