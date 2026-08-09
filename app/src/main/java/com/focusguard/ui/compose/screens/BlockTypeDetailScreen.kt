@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.HourglassEmpty
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Timelapse
@@ -132,6 +133,7 @@ enum class BlockTypeUi(
 fun BlockTypeDetailScreen(
     type: BlockTypeUi,
     onAddClick: () -> Unit,
+    onIntruderLogClick: () -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -192,12 +194,14 @@ fun BlockTypeDetailScreen(
         ) {
             BlockTypeHeader(type)
 
-            // Só na proteção por senha: os dois ajustes abaixo mudam como um app
-            // protegido é aberto, então pertencem a esta tela e não a um menu
-            // distante de configurações.
+            // Ferramentas que pertencem ao bloqueio por senha ficam junto
+            // da própria proteção, em vez de escondidas em Configurações.
             if (type == BlockTypeUi.PASSWORD) {
                 Spacer(Modifier.height(16.dp))
-                PasswordProtectionToggles(accent = type.accent)
+                PasswordProtectionTools(
+                    accent = type.accent,
+                    onIntruderLogClick = onIntruderLogClick
+                )
             }
 
             Spacer(Modifier.height(20.dp))
@@ -281,22 +285,20 @@ fun BlockTypeDetailScreen(
 }
 
 /**
- * The two switches that change how a password-protected app is opened.
+ * Ferramentas relacionadas a tentativas de abertura de apps protegidos.
  *
- * Both default to off. The intruder selfie needs the camera permission, so the
- * switch only turns on once Android grants it — flipping the UI first would
- * promise a photo the app cannot take.
+ * A selfie precisa da permissão de câmera; o estado só é ativado depois que
+ * o Android concede a permissão.
  */
 @Composable
-private fun PasswordProtectionToggles(accent: Color) {
+private fun PasswordProtectionTools(
+    accent: Color,
+    onIntruderLogClick: () -> Unit
+) {
     val context = LocalContext.current
     val authManager = remember(context) { AuthManager(context) }
 
     var selfieEnabled by remember { mutableStateOf(authManager.isPhotoCaptureEnabled()) }
-    var biometricEnabled by remember {
-        mutableStateOf(authManager.isBiometricAppUnlockEnabled())
-    }
-    val biometricAvailable = remember { authManager.isBiometricAvailable() }
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
@@ -305,13 +307,13 @@ private fun PasswordProtectionToggles(accent: Color) {
         authManager.setPhotoCaptureEnabled(granted)
     }
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
-        border = BorderStroke(1.dp, CardBorder)
-    ) {
-        Column(Modifier.padding(4.dp)) {
+    Column {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkCard),
+            border = BorderStroke(1.dp, CardBorder)
+        ) {
             ToggleRow(
                 title = stringResource(R.string.limits_intruder_selfie),
                 subtitle = stringResource(R.string.limits_intruder_selfie_desc),
@@ -327,22 +329,16 @@ private fun PasswordProtectionToggles(accent: Color) {
                     }
                 }
             )
-            ToggleRow(
-                title = stringResource(R.string.biometric_app_unlock_title),
-                subtitle = if (biometricAvailable) {
-                    stringResource(R.string.biometric_app_unlock_subtitle)
-                } else {
-                    stringResource(R.string.biometric_app_unlock_unavailable)
-                },
-                checked = biometricEnabled,
-                enabled = biometricAvailable,
-                accent = accent,
-                onCheckedChange = { enable ->
-                    authManager.setBiometricAppUnlockEnabled(enable)
-                    biometricEnabled = enable
-                }
-            )
         }
+
+        Spacer(Modifier.height(8.dp))
+        SettingsItem(
+            icon = Icons.Default.PhotoCamera,
+            title = stringResource(R.string.intruder_log),
+            subtitle = stringResource(R.string.settings_intruder_log_subtitle),
+            iconTint = accent,
+            onClick = onIntruderLogClick
+        )
     }
 }
 
