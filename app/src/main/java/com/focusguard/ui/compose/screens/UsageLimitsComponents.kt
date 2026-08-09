@@ -72,19 +72,26 @@ fun LimitSecuritySection(
     onConfirmed: (Boolean) -> Unit
 ) {
     var agreement by remember { mutableStateOf("") }
-    var passwordUnlock by remember(lockMode) { mutableStateOf(lockMode == "PASSWORD") }
+    val normalizedMode = lockMode.uppercase(Locale.ROOT)
     val yesLabel = stringResource(R.string.action_yes)
     val agreementMatches = agreement.trim().equals(yesLabel.trim(), ignoreCase = true)
     val passwordValid = password.length >= 4
     val daysValid = days.toLongOrNull()?.let { it > 0L } == true
 
-    LaunchedEffect(passwordUnlock, password, agreement, days) {
-        onConfirmed(if (passwordUnlock) passwordValid else agreementMatches && daysValid)
+    LaunchedEffect(normalizedMode, password, agreement, days) {
+        onConfirmed(
+            when (normalizedMode) {
+                "NONE" -> true
+                "PASSWORD" -> passwordValid
+                "TIME" -> agreementMatches && daysValid
+                else -> false
+            }
+        )
     }
 
     Column {
         Text(
-            stringResource(R.string.limits_security_mode),
+            stringResource(R.string.limits_block_behavior_title),
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurface,
             fontSize = 14.sp
@@ -100,101 +107,95 @@ fun LimitSecuritySection(
                 .padding(12.dp)
         ) {
             Text(
-                stringResource(R.string.limits_security_mode_desc),
+                stringResource(R.string.limits_block_behavior_description),
                 color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 13.sp
             )
-            Text(
-                stringResource(R.string.limits_security_mode_warning),
-                color = DangerRed,
-                fontSize = 11.sp,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
 
-            OutlinedTextField(
-                value = days,
-                onValueChange = { value ->
-                    if (value.all(Char::isDigit)) onDaysChange(value)
-                },
-                label = { Text(stringResource(R.string.limits_security_days_label)) },
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                modifier = Modifier.fillMaxWidth(),
-                isError = days.isNotEmpty() && !daysValid,
-                colors = limitFieldColors()
+            SecurityChoice(
+                selected = normalizedMode == "NONE",
+                label = stringResource(R.string.limits_block_daily_no_password_option),
+                description = stringResource(R.string.limits_block_daily_no_password_desc),
+                onClick = { onLockModeChange("NONE") }
+            )
+            Spacer(Modifier.height(8.dp))
+            SecurityChoice(
+                selected = normalizedMode == "TIME",
+                label = stringResource(R.string.limits_block_hardened_no_password_option),
+                description = stringResource(R.string.limits_block_hardened_no_password_desc),
+                onClick = { onLockModeChange("TIME") }
+            )
+            Spacer(Modifier.height(8.dp))
+            SecurityChoice(
+                selected = normalizedMode == "PASSWORD",
+                label = stringResource(R.string.limits_block_password_option),
+                description = stringResource(R.string.limits_block_password_desc),
+                onClick = { onLockModeChange("PASSWORD") }
             )
 
-            Spacer(Modifier.height(16.dp))
-            Text(
-                stringResource(R.string.limits_security_password_question),
-                color = MaterialTheme.colorScheme.onSurface,
-                fontSize = 13.sp
-            )
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                SecurityChoice(
-                    selected = !passwordUnlock,
-                    label = stringResource(R.string.action_no),
-                    onClick = {
-                        passwordUnlock = false
-                        onLockModeChange("TIME")
-                    }
-                )
-                Spacer(Modifier.width(20.dp))
-                SecurityChoice(
-                    selected = passwordUnlock,
-                    label = yesLabel,
-                    onClick = {
-                        passwordUnlock = true
-                        onLockModeChange("PASSWORD")
-                    }
-                )
-            }
+            when (normalizedMode) {
+                "PASSWORD" -> {
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = onPasswordChange,
+                        label = { Text(stringResource(R.string.limits_security_password_label)) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                        isError = password.isNotEmpty() && !passwordValid,
+                        supportingText = {
+                            if (!passwordValid) {
+                                Text(stringResource(R.string.limits_password_minimum))
+                            }
+                        },
+                        colors = limitFieldColors()
+                    )
+                }
 
-            if (passwordUnlock) {
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = onPasswordChange,
-                    label = { Text(stringResource(R.string.limits_security_password_label)) },
-                    visualTransformation = PasswordVisualTransformation(),
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                    isError = password.isNotEmpty() && !passwordValid,
-                    supportingText = {
-                        if (!passwordValid) Text("Use pelo menos 4 caracteres")
-                    },
-                    colors = limitFieldColors()
-                )
-            } else {
-                Spacer(Modifier.height(12.dp))
-                Card(
-                    colors = CardDefaults.cardColors(
-                        containerColor = DangerRed.copy(alpha = 0.1f)
-                    ),
-                    border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.3f))
-                ) {
-                    Column(Modifier.padding(8.dp)) {
-                        Text(
-                            stringResource(R.string.limits_security_no_password_warning),
-                            color = DangerRed,
-                            fontSize = 11.sp
-                        )
-                        Spacer(Modifier.height(8.dp))
-                        OutlinedTextField(
-                            value = agreement,
-                            onValueChange = { agreement = it },
-                            placeholder = {
-                                Text(
-                                    stringResource(R.string.limits_security_agree_placeholder),
-                                    fontSize = 11.sp
-                                )
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = if (agreementMatches) AccentCyan else DangerRed,
-                                unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
-                                focusedTextColor = MaterialTheme.colorScheme.onSurface
+                "TIME" -> {
+                    OutlinedTextField(
+                        value = days,
+                        onValueChange = { value ->
+                            if (value.all(Char::isDigit)) onDaysChange(value)
+                        },
+                        label = { Text(stringResource(R.string.limits_security_days_label)) },
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+                        isError = days.isNotEmpty() && !daysValid,
+                        colors = limitFieldColors()
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    Card(
+                        colors = CardDefaults.cardColors(
+                            containerColor = DangerRed.copy(alpha = 0.1f)
+                        ),
+                        border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.3f))
+                    ) {
+                        Column(Modifier.padding(10.dp)) {
+                            Text(
+                                stringResource(R.string.limits_security_no_password_warning),
+                                color = DangerRed,
+                                fontSize = 11.sp
                             )
-                        )
+                            Spacer(Modifier.height(8.dp))
+                            OutlinedTextField(
+                                value = agreement,
+                                onValueChange = { agreement = it },
+                                placeholder = {
+                                    Text(
+                                        stringResource(R.string.limits_security_agree_placeholder),
+                                        fontSize = 11.sp
+                                    )
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                colors = OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = if (agreementMatches) AccentCyan else DangerRed,
+                                    unfocusedTextColor = MaterialTheme.colorScheme.onSurface,
+                                    focusedTextColor = MaterialTheme.colorScheme.onSurface
+                                )
+                            )
+                        }
                     }
                 }
             }
@@ -203,17 +204,42 @@ fun LimitSecuritySection(
 }
 
 @Composable
-private fun SecurityChoice(selected: Boolean, label: String, onClick: () -> Unit) {
+private fun SecurityChoice(
+    selected: Boolean,
+    label: String,
+    description: String,
+    onClick: () -> Unit
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.clickable(onClick = onClick)
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick)
+            .background(
+                if (selected) AccentCyan.copy(alpha = 0.1f)
+                else MaterialTheme.colorScheme.surface.copy(alpha = 0.35f),
+                RoundedCornerShape(10.dp)
+            )
+            .padding(horizontal = 8.dp, vertical = 6.dp)
     ) {
         RadioButton(
             selected = selected,
             onClick = onClick,
             colors = RadioButtonDefaults.colors(selectedColor = AccentCyan)
         )
-        Text(label, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
+        Column(Modifier.weight(1f)) {
+            Text(
+                label,
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+            Text(
+                description,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 11.sp
+            )
+        }
     }
 }
 
