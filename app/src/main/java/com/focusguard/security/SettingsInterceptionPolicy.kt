@@ -61,6 +61,7 @@ object SettingsInterceptionPolicy {
     data class EventSignals(
         val packageName: String,
         val isViewClickedEvent: Boolean,
+        val isWindowTransitionEvent: Boolean,
         val guardArmed: Boolean,
 
         /**
@@ -81,6 +82,7 @@ object SettingsInterceptionPolicy {
         val classTargetsEssentialSpecialAccess: Boolean,
         val isGenericSubSettings: Boolean,
         val textMentionsAccessibility: Boolean,
+        val textMentionsInstalledAccessibilityApps: Boolean,
         val textMentionsDeviceAdmin: Boolean,
         val textMentionsFocusGuard: Boolean,
         val textMentionsDestructiveControl: Boolean,
@@ -144,6 +146,22 @@ object SettingsInterceptionPolicy {
             signals.classTargetsAppDetails ||
             signals.classTargetsUninstall
         ) {
+            return Decision.PROTECT_AND_ARM_GUARD
+        }
+
+        // Defesa específica para a rota da One UI mostrada no aparelho:
+        // Acessibilidade > Configurações avançadas > Aplicativos instalados.
+        // O rótulo chega no evento mesmo quando a classe OEM é genérica.
+        if (signals.textMentionsInstalledAccessibilityApps) {
+            return Decision.PROTECT_AND_ARM_GUARD
+        }
+
+        // Algumas versões da One UI entregam a tela principal numa Activity
+        // genérica. Na transição de janela, o título "Acessibilidade" identifica
+        // a tela sem varrer a árvore inteira. Eventos de conteúdo ficam fora
+        // desta regra para não fechar a tela inicial de Configurações só porque
+        // o item Acessibilidade aparece na lista.
+        if (signals.isWindowTransitionEvent && signals.textMentionsAccessibility) {
             return Decision.PROTECT_AND_ARM_GUARD
         }
 
