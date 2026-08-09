@@ -46,8 +46,8 @@ class AccessibilitySettingsPolicyTest {
         ).isFalse()
     }
 
-    // The split below is what keeps the Accessibility section usable during a
-    // block: only the per-service switch is a candidate for interception.
+    // O split mantém classificadores distintos para a lista e o interruptor.
+    // A política de sessão bloqueia ambos enquanto houver proteção ativa.
 
     @Test
     fun `per-service toggle screens are separated from list screens`() {
@@ -68,11 +68,11 @@ class AccessibilitySettingsPolicyTest {
 
     @Test
     fun `the accessibility list screen is not a toggle screen`() {
-        // Reaching this screen must never be intercepted — it is where the user
-        // changes font size or turns TalkBack on.
         listOf(
             "com.android.settings.accessibility.AccessibilitySettings",
-            "com.android.settings.accessibility.InstalledAccessibilityService"
+            "com.android.settings.accessibility.InstalledAccessibilityService",
+            "com.samsung.android.settings.accessibility.AccessibilitySettingsActivity",
+            "com.samsung.android.settings.accessibility.home.AccessibilityDashboardFragment"
         ).forEach { className ->
             assertThat(
                 AccessibilitySettingsPolicy.classTargetsAccessibilityList(className)
@@ -81,6 +81,25 @@ class AccessibilitySettingsPolicyTest {
                 AccessibilitySettingsPolicy.classTargetsAccessibilityServiceToggle(className)
             ).isFalse()
         }
+    }
+
+    @Test
+    fun `recognizes the One UI installed accessibility apps label`() {
+        assertThat(
+            AccessibilitySettingsPolicy.textTargetsInstalledAccessibilityApps(
+                listOf("Aplicativos instalados", "3 de 9 apps estão em uso")
+            )
+        ).isTrue()
+        assertThat(
+            AccessibilitySettingsPolicy.textTargetsInstalledAccessibilityApps(
+                listOf("Installed services")
+            )
+        ).isTrue()
+        assertThat(
+            AccessibilitySettingsPolicy.textTargetsInstalledAccessibilityApps(
+                listOf("Melhorias na visão", "TalkBack")
+            )
+        ).isFalse()
     }
 
     @Test
