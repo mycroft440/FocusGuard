@@ -279,29 +279,22 @@ class BlockingSessionManager @Inject constructor(
             limitedAppPackages: Collection<String>,
             limitedWebsiteRules: Collection<String>
         ): ConfiguredBlockedTargets {
-            val passwordWebsiteRules = WebsiteBlocker.normalizeRules(
-                passwordSessionWebsiteRules +
-                    WebsiteBlocker.domainRulesForAppPackages(passwordSessionAppPackages)
-            )
-            val normalizedLimitedWebsiteRules = WebsiteBlocker.normalizeRules(
-                limitedWebsiteRules + WebsiteBlocker.domainRulesForAppPackages(limitedAppPackages)
-            )
-            val exclusiveWebsiteRules = WebsiteBlocker.normalizeRules(
-                exclusiveSessionWebsiteRules +
-                    WebsiteBlocker.domainRulesForAppPackages(exclusiveSessionAppPackages)
-            )
-            val passwordAppPackageNames = normalizeConfiguredAppPackages(
-                passwordSessionAppPackages,
-                passwordWebsiteRules
-            )
-            val normalizedLimitedAppPackages = normalizeConfiguredAppPackages(
-                limitedAppPackages,
-                normalizedLimitedWebsiteRules
-            )
-            val exclusiveAppPackageNames = normalizeConfiguredAppPackages(
-                exclusiveSessionAppPackages,
-                exclusiveWebsiteRules
-            )
+            // Aplicativo e site são superfícies independentes. Bloquear o pacote
+            // do YouTube não cobre youtube.com no navegador, e bloquear o domínio
+            // não impede abrir o aplicativo. Portanto, não converta pacotes em
+            // domínios (nem domínios em pacotes) ao procurar duplicados.
+            val passwordWebsiteRules =
+                WebsiteBlocker.normalizeRules(passwordSessionWebsiteRules)
+            val normalizedLimitedWebsiteRules =
+                WebsiteBlocker.normalizeRules(limitedWebsiteRules)
+            val exclusiveWebsiteRules =
+                WebsiteBlocker.normalizeRules(exclusiveSessionWebsiteRules)
+            val passwordAppPackageNames =
+                normalizeConfiguredAppPackages(passwordSessionAppPackages)
+            val normalizedLimitedAppPackages =
+                normalizeConfiguredAppPackages(limitedAppPackages)
+            val exclusiveAppPackageNames =
+                normalizeConfiguredAppPackages(exclusiveSessionAppPackages)
             val allWebsiteRules = WebsiteBlocker.normalizeRules(
                 passwordWebsiteRules + normalizedLimitedWebsiteRules + exclusiveWebsiteRules
             )
@@ -314,8 +307,7 @@ class BlockingSessionManager @Inject constructor(
             }
             val unavailableAppPackageNames = (
                 exclusiveAppPackageNames +
-                    passwordAppPackageNames.intersect(normalizedLimitedAppPackages) +
-                    WebsiteBlocker.appPackageDomainsFor(unavailableWebsiteRules).keys
+                    passwordAppPackageNames.intersect(normalizedLimitedAppPackages)
                 ).filter(String::isNotBlank).toSet()
 
             return ConfiguredBlockedTargets(
@@ -331,11 +323,8 @@ class BlockingSessionManager @Inject constructor(
         }
 
         private fun normalizeConfiguredAppPackages(
-            packages: Collection<String>,
-            websiteRules: Collection<String>
-        ): Set<String> = (
-            packages + WebsiteBlocker.appPackageDomainsFor(websiteRules).keys
-            ).filter(String::isNotBlank).toSet()
+            packages: Collection<String>
+        ): Set<String> = packages.filter(String::isNotBlank).toSet()
 
         internal fun isWebsiteRuleCoveredBy(
             candidate: String,
