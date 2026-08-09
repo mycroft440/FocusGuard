@@ -157,9 +157,9 @@
     <string name="recovery_continue_reading">Continue reading</string>
     <string name="recovery_educational_notice">Educational material; it does not replace professional support.</string>
     <string name="recovery_ebook_attribution">Original work: Hackauthor². Brazilian translation: HackAuthorBR and volunteer translators. Content under CC BY-SA 4.0.</string>
-    <string name="recovery_journey_subtitle">Two readings, in order. The second opens when you finish the first.</string>
+    <string name="recovery_journey_subtitle">Three stages, in order. Read, understand, and only then activate protection.</string>
     <string name="recovery_journey_progress">Stage %1$d of %2$d</string>
-    <string name="recovery_journey_all_done">Journey set up. Now keep going.</string>
+    <string name="recovery_journey_all_done">Protection activated. Now keep going.</string>
     <string name="recovery_stage_done">Done</string>
     <string name="recovery_stage_current">Current stage</string>
     <string name="recovery_stage_locked">Finish the previous stage to open</string>
@@ -171,6 +171,26 @@
     <string name="recovery_stage_rewire_desc">Read the EasyPeasy Method. The block holds the door; the reading removes the urge to open it.</string>
     <string name="recovery_stage_rewire_action">Open the e-book</string>
     <string name="recovery_stage_rewire_confirm">I have read it — finish stage</string>
+    <string name="recovery_stage_protect_title">Close the doors</string>
+    <string name="recovery_stage_protect_desc">Activate both at once: pornography with no end date and social networks for 180 days. Messengers remain available.</string>
+    <string name="recovery_stage_protect_action">Review terms and activate</string>
+    <string name="recovery_protection_terms_title">Before activating</string>
+    <string name="recovery_protection_terms_intro">This shortcut creates two continuous blocks with one confirmation:</string>
+    <string name="recovery_protection_terms_porn">Pornography: blocked with no end date. The category includes known adult sites and related addresses.</string>
+    <string name="recovery_protection_terms_social">Social networks: apps and sites such as YouTube, Instagram, Facebook, TikTok, X, Reddit and others are blocked 24 hours a day for 180 days (six 30-day months).</string>
+    <string name="recovery_protection_terms_messengers">Messengers: WhatsApp, Telegram, Signal, Messenger, Discord and other dedicated messaging apps are excluded from this shortcut.</string>
+    <string name="recovery_protection_terms_duration">Pornography protection does not expire on its own. The social-network block ends automatically after 180 days.</string>
+    <string name="recovery_protection_consent_instruction">To confirm, type the Portuguese phrase below exactly. Paste, autofill, or multi-character insertion will be rejected.</string>
+    <string name="recovery_protection_consent_phrase">compreendi e concordo com os termos</string>
+    <string name="recovery_protection_consent_label">Type the phrase</string>
+    <string name="recovery_protection_paste_blocked">Pasting is not allowed. Type the phrase one character at a time.</string>
+    <string name="recovery_protection_activate">Activate protection</string>
+    <string name="recovery_protection_activating">Activating…</string>
+    <string name="recovery_protection_success">Protection activated: pornography with no end date and social networks for 180 days.</string>
+    <string name="recovery_protection_failed">The blocks could not be activated. Try again.</string>
+    <string name="recovery_protection_permission_title">Accessibility required</string>
+    <string name="recovery_protection_permission_body">Enable FocusGuard Accessibility before making this commitment. When you return, type the confirmation phrase again.</string>
+    <string name="recovery_protection_open_permissions">Open permissions</string>
     <string name="recovery_book_back">Back to AntiPorn</string>
 
     <!-- Settings -->
