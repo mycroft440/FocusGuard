@@ -73,6 +73,17 @@ fun FocusGuardNavHost(
     pomodoroManager: PomodoroManager
 ) {
     var isUnlocked by remember { mutableStateOf<Boolean?>(null) }
+    var resumeKey by remember { mutableIntStateOf(0) }
+
+    DisposableEffect(Unit) {
+        val callback = object : androidx.lifecycle.DefaultLifecycleObserver {
+            override fun onResume(owner: androidx.lifecycle.LifecycleOwner) {
+                resumeKey++
+            }
+        }
+        activity.lifecycle.addObserver(callback)
+        onDispose { activity.lifecycle.removeObserver(callback) }
+    }
     // Reavalia a trava em toda volta ao primeiro plano. Isso inclui o retorno
     // do assistente logo após criar um bloqueio por senha.
     LaunchedEffect(resumeKey) {
@@ -125,8 +136,6 @@ fun FocusGuardNavHost(
         }
     }
 
-    var resumeKey by remember { mutableIntStateOf(0) }
-
     LaunchedEffect(resumeKey) {
         withContext(Dispatchers.IO) {
             val isA11yEnabled = PermissionUtils.isAccessibilityServiceEnabled(activity)
@@ -138,16 +147,6 @@ fun FocusGuardNavHost(
                 )
             }
         }
-    }
-
-    DisposableEffect(Unit) {
-        val callback = object : androidx.lifecycle.DefaultLifecycleObserver {
-            override fun onResume(owner: androidx.lifecycle.LifecycleOwner) {
-                resumeKey++
-            }
-        }
-        activity.lifecycle.addObserver(callback)
-        onDispose { activity.lifecycle.removeObserver(callback) }
     }
 
     if (currentPomodoro?.isActive == true && currentPomodoro!!.endTime > System.currentTimeMillis()) {
