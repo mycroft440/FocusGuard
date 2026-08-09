@@ -12,6 +12,7 @@ import androidx.room.withTransaction
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.data.PredefinedWebsites
+import com.focusguard.data.RecoveryProtectionPreset
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.BlockSession
@@ -696,6 +697,106 @@ class BlockingSessionManager @Inject constructor(
         }
     }
 
+
+    /**
+     * Ativa, de uma só vez, o compromisso final da jornada AntiPorn:
+     * pornografia sem data final e redes sociais por 180 dias.
+     *
+     * A frase é validada novamente aqui para que nenhum chamador consiga
+     * contornar o consentimento exigido pela interface.
+     */
+    suspend fun startRecoveryProtectionPreset(
+        typedConsent: String
+    ) = withContext(Dispatchers.IO) {
+        require(RecoveryProtectionPreset.isConsentAccepted(typedConsent)) {
+            "O termo de consentimento deve ser digitado exatamente"
+        }
+
+        val protectionWasAlreadyArmed = deviceOwnerManager.isBlockingProtectionArmed()
+        var sessionsCreated = false
+        try {
+            val pornographySites = BlockTargetPolicy.acceptedRulesForSessionType(
+                sessionType = BlockTargetPolicy.SESSION_TYPE_TIME,
+                rules = listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
+            )
+            val socialSites = BlockTargetPolicy.acceptedRulesForSessionType(
+                sessionType = BlockTargetPolicy.SESSION_TYPE_TIME,
+                rules = RecoveryProtectionPreset.SOCIAL_WEBSITE_RULES.toList()
+            )
+            val socialApps = getRecoverySocialApps()
+
+            require(pornographySites.isNotEmpty()) {
+                "A categoria de pornografia não pôde ser preparada"
+            }
+            require(socialApps.isNotEmpty() || socialSites.isNotEmpty()) {
+                "Nenhuma rede social pôde ser preparada"
+            }
+
+            ensureSimpleBlockingReady()
+            database.withTransaction {
+                val startMillis = System.currentTimeMillis()
+
+                val pornographySessionId = database.blockSessionDao().insertNewSession(
+                    BlockSession(
+                        startTime = startMillis,
+                        endTime = null,
+                        isActive = true,
+                        isRecurring = false,
+                        blockedAppsCount = 0,
+                        blockedWebsitesCount = pornographySites.size,
+                        sessionType = BlockTargetPolicy.SESSION_TYPE_TIME,
+                        isFixed24h = true
+                    )
+                ).toInt()
+                pornographySites.forEach { rule ->
+                    database.sessionWebsiteCrossRefDao().insert(
+                        SessionWebsiteCrossRef(pornographySessionId, rule)
+                    )
+                }
+
+                val socialSessionId = database.blockSessionDao().insertNewSession(
+                    BlockSession(
+                        startTime = startMillis,
+                        endTime = startMillis + TimeUnit.DAYS.toMillis(
+                            RecoveryProtectionPreset.SOCIAL_BLOCK_DAYS.toLong()
+                        ),
+                        isActive = true,
+                        isRecurring = false,
+                        blockedAppsCount = socialApps.size,
+                        blockedWebsitesCount = socialSites.size,
+                        sessionType = BlockTargetPolicy.SESSION_TYPE_TIME,
+                        isFixed24h = true
+                    )
+                ).toInt()
+                socialApps.forEach { packageName ->
+                    database.sessionAppCrossRefDao().insert(
+                        SessionAppCrossRef(socialSessionId, packageName)
+                    )
+                }
+                socialSites.forEach { rule ->
+                    database.sessionWebsiteCrossRefDao().insert(
+                        SessionWebsiteCrossRef(socialSessionId, rule)
+                    )
+                }
+            }
+            sessionsCreated = true
+            checkAndEnforceOrThrow()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            if (!sessionsCreated && !protectionWasAlreadyArmed) {
+                deviceOwnerManager.clearBlockingPolicies()
+                deviceOwnerManager.applyNuclearShield()
+            }
+            FocusGuardLogger.logError(
+                "BlockingSessionManager",
+                "Erro ao ativar o atalho de proteção AntiPorn",
+                error
+            )
+            throw error
+        }
+    }
+
     private fun ensureSimpleBlockingReady() {
         val protectionLevel = DopamineStartPolicy.protectionLevel(
             DopamineStartPolicy.Capabilities(
@@ -1308,6 +1409,51 @@ class BlockingSessionManager @Inject constructor(
                     now
                 )
         }.map { it.packageName }
+    }
+
+
+    /**
+     * Combina redes conhecidas (inclusive ainda não instaladas) com apps de
+     * terceiros que o próprio Android classificou como sociais. Mensageiros
+     * dedicados são retirados por último para que a exceção sempre prevaleça.
+     */
+    private fun getRecoverySocialApps(): List<String> {
+        val discoveredSocialApps = try {
+            context.packageManager
+                .getInstalledApplications(PackageManager.GET_META_DATA)
+                .filter { app ->
+                    val isSystemApp = app.flags and (
+                        ApplicationInfo.FLAG_SYSTEM or
+                            ApplicationInfo.FLAG_UPDATED_SYSTEM_APP
+                        ) != 0
+                    val declaredSocialCategory =
+                        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                            app.category == ApplicationInfo.CATEGORY_SOCIAL
+
+                    app.packageName != context.packageName &&
+                        RecoveryProtectionPreset.shouldBlockApp(
+                            packageName = app.packageName,
+                            declaredSocialCategory = declaredSocialCategory,
+                            isSystemApp = isSystemApp
+                        )
+                }
+                .map { it.packageName }
+        } catch (error: RuntimeException) {
+            FocusGuardLogger.logError(
+                "BlockingSessionManager",
+                "Falha ao identificar redes sociais instaladas",
+                error
+            )
+            emptyList()
+        }
+
+        return (RecoveryProtectionPreset.KNOWN_SOCIAL_APP_PACKAGES +
+            discoveredSocialApps)
+            .asSequence()
+            .filterNot { it == context.packageName }
+            .filterNot(RecoveryProtectionPreset::isMessengerPackage)
+            .distinct()
+            .toList()
     }
 
     private fun getInstalledUserAppsExceptPhone(): List<String> {
