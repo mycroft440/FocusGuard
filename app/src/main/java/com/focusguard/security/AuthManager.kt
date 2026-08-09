@@ -114,12 +114,22 @@ class AuthManager(context: Context) {
     }
 
     /**
-     * App está bloqueado por senha (precisa de auth para entrar).
-     * Implementação idêntica a [hasPasswordSet] — mantido como alias semântico
-     * para callers que querem checar "está bloqueado?" (UX) em vez de
-     * "tem senha?" (configuração).
+     * A entrada no FocusGuard exige senha somente durante um bloqueio ativo
+     * do tipo PASSWORD. Ter uma credencial armazenada, por si só, não deixa o
+     * aplicativo permanentemente trancado depois que o bloqueio termina.
      */
-    suspend fun isAppLocked(): Boolean = hasPasswordSet()
+    suspend fun isAppLocked(): Boolean {
+        ensureMigrationDone()
+        val hasStoredPassword = passwordDao.getAllStatic().isNotEmpty()
+        val activeSessionTypes = database.blockSessionDao()
+            .getAllActiveSessionsStatic()
+            .map { it.sessionType }
+
+        return AppEntryLockPolicy.requiresPassword(
+            hasStoredPassword = hasStoredPassword,
+            activeSessionTypes = activeSessionTypes
+        )
+    }
 
     suspend fun hasPasswordSet(): Boolean {
         ensureMigrationDone()
@@ -159,12 +169,20 @@ class AuthManager(context: Context) {
         securePrefs.putBoolean(BIOMETRIC_APP_UNLOCK_KEY, enabled)
     }
 
+    /**
+     * O modo global sem senha foi substituído pelos modos de cada limite.
+     * Limpa a preferência legada para não manter uma proteção invisível ativa.
+     */
     fun isSafetyModeEnabled(): Boolean {
-        return securePrefs.getBoolean("safety_mode_enabled", false)
+        if (securePrefs.getBoolean("safety_mode_enabled", false)) {
+            securePrefs.putBoolean("safety_mode_enabled", false)
+        }
+        return false
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun setSafetyModeEnabled(enabled: Boolean) {
-        securePrefs.putBoolean("safety_mode_enabled", enabled)
+        securePrefs.putBoolean("safety_mode_enabled", false)
     }
 
     fun isAdultFilterEnabled(): Boolean {
