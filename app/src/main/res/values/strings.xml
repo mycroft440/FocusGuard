@@ -157,9 +157,9 @@
     <string name="recovery_continue_reading">Continuar leitura</string>
     <string name="recovery_educational_notice">Material educativo; não substitui acompanhamento profissional.</string>
     <string name="recovery_ebook_attribution">Obra original: Hackauthor². Tradução brasileira: HackAuthorBR e tradutores voluntários. Conteúdo CC BY-SA 4.0.</string>
-    <string name="recovery_journey_subtitle">Duas leituras, na ordem. A segunda abre quando você conclui a primeira.</string>
+    <string name="recovery_journey_subtitle">Três etapas, na ordem. Leia, compreenda e só então ative a proteção.</string>
     <string name="recovery_journey_progress">Etapa %1$d de %2$d</string>
-    <string name="recovery_journey_all_done">Jornada montada. Agora é seguir.</string>
+    <string name="recovery_journey_all_done">Proteção ativada. Agora é seguir.</string>
     <string name="recovery_stage_done">Concluída</string>
     <string name="recovery_stage_current">Etapa atual</string>
     <string name="recovery_stage_locked">Conclua a etapa anterior para abrir</string>
@@ -171,6 +171,26 @@
     <string name="recovery_stage_rewire_desc">Leia o EasyPeasy Method. O bloqueio segura a porta; a leitura tira a vontade de abrir.</string>
     <string name="recovery_stage_rewire_action">Abrir o e-book</string>
     <string name="recovery_stage_rewire_confirm">Já li — concluir etapa</string>
+    <string name="recovery_stage_protect_title">Feche as portas</string>
+    <string name="recovery_stage_protect_desc">Ative de uma vez: pornografia sem data final e redes sociais por 180 dias. Mensageiros ficam disponíveis.</string>
+    <string name="recovery_stage_protect_action">Revisar termos e ativar</string>
+    <string name="recovery_protection_terms_title">Antes de ativar</string>
+    <string name="recovery_protection_terms_intro">Este atalho cria dois bloqueios contínuos em uma única confirmação:</string>
+    <string name="recovery_protection_terms_porn">Pornografia: fica bloqueada sem data de término. A categoria inclui sites adultos conhecidos e endereços relacionados.</string>
+    <string name="recovery_protection_terms_social">Redes sociais: apps e sites como YouTube, Instagram, Facebook, TikTok, X, Reddit e outros ficam bloqueados 24 horas por dia durante 180 dias (6 meses de 30 dias).</string>
+    <string name="recovery_protection_terms_messengers">Mensageiros: WhatsApp, Telegram, Signal, Messenger, Discord e outros apps dedicados a mensagens não entram neste atalho.</string>
+    <string name="recovery_protection_terms_duration">A proteção de pornografia não expira sozinha. O bloqueio de redes sociais termina automaticamente após os 180 dias.</string>
+    <string name="recovery_protection_consent_instruction">Para confirmar, digite exatamente a frase abaixo. Colar, preencher automaticamente ou inserir vários caracteres de uma vez será recusado.</string>
+    <string name="recovery_protection_consent_phrase">compreendi e concordo com os termos</string>
+    <string name="recovery_protection_consent_label">Digite a frase</string>
+    <string name="recovery_protection_paste_blocked">Não é permitido colar. Digite a frase, um caractere por vez.</string>
+    <string name="recovery_protection_activate">Ativar proteção</string>
+    <string name="recovery_protection_activating">Ativando…</string>
+    <string name="recovery_protection_success">Proteção ativada: pornografia sem prazo e redes sociais por 180 dias.</string>
+    <string name="recovery_protection_failed">Não foi possível ativar os bloqueios. Tente novamente.</string>
+    <string name="recovery_protection_permission_title">Acessibilidade necessária</string>
+    <string name="recovery_protection_permission_body">Ative a Acessibilidade do FocusGuard antes de firmar este compromisso. Ao voltar, digite novamente a frase de confirmação.</string>
+    <string name="recovery_protection_open_permissions">Abrir permissões</string>
     <string name="recovery_book_back">Voltar para AntiPorn</string>
 
     <!-- Configurações -->
