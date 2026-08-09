@@ -12,11 +12,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteForever
-import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Card
@@ -24,7 +22,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
@@ -46,7 +43,6 @@ import com.focusguard.BuildConfig
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.BlockingSessionManager
-import com.focusguard.security.AuthManager
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.ui.compose.layout.FocusGuardScreenScaffold
 import com.focusguard.ui.compose.layout.FocusGuardScrollableContent
@@ -59,9 +55,7 @@ import kotlin.math.ceil
 @Composable
 fun SettingsScreen(
     onLimitsClick: () -> Unit,
-    onIntruderLogClick: () -> Unit,
     onLanguageClick: () -> Unit,
-    onPasswordManagementClick: () -> Unit,
     onBlockCustomizationClick: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -75,12 +69,6 @@ fun SettingsScreen(
     val deviceOwnerManager = remember(context) {
         DeviceOwnerManager.getInstance(context)
     }
-    val authManager = remember(context) { AuthManager(context) }
-    val biometricAvailable = remember(context) { authManager.isBiometricAvailable() }
-    var biometricAppUnlock by remember {
-        mutableStateOf(authManager.isBiometricAppUnlockEnabled())
-    }
-
     var showDeactivationCredentialDialog by remember { mutableStateOf(false) }
     var showDeviceOwnerMaintenanceDialog by remember { mutableStateOf(false) }
     var showDeviceOwnerSetupGuideDialog by remember { mutableStateOf(false) }
@@ -170,12 +158,6 @@ fun SettingsScreen(
         FocusGuardScrollableContent(paddingValues = paddingValues) {
             FocusGuardSectionHeader(stringResource(R.string.settings_category_general))
             SettingsItem(
-                Icons.Default.Lock,
-                stringResource(R.string.manage_passwords),
-                stringResource(R.string.settings_password_subtitle),
-                onClick = onPasswordManagementClick
-            )
-            SettingsItem(
                 Icons.Default.Language,
                 stringResource(R.string.language_settings),
                 stringResource(R.string.settings_language_subtitle),
@@ -189,21 +171,6 @@ fun SettingsScreen(
                 stringResource(R.string.deactivation_password_title),
                 deactivationPasswordSubtitle,
                 onClick = { showDeactivationCredentialDialog = true }
-            )
-            SettingsToggleItem(
-                icon = Icons.Default.Fingerprint,
-                title = stringResource(R.string.biometric_app_unlock_title),
-                subtitle = if (biometricAvailable) {
-                    stringResource(R.string.biometric_app_unlock_subtitle)
-                } else {
-                    stringResource(R.string.biometric_app_unlock_unavailable)
-                },
-                checked = biometricAppUnlock,
-                enabled = biometricAvailable,
-                onCheckedChange = { enabled ->
-                    authManager.setBiometricAppUnlockEnabled(enabled)
-                    biometricAppUnlock = enabled
-                }
             )
             SettingsItem(
                 Icons.Default.Palette,
@@ -219,12 +186,6 @@ fun SettingsScreen(
                 stringResource(R.string.limits_and_security),
                 stringResource(R.string.settings_limits_subtitle),
                 onClick = onLimitsClick
-            )
-            SettingsItem(
-                Icons.Default.PhotoCamera,
-                stringResource(R.string.intruder_log),
-                stringResource(R.string.settings_intruder_log_subtitle),
-                onClick = onIntruderLogClick
             )
 
             Spacer(Modifier.height(24.dp))
@@ -319,61 +280,6 @@ fun SettingsItem(
                 contentDescription = stringResource(R.string.action_open),
                 tint = TextHint,
                 modifier = Modifier.size(20.dp)
-            )
-        }
-    }
-}
-
-/** Same visual as [SettingsItem], but the trailing affordance is a switch. */
-@Composable
-fun SettingsToggleItem(
-    icon: ImageVector,
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    enabled: Boolean = true,
-    iconTint: Color = AccentCyan,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        ),
-        shape = RoundedCornerShape(12.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(16.dp).fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (enabled) iconTint else TextHint,
-                modifier = Modifier.size(24.dp)
-            )
-            Spacer(Modifier.width(16.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    color = if (enabled) {
-                        MaterialTheme.colorScheme.onSurface
-                    } else {
-                        TextHint
-                    }
-                )
-                Text(
-                    text = subtitle,
-                    fontSize = 13.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Switch(
-                checked = checked,
-                enabled = enabled,
-                onCheckedChange = onCheckedChange
             )
         }
     }
