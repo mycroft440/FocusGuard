@@ -13,7 +13,6 @@ import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -49,7 +48,6 @@ fun AuthScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
-    val biometricsAvailable = remember { authManager.isBiometricAvailable() }
 
     // [L1] Shake animation state
     var shakeOffset by remember { mutableStateOf(0f) }
@@ -94,16 +92,6 @@ fun AuthScreen(
                 // tela de unlock, impedindo o usuário de acessar o app.
                 errorMessage = activity.getString(R.string.auth_wrong_password)
             }
-        }
-    }
-
-    LaunchedEffect(biometricsAvailable) {
-        if (biometricsAvailable && authManager.hasPasswordSet()) {
-            authManager.showBiometricPrompt(
-                activity = activity,
-                onSuccess = onUnlock,
-                onError = { msg -> errorMessage = msg }
-            )
         }
     }
 
@@ -214,28 +202,6 @@ fun AuthScreen(
             shape = RoundedCornerShape(16.dp)
         ) {
             Text(stringResource(R.string.auth_unlock_button), fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.background)
-        }
-
-        if (biometricsAvailable) {
-            Spacer(modifier = Modifier.height(16.dp))
-
-            OutlinedButton(
-                onClick = {
-                    authManager.showBiometricPrompt(
-                        activity = activity,
-                        onSuccess = onUnlock,
-                        onError = { msg -> errorMessage = msg }
-                    )
-                },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                colors = ButtonDefaults.outlinedButtonColors(contentColor = AccentCyan),
-                border = androidx.compose.foundation.BorderStroke(1.dp, AccentCyan),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Icon(Icons.Default.Fingerprint, contentDescription = null)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.auth_biometrics_button))
-            }
         }
 
         Spacer(modifier = Modifier.weight(1f, fill = false).heightIn(min = 24.dp))
