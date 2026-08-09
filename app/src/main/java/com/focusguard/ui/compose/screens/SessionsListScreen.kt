@@ -34,14 +34,12 @@ import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.ui.CreateSessionActivity
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.R
-import com.focusguard.security.AuthManager
 import com.focusguard.ui.compose.screens.SelectableAppUi
 import com.focusguard.ui.compose.screens.sessions.SessionsListViewModel
 import com.focusguard.ui.compose.screens.sessions.AuthViewModel
 import com.focusguard.utils.WebsiteBlocker
 import androidx.hilt.navigation.compose.hiltViewModel
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import android.content.pm.PackageManager
 import java.util.*
@@ -526,10 +524,7 @@ fun PasswordPromptDialog(
     authViewModel: AuthViewModel
 ) {
     val context = LocalContext.current
-    val activity = context as? androidx.fragment.app.FragmentActivity
-    val authManager = remember { AuthManager(context) }
     val authState by authViewModel.uiState.collectAsState()
-    val scope = rememberCoroutineScope()
 
     // Observa sucesso de autenticação e chama callback
     LaunchedEffect(authState.isAuthenticated) {
@@ -539,20 +534,6 @@ fun PasswordPromptDialog(
         }
     }
 
-    fun confirmBiometricSuccess() {
-        scope.launch { onAuthenticated() }
-    }
-
-    LaunchedEffect(Unit) {
-        if (activity != null) {
-            authManager.showBiometricPrompt(
-                activity = activity,
-                onSuccess = { confirmBiometricSuccess() },
-                onError = { /* Let user use password */ }
-            )
-        }
-    }
-    
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(stringResource(R.string.sessions_end_title), color = TextPrimary) },
@@ -571,24 +552,6 @@ fun PasswordPromptDialog(
                 )
                 if (authState.error != null) {
                     Text(authState.error!!, color = DangerRed, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
-                }
-                
-                if (activity != null) {
-                    Spacer(Modifier.height(16.dp))
-                    TextButton(
-                        onClick = {
-                            authManager.showBiometricPrompt(
-                                activity = activity,
-                                onSuccess = { confirmBiometricSuccess() },
-                                onError = { authViewModel.setError(it) }
-                            )
-                        },
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Icon(Icons.Default.Fingerprint, null, tint = AccentCyan)
-                        Spacer(Modifier.width(8.dp))
-                        Text(stringResource(R.string.sessions_use_biometric), color = AccentCyan)
-                    }
                 }
             }
         },
