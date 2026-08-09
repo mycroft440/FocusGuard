@@ -18,6 +18,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
+import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -102,6 +103,9 @@ class BlockingAccessibilityService : AccessibilityService() {
     private val mainHandler = Handler(Looper.getMainLooper())
     private var instantBlockCurtain: View? = null
     private val instantCurtainFailsafe = Runnable { dismissInstantBlockCurtain() }
+    @Volatile private var settingsTaskResetUntilElapsed = 0L
+    private val settingsTaskResetFallback = Runnable { completeSettingsTaskReset() }
+    private val settingsCurtainDismiss = Runnable { dismissInstantBlockCurtain() }
 
     private val websiteTrackingLock = Any()
     @Volatile private var trackedDomain: String? = null
@@ -413,6 +417,16 @@ class BlockingAccessibilityService : AccessibilityService() {
             // the switch that disables this service, so nothing that can block runs
             // ahead of the decision to bounce them out.
             val directPackage = event.packageName?.toString().orEmpty()
+            val resetInProgress =
+                SystemClock.elapsedRealtime() <= settingsTaskResetUntilElapsed
+            if (resetInProgress && directPackage in settingsPackages) {
+                // Esta é a raiz limpa de Configurações que o próprio FocusGuard
+                // abriu. Não a submeta de novo à política ou criaremos um ciclo;
+                // encerre a limpeza assim que o Android confirmar que ela chegou.
+                completeSettingsTaskReset()
+                return
+            }
+
             val eligibleForInterception = event.eventType in settingsInterceptionEventTypes
             if (eligibleForInterception &&
                 directPackage in protectedSystemPackages &&
@@ -947,9 +961,64 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun executeProtectionAction() {
+        // A cortina impede qualquer segundo toque enquanto a tarefa de
+        // Configurações é descartada. BACK também fecha um diálogo de
+        // confirmação que já tenha aparecido no limite da corrida.
+        showInstantBlockCurtain()
         performGlobalAction(GLOBAL_ACTION_BACK)
         performGlobalAction(GLOBAL_ACTION_HOME)
+        resetSettingsTask()
         showToastThrottled(getString(R.string.accessibility_protection_blocked_toast))
+    }
+
+    private fun resetSettingsTask() {
+        settingsTaskResetUntilElapsed =
+            SystemClock.elapsedRealtime() + SETTINGS_TASK_RESET_GUARD_MILLIS
+        mainHandler.removeCallbacks(settingsTaskResetFallback)
+        mainHandler.removeCallbacks(settingsCurtainDismiss)
+
+        val resetStarted = runCatching {
+            startActivity(createSettingsTaskResetIntent())
+            true
+        }.getOrElse { error ->
+            FocusGuardLogger.logError(
+                "A11y",
+                "Falha ao limpar a pilha do app Configurações",
+                error
+            )
+            false
+        }
+
+        if (!resetStarted) {
+            completeSettingsTaskReset()
+            return
+        }
+
+        // OEMs podem não emitir um evento útil para a tela raiz. O fallback
+        // garante que a cortina nunca fique presa mesmo nesses aparelhos.
+        mainHandler.postDelayed(
+            settingsTaskResetFallback,
+            SETTINGS_TASK_RESET_FALLBACK_MILLIS
+        )
+    }
+
+    private fun completeSettingsTaskReset() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(::completeSettingsTaskReset)
+            return
+        }
+
+        mainHandler.removeCallbacks(settingsTaskResetFallback)
+        settingsTaskResetUntilElapsed = 0L
+        performGlobalAction(GLOBAL_ACTION_HOME)
+
+        // Aguarda o HOME ser aplicado antes de liberar os toques; assim nenhuma
+        // confirmação antiga reaparece por um frame utilizável.
+        mainHandler.removeCallbacks(settingsCurtainDismiss)
+        mainHandler.postDelayed(
+            settingsCurtainDismiss,
+            SETTINGS_CURTAIN_DISMISS_DELAY_MILLIS
+        )
     }
 
     private fun handleBrowserEvent(event: AccessibilityEvent) {
@@ -1425,6 +1494,9 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         stopWebsiteTracking()
+        mainHandler.removeCallbacks(settingsTaskResetFallback)
+        mainHandler.removeCallbacks(settingsCurtainDismiss)
+        settingsTaskResetUntilElapsed = 0L
         dismissInstantBlockCurtain()
         runCatching { unregisterReceiver(packageReceiver) }
         runCatching { unregisterReceiver(refreshReceiver) }
@@ -1464,6 +1536,9 @@ class BlockingAccessibilityService : AccessibilityService() {
          * seconds after such a click.
          */
         private const val SETTINGS_TRANSITION_GUARD_MILLIS = 6_000L
+        private const val SETTINGS_TASK_RESET_GUARD_MILLIS = 2_000L
+        private const val SETTINGS_TASK_RESET_FALLBACK_MILLIS = 750L
+        private const val SETTINGS_CURTAIN_DISMISS_DELAY_MILLIS = 120L
         private const val INSTANT_CURTAIN_FAILSAFE_MILLIS = 5_000L
         internal const val EVENT_NOTIFICATION_TIMEOUT_MILLIS = 0L
         /**
@@ -1514,6 +1589,23 @@ class BlockingAccessibilityService : AccessibilityService() {
                 AccessibilityEvent.TYPE_VIEW_CLICKED or
                 AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED or
                 AccessibilityEvent.TYPE_VIEW_FOCUSED
+
+        /**
+         * Substitui a tarefa inteira de Configurações por uma raiz descartável.
+         * CLEAR_TASK elimina telas e diálogos anteriores; NO_HISTORY e
+         * EXCLUDE_FROM_RECENTS impedem que essa raiz de saneamento seja retomada.
+         */
+        internal fun createSettingsTaskResetIntent(): Intent =
+            Intent(Settings.ACTION_SETTINGS).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_NO_HISTORY or
+                        Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS or
+                        Intent.FLAG_ACTIVITY_NO_ANIMATION
+                )
+            }
 
         internal fun createRefreshBlockingIntent(
             context: Context,
