@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.focusguard.BuildConfig
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.data.UserProfile
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.ui.compose.layout.FocusGuardScreenScaffold
@@ -54,6 +55,8 @@ import kotlin.math.ceil
 
 @Composable
 fun SettingsScreen(
+    profile: UserProfile,
+    onProfileClick: () -> Unit,
     onLimitsClick: () -> Unit,
     onLanguageClick: () -> Unit,
     onBlockCustomizationClick: () -> Unit,
@@ -156,6 +159,12 @@ fun SettingsScreen(
         onBack = onBack
     ) { paddingValues ->
         FocusGuardScrollableContent(paddingValues = paddingValues) {
+            ProfileSettingsCard(
+                profile = profile,
+                onClick = onProfileClick
+            )
+
+            Spacer(Modifier.height(24.dp))
             FocusGuardSectionHeader(stringResource(R.string.settings_category_general))
             SettingsItem(
                 Icons.Default.Language,
@@ -224,6 +233,57 @@ fun SettingsScreen(
                 modifier = Modifier.align(Alignment.CenterHorizontally),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ProfileSettingsCard(
+    profile: UserProfile,
+    onClick: () -> Unit
+) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
+        ),
+        shape = RoundedCornerShape(18.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(18.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            ProfileAvatar(
+                avatarId = profile.avatarId,
+                modifier = Modifier.size(64.dp)
+            )
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = profile.displayName.ifBlank {
+                        stringResource(R.string.settings_profile_not_configured)
+                    },
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = stringResource(R.string.settings_profile_subtitle),
+                    fontSize = 13.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = stringResource(R.string.action_open),
+                tint = TextHint,
+                modifier = Modifier.size(20.dp)
             )
         }
     }

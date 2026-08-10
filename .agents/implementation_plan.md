@@ -1,30 +1,25 @@
-# Plano de implementação — métricas de uso
+# Plano de implementação — perfil do usuário
 
 ## Objetivos
 
-1. Contabilizar um acesso ao aplicativo somente depois de entrar e sair dele.
-2. Exibir o tempo real de uso do telefone nos últimos 7 dias.
-3. Mostrar os períodos de maior e menor uso médio em blocos de 3 horas.
+1. Permitir que o usuário defina o nome exibido no FocusGuard.
+2. Oferecer cinco avatares coloridos predefinidos e acessíveis.
+3. Manter nome e avatar salvos localmente entre reinicializações.
+4. Exibir o perfil no início da tela de Configurações.
 
-## Regras de contabilização
+## Regras do perfil
 
-- Apenas aplicativos realmente visíveis em primeiro plano geram tempo de uso.
-- Trocas de Activity no mesmo app permanecem na mesma sessão.
-- Trocar de aplicativo, apagar a tela ou exibir a tela de bloqueio encerra a
-  sessão atual.
-- O aplicativo ainda visível no fim da consulta é contabilizado até aquele
-  instante.
-- Launchers e componentes sem inicialização pelo usuário não entram no total.
-- Sessões que atravessam meia-noite ou um limite de 3 horas são divididas entre
-  os intervalos correspondentes.
-- O histórico sempre contém os 7 dias, inclusive dias com zero uso.
-- Maior e menor período usam os 7 dias completos anteriores; hoje não entra na
-  média para não favorecer horários que ainda não aconteceram.
+- O nome é obrigatório, elimina espaços extras e aceita até 40 caracteres
+  Unicode sem cortar emojis pela metade.
+- O avatar é persistido por identificador estável; valores inválidos voltam ao
+  avatar padrão.
+- Os dados ficam em preferências privadas do aplicativo e não saem do aparelho.
+- A navegação mantém uma única cópia do estado para atualizar Configurações
+  imediatamente após salvar.
+- Cada opção de avatar funciona como botão de seleção para leitores de tela.
 
 ## Validação
 
-- Testar sessões simples, sessão ainda aberta, troca interna de Activities,
-  troca de apps, tela desligada e pacotes não elegíveis.
-- Testar dias sem uso, virada da meia-noite, limites de 3 horas e exclusão do
-  dia atual incompleto.
+- Testar normalização do nome, limite Unicode e os cinco identificadores.
+- Conferir paridade dos recursos em português e inglês.
 - Executar testes unitários, lint e compilação dos APKs.

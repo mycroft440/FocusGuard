@@ -4,6 +4,7 @@ import androidx.compose.runtime.*
 import android.content.Intent
 import androidx.compose.ui.res.stringResource
 import com.focusguard.R
+import com.focusguard.data.UserProfileStore
 import androidx.activity.compose.BackHandler
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.animation.AnimatedContent
@@ -40,6 +41,7 @@ import com.focusguard.ui.compose.screens.LanguageScreen
 import com.focusguard.ui.compose.screens.LimitsSecurityScreen
 import com.focusguard.ui.compose.screens.MainScreen
 import com.focusguard.ui.compose.screens.PomodoroScreen
+import com.focusguard.ui.compose.screens.ProfileScreen
 import com.focusguard.ui.compose.screens.RecoveryBook
 import com.focusguard.ui.compose.screens.RecoveryHubScreen
 import com.focusguard.ui.compose.screens.SessionsListScreen
@@ -55,6 +57,7 @@ import kotlinx.coroutines.withContext
 private object FocusGuardRoute {
     const val Home = "HOME"
     const val Settings = "SETTINGS"
+    const val Profile = "PROFILE"
     const val Pomodoro = "POMODORO"
     const val Limits = "LIMITS"
     const val IntruderLog = "INTRUDER_LOG"
@@ -116,6 +119,10 @@ fun FocusGuardNavHost(
     var selectedTab by remember { mutableIntStateOf(1) }
     var selectedSessionType by remember { mutableStateOf("PASSWORD") }
     var permissionsVisible by remember { mutableStateOf(false) }
+    val userProfileStore = remember(activity.applicationContext) {
+        UserProfileStore(activity.applicationContext)
+    }
+    var userProfile by remember { mutableStateOf(userProfileStore.load()) }
 
     val currentPomodoro by pomodoroManager.currentSession.collectAsState()
 
@@ -161,6 +168,7 @@ fun FocusGuardNavHost(
         currentRoute = when (currentRoute) {
             FocusGuardRoute.Limits,
             FocusGuardRoute.Language,
+            FocusGuardRoute.Profile,
             FocusGuardRoute.BlockCustomization -> FocusGuardRoute.Settings
             FocusGuardRoute.IntruderLog,
             FocusGuardRoute.UsageLimits -> FocusGuardRoute.BlockTypeDetail
@@ -178,6 +186,7 @@ fun FocusGuardNavHost(
         ) { route ->
             when (route) {
                 FocusGuardRoute.Home -> MainScreen(
+                    profile = userProfile,
                     selectedTab = selectedTab,
                     onTabChange = { selectedTab = it },
                     permissionsVisible = permissionsVisible,
@@ -242,10 +251,20 @@ fun FocusGuardNavHost(
                     onBack = { currentRoute = FocusGuardRoute.Home }
                 )
                 FocusGuardRoute.Settings -> SettingsScreen(
+                    profile = userProfile,
+                    onProfileClick = { currentRoute = FocusGuardRoute.Profile },
                     onLimitsClick = { currentRoute = FocusGuardRoute.Limits },
                     onLanguageClick = { currentRoute = FocusGuardRoute.Language },
                     onBlockCustomizationClick = { currentRoute = FocusGuardRoute.BlockCustomization },
                     onBack = { currentRoute = FocusGuardRoute.Home }
+                )
+                FocusGuardRoute.Profile -> ProfileScreen(
+                    profile = userProfile,
+                    onSave = { profile ->
+                        userProfile = userProfileStore.save(profile)
+                        currentRoute = FocusGuardRoute.Settings
+                    },
+                    onBack = { currentRoute = FocusGuardRoute.Settings }
                 )
                 FocusGuardRoute.Pomodoro -> PomodoroScreen(
                     pomodoroManager = pomodoroManager,

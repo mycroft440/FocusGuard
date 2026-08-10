@@ -23,16 +23,20 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
+import com.focusguard.data.UserProfile
 import com.focusguard.ui.compose.theme.*
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun MainScreen(
+    profile: UserProfile,
     selectedTab: Int,
     onTabChange: (Int) -> Unit,
     permissionsVisible: Boolean,
@@ -43,7 +47,11 @@ fun MainScreen(
     pomodoroContent: @Composable () -> Unit,
     recoveryContent: @Composable () -> Unit
 ) {
-    
+    val settingsContentDescription = if (profile.isConfigured) {
+        stringResource(R.string.profile_settings_content_description, profile.displayName)
+    } else {
+        stringResource(R.string.nav_settings)
+    }
 
     Scaffold(
         topBar = {
@@ -88,12 +96,22 @@ fun MainScreen(
                     modifier = Modifier
                         .align(Alignment.CenterEnd)
                         .padding(end = 12.dp)
+                        .semantics {
+                            contentDescription = settingsContentDescription
+                        }
                 ) {
-                    Icon(
-                        Icons.Default.Menu,
-                        contentDescription = stringResource(R.string.nav_settings),
-                        tint = MaterialTheme.colorScheme.onBackground
-                    )
+                    if (profile.isConfigured) {
+                        ProfileAvatar(
+                            avatarId = profile.avatarId,
+                            modifier = Modifier.size(38.dp)
+                        )
+                    } else {
+                        Icon(
+                            Icons.Default.Menu,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
                 }
             }
         },

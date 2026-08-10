@@ -194,6 +194,24 @@
     <string name="recovery_book_back">Voltar para AntiPorn</string>
 
     <!-- Configurações -->
+    <string name="profile_title">Perfil</string>
+    <string name="settings_profile_not_configured">Configure seu perfil</string>
+    <string name="settings_profile_subtitle">Toque para editar seu nome e avatar</string>
+    <string name="profile_settings_content_description">Perfil de %1$s. Abrir configurações.</string>
+    <string name="profile_intro">Personalize como você aparece dentro do FocusGuard. O nome e o avatar ficam salvos somente neste aparelho.</string>
+    <string name="profile_name_section">Seu nome</string>
+    <string name="profile_name_label">Nome</string>
+    <string name="profile_name_placeholder">Digite como deseja ser chamado</string>
+    <string name="profile_name_required">Digite um nome para salvar o perfil.</string>
+    <string name="profile_name_counter">%1$d/%2$d caracteres</string>
+    <string name="profile_name_preview_placeholder">Seu nome</string>
+    <string name="profile_avatar_section">Imagem de perfil</string>
+    <string name="profile_avatar_subtitle">Escolha uma das cinco imagens coloridas.</string>
+    <string name="profile_avatar_ocean">Oceano</string>
+    <string name="profile_avatar_sunset">Pôr do sol</string>
+    <string name="profile_avatar_forest">Floresta</string>
+    <string name="profile_avatar_galaxy">Galáxia</string>
+    <string name="profile_avatar_energy">Energia</string>
     <string name="settings_category_general">Geral</string>
     <string name="settings_category_blocking">Bloqueio</string>
     <string name="settings_category_advanced_security">Segurança avançada</string>
