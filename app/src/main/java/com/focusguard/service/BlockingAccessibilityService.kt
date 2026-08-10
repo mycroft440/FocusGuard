@@ -36,6 +36,7 @@ import com.focusguard.database.AppDatabase
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.StrictPomodoroLock
 import com.focusguard.security.AccessibilitySettingsPolicy
+import com.focusguard.security.AuthenticatedRemovalWindow
 import com.focusguard.security.AuthManager
 import com.focusguard.security.ManagedSelfProtectionPolicy
 import com.focusguard.security.SettingsInterceptionPolicy
@@ -786,6 +787,11 @@ class BlockingAccessibilityService : AccessibilityService() {
         // Cheap guards stay ahead of the signal extraction below: this runs on every
         // accessibility event, and eventTextValues() plus the classifiers are not free.
         if (packageName !in protectedSystemPackages) return false
+
+        // ACTION_DELETE was opened by FocusGuard itself after the master
+        // credential (or the day-15 window) authorized removal. Do not block
+        // the Android-owned confirmation screen during that short hand-off.
+        if (AuthenticatedRemovalWindow.isActive(this)) return false
 
         // A proteção contra a própria remoção vale em dois casos. O mais forte é
         // o Device Owner blindado. O outro é o modo consumidor: sem Device Owner,

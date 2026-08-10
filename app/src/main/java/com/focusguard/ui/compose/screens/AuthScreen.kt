@@ -35,6 +35,7 @@ import androidx.fragment.app.FragmentActivity
 import kotlinx.coroutines.launch
 import com.focusguard.R
 import com.focusguard.security.AuthManager
+import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.ui.compose.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -48,6 +49,9 @@ fun AuthScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
+    val masterCredentialManager = remember(activity.applicationContext) {
+        DeactivationCredentialManager(activity.applicationContext)
+    }
 
     // [L1] Shake animation state
     var shakeOffset by remember { mutableStateOf(0f) }
@@ -66,7 +70,13 @@ fun AuthScreen(
     val handleUnlock = {
         scope.launch {
             try {
-                if (authManager.verifyPassword(passwordInput)) {
+                val verified = when (masterCredentialManager.verify(passwordInput)) {
+                    DeactivationCredentialManager.VerificationResult.PASSWORD_ACCEPTED,
+                    DeactivationCredentialManager.VerificationResult.RECOVERY_ACCEPTED -> true
+                    DeactivationCredentialManager.VerificationResult.REJECTED,
+                    DeactivationCredentialManager.VerificationResult.NOT_CONFIGURED -> false
+                }
+                if (verified) {
                     onUnlock()
                 } else {
                     shakeOffset = 20f // [L1] Trigger shake

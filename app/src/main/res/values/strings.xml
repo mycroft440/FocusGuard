@@ -400,8 +400,8 @@
     <string name="limits_block_daily_no_password_desc">O app volta a ficar disponível quando o limite diário reiniciar.</string>
     <string name="limits_block_hardened_no_password_option">Bloquear sem senha por vários dias</string>
     <string name="limits_block_hardened_no_password_desc">Durante o período escolhido, não haverá senha para antecipar o desbloqueio.</string>
-    <string name="limits_block_password_option">Permitir desbloqueio com senha</string>
-    <string name="limits_block_password_desc">Uma senha definida aqui poderá liberar o app após o limite.</string>
+    <string name="limits_block_password_option">Desbloquear com a senha mestra</string>
+    <string name="limits_block_password_desc">A mesma senha de Proteger apps libera o alvo depois que o limite acabar.</string>
     <string name="limits_password_minimum">Use pelo menos 4 caracteres</string>
     <string name="limits_security_mode">Modo de Segurança</string>
     <string name="limits_security_mode_desc">Impedir que o app seja aberto depois que o tempo acabar</string>
@@ -409,6 +409,9 @@
     <string name="limits_security_days_label">Por quantos dias deseja limitar o tempo?</string>
     <string name="limits_security_password_question">Desbloquear app quando o tempo acabar utilizando uma senha?</string>
     <string name="limits_security_password_label">Defina a senha de desbloqueio</string>
+    <string name="limits_master_password_configured">Senha mestra configurada. Ela também protegerá a entrada no FocusGuard.</string>
+    <string name="limits_master_password_missing">Configure a senha mestra para usar esta opção.</string>
+    <string name="limits_master_password_change_action">Ver ou alterar senha mestra</string>
     <string name="limits_security_no_password_warning">Atenção: caso o bloqueio seja sem senha o app será impossível de desbloquear até o dia seguinte ou fim dos dias bloqueio.</string>
     <string name="limits_security_agree_placeholder">Escreva \'sim\' para continuar</string>
     <string name="limits_daily_time_label">Tempo diário configurado:</string>
@@ -622,8 +625,10 @@
     <string name="uninstall_app_title">Desinstalar o FocusGuard</string>
     <string name="uninstall_app_subtitle">Requer a senha mestre</string>
     <string name="uninstall_app_description">A senha mestre libera a proteção contra remoção e abre a desinstalação do Android. Você pode sair do app quando quiser.</string>
+    <string name="uninstall_app_maintenance_description">A janela de manutenção do dia 15 está ativa. Você pode liberar a proteção e continuar na tela de desinstalação do Android.</string>
     <string name="uninstall_app_confirm">Liberar e desinstalar</string>
-    <string name="uninstall_app_blocked_by_active_block">Há um bloqueio irreversível ativo. A desinstalação fica disponível quando ele terminar — ela não serve como saída de um jejum em andamento.</string>
+    <string name="uninstall_app_blocked_by_active_block">Há um bloqueio por tempo ativo. A desinstalação só fica disponível quando ele terminar ou durante a janela de manutenção do dia 15.</string>
     <string name="uninstall_app_failed">Não foi possível liberar a desinstalação.</string>
+    <string name="block_notice_no_password_unlock">Este bloqueio foi configurado sem senha. O acesso volta automaticamente no prazo definido.</string>
 
 </resources>

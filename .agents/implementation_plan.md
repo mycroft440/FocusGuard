@@ -7,7 +7,7 @@
 3. Remover automaticamente o card após 15 segundos ou depois do toque.
 4. Manter o atalho disponível no menu do canto superior após a apresentação.
 5. Alinhar o aviso de permissões sem sobrepor o cabeçalho da tela.
-6. Exibir um botão discreto de sugestões desde o primeiro uso do aplicativo.
+6. Exibir um botão discreto de sugestões depois que o convite inicial desaparecer.
 7. Calcular os horários de maior e menor uso sobre os últimos 30 dias completos.
 
 ## Regras de apresentação
@@ -18,9 +18,8 @@
   foco; ele só é registrado quando Proteção está aberta em primeiro plano.
 - A apresentação concluída é persistida no aparelho para não se repetir.
 - Após a apresentação, o acesso em Configurações permanece disponível.
-- O botão de sugestões aparece desde o primeiro uso e usa aparência neutra, sem
-  gradiente, logotipo ou cores fortes do Instagram. Ele se oculta somente nos
-  15 segundos do convite colorido para evitar duas chamadas simultâneas.
+- O botão de sugestões substitui o convite inicial e usa aparência neutra, sem
+  gradiente, logotipo ou cores fortes do Instagram.
 - O destino tenta abrir o app do Instagram e mantém o fallback para navegador.
 - Cabeçalho, aviso de permissões e cards usam o mesmo fluxo vertical rolável,
   sem deslocamentos absolutos dependentes do tamanho da tela.
@@ -31,8 +30,7 @@
 
 - Testar o limite exato de uma hora e a duração da apresentação.
 - Testar que a apresentação persiste e não pode se repetir.
-- Testar que o botão de sugestões aparece desde o início, se oculta durante o
-  convite colorido e volta depois que ele desaparece.
+- Testar que o botão de sugestões só aparece após o convite inicial desaparecer.
 - Testar que a média mensal inclui exatamente 30 dias completos.
 - Conferir paridade dos recursos em português e inglês.
 - Executar testes unitários, lint e compilação dos APKs.

@@ -63,6 +63,7 @@ import androidx.fragment.app.FragmentActivity
 import com.focusguard.security.AuthManager
 import com.focusguard.security.CameraManager
 import com.focusguard.security.IntruderCapturePolicy
+import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
@@ -86,6 +87,7 @@ class BlockNoticeActivity : AppCompatActivity() {
 
     @Inject lateinit var authManager: AuthManager
     @Inject lateinit var blockingSessionManager: BlockingSessionManager
+    @Inject lateinit var deactivationCredentialManager: DeactivationCredentialManager
 
     private var strictBlock = false
     private var redirectBrowserPackage: String? = null
@@ -138,6 +140,7 @@ class BlockNoticeActivity : AppCompatActivity() {
                     redirectBrowserPackage = browserPackageForRedirect,
                     authManager = authManager,
                     blockingSessionManager = blockingSessionManager,
+                    deactivationCredentialManager = deactivationCredentialManager,
                     onGoHome = ::goHome,
                     onRedirectBlockedWebsite = ::redirectBlockedWebsite,
                     onGoToPomodoroLock = ::goToPomodoroLock
@@ -219,6 +222,7 @@ private fun BlockNoticeContent(
     redirectBrowserPackage: String?,
     authManager: AuthManager,
     blockingSessionManager: BlockingSessionManager,
+    deactivationCredentialManager: DeactivationCredentialManager,
     onGoHome: () -> Unit,
     onRedirectBlockedWebsite: (String) -> Unit,
     onGoToPomodoroLock: () -> Unit
@@ -231,12 +235,25 @@ private fun BlockNoticeContent(
     var error by remember { mutableStateOf<String?>(null) }
     var verifying by remember { mutableStateOf(false) }
     var unlocked by remember { mutableStateOf(false) }
+    var passwordUnlockAvailable by remember { mutableStateOf<Boolean?>(null) }
 
     val wrongPasswordMessage = stringResource(R.string.sessions_wrong_password)
     val pomodoroMessage = stringResource(R.string.block_notice_pomodoro_cannot_stop)
     val timeSessionMessage = stringResource(R.string.block_notice_time_cannot_revoke)
     val noSessionMessage = stringResource(R.string.block_notice_no_active_session)
     val failureMessage = stringResource(R.string.block_notice_unlock_failed)
+
+    LaunchedEffect(strictBlock, blockedPackage, blockedDomain) {
+        passwordUnlockAvailable = if (strictBlock) {
+            false
+        } else {
+            blockingSessionManager.credentialUnlockOrigin(
+                blockedPackage = blockedPackage,
+                blockedDomain = blockedDomain,
+                strictPomodoroActive = false
+            ) != null
+        }
+    }
 
     LaunchedEffect(
         strictBlock,
@@ -343,7 +360,7 @@ private fun BlockNoticeContent(
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center
                 )
-            } else {
+            } else if (passwordUnlockAvailable == true) {
                 Button(
                     onClick = { showUnlockDialog = true },
                     modifier = Modifier.fillMaxWidth().height(50.dp),
@@ -358,6 +375,13 @@ private fun BlockNoticeContent(
                         fontWeight = FontWeight.Bold
                     )
                 }
+            } else if (passwordUnlockAvailable == false) {
+                Text(
+                    text = stringResource(R.string.block_notice_no_password_unlock),
+                    color = TextHint,
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center
+                )
             }
         }
     }
@@ -375,7 +399,8 @@ private fun BlockNoticeContent(
                             blockedPackage = blockedPackage,
                             blockedDomain = blockedDomain,
                             authManager = authManager,
-                            sessionManager = blockingSessionManager
+                            sessionManager = blockingSessionManager,
+                            deactivationCredentialManager = deactivationCredentialManager
                         )
                     ) {
                         UnlockResult.SUCCESS -> {
@@ -520,7 +545,8 @@ private suspend fun attemptUnlock(
     blockedPackage: String?,
     blockedDomain: String?,
     authManager: AuthManager,
-    sessionManager: BlockingSessionManager
+    sessionManager: BlockingSessionManager,
+    deactivationCredentialManager: DeactivationCredentialManager
 ): UnlockResult {
     return try {
         when (
@@ -538,7 +564,13 @@ private suspend fun attemptUnlock(
             BlockingSessionManager.LimitUnlockResult.NOT_FOUND -> Unit
         }
 
-        if (!authManager.verifyPassword(password)) return UnlockResult.WRONG_PASSWORD
+        val masterCredentialVerified = when (deactivationCredentialManager.verify(password)) {
+            DeactivationCredentialManager.VerificationResult.PASSWORD_ACCEPTED,
+            DeactivationCredentialManager.VerificationResult.RECOVERY_ACCEPTED -> true
+            DeactivationCredentialManager.VerificationResult.REJECTED,
+            DeactivationCredentialManager.VerificationResult.NOT_CONFIGURED -> false
+        }
+        if (!masterCredentialVerified) return UnlockResult.WRONG_PASSWORD
         val sessionId = sessionManager.findResponsibleSessionId(blockedPackage, blockedDomain)
             ?: return UnlockResult.NO_REVOCABLE_SESSION
         when (sessionManager.endSessionAndWait(sessionId)) {

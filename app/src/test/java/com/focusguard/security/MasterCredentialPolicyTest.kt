@@ -214,9 +214,9 @@ class MasterCredentialPolicyTest {
     }
 
     @Test
-    fun `ordinary limit requires the credential prompt`() {
+    fun `password limit requires the credential prompt`() {
         val gate = MasterCredentialPolicy.evaluateLimitMutation(
-            lockMode = "NONE",
+            lockMode = "PASSWORD",
             lockUntilTimestamp = null,
             safetyModeEnabled = false,
             hasMasterCredential = true,
@@ -227,9 +227,9 @@ class MasterCredentialPolicyTest {
     }
 
     @Test
-    fun `ordinary limit is mutable once the credential is verified`() {
+    fun `password limit is mutable once the credential is verified`() {
         val gate = MasterCredentialPolicy.evaluateLimitMutation(
-            lockMode = "NONE",
+            lockMode = "PASSWORD",
             lockUntilTimestamp = null,
             safetyModeEnabled = false,
             hasMasterCredential = true,
@@ -240,7 +240,20 @@ class MasterCredentialPolicyTest {
     }
 
     @Test
-    fun `missing credential is reported distinctly from an unverified one`() {
+    fun `password limit reports a missing credential distinctly`() {
+        val gate = MasterCredentialPolicy.evaluateLimitMutation(
+            lockMode = "PASSWORD",
+            lockUntilTimestamp = null,
+            safetyModeEnabled = false,
+            hasMasterCredential = false,
+            masterCredentialVerified = false
+        )
+
+        assertThat(gate).isEqualTo(MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED)
+    }
+
+    @Test
+    fun `passwordless limit can be configured without a credential`() {
         val gate = MasterCredentialPolicy.evaluateLimitMutation(
             lockMode = "NONE",
             lockUntilTimestamp = null,
@@ -249,7 +262,7 @@ class MasterCredentialPolicyTest {
             masterCredentialVerified = false
         )
 
-        assertThat(gate).isEqualTo(MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED)
+        assertThat(gate).isEqualTo(MutationGate.ALLOWED)
     }
 
     @Test
@@ -336,6 +349,18 @@ class MasterCredentialPolicyTest {
         assertThat(gate).isEqualTo(UninstallGate.MASTER_CREDENTIAL_NOT_CONFIGURED)
     }
 
+    @Test
+    fun `day 15 maintenance window allows uninstall during a time block`() {
+        val gate = MasterCredentialPolicy.evaluateUninstall(
+            hasActiveIrreversibleBlock = true,
+            hasMasterCredential = false,
+            masterCredentialVerified = false,
+            maintenanceWindowActive = true
+        )
+
+        assertThat(gate).isEqualTo(UninstallGate.ALLOWED)
+    }
+
     // ------------------------------------------------- irreversible session
 
     @Test
@@ -343,5 +368,13 @@ class MasterCredentialPolicyTest {
         assertThat(MasterCredentialPolicy.isIrreversibleSessionType("TIME")).isTrue()
         assertThat(MasterCredentialPolicy.isIrreversibleSessionType("POMODORO")).isTrue()
         assertThat(MasterCredentialPolicy.isIrreversibleSessionType("PASSWORD")).isFalse()
+    }
+
+    @Test
+    fun `only explicit time block prevents uninstall`() {
+        assertThat(MasterCredentialPolicy.blocksUninstall("TIME")).isTrue()
+        assertThat(MasterCredentialPolicy.blocksUninstall("time")).isTrue()
+        assertThat(MasterCredentialPolicy.blocksUninstall("PASSWORD")).isFalse()
+        assertThat(MasterCredentialPolicy.blocksUninstall("POMODORO")).isFalse()
     }
 }

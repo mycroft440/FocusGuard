@@ -119,11 +119,15 @@ object MasterCredentialPolicy {
         if (safetyModeEnabled) {
             return MutationGate.BLOCKED_BY_SAFETY_MODE
         }
-        if (!hasMasterCredential) {
-            return MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED
-        }
-        if (!masterCredentialVerified) {
-            return MutationGate.MASTER_CREDENTIAL_REQUIRED
+        // Só o modo que o usuário escolheu proteger por senha exige a senha
+        // mestra. O modo NONE é, por definição, a alternativa sem credencial.
+        if (lockMode.equals(LOCK_MODE_PASSWORD, ignoreCase = true)) {
+            if (!hasMasterCredential) {
+                return MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED
+            }
+            if (!masterCredentialVerified) {
+                return MutationGate.MASTER_CREDENTIAL_REQUIRED
+            }
         }
         return MutationGate.ALLOWED
     }
@@ -181,8 +185,14 @@ object MasterCredentialPolicy {
     fun evaluateUninstall(
         hasActiveIrreversibleBlock: Boolean,
         hasMasterCredential: Boolean,
-        masterCredentialVerified: Boolean
+        masterCredentialVerified: Boolean,
+        maintenanceWindowActive: Boolean = false
     ): UninstallGate {
+        // A janela mensal do dia 15 é a saída de emergência prometida para um
+        // bloqueio por tempo. Ela vem antes da recusa pelo bloqueio ativo.
+        if (maintenanceWindowActive) {
+            return UninstallGate.ALLOWED
+        }
         if (hasActiveIrreversibleBlock) {
             return UninstallGate.BLOCKED_BY_ACTIVE_IRREVERSIBLE_BLOCK
         }
@@ -202,4 +212,12 @@ object MasterCredentialPolicy {
             else -> false
         }
     }
+
+    /**
+     * Only the explicit passwordless time block prevents uninstall. A PASSWORD
+     * session is removable with its credential, and Pomodoro is a focus timer,
+     * not the long-term uninstall commitment shown by the Protection screen.
+     */
+    fun blocksUninstall(sessionType: String): Boolean =
+        sessionType.equals(SESSION_TYPE_TIME, ignoreCase = true)
 }

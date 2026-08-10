@@ -1,6 +1,8 @@
 package com.focusguard.ui.compose.screens
 
 import kotlin.OptIn
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -31,6 +33,7 @@ import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.MasterCredentialPolicy
+import com.focusguard.ui.MasterPasswordActivity
 import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.R
@@ -45,6 +48,19 @@ fun UsageLimitsScreen(authManager: AuthManager, onBack: () -> Unit) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
     var permissionsMissing by remember { mutableStateOf(false) }
+    var credentialRevision by remember { mutableIntStateOf(0) }
+    val credentialManager = remember(context) { DeactivationCredentialManager(context) }
+    val hasMasterCredential = remember(credentialRevision) {
+        credentialManager.hasCredential()
+    }
+    val masterPasswordLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        credentialRevision++
+    }
+    val openMasterPassword: () -> Unit = {
+        masterPasswordLauncher.launch(MasterPasswordActivity.createIntent(context))
+    }
 
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
@@ -92,19 +108,37 @@ fun UsageLimitsScreen(authManager: AuthManager, onBack: () -> Unit) {
             }
 
             when (selectedTab) {
-                0 -> AppLimitsTab(permissionsMissing, authManager)
-                1 -> WebsiteLimitsTab(permissionsMissing, authManager)
+                0 -> AppLimitsTab(
+                    permissionsMissing = permissionsMissing,
+                    authManager = authManager,
+                    hasMasterCredential = hasMasterCredential,
+                    onConfigureMasterPassword = openMasterPassword
+                )
+                1 -> WebsiteLimitsTab(
+                    permissionsMissing = permissionsMissing,
+                    authManager = authManager,
+                    hasMasterCredential = hasMasterCredential,
+                    onConfigureMasterPassword = openMasterPassword
+                )
             }
         }
     }
 }
 
 @Composable
-fun AppLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
+fun AppLimitsTab(
+    permissionsMissing: Boolean,
+    authManager: AuthManager,
+    hasMasterCredential: Boolean,
+    onConfigureMasterPassword: () -> Unit
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     // P2-2: usa Hilt EntryPoint via rememberAppDatabase()
     val db = rememberAppDatabase()
+    val blockingSessionManager = remember(context) {
+        BlockingSessionManager.getInstance(context)
+    }
     var apps by remember { mutableStateOf<List<UsageLimitAppUi>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(true) }
@@ -252,13 +286,30 @@ fun AppLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
         AppLimitDialog(
             app = selectedApp!!,
             permissionsMissing = permissionsMissing,
+            hasMasterCredential = hasMasterCredential,
+            onConfigureMasterPassword = onConfigureMasterPassword,
             onDismiss = { showDialog = false },
             onSave = { minutes, enabled, lockMode, lockPassword, lockUntil ->
                 scope.launch(Dispatchers.IO) {
                     val limitDao = db.appUsageLimitDao()
                     if (minutes != null && minutes > 0) {
-                        limitDao.insert(AppUsageLimit(selectedApp!!.packageName, selectedApp!!.appName, minutes, enabled, lockMode, lockPassword, lockUntil))
-                        val updated = selectedApp!!.copy(currentLimitMinutes = minutes, isEnabled = enabled, lockMode = lockMode, lockPasswordHash = lockPassword, lockUntilTimestamp = lockUntil)
+                        limitDao.insert(
+                            AppUsageLimit(
+                                packageName = selectedApp!!.packageName,
+                                appName = selectedApp!!.appName,
+                                dailyLimitMinutes = minutes,
+                                isEnabled = enabled,
+                                lockMode = lockMode,
+                                lockPasswordHash = null,
+                                lockUntilTimestamp = lockUntil,
+                                preventOpeningAfterLimit = true,
+                                unlockWithPassword = lockMode.equals(
+                                    "PASSWORD",
+                                    ignoreCase = true
+                                )
+                            )
+                        )
+                        val updated = selectedApp!!.copy(currentLimitMinutes = minutes, isEnabled = enabled, lockMode = lockMode, lockPasswordHash = null, lockUntilTimestamp = lockUntil)
                         apps = apps.map { if (it.packageName == updated.packageName) updated else it }
                     } else {
                         val existing = limitDao.getAllStatic().find { it.packageName == selectedApp!!.packageName }
@@ -266,6 +317,7 @@ fun AppLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
                         val updated = selectedApp!!.copy(currentLimitMinutes = null, isEnabled = false, lockMode = "NONE", lockPasswordHash = null, lockUntilTimestamp = null)
                         apps = apps.map { if (it.packageName == updated.packageName) updated else it }
                     }
+                    blockingSessionManager.checkAndEnforce()
                     withContext(Dispatchers.Main) { showDialog = false }
                 }
             }
@@ -323,8 +375,14 @@ fun AppLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
                 )
             },
             confirmButton = {
-                TextButton({ showCredentialMissingAlert = false }) {
-                    Text(stringResource(R.string.action_ok), color = AccentCyan)
+                TextButton({
+                    showCredentialMissingAlert = false
+                    onConfigureMasterPassword()
+                }) {
+                    Text(
+                        stringResource(R.string.master_credential_create_action),
+                        color = AccentCyan
+                    )
                 }
             },
             containerColor = MaterialTheme.colorScheme.surface
@@ -333,7 +391,12 @@ fun AppLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
 }
 
 @Composable
-fun WebsiteLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
+fun WebsiteLimitsTab(
+    permissionsMissing: Boolean,
+    authManager: AuthManager,
+    hasMasterCredential: Boolean,
+    onConfigureMasterPassword: () -> Unit
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     // P2-2: usa Hilt EntryPoint via rememberAppDatabase()
@@ -477,32 +540,54 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
     }
 
     if (showAddDialog) {
-        AddWebsiteLimitDialog(permissionsMissing = permissionsMissing, onDismiss = { showAddDialog = false }, onSave = { domain, minutes, lockMode, lockPassword, lockUntil ->
-            scope.launch(Dispatchers.IO) {
-                val websiteDao = db.websiteUsageLimitDao()
-                val clean = WebsiteBlocker.normalizeRule(domain)
-                if (clean.isEmpty()) return@launch
-                websiteDao.getAllStatic()
-                    .filter { existing ->
-                        existing.domain != clean &&
-                            WebsiteBlocker.normalizeRule(existing.domain) == clean
+        AddWebsiteLimitDialog(
+            permissionsMissing = permissionsMissing,
+            hasMasterCredential = hasMasterCredential,
+            onConfigureMasterPassword = onConfigureMasterPassword,
+            onDismiss = { showAddDialog = false },
+            onSave = { domain, minutes, lockMode, _, lockUntil ->
+                scope.launch(Dispatchers.IO) {
+                    val websiteDao = db.websiteUsageLimitDao()
+                    val clean = WebsiteBlocker.normalizeRule(domain)
+                    if (clean.isEmpty()) return@launch
+                    websiteDao.getAllStatic()
+                        .filter { existing ->
+                            existing.domain != clean &&
+                                WebsiteBlocker.normalizeRule(existing.domain) == clean
+                        }
+                        .forEach { websiteDao.delete(it) }
+                    websiteDao.insert(
+                        WebsiteUsageLimit(
+                            domain = clean,
+                            dailyLimitMinutes = minutes,
+                            isEnabled = true,
+                            lockMode = lockMode,
+                            lockPasswordHash = null,
+                            lockUntilTimestamp = lockUntil
+                        )
+                    )
+                    blockingSessionManager.checkAndEnforce()
+                    withContext(Dispatchers.Main) {
+                        sites = sites.filterNot {
+                            WebsiteBlocker.normalizeRule(it.domain) == clean
+                        } + WebsiteLimitUi(
+                            clean,
+                            minutes,
+                            true,
+                            0L,
+                            lockMode,
+                            null,
+                            lockUntil
+                        )
+                        showAddDialog = false
                     }
-                    .forEach { websiteDao.delete(it) }
-                websiteDao.insert(WebsiteUsageLimit(clean, minutes, true, lockMode, lockPassword, lockUntil))
-                blockingSessionManager.checkAndEnforce()
-                withContext(Dispatchers.Main) {
-                    sites = sites.filterNot {
-                        WebsiteBlocker.normalizeRule(it.domain) == clean
-                    } +
-                        WebsiteLimitUi(clean, minutes, true, 0L, lockMode, lockPassword, lockUntil)
-                    showAddDialog = false
                 }
             }
-        })
+        )
     }
 
     if (showEditDialog && selectedSite != null) {
-        EditWebsiteLimitDialog(site = selectedSite!!, permissionsMissing = permissionsMissing, onDismiss = { showEditDialog = false }, onSave = { minutes, enabled, lockMode, lockPassword, lockUntil ->
+        EditWebsiteLimitDialog(site = selectedSite!!, permissionsMissing = permissionsMissing, onDismiss = { showEditDialog = false }, onSave = { minutes, enabled, lockMode, _, lockUntil ->
             val siteToEdit = selectedSite ?: return@EditWebsiteLimitDialog
             scope.launch(Dispatchers.IO) {
                 val websiteDao = db.websiteUsageLimitDao()
@@ -515,12 +600,12 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
                 }
                 websiteDao.insert(
                     WebsiteUsageLimit(
-                        normalizedDomain,
-                        minutes,
-                        enabled,
-                        lockMode,
-                        lockPassword,
-                        lockUntil
+                        domain = normalizedDomain,
+                        dailyLimitMinutes = minutes,
+                        isEnabled = enabled,
+                        lockMode = lockMode,
+                        lockPasswordHash = null,
+                        lockUntilTimestamp = lockUntil
                     )
                 )
                 blockingSessionManager.checkAndEnforce()
@@ -532,7 +617,7 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
                                 dailyLimitMinutes = minutes,
                                 isEnabled = enabled,
                                 lockMode = lockMode,
-                                lockPasswordHash = lockPassword,
+                                lockPasswordHash = null,
                                 lockUntilTimestamp = lockUntil
                             )
                         } else {
@@ -592,8 +677,14 @@ fun WebsiteLimitsTab(permissionsMissing: Boolean, authManager: AuthManager) {
                 )
             },
             confirmButton = {
-                TextButton({ showCredentialMissingAlert = false }) {
-                    Text(stringResource(R.string.action_ok), color = AccentCyan)
+                TextButton({
+                    showCredentialMissingAlert = false
+                    onConfigureMasterPassword()
+                }) {
+                    Text(
+                        stringResource(R.string.master_credential_create_action),
+                        color = AccentCyan
+                    )
                 }
             },
             containerColor = MaterialTheme.colorScheme.surface

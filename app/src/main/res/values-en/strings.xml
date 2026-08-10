@@ -400,8 +400,8 @@
     <string name="limits_block_daily_no_password_desc">The app becomes available when its daily allowance resets.</string>
     <string name="limits_block_hardened_no_password_option">Block without a password for several days</string>
     <string name="limits_block_hardened_no_password_desc">During the chosen period, no password can end the block early.</string>
-    <string name="limits_block_password_option">Allow unlocking with a password</string>
-    <string name="limits_block_password_desc">A password set here can release the app after its allowance runs out.</string>
+    <string name="limits_block_password_option">Unlock with the master password</string>
+    <string name="limits_block_password_desc">The same password used by App protection releases the target after its allowance runs out.</string>
     <string name="limits_password_minimum">Use at least 4 characters</string>
     <string name="limits_security_mode">Security Mode</string>
     <string name="limits_security_mode_desc">Prevent the app from being opened after the time runs out</string>
@@ -409,6 +409,9 @@
     <string name="limits_security_days_label">For how many days do you want to limit the time?</string>
     <string name="limits_security_password_question">Unlock the app with a password when the time runs out?</string>
     <string name="limits_security_password_label">Set the unlock password</string>
+    <string name="limits_master_password_configured">Master password configured. It will also protect entry to FocusGuard.</string>
+    <string name="limits_master_password_missing">Set the master password to use this option.</string>
+    <string name="limits_master_password_change_action">View or change master password</string>
     <string name="limits_security_no_password_warning">Warning: if the block has no password, the app will be impossible to unlock until the next day or until the block days end.</string>
     <string name="limits_security_agree_placeholder">Type \'yes\' to continue</string>
     <string name="limits_daily_time_label">Configured daily time:</string>
@@ -622,8 +625,10 @@
     <string name="uninstall_app_title">Uninstall FocusGuard</string>
     <string name="uninstall_app_subtitle">Requires the master password</string>
     <string name="uninstall_app_description">The master password releases removal protection and opens Android\'s uninstall screen. You can leave the app whenever you want.</string>
+    <string name="uninstall_app_maintenance_description">The day-15 maintenance window is active. You can release protection and continue to Android\'s uninstall screen.</string>
     <string name="uninstall_app_confirm">Release and uninstall</string>
-    <string name="uninstall_app_blocked_by_active_block">An irreversible block is running. Uninstall becomes available when it ends — it is not an escape hatch from a fast in progress.</string>
+    <string name="uninstall_app_blocked_by_active_block">A time block is active. Uninstall is available only after it ends or during the day-15 maintenance window.</string>
     <string name="uninstall_app_failed">Could not release the uninstall.</string>
+    <string name="block_notice_no_password_unlock">This block was configured without a password. Access returns automatically at the selected time.</string>
 
 </resources>

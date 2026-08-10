@@ -25,6 +25,7 @@ import androidx.compose.ui.unit.dp
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.security.DeactivationCredentialManager
+import com.focusguard.security.AuthenticatedRemovalWindow
 import com.focusguard.security.DeviceOwnerMaintenanceGate
 import com.focusguard.security.MasterCredentialPolicy
 import com.focusguard.ui.compose.theme.DangerRed
@@ -38,9 +39,8 @@ import com.focusguard.utils.FocusGuardLogger
  * second path around it: [DeviceOwnerMaintenanceGate.requestWithCredential]
  * verifies the master credential and opens the short window that
  * [DeviceOwnerManager.revokeNuclearShield] already requires. That gate also
- * refuses password-based maintenance while a block is running, which is the same
- * invariant [MasterCredentialPolicy.evaluateUninstall] expresses — uninstall must
- * not become an escape hatch from a fast the user chose.
+ * refuses password-based maintenance only while a time-hardened block is
+ * running. Password protection remains removable with its own master password.
  *
  * The app never removes itself: after releasing the shield it hands off to
  * Android's own uninstall screen.
@@ -59,6 +59,7 @@ internal fun AuthenticatedUninstallDialog(
     var working by remember { mutableStateOf(false) }
 
     val hasCredential = remember { credentialManager.hasCredential() }
+    val maintenanceActive = deviceOwnerManager.isMaintenanceActive()
     val notConfiguredMessage = stringResource(R.string.master_credential_not_configured)
     val blockedMessage = stringResource(R.string.uninstall_app_blocked_by_active_block)
     val failedMessage = stringResource(R.string.uninstall_app_failed)
@@ -75,11 +76,13 @@ internal fun AuthenticatedUninstallDialog(
     val preCheck = MasterCredentialPolicy.evaluateUninstall(
         hasActiveIrreversibleBlock = hasActiveIrreversibleBlock,
         hasMasterCredential = hasCredential,
-        masterCredentialVerified = false
+        masterCredentialVerified = false,
+        maintenanceWindowActive = maintenanceActive
     )
 
     fun handOffToAndroidUninstall() {
         runCatching {
+            AuthenticatedRemovalWindow.open(context)
             context.startActivity(
                 Intent(Intent.ACTION_DELETE).apply {
                     data = Uri.parse("package:${context.packageName}")
@@ -87,6 +90,7 @@ internal fun AuthenticatedUninstallDialog(
                 }
             )
         }.onFailure { error ->
+            AuthenticatedRemovalWindow.close(context)
             FocusGuardLogger.logError(
                 "AuthenticatedUninstall",
                 "Falha ao abrir a tela de desinstalação do Android",
@@ -109,7 +113,24 @@ internal fun AuthenticatedUninstallDialog(
                 DeactivationCredentialManager.VerificationResult.PASSWORD_ACCEPTED ||
                 verification ==
                 DeactivationCredentialManager.VerificationResult.RECOVERY_ACCEPTED
-            if (verified) handOffToAndroidUninstall() else errorMessage = invalidCredentialMessage
+            if (verified) {
+                if (deviceOwnerManager.releaseRemovalProtectionForUninstall()) {
+                    handOffToAndroidUninstall()
+                } else {
+                    errorMessage = failedMessage
+                }
+            } else {
+                errorMessage = invalidCredentialMessage
+            }
+            working = false
+            return
+        }
+
+        // Se a janela do dia 15 já está aberta, não peça uma senha que o fluxo
+        // mensal deliberadamente não exige.
+        if (deviceOwnerManager.isMaintenanceActive()) {
+            val released = deviceOwnerManager.releaseRemovalProtectionForUninstall()
+            if (released) handOffToAndroidUninstall() else errorMessage = failedMessage
             working = false
             return
         }
@@ -117,20 +138,14 @@ internal fun AuthenticatedUninstallDialog(
         val unlock = DeviceOwnerMaintenanceGate.requestWithCredential(
             context = context,
             credential = credential,
-            protectionArmed = deviceOwnerManager.isArmoredProtectionArmed()
+            // A blindagem também é usada por bloqueios com senha. Para a
+            // desinstalação, só o bloqueio por tempo é irremovível.
+            protectionArmed = hasActiveIrreversibleBlock
         )
 
         when (unlock) {
             DeviceOwnerMaintenanceGate.UnlockResult.UNLOCKED -> {
-                val released = runCatching { deviceOwnerManager.revokeNuclearShield() }
-                    .onFailure { error ->
-                        FocusGuardLogger.logError(
-                            "AuthenticatedUninstall",
-                            "Falha ao revogar a blindagem para desinstalação",
-                            error
-                        )
-                    }
-                    .isSuccess
+                val released = deviceOwnerManager.releaseRemovalProtectionForUninstall()
                 if (released) handOffToAndroidUninstall() else errorMessage = failedMessage
             }
 
@@ -165,6 +180,12 @@ internal fun AuthenticatedUninstallDialog(
                     MasterCredentialPolicy.UninstallGate
                         .MASTER_CREDENTIAL_NOT_CONFIGURED ->
                         Text(notConfiguredMessage, color = DangerRed)
+
+                    MasterCredentialPolicy.UninstallGate.ALLOWED ->
+                        Text(
+                            stringResource(R.string.uninstall_app_maintenance_description),
+                            color = TextSecondary
+                        )
 
                     else -> {
                         Text(
@@ -202,10 +223,15 @@ internal fun AuthenticatedUninstallDialog(
             }
         },
         confirmButton = {
-            if (preCheck == MasterCredentialPolicy.UninstallGate.MASTER_CREDENTIAL_REQUIRED) {
+            if (preCheck == MasterCredentialPolicy.UninstallGate.MASTER_CREDENTIAL_REQUIRED ||
+                preCheck == MasterCredentialPolicy.UninstallGate.ALLOWED
+            ) {
                 TextButton(
                     onClick = { releaseAndHandOff() },
-                    enabled = credential.isNotBlank() && !working
+                    enabled = (
+                        preCheck == MasterCredentialPolicy.UninstallGate.ALLOWED ||
+                            credential.isNotBlank()
+                        ) && !working
                 ) {
                     Text(stringResource(R.string.uninstall_app_confirm), color = DangerRed)
                 }

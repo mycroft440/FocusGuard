@@ -87,6 +87,11 @@
             android:theme="@style/Theme.FocusGuard" />
 
         <activity
+            android:name=".ui.MasterPasswordActivity"
+            android:exported="false"
+            android:theme="@style/Theme.FocusGuard" />
+
+        <activity
             android:name=".ui.BlockNoticeActivity"
             android:excludeFromRecents="true"
             android:exported="false"

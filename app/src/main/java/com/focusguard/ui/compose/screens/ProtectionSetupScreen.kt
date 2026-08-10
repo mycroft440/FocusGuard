@@ -2,6 +2,8 @@ package com.focusguard.ui.compose.screens
 
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -79,9 +81,10 @@ import com.focusguard.R
 import com.focusguard.data.PredefinedWebsites
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
+import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.ui.AppSelectionStep
 import com.focusguard.ui.FinalConfigStep
-import com.focusguard.ui.PasswordCreationDialog
+import com.focusguard.ui.MasterPasswordActivity
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.AccentPurple
 import com.focusguard.ui.compose.theme.CardBorder
@@ -1026,12 +1029,12 @@ private fun BatchDailyLimitConfigScreen(
 ) {
     val context = LocalContext.current
     val manager = remember(context) { BlockingSessionManager.getInstance(context) }
+    val credentialManager = remember(context) { DeactivationCredentialManager(context) }
     val scope = rememberCoroutineScope()
     var hoursText by remember { mutableStateOf("") }
     var minutesText by remember { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
     var hasPassword by remember { mutableStateOf(false) }
-    var showPasswordCreationDialog by remember { mutableStateOf(false) }
     val alreadyPasswordProtected = remember(apps, websiteRules, configuredTargets) {
         apps.any { it.packageName in configuredTargets.passwordAppPackageNames } ||
             websiteRules.any {
@@ -1041,10 +1044,16 @@ private fun BatchDailyLimitConfigScreen(
     var protectWithPassword by remember(alreadyPasswordProtected) {
         mutableStateOf(alreadyPasswordProtected)
     }
+    val masterPasswordLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        hasPassword = credentialManager.hasCredential()
+        if (hasPassword) protectWithPassword = true
+    }
     val dailyLimitMinutes = parseDailyLimitMinutes(hoursText, minutesText)
 
     LaunchedEffect(Unit) {
-        hasPassword = authManager.hasPasswordSet()
+        hasPassword = credentialManager.hasCredential()
     }
 
     Scaffold(
@@ -1061,7 +1070,9 @@ private fun BatchDailyLimitConfigScreen(
                     onClick = {
                         val minutes = dailyLimitMinutes ?: return@Button
                         if (protectWithPassword && !hasPassword) {
-                            showPasswordCreationDialog = true
+                            masterPasswordLauncher.launch(
+                                MasterPasswordActivity.createIntent(context)
+                            )
                             return@Button
                         }
                         isSaving = true
@@ -1283,7 +1294,9 @@ private fun BatchDailyLimitConfigScreen(
                             enabled = !alreadyPasswordProtected,
                             onCheckedChange = { checked ->
                                 if (checked && !hasPassword) {
-                                    showPasswordCreationDialog = true
+                                    masterPasswordLauncher.launch(
+                                        MasterPasswordActivity.createIntent(context)
+                                    )
                                 } else {
                                     protectWithPassword = checked
                                 }
@@ -1312,38 +1325,6 @@ private fun BatchDailyLimitConfigScreen(
         }
     }
 
-    if (showPasswordCreationDialog) {
-        PasswordCreationDialog(
-            onDismiss = { showPasswordCreationDialog = false },
-            onPasswordCreated = { password ->
-                scope.launch {
-                    val result = runCatching {
-                        authManager.addPasswordWithLabelSuspend(
-                            password,
-                            context.getString(R.string.protection_password_label)
-                        )
-                    }
-                    if (result.isSuccess) {
-                        hasPassword = true
-                        protectWithPassword = true
-                        showPasswordCreationDialog = false
-                        Toast.makeText(
-                            context,
-                            context.getString(R.string.senha_criada_com_sucesso),
-                            Toast.LENGTH_LONG
-                        ).show()
-                    } else {
-                        FocusGuardLogger.logError(
-                            "ProtectionSetup",
-                            "Falha ao criar senha para o limite",
-                            result.exceptionOrNull() ?:
-                                IllegalStateException("Erro desconhecido")
-                        )
-                    }
-                }
-            }
-        )
-    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)

@@ -732,6 +732,39 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         Log.d("FocusGuardAdmin", "Nuclear Shield revogado para remoção legítima")
     }
 
+    /**
+     * Removes the Android roles that would make ACTION_DELETE fail even after
+     * the user has authenticated. This method is intentionally gated by the
+     * maintenance window when Device Owner is active; callers cannot use it as
+     * a second, unverified route around the shield.
+     */
+    @Suppress("DEPRECATION")
+    fun releaseRemovalProtectionForUninstall(): Boolean {
+        return try {
+            if (isDeviceOwnerActive()) {
+                if (!isMaintenanceActive()) return false
+                revokeNuclearShield()
+                dpm.clearDeviceOwnerApp(context.packageName)
+                DeviceOwnerMaintenanceGate.revoke(context)
+            }
+
+            // Device Admin alone also blocks uninstall on Android. Once the
+            // credential was verified, remove that legacy role as well.
+            if (isDeviceAdminActive()) {
+                dpm.removeActiveAdmin(componentName)
+            }
+
+            !isDeviceOwnerActive() && !isDeviceAdminActive()
+        } catch (error: Exception) {
+            FocusGuardLogger.logError(
+                "DeviceOwner",
+                "Falha ao liberar funções administrativas para desinstalação",
+                error
+            )
+            false
+        }
+    }
+
     private fun setBlockingProtectionArmed(armed: Boolean) {
         val saved = policyStatePreferences.edit()
             .putBoolean(BLOCKING_PROTECTION_ARMED_KEY, armed)

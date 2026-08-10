@@ -46,6 +46,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
@@ -391,6 +392,36 @@ class BlockingSessionManager @Inject constructor(
         sessions.any { participatesInBlocking(it) && isCurrentlyInBlockingWindow(it) }
     }
 
+    /**
+     * Desinstalar só pode ser impedido por uma proteção sem saída antecipada por
+     * senha. Sessões PASSWORD e limites PASSWORD ficam deliberadamente fora:
+     * neles a própria senha mestra é a saída autorizada.
+     */
+    val isUninstallBlockedByTimeFlow: Flow<Boolean> = combine(
+        activeSessionsFlow,
+        database.appUsageLimitDao().getAll(),
+        database.websiteUsageLimitDao().getAll()
+    ) { sessions, appLimits, websiteLimits ->
+        val now = System.currentTimeMillis()
+        sessions.any { session ->
+            MasterCredentialPolicy.blocksUninstall(session.sessionType) &&
+                participatesInBlocking(session) &&
+                isCurrentlyInBlockingWindow(session)
+        } || appLimits.any { limit ->
+            limit.isEnabled && MasterCredentialPolicy.isTimeHardened(
+                lockMode = limit.lockMode,
+                lockUntilTimestamp = limit.lockUntilTimestamp,
+                nowMillis = now
+            )
+        } || websiteLimits.any { limit ->
+            limit.isEnabled && MasterCredentialPolicy.isTimeHardened(
+                lockMode = limit.lockMode,
+                lockUntilTimestamp = limit.lockUntilTimestamp,
+                nowMillis = now
+            )
+        }
+    }
+
     val hasRegisteredSessionFlow: Flow<Boolean> = activeSessionsFlow.map { it.isNotEmpty() }
 
     val sessionDetailsFlow: Flow<String> = activeSessionsFlow.map { sessions ->
@@ -442,7 +473,11 @@ class BlockingSessionManager @Inject constructor(
             )
         }
 
-    /** Saves a daily limit and, optionally, an always-on password session together. */
+    /**
+     * Saves daily limits with either automatic daily release or master-password
+     * release. Password mode never creates an always-on app block: it applies
+     * only after the daily allowance is exhausted.
+     */
     suspend fun configureDailyLimits(
         apps: List<DailyLimitAppTarget>,
         sites: List<String>,
@@ -450,8 +485,8 @@ class BlockingSessionManager @Inject constructor(
         addPasswordProtection: Boolean
     ) = withContext(Dispatchers.IO) {
         require(dailyLimitMinutes in 1..24 * 60)
-        // Checado antes da transação: um limite salvo sem a sessão de senha que o
-        // usuário pediu deixaria a lista protegida pela metade.
+        // Checado antes da transação para não persistir um modo PASSWORD sem a
+        // credencial canônica capaz de liberá-lo.
         if (addPasswordProtection) {
             ensureMasterCredentialFor("PASSWORD")
         }
@@ -479,73 +514,47 @@ class BlockingSessionManager @Inject constructor(
 
             appTargets.forEach { app ->
                 val existing = existingAppLimits[app.packageName]
+                val lockMode = if (addPasswordProtection) {
+                    MasterCredentialPolicy.LOCK_MODE_PASSWORD
+                } else {
+                    existing?.lockMode ?: MasterCredentialPolicy.LOCK_MODE_NONE
+                }
                 database.appUsageLimitDao().insert(
                     AppUsageLimit(
                         packageName = app.packageName,
                         appName = app.appName,
                         dailyLimitMinutes = dailyLimitMinutes,
                         isEnabled = true,
-                        lockMode = existing?.lockMode ?: MasterCredentialPolicy.LOCK_MODE_NONE,
-                        lockPasswordHash = existing?.lockPasswordHash,
-                        lockUntilTimestamp = existing?.lockUntilTimestamp
+                        lockMode = lockMode,
+                        lockPasswordHash = null,
+                        lockUntilTimestamp = if (
+                            lockMode == MasterCredentialPolicy.LOCK_MODE_PASSWORD
+                        ) null else existing?.lockUntilTimestamp,
+                        preventOpeningAfterLimit = true,
+                        unlockWithPassword =
+                            lockMode == MasterCredentialPolicy.LOCK_MODE_PASSWORD
                     )
                 )
             }
             normalizedSites.forEach { rule ->
                 val existing = existingSiteLimits[rule]
+                val lockMode = if (addPasswordProtection) {
+                    MasterCredentialPolicy.LOCK_MODE_PASSWORD
+                } else {
+                    existing?.lockMode ?: MasterCredentialPolicy.LOCK_MODE_NONE
+                }
                 database.websiteUsageLimitDao().insert(
                     WebsiteUsageLimit(
                         domain = rule,
                         dailyLimitMinutes = dailyLimitMinutes,
                         isEnabled = true,
-                        lockMode = existing?.lockMode ?: MasterCredentialPolicy.LOCK_MODE_NONE,
-                        lockPasswordHash = existing?.lockPasswordHash,
-                        lockUntilTimestamp = existing?.lockUntilTimestamp
+                        lockMode = lockMode,
+                        lockPasswordHash = null,
+                        lockUntilTimestamp = if (
+                            lockMode == MasterCredentialPolicy.LOCK_MODE_PASSWORD
+                        ) null else existing?.lockUntilTimestamp
                     )
                 )
-            }
-
-            if (addPasswordProtection) {
-                val now = System.currentTimeMillis()
-                val passwordSessions = database.blockSessionDao()
-                    .getAllActiveSessionsStatic()
-                    .filter {
-                        it.sessionType == "PASSWORD" &&
-                            (it.endTime == null || it.endTime > now)
-                    }
-                val passwordSessionIds = passwordSessions.map { it.id }
-                val existingPasswordRules = WebsiteBlocker.normalizeRules(
-                    getSitesForSessions(passwordSessionIds)
-                )
-                val existingPasswordApps = (
-                    getAppsForSessions(passwordSessionIds) +
-                        WebsiteBlocker.appPackageDomainsFor(existingPasswordRules).keys
-                    ).toSet()
-                // Só aplicativos: o bloqueio por senha não cobre site, e a
-                // sessão criada aqui é fixa de 24h. Gravar as regras de site
-                // nela deixava o site bloqueado o dia inteiro em vez de apenas
-                // depois de estourar o limite — o oposto do que foi pedido.
-                val appsToProtect = appTargets
-                    .map { it.packageName }
-                    .filterNot { it in existingPasswordApps }
-
-                if (appsToProtect.isNotEmpty()) {
-                    val session = BlockSession(
-                        startTime = now,
-                        isActive = true,
-                        isRecurring = false,
-                        blockedAppsCount = appsToProtect.size,
-                        blockedWebsitesCount = 0,
-                        sessionType = "PASSWORD",
-                        isFixed24h = true
-                    )
-                    val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
-                    appsToProtect.forEach {
-                        database.sessionAppCrossRefDao().insert(
-                            SessionAppCrossRef(sessionId, it)
-                        )
-                    }
-                }
             }
         }
 
@@ -1039,7 +1048,14 @@ class BlockingSessionManager @Inject constructor(
     ): LimitUnlockResult = unlockCredentialProtectedLimit(
         blockedPackage = blockedPackage,
         blockedDomain = blockedDomain
-    ) { storedHash -> AuthManager.verifySerializedPassword(password, storedHash) }
+    ) {
+        when (deactivationCredentialManager.verify(password)) {
+            DeactivationCredentialManager.VerificationResult.PASSWORD_ACCEPTED,
+            DeactivationCredentialManager.VerificationResult.RECOVERY_ACCEPTED -> true
+            DeactivationCredentialManager.VerificationResult.REJECTED,
+            DeactivationCredentialManager.VerificationResult.NOT_CONFIGURED -> false
+        }
+    }
 
     /**
      * Unlocks a password-protected limit after identity was already proven by a
@@ -1063,13 +1079,13 @@ class BlockingSessionManager @Inject constructor(
     ) { true }
 
     /**
-     * @param verifyStoredCredential receives the limit's stored verifier and
-     *   decides whether the caller proved the right to unlock it.
+     * @param verifyMasterCredential checks the single master credential shared
+     *   by app protection, usage limits and FocusGuard entry.
      */
     private suspend fun unlockCredentialProtectedLimit(
         blockedPackage: String?,
         blockedDomain: String?,
-        verifyStoredCredential: (storedHash: String) -> Boolean
+        verifyMasterCredential: () -> Boolean
     ): LimitUnlockResult = withContext(Dispatchers.IO) {
         try {
             val now = System.currentTimeMillis()
@@ -1081,7 +1097,6 @@ class BlockingSessionManager @Inject constructor(
                 ?.takeIf { limit ->
                     limit.isEnabled &&
                         limit.lockMode.equals("PASSWORD", ignoreCase = true) &&
-                        !limit.lockPasswordHash.isNullOrBlank() &&
                         WebsiteUsageLimitPolicy.isBlockingModeActive(
                             limit.lockMode,
                             limit.lockUntilTimestamp,
@@ -1091,7 +1106,7 @@ class BlockingSessionManager @Inject constructor(
             if (appLimit != null &&
                 appLimit.packageName in getExceededAppLimits(listOf(appLimit), now)
             ) {
-                if (!verifyStoredCredential(appLimit.lockPasswordHash!!)) {
+                if (!verifyMasterCredential()) {
                     return@withContext LimitUnlockResult.WRONG_PASSWORD
                 }
                 database.appUsageLimitDao().update(
@@ -1105,7 +1120,6 @@ class BlockingSessionManager @Inject constructor(
                 .filter { limit ->
                     limit.isEnabled &&
                         limit.lockMode.equals("PASSWORD", ignoreCase = true) &&
-                        !limit.lockPasswordHash.isNullOrBlank() &&
                         WebsiteUsageLimitPolicy.isBlockingModeActive(
                             limit.lockMode,
                             limit.lockUntilTimestamp,
@@ -1144,13 +1158,10 @@ class BlockingSessionManager @Inject constructor(
                 }
             }
             if (matchingWebsiteLimits.isNotEmpty()) {
-                val authenticatedLimits = matchingWebsiteLimits.filter { limit ->
-                    verifyStoredCredential(limit.lockPasswordHash!!)
-                }
-                if (authenticatedLimits.isEmpty()) {
+                if (!verifyMasterCredential()) {
                     return@withContext LimitUnlockResult.WRONG_PASSWORD
                 }
-                authenticatedLimits.forEach { limit ->
+                matchingWebsiteLimits.forEach { limit ->
                     database.websiteUsageLimitDao().insert(
                         limit.copy(lockUntilTimestamp = unlockUntil)
                     )

@@ -3,16 +3,21 @@ package com.focusguard.security
 /**
  * Centraliza a regra de entrada no FocusGuard.
  *
- * Uma senha cadastrada só bloqueia a entrada enquanto existir uma sessão
- * ativa do tipo PASSWORD. Assim, a senha funciona como credencial para
- * revogar o bloqueio, sem manter o aplicativo trancado depois que ele acaba.
+ * A senha mestra bloqueia a entrada enquanto houver uma proteção reversível
+ * que dependa dela: uma sessão PASSWORD ou um limite configurado para liberar
+ * com senha. Limites sem senha e bloqueios irreversíveis por tempo não entram
+ * nesta regra.
  */
 object AppEntryLockPolicy {
     fun requiresPassword(
-        hasStoredPassword: Boolean,
-        activeSessionTypes: Collection<String>
+        hasMasterCredential: Boolean,
+        activeSessionTypes: Collection<String>,
+        hasPasswordProtectedAppLimit: Boolean = false,
+        hasPasswordProtectedWebsiteLimit: Boolean = false
     ): Boolean {
-        return hasStoredPassword &&
-            activeSessionTypes.any { it.equals("PASSWORD", ignoreCase = true) }
+        if (!hasMasterCredential) return false
+        return activeSessionTypes.any { it.equals("PASSWORD", ignoreCase = true) } ||
+            hasPasswordProtectedAppLimit ||
+            hasPasswordProtectedWebsiteLimit
     }
 }

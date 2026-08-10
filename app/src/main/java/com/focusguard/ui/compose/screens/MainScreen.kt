@@ -295,21 +295,21 @@ fun HomeContent(
                     Icon(
                         painter = painterResource(id = R.drawable.ic_shield),
                         contentDescription = stringResource(R.string.content_focusguard_logo),
-                        modifier = Modifier.size(48.dp),
+                        modifier = Modifier.size(38.dp),
                         tint = AccentCyan
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         stringResource(id = R.string.app_name),
-                        fontSize = 30.sp,
+                        fontSize = 26.sp,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
                         stringResource(id = R.string.focus_subtitle),
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 2.dp, bottom = 20.dp)
+                        modifier = Modifier.padding(top = 1.dp, bottom = 10.dp)
                     )
                 }
             }
@@ -324,17 +324,24 @@ fun HomeContent(
                     onClick = onPermissionsClick,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 12.dp),
+                        .padding(bottom = 8.dp),
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = DangerRed.copy(alpha = 0.1f)),
                     border = BorderStroke(1.dp, DangerRed)
                 ) {
                     Row(
-                        modifier = Modifier.padding(14.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(Icons.Default.Warning, contentDescription = stringResource(R.string.content_warning), tint = DangerRed)
-                        Spacer(modifier = Modifier.width(12.dp))
+                        Icon(
+                            Icons.Default.Warning,
+                            contentDescription = stringResource(R.string.content_warning),
+                            tint = DangerRed,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(stringResource(id = R.string.pending_permissions_title), color = DangerRed, fontWeight = FontWeight.Bold)
                             Text(
@@ -347,7 +354,12 @@ fun HomeContent(
                                 fontSize = 12.sp
                             )
                         }
-                        Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.action_open), tint = DangerRed)
+                        Icon(
+                            Icons.Default.ChevronRight,
+                            contentDescription = stringResource(R.string.action_open),
+                            tint = DangerRed,
+                            modifier = Modifier.size(20.dp)
+                        )
                     }
                 }
             }
@@ -366,7 +378,7 @@ fun HomeContent(
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     BlockTypeUi.entries.forEach { type ->
                         SessionCard(
@@ -374,6 +386,7 @@ fun HomeContent(
                             title = stringResource(id = type.titleRes),
                             subtitle = stringResource(id = type.subtitleRes),
                             accent = type.accent,
+                            compact = true,
                             onClick = { onBlockTypeClick(type) }
                         )
                     }
@@ -383,7 +396,10 @@ fun HomeContent(
                         enter = fadeIn() + expandVertically(),
                         exit = fadeOut() + shrinkVertically()
                     ) {
-                        CreatorInstagramCard(onClick = onCreatorInstagramClick)
+                        CreatorInstagramCard(
+                            onClick = onCreatorInstagramClick,
+                            compact = true
+                        )
                     }
                     AnimatedVisibility(
                         visible = showCreatorFeedbackButton,
@@ -391,7 +407,10 @@ fun HomeContent(
                         enter = fadeIn() + expandVertically(),
                         exit = fadeOut() + shrinkVertically()
                     ) {
-                        CreatorFeedbackButton(onClick = onCreatorInstagramClick)
+                        CreatorFeedbackButton(
+                            onClick = onCreatorInstagramClick,
+                            compact = true
+                        )
                     }
                 }
             }
@@ -412,7 +431,10 @@ fun HomeContent(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CreatorInstagramCard(onClick: () -> Unit) {
+private fun CreatorInstagramCard(
+    onClick: () -> Unit,
+    compact: Boolean = false
+) {
     val instagramGradient = Brush.linearGradient(
         colors = listOf(
             Color(0xFF833AB4),
@@ -430,12 +452,12 @@ private fun CreatorInstagramCard(onClick: () -> Unit) {
         border = BorderStroke(1.dp, instagramGradient)
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(if (compact) 10.dp else 16.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(52.dp)
+                    .size(if (compact) 40.dp else 52.dp)
                     .clip(RoundedCornerShape(16.dp))
                     .background(instagramGradient),
                 contentAlignment = Alignment.Center
@@ -444,29 +466,29 @@ private fun CreatorInstagramCard(onClick: () -> Unit) {
                     imageVector = Icons.Default.CameraAlt,
                     contentDescription = null,
                     tint = Color.White,
-                    modifier = Modifier.size(27.dp)
+                    modifier = Modifier.size(if (compact) 22.dp else 27.dp)
                 )
             }
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(if (compact) 10.dp else 14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     text = stringResource(R.string.creator_instagram_title),
                     color = TextPrimary,
-                    fontSize = 15.sp,
+                    fontSize = if (compact) 13.sp else 15.sp,
                     fontWeight = FontWeight.Bold
                 )
                 Text(
                     text = stringResource(R.string.creator_instagram_handle),
                     color = Color(0xFFE1306C),
-                    fontSize = 12.sp,
+                    fontSize = if (compact) 11.sp else 12.sp,
                     fontWeight = FontWeight.SemiBold
                 )
-                Spacer(Modifier.height(4.dp))
+                Spacer(Modifier.height(if (compact) 2.dp else 4.dp))
                 Text(
                     text = stringResource(R.string.creator_instagram_description),
                     color = TextSecondary,
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp
+                    fontSize = if (compact) 11.sp else 12.sp,
+                    lineHeight = if (compact) 14.sp else 16.sp
                 )
             }
             Spacer(Modifier.width(8.dp))
@@ -482,7 +504,10 @@ private fun CreatorInstagramCard(onClick: () -> Unit) {
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CreatorFeedbackButton(onClick: () -> Unit) {
+private fun CreatorFeedbackButton(
+    onClick: () -> Unit,
+    compact: Boolean = false
+) {
     Card(
         onClick = onClick,
         modifier = Modifier.fillMaxWidth(),
@@ -491,12 +516,15 @@ private fun CreatorFeedbackButton(onClick: () -> Unit) {
         border = BorderStroke(1.dp, CardBorder)
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            modifier = Modifier.padding(
+                horizontal = if (compact) 11.dp else 16.dp,
+                vertical = if (compact) 9.dp else 14.dp
+            ),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(42.dp)
+                    .size(if (compact) 36.dp else 42.dp)
                     .clip(RoundedCornerShape(13.dp))
                     .background(AccentCyan.copy(alpha = 0.09f)),
                 contentAlignment = Alignment.Center
@@ -505,23 +533,23 @@ private fun CreatorFeedbackButton(onClick: () -> Unit) {
                     imageVector = Icons.Outlined.Lightbulb,
                     contentDescription = null,
                     tint = AccentCyan.copy(alpha = 0.82f),
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(if (compact) 19.dp else 22.dp)
                 )
             }
-            Spacer(Modifier.width(13.dp))
+            Spacer(Modifier.width(if (compact) 10.dp else 13.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     text = stringResource(R.string.creator_feedback_title),
                     color = TextPrimary,
-                    fontSize = 14.sp,
+                    fontSize = if (compact) 13.sp else 14.sp,
                     fontWeight = FontWeight.SemiBold
                 )
-                Spacer(Modifier.height(3.dp))
+                Spacer(Modifier.height(if (compact) 1.dp else 3.dp))
                 Text(
                     text = stringResource(R.string.creator_feedback_description),
                     color = TextSecondary,
-                    fontSize = 12.sp,
-                    lineHeight = 16.sp
+                    fontSize = if (compact) 11.sp else 12.sp,
+                    lineHeight = if (compact) 14.sp else 16.sp
                 )
             }
             Spacer(Modifier.width(8.dp))
@@ -544,7 +572,8 @@ fun SessionCard(
     onClick: () -> Unit,
     // Cor própria por tipo de proteção, para o card ser reconhecível antes de o
     // texto ser lido. O padrão mantém o visual das chamadas antigas.
-    accent: Color = AccentCyan
+    accent: Color = AccentCyan,
+    compact: Boolean = false
 ) {
     var isPressed by remember { mutableStateOf(false) }
     val scale by animateFloatAsState(
@@ -568,16 +597,46 @@ fun SessionCard(
         colors = CardDefaults.cardColors(containerColor = DarkCard),
         border = BorderStroke(1.dp, CardBorder)
     ) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            modifier = Modifier.padding(if (compact) 11.dp else 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Box(
-                modifier = Modifier.size(48.dp).clip(RoundedCornerShape(16.dp)).background(Brush.linearGradient(colors = listOf(accent.copy(alpha = 0.18f), accent.copy(alpha = 0.06f)))),
+                modifier = Modifier
+                    .size(if (compact) 40.dp else 48.dp)
+                    .clip(RoundedCornerShape(if (compact) 13.dp else 16.dp))
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                accent.copy(alpha = 0.18f),
+                                accent.copy(alpha = 0.06f)
+                            )
+                        )
+                    ),
                 contentAlignment = Alignment.Center
-            ) { Icon(icon, contentDescription = null, modifier = Modifier.size(26.dp), tint = accent) }
-            Spacer(modifier = Modifier.width(16.dp))
+            ) {
+                Icon(
+                    icon,
+                    contentDescription = null,
+                    modifier = Modifier.size(if (compact) 22.dp else 26.dp),
+                    tint = accent
+                )
+            }
+            Spacer(modifier = Modifier.width(if (compact) 11.dp else 16.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, fontSize = 16.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(subtitle, fontSize = 13.sp, color = TextSecondary)
+                Text(
+                    title,
+                    fontSize = if (compact) 14.sp else 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+                Spacer(modifier = Modifier.height(if (compact) 1.dp else 3.dp))
+                Text(
+                    subtitle,
+                    fontSize = if (compact) 11.sp else 13.sp,
+                    lineHeight = if (compact) 14.sp else 17.sp,
+                    color = TextSecondary
+                )
             }
             Icon(Icons.Filled.ChevronRight, contentDescription = stringResource(R.string.action_open), modifier = Modifier.size(20.dp), tint = TextHint)
         }

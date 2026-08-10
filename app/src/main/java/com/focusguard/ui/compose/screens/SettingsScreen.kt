@@ -1,5 +1,7 @@
 package com.focusguard.ui.compose.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -46,6 +48,7 @@ import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.data.UserProfile
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.DeactivationCredentialManager
+import com.focusguard.ui.MasterPasswordActivity
 import com.focusguard.ui.compose.layout.FocusGuardScreenScaffold
 import com.focusguard.ui.compose.layout.FocusGuardScrollableContent
 import com.focusguard.ui.compose.layout.FocusGuardSectionHeader
@@ -75,16 +78,23 @@ fun SettingsScreen(
     val deviceOwnerManager = remember(context) {
         DeviceOwnerManager.getInstance(context)
     }
-    var showDeactivationCredentialDialog by remember { mutableStateOf(false) }
     var showDeviceOwnerMaintenanceDialog by remember { mutableStateOf(false) }
     var showDeviceOwnerSetupGuideDialog by remember { mutableStateOf(false) }
     var showUninstallDialog by remember { mutableStateOf(false) }
     var deactivationCredentialRevision by remember { mutableIntStateOf(0) }
     var deviceOwnerRevision by remember { mutableIntStateOf(0) }
+    val masterPasswordLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        deactivationCredentialRevision++
+    }
 
     val isBlockingActive by blockingSessionManager.isBlockingActiveFlow.collectAsState(
-        initial = false
+        initial = true
     )
+    val isUninstallBlockedByTime by blockingSessionManager
+        .isUninstallBlockedByTimeFlow
+        .collectAsState(initial = true)
     val deactivationCredentialConfigured = remember(deactivationCredentialRevision) {
         deactivationCredentialManager.hasCredential()
     }
@@ -128,17 +138,9 @@ fun SettingsScreen(
         }
     )
 
-    if (showDeactivationCredentialDialog) {
-        DeactivationCredentialDialog(
-            managementLocked = credentialManagementLocked,
-            onDismiss = { showDeactivationCredentialDialog = false },
-            onCredentialChanged = { deactivationCredentialRevision++ }
-        )
-    }
-
     if (showUninstallDialog) {
         AuthenticatedUninstallDialog(
-            hasActiveIrreversibleBlock = isBlockingActive,
+            hasActiveIrreversibleBlock = isUninstallBlockedByTime,
             onDismiss = { showUninstallDialog = false }
         )
     }
@@ -191,7 +193,11 @@ fun SettingsScreen(
                 Icons.Default.Lock,
                 stringResource(R.string.deactivation_password_title),
                 deactivationPasswordSubtitle,
-                onClick = { showDeactivationCredentialDialog = true }
+                onClick = {
+                    masterPasswordLauncher.launch(
+                        MasterPasswordActivity.createIntent(context)
+                    )
+                }
             )
             SettingsItem(
                 Icons.Default.Palette,

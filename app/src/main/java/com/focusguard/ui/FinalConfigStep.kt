@@ -5,6 +5,8 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.*
 import com.focusguard.R
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -40,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
+import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
@@ -62,13 +65,17 @@ fun FinalConfigStep(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
+    val credentialManager = remember(context) { DeactivationCredentialManager(context) }
     var hasPassword by remember { mutableStateOf(false) }
-    var showPasswordCreationDialog by remember { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
-    var isCreatingPassword by remember { mutableStateOf(false) }
+    val masterPasswordLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) {
+        hasPassword = credentialManager.hasCredential()
+    }
 
     LaunchedEffect(Unit) {
-        hasPassword = authManager.hasPasswordSet()
+        hasPassword = credentialManager.hasCredential()
     }
 
     Scaffold(
@@ -107,7 +114,11 @@ fun FinalConfigStep(
                     Spacer(modifier = Modifier.height(16.dp))
                     if (!hasPassword) {
                         Button(
-                            onClick = { showPasswordCreationDialog = true },
+                            onClick = {
+                                masterPasswordLauncher.launch(
+                                    MasterPasswordActivity.createIntent(context)
+                                )
+                            },
                             colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                             shape = RoundedCornerShape(14.dp)
                         ) {
@@ -122,7 +133,9 @@ fun FinalConfigStep(
             Button(
                 onClick = {
                     if (!hasPassword) {
-                        showPasswordCreationDialog = true
+                        masterPasswordLauncher.launch(
+                            MasterPasswordActivity.createIntent(context)
+                        )
                     } else if (!isSaving) {
                         isSaving = true
                         scope.launch {
@@ -173,43 +186,4 @@ fun FinalConfigStep(
         }
     }
 
-    if (showPasswordCreationDialog) {
-        PasswordCreationDialog(
-            isSaving = isCreatingPassword,
-            onDismiss = { if (!isCreatingPassword) showPasswordCreationDialog = false },
-            onPasswordCreated = { password ->
-                if (!isCreatingPassword) {
-                    isCreatingPassword = true
-                    scope.launch {
-                        try {
-                            authManager.addPasswordSuspend(password)
-                            isCreatingPassword = false
-                            hasPassword = true
-                            showPasswordCreationDialog = false
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.senha_criada_com_sucesso),
-                                Toast.LENGTH_LONG
-                            ).show()
-                        } catch (cancelled: CancellationException) {
-                            isCreatingPassword = false
-                            throw cancelled
-                        } catch (error: Exception) {
-                            isCreatingPassword = false
-                            FocusGuardLogger.logError(
-                                "FinalConfig",
-                                "Falha ao criar senha",
-                                error
-                            )
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.erro_ao_iniciar_sessao),
-                                Toast.LENGTH_LONG
-                            ).show()
-                        }
-                    }
-                }
-            }
-        )
-    }
 }

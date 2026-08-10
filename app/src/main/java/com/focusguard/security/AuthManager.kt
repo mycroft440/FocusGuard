@@ -120,14 +120,24 @@ class AuthManager(context: Context) {
      */
     suspend fun isAppLocked(): Boolean {
         ensureMigrationDone()
-        val hasStoredPassword = passwordDao.getAllStatic().isNotEmpty()
+        val hasMasterCredential = DeactivationCredentialManager(appContext).hasCredential()
         val activeSessionTypes = database.blockSessionDao()
             .getAllActiveSessionsStatic()
             .map { it.sessionType }
+        val hasPasswordProtectedAppLimit = database.appUsageLimitDao()
+            .getAllActiveLimitsStatic()
+            .any { it.lockMode.equals("PASSWORD", ignoreCase = true) }
+        val hasPasswordProtectedWebsiteLimit = database.websiteUsageLimitDao()
+            .getAllStatic()
+            .any {
+                it.isEnabled && it.lockMode.equals("PASSWORD", ignoreCase = true)
+            }
 
         return AppEntryLockPolicy.requiresPassword(
-            hasStoredPassword = hasStoredPassword,
-            activeSessionTypes = activeSessionTypes
+            hasMasterCredential = hasMasterCredential,
+            activeSessionTypes = activeSessionTypes,
+            hasPasswordProtectedAppLimit = hasPasswordProtectedAppLimit,
+            hasPasswordProtectedWebsiteLimit = hasPasswordProtectedWebsiteLimit
         )
     }
 

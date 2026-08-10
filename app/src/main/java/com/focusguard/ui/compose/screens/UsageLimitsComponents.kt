@@ -44,12 +44,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.data.PredefinedWebsites
-import com.focusguard.security.AuthManager
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.TextHint
@@ -65,24 +63,23 @@ import kotlinx.coroutines.launch
 fun LimitSecuritySection(
     lockMode: String,
     onLockModeChange: (String) -> Unit,
-    password: String,
-    onPasswordChange: (String) -> Unit,
     days: String,
     onDaysChange: (String) -> Unit,
+    hasMasterCredential: Boolean,
+    onConfigureMasterPassword: () -> Unit,
     onConfirmed: (Boolean) -> Unit
 ) {
     var agreement by remember { mutableStateOf("") }
     val normalizedMode = lockMode.uppercase(Locale.ROOT)
     val yesLabel = stringResource(R.string.action_yes)
     val agreementMatches = agreement.trim().equals(yesLabel.trim(), ignoreCase = true)
-    val passwordValid = password.length >= 4
     val daysValid = days.toLongOrNull()?.let { it > 0L } == true
 
-    LaunchedEffect(normalizedMode, password, agreement, days) {
+    LaunchedEffect(normalizedMode, hasMasterCredential, agreement, days) {
         onConfirmed(
             when (normalizedMode) {
                 "NONE" -> true
-                "PASSWORD" -> passwordValid
+                "PASSWORD" -> hasMasterCredential
                 "TIME" -> agreementMatches && daysValid
                 else -> false
             }
@@ -136,20 +133,38 @@ fun LimitSecuritySection(
 
             when (normalizedMode) {
                 "PASSWORD" -> {
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = onPasswordChange,
-                        label = { Text(stringResource(R.string.limits_security_password_label)) },
-                        visualTransformation = PasswordVisualTransformation(),
+                    Card(
                         modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
-                        isError = password.isNotEmpty() && !passwordValid,
-                        supportingText = {
-                            if (!passwordValid) {
-                                Text(stringResource(R.string.limits_password_minimum))
+                        colors = CardDefaults.cardColors(
+                            containerColor = AccentCyan.copy(alpha = 0.08f)
+                        ),
+                        border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.25f))
+                    ) {
+                        Column(Modifier.padding(12.dp)) {
+                            Text(
+                                stringResource(
+                                    if (hasMasterCredential) {
+                                        R.string.limits_master_password_configured
+                                    } else {
+                                        R.string.limits_master_password_missing
+                                    }
+                                ),
+                                color = if (hasMasterCredential) AccentCyan else DangerRed,
+                                fontSize = 12.sp
+                            )
+                            TextButton(onClick = onConfigureMasterPassword) {
+                                Text(
+                                    stringResource(
+                                        if (hasMasterCredential) {
+                                            R.string.limits_master_password_change_action
+                                        } else {
+                                            R.string.master_credential_create_action
+                                        }
+                                    )
+                                )
                             }
-                        },
-                        colors = limitFieldColors()
-                    )
+                        }
+                    }
                 }
 
                 "TIME" -> {
@@ -254,13 +269,14 @@ private fun limitFieldColors() = OutlinedTextFieldDefaults.colors(
 fun AppLimitDialog(
     app: UsageLimitAppUi,
     permissionsMissing: Boolean,
+    hasMasterCredential: Boolean,
+    onConfigureMasterPassword: () -> Unit,
     onDismiss: () -> Unit,
     onSave: (Int?, Boolean, String, String?, Long?) -> Unit
 ) {
     val editMode = app.currentLimitMinutes != null
     var hours by remember { mutableStateOf(if (editMode) "" else "") }
     var lockMode by remember { mutableStateOf(if (editMode) app.lockMode else "NONE") }
-    var password by remember { mutableStateOf("") }
     var days by remember { mutableStateOf("") }
     var confirmed by remember { mutableStateOf(lockMode == "NONE") }
     var extensionDays by remember { mutableStateOf("") }
@@ -308,13 +324,13 @@ fun AppLimitDialog(
                     )
                     Spacer(Modifier.height(20.dp))
                     LimitSecuritySection(
-                        lockMode,
-                        { lockMode = it },
-                        password,
-                        { password = it },
-                        days,
-                        { days = it },
-                        { confirmed = it }
+                        lockMode = lockMode,
+                        onLockModeChange = { lockMode = it },
+                        days = days,
+                        onDaysChange = { days = it },
+                        hasMasterCredential = hasMasterCredential,
+                        onConfigureMasterPassword = onConfigureMasterPassword,
+                        onConfirmed = { confirmed = it }
                     )
                 }
             }
@@ -337,12 +353,10 @@ fun AppLimitDialog(
                             base + TimeUnit.DAYS.toMillis(extraDays)
                         )
                     } else {
-                        val storedPassword = password.takeIf { lockMode == "PASSWORD" }
-                            ?.let(::hashLimitPassword)
                         val until = days.toLongOrNull()
                             ?.takeIf { lockMode == "TIME" && it > 0L }
                             ?.let { System.currentTimeMillis() + TimeUnit.DAYS.toMillis(it) }
-                        onSave(enteredMinutes, true, lockMode, storedPassword, until)
+                        onSave(enteredMinutes, true, lockMode, null, until)
                     }
                 }
             ) {
@@ -371,13 +385,14 @@ fun AppLimitDialog(
 @Composable
 fun AddWebsiteLimitDialog(
     permissionsMissing: Boolean,
+    hasMasterCredential: Boolean,
+    onConfigureMasterPassword: () -> Unit,
     onDismiss: () -> Unit,
     onSave: (String, Int, String, String?, Long?) -> Unit
 ) {
     var domain by remember { mutableStateOf("") }
     var hours by remember { mutableStateOf("") }
     var lockMode by remember { mutableStateOf("NONE") }
-    var password by remember { mutableStateOf("") }
     var days by remember { mutableStateOf("") }
     var confirmed by remember { mutableStateOf(true) }
 
@@ -434,13 +449,13 @@ fun AddWebsiteLimitDialog(
                 )
                 Spacer(Modifier.height(16.dp))
                 LimitSecuritySection(
-                    lockMode,
-                    { lockMode = it },
-                    password,
-                    { password = it },
-                    days,
-                    { days = it },
-                    { confirmed = it }
+                    lockMode = lockMode,
+                    onLockModeChange = { lockMode = it },
+                    days = days,
+                    onDaysChange = { days = it },
+                    hasMasterCredential = hasMasterCredential,
+                    onConfigureMasterPassword = onConfigureMasterPassword,
+                    onConfirmed = { confirmed = it }
                 )
             }
         },
@@ -448,12 +463,10 @@ fun AddWebsiteLimitDialog(
             TextButton(
                 enabled = canSave,
                 onClick = {
-                    val storedPassword = password.takeIf { lockMode == "PASSWORD" }
-                        ?.let(::hashLimitPassword)
                     val until = days.toLongOrNull()
                         ?.takeIf { lockMode == "TIME" && it > 0L }
                         ?.let { System.currentTimeMillis() + TimeUnit.DAYS.toMillis(it) }
-                    onSave(normalizedDomain, minutes, lockMode, storedPassword, until)
+                    onSave(normalizedDomain, minutes, lockMode, null, until)
                 }
             ) {
                 Text(stringResource(R.string.save), color = if (canSave) AccentCyan else TextHint)
@@ -628,14 +641,8 @@ private fun LimitSummary(label: String, minutes: Int, lockUntil: Long?) {
     }
 }
 
-// ConfirmLimitPasswordDialog foi removido: alterar ou remover um limite passou a
-// exigir a senha mestre (ConfirmMasterCredentialDialog). A senha do próprio
-// limite continua valendo para abrir o app bloqueado, não para editar a regra.
-
-private fun hashLimitPassword(password: String): String {
-    val salt = AuthManager.generateSalt()
-    return "$salt:${AuthManager.hashPasswordWithSalt(password, salt)}"
-}
+// A senha do limite não é persistida na regra. PASSWORD sempre referencia a
+// credencial única de DeactivationCredentialManager.
 
 fun filteredApps(apps: List<UsageLimitAppUi>, query: String): List<UsageLimitAppUi> {
     if (query.isBlank()) return apps

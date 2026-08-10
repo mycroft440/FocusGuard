@@ -10,7 +10,7 @@ class AppEntryLockPolicyTest {
     fun `requires password when password session is active and credential exists`() {
         assertTrue(
             AppEntryLockPolicy.requiresPassword(
-                hasStoredPassword = true,
+                hasMasterCredential = true,
                 activeSessionTypes = listOf("PASSWORD")
             )
         )
@@ -20,7 +20,7 @@ class AppEntryLockPolicyTest {
     fun `does not lock app when password exists without active password session`() {
         assertFalse(
             AppEntryLockPolicy.requiresPassword(
-                hasStoredPassword = true,
+                hasMasterCredential = true,
                 activeSessionTypes = emptyList()
             )
         )
@@ -30,7 +30,7 @@ class AppEntryLockPolicyTest {
     fun `does not lock app for other active session types`() {
         assertFalse(
             AppEntryLockPolicy.requiresPassword(
-                hasStoredPassword = true,
+                hasMasterCredential = true,
                 activeSessionTypes = listOf("TIME", "POMODORO")
             )
         )
@@ -40,7 +40,7 @@ class AppEntryLockPolicyTest {
     fun `does not lock app without a stored credential`() {
         assertFalse(
             AppEntryLockPolicy.requiresPassword(
-                hasStoredPassword = false,
+                hasMasterCredential = false,
                 activeSessionTypes = listOf("PASSWORD")
             )
         )
@@ -50,8 +50,40 @@ class AppEntryLockPolicyTest {
     fun `matches password session type without case sensitivity`() {
         assertTrue(
             AppEntryLockPolicy.requiresPassword(
-                hasStoredPassword = true,
+                hasMasterCredential = true,
                 activeSessionTypes = listOf("password")
+            )
+        )
+    }
+
+    @Test
+    fun `locks FocusGuard for a password-enabled app limit`() {
+        assertTrue(
+            AppEntryLockPolicy.requiresPassword(
+                hasMasterCredential = true,
+                activeSessionTypes = emptyList(),
+                hasPasswordProtectedAppLimit = true
+            )
+        )
+    }
+
+    @Test
+    fun `locks FocusGuard for a password-enabled website limit`() {
+        assertTrue(
+            AppEntryLockPolicy.requiresPassword(
+                hasMasterCredential = true,
+                activeSessionTypes = emptyList(),
+                hasPasswordProtectedWebsiteLimit = true
+            )
+        )
+    }
+
+    @Test
+    fun `passwordless limits do not lock FocusGuard entry`() {
+        assertFalse(
+            AppEntryLockPolicy.requiresPassword(
+                hasMasterCredential = true,
+                activeSessionTypes = emptyList()
             )
         )
     }
