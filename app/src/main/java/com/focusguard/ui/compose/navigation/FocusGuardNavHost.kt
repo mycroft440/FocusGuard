@@ -4,6 +4,8 @@ import androidx.compose.runtime.*
 import android.content.Intent
 import androidx.compose.ui.res.stringResource
 import com.focusguard.R
+import com.focusguard.data.CreatorInstagramPromptPolicy
+import com.focusguard.data.CreatorInstagramPromptStore
 import com.focusguard.data.UserProfileStore
 import androidx.activity.compose.BackHandler
 import androidx.appcompat.app.AppCompatActivity
@@ -40,6 +42,7 @@ import com.focusguard.ui.compose.screens.IntruderLogScreen
 import com.focusguard.ui.compose.screens.LanguageScreen
 import com.focusguard.ui.compose.screens.LimitsSecurityScreen
 import com.focusguard.ui.compose.screens.MainScreen
+import com.focusguard.ui.compose.screens.openCreatorInstagram
 import com.focusguard.ui.compose.screens.PomodoroScreen
 import com.focusguard.ui.compose.screens.ProfileScreen
 import com.focusguard.ui.compose.screens.RecoveryBook
@@ -52,7 +55,9 @@ import com.focusguard.ui.compose.theme.DarkBg
 import com.focusguard.utils.EssentialPermission
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
+import androidx.lifecycle.Lifecycle
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 
 private object FocusGuardRoute {
@@ -125,7 +130,14 @@ fun FocusGuardNavHost(
     val userProfileStore = remember(activity.applicationContext) {
         UserProfileStore(activity.applicationContext)
     }
+    val creatorInstagramPromptStore = remember(activity.applicationContext) {
+        CreatorInstagramPromptStore(activity.applicationContext)
+    }
     var userProfile by remember { mutableStateOf(userProfileStore.load()) }
+    var creatorInstagramPresented by remember {
+        mutableStateOf(creatorInstagramPromptStore.wasHomeCardPresented())
+    }
+    var showCreatorInstagramCard by remember { mutableStateOf(false) }
 
     val currentPomodoro by pomodoroManager.currentSession.collectAsState()
 
@@ -144,6 +156,35 @@ fun FocusGuardNavHost(
             FocusGuardLogger.log("MainActivity", "Pomodoro inativado. Voltando para Home.")
             currentRoute = FocusGuardRoute.Home
         }
+    }
+
+    LaunchedEffect(
+        resumeKey,
+        currentRoute,
+        selectedTab,
+        currentPomodoro?.isActive
+    ) {
+        val protectionHomeVisible = currentRoute == FocusGuardRoute.Home &&
+            selectedTab == 1 &&
+            currentPomodoro?.isActive != true
+
+        if (!protectionHomeVisible || creatorInstagramPresented) {
+            showCreatorInstagramCard = false
+            return@LaunchedEffect
+        }
+
+        val remainingDelay = creatorInstagramPromptStore.remainingDelayMillis()
+        if (remainingDelay > 0L) delay(remainingDelay)
+
+        if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+            return@LaunchedEffect
+        }
+
+        creatorInstagramPromptStore.markHomeCardPresented()
+        creatorInstagramPresented = true
+        showCreatorInstagramCard = true
+        delay(CreatorInstagramPromptPolicy.HOME_CARD_VISIBLE_MILLIS)
+        showCreatorInstagramCard = false
     }
 
     LaunchedEffect(resumeKey) {
@@ -193,10 +234,15 @@ fun FocusGuardNavHost(
                     selectedTab = selectedTab,
                     onTabChange = { selectedTab = it },
                     missingEssentialPermissions = missingEssentialPermissions,
+                    showCreatorInstagramCard = showCreatorInstagramCard,
                     onPermissionsClick = {
                         activity.startActivity(
                             PermissionsActivity.createPendingEssentialsIntent(activity)
                         )
+                    },
+                    onCreatorInstagramClick = {
+                        showCreatorInstagramCard = false
+                        openCreatorInstagram(activity)
                     },
                     onBlockTypeClick = { type ->
                         selectedBlockType = type
@@ -263,6 +309,8 @@ fun FocusGuardNavHost(
                     onLimitsClick = { currentRoute = FocusGuardRoute.Limits },
                     onLanguageClick = { currentRoute = FocusGuardRoute.Language },
                     onBlockCustomizationClick = { currentRoute = FocusGuardRoute.BlockCustomization },
+                    showCreatorInstagramEntry = creatorInstagramPresented,
+                    onCreatorInstagramClick = { openCreatorInstagram(activity) },
                     onBack = { currentRoute = FocusGuardRoute.Home }
                 )
                 FocusGuardRoute.Profile -> ProfileScreen(

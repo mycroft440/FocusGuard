@@ -217,6 +217,7 @@
     <string name="creator_instagram_title">Follow the creator on Instagram</string>
     <string name="creator_instagram_handle">@jose_gustavo55</string>
     <string name="creator_instagram_description">Share improvement ideas and get more usage tips from the Instagram highlights.</string>
+    <string name="settings_creator_instagram_subtitle">Suggestions and tips in @jose_gustavo55\'s highlights</string>
     <string name="settings_category_general">General</string>
     <string name="settings_category_blocking">Blocking</string>
     <string name="settings_category_advanced_security">Advanced security</string>

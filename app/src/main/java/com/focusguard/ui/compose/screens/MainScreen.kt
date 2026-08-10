@@ -1,8 +1,5 @@
 package com.focusguard.ui.compose.screens
 
-import android.content.Context
-import android.content.Intent
-import android.net.Uri
 import kotlin.OptIn
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -26,7 +23,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -45,7 +41,9 @@ fun MainScreen(
     selectedTab: Int,
     onTabChange: (Int) -> Unit,
     missingEssentialPermissions: List<EssentialPermission>,
+    showCreatorInstagramCard: Boolean,
     onPermissionsClick: () -> Unit,
+    onCreatorInstagramClick: () -> Unit,
     onBlockTypeClick: (BlockTypeUi) -> Unit,
     onSettingsClick: () -> Unit,
     usageStatsContent: @Composable () -> Unit,
@@ -172,7 +170,9 @@ fun MainScreen(
                     0 -> usageStatsContent()
                     1 -> HomeContent(
                         missingEssentialPermissions = missingEssentialPermissions,
+                        showCreatorInstagramCard = showCreatorInstagramCard,
                         onPermissionsClick = onPermissionsClick,
+                        onCreatorInstagramClick = onCreatorInstagramClick,
                         onBlockTypeClick = onBlockTypeClick,
                         pagerHint = false
                     )
@@ -250,11 +250,12 @@ fun DrawerMenuButton(
 @Composable
 fun HomeContent(
     missingEssentialPermissions: List<EssentialPermission>,
+    showCreatorInstagramCard: Boolean,
     onPermissionsClick: () -> Unit,
+    onCreatorInstagramClick: () -> Unit,
     onBlockTypeClick: (BlockTypeUi) -> Unit,
     pagerHint: Boolean
 ) {
-    val context = LocalContext.current
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         delay(100)
@@ -353,9 +354,13 @@ fun HomeContent(
                             onClick = { onBlockTypeClick(type) }
                         )
                     }
-                    CreatorInstagramCard(
-                        onClick = { openCreatorInstagram(context) }
-                    )
+                    AnimatedVisibility(
+                        visible = showCreatorInstagramCard,
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        CreatorInstagramCard(onClick = onCreatorInstagramClick)
+                    }
                 }
             }
         }
@@ -442,26 +447,6 @@ private fun CreatorInstagramCard(onClick: () -> Unit) {
         }
     }
 }
-
-private fun openCreatorInstagram(context: Context) {
-    val profileUri = Uri.parse(CREATOR_INSTAGRAM_PROFILE_URL)
-    val instagramIntent = Intent(Intent.ACTION_VIEW, profileUri).apply {
-        setPackage(INSTAGRAM_PACKAGE_NAME)
-    }
-    val openedInInstagram = runCatching {
-        context.startActivity(instagramIntent)
-    }.isSuccess
-
-    if (!openedInInstagram) {
-        runCatching {
-            context.startActivity(Intent(Intent.ACTION_VIEW, profileUri))
-        }
-    }
-}
-
-internal const val CREATOR_INSTAGRAM_PROFILE_URL =
-    "https://www.instagram.com/jose_gustavo55/"
-internal const val INSTAGRAM_PACKAGE_NAME = "com.instagram.android"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

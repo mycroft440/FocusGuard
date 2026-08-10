@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Language
@@ -60,6 +61,8 @@ fun SettingsScreen(
     onLimitsClick: () -> Unit,
     onLanguageClick: () -> Unit,
     onBlockCustomizationClick: () -> Unit,
+    showCreatorInstagramEntry: Boolean,
+    onCreatorInstagramClick: () -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -172,6 +175,15 @@ fun SettingsScreen(
                 stringResource(R.string.settings_language_subtitle),
                 onClick = onLanguageClick
             )
+            if (showCreatorInstagramEntry) {
+                SettingsItem(
+                    Icons.Default.CameraAlt,
+                    stringResource(R.string.creator_instagram_title),
+                    stringResource(R.string.settings_creator_instagram_subtitle),
+                    iconTint = Color(0xFFE1306C),
+                    onClick = onCreatorInstagramClick
+                )
+            }
 
             Spacer(Modifier.height(24.dp))
             FocusGuardSectionHeader(stringResource(R.string.settings_category_blocking))
