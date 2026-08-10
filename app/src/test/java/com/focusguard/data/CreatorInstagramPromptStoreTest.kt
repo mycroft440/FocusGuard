@@ -59,24 +59,21 @@ class CreatorInstagramPromptStoreTest {
     }
 
     @Test
-    fun `feedback button replaces the one-time card only after its presentation`() {
+    fun `feedback button is available from first use and yields to one-time card`() {
         assertThat(
             CreatorInstagramPromptPolicy.shouldShowFeedbackButton(
-                homeCardPresented = false,
                 homeCardVisible = false
             )
-        ).isFalse()
+        ).isTrue()
 
         assertThat(
             CreatorInstagramPromptPolicy.shouldShowFeedbackButton(
-                homeCardPresented = true,
                 homeCardVisible = true
             )
         ).isFalse()
 
         assertThat(
             CreatorInstagramPromptPolicy.shouldShowFeedbackButton(
-                homeCardPresented = true,
                 homeCardVisible = false
             )
         ).isTrue()

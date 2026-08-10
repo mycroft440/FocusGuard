@@ -237,7 +237,6 @@ fun FocusGuardNavHost(
                     showCreatorInstagramCard = showCreatorInstagramCard,
                     showCreatorFeedbackButton =
                         CreatorInstagramPromptPolicy.shouldShowFeedbackButton(
-                            homeCardPresented = creatorInstagramPresented,
                             homeCardVisible = showCreatorInstagramCard
                         ),
                     onPermissionsClick = {
