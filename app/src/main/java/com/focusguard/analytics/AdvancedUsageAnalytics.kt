@@ -3,11 +3,14 @@ package com.focusguard.analytics
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.util.Calendar
+import java.time.Instant
+import java.time.ZoneId
+import java.util.Locale
 
 data class AppUsageStat(
     val packageName: String,
@@ -17,12 +20,6 @@ data class AppUsageStat(
 data class AppAccessStat(
     val packageName: String,
     val accessCount: Int
-)
-
-data class DailyPhoneUsage(
-    val dateLabel: String,
-    val totalTimeMs: Long,
-    val timestamp: Long
 )
 
 class AdvancedUsageAnalytics(private val context: Context) {
@@ -37,7 +34,7 @@ class AdvancedUsageAnalytics(private val context: Context) {
         // via @Synchronized methods). O custo de sincronização é desprezível
         // vs. o custo de queryUsageStats (10-50ms).
         @Volatile
-        private var cachedPhoneUsage: List<DailyPhoneUsage>? = null
+        private var cachedPhoneUsage: Pair<String, PhoneUsageInsights>? = null
         @Volatile
         private var lastPhoneUsageTime: Long = 0
 
@@ -60,64 +57,144 @@ class AdvancedUsageAnalytics(private val context: Context) {
         private val cacheLock = Any()
     }
 
-    suspend fun getPhoneUsageHistory(days: Int = 7): List<DailyPhoneUsage> = withContext(Dispatchers.IO) {
+    suspend fun getPhoneUsageInsights(
+        historyDays: Int = 7,
+        periodAverageDays: Int = 7
+    ): PhoneUsageInsights = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
-        // Cache read — synchronized para race condition com writes concorrentes
+        val zoneId = ZoneId.systemDefault()
+        val locale = Locale.getDefault()
+        val today = Instant.ofEpochMilli(now).atZone(zoneId).toLocalDate()
+        val cacheKey = listOf(
+            historyDays,
+            periodAverageDays,
+            zoneId.id,
+            locale.toLanguageTag(),
+            today
+        ).joinToString("|")
+
         synchronized(cacheLock) {
-            if (cachedPhoneUsage != null && (now - lastPhoneUsageTime) < CACHE_TTL && cachedPhoneUsage!!.size >= days) {
-                return@withContext cachedPhoneUsage!!.takeLast(days)
+            if (
+                cachedPhoneUsage?.first == cacheKey &&
+                (now - lastPhoneUsageTime) < CACHE_TTL
+            ) {
+                return@withContext cachedPhoneUsage!!.second
             }
         }
-        
-        if (usageStatsManager == null) return@withContext emptyList()
-        
-        val cal = Calendar.getInstance().apply {
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-            add(Calendar.DAY_OF_YEAR, -(days - 1))
+
+        val emptyInsights = {
+            PhoneUsageInsightsCalculator.calculate(
+                intervals = emptyList(),
+                nowMs = now,
+                historyDays = historyDays,
+                periodAverageDays = periodAverageDays,
+                zoneId = zoneId,
+                locale = locale
+            )
         }
-        val startTime = cal.timeInMillis
-        val endTime = System.currentTimeMillis()
+        val manager = usageStatsManager ?: return@withContext emptyInsights()
 
-        val stats = try {
-            usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
-        } catch (e: Throwable) {
-            FocusGuardLogger.logError("AdvancedUsageAnalytics", "Falha em queryUsageStats (phoneUsage)", e)
-            return@withContext emptyList()
+        // O gráfico usa hoje + 6 dias; a média usa os 7 dias completos
+        // anteriores. Consultamos ainda um dia de aquecimento para reconhecer
+        // uma sessão que já estava aberta na virada do primeiro dia.
+        val historyStartDate = today.minusDays(historyDays - 1L)
+        val periodStartDate = today.minusDays(periodAverageDays.toLong())
+        val earliestRequiredDate = minOf(historyStartDate, periodStartDate)
+        val queryStart = earliestRequiredDate
+            .minusDays(1)
+            .atStartOfDay(zoneId)
+            .toInstant()
+            .toEpochMilli()
+
+        val events = try {
+            manager.queryEvents(queryStart, now)
+        } catch (error: Throwable) {
+            FocusGuardLogger.logError(
+                "AdvancedUsageAnalytics",
+                "Falha em queryEvents (phoneUsage)",
+                error
+            )
+            return@withContext emptyInsights()
+        } ?: return@withContext emptyInsights()
+
+        val homePackage = try {
+            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+            }
+            pm.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)
+                ?.activityInfo
+                ?.packageName
+        } catch (error: Throwable) {
+            null
         }
+        val eligibilityCache = mutableMapOf<String, Boolean>()
+        val accumulator = PhoneUsageSessionAccumulator { packageName ->
+            eligibilityCache.getOrPut(packageName) {
+                when (packageName) {
+                    homePackage,
+                    "com.android.launcher",
+                    "com.android.systemui" -> false
 
-        val dailyMap = mutableMapOf<String, Long>()
-        val dateFormat = java.text.SimpleDateFormat("E", java.util.Locale.getDefault())
-
-        stats?.forEach { usage ->
-            if (usage.totalTimeInForeground > 0) {
-                if (usage.packageName != "com.android.launcher" && usage.packageName != "com.android.systemui") {
-                     val dateCal = Calendar.getInstance().apply { timeInMillis = usage.firstTimeStamp }
-                     dateCal.set(Calendar.HOUR_OF_DAY, 0)
-                     dateCal.set(Calendar.MINUTE, 0)
-                     dateCal.set(Calendar.SECOND, 0)
-                     dateCal.set(Calendar.MILLISECOND, 0)
-                     
-                     val label = dateFormat.format(dateCal.time).uppercase()
-                     val timestampKey = dateCal.timeInMillis.toString()
-                     val compositeKey = "$timestampKey|$label"
-                     
-                     dailyMap[compositeKey] = (dailyMap[compositeKey] ?: 0L) + usage.totalTimeInForeground
+                    else -> try {
+                        pm.getLaunchIntentForPackage(packageName) != null
+                    } catch (error: Throwable) {
+                        false
+                    }
                 }
             }
         }
-        
-        val result = dailyMap.mapNotNull { (key, value) ->
-            val parts = key.split("|")
-            val timestamp = parts.getOrNull(0)?.toLongOrNull()
-            val label = parts.getOrNull(1)
-            if (timestamp == null || label == null) null else DailyPhoneUsage(label, value, timestamp)
-        }.sortedBy { it.timestamp }.takeLast(days)
+        val event = UsageEvents.Event()
+        var eventLoopCompleted = true
+        var lastEventTimestamp = queryStart
+
+        try {
+            while (events.hasNextEvent()) {
+                events.getNextEvent(event)
+                lastEventTimestamp = maxOf(lastEventTimestamp, event.timeStamp)
+                when (event.eventType) {
+                    UsageEvents.Event.ACTIVITY_RESUMED ->
+                        accumulator.onActivityResumed(
+                            packageName = event.packageName,
+                            activityClassName = event.className,
+                            timestampMs = event.timeStamp
+                        )
+
+                    UsageEvents.Event.ACTIVITY_PAUSED ->
+                        accumulator.onActivityPaused(
+                            packageName = event.packageName,
+                            activityClassName = event.className,
+                            timestampMs = event.timeStamp
+                        )
+
+                    UsageEvents.Event.SCREEN_NON_INTERACTIVE,
+                    UsageEvents.Event.KEYGUARD_SHOWN ->
+                        accumulator.onDeviceBecameInactive(event.timeStamp)
+                }
+            }
+        } catch (error: Throwable) {
+            // OEMs podem interromper a iteração; os eventos já lidos ainda
+            // formam sessões válidas e são preservados.
+            eventLoopCompleted = false
+            FocusGuardLogger.logError(
+                "AdvancedUsageAnalytics",
+                "Falha no loop de eventos (phoneUsage)",
+                error
+            )
+        }
+
+        val result = PhoneUsageInsightsCalculator.calculate(
+            intervals = accumulator.finish(
+                if (eventLoopCompleted) now else lastEventTimestamp
+            ),
+            nowMs = now,
+            historyDays = historyDays,
+            periodAverageDays = periodAverageDays,
+            zoneId = zoneId,
+            locale = locale
+        )
 
         synchronized(cacheLock) {
-            cachedPhoneUsage = result
+            cachedPhoneUsage = cacheKey to result
             lastPhoneUsageTime = now
         }
         result
@@ -281,4 +358,3 @@ class AdvancedUsageAnalytics(private val context: Context) {
         result
     }
 }
-

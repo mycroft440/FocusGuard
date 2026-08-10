@@ -17,8 +17,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Language
-import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -49,7 +47,7 @@ import kotlinx.coroutines.withContext
 import java.util.Calendar
 
 private data class UsageInsightsData(
-    val weeklyUsage: List<DailyPhoneUsage>,
+    val phoneUsage: PhoneUsageInsights,
     val mostUsedApps: List<AppUsageStat>,
     val mostOpenedApps: List<AppAccessStat>,
     val neverUsedApps: List<String>
@@ -63,7 +61,9 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
     val analytics = remember { AdvancedUsageAnalytics(context.applicationContext) }
     val lifecycleOwner = LocalLifecycleOwner.current
 
-    var weeklyUsage by remember { mutableStateOf<List<DailyPhoneUsage>>(emptyList()) }
+    var phoneUsage by remember {
+        mutableStateOf(PhoneUsageInsights(dailyHistory = emptyList(), periodSummary = null))
+    }
     var mostUsedApps by remember { mutableStateOf<List<AppUsageStat>>(emptyList()) }
     var mostOpenedApps by remember { mutableStateOf<List<AppAccessStat>>(emptyList()) }
     var neverUsedApps by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -115,7 +115,7 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                 val startToday = calToday.timeInMillis
 
                 UsageInsightsData(
-                    weeklyUsage = analytics.getPhoneUsageHistory(14),
+                    phoneUsage = analytics.getPhoneUsageInsights(),
                     mostUsedApps = analytics.getMostUsedApps(start7Days, end),
                     mostOpenedApps = analytics.getMostOpenedApps(startToday, end),
                     neverUsedApps = analytics.getNeverUsedApps(start7Days, end)
@@ -123,7 +123,7 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
             }
         }
             .onSuccess { data ->
-                weeklyUsage = data.weeklyUsage
+                phoneUsage = data.phoneUsage
                 mostUsedApps = data.mostUsedApps
                 mostOpenedApps = data.mostOpenedApps
                 neverUsedApps = data.neverUsedApps
@@ -190,7 +190,7 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                     item(key = "header_spacer") { Spacer(Modifier.height(8.dp)) }
 
                     item(key = "phone_usage_chart") {
-                        PhoneUsageChartSection(weeklyUsage)
+                        PhoneUsageChartSection(phoneUsage)
                     }
 
                     item(key = "most_used_apps") {
@@ -269,18 +269,11 @@ private fun InsightsFallback(
 }
 
 @Composable
-fun PhoneUsageChartSection(usageHistory: List<DailyPhoneUsage>) {
-    val currentWeek = usageHistory.takeLast(7)
-    val previousWeek = usageHistory.take(usageHistory.size - 7).takeLast(7)
+fun PhoneUsageChartSection(insights: PhoneUsageInsights) {
+    val currentWeek = insights.dailyHistory.takeLast(7)
     
     val currentTotal = currentWeek.sumOf { it.totalTimeMs }
     val currentAvg = currentTotal / currentWeek.size.coerceAtLeast(1)
-    
-    val previousTotal = previousWeek.sumOf { it.totalTimeMs }
-    val previousAvg = previousTotal / previousWeek.size.coerceAtLeast(1)
-    
-    val diff = currentAvg - previousAvg
-    val isIncrease = diff > 0
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -289,28 +282,12 @@ fun PhoneUsageChartSection(usageHistory: List<DailyPhoneUsage>) {
         border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(stringResource(R.string.dashboard_phone_usage), color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                
-                if (previousWeek.isNotEmpty()) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            imageVector = if (isIncrease) androidx.compose.material.icons.Icons.Default.Timer else androidx.compose.material.icons.Icons.Default.Check,
-                            contentDescription = null,
-                            tint = if (isIncrease) DangerRed else SuccessGreen,
-                            modifier = Modifier.size(14.dp)
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            text = "${if (isIncrease) "+" else ""}${formatTime(Math.abs(diff))}",
-                            color = if (isIncrease) DangerRed else SuccessGreen,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(stringResource(R.string.dashboard_vs_prev_week), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 10.sp)
-                    }
-                }
-            }
+            Text(
+                stringResource(R.string.dashboard_phone_usage),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
             
             Spacer(Modifier.height(16.dp))
             
@@ -359,19 +336,109 @@ fun PhoneUsageChartSection(usageHistory: List<DailyPhoneUsage>) {
                 
                 Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                     currentWeek.forEach { usage ->
-                        val label = usage.dateLabel.take(1)
                         Text(
-                            text = label,
+                            text = usage.dateLabel.take(3),
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            modifier = Modifier.width(20.dp),
+                            modifier = Modifier.weight(1f),
                             textAlign = TextAlign.Center
                         )
                     }
                 }
             }
+
+            Spacer(Modifier.height(24.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f))
+            Spacer(Modifier.height(20.dp))
+
+            Text(
+                text = stringResource(R.string.dashboard_usage_periods_title),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = stringResource(
+                    R.string.dashboard_usage_periods_desc,
+                    insights.periodSummary?.daysAnalyzed ?: 7
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp
+            )
+            Spacer(Modifier.height(14.dp))
+
+            val periodSummary = insights.periodSummary
+            if (periodSummary == null) {
+                Text(
+                    text = stringResource(R.string.dashboard_period_no_data),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp
+                )
+            } else {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    UsagePeriodCard(
+                        modifier = Modifier.weight(1f),
+                        title = stringResource(R.string.dashboard_most_active_period),
+                        period = periodSummary.mostUsed,
+                        accent = AccentCyan
+                    )
+                    UsagePeriodCard(
+                        modifier = Modifier.weight(1f),
+                        title = stringResource(R.string.dashboard_least_active_period),
+                        period = periodSummary.leastUsed,
+                        accent = AccentPurple
+                    )
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun UsagePeriodCard(
+    modifier: Modifier,
+    title: String,
+    period: PhoneUsagePeriodAverage,
+    accent: androidx.compose.ui.graphics.Color
+) {
+    Column(
+        modifier = modifier
+            .background(
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                shape = RoundedCornerShape(12.dp)
+            )
+            .padding(12.dp)
+    ) {
+        Text(
+            text = title,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 11.sp
+        )
+        Spacer(Modifier.height(5.dp))
+        Text(
+            text = stringResource(
+                R.string.dashboard_period_range,
+                period.startHour,
+                period.endHour
+            ),
+            color = accent,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(3.dp))
+        Text(
+            text = stringResource(
+                R.string.dashboard_period_average,
+                formatTime(period.averageTimeMs)
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 11.sp
+        )
     }
 }
 
@@ -575,6 +642,7 @@ fun getAppName(pkg: String, pm: PackageManager): String {
 }
 
 private fun formatTime(millis: Long): String {
+    if (millis <= 0L) return "0m"
     if (millis < 60000) return "< 1m"
     val totalMinutes = millis / 1000 / 60
     val h = totalMinutes / 60

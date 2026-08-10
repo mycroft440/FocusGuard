@@ -328,9 +328,15 @@
     <string name="dashboard_load_failed_desc">Tente novamente em instantes.</string>
     <string name="dashboard_try_again">Tentar novamente</string>
     <string name="dashboard_phone_usage">Uso do Telefone</string>
-    <string name="dashboard_vs_prev_week"> vs sem. ant.</string>
-    <string name="dashboard_total_week">Total na Semana</string>
+    <string name="dashboard_total_week">Últimos 7 Dias</string>
     <string name="dashboard_daily_avg">Média Diária</string>
+    <string name="dashboard_usage_periods_title">Períodos de uso</string>
+    <string name="dashboard_usage_periods_desc">Média diária em blocos de 3 horas, com base nos últimos %1$d dias completos.</string>
+    <string name="dashboard_most_active_period">Maior uso</string>
+    <string name="dashboard_least_active_period">Menor uso</string>
+    <string name="dashboard_period_range">%1$02dh–%2$02dh</string>
+    <string name="dashboard_period_average">Média: %1$s</string>
+    <string name="dashboard_period_no_data">Ainda não há uso suficiente para calcular esses períodos.</string>
     <string name="dashboard_most_used">Apps Mais Usados</string>
     <string name="dashboard_no_data">Nenhum dado encontrado.</string>
     <string name="dashboard_hide">Ocultar</string>
