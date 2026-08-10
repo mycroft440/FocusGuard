@@ -11,6 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.focusguard.MainActivity
 import com.focusguard.security.SensitivePermissionsConsent
+import com.focusguard.ui.compose.screens.PermissionFlowMode
 import com.focusguard.ui.compose.screens.PermissionsScreen
 import com.focusguard.ui.compose.screens.SensitivePermissionsDisclosureScreen
 import com.focusguard.ui.compose.theme.FocusGuardTheme
@@ -21,6 +22,12 @@ class PermissionsActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val flowMode = if (intent.getBooleanExtra(EXTRA_PENDING_ESSENTIALS_ONLY, false)) {
+            PermissionFlowMode.PendingEssentials
+        } else {
+            PermissionFlowMode.FullSetup
+        }
+
         setContent {
             FocusGuardTheme {
                 var consentAccepted by remember {
@@ -28,7 +35,10 @@ class PermissionsActivity : ComponentActivity() {
                 }
 
                 if (consentAccepted) {
-                    PermissionsScreen(onFinish = ::finishPermissionFlow)
+                    PermissionsScreen(
+                        flowMode = flowMode,
+                        onFinish = ::finishPermissionFlow
+                    )
                 } else {
                     SensitivePermissionsDisclosureScreen(
                         onAccept = {
@@ -54,5 +64,16 @@ class PermissionsActivity : ComponentActivity() {
             }
         )
         finish()
+    }
+
+    companion object {
+        private const val EXTRA_PENDING_ESSENTIALS_ONLY =
+            "com.focusguard.extra.PENDING_ESSENTIALS_ONLY"
+
+        fun createPendingEssentialsIntent(context: Context): Intent {
+            return Intent(context, PermissionsActivity::class.java).apply {
+                putExtra(EXTRA_PENDING_ESSENTIALS_ONLY, true)
+            }
+        }
     }
 }

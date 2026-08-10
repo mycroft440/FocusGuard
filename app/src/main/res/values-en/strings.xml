@@ -130,6 +130,8 @@
     <string name="block_customization">Customize block</string>
     <string name="pending_permissions_title">Pending permissions</string>
     <string name="pending_permissions_desc">Enable Accessibility and Usage access to unlock full protection.</string>
+    <string name="pending_permissions_accessibility_desc">Enable Accessibility to unlock full protection.</string>
+    <string name="pending_permissions_usage_access_desc">Enable Usage access to unlock full protection.</string>
 
     <!-- Navigation -->
     <string name="nav_protection">Protection</string>
@@ -244,12 +246,14 @@
     <!-- Permissions -->
     <string name="permissions_welcome_title">Set up protection</string>
     <string name="permissions_flow_desc">First, let\'s enable the two essential permissions. Then you choose the optional improvements.</string>
+    <string name="permissions_pending_flow_desc">Only the essential permissions still missing on this device are shown here.</string>
     <string name="permissions_reviewed_desc">Review the result. You can change any option later.</string>
     <string name="permissions_step_progress">Step %1$d of %2$d</string>
     <string name="permissions_review_complete">Review complete</string>
     <string name="permissions_skip">Not now</string>
     <string name="permissions_ready_title">Essential protection ready</string>
     <string name="permissions_ready_desc">%1$d of %2$d authorizations are active. The rest are optional improvements.</string>
+    <string name="permissions_pending_resolved_desc">All pending essential permissions are enabled. Full protection is now available.</string>
     <string name="permissions_incomplete_title">Essential setup pending</string>
     <string name="permissions_incomplete_desc">Accessibility and Usage access are required to block in real time, measure limits and load Insights.</string>
     <string name="permissions_review_essentials">Review essential permissions</string>

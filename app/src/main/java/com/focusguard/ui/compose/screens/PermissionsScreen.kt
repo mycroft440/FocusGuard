@@ -83,7 +83,12 @@ import com.focusguard.ui.compose.theme.WarningAmber
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
 
-private enum class PermissionStepType {
+enum class PermissionFlowMode {
+    FullSetup,
+    PendingEssentials
+}
+
+internal enum class PermissionStepType {
     Notifications,
     BatteryOptimization,
     Accessibility,
@@ -108,14 +113,22 @@ data class PermissionState(
 )
 
 @Composable
-fun PermissionsScreen(onFinish: () -> Unit) {
+fun PermissionsScreen(
+    flowMode: PermissionFlowMode = PermissionFlowMode.FullSetup,
+    onFinish: () -> Unit
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val deviceOwnerManager = remember { DeviceOwnerManager.getInstance(context) }
-    val steps = remember { orderedSteps }
+    val initialPermissionState = remember {
+        readPermissionState(context, deviceOwnerManager)
+    }
+    val steps = remember(flowMode, initialPermissionState) {
+        permissionStepsForFlow(flowMode, initialPermissionState)
+    }
 
-    var permissionState by remember { mutableStateOf(readPermissionState(context, deviceOwnerManager)) }
-    var currentStepIndex by rememberSaveable { mutableIntStateOf(0) }
+    var permissionState by remember { mutableStateOf(initialPermissionState) }
+    var currentStepIndex by rememberSaveable(flowMode, steps) { mutableIntStateOf(0) }
     var pendingExternalStepName by rememberSaveable { mutableStateOf<String?>(null) }
     var unsuccessfulStepName by rememberSaveable { mutableStateOf<String?>(null) }
     var showRestrictedDialog by remember { mutableStateOf(false) }
@@ -310,7 +323,13 @@ fun PermissionsScreen(onFinish: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(16.dp))
             Text(
-                text = stringResource(R.string.permissions_welcome_title),
+                text = stringResource(
+                    if (flowMode == PermissionFlowMode.PendingEssentials) {
+                        R.string.pending_permissions_title
+                    } else {
+                        R.string.permissions_welcome_title
+                    }
+                ),
                 fontSize = 26.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
@@ -318,10 +337,12 @@ fun PermissionsScreen(onFinish: () -> Unit) {
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = if (currentStep == null) {
-                    stringResource(R.string.permissions_reviewed_desc)
-                } else {
-                    stringResource(R.string.permissions_flow_desc)
+                text = when {
+                    currentStep == null -> stringResource(R.string.permissions_reviewed_desc)
+                    flowMode == PermissionFlowMode.PendingEssentials -> {
+                        stringResource(R.string.permissions_pending_flow_desc)
+                    }
+                    else -> stringResource(R.string.permissions_flow_desc)
                 },
                 fontSize = 14.sp,
                 color = TextSecondary,
@@ -338,7 +359,8 @@ fun PermissionsScreen(onFinish: () -> Unit) {
                 if (step == null) {
                     PermissionsSummaryCard(
                         permissionState = permissionState,
-                        totalSteps = steps.size,
+                        steps = steps,
+                        pendingEssentialsOnly = flowMode == PermissionFlowMode.PendingEssentials,
                         onReviewEssentials = {
                             unsuccessfulStepName = null
                             currentStepIndex = firstMissingEssentialStepIndex(permissionState, steps)
@@ -582,11 +604,12 @@ private fun SequentialPermissionCard(
 @Composable
 private fun PermissionsSummaryCard(
     permissionState: PermissionState,
-    totalSteps: Int,
+    steps: List<PermissionStepType>,
+    pendingEssentialsOnly: Boolean,
     onReviewEssentials: () -> Unit,
     onFinish: () -> Unit
 ) {
-    val grantedCount = countGranted(permissionState)
+    val grantedCount = countGranted(permissionState, steps)
     val essentialPermissionsGranted = permissionState.hasEssentialPermissions()
     val statusColor = if (essentialPermissionsGranted) SuccessGreen else WarningAmber
     Card(
@@ -620,10 +643,14 @@ private fun PermissionsSummaryCard(
             )
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = if (essentialPermissionsGranted) {
-                    stringResource(R.string.permissions_ready_desc, grantedCount, totalSteps)
-                } else {
-                    stringResource(R.string.permissions_incomplete_desc)
+                text = when {
+                    essentialPermissionsGranted && pendingEssentialsOnly -> {
+                        stringResource(R.string.permissions_pending_resolved_desc)
+                    }
+                    essentialPermissionsGranted -> {
+                        stringResource(R.string.permissions_ready_desc, grantedCount, steps.size)
+                    }
+                    else -> stringResource(R.string.permissions_incomplete_desc)
                 },
                 color = TextSecondary,
                 fontSize = 14.sp,
@@ -747,7 +774,7 @@ private fun readPermissionState(context: Context, deviceOwnerManager: DeviceOwne
     )
 }
 
-private fun isStepGranted(step: PermissionStepType, state: PermissionState): Boolean {
+internal fun isStepGranted(step: PermissionStepType, state: PermissionState): Boolean {
     return when (step) {
         PermissionStepType.Notifications -> state.notifications
         PermissionStepType.BatteryOptimization -> state.batteryOptimization
@@ -757,14 +784,8 @@ private fun isStepGranted(step: PermissionStepType, state: PermissionState): Boo
     }
 }
 
-private fun countGranted(state: PermissionState): Int {
-    return listOf(
-        state.notifications,
-        state.batteryOptimization,
-        state.accessibility,
-        state.usageAccess,
-        state.deviceAdmin
-    ).count { it }
+private fun countGranted(state: PermissionState, steps: List<PermissionStepType>): Int {
+    return steps.count { step -> isStepGranted(step, state) }
 }
 
 private fun isNotificationPermissionGranted(context: Context): Boolean {
@@ -777,6 +798,19 @@ private fun isNotificationPermissionGranted(context: Context): Boolean {
 
 private fun PermissionState.hasEssentialPermissions(): Boolean {
     return PermissionUtils.hasEssentialPermissions(accessibility, usageAccess)
+}
+
+internal fun permissionStepsForFlow(
+    flowMode: PermissionFlowMode,
+    state: PermissionState
+): List<PermissionStepType> {
+    return when (flowMode) {
+        PermissionFlowMode.FullSetup -> orderedSteps
+        PermissionFlowMode.PendingEssentials -> listOf(
+            PermissionStepType.Accessibility,
+            PermissionStepType.UsageAccess
+        ).filterNot { step -> isStepGranted(step, state) }
+    }
 }
 
 private fun firstMissingEssentialStepIndex(

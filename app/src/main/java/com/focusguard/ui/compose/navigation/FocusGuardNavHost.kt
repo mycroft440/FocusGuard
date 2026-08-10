@@ -49,6 +49,7 @@ import com.focusguard.ui.compose.screens.SettingsScreen
 import com.focusguard.ui.compose.screens.UsageLimitsScreen
 import com.focusguard.ui.compose.screens.UsageStatsDashboardScreen
 import com.focusguard.ui.compose.theme.DarkBg
+import com.focusguard.utils.EssentialPermission
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
 import kotlinx.coroutines.Dispatchers
@@ -118,7 +119,9 @@ fun FocusGuardNavHost(
     var selectedBlockType by remember { mutableStateOf(BlockTypeUi.PASSWORD) }
     var selectedTab by remember { mutableIntStateOf(1) }
     var selectedSessionType by remember { mutableStateOf("PASSWORD") }
-    var permissionsVisible by remember { mutableStateOf(false) }
+    var missingEssentialPermissions by remember {
+        mutableStateOf(emptyList<EssentialPermission>())
+    }
     val userProfileStore = remember(activity.applicationContext) {
         UserProfileStore(activity.applicationContext)
     }
@@ -148,7 +151,7 @@ fun FocusGuardNavHost(
             val isA11yEnabled = PermissionUtils.isAccessibilityServiceEnabled(activity)
             val isUsageAccessEnabled = PermissionUtils.isUsageAccessEnabled(activity)
             withContext(Dispatchers.Main) {
-                permissionsVisible = !PermissionUtils.hasEssentialPermissions(
+                missingEssentialPermissions = PermissionUtils.missingEssentialPermissions(
                     accessibilityEnabled = isA11yEnabled,
                     usageAccessEnabled = isUsageAccessEnabled
                 )
@@ -189,8 +192,12 @@ fun FocusGuardNavHost(
                     profile = userProfile,
                     selectedTab = selectedTab,
                     onTabChange = { selectedTab = it },
-                    permissionsVisible = permissionsVisible,
-                    onPermissionsClick = { activity.startActivity(Intent(activity, PermissionsActivity::class.java)) },
+                    missingEssentialPermissions = missingEssentialPermissions,
+                    onPermissionsClick = {
+                        activity.startActivity(
+                            PermissionsActivity.createPendingEssentialsIntent(activity)
+                        )
+                    },
                     onBlockTypeClick = { type ->
                         selectedBlockType = type
                         currentRoute = FocusGuardRoute.BlockTypeDetail

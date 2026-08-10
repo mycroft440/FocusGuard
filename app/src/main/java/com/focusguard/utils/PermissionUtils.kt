@@ -7,6 +7,11 @@ import android.os.Build
 import android.provider.Settings
 import android.text.TextUtils
 
+enum class EssentialPermission {
+    ACCESSIBILITY,
+    USAGE_ACCESS
+}
+
 /**
  * Utility class for permission checks.
  */
@@ -76,5 +81,20 @@ object PermissionUtils {
     fun hasEssentialPermissions(
         accessibilityEnabled: Boolean,
         usageAccessEnabled: Boolean
-    ): Boolean = accessibilityEnabled && usageAccessEnabled
+    ): Boolean = missingEssentialPermissions(
+        accessibilityEnabled = accessibilityEnabled,
+        usageAccessEnabled = usageAccessEnabled
+    ).isEmpty()
+
+    /**
+     * Returns only the essential permissions that are still missing, in the
+     * same order used by the setup flow.
+     */
+    fun missingEssentialPermissions(
+        accessibilityEnabled: Boolean,
+        usageAccessEnabled: Boolean
+    ): List<EssentialPermission> = buildList {
+        if (!accessibilityEnabled) add(EssentialPermission.ACCESSIBILITY)
+        if (!usageAccessEnabled) add(EssentialPermission.USAGE_ACCESS)
+    }
 }

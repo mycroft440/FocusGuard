@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.data.UserProfile
 import com.focusguard.ui.compose.theme.*
+import com.focusguard.utils.EssentialPermission
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -43,7 +44,7 @@ fun MainScreen(
     profile: UserProfile,
     selectedTab: Int,
     onTabChange: (Int) -> Unit,
-    permissionsVisible: Boolean,
+    missingEssentialPermissions: List<EssentialPermission>,
     onPermissionsClick: () -> Unit,
     onBlockTypeClick: (BlockTypeUi) -> Unit,
     onSettingsClick: () -> Unit,
@@ -170,7 +171,7 @@ fun MainScreen(
                 when (targetTab) {
                     0 -> usageStatsContent()
                     1 -> HomeContent(
-                        permissionsVisible = permissionsVisible,
+                        missingEssentialPermissions = missingEssentialPermissions,
                         onPermissionsClick = onPermissionsClick,
                         onBlockTypeClick = onBlockTypeClick,
                         pagerHint = false
@@ -180,6 +181,18 @@ fun MainScreen(
                 }
             }
         }
+    }
+}
+
+internal fun pendingPermissionsDescriptionRes(
+    missingPermissions: List<EssentialPermission>
+): Int {
+    return when (missingPermissions.toSet()) {
+        setOf(EssentialPermission.ACCESSIBILITY) ->
+            R.string.pending_permissions_accessibility_desc
+        setOf(EssentialPermission.USAGE_ACCESS) ->
+            R.string.pending_permissions_usage_access_desc
+        else -> R.string.pending_permissions_desc
     }
 }
 
@@ -236,7 +249,7 @@ fun DrawerMenuButton(
 
 @Composable
 fun HomeContent(
-    permissionsVisible: Boolean,
+    missingEssentialPermissions: List<EssentialPermission>,
     onPermissionsClick: () -> Unit,
     onBlockTypeClick: (BlockTypeUi) -> Unit,
     pagerHint: Boolean
@@ -283,7 +296,7 @@ fun HomeContent(
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             AnimatedVisibility(
-                visible = permissionsVisible,
+                visible = missingEssentialPermissions.isNotEmpty(),
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
@@ -304,7 +317,15 @@ fun HomeContent(
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(stringResource(id = R.string.pending_permissions_title), color = DangerRed, fontWeight = FontWeight.Bold)
-                            Text(stringResource(id = R.string.pending_permissions_desc), color = DangerRed.copy(alpha = 0.8f), fontSize = 12.sp)
+                            Text(
+                                stringResource(
+                                    id = pendingPermissionsDescriptionRes(
+                                        missingEssentialPermissions
+                                    )
+                                ),
+                                color = DangerRed.copy(alpha = 0.8f),
+                                fontSize = 12.sp
+                            )
                         }
                         Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.action_open), tint = DangerRed)
                     }

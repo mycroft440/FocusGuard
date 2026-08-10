@@ -130,6 +130,8 @@
     <string name="block_customization">Personalizar bloqueio</string>
     <string name="pending_permissions_title">Permissões pendentes</string>
     <string name="pending_permissions_desc">Ative Acessibilidade e Acesso de uso para liberar a proteção completa.</string>
+    <string name="pending_permissions_accessibility_desc">Ative Acessibilidade para liberar a proteção completa.</string>
+    <string name="pending_permissions_usage_access_desc">Ative Acesso de uso para liberar a proteção completa.</string>
 
     <!-- Navegação -->
     <string name="nav_protection">Proteção</string>
@@ -244,12 +246,14 @@
     <!-- Permissões -->
     <string name="permissions_welcome_title">Configurar proteção</string>
     <string name="permissions_flow_desc">Primeiro, vamos ativar as duas permissões essenciais. Depois você escolhe as melhorias opcionais.</string>
+    <string name="permissions_pending_flow_desc">Aqui aparecem somente as permissões essenciais que ainda faltam neste aparelho.</string>
     <string name="permissions_reviewed_desc">Confira o resultado. Você poderá alterar qualquer opção depois.</string>
     <string name="permissions_step_progress">Etapa %1$d de %2$d</string>
     <string name="permissions_review_complete">Revisão concluída</string>
     <string name="permissions_skip">Agora não</string>
     <string name="permissions_ready_title">Proteção essencial pronta</string>
     <string name="permissions_ready_desc">%1$d de %2$d autorizações estão ativas. As restantes são melhorias opcionais.</string>
+    <string name="permissions_pending_resolved_desc">Todas as permissões essenciais pendentes foram ativadas. A proteção completa já está disponível.</string>
     <string name="permissions_incomplete_title">Configuração essencial pendente</string>
     <string name="permissions_incomplete_desc">Acessibilidade e Acesso de uso são necessários para bloquear em tempo real, medir limites e carregar os Insights.</string>
     <string name="permissions_review_essentials">Revisar permissões essenciais</string>

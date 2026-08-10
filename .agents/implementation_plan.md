@@ -1,24 +1,24 @@
-# Plano de implementação — personagens do perfil e contato com o criador
+# Plano de implementação — permissões pendentes precisas
 
 ## Objetivos
 
-1. Substituir os ícones de avatar por cinco personagens completos e originais.
-2. Manter os personagens legíveis no cabeçalho, em Configurações e na edição.
-3. Adicionar abaixo dos bloqueios um atalho destacado para o Instagram do
-   criador, com fallback para o navegador.
+1. Identificar separadamente Acessibilidade e Acesso de uso.
+2. Exibir no aviso inicial somente os nomes das permissões realmente ausentes.
+3. Abrir um fluxo reduzido contendo apenas as pendências essenciais.
+4. Atualizar o estado assim que o usuário voltar das configurações do Android.
 
-## Regras do perfil
+## Regras do fluxo
 
-- Os personagens usam WebP transparente em 512 px e identificadores já
-  persistidos, portanto perfis existentes migram sem perder a seleção.
-- O seletor continua funcionando como grupo de opções para leitores de tela.
-- O card do Instagram tenta abrir `com.instagram.android`; quando indisponível,
-  abre a mesma URL no navegador sem derrubar o aplicativo.
-- O contato é informativo e não interfere nos três tipos de proteção.
+- O aviso não aparece enquanto Acessibilidade e Acesso de uso estiverem ativos.
+- Se apenas uma autorização faltar, o texto e a tela citam somente essa opção.
+- O atalho não inclui Notificações, Bateria irrestrita ou Admin do dispositivo,
+  pois essas permissões são opcionais.
+- O onboarding completo continua oferecendo as cinco etapas existentes.
+- Ao voltar das configurações, uma autorização concedida é removida da sequência.
 
 ## Validação
 
-- Validar transparência, dimensões e peso dos cinco assets.
-- Testar a compilação dos drawables e o destino do atalho externo.
+- Testar todas as combinações das duas permissões essenciais.
+- Testar a lista reduzida e preservar o fluxo completo do onboarding.
 - Conferir paridade dos recursos em português e inglês.
 - Executar testes unitários, lint e compilação dos APKs.
