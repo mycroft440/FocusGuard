@@ -8,6 +8,11 @@ object CreatorInstagramPromptPolicy {
     const val MIN_INSTALL_AGE_MILLIS = 60L * 60L * 1_000L
     const val HOME_CARD_VISIBLE_MILLIS = 15_000L
 
+    fun shouldShowFeedbackButton(
+        homeCardPresented: Boolean,
+        homeCardVisible: Boolean
+    ): Boolean = homeCardPresented && !homeCardVisible
+
     fun remainingDelayMillis(
         firstInstallTimeMillis: Long,
         nowMillis: Long

@@ -59,7 +59,7 @@ class AdvancedUsageAnalytics(private val context: Context) {
 
     suspend fun getPhoneUsageInsights(
         historyDays: Int = 7,
-        periodAverageDays: Int = 7
+        periodAverageDays: Int = PHONE_USAGE_PERIOD_ANALYSIS_DAYS
     ): PhoneUsageInsights = withContext(Dispatchers.IO) {
         val now = System.currentTimeMillis()
         val zoneId = ZoneId.systemDefault()
@@ -94,9 +94,9 @@ class AdvancedUsageAnalytics(private val context: Context) {
         }
         val manager = usageStatsManager ?: return@withContext emptyInsights()
 
-        // O gráfico usa hoje + 6 dias; a média usa os 7 dias completos
-        // anteriores. Consultamos ainda um dia de aquecimento para reconhecer
-        // uma sessão que já estava aberta na virada do primeiro dia.
+        // O gráfico usa hoje + 6 dias; os períodos de maior e menor uso usam os
+        // 30 dias completos anteriores. Consultamos ainda um dia de aquecimento
+        // para reconhecer uma sessão aberta na virada do primeiro dia.
         val historyStartDate = today.minusDays(historyDays - 1L)
         val periodStartDate = today.minusDays(periodAverageDays.toLong())
         val earliestRequiredDate = minOf(historyStartDate, periodStartDate)

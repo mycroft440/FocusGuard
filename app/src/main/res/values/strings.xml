@@ -218,6 +218,8 @@
     <string name="creator_instagram_handle">@jose_gustavo55</string>
     <string name="creator_instagram_description">Dê sugestões de melhorias, receba mais dicas de uso utilizando os destaques do Instagram.</string>
     <string name="settings_creator_instagram_subtitle">Sugestões e dicas nos destaques de @jose_gustavo55</string>
+    <string name="creator_feedback_title">Dê sugestões de melhorias ou funções</string>
+    <string name="creator_feedback_description">Implementamos hoje mesmo — basta seguir e mandar um direct.</string>
     <string name="settings_category_general">Geral</string>
     <string name="settings_category_blocking">Bloqueio</string>
     <string name="settings_category_advanced_security">Segurança avançada</string>
@@ -357,7 +359,7 @@
     <string name="dashboard_total_week">Últimos 7 Dias</string>
     <string name="dashboard_daily_avg">Média Diária</string>
     <string name="dashboard_usage_periods_title">Períodos de uso</string>
-    <string name="dashboard_usage_periods_desc">Média diária em blocos de 3 horas, com base nos últimos %1$d dias completos.</string>
+    <string name="dashboard_usage_periods_desc">Média diária em blocos de 3 horas, com base em 1 mês (últimos %1$d dias completos).</string>
     <string name="dashboard_most_active_period">Maior uso</string>
     <string name="dashboard_least_active_period">Menor uso</string>
     <string name="dashboard_period_range">%1$02dh–%2$02dh</string>

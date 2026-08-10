@@ -362,7 +362,8 @@ fun PhoneUsageChartSection(insights: PhoneUsageInsights) {
             Text(
                 text = stringResource(
                     R.string.dashboard_usage_periods_desc,
-                    insights.periodSummary?.daysAnalyzed ?: 7
+                    insights.periodSummary?.daysAnalyzed
+                        ?: PHONE_USAGE_PERIOD_ANALYSIS_DAYS
                 ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp

@@ -235,6 +235,11 @@ fun FocusGuardNavHost(
                     onTabChange = { selectedTab = it },
                     missingEssentialPermissions = missingEssentialPermissions,
                     showCreatorInstagramCard = showCreatorInstagramCard,
+                    showCreatorFeedbackButton =
+                        CreatorInstagramPromptPolicy.shouldShowFeedbackButton(
+                            homeCardPresented = creatorInstagramPresented,
+                            homeCardVisible = showCreatorInstagramCard
+                        ),
                     onPermissionsClick = {
                         activity.startActivity(
                             PermissionsActivity.createPendingEssentialsIntent(activity)

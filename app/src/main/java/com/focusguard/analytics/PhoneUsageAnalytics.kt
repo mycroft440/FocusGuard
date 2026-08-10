@@ -6,6 +6,8 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
+internal const val PHONE_USAGE_PERIOD_ANALYSIS_DAYS = 30
+
 data class DailyPhoneUsage(
     val dateLabel: String,
     val totalTimeMs: Long,

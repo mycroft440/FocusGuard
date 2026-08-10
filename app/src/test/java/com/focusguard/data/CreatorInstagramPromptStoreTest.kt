@@ -57,4 +57,28 @@ class CreatorInstagramPromptStoreTest {
         assertThat(CreatorInstagramPromptPolicy.HOME_CARD_VISIBLE_MILLIS)
             .isEqualTo(15_000L)
     }
+
+    @Test
+    fun `feedback button replaces the one-time card only after its presentation`() {
+        assertThat(
+            CreatorInstagramPromptPolicy.shouldShowFeedbackButton(
+                homeCardPresented = false,
+                homeCardVisible = false
+            )
+        ).isFalse()
+
+        assertThat(
+            CreatorInstagramPromptPolicy.shouldShowFeedbackButton(
+                homeCardPresented = true,
+                homeCardVisible = true
+            )
+        ).isFalse()
+
+        assertThat(
+            CreatorInstagramPromptPolicy.shouldShowFeedbackButton(
+                homeCardPresented = true,
+                homeCardVisible = false
+            )
+        ).isTrue()
+    }
 }

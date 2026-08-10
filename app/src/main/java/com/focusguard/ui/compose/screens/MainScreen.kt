@@ -42,6 +42,7 @@ fun MainScreen(
     onTabChange: (Int) -> Unit,
     missingEssentialPermissions: List<EssentialPermission>,
     showCreatorInstagramCard: Boolean,
+    showCreatorFeedbackButton: Boolean,
     onPermissionsClick: () -> Unit,
     onCreatorInstagramClick: () -> Unit,
     onBlockTypeClick: (BlockTypeUi) -> Unit,
@@ -171,6 +172,7 @@ fun MainScreen(
                     1 -> HomeContent(
                         missingEssentialPermissions = missingEssentialPermissions,
                         showCreatorInstagramCard = showCreatorInstagramCard,
+                        showCreatorFeedbackButton = showCreatorFeedbackButton,
                         onPermissionsClick = onPermissionsClick,
                         onCreatorInstagramClick = onCreatorInstagramClick,
                         onBlockTypeClick = onBlockTypeClick,
@@ -251,6 +253,7 @@ fun DrawerMenuButton(
 fun HomeContent(
     missingEssentialPermissions: List<EssentialPermission>,
     showCreatorInstagramCard: Boolean,
+    showCreatorFeedbackButton: Boolean,
     onPermissionsClick: () -> Unit,
     onCreatorInstagramClick: () -> Unit,
     onBlockTypeClick: (BlockTypeUi) -> Unit,
@@ -382,6 +385,14 @@ fun HomeContent(
                     ) {
                         CreatorInstagramCard(onClick = onCreatorInstagramClick)
                     }
+                    AnimatedVisibility(
+                        visible = showCreatorFeedbackButton,
+                        modifier = Modifier.fillMaxWidth(),
+                        enter = fadeIn() + expandVertically(),
+                        exit = fadeOut() + shrinkVertically()
+                    ) {
+                        CreatorFeedbackButton(onClick = onCreatorInstagramClick)
+                    }
                 }
             }
         }
@@ -464,6 +475,61 @@ private fun CreatorInstagramCard(onClick: () -> Unit) {
                 contentDescription = stringResource(R.string.action_open),
                 tint = Color(0xFFE1306C),
                 modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CreatorFeedbackButton(onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = DarkCard),
+        border = BorderStroke(1.dp, CardBorder)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(42.dp)
+                    .clip(RoundedCornerShape(13.dp))
+                    .background(AccentCyan.copy(alpha = 0.09f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Outlined.Lightbulb,
+                    contentDescription = null,
+                    tint = AccentCyan.copy(alpha = 0.82f),
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Spacer(Modifier.width(13.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.creator_feedback_title),
+                    color = TextPrimary,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(3.dp))
+                Text(
+                    text = stringResource(R.string.creator_feedback_description),
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = stringResource(R.string.action_open),
+                tint = TextHint,
+                modifier = Modifier.size(18.dp)
             )
         }
     }

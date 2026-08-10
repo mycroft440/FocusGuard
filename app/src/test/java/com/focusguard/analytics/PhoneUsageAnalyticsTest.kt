@@ -175,6 +175,27 @@ class PhoneUsageInsightsCalculatorTest {
     }
 
     @Test
+    fun `monthly period analysis uses thirty complete days`() {
+        val insights = calculate(
+            intervals = listOf(
+                interval("2026-01-02T04:00", "2026-01-02T05:00")
+            ),
+            now = "2026-02-01T12:00",
+            periodAverageDays = PHONE_USAGE_PERIOD_ANALYSIS_DAYS
+        )
+
+        assertThat(PHONE_USAGE_PERIOD_ANALYSIS_DAYS).isEqualTo(30)
+        assertThat(insights.periodSummary?.daysAnalyzed).isEqualTo(30)
+        assertThat(insights.periodSummary?.mostUsed).isEqualTo(
+            PhoneUsagePeriodAverage(
+                startHour = 3,
+                endHour = 6,
+                averageTimeMs = 1.hours / 30
+            )
+        )
+    }
+
+    @Test
     fun `session beginning before history is clipped to first displayed day`() {
         val insights = calculate(
             intervals = listOf(
@@ -202,12 +223,13 @@ class PhoneUsageInsightsCalculatorTest {
     private fun calculate(
         intervals: List<ForegroundUsageInterval>,
         now: String,
-        historyDays: Int = 7
+        historyDays: Int = 7,
+        periodAverageDays: Int = 7
     ) = PhoneUsageInsightsCalculator.calculate(
         intervals = intervals,
         nowMs = timestamp(now),
         historyDays = historyDays,
-        periodAverageDays = 7,
+        periodAverageDays = periodAverageDays,
         zoneId = zoneId,
         locale = locale
     )
