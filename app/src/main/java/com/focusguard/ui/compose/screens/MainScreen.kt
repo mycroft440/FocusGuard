@@ -1,5 +1,8 @@
 package com.focusguard.ui.compose.screens
 
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
 import kotlin.OptIn
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
@@ -23,6 +26,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -237,6 +241,7 @@ fun HomeContent(
     onBlockTypeClick: (BlockTypeUi) -> Unit,
     pagerHint: Boolean
 ) {
+    val context = LocalContext.current
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         delay(100)
@@ -271,8 +276,10 @@ fun HomeContent(
 
         Column(
             modifier = Modifier
-                .align(Alignment.Center)
-                .fillMaxWidth(),
+                .align(Alignment.TopCenter)
+                .fillMaxSize()
+                .padding(top = 148.dp, bottom = 16.dp)
+                .verticalScroll(rememberScrollState()),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             AnimatedVisibility(
@@ -325,6 +332,9 @@ fun HomeContent(
                             onClick = { onBlockTypeClick(type) }
                         )
                     }
+                    CreatorInstagramCard(
+                        onClick = { openCreatorInstagram(context) }
+                    )
                 }
             }
         }
@@ -341,6 +351,96 @@ fun HomeContent(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CreatorInstagramCard(onClick: () -> Unit) {
+    val instagramGradient = Brush.linearGradient(
+        colors = listOf(
+            Color(0xFF833AB4),
+            Color(0xFFE1306C),
+            Color(0xFFF77737),
+            Color(0xFFFCAF45)
+        )
+    )
+
+    Card(
+        onClick = onClick,
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        colors = CardDefaults.cardColors(containerColor = DarkCard),
+        border = BorderStroke(1.dp, instagramGradient)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(instagramGradient),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.CameraAlt,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(27.dp)
+                )
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.creator_instagram_title),
+                    color = TextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = stringResource(R.string.creator_instagram_handle),
+                    color = Color(0xFFE1306C),
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.creator_instagram_description),
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    lineHeight = 16.sp
+                )
+            }
+            Spacer(Modifier.width(8.dp))
+            Icon(
+                imageVector = Icons.Default.ChevronRight,
+                contentDescription = stringResource(R.string.action_open),
+                tint = Color(0xFFE1306C),
+                modifier = Modifier.size(20.dp)
+            )
+        }
+    }
+}
+
+private fun openCreatorInstagram(context: Context) {
+    val profileUri = Uri.parse(CREATOR_INSTAGRAM_PROFILE_URL)
+    val instagramIntent = Intent(Intent.ACTION_VIEW, profileUri).apply {
+        setPackage(INSTAGRAM_PACKAGE_NAME)
+    }
+    val openedInInstagram = runCatching {
+        context.startActivity(instagramIntent)
+    }.isSuccess
+
+    if (!openedInInstagram) {
+        runCatching {
+            context.startActivity(Intent(Intent.ACTION_VIEW, profileUri))
+        }
+    }
+}
+
+internal const val CREATOR_INSTAGRAM_PROFILE_URL =
+    "https://www.instagram.com/jose_gustavo55/"
+internal const val INSTAGRAM_PACKAGE_NAME = "com.instagram.android"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

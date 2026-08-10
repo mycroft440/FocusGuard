@@ -32,6 +32,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.unit.dp
@@ -158,7 +159,7 @@ fun ProfileScreen(
                     val label = stringResource(preset.labelRes)
                     Column(
                         modifier = Modifier
-                            .width(76.dp)
+                            .width(98.dp)
                             .selectable(
                                 selected = avatarId == preset.id,
                                 onClick = { avatarId = preset.id },
@@ -177,7 +178,9 @@ fun ProfileScreen(
                             text = label,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             fontSize = 12.sp,
-                            maxLines = 1
+                            lineHeight = 14.sp,
+                            maxLines = 2,
+                            textAlign = TextAlign.Center
                         )
                     }
                 }

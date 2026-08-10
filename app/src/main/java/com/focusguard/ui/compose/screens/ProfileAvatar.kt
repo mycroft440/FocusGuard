@@ -1,20 +1,17 @@
 package com.focusguard.ui.compose.screens
 
+import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Face
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Pets
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -24,7 +21,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import com.focusguard.R
 import com.focusguard.data.UserProfilePolicy
@@ -32,7 +30,7 @@ import com.focusguard.data.UserProfilePolicy
 internal data class ProfileAvatarPreset(
     val id: Int,
     @StringRes val labelRes: Int,
-    val icon: ImageVector,
+    @DrawableRes val imageRes: Int,
     val colors: List<Color>
 )
 
@@ -40,31 +38,31 @@ internal val ProfileAvatarPresets = listOf(
     ProfileAvatarPreset(
         id = 0,
         labelRes = R.string.profile_avatar_ocean,
-        icon = Icons.Default.Face,
+        imageRes = R.drawable.avatar_focus_guardian,
         colors = listOf(Color(0xFF00BCD4), Color(0xFF1565C0))
     ),
     ProfileAvatarPreset(
         id = 1,
         labelRes = R.string.profile_avatar_sunset,
-        icon = Icons.Default.Star,
+        imageRes = R.drawable.avatar_solar_inventor,
         colors = listOf(Color(0xFFFFB300), Color(0xFFE91E63))
     ),
     ProfileAvatarPreset(
         id = 2,
         labelRes = R.string.profile_avatar_forest,
-        icon = Icons.Default.Pets,
+        imageRes = R.drawable.avatar_forest_explorer,
         colors = listOf(Color(0xFF66BB6A), Color(0xFF00897B))
     ),
     ProfileAvatarPreset(
         id = 3,
         labelRes = R.string.profile_avatar_galaxy,
-        icon = Icons.Default.Favorite,
+        imageRes = R.drawable.avatar_galactic_traveler,
         colors = listOf(Color(0xFFAB47BC), Color(0xFF3949AB))
     ),
     ProfileAvatarPreset(
         id = 4,
         labelRes = R.string.profile_avatar_energy,
-        icon = Icons.Default.Bolt,
+        imageRes = R.drawable.avatar_energy_runner,
         colors = listOf(Color(0xFFFF7043), Color(0xFFD32F2F))
     )
 )
@@ -95,11 +93,13 @@ internal fun ProfileAvatar(
                 .background(Brush.linearGradient(preset.colors)),
             contentAlignment = Alignment.Center
         ) {
-            Icon(
-                imageVector = preset.icon,
+            Image(
+                painter = painterResource(preset.imageRes),
                 contentDescription = null,
-                tint = Color.White,
-                modifier = Modifier.fillMaxSize(0.5f)
+                contentScale = ContentScale.Fit,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(2.dp)
             )
         }
 
