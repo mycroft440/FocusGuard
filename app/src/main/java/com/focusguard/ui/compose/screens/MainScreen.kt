@@ -267,37 +267,53 @@ fun HomeContent(
             .fillMaxSize()
             .padding(horizontal = 24.dp)
     ) {
-        // [F2] Agrupamento de animações do Header para reduzir overhead de RenderNode
-        AnimatedVisibility(
-            visible = visible,
-            modifier = Modifier
-                .align(Alignment.TopCenter)
-                .padding(top = 8.dp),
-            enter = fadeIn(animationSpec = tween(450)) + slideInVertically(animationSpec = tween(450)) { -20 }
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_shield),
-                    contentDescription = stringResource(R.string.content_focusguard_logo),
-                    modifier = Modifier.size(48.dp),
-                    tint = AccentCyan
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(stringResource(id = R.string.app_name), fontSize = 30.sp, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onBackground)
-                Text(stringResource(id = R.string.focus_subtitle), fontSize = 14.sp, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 2.dp, bottom = 20.dp))
-            }
-        }
-
         Column(
             modifier = Modifier
-                .align(Alignment.TopCenter)
                 .fillMaxSize()
-                .padding(top = 148.dp, bottom = 16.dp)
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    top = 8.dp,
+                    bottom = if (pagerHint) 64.dp else 16.dp
+                ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            // Cabeçalho e cards compartilham o mesmo fluxo vertical. Isso evita
+            // sobreposição quando a fonte do sistema ou a tela forem maiores.
             AnimatedVisibility(
-                visible = missingEssentialPermissions.isNotEmpty(),
+                visible = visible,
+                modifier = Modifier.fillMaxWidth(),
+                enter = fadeIn(animationSpec = tween(450)) +
+                    slideInVertically(animationSpec = tween(450)) { -20 }
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_shield),
+                        contentDescription = stringResource(R.string.content_focusguard_logo),
+                        modifier = Modifier.size(48.dp),
+                        tint = AccentCyan
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        stringResource(id = R.string.app_name),
+                        fontSize = 30.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onBackground
+                    )
+                    Text(
+                        stringResource(id = R.string.focus_subtitle),
+                        fontSize = 14.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 2.dp, bottom = 20.dp)
+                    )
+                }
+            }
+
+            AnimatedVisibility(
+                visible = visible && missingEssentialPermissions.isNotEmpty(),
+                modifier = Modifier.fillMaxWidth(),
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
@@ -342,9 +358,13 @@ fun HomeContent(
             // justamente de quem ainda não a conhece.
             AnimatedVisibility(
                 visible = visible,
+                modifier = Modifier.fillMaxWidth(),
                 enter = fadeIn(animationSpec = tween(500, delayMillis = 150)) + slideInVertically(animationSpec = tween(500, delayMillis = 150)) { 30 }
             ) {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
                     BlockTypeUi.entries.forEach { type ->
                         SessionCard(
                             icon = type.icon,
@@ -356,6 +376,7 @@ fun HomeContent(
                     }
                     AnimatedVisibility(
                         visible = showCreatorInstagramCard,
+                        modifier = Modifier.fillMaxWidth(),
                         enter = fadeIn() + expandVertically(),
                         exit = fadeOut() + shrinkVertically()
                     ) {
