@@ -126,9 +126,17 @@ fun PermissionsScreen(
     val steps = remember(flowMode, initialPermissionState) {
         permissionStepsForFlow(flowMode, initialPermissionState)
     }
+    val initialStepIndex = remember(steps, initialPermissionState) {
+        firstActionablePermissionStepIndex(
+            steps = steps,
+            state = initialPermissionState
+        )
+    }
 
     var permissionState by remember { mutableStateOf(initialPermissionState) }
-    var currentStepIndex by rememberSaveable(flowMode, steps) { mutableIntStateOf(0) }
+    var currentStepIndex by rememberSaveable(flowMode, steps) {
+        mutableIntStateOf(initialStepIndex)
+    }
     var pendingExternalStepName by rememberSaveable { mutableStateOf<String?>(null) }
     var unsuccessfulStepName by rememberSaveable { mutableStateOf<String?>(null) }
     var showRestrictedDialog by remember { mutableStateOf(false) }
@@ -153,9 +161,11 @@ fun PermissionsScreen(
     }
 
     fun skipAlreadyGrantedSteps(state: PermissionState) {
-        while (currentStepIndex < steps.size && isStepGranted(steps[currentStepIndex], state)) {
-            currentStepIndex++
-        }
+        currentStepIndex = firstActionablePermissionStepIndex(
+            steps = steps,
+            state = state,
+            startIndex = currentStepIndex
+        )
     }
 
     fun applyPermissionResult(step: PermissionStepType, state: PermissionState) {
@@ -222,6 +232,16 @@ fun PermissionsScreen(
     }
 
     fun openCurrentStep(step: PermissionStepType) {
+        // Never trust the state captured when this screen was first composed.
+        // Android preserves most grants across app updates, and a grant can also
+        // change while the screen is open. Re-read the platform immediately
+        // before launching any permission dialog or Settings page.
+        val latestState = refreshPermissions()
+        if (!shouldRequestPermission(step, latestState)) {
+            applyPermissionResult(step, latestState)
+            return
+        }
+
         when (step) {
             PermissionStepType.Notifications -> {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -782,6 +802,23 @@ internal fun isStepGranted(step: PermissionStepType, state: PermissionState): Bo
         PermissionStepType.UsageAccess -> state.usageAccess
         PermissionStepType.DeviceAdmin -> state.deviceAdmin
     }
+}
+
+internal fun shouldRequestPermission(
+    step: PermissionStepType,
+    state: PermissionState
+): Boolean = !isStepGranted(step, state)
+
+internal fun firstActionablePermissionStepIndex(
+    steps: List<PermissionStepType>,
+    state: PermissionState,
+    startIndex: Int = 0
+): Int {
+    var index = startIndex.coerceIn(0, steps.size)
+    while (index < steps.size && !shouldRequestPermission(steps[index], state)) {
+        index++
+    }
+    return index
 }
 
 private fun countGranted(state: PermissionState, steps: List<PermissionStepType>): Int {
