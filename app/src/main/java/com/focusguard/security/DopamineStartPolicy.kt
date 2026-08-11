@@ -1,6 +1,9 @@
 package com.focusguard.security
 
-/** Selects the strongest available Jejum de Dopamina mode without making it mandatory. */
+/**
+ * Classifies an already-authorized Jejum de Dopamina protection level.
+ * ProtectionPermissionGate decides whether configuration is allowed first.
+ */
 object DopamineStartPolicy {
 
     data class Capabilities(
@@ -17,9 +20,9 @@ object DopamineStartPolicy {
     }
 
     /**
-     * Accessibility is the only hard requirement for real-time app/site interception.
-     * Usage access and unrestricted battery remain recommended, while Device Owner upgrades
-     * the same session to native anti-removal policies when it is already provisioned.
+     * This classifier intentionally describes platform capability, not product
+     * readiness. FocusGuard requires every protection permission before calling it.
+     * Device Owner upgrades the same session to native anti-removal policies.
      */
     fun protectionLevel(capabilities: Capabilities): ProtectionLevel = when {
         !capabilities.accessibilityEnabled -> ProtectionLevel.UNAVAILABLE

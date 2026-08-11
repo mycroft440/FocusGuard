@@ -75,8 +75,9 @@ object PermissionUtils {
     }
 
     /**
-     * The minimum permission set needed for live blocking, usage limits and Insights.
-     * Notification, unrestricted battery and device admin remain optional enhancements.
+     * Legacy capability check retained for read-only usage/Insights warnings.
+     * It must never authorize block configuration; that decision belongs to
+     * ProtectionPermissionGate, which requires the complete protection set.
      */
     fun hasEssentialPermissions(
         accessibilityEnabled: Boolean,

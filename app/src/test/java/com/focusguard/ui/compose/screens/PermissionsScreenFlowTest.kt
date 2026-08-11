@@ -6,41 +6,52 @@ import org.junit.Test
 class PermissionsScreenFlowTest {
 
     @Test
-    fun `pending flow shows only the essential permissions that are missing`() {
+    fun `pending flow shows every protection permission that is missing`() {
         assertThat(
             permissionStepsForFlow(
-                flowMode = PermissionFlowMode.PendingEssentials,
+                flowMode = PermissionFlowMode.PendingProtection,
                 state = PermissionState(accessibility = false, usageAccess = false)
             )
         ).containsExactly(
             PermissionStepType.Accessibility,
-            PermissionStepType.UsageAccess
+            PermissionStepType.UsageAccess,
+            PermissionStepType.Notifications,
+            PermissionStepType.BatteryOptimization,
+            PermissionStepType.DeviceAdmin
         ).inOrder()
 
         assertThat(
             permissionStepsForFlow(
-                flowMode = PermissionFlowMode.PendingEssentials,
-                state = PermissionState(accessibility = true, usageAccess = false)
+                flowMode = PermissionFlowMode.PendingProtection,
+                state = PermissionState(
+                    accessibility = true,
+                    usageAccess = true,
+                    notifications = false,
+                    batteryOptimization = true,
+                    deviceAdmin = false
+                )
             )
-        ).containsExactly(PermissionStepType.UsageAccess)
+        ).containsExactly(
+            PermissionStepType.Notifications,
+            PermissionStepType.DeviceAdmin
+        ).inOrder()
 
         assertThat(
             permissionStepsForFlow(
-                flowMode = PermissionFlowMode.PendingEssentials,
-                state = PermissionState(accessibility = false, usageAccess = true)
-            )
-        ).containsExactly(PermissionStepType.Accessibility)
-
-        assertThat(
-            permissionStepsForFlow(
-                flowMode = PermissionFlowMode.PendingEssentials,
-                state = PermissionState(accessibility = true, usageAccess = true)
+                flowMode = PermissionFlowMode.PendingProtection,
+                state = PermissionState(
+                    accessibility = true,
+                    usageAccess = true,
+                    notifications = true,
+                    batteryOptimization = true,
+                    deviceAdmin = true
+                )
             )
         ).isEmpty()
     }
 
     @Test
-    fun `full setup keeps optional permissions after the essential ones`() {
+    fun `full setup keeps every required permission in protection order`() {
         assertThat(
             permissionStepsForFlow(
                 flowMode = PermissionFlowMode.FullSetup,

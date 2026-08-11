@@ -65,6 +65,7 @@ import com.focusguard.data.PredefinedApps
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
 import com.focusguard.security.BlockTargetPolicy
+import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.compose.screens.AppSelectionList
 import com.focusguard.ui.compose.screens.AppSelectionScreen
 import com.focusguard.ui.compose.screens.KeywordRulesTab
@@ -97,9 +98,11 @@ class CreateSessionActivity : ComponentActivity() {
     // uma instância paralela que burlava o singleton do Hilt e podia disparar
     // migrações em paralelo (corrigido em P0-2 no PR #20).
     @Inject lateinit var authManager: AuthManager
+    private var redirectedToPermissions = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (!ensureProtectionPermissions()) return
         val sessionType = intent.getStringExtra("SESSION_TYPE") ?: "PASSWORD"
 
         setContent {
@@ -118,6 +121,21 @@ class CreateSessionActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (!isFinishing) ensureProtectionPermissions()
+    }
+
+    private fun ensureProtectionPermissions(): Boolean {
+        if (ProtectionPermissionGate.read(this).isReady) return true
+        if (!redirectedToPermissions) {
+            redirectedToPermissions = true
+            startActivity(PermissionsActivity.createPendingProtectionIntent(this))
+            finish()
+        }
+        return false
     }
 }
 

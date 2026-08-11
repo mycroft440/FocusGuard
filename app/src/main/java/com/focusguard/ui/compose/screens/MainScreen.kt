@@ -30,8 +30,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.data.UserProfile
+import com.focusguard.security.ProtectionPermission
 import com.focusguard.ui.compose.theme.*
-import com.focusguard.utils.EssentialPermission
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -40,7 +40,7 @@ fun MainScreen(
     profile: UserProfile,
     selectedTab: Int,
     onTabChange: (Int) -> Unit,
-    missingEssentialPermissions: List<EssentialPermission>,
+    missingProtectionPermissions: List<ProtectionPermission>,
     showCreatorInstagramCard: Boolean,
     showCreatorFeedbackButton: Boolean,
     onPermissionsClick: () -> Unit,
@@ -170,7 +170,7 @@ fun MainScreen(
                 when (targetTab) {
                     0 -> usageStatsContent()
                     1 -> HomeContent(
-                        missingEssentialPermissions = missingEssentialPermissions,
+                        missingProtectionPermissions = missingProtectionPermissions,
                         showCreatorInstagramCard = showCreatorInstagramCard,
                         showCreatorFeedbackButton = showCreatorFeedbackButton,
                         onPermissionsClick = onPermissionsClick,
@@ -187,12 +187,12 @@ fun MainScreen(
 }
 
 internal fun pendingPermissionsDescriptionRes(
-    missingPermissions: List<EssentialPermission>
+    missingPermissions: List<ProtectionPermission>
 ): Int {
     return when (missingPermissions.toSet()) {
-        setOf(EssentialPermission.ACCESSIBILITY) ->
+        setOf(ProtectionPermission.ACCESSIBILITY) ->
             R.string.pending_permissions_accessibility_desc
-        setOf(EssentialPermission.USAGE_ACCESS) ->
+        setOf(ProtectionPermission.USAGE_ACCESS) ->
             R.string.pending_permissions_usage_access_desc
         else -> R.string.pending_permissions_desc
     }
@@ -251,7 +251,7 @@ fun DrawerMenuButton(
 
 @Composable
 fun HomeContent(
-    missingEssentialPermissions: List<EssentialPermission>,
+    missingProtectionPermissions: List<ProtectionPermission>,
     showCreatorInstagramCard: Boolean,
     showCreatorFeedbackButton: Boolean,
     onPermissionsClick: () -> Unit,
@@ -315,7 +315,7 @@ fun HomeContent(
             }
 
             AnimatedVisibility(
-                visible = visible && missingEssentialPermissions.isNotEmpty(),
+                visible = visible && missingProtectionPermissions.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth(),
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
@@ -347,7 +347,7 @@ fun HomeContent(
                             Text(
                                 stringResource(
                                     id = pendingPermissionsDescriptionRes(
-                                        missingEssentialPermissions
+                                        missingProtectionPermissions
                                     )
                                 ),
                                 color = DangerRed.copy(alpha = 0.8f),

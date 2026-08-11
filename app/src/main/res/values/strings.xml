@@ -129,9 +129,9 @@
     <string name="dopamine_activate">Ativar jejum de dopamina</string>
     <string name="block_customization">Personalizar bloqueio</string>
     <string name="pending_permissions_title">Permissões pendentes</string>
-    <string name="pending_permissions_desc">Ative Acessibilidade e Acesso de uso para liberar a proteção completa.</string>
-    <string name="pending_permissions_accessibility_desc">Ative Acessibilidade para liberar a proteção completa.</string>
-    <string name="pending_permissions_usage_access_desc">Ative Acesso de uso para liberar a proteção completa.</string>
+    <string name="pending_permissions_desc">Conclua todas as permissões de proteção para liberar a configuração de bloqueios.</string>
+    <string name="pending_permissions_accessibility_desc">Ative Acessibilidade para liberar a configuração de bloqueios.</string>
+    <string name="pending_permissions_usage_access_desc">Ative Acesso de uso para liberar a configuração de bloqueios.</string>
 
     <!-- Navegação -->
     <string name="nav_protection">Proteção</string>
@@ -190,8 +190,8 @@
     <string name="recovery_protection_activating">Ativando…</string>
     <string name="recovery_protection_success">Proteção ativada: pornografia sem prazo e redes sociais por 180 dias.</string>
     <string name="recovery_protection_failed">Não foi possível ativar os bloqueios. Tente novamente.</string>
-    <string name="recovery_protection_permission_title">Acessibilidade necessária</string>
-    <string name="recovery_protection_permission_body">Ative a Acessibilidade do FocusGuard antes de firmar este compromisso. Ao voltar, digite novamente a frase de confirmação.</string>
+    <string name="recovery_protection_permission_title">Permissões de proteção necessárias</string>
+    <string name="recovery_protection_permission_body">Conclua todas as permissões do FocusGuard antes de firmar este compromisso. Ao voltar, digite novamente a frase de confirmação.</string>
     <string name="recovery_protection_open_permissions">Abrir permissões</string>
     <string name="recovery_book_back">Voltar para AntiPorn</string>
 
@@ -248,21 +248,21 @@
 
     <!-- Permissões -->
     <string name="permissions_welcome_title">Configurar proteção</string>
-    <string name="permissions_flow_desc">Primeiro, vamos ativar as duas permissões essenciais. Depois você escolhe as melhorias opcionais.</string>
-    <string name="permissions_pending_flow_desc">Aqui aparecem somente as permissões essenciais que ainda faltam neste aparelho.</string>
+    <string name="permissions_flow_desc">Conclua todas as permissões de proteção exibidas. Sem elas, nenhum bloqueio poderá ser configurado.</string>
+    <string name="permissions_pending_flow_desc">Aqui aparecem somente as permissões de proteção que ainda faltam neste aparelho.</string>
     <string name="permissions_reviewed_desc">Confira o resultado. Você poderá alterar qualquer opção depois.</string>
     <string name="permissions_step_progress">Etapa %1$d de %2$d</string>
     <string name="permissions_review_complete">Revisão concluída</string>
     <string name="permissions_skip">Agora não</string>
-    <string name="permissions_ready_title">Proteção essencial pronta</string>
-    <string name="permissions_ready_desc">%1$d de %2$d autorizações estão ativas. As restantes são melhorias opcionais.</string>
-    <string name="permissions_pending_resolved_desc">Todas as permissões essenciais pendentes foram ativadas. A proteção completa já está disponível.</string>
-    <string name="permissions_incomplete_title">Configuração essencial pendente</string>
-    <string name="permissions_incomplete_desc">Acessibilidade e Acesso de uso são necessários para bloquear em tempo real, medir limites e carregar os Insights.</string>
-    <string name="permissions_review_essentials">Revisar permissões essenciais</string>
+    <string name="permissions_ready_title">Proteção pronta</string>
+    <string name="permissions_ready_desc">As %1$d de %2$d autorizações necessárias estão ativas.</string>
+    <string name="permissions_pending_resolved_desc">Todas as permissões pendentes foram ativadas. A configuração de bloqueios já está disponível.</string>
+    <string name="permissions_incomplete_title">Permissões pendentes</string>
+    <string name="permissions_incomplete_desc">Todas as permissões de proteção exibidas são obrigatórias para configurar qualquer bloqueio.</string>
+    <string name="permissions_review_essentials">Revisar permissões pendentes</string>
     <string name="permissions_continue_limited">Continuar com recursos limitados</string>
     <string name="permissions_enter_app">Entrar no FocusGuard</string>
-    <string name="permissions_badge_required">Essencial</string>
+    <string name="permissions_badge_required">Obrigatória</string>
     <string name="permissions_badge_recommended">Recomendado</string>
     <string name="permissions_badge_advanced">Avançado</string>
     <string name="permission_accessibility_title">Acessibilidade</string>
@@ -275,12 +275,12 @@
     <string name="permission_usage_access_detail">Na lista do Android, localize FocusGuard e habilite o acesso.</string>
     <string name="permission_usage_access_action">Abrir acesso de uso</string>
     <string name="permission_device_admin_title">Admin do dispositivo</string>
-    <string name="permission_device_admin_desc">Adiciona fricção contra remoção impulsiva, mas o Android ainda permite revogar um administrador comum.</string>
+    <string name="permission_device_admin_desc">É obrigatório para configurar bloqueios e adiciona proteção contra remoção impulsiva, embora o Android ainda permita revogar um administrador comum.</string>
     <string name="permission_device_admin_detail">Na tela do Android, toque em \"Ativar\". Para proteção anti-remoção oficial, provisione também o modo Device Owner.</string>
     <string name="permission_device_admin_action">Ativar proteção avançada</string>
     <string name="permission_device_admin_manual_action">Abrir lista de administradores</string>
     <string name="permission_battery_title">Bateria irrestrita</string>
-    <string name="permission_battery_desc">Ajuda a manter bloqueios ativos em segundo plano.</string>
+    <string name="permission_battery_desc">Mantém os bloqueios ativos com mais confiabilidade em segundo plano.</string>
     <string name="permission_battery_detail">Confirme \"Permitir\" no aviso do Android para reduzir interrupções em sessões.</string>
     <string name="permission_battery_action">Liberar uso da bateria</string>
     <string name="permission_restricted_title">A acessibilidade não aparece?</string>
@@ -293,11 +293,13 @@
     <string name="permission_restricted_tip">Essa etapa costuma ser necessária apenas em instalações feitas fora da loja do aparelho.</string>
     <string name="permission_open_app_info">Abrir informações do app</string>
     <string name="permission_notifications_title">Notificações de foco</string>
-    <string name="permission_notifications_desc">Deseja permitir que o FocusGuard envie avisos sobre seus bloqueios ativos?</string>
+    <string name="permission_notifications_desc">Permite que o FocusGuard mantenha você informado sobre bloqueios ativos e alertas de proteção.</string>
     <string name="permission_notifications_detail">Mostra o andamento de sessões e avisos importantes de proteção.</string>
     <string name="permission_notifications_action">Permitir notificações</string>
+    <string name="permission_notifications_settings_action">Abrir configurações de notificações</string>
     <string name="permission_not_detected">Ainda não detectamos esta autorização. Ative-a no Android e volte ao FocusGuard.</string>
     <string name="permission_granted">Concedida</string>
+    <string name="blocking_permissions_required_desc">Conclua todas as permissões pendentes antes de configurar ou iniciar um bloqueio.</string>
 
     <!-- Pomodoro -->
     <string name="pomodoro_cancel_btn">Cancelar</string>

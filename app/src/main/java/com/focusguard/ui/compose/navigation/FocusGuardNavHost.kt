@@ -31,6 +31,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.security.AuthManager
+import com.focusguard.security.ProtectionPermission
+import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.CreateSessionActivity
 import com.focusguard.ui.OfflineBookActivity
 import com.focusguard.ui.PermissionsActivity
@@ -52,12 +54,11 @@ import com.focusguard.ui.compose.screens.SettingsScreen
 import com.focusguard.ui.compose.screens.UsageLimitsScreen
 import com.focusguard.ui.compose.screens.UsageStatsDashboardScreen
 import com.focusguard.ui.compose.theme.DarkBg
-import com.focusguard.utils.EssentialPermission
 import com.focusguard.utils.FocusGuardLogger
-import com.focusguard.utils.PermissionUtils
 import androidx.lifecycle.Lifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 private object FocusGuardRoute {
@@ -124,9 +125,12 @@ fun FocusGuardNavHost(
     var selectedBlockType by remember { mutableStateOf(BlockTypeUi.PASSWORD) }
     var selectedTab by remember { mutableIntStateOf(1) }
     var selectedSessionType by remember { mutableStateOf("PASSWORD") }
-    var missingEssentialPermissions by remember {
-        mutableStateOf(emptyList<EssentialPermission>())
+    // Começa fechado até a primeira leitura real terminar. Assim nem um toque
+    // muito rápido na abertura consegue entrar na configuração sem validação.
+    var missingProtectionPermissions by remember {
+        mutableStateOf(ProtectionPermission.entries.toList())
     }
+    val navigationScope = rememberCoroutineScope()
     val userProfileStore = remember(activity.applicationContext) {
         UserProfileStore(activity.applicationContext)
     }
@@ -187,23 +191,43 @@ fun FocusGuardNavHost(
         showCreatorInstagramCard = false
     }
 
-    LaunchedEffect(resumeKey) {
-        withContext(Dispatchers.IO) {
-            val isA11yEnabled = PermissionUtils.isAccessibilityServiceEnabled(activity)
-            val isUsageAccessEnabled = PermissionUtils.isUsageAccessEnabled(activity)
-            withContext(Dispatchers.Main) {
-                missingEssentialPermissions = PermissionUtils.missingEssentialPermissions(
-                    accessibilityEnabled = isA11yEnabled,
-                    usageAccessEnabled = isUsageAccessEnabled
+    suspend fun refreshProtectionPermissions(): List<ProtectionPermission> {
+        val missing = withContext(Dispatchers.IO) {
+            ProtectionPermissionGate.read(activity).missingPermissions
+        }
+        missingProtectionPermissions = missing
+        return missing
+    }
+
+    fun withProtectionPermissions(onReady: () -> Unit) {
+        navigationScope.launch {
+            if (refreshProtectionPermissions().isEmpty()) {
+                onReady()
+            } else {
+                activity.startActivity(
+                    PermissionsActivity.createPendingProtectionIntent(activity)
                 )
             }
         }
     }
 
+    LaunchedEffect(resumeKey) {
+        refreshProtectionPermissions()
+    }
+
     if (currentPomodoro?.isActive == true && currentPomodoro!!.endTime > System.currentTimeMillis()) {
         FocusGuardLogger.log("MainActivity", "Pomodoro Ativo detectado na UI. Exibindo tela de foco.")
         Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            PomodoroScreen(pomodoroManager = pomodoroManager, authManager = authManager, onBack = { /* Bloqueado */ })
+            PomodoroScreen(
+                pomodoroManager = pomodoroManager,
+                authManager = authManager,
+                onPermissionsRequired = {
+                    activity.startActivity(
+                        PermissionsActivity.createPendingProtectionIntent(activity)
+                    )
+                },
+                onBack = { /* Bloqueado */ }
+            )
         }
         return
     }
@@ -233,7 +257,7 @@ fun FocusGuardNavHost(
                     profile = userProfile,
                     selectedTab = selectedTab,
                     onTabChange = { selectedTab = it },
-                    missingEssentialPermissions = missingEssentialPermissions,
+                    missingProtectionPermissions = missingProtectionPermissions,
                     showCreatorInstagramCard = showCreatorInstagramCard,
                     showCreatorFeedbackButton =
                         CreatorInstagramPromptPolicy.shouldShowFeedbackButton(
@@ -242,7 +266,7 @@ fun FocusGuardNavHost(
                         ),
                     onPermissionsClick = {
                         activity.startActivity(
-                            PermissionsActivity.createPendingEssentialsIntent(activity)
+                            PermissionsActivity.createPendingProtectionIntent(activity)
                         )
                     },
                     onCreatorInstagramClick = {
@@ -250,8 +274,10 @@ fun FocusGuardNavHost(
                         openCreatorInstagram(activity)
                     },
                     onBlockTypeClick = { type ->
-                        selectedBlockType = type
-                        currentRoute = FocusGuardRoute.BlockTypeDetail
+                        withProtectionPermissions {
+                            selectedBlockType = type
+                            currentRoute = FocusGuardRoute.BlockTypeDetail
+                        }
                     },
                     onSettingsClick = { currentRoute = FocusGuardRoute.Settings },
                     usageStatsContent = {
@@ -261,6 +287,11 @@ fun FocusGuardNavHost(
                         PomodoroScreen(
                             pomodoroManager = pomodoroManager,
                             authManager = authManager,
+                            onPermissionsRequired = {
+                                activity.startActivity(
+                                    PermissionsActivity.createPendingProtectionIntent(activity)
+                                )
+                            },
                             onBack = { currentRoute = FocusGuardRoute.Home }
                         )
                     },
@@ -283,23 +314,25 @@ fun FocusGuardNavHost(
                 FocusGuardRoute.BlockTypeDetail -> BlockTypeDetailScreen(
                     type = selectedBlockType,
                     onAddClick = {
-                        when (selectedBlockType) {
-                            // Limites de uso já têm tela própria de configuração;
-                            // os outros dois entram no assistente com o tipo fixo,
-                            // em vez de perguntar de novo o que o usuário já disse
-                            // ao escolher o card.
-                            BlockTypeUi.DAILY_LIMIT ->
-                                currentRoute = FocusGuardRoute.UsageLimits
+                        withProtectionPermissions {
+                            when (selectedBlockType) {
+                                // Limites de uso já têm tela própria de configuração;
+                                // os outros dois entram no assistente com o tipo fixo,
+                                // em vez de perguntar de novo o que o usuário já disse
+                                // ao escolher o card.
+                                BlockTypeUi.DAILY_LIMIT ->
+                                    currentRoute = FocusGuardRoute.UsageLimits
 
-                            BlockTypeUi.PASSWORD -> activity.startActivity(
-                                Intent(activity, CreateSessionActivity::class.java)
-                                    .putExtra("SESSION_TYPE", "PASSWORD")
-                            )
+                                BlockTypeUi.PASSWORD -> activity.startActivity(
+                                    Intent(activity, CreateSessionActivity::class.java)
+                                        .putExtra("SESSION_TYPE", "PASSWORD")
+                                )
 
-                            BlockTypeUi.DOPAMINE_FAST -> activity.startActivity(
-                                Intent(activity, CreateSessionActivity::class.java)
-                                    .putExtra("SESSION_TYPE", "TIME")
-                            )
+                                BlockTypeUi.DOPAMINE_FAST -> activity.startActivity(
+                                    Intent(activity, CreateSessionActivity::class.java)
+                                        .putExtra("SESSION_TYPE", "TIME")
+                                )
+                            }
                         }
                     },
                     onIntruderLogClick = {
@@ -329,6 +362,11 @@ fun FocusGuardNavHost(
                 FocusGuardRoute.Pomodoro -> PomodoroScreen(
                     pomodoroManager = pomodoroManager,
                     authManager = authManager,
+                    onPermissionsRequired = {
+                        activity.startActivity(
+                            PermissionsActivity.createPendingProtectionIntent(activity)
+                        )
+                    },
                     onBack = { currentRoute = FocusGuardRoute.Home }
                 )
                 FocusGuardRoute.Limits -> LimitsSecurityScreen(authManager = authManager, onBack = { currentRoute = FocusGuardRoute.Settings })
@@ -338,6 +376,11 @@ fun FocusGuardNavHost(
                 // que se chega aqui, e é lá que o limite recém-criado aparece.
                 FocusGuardRoute.UsageLimits -> UsageLimitsScreen(
                     authManager = authManager,
+                    onPermissionsRequired = {
+                        activity.startActivity(
+                            PermissionsActivity.createPendingProtectionIntent(activity)
+                        )
+                    },
                     onBack = { currentRoute = FocusGuardRoute.BlockTypeDetail }
                 )
                 FocusGuardRoute.Dashboard -> UsageStatsDashboardScreen(onBack = { currentRoute = FocusGuardRoute.Home })

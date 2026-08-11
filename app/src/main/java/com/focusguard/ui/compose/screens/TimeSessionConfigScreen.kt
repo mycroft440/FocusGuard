@@ -16,6 +16,7 @@ import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.WebsiteUsageLimit
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
+import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.Dispatchers
@@ -55,6 +56,16 @@ fun TimeSessionConfigScreen(
             }
 
             scope.launch(Dispatchers.IO) {
+                if (!ProtectionPermissionGate.read(context).isReady) {
+                    withContext(Dispatchers.Main) {
+                        Toast.makeText(
+                            context,
+                            context.getString(R.string.blocking_permissions_required_desc),
+                            Toast.LENGTH_LONG
+                        ).show()
+                    }
+                    return@launch
+                }
                 val dailyLimitMinutes = (config.dailyLimitHours.coerceAtLeast(1) * 60)
                 val now = System.currentTimeMillis()
                 val lockMode = when (config.limitType) {

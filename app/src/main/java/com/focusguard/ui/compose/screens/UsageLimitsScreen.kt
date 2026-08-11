@@ -18,11 +18,13 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -33,6 +35,7 @@ import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.MasterCredentialPolicy
+import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.MasterPasswordActivity
 import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.ui.compose.theme.*
@@ -41,13 +44,21 @@ import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun UsageLimitsScreen(authManager: AuthManager, onBack: () -> Unit) {
+fun UsageLimitsScreen(
+    authManager: AuthManager,
+    onPermissionsRequired: () -> Unit,
+    onBack: () -> Unit
+) {
     var selectedTab by remember { mutableIntStateOf(0) }
     val context = LocalContext.current
-    var permissionsMissing by remember { mutableStateOf(false) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var permissionResumeKey by remember { mutableIntStateOf(0) }
+    var protectionPermissionsReady by remember { mutableStateOf<Boolean?>(null) }
     var credentialRevision by remember { mutableIntStateOf(0) }
     val credentialManager = remember(context) { DeactivationCredentialManager(context) }
     val hasMasterCredential = remember(credentialRevision) {
@@ -62,16 +73,30 @@ fun UsageLimitsScreen(authManager: AuthManager, onBack: () -> Unit) {
         masterPasswordLauncher.launch(MasterPasswordActivity.createIntent(context))
     }
 
-    LaunchedEffect(Unit) {
-        withContext(Dispatchers.IO) {
-            val isA11yEnabled = com.focusguard.utils.PermissionUtils.isAccessibilityServiceEnabled(context)
-            val isUsageAccessEnabled = com.focusguard.utils.PermissionUtils.isUsageAccessEnabled(context)
-            permissionsMissing = !com.focusguard.utils.PermissionUtils.hasEssentialPermissions(
-                accessibilityEnabled = isA11yEnabled,
-                usageAccessEnabled = isUsageAccessEnabled
-            )
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) permissionResumeKey++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(permissionResumeKey) {
+        protectionPermissionsReady = withContext(Dispatchers.IO) {
+            ProtectionPermissionGate.read(context).isReady
         }
     }
+
+    if (protectionPermissionsReady != true) {
+        UsageLimitsPermissionGate(
+            checking = protectionPermissionsReady == null,
+            onPermissionsRequired = onPermissionsRequired,
+            onBack = onBack
+        )
+        return
+    }
+
+    val permissionsMissing = false
 
     Scaffold(
         topBar = {
@@ -112,14 +137,95 @@ fun UsageLimitsScreen(authManager: AuthManager, onBack: () -> Unit) {
                     permissionsMissing = permissionsMissing,
                     authManager = authManager,
                     hasMasterCredential = hasMasterCredential,
-                    onConfigureMasterPassword = openMasterPassword
+                    onConfigureMasterPassword = openMasterPassword,
+                    onPermissionsRequired = onPermissionsRequired
                 )
                 1 -> WebsiteLimitsTab(
                     permissionsMissing = permissionsMissing,
                     authManager = authManager,
                     hasMasterCredential = hasMasterCredential,
-                    onConfigureMasterPassword = openMasterPassword
+                    onConfigureMasterPassword = openMasterPassword,
+                    onPermissionsRequired = onPermissionsRequired
                 )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun UsageLimitsPermissionGate(
+    checking: Boolean,
+    onPermissionsRequired: () -> Unit,
+    onBack: () -> Unit
+) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        stringResource(R.string.limits_title),
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontSize = 18.sp
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            stringResource(R.string.action_back),
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
+            )
+        },
+        containerColor = MaterialTheme.colorScheme.background
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(24.dp),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            if (checking) {
+                CircularProgressIndicator(color = AccentCyan)
+            } else {
+                Icon(
+                    Icons.Default.Warning,
+                    contentDescription = null,
+                    tint = DangerRed,
+                    modifier = Modifier.size(52.dp)
+                )
+                Spacer(Modifier.height(16.dp))
+                Text(
+                    stringResource(R.string.pending_permissions_title),
+                    color = TextPrimary,
+                    fontSize = 21.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    stringResource(R.string.blocking_permissions_required_desc),
+                    color = TextSecondary,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+                Spacer(Modifier.height(20.dp))
+                Button(
+                    onClick = onPermissionsRequired,
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                ) {
+                    Text(
+                        stringResource(R.string.dopamine_open_permissions),
+                        color = DarkBg,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
         }
     }
@@ -130,7 +236,8 @@ fun AppLimitsTab(
     permissionsMissing: Boolean,
     authManager: AuthManager,
     hasMasterCredential: Boolean,
-    onConfigureMasterPassword: () -> Unit
+    onConfigureMasterPassword: () -> Unit,
+    onPermissionsRequired: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -291,6 +398,10 @@ fun AppLimitsTab(
             onDismiss = { showDialog = false },
             onSave = { minutes, enabled, lockMode, lockPassword, lockUntil ->
                 scope.launch(Dispatchers.IO) {
+                    if (!ProtectionPermissionGate.read(context).isReady) {
+                        withContext(Dispatchers.Main) { onPermissionsRequired() }
+                        return@launch
+                    }
                     val limitDao = db.appUsageLimitDao()
                     if (minutes != null && minutes > 0) {
                         limitDao.insert(
@@ -395,7 +506,8 @@ fun WebsiteLimitsTab(
     permissionsMissing: Boolean,
     authManager: AuthManager,
     hasMasterCredential: Boolean,
-    onConfigureMasterPassword: () -> Unit
+    onConfigureMasterPassword: () -> Unit,
+    onPermissionsRequired: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -547,6 +659,10 @@ fun WebsiteLimitsTab(
             onDismiss = { showAddDialog = false },
             onSave = { domain, minutes, lockMode, _, lockUntil ->
                 scope.launch(Dispatchers.IO) {
+                    if (!ProtectionPermissionGate.read(context).isReady) {
+                        withContext(Dispatchers.Main) { onPermissionsRequired() }
+                        return@launch
+                    }
                     val websiteDao = db.websiteUsageLimitDao()
                     val clean = WebsiteBlocker.normalizeRule(domain)
                     if (clean.isEmpty()) return@launch
@@ -590,6 +706,10 @@ fun WebsiteLimitsTab(
         EditWebsiteLimitDialog(site = selectedSite!!, permissionsMissing = permissionsMissing, onDismiss = { showEditDialog = false }, onSave = { minutes, enabled, lockMode, _, lockUntil ->
             val siteToEdit = selectedSite ?: return@EditWebsiteLimitDialog
             scope.launch(Dispatchers.IO) {
+                if (!ProtectionPermissionGate.read(context).isReady) {
+                    withContext(Dispatchers.Main) { onPermissionsRequired() }
+                    return@launch
+                }
                 val websiteDao = db.websiteUsageLimitDao()
                 val normalizedDomain = WebsiteBlocker.normalizeRule(siteToEdit.domain)
                 if (normalizedDomain.isEmpty()) return@launch

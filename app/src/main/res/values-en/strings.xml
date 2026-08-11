@@ -129,9 +129,9 @@
     <string name="dopamine_activate">Activate dopamine fast</string>
     <string name="block_customization">Customize block</string>
     <string name="pending_permissions_title">Pending permissions</string>
-    <string name="pending_permissions_desc">Enable Accessibility and Usage access to unlock full protection.</string>
-    <string name="pending_permissions_accessibility_desc">Enable Accessibility to unlock full protection.</string>
-    <string name="pending_permissions_usage_access_desc">Enable Usage access to unlock full protection.</string>
+    <string name="pending_permissions_desc">Complete every protection permission to enable block configuration.</string>
+    <string name="pending_permissions_accessibility_desc">Enable Accessibility to allow block configuration.</string>
+    <string name="pending_permissions_usage_access_desc">Enable Usage access to allow block configuration.</string>
 
     <!-- Navigation -->
     <string name="nav_protection">Protection</string>
@@ -190,8 +190,8 @@
     <string name="recovery_protection_activating">Activating…</string>
     <string name="recovery_protection_success">Protection activated: pornography with no end date and social networks for 180 days.</string>
     <string name="recovery_protection_failed">The blocks could not be activated. Try again.</string>
-    <string name="recovery_protection_permission_title">Accessibility required</string>
-    <string name="recovery_protection_permission_body">Enable FocusGuard Accessibility before making this commitment. When you return, type the confirmation phrase again.</string>
+    <string name="recovery_protection_permission_title">Protection permissions required</string>
+    <string name="recovery_protection_permission_body">Complete every FocusGuard permission before making this commitment. When you return, type the confirmation phrase again.</string>
     <string name="recovery_protection_open_permissions">Open permissions</string>
     <string name="recovery_book_back">Back to AntiPorn</string>
 
@@ -248,21 +248,21 @@
 
     <!-- Permissions -->
     <string name="permissions_welcome_title">Set up protection</string>
-    <string name="permissions_flow_desc">First, let\'s enable the two essential permissions. Then you choose the optional improvements.</string>
-    <string name="permissions_pending_flow_desc">Only the essential permissions still missing on this device are shown here.</string>
+    <string name="permissions_flow_desc">Complete every displayed protection permission. No block can be configured until all are active.</string>
+    <string name="permissions_pending_flow_desc">Only the protection permissions still missing on this device are shown here.</string>
     <string name="permissions_reviewed_desc">Review the result. You can change any option later.</string>
     <string name="permissions_step_progress">Step %1$d of %2$d</string>
     <string name="permissions_review_complete">Review complete</string>
     <string name="permissions_skip">Not now</string>
-    <string name="permissions_ready_title">Essential protection ready</string>
-    <string name="permissions_ready_desc">%1$d of %2$d authorizations are active. The rest are optional improvements.</string>
-    <string name="permissions_pending_resolved_desc">All pending essential permissions are enabled. Full protection is now available.</string>
-    <string name="permissions_incomplete_title">Essential setup pending</string>
-    <string name="permissions_incomplete_desc">Accessibility and Usage access are required to block in real time, measure limits and load Insights.</string>
-    <string name="permissions_review_essentials">Review essential permissions</string>
+    <string name="permissions_ready_title">Protection ready</string>
+    <string name="permissions_ready_desc">All %1$d of %2$d required authorizations are active.</string>
+    <string name="permissions_pending_resolved_desc">Every pending permission is enabled. Block configuration is now available.</string>
+    <string name="permissions_incomplete_title">Permissions pending</string>
+    <string name="permissions_incomplete_desc">Every displayed protection permission is required before any block can be configured.</string>
+    <string name="permissions_review_essentials">Review pending permissions</string>
     <string name="permissions_continue_limited">Continue with limited features</string>
     <string name="permissions_enter_app">Enter FocusGuard</string>
-    <string name="permissions_badge_required">Essential</string>
+    <string name="permissions_badge_required">Required</string>
     <string name="permissions_badge_recommended">Recommended</string>
     <string name="permissions_badge_advanced">Advanced</string>
     <string name="permission_accessibility_title">Accessibility</string>
@@ -275,12 +275,12 @@
     <string name="permission_usage_access_detail">In the Android list, find FocusGuard and enable access.</string>
     <string name="permission_usage_access_action">Open usage access</string>
     <string name="permission_device_admin_title">Device admin</string>
-    <string name="permission_device_admin_desc">Adds friction against impulsive removal, but Android still allows revoking a standard administrator.</string>
+    <string name="permission_device_admin_desc">Required for block configuration and adds protection against impulsive removal, although Android can still revoke a standard administrator.</string>
     <string name="permission_device_admin_detail">On the Android screen, tap \"Activate\". For official anti-removal protection, also provision Device Owner mode.</string>
     <string name="permission_device_admin_action">Enable advanced protection</string>
     <string name="permission_device_admin_manual_action">Open administrator list</string>
     <string name="permission_battery_title">Unrestricted battery</string>
-    <string name="permission_battery_desc">Helps keep blocks active in the background.</string>
+    <string name="permission_battery_desc">Keeps blocks running more reliably in the background.</string>
     <string name="permission_battery_detail">Confirm \"Allow\" in the Android prompt to reduce interruptions during sessions.</string>
     <string name="permission_battery_action">Allow battery usage</string>
     <string name="permission_restricted_title">Accessibility not showing up?</string>
@@ -293,11 +293,13 @@
     <string name="permission_restricted_tip">This step is usually only needed for installations made outside the device store.</string>
     <string name="permission_open_app_info">Open app info</string>
     <string name="permission_notifications_title">Focus notifications</string>
-    <string name="permission_notifications_desc">Do you want to let FocusGuard send alerts about your active blocks?</string>
+    <string name="permission_notifications_desc">Lets FocusGuard keep you informed about active blocks and protection alerts.</string>
     <string name="permission_notifications_detail">Shows session progress and important protection alerts.</string>
     <string name="permission_notifications_action">Allow notifications</string>
+    <string name="permission_notifications_settings_action">Open notification settings</string>
     <string name="permission_not_detected">We have not detected this authorization yet. Enable it in Android and come back to FocusGuard.</string>
     <string name="permission_granted">Granted</string>
+    <string name="blocking_permissions_required_desc">Complete every pending permission before configuring or starting a block.</string>
 
     <!-- Pomodoro -->
     <string name="pomodoro_cancel_btn">Cancel</string>

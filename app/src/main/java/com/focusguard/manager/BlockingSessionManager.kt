@@ -27,10 +27,10 @@ import com.focusguard.security.BlockTargetPolicy
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.DopamineStartPolicy
 import com.focusguard.security.MasterCredentialPolicy
+import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.utils.FocusGuardLogger
-import com.focusguard.utils.PermissionUtils
 import com.focusguard.utils.UsageLimitForegroundPolicy
 import com.focusguard.utils.WebsiteBlocker
 import com.focusguard.utils.WebsiteUsageLimitPolicy
@@ -64,7 +64,7 @@ class BlockingSessionManager @Inject constructor(
         val reason: Reason
     ) : IllegalStateException(reason.name) {
         enum class Reason {
-            ACCESSIBILITY_REQUIRED,
+            PROTECTION_PERMISSIONS_REQUIRED,
 
             /**
              * No master credential configured. Password blocks and dopamine fasts
@@ -484,6 +484,7 @@ class BlockingSessionManager @Inject constructor(
         dailyLimitMinutes: Int,
         addPasswordProtection: Boolean
     ) = withContext(Dispatchers.IO) {
+        ensureBlockingPermissionsReady()
         require(dailyLimitMinutes in 1..24 * 60)
         // Checado antes da transação para não persistir um modo PASSWORD sem a
         // credencial canônica capaz de liberá-lo.
@@ -572,6 +573,7 @@ class BlockingSessionManager @Inject constructor(
         sites: List<String>
     ) = withContext(Dispatchers.IO) {
         try {
+            ensureBlockingPermissionsReady()
             ensureMasterCredentialFor("PASSWORD")
             // Bloqueio por senha vale só para aplicativos: sua saída é a tela de
             // senha que o app coloca na frente do alvo, e isso só é confiável
@@ -661,7 +663,7 @@ class BlockingSessionManager @Inject constructor(
             // BlockCountdownPolicy), entao a UI diz "para sempre" em vez de contar
             // regressivamente a partir de um numero arbitrario.
             require(openEnded || duration > 0L) { "A duração da sessão deve ser positiva" }
-            ensureSimpleBlockingReady()
+            ensureBlockingPermissionsReady()
             database.withTransaction {
                 val startMillis = System.currentTimeMillis()
                 val session = BlockSession(
@@ -741,7 +743,7 @@ class BlockingSessionManager @Inject constructor(
                 "Nenhuma rede social pôde ser preparada"
             }
 
-            ensureSimpleBlockingReady()
+            ensureBlockingPermissionsReady()
             database.withTransaction {
                 val startMillis = System.currentTimeMillis()
 
@@ -806,23 +808,24 @@ class BlockingSessionManager @Inject constructor(
         }
     }
 
-    private fun ensureSimpleBlockingReady() {
+    private fun ensureBlockingPermissionsReady() {
+        val permissionState = ProtectionPermissionGate.read(context)
+        if (!permissionState.isReady) {
+            throw BlockingProtectionUnavailableException(
+                BlockingProtectionUnavailableException.Reason.PROTECTION_PERMISSIONS_REQUIRED
+            )
+        }
         val protectionLevel = DopamineStartPolicy.protectionLevel(
             DopamineStartPolicy.Capabilities(
-                accessibilityEnabled = PermissionUtils.isAccessibilityServiceEnabled(context),
-                usageAccessEnabled = PermissionUtils.isUsageAccessEnabled(context),
-                batteryOptimizationExempt = PermissionUtils.isBatteryOptimizationIgnored(context),
+                accessibilityEnabled = permissionState.accessibility,
+                usageAccessEnabled = permissionState.usageAccess,
+                batteryOptimizationExempt = permissionState.batteryOptimization,
                 deviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive()
             )
         )
-        if (protectionLevel == DopamineStartPolicy.ProtectionLevel.UNAVAILABLE) {
-            throw BlockingProtectionUnavailableException(
-                BlockingProtectionUnavailableException.Reason.ACCESSIBILITY_REQUIRED
-            )
-        }
         FocusGuardLogger.log(
             "BlockingSessionManager",
-            "Jejum iniciado com proteção ${protectionLevel.name.lowercase(Locale.US)}"
+            "Bloqueio liberado com proteção ${protectionLevel.name.lowercase(Locale.US)}"
         )
     }
 
@@ -830,6 +833,7 @@ class BlockingSessionManager @Inject constructor(
         scope.launch {
             runCatching {
                 require(durationMs > 0L) { "A duração do Pomodoro deve ser positiva" }
+                if (isBlockingEnabled) ensureBlockingPermissionsReady()
                 database.withTransaction {
                     database.blockSessionDao().deactivateActiveSessionsByType("POMODORO")
                     if (isBlockingEnabled) {

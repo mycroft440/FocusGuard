@@ -2,7 +2,6 @@ package com.focusguard.ui.compose.screens
 
 import android.content.Context
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -67,8 +66,8 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.compose.theme.AccentCyan
-import com.focusguard.ui.compose.theme.AccentPurple
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
@@ -81,11 +80,10 @@ import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.ui.compose.theme.WarningAmber
 import com.focusguard.utils.FocusGuardLogger
-import com.focusguard.utils.PermissionUtils
 
 enum class PermissionFlowMode {
     FullSetup,
-    PendingEssentials
+    PendingProtection
 }
 
 internal enum class PermissionStepType {
@@ -121,7 +119,7 @@ fun PermissionsScreen(
     val lifecycleOwner = LocalLifecycleOwner.current
     val deviceOwnerManager = remember { DeviceOwnerManager.getInstance(context) }
     val initialPermissionState = remember {
-        readPermissionState(context, deviceOwnerManager)
+        readPermissionState(context)
     }
     val steps = remember(flowMode, initialPermissionState) {
         permissionStepsForFlow(flowMode, initialPermissionState)
@@ -143,7 +141,7 @@ fun PermissionsScreen(
     var resumeCount by remember { mutableIntStateOf(0) }
 
     fun refreshPermissions(): PermissionState {
-        val updated = readPermissionState(context, deviceOwnerManager)
+        val updated = readPermissionState(context)
         permissionState = updated
         return updated
     }
@@ -215,9 +213,7 @@ fun PermissionsScreen(
     }
 
     val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
-        val updated = refreshPermissions()
-        advanceToNextStep()
-        skipAlreadyGrantedSteps(updated)
+        applyPermissionResult(PermissionStepType.Notifications, refreshPermissions())
     }
 
     val deviceAdminLauncher = rememberLauncherForActivityResult(
@@ -344,7 +340,7 @@ fun PermissionsScreen(
             Spacer(modifier = Modifier.height(16.dp))
             Text(
                 text = stringResource(
-                    if (flowMode == PermissionFlowMode.PendingEssentials) {
+                    if (flowMode == PermissionFlowMode.PendingProtection) {
                         R.string.pending_permissions_title
                     } else {
                         R.string.permissions_welcome_title
@@ -359,7 +355,7 @@ fun PermissionsScreen(
             Text(
                 text = when {
                     currentStep == null -> stringResource(R.string.permissions_reviewed_desc)
-                    flowMode == PermissionFlowMode.PendingEssentials -> {
+                    flowMode == PermissionFlowMode.PendingProtection -> {
                         stringResource(R.string.permissions_pending_flow_desc)
                     }
                     else -> stringResource(R.string.permissions_flow_desc)
@@ -380,10 +376,10 @@ fun PermissionsScreen(
                     PermissionsSummaryCard(
                         permissionState = permissionState,
                         steps = steps,
-                        pendingEssentialsOnly = flowMode == PermissionFlowMode.PendingEssentials,
+                        pendingProtectionOnly = flowMode == PermissionFlowMode.PendingProtection,
                         onReviewEssentials = {
                             unsuccessfulStepName = null
-                            currentStepIndex = firstMissingEssentialStepIndex(permissionState, steps)
+                            currentStepIndex = firstMissingProtectionStepIndex(permissionState, steps)
                         },
                         onFinish = onFinish
                     )
@@ -410,6 +406,10 @@ fun PermissionsScreen(
                                 unsuccessfulStepName == step.name -> {
                                 stringResource(R.string.permission_device_admin_manual_action)
                             }
+                            step == PermissionStepType.Notifications &&
+                                unsuccessfulStepName == step.name -> {
+                                stringResource(R.string.permission_notifications_settings_action)
+                            }
                             else -> null
                         },
                         onManualHelp = {
@@ -421,6 +421,10 @@ fun PermissionsScreen(
                                         pendingExternalStepName = null
                                         unsuccessfulStepName = step.name
                                     }
+                                }
+                                PermissionStepType.Notifications -> {
+                                    markPending(step)
+                                    openNotificationSettings(context)
                                 }
                                 else -> Unit
                             }
@@ -454,16 +458,16 @@ private fun permissionStepUi(step: PermissionStepType): PermissionStepUi {
             title = stringResource(R.string.permission_notifications_title),
             description = stringResource(R.string.permission_notifications_desc),
             detail = stringResource(R.string.permission_notifications_detail),
-            badge = stringResource(R.string.permissions_badge_recommended),
-            badgeColor = WarningAmber,
+            badge = stringResource(R.string.permissions_badge_required),
+            badgeColor = DangerRed,
             actionLabel = stringResource(R.string.permission_notifications_action)
         )
         PermissionStepType.BatteryOptimization -> PermissionStepUi(
             title = stringResource(R.string.permission_battery_title),
             description = stringResource(R.string.permission_battery_desc),
             detail = stringResource(R.string.permission_battery_detail),
-            badge = stringResource(R.string.permissions_badge_recommended),
-            badgeColor = WarningAmber,
+            badge = stringResource(R.string.permissions_badge_required),
+            badgeColor = DangerRed,
             actionLabel = stringResource(R.string.permission_battery_action)
         )
         PermissionStepType.Accessibility -> PermissionStepUi(
@@ -486,8 +490,8 @@ private fun permissionStepUi(step: PermissionStepType): PermissionStepUi {
             title = stringResource(R.string.permission_device_admin_title),
             description = stringResource(R.string.permission_device_admin_desc),
             detail = stringResource(R.string.permission_device_admin_detail),
-            badge = stringResource(R.string.permissions_badge_advanced),
-            badgeColor = AccentPurple,
+            badge = stringResource(R.string.permissions_badge_required),
+            badgeColor = DangerRed,
             actionLabel = stringResource(R.string.permission_device_admin_action)
         )
     }
@@ -625,13 +629,13 @@ private fun SequentialPermissionCard(
 private fun PermissionsSummaryCard(
     permissionState: PermissionState,
     steps: List<PermissionStepType>,
-    pendingEssentialsOnly: Boolean,
+    pendingProtectionOnly: Boolean,
     onReviewEssentials: () -> Unit,
     onFinish: () -> Unit
 ) {
     val grantedCount = countGranted(permissionState, steps)
-    val essentialPermissionsGranted = permissionState.hasEssentialPermissions()
-    val statusColor = if (essentialPermissionsGranted) SuccessGreen else WarningAmber
+    val protectionReady = permissionState.hasAllProtectionPermissions()
+    val statusColor = if (protectionReady) SuccessGreen else WarningAmber
     Card(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -641,7 +645,7 @@ private fun PermissionsSummaryCard(
         Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
             Surface(color = statusColor.copy(alpha = 0.12f), shape = RoundedCornerShape(22.dp)) {
                 Icon(
-                    imageVector = if (essentialPermissionsGranted) Icons.Default.Check else Icons.Default.Warning,
+                    imageVector = if (protectionReady) Icons.Default.Check else Icons.Default.Warning,
                     contentDescription = null,
                     tint = statusColor,
                     modifier = Modifier.padding(18.dp).size(44.dp)
@@ -650,7 +654,7 @@ private fun PermissionsSummaryCard(
             Spacer(modifier = Modifier.height(18.dp))
             Text(
                 text = stringResource(
-                    if (essentialPermissionsGranted) {
+                    if (protectionReady) {
                         R.string.permissions_ready_title
                     } else {
                         R.string.permissions_incomplete_title
@@ -664,10 +668,10 @@ private fun PermissionsSummaryCard(
             Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = when {
-                    essentialPermissionsGranted && pendingEssentialsOnly -> {
+                    protectionReady && pendingProtectionOnly -> {
                         stringResource(R.string.permissions_pending_resolved_desc)
                     }
-                    essentialPermissionsGranted -> {
+                    protectionReady -> {
                         stringResource(R.string.permissions_ready_desc, grantedCount, steps.size)
                     }
                     else -> stringResource(R.string.permissions_incomplete_desc)
@@ -678,7 +682,7 @@ private fun PermissionsSummaryCard(
                 lineHeight = 20.sp
             )
             Spacer(modifier = Modifier.height(24.dp))
-            if (essentialPermissionsGranted) {
+            if (protectionReady) {
                 Button(
                     onClick = onFinish,
                     modifier = Modifier.fillMaxWidth().height(52.dp),
@@ -784,13 +788,14 @@ private fun PermissionStep(number: Int, text: String) {
     }
 }
 
-private fun readPermissionState(context: Context, deviceOwnerManager: DeviceOwnerManager): PermissionState {
+private fun readPermissionState(context: Context): PermissionState {
+    val state = ProtectionPermissionGate.read(context)
     return PermissionState(
-        notifications = isNotificationPermissionGranted(context),
-        batteryOptimization = PermissionUtils.isBatteryOptimizationIgnored(context),
-        accessibility = PermissionUtils.isAccessibilityServiceEnabled(context),
-        usageAccess = PermissionUtils.isUsageAccessEnabled(context),
-        deviceAdmin = deviceOwnerManager.isDeviceAdminActive() || deviceOwnerManager.isDeviceOwnerActive()
+        notifications = state.notifications,
+        batteryOptimization = state.batteryOptimization,
+        accessibility = state.accessibility,
+        usageAccess = state.usageAccess,
+        deviceAdmin = state.deviceAdmin
     )
 }
 
@@ -825,17 +830,8 @@ private fun countGranted(state: PermissionState, steps: List<PermissionStepType>
     return steps.count { step -> isStepGranted(step, state) }
 }
 
-private fun isNotificationPermissionGranted(context: Context): Boolean {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-        context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
-    } else {
-        true
-    }
-}
-
-private fun PermissionState.hasEssentialPermissions(): Boolean {
-    return PermissionUtils.hasEssentialPermissions(accessibility, usageAccess)
-}
+private fun PermissionState.hasAllProtectionPermissions(): Boolean =
+    notifications && batteryOptimization && accessibility && usageAccess && deviceAdmin
 
 internal fun permissionStepsForFlow(
     flowMode: PermissionFlowMode,
@@ -843,23 +839,17 @@ internal fun permissionStepsForFlow(
 ): List<PermissionStepType> {
     return when (flowMode) {
         PermissionFlowMode.FullSetup -> orderedSteps
-        PermissionFlowMode.PendingEssentials -> listOf(
-            PermissionStepType.Accessibility,
-            PermissionStepType.UsageAccess
-        ).filterNot { step -> isStepGranted(step, state) }
+        PermissionFlowMode.PendingProtection -> orderedSteps.filterNot { step ->
+            isStepGranted(step, state)
+        }
     }
 }
 
-private fun firstMissingEssentialStepIndex(
+private fun firstMissingProtectionStepIndex(
     state: PermissionState,
     steps: List<PermissionStepType>
 ): Int {
-    val missingStep = when {
-        !state.accessibility -> PermissionStepType.Accessibility
-        !state.usageAccess -> PermissionStepType.UsageAccess
-        else -> return steps.size
-    }
-    return steps.indexOf(missingStep).coerceAtLeast(0)
+    return firstActionablePermissionStepIndex(steps = steps, state = state)
 }
 
 private fun openAccessibilitySettings(context: Context) {
@@ -893,6 +883,17 @@ private fun openBatterySettings(context: Context) {
         context.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
     }.recoverCatching {
         context.startActivity(Intent(Settings.ACTION_SETTINGS))
+    }
+}
+
+private fun openNotificationSettings(context: Context) {
+    val notificationSettings = Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+        putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+    }
+    runCatching {
+        context.startActivity(notificationSettings)
+    }.onFailure {
+        openAppInfo(context)
     }
 }
 

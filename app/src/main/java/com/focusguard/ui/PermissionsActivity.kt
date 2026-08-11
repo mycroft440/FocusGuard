@@ -22,8 +22,11 @@ class PermissionsActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val flowMode = if (intent.getBooleanExtra(EXTRA_PENDING_ESSENTIALS_ONLY, false)) {
-            PermissionFlowMode.PendingEssentials
+        val pendingProtectionOnly =
+            intent.getBooleanExtra(EXTRA_PENDING_PROTECTION_ONLY, false) ||
+                intent.getBooleanExtra(LEGACY_EXTRA_PENDING_ESSENTIALS_ONLY, false)
+        val flowMode = if (pendingProtectionOnly) {
+            PermissionFlowMode.PendingProtection
         } else {
             PermissionFlowMode.FullSetup
         }
@@ -67,12 +70,14 @@ class PermissionsActivity : ComponentActivity() {
     }
 
     companion object {
-        private const val EXTRA_PENDING_ESSENTIALS_ONLY =
+        private const val EXTRA_PENDING_PROTECTION_ONLY =
+            "com.focusguard.extra.PENDING_PROTECTION_ONLY"
+        private const val LEGACY_EXTRA_PENDING_ESSENTIALS_ONLY =
             "com.focusguard.extra.PENDING_ESSENTIALS_ONLY"
 
-        fun createPendingEssentialsIntent(context: Context): Intent {
+        fun createPendingProtectionIntent(context: Context): Intent {
             return Intent(context, PermissionsActivity::class.java).apply {
-                putExtra(EXTRA_PENDING_ESSENTIALS_ONLY, true)
+                putExtra(EXTRA_PENDING_PROTECTION_ONLY, true)
             }
         }
     }

@@ -66,6 +66,7 @@ import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.security.AuthManager
+import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DarkBg
 import com.focusguard.ui.compose.theme.DarkCard
@@ -84,6 +85,7 @@ import kotlin.math.sin
 fun PomodoroScreen(
     pomodoroManager: PomodoroManager,
     authManager: AuthManager,
+    onPermissionsRequired: () -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -186,7 +188,13 @@ fun PomodoroScreen(
                     BlockingToggleCard(
                         isBlockingEnabled = isBlockingEnabled,
                         onToggle = { enabled ->
-                            if (enabled) showStrictBlockWarning = true else isBlockingEnabled = false
+                            if (!enabled) {
+                                isBlockingEnabled = false
+                            } else if (ProtectionPermissionGate.read(context).isReady) {
+                                showStrictBlockWarning = true
+                            } else {
+                                onPermissionsRequired()
+                            }
                         }
                     )
 
@@ -194,8 +202,18 @@ fun PomodoroScreen(
 
                     Button(
                         onClick = {
-                            scope.launch {
-                                pomodoroManager.startSession(selectedMinutes, isBlockingEnabled = isBlockingEnabled)
+                            if (
+                                isBlockingEnabled &&
+                                !ProtectionPermissionGate.read(context).isReady
+                            ) {
+                                onPermissionsRequired()
+                            } else {
+                                scope.launch {
+                                    pomodoroManager.startSession(
+                                        selectedMinutes,
+                                        isBlockingEnabled = isBlockingEnabled
+                                    )
+                                }
                             }
                         },
                         modifier = Modifier.width(220.dp).height(44.dp),

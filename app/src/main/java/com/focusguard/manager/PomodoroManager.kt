@@ -7,6 +7,7 @@ import com.focusguard.database.AppDatabase
 import com.focusguard.database.PomodoroSession
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.service.PomodoroForegroundService
+import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -185,6 +186,9 @@ class PomodoroManager @Inject constructor(
         isBlockingEnabled: Boolean = true
     ) {
         require(durationMinutes in 1..24 * 60) { "Duração do Pomodoro inválida" }
+        check(!isBlockingEnabled || ProtectionPermissionGate.read(context).isReady) {
+            "Todas as permissões de proteção são necessárias para o Pomodoro com bloqueio"
+        }
 
         finishMutex.withLock {
             val durationMillis = durationMinutes * 60_000L

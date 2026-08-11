@@ -1,6 +1,5 @@
 package com.focusguard.ui.compose.screens
 
-import android.content.Intent
 import kotlin.OptIn
 import androidx.compose.foundation.clickable
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -116,15 +115,15 @@ fun TimeBlockSessionConfigScreen(
 
     pendingProtectionReason?.let { reason ->
         val message = when (reason) {
-            BlockingProtectionUnavailableException.Reason.ACCESSIBILITY_REQUIRED -> {
-                R.string.dopamine_accessibility_required
+            BlockingProtectionUnavailableException.Reason.PROTECTION_PERMISSIONS_REQUIRED -> {
+                R.string.blocking_permissions_required_desc
             }
             BlockingProtectionUnavailableException.Reason.MASTER_CREDENTIAL_REQUIRED -> {
                 R.string.master_credential_required_to_block
             }
         }
         val confirmLabel = when (reason) {
-            BlockingProtectionUnavailableException.Reason.ACCESSIBILITY_REQUIRED -> {
+            BlockingProtectionUnavailableException.Reason.PROTECTION_PERMISSIONS_REQUIRED -> {
                 R.string.dopamine_open_permissions
             }
             BlockingProtectionUnavailableException.Reason.MASTER_CREDENTIAL_REQUIRED -> {
@@ -142,9 +141,9 @@ fun TimeBlockSessionConfigScreen(
                         pendingProtectionReason = null
                         when (reason) {
                             BlockingProtectionUnavailableException
-                                .Reason.ACCESSIBILITY_REQUIRED ->
+                                .Reason.PROTECTION_PERMISSIONS_REQUIRED ->
                                 context.startActivity(
-                                    Intent(context, PermissionsActivity::class.java)
+                                    PermissionsActivity.createPendingProtectionIntent(context)
                                 )
 
                             BlockingProtectionUnavailableException

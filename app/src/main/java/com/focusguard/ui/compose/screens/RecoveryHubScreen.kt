@@ -1,7 +1,6 @@
 package com.focusguard.ui.compose.screens
 
 import android.content.Context
-import android.content.Intent
 import android.content.SharedPreferences
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
@@ -89,6 +88,7 @@ import com.focusguard.data.RecoveryJourney.Status
 import com.focusguard.data.RecoveryProtectionPreset
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.BlockingSessionManager.BlockingProtectionUnavailableException
+import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.PermissionsActivity
 import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.CancellationException
@@ -138,7 +138,7 @@ private fun RecoveryLanding(onOpenBook: (RecoveryBook) -> Unit) {
     // esta composição sobrevive à ida e à volta e não recarregaria sozinha.
     var completed by remember { mutableStateOf(preferences.readCompletedStages()) }
     var showProtectionTerms by rememberSaveable { mutableStateOf(false) }
-    var showAccessibilityRequired by rememberSaveable { mutableStateOf(false) }
+    var showPermissionsRequired by rememberSaveable { mutableStateOf(false) }
     var isActivatingProtection by remember { mutableStateOf(false) }
     var activationErrorRes by remember { mutableStateOf<Int?>(null) }
 
@@ -183,10 +183,10 @@ private fun RecoveryLanding(onOpenBook: (RecoveryBook) -> Unit) {
                     } catch (error: BlockingProtectionUnavailableException) {
                         if (
                             error.reason ==
-                            BlockingProtectionUnavailableException.Reason.ACCESSIBILITY_REQUIRED
+                            BlockingProtectionUnavailableException.Reason.PROTECTION_PERMISSIONS_REQUIRED
                         ) {
                             showProtectionTerms = false
-                            showAccessibilityRequired = true
+                            showPermissionsRequired = true
                         } else {
                             activationErrorRes = R.string.recovery_protection_failed
                         }
@@ -205,9 +205,9 @@ private fun RecoveryLanding(onOpenBook: (RecoveryBook) -> Unit) {
         )
     }
 
-    if (showAccessibilityRequired) {
+    if (showPermissionsRequired) {
         AlertDialog(
-            onDismissRequest = { showAccessibilityRequired = false },
+            onDismissRequest = { showPermissionsRequired = false },
             title = {
                 Text(stringResource(R.string.recovery_protection_permission_title))
             },
@@ -217,9 +217,9 @@ private fun RecoveryLanding(onOpenBook: (RecoveryBook) -> Unit) {
             confirmButton = {
                 TextButton(
                     onClick = {
-                        showAccessibilityRequired = false
+                        showPermissionsRequired = false
                         context.startActivity(
-                            Intent(context, PermissionsActivity::class.java)
+                            PermissionsActivity.createPendingProtectionIntent(context)
                         )
                     }
                 ) {
@@ -227,7 +227,7 @@ private fun RecoveryLanding(onOpenBook: (RecoveryBook) -> Unit) {
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showAccessibilityRequired = false }) {
+                TextButton(onClick = { showPermissionsRequired = false }) {
                     Text(stringResource(R.string.status_close))
                 }
             }
@@ -257,8 +257,12 @@ private fun RecoveryLanding(onOpenBook: (RecoveryBook) -> Unit) {
                         Stage.REWIRE -> stage.bookOrNull?.let(onOpenBook)
 
                         Stage.PROTECT -> if (status == Status.CURRENT) {
-                            activationErrorRes = null
-                            showProtectionTerms = true
+                            if (ProtectionPermissionGate.read(context).isReady) {
+                                activationErrorRes = null
+                                showProtectionTerms = true
+                            } else {
+                                showPermissionsRequired = true
+                            }
                         }
                     }
                 },
