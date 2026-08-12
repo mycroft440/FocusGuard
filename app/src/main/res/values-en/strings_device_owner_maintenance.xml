@@ -10,7 +10,7 @@
     <string name="device_owner_maintenance_open_password">Open with password</string>
     <string name="device_owner_maintenance_open_monthly">Use monthly window</string>
     <string name="device_owner_maintenance_monthly_schedule">Monthly window: the 15th, from 02:50 to 03:00. The release lasts 10 minutes.</string>
-    <string name="device_owner_maintenance_active_description">Uninstall, app control and force-stop protections are temporarily released. Critical protections remain active.</string>
+    <string name="device_owner_maintenance_active_description">FocusGuard uninstall, force stop and data clearing are temporarily released. Critical protections remain active.</string>
     <string name="device_owner_maintenance_end_now">End maintenance now</string>
     <string name="device_owner_maintenance_revoke">Revoke Device Owner</string>
     <string name="device_owner_maintenance_revoke_title">Revoke Device Owner?</string>
@@ -32,8 +32,7 @@
     <string name="device_owner_diagnostics_not_owner">A standard administrator does not prevent the system from disabling it. Provision FocusGuard as Device Owner.</string>
     <string name="device_owner_diagnostics_device_owner">True Device Owner</string>
     <string name="device_owner_diagnostics_uninstall">FocusGuard uninstall blocked</string>
-    <string name="device_owner_diagnostics_apps_control">Disabling, clearing data and controlling apps blocked</string>
-    <string name="device_owner_diagnostics_user_control">Force stop and clear data blocked</string>
+    <string name="device_owner_diagnostics_user_control">FocusGuard force stop and data protected</string>
     <string name="device_owner_diagnostics_factory_reset">Factory reset from settings blocked</string>
     <string name="device_owner_diagnostics_safe_boot">Safe mode blocked</string>
     <string name="device_owner_diagnostics_blocking_guard">Block hardening armed</string>
@@ -42,11 +41,11 @@
     <string name="device_owner_diagnostics_user_switch">User switching blocked</string>
     <string name="device_owner_diagnostics_private_profile">Private profile creation blocked</string>
     <string name="device_owner_diagnostics_date_time">Manual date and time changes blocked</string>
-    <string name="device_owner_diagnostics_grant_admin">Granting new administrators blocked</string>
     <string name="device_owner_diagnostics_notifications">Notification permission protected</string>
     <string name="device_owner_diagnostics_accessibility">Accessibility service active</string>
     <string name="device_owner_diagnostics_usage_access">Usage access active</string>
     <string name="device_owner_diagnostics_battery">Unrestricted battery usage active</string>
+    <string name="device_owner_diagnostics_other_apps">Uninstall and controls for other apps available</string>
     <string name="device_owner_diagnostics_auto_time">Automatic date and time</string>
     <string name="device_owner_diagnostics_auto_timezone">Automatic time zone</string>
     <string name="device_owner_diagnostics_adult_dns">DNS with adult filter confirmed</string>

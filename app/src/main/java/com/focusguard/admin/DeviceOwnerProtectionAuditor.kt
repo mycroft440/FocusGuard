@@ -33,6 +33,9 @@ class DeviceOwnerProtectionAuditor(context: Context) {
         val usageAccessEnabled = PermissionUtils.isUsageAccessEnabled(appContext)
         val batteryOptimizationExempt =
             PermissionUtils.isBatteryOptimizationIgnored(appContext)
+        val otherAppsControlAvailable = DeviceOwnerManager
+            .legacyGlobalAppControlRestrictionsForSdk(Build.VERSION.SDK_INT)
+            .none { restriction -> restrictionState(restriction) }
 
         if (!deviceOwnerActive) {
             return DeviceOwnerProtectionDiagnostics(
@@ -42,8 +45,8 @@ class DeviceOwnerProtectionAuditor(context: Context) {
                 protectionArmed = protectionArmed,
                 blockingProtectionArmed = false,
                 adultContentProtectionArmed = adultContentProtectionArmed,
+                otherAppsControlAvailable = otherAppsControlAvailable,
                 uninstallBlocked = false,
-                appsControlBlocked = false,
                 userControlDisabled = null,
                 factoryResetBlocked = false,
                 safeBootBlocked = false,
@@ -54,7 +57,6 @@ class DeviceOwnerProtectionAuditor(context: Context) {
                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM
                 ) false else null,
                 dateTimeChangesBlocked = false,
-                grantAdminBlocked = null,
                 notificationPermissionLocked = if (
                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
                 ) false else null,
@@ -79,10 +81,10 @@ class DeviceOwnerProtectionAuditor(context: Context) {
             protectionArmed = protectionArmed,
             blockingProtectionArmed = blockingProtectionArmed,
             adultContentProtectionArmed = adultContentProtectionArmed,
+            otherAppsControlAvailable = otherAppsControlAvailable,
             uninstallBlocked = runCatching {
                 dpm.isUninstallBlocked(admin, appContext.packageName)
             }.getOrDefault(false),
-            appsControlBlocked = restrictionState(UserManager.DISALLOW_APPS_CONTROL),
             userControlDisabled = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 runCatching {
                     appContext.packageName in dpm.getUserControlDisabledPackages(admin)
@@ -109,11 +111,6 @@ class DeviceOwnerProtectionAuditor(context: Context) {
             dateTimeChangesBlocked = restrictionState(
                 UserManager.DISALLOW_CONFIG_DATE_TIME
             ),
-            grantAdminBlocked = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                restrictionState(UserManager.DISALLOW_GRANT_ADMIN)
-            } else {
-                null
-            },
             notificationPermissionLocked = if (
                 Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
             ) {

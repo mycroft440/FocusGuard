@@ -6,8 +6,9 @@ import org.junit.Test
 class ProtectionPermissionGateTest {
 
     @Test
-    fun `block configuration requires all five protection permissions`() {
+    fun `block configuration requires consent and all five protection permissions`() {
         val state = ProtectionPermissionState(
+            selfProtectionConsent = true,
             accessibility = true,
             usageAccess = true,
             notifications = false,
@@ -25,6 +26,7 @@ class ProtectionPermissionGateTest {
     @Test
     fun `configuration is ready only when every permission is active`() {
         val state = ProtectionPermissionState(
+            selfProtectionConsent = true,
             accessibility = true,
             usageAccess = true,
             notifications = true,
@@ -39,6 +41,7 @@ class ProtectionPermissionGateTest {
     @Test
     fun `missing permissions keep the same order shown by setup`() {
         val state = ProtectionPermissionState(
+            selfProtectionConsent = false,
             accessibility = false,
             usageAccess = false,
             notifications = false,
@@ -47,6 +50,7 @@ class ProtectionPermissionGateTest {
         )
 
         assertThat(state.missingPermissions).containsExactly(
+            ProtectionPermission.SELF_PROTECTION_CONSENT,
             ProtectionPermission.ACCESSIBILITY,
             ProtectionPermission.USAGE_ACCESS,
             ProtectionPermission.NOTIFICATIONS,

@@ -91,6 +91,14 @@ class BlockNoticeActivity : AppCompatActivity() {
 
     private var strictBlock = false
     private var redirectBrowserPackage: String? = null
+    private var renderedNotice: NoticePayload? = null
+
+    private data class NoticePayload(
+        val strictBlock: Boolean,
+        val blockedPackage: String?,
+        val blockedDomain: String?,
+        val redirectBrowserPackage: String?
+    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -116,25 +124,40 @@ class BlockNoticeActivity : AppCompatActivity() {
     }
 
     private fun showBlockNotice(sourceIntent: Intent) {
-        strictBlock = sourceIntent.getBooleanExtra(
-            BlockingAccessibilityService.EXTRA_STRICT_BLOCK,
-            false
+        val payload = NoticePayload(
+            strictBlock = sourceIntent.getBooleanExtra(
+                BlockingAccessibilityService.EXTRA_STRICT_BLOCK,
+                false
+            ),
+            blockedPackage = sourceIntent.getStringExtra(
+                BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE
+            ),
+            blockedDomain = sourceIntent.getStringExtra(
+                BlockingAccessibilityService.EXTRA_BLOCKED_DOMAIN
+            ),
+            redirectBrowserPackage = sourceIntent.getStringExtra(
+                BlockingAccessibilityService.EXTRA_REDIRECT_BROWSER_PACKAGE
+            )?.takeIf(String::isNotBlank)
         )
-        val blockedPackage = sourceIntent.getStringExtra(
-            BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE
-        )
-        val blockedDomain = sourceIntent.getStringExtra(
-            BlockingAccessibilityService.EXTRA_BLOCKED_DOMAIN
-        )
-        redirectBrowserPackage = sourceIntent.getStringExtra(
-            BlockingAccessibilityService.EXTRA_REDIRECT_BROWSER_PACKAGE
-        )?.takeIf(String::isNotBlank)
+        strictBlock = payload.strictBlock
+        redirectBrowserPackage = payload.redirectBrowserPackage
+
+        // singleTop can receive several copies of the same accessibility event.
+        // Keep the existing composition (including an open password dialog) and
+        // only acknowledge readiness instead of rebuilding the whole screen.
+        if (renderedNotice == payload) {
+            notifyNoticeReady()
+            return
+        }
+        renderedNotice = payload
+        val blockedPackage = payload.blockedPackage
+        val blockedDomain = payload.blockedDomain
         val browserPackageForRedirect = redirectBrowserPackage
 
         setContent {
             FocusGuardTheme {
                 BlockNoticeContent(
-                    strictBlock = strictBlock,
+                    strictBlock = payload.strictBlock,
                     blockedPackage = blockedPackage,
                     blockedDomain = blockedDomain,
                     redirectBrowserPackage = browserPackageForRedirect,
@@ -159,11 +182,15 @@ class BlockNoticeActivity : AppCompatActivity() {
                     "Tela pronta em ${SystemClock.elapsedRealtime() - detectedAt}ms"
                 )
             }
-            sendBroadcast(
-                Intent(BlockingAccessibilityService.ACTION_BLOCK_NOTICE_READY)
-                    .setPackage(packageName)
-            )
+            notifyNoticeReady()
         }
+    }
+
+    private fun notifyNoticeReady() {
+        sendBroadcast(
+            Intent(BlockingAccessibilityService.ACTION_BLOCK_NOTICE_READY)
+                .setPackage(packageName)
+        )
     }
 
     private fun redirectBlockedWebsite(browserPackageName: String) {

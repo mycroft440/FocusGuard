@@ -10,7 +10,7 @@
     <string name="device_owner_maintenance_open_password">Abrir com senha</string>
     <string name="device_owner_maintenance_open_monthly">Usar janela mensal</string>
     <string name="device_owner_maintenance_monthly_schedule">Janela mensal: dia 15, das 02:50 às 03:00. A liberação dura 10 minutos.</string>
-    <string name="device_owner_maintenance_active_description">As proteções de desinstalação, controle do app e force-stop estão temporariamente liberadas. As proteções críticas continuam ativas.</string>
+    <string name="device_owner_maintenance_active_description">A desinstalação, a parada forçada e a limpeza de dados do FocusGuard estão temporariamente liberadas. As proteções críticas continuam ativas.</string>
     <string name="device_owner_maintenance_end_now">Encerrar manutenção agora</string>
     <string name="device_owner_maintenance_revoke">Revogar Device Owner</string>
     <string name="device_owner_maintenance_revoke_title">Revogar Device Owner?</string>
@@ -32,8 +32,7 @@
     <string name="device_owner_diagnostics_not_owner">Administrador comum não impede a desativação pelo sistema. Provisione o FocusGuard como Device Owner.</string>
     <string name="device_owner_diagnostics_device_owner">Device Owner real</string>
     <string name="device_owner_diagnostics_uninstall">Desinstalação do FocusGuard bloqueada</string>
-    <string name="device_owner_diagnostics_apps_control">Desativar, limpar dados e controlar apps bloqueado</string>
-    <string name="device_owner_diagnostics_user_control">Forçar parada e limpar dados bloqueados</string>
+    <string name="device_owner_diagnostics_user_control">Parada forçada e dados do FocusGuard protegidos</string>
     <string name="device_owner_diagnostics_factory_reset">Reset de fábrica pelas configurações bloqueado</string>
     <string name="device_owner_diagnostics_safe_boot">Modo de segurança bloqueado</string>
     <string name="device_owner_diagnostics_blocking_guard">Blindagem do bloqueio armada</string>
@@ -42,11 +41,11 @@
     <string name="device_owner_diagnostics_user_switch">Troca de usuário bloqueada</string>
     <string name="device_owner_diagnostics_private_profile">Criação de perfil privado bloqueada</string>
     <string name="device_owner_diagnostics_date_time">Alteração manual de data e hora bloqueada</string>
-    <string name="device_owner_diagnostics_grant_admin">Concessão de novos administradores bloqueada</string>
     <string name="device_owner_diagnostics_notifications">Permissão de notificações protegida</string>
     <string name="device_owner_diagnostics_accessibility">Serviço de acessibilidade ativo</string>
     <string name="device_owner_diagnostics_usage_access">Acesso ao uso ativo</string>
     <string name="device_owner_diagnostics_battery">Uso irrestrito da bateria ativo</string>
+    <string name="device_owner_diagnostics_other_apps">Desinstalação e controles de outros apps disponíveis</string>
     <string name="device_owner_diagnostics_auto_time">Data e hora automáticas</string>
     <string name="device_owner_diagnostics_auto_timezone">Fuso horário automático</string>
     <string name="device_owner_diagnostics_adult_dns">DNS com filtro adulto confirmado</string>

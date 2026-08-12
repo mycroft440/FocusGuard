@@ -65,8 +65,8 @@ class DeviceOwnerManagerTest {
     }
 
     @Test
-    fun `android 13 app control policies exclude grant admin restriction`() {
-        val restrictions = DeviceOwnerManager.appControlRestrictionsForSdk(33)
+    fun `android 13 legacy cleanup knows every old global app restriction`() {
+        val restrictions = DeviceOwnerManager.legacyGlobalAppControlRestrictionsForSdk(33)
 
         assertThat(restrictions).contains(UserManager.DISALLOW_UNINSTALL_APPS)
         assertThat(restrictions).contains(UserManager.DISALLOW_APPS_CONTROL)
@@ -74,8 +74,8 @@ class DeviceOwnerManagerTest {
     }
 
     @Test
-    fun `android 14 app control policies include grant admin restriction`() {
-        val restrictions = DeviceOwnerManager.appControlRestrictionsForSdk(34)
+    fun `android 14 legacy cleanup also removes grant admin restriction`() {
+        val restrictions = DeviceOwnerManager.legacyGlobalAppControlRestrictionsForSdk(34)
 
         assertThat(restrictions).contains(UserManager.DISALLOW_GRANT_ADMIN)
     }
@@ -104,13 +104,23 @@ class DeviceOwnerManagerTest {
         assertThat(restrictions).contains(UserManager.DISALLOW_FACTORY_RESET)
         assertThat(restrictions).contains(UserManager.DISALLOW_SAFE_BOOT)
         assertThat(restrictions).contains(UserManager.DISALLOW_CONFIG_DATE_TIME)
-        assertThat(restrictions).contains(UserManager.DISALLOW_UNINSTALL_APPS)
-        assertThat(restrictions).contains(UserManager.DISALLOW_APPS_CONTROL)
+        assertThat(restrictions).doesNotContain(UserManager.DISALLOW_UNINSTALL_APPS)
+        assertThat(restrictions).doesNotContain(UserManager.DISALLOW_APPS_CONTROL)
+        assertThat(restrictions).doesNotContain(UserManager.DISALLOW_GRANT_ADMIN)
         assertThat(restrictions).contains(UserManager.DISALLOW_CONFIG_PRIVATE_DNS)
         assertThat(restrictions).doesNotContain(UserManager.DISALLOW_DEBUGGING_FEATURES)
         assertThat(restrictions).doesNotContain(UserManager.DISALLOW_INSTALL_UNKNOWN_SOURCES)
         assertThat(restrictions).doesNotContain(UserManager.DISALLOW_INSTALL_APPS)
         assertThat(restrictions).doesNotContain(UserManager.DISALLOW_USB_FILE_TRANSFER)
+    }
+
+    @Test
+    fun `revocation cleanup still includes restrictions left by older builds`() {
+        val restrictions = DeviceOwnerManager.allRestrictionsForCleanupForSdk(34)
+
+        assertThat(restrictions).contains(UserManager.DISALLOW_UNINSTALL_APPS)
+        assertThat(restrictions).contains(UserManager.DISALLOW_APPS_CONTROL)
+        assertThat(restrictions).contains(UserManager.DISALLOW_GRANT_ADMIN)
     }
 
     @Test

@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="accessibility_protection_blocked_toast">Block active: this system control is only released through authenticated maintenance.</string>
+    <string name="accessibility_protection_blocked_notice">The attempt to remove or disable FocusGuard was closed.</string>
 
     <string name="device_owner_status_active">Device Owner active — official protection reinforced</string>
     <string name="device_admin_status_only">Device administrator only — protection limited by Android</string>

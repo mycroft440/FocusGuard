@@ -31,8 +31,10 @@ import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import kotlin.OptIn
 import com.focusguard.security.AuthManager
+import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.ui.PermissionsActivity
 import com.focusguard.ui.compose.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -233,6 +235,14 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                                 }
 
                                 if (enable) {
+                                    if (!ProtectionPermissionGate.read(context).isReady) {
+                                        context.startActivity(
+                                            PermissionsActivity.createPendingProtectionIntent(
+                                                context
+                                            )
+                                        )
+                                        return@Switch
+                                    }
                                     if (!deviceOwnerManager.isDeviceOwnerActive()) {
                                         Toast.makeText(context, context.getString(R.string.limits_nuclear_required), Toast.LENGTH_LONG).show()
                                     } else {

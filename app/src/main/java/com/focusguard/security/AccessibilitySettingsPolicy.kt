@@ -10,9 +10,11 @@ import java.util.Locale
 object AccessibilitySettingsPolicy {
 
     /**
-     * Telas que listam recursos e serviços de acessibilidade. Durante um
-     * bloqueio elas também precisam ser fechadas, pois a One UI expõe nelas
-     * "Aplicativos instalados", caminho direto para desligar o FocusGuard.
+     * Telas que apenas listam recursos e serviços de acessibilidade.
+     *
+     * Elas continuam classificadas para diagnóstico, mas a política de
+     * autoproteção não as fecha: somente o item ou o interruptor identificado
+     * como FocusGuard pode ser interceptado.
      */
     private val accessibilityListClassMarkers = setOf(
         "AccessibilitySettings",

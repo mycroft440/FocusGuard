@@ -44,22 +44,22 @@ class ManagedSelfProtectionPolicyTest {
     }
 
     @Test
-    fun `blocks the apps list used to reach FocusGuard details`() {
+    fun `does not classify the general apps list as FocusGuard details`() {
         assertThat(
             ManagedSelfProtectionPolicy.classTargetsAppDetails(
                 "com.android.settings.Settings\$ManageApplicationsActivity"
             )
-        ).isTrue()
+        ).isFalse()
         assertThat(
             ManagedSelfProtectionPolicy.classTargetsAppDetails(
                 "com.android.settings.applications.manageapplications.ManageApplications"
             )
-        ).isTrue()
+        ).isFalse()
         assertThat(
             ManagedSelfProtectionPolicy.classTargetsAppDetails(
                 "com.android.settings.applications.ApplicationsSettings"
             )
-        ).isTrue()
+        ).isFalse()
     }
 
     @Test

@@ -10,9 +10,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.focusguard.MainActivity
+import com.focusguard.security.SelfProtectionConsent
 import com.focusguard.security.SensitivePermissionsConsent
 import com.focusguard.ui.compose.screens.PermissionFlowMode
 import com.focusguard.ui.compose.screens.PermissionsScreen
+import com.focusguard.ui.compose.screens.SelfProtectionConsentScreen
 import com.focusguard.ui.compose.screens.SensitivePermissionsDisclosureScreen
 import com.focusguard.ui.compose.theme.FocusGuardTheme
 import dagger.hilt.android.AndroidEntryPoint
@@ -36,19 +38,28 @@ class PermissionsActivity : ComponentActivity() {
                 var consentAccepted by remember {
                     mutableStateOf(SensitivePermissionsConsent.hasAccepted(this))
                 }
+                var selfProtectionAccepted by remember {
+                    mutableStateOf(SelfProtectionConsent.hasAccepted(this))
+                }
 
-                if (consentAccepted) {
-                    PermissionsScreen(
-                        flowMode = flowMode,
-                        onFinish = ::finishPermissionFlow
+                when {
+                    !selfProtectionAccepted -> SelfProtectionConsentScreen(
+                        onAccept = {
+                            SelfProtectionConsent.accept(this)
+                            selfProtectionAccepted = true
+                        },
+                        onDecline = ::finishPermissionFlow
                     )
-                } else {
-                    SensitivePermissionsDisclosureScreen(
+                    !consentAccepted -> SensitivePermissionsDisclosureScreen(
                         onAccept = {
                             SensitivePermissionsConsent.accept(this)
                             consentAccepted = true
                         },
                         onDecline = ::finishPermissionFlow
+                    )
+                    else -> PermissionsScreen(
+                        flowMode = flowMode,
+                        onFinish = ::finishPermissionFlow
                     )
                 }
             }

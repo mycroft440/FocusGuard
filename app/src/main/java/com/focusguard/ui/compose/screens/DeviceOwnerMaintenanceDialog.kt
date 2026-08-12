@@ -358,15 +358,14 @@ private fun DeviceOwnerDiagnosticsSection(
         stringResource(R.string.device_owner_diagnostics_battery),
         diagnostics.batteryOptimizationExempt
     )
+    DiagnosticRow(
+        stringResource(R.string.device_owner_diagnostics_other_apps),
+        diagnostics.otherAppsControlAvailable
+    )
     if (diagnostics.protectionArmed) {
         DiagnosticRow(
             stringResource(R.string.device_owner_diagnostics_uninstall),
             diagnostics.uninstallBlocked,
-            relaxedByMaintenance = maintenanceActive
-        )
-        DiagnosticRow(
-            stringResource(R.string.device_owner_diagnostics_apps_control),
-            diagnostics.appsControlBlocked,
             relaxedByMaintenance = maintenanceActive
         )
         DiagnosticRow(
@@ -405,11 +404,6 @@ private fun DeviceOwnerDiagnosticsSection(
         DiagnosticRow(
             stringResource(R.string.device_owner_diagnostics_date_time),
             diagnostics.dateTimeChangesBlocked
-        )
-        DiagnosticRow(
-            stringResource(R.string.device_owner_diagnostics_grant_admin),
-            diagnostics.grantAdminBlocked,
-            relaxedByMaintenance = maintenanceActive
         )
         DiagnosticRow(
             stringResource(R.string.device_owner_diagnostics_notifications),

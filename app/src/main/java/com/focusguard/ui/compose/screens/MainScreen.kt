@@ -190,6 +190,8 @@ internal fun pendingPermissionsDescriptionRes(
     missingPermissions: List<ProtectionPermission>
 ): Int {
     return when (missingPermissions.toSet()) {
+        setOf(ProtectionPermission.SELF_PROTECTION_CONSENT) ->
+            R.string.pending_self_protection_consent_desc
         setOf(ProtectionPermission.ACCESSIBILITY) ->
             R.string.pending_permissions_accessibility_desc
         setOf(ProtectionPermission.USAGE_ACCESS) ->

@@ -8,6 +8,7 @@ import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.utils.PermissionUtils
 
 enum class ProtectionPermission {
+    SELF_PROTECTION_CONSENT,
     ACCESSIBILITY,
     USAGE_ACCESS,
     NOTIFICATIONS,
@@ -16,6 +17,7 @@ enum class ProtectionPermission {
 }
 
 data class ProtectionPermissionState(
+    val selfProtectionConsent: Boolean,
     val accessibility: Boolean,
     val usageAccess: Boolean,
     val notifications: Boolean,
@@ -24,6 +26,7 @@ data class ProtectionPermissionState(
 ) {
     val missingPermissions: List<ProtectionPermission>
         get() = buildList {
+            if (!selfProtectionConsent) add(ProtectionPermission.SELF_PROTECTION_CONSENT)
             if (!accessibility) add(ProtectionPermission.ACCESSIBILITY)
             if (!usageAccess) add(ProtectionPermission.USAGE_ACCESS)
             if (!notifications) add(ProtectionPermission.NOTIFICATIONS)
@@ -45,6 +48,7 @@ object ProtectionPermissionGate {
         val appContext = context.applicationContext
         val deviceOwnerManager = DeviceOwnerManager.getInstance(appContext)
         return ProtectionPermissionState(
+            selfProtectionConsent = SelfProtectionConsent.hasAccepted(appContext),
             accessibility = PermissionUtils.isAccessibilityServiceEnabled(appContext),
             usageAccess = PermissionUtils.isUsageAccessEnabled(appContext),
             notifications = isNotificationPermissionGranted(appContext),

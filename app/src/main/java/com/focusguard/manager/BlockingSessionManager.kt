@@ -1349,7 +1349,14 @@ class BlockingSessionManager @Inject constructor(
                     adultFilterEnabled = adultFilterEnabled
                 )
                 if (selfProtectionRequired) {
-                    deviceOwnerManager.enforceBlockingPolicies()
+                    val nativeProtectionConfirmed =
+                        deviceOwnerManager.enforceBlockingPolicies()
+                    check(
+                        !deviceOwnerManager.isDeviceOwnerActive() ||
+                            nativeProtectionConfirmed
+                    ) {
+                        "O Android não confirmou a autoproteção nativa do FocusGuard"
+                    }
                 } else {
                     deviceOwnerManager.clearBlockingPolicies()
                 }

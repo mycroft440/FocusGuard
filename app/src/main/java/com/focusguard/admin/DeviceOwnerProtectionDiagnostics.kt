@@ -14,8 +14,8 @@ data class DeviceOwnerProtectionDiagnostics(
     val protectionArmed: Boolean,
     val blockingProtectionArmed: Boolean,
     val adultContentProtectionArmed: Boolean,
+    val otherAppsControlAvailable: Boolean,
     val uninstallBlocked: Boolean?,
-    val appsControlBlocked: Boolean?,
     val userControlDisabled: Boolean?,
     val factoryResetBlocked: Boolean?,
     val safeBootBlocked: Boolean?,
@@ -24,7 +24,6 @@ data class DeviceOwnerProtectionDiagnostics(
     val userSwitchBlocked: Boolean?,
     val privateProfileCreationBlocked: Boolean?,
     val dateTimeChangesBlocked: Boolean?,
-    val grantAdminBlocked: Boolean?,
     val notificationPermissionLocked: Boolean?,
     val accessibilityServiceEnabled: Boolean,
     val usageAccessEnabled: Boolean,
@@ -37,17 +36,15 @@ data class DeviceOwnerProtectionDiagnostics(
     val vpnConfigurationBlocked: Boolean?
 ) {
     val isFullyProtected: Boolean
-        get() = deviceOwnerActive && when {
+        get() = deviceOwnerActive && otherAppsControlAvailable && when {
             maintenanceActive -> false
             !protectionArmed -> essentialPermissionsVerified
             else -> uninstallBlocked == true &&
-                appsControlBlocked == true &&
                 userControlDisabled != false &&
                 factoryResetBlocked == true &&
                 safeBootBlocked == true &&
                 userIsolationVerified &&
                 dateTimeChangesBlocked == true &&
-                grantAdminBlocked != false &&
                 notificationPermissionLocked != false &&
                 essentialPermissionsVerified &&
                 automaticTimeEnabled != false &&
@@ -75,12 +72,12 @@ data class DeviceOwnerProtectionDiagnostics(
     val failedChecks: Int
         get() = buildList<Boolean?> {
             add(deviceOwnerActive)
+            add(otherAppsControlAvailable)
             add(accessibilityServiceEnabled)
             add(usageAccessEnabled)
             add(batteryOptimizationExempt)
             if (protectionArmed) {
                 add(uninstallBlocked)
-                add(appsControlBlocked)
                 add(userControlDisabled)
                 add(factoryResetBlocked)
                 add(safeBootBlocked)
@@ -89,7 +86,6 @@ data class DeviceOwnerProtectionDiagnostics(
                 add(userSwitchBlocked)
                 add(privateProfileCreationBlocked)
                 add(dateTimeChangesBlocked)
-                add(grantAdminBlocked)
                 add(notificationPermissionLocked)
                 add(automaticTimeEnabled)
                 add(automaticTimeZoneEnabled)

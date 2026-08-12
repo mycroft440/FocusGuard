@@ -18,7 +18,6 @@ import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
-import android.provider.Settings
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -103,10 +102,18 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var instantBlockCurtain: View? = null
+    private var instantBlockCurtainMessage: TextView? = null
+    private var instantBlockCurtainMode: CurtainMode? = null
     private val instantCurtainFailsafe = Runnable { dismissInstantBlockCurtain() }
-    @Volatile private var settingsTaskResetUntilElapsed = 0L
-    private val settingsTaskResetFallback = Runnable { completeSettingsTaskReset() }
-    private val settingsCurtainDismiss = Runnable { dismissInstantBlockCurtain() }
+    private val protectionCurtainDismiss = Runnable {
+        if (instantBlockCurtainMode == CurtainMode.SELF_PROTECTION) {
+            dismissInstantBlockCurtain()
+        }
+    }
+    private val protectionGoHome = Runnable { performGlobalAction(GLOBAL_ACTION_HOME) }
+    @Volatile private var protectionActionUntilElapsed = 0L
+    private var lastBlockNoticeKey: String? = null
+    private var lastBlockNoticeLaunchElapsed = 0L
 
     private val websiteTrackingLock = Any()
     @Volatile private var trackedDomain: String? = null
@@ -120,6 +127,11 @@ class BlockingAccessibilityService : AccessibilityService() {
         val deltaMillis: Long,
         val packageName: String
     )
+
+    private enum class CurtainMode {
+        BLOCK_NOTICE,
+        SELF_PROTECTION
+    }
 
     private val cacheTimeoutMillis = 5_000L
     private val browserDebounceMillis = 120L
@@ -209,7 +221,9 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private val blockNoticeReadyReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            dismissInstantBlockCurtain()
+            if (instantBlockCurtainMode == CurtainMode.BLOCK_NOTICE) {
+                dismissInstantBlockCurtain()
+            }
         }
     }
 
@@ -418,16 +432,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             // the switch that disables this service, so nothing that can block runs
             // ahead of the decision to bounce them out.
             val directPackage = event.packageName?.toString().orEmpty()
-            val resetInProgress =
-                SystemClock.elapsedRealtime() <= settingsTaskResetUntilElapsed
-            if (resetInProgress && directPackage in settingsPackages) {
-                // Esta é a raiz limpa de Configurações que o próprio FocusGuard
-                // abriu. Não a submeta de novo à política ou criaremos um ciclo;
-                // encerre a limpeza assim que o Android confirmar que ela chegou.
-                completeSettingsTaskReset()
-                return
-            }
-
             val eligibleForInterception = event.eventType in settingsInterceptionEventTypes
             if (eligibleForInterception &&
                 directPackage in protectedSystemPackages &&
@@ -899,6 +903,22 @@ class BlockingAccessibilityService : AccessibilityService() {
                 add(source.text)
                 add(source.contentDescription)
                 add(source.viewIdResourceName)
+                if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+                    // OEM list rows are often the clickable parent while the app
+                    // label is a child. Read only FocusGuard markers from that
+                    // small subtree so the very first click can arm the guard.
+                    ManagedSelfProtectionPolicy.focusGuardSearchTerms.forEach { term ->
+                        val matchingNodes = runCatching {
+                            source.findAccessibilityNodeInfosByText(term)
+                        }.getOrDefault(emptyList())
+                        matchingNodes.forEach { node ->
+                            add(node.text)
+                            add(node.contentDescription)
+                            add(node.viewIdResourceName)
+                            recycleSafely(node)
+                        }
+                    }
+                }
                 recycleSafely(source)
             }
         }
@@ -972,64 +992,27 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun executeProtectionAction() {
-        // A cortina impede qualquer segundo toque enquanto a tarefa de
-        // Configurações é descartada. BACK também fecha um diálogo de
-        // confirmação que já tenha aparecido no limite da corrida.
-        showInstantBlockCurtain()
+        val nowElapsed = SystemClock.elapsedRealtime()
+        if (!shouldExecuteProtectionAction(protectionActionUntilElapsed, nowElapsed)) return
+        protectionActionUntilElapsed = nowElapsed + SELF_PROTECTION_ACTION_DEBOUNCE_MILLIS
+
+        // BACK fecha um diálogo de confirmação que já tenha aparecido no limite
+        // da corrida; HOME encerra a superfície sem abrir uma nova instância de
+        // Configurações. A versão anterior iniciava ACTION_SETTINGS com
+        // CLEAR_TASK, criando uma realimentação de eventos e o piscar observado.
+        showInstantBlockCurtain(
+            mode = CurtainMode.SELF_PROTECTION,
+            messageRes = R.string.accessibility_protection_blocked_notice
+        )
         performGlobalAction(GLOBAL_ACTION_BACK)
-        performGlobalAction(GLOBAL_ACTION_HOME)
-        resetSettingsTask()
+        mainHandler.removeCallbacks(protectionGoHome)
+        mainHandler.postDelayed(protectionGoHome, SELF_PROTECTION_HOME_DELAY_MILLIS)
+        mainHandler.removeCallbacks(protectionCurtainDismiss)
+        mainHandler.postDelayed(
+            protectionCurtainDismiss,
+            SELF_PROTECTION_NOTICE_DURATION_MILLIS
+        )
         showToastThrottled(getString(R.string.accessibility_protection_blocked_toast))
-    }
-
-    private fun resetSettingsTask() {
-        settingsTaskResetUntilElapsed =
-            SystemClock.elapsedRealtime() + SETTINGS_TASK_RESET_GUARD_MILLIS
-        mainHandler.removeCallbacks(settingsTaskResetFallback)
-        mainHandler.removeCallbacks(settingsCurtainDismiss)
-
-        val resetStarted = runCatching {
-            startActivity(createSettingsTaskResetIntent())
-            true
-        }.getOrElse { error ->
-            FocusGuardLogger.logError(
-                "A11y",
-                "Falha ao limpar a pilha do app Configurações",
-                error
-            )
-            false
-        }
-
-        if (!resetStarted) {
-            completeSettingsTaskReset()
-            return
-        }
-
-        // OEMs podem não emitir um evento útil para a tela raiz. O fallback
-        // garante que a cortina nunca fique presa mesmo nesses aparelhos.
-        mainHandler.postDelayed(
-            settingsTaskResetFallback,
-            SETTINGS_TASK_RESET_FALLBACK_MILLIS
-        )
-    }
-
-    private fun completeSettingsTaskReset() {
-        if (Looper.myLooper() != Looper.getMainLooper()) {
-            mainHandler.post(::completeSettingsTaskReset)
-            return
-        }
-
-        mainHandler.removeCallbacks(settingsTaskResetFallback)
-        settingsTaskResetUntilElapsed = 0L
-        performGlobalAction(GLOBAL_ACTION_HOME)
-
-        // Aguarda o HOME ser aplicado antes de liberar os toques; assim nenhuma
-        // confirmação antiga reaparece por um frame utilizável.
-        mainHandler.removeCallbacks(settingsCurtainDismiss)
-        mainHandler.postDelayed(
-            settingsCurtainDismiss,
-            SETTINGS_CURTAIN_DISMISS_DELAY_MILLIS
-        )
     }
 
     private fun handleBrowserEvent(event: AccessibilityEvent) {
@@ -1287,8 +1270,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private fun blockApp(packageName: String) {
         launchBlockNotice(
             blockedPackage = packageName,
-            blockedDomain = null,
-            leaveBlockedSurfaceImmediately = true
+            blockedDomain = null
         )
     }
 
@@ -1297,8 +1279,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         val noticeLaunched = launchBlockNotice(
             blockedPackage = null,
             blockedDomain = WebsiteBlocker.displayRule(domain),
-            redirectBrowserPackage = browserPackageName,
-            leaveBlockedSurfaceImmediately = false
+            redirectBrowserPackage = browserPackageName
         )
         if (!noticeLaunched && !redirectBrowserToSafePage(browserPackageName)) {
             performGlobalAction(GLOBAL_ACTION_BACK)
@@ -1310,8 +1291,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         if (!beginWebsiteBlock(domain, packageName)) return
         launchBlockNotice(
             blockedPackage = null,
-            blockedDomain = WebsiteBlocker.displayRule(domain),
-            leaveBlockedSurfaceImmediately = true
+            blockedDomain = WebsiteBlocker.displayRule(domain)
         )
     }
 
@@ -1345,13 +1325,24 @@ class BlockingAccessibilityService : AccessibilityService() {
     private fun launchBlockNotice(
         blockedPackage: String?,
         blockedDomain: String?,
-        redirectBrowserPackage: String? = null,
-        leaveBlockedSurfaceImmediately: Boolean
+        redirectBrowserPackage: String? = null
     ): Boolean {
-        showInstantBlockCurtain()
-        if (leaveBlockedSurfaceImmediately) {
-            performGlobalAction(GLOBAL_ACTION_HOME)
-        }
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val noticeKey = listOf(
+            isPomodoroStrictActive.toString(),
+            blockedPackage.orEmpty(),
+            blockedDomain.orEmpty(),
+            redirectBrowserPackage.orEmpty()
+        ).joinToString("|")
+        if (!shouldLaunchBlockNotice(
+                previousKey = lastBlockNoticeKey,
+                previousLaunchElapsed = lastBlockNoticeLaunchElapsed,
+                requestedKey = noticeKey,
+                nowElapsed = nowElapsed
+            )
+        ) return true
+
+        showInstantBlockCurtain(mode = CurtainMode.BLOCK_NOTICE)
         return try {
             startActivity(
                 createBlockNoticeIntent(
@@ -1362,17 +1353,23 @@ class BlockingAccessibilityService : AccessibilityService() {
                     redirectBrowserPackage = redirectBrowserPackage
                 )
             )
+            lastBlockNoticeKey = noticeKey
+            lastBlockNoticeLaunchElapsed = nowElapsed
             true
         } catch (error: RuntimeException) {
             FocusGuardLogger.logError("A11y", "Falha ao abrir tela de bloqueio", error)
+            dismissInstantBlockCurtain()
             performGlobalAction(GLOBAL_ACTION_HOME)
             false
         }
     }
 
-    private fun showInstantBlockCurtain() {
+    private fun showInstantBlockCurtain(
+        mode: CurtainMode,
+        messageRes: Int? = null
+    ) {
         if (Looper.myLooper() != Looper.getMainLooper()) {
-            mainHandler.post(::showInstantBlockCurtain)
+            mainHandler.post { showInstantBlockCurtain(mode, messageRes) }
             return
         }
 
@@ -1410,6 +1407,21 @@ class BlockingAccessibilityService : AccessibilityService() {
                         topMargin = spacing
                     }
                 )
+                addView(
+                    TextView(this@BlockingAccessibilityService).apply {
+                        setTextColor(Color.LTGRAY)
+                        textSize = 14f
+                        gravity = Gravity.CENTER
+                        visibility = View.GONE
+                        instantBlockCurtainMessage = this
+                    },
+                    LinearLayout.LayoutParams(
+                        (280 * density).toInt(),
+                        WindowManager.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        topMargin = (10 * density).toInt()
+                    }
+                )
             }
             val params = WindowManager.LayoutParams(
                 WindowManager.LayoutParams.MATCH_PARENT,
@@ -1436,6 +1448,17 @@ class BlockingAccessibilityService : AccessibilityService() {
             }
         }
 
+        instantBlockCurtainMode = mode
+        instantBlockCurtainMessage?.apply {
+            if (messageRes == null) {
+                text = ""
+                visibility = View.GONE
+            } else {
+                setText(messageRes)
+                visibility = View.VISIBLE
+            }
+        }
+
         mainHandler.removeCallbacks(instantCurtainFailsafe)
         mainHandler.postDelayed(
             instantCurtainFailsafe,
@@ -1450,8 +1473,11 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
 
         mainHandler.removeCallbacks(instantCurtainFailsafe)
-        val curtain = instantBlockCurtain ?: return
+        val curtain = instantBlockCurtain
         instantBlockCurtain = null
+        instantBlockCurtainMessage = null
+        instantBlockCurtainMode = null
+        if (curtain == null) return
         runCatching { windowManager?.removeViewImmediate(curtain) }
             .onFailure { error ->
                 FocusGuardLogger.logError(
@@ -1505,9 +1531,9 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         stopWebsiteTracking()
-        mainHandler.removeCallbacks(settingsTaskResetFallback)
-        mainHandler.removeCallbacks(settingsCurtainDismiss)
-        settingsTaskResetUntilElapsed = 0L
+        mainHandler.removeCallbacks(protectionGoHome)
+        mainHandler.removeCallbacks(protectionCurtainDismiss)
+        protectionActionUntilElapsed = 0L
         dismissInstantBlockCurtain()
         runCatching { unregisterReceiver(packageReceiver) }
         runCatching { unregisterReceiver(refreshReceiver) }
@@ -1546,10 +1572,11 @@ class BlockingAccessibilityService : AccessibilityService() {
          * being generous is only that Settings stays interceptive for a few
          * seconds after such a click.
          */
-        private const val SETTINGS_TRANSITION_GUARD_MILLIS = 6_000L
-        private const val SETTINGS_TASK_RESET_GUARD_MILLIS = 2_000L
-        private const val SETTINGS_TASK_RESET_FALLBACK_MILLIS = 750L
-        private const val SETTINGS_CURTAIN_DISMISS_DELAY_MILLIS = 120L
+        private const val SETTINGS_TRANSITION_GUARD_MILLIS = 2_000L
+        private const val SELF_PROTECTION_HOME_DELAY_MILLIS = 80L
+        private const val SELF_PROTECTION_ACTION_DEBOUNCE_MILLIS = 2_500L
+        private const val SELF_PROTECTION_NOTICE_DURATION_MILLIS = 1_200L
+        internal const val BLOCK_NOTICE_RELAUNCH_COOLDOWN_MILLIS = 1_500L
         private const val INSTANT_CURTAIN_FAILSAFE_MILLIS = 5_000L
         internal const val EVENT_NOTIFICATION_TIMEOUT_MILLIS = 0L
         /**
@@ -1593,6 +1620,14 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal fun settingsTransitionGuardMillisForTest(): Long =
             SETTINGS_TRANSITION_GUARD_MILLIS
 
+        internal fun selfProtectionActionDebounceMillisForTest(): Long =
+            SELF_PROTECTION_ACTION_DEBOUNCE_MILLIS
+
+        internal fun shouldExecuteProtectionAction(
+            blockedUntilElapsed: Long,
+            nowElapsed: Long
+        ): Boolean = blockedUntilElapsed <= 0L || nowElapsed > blockedUntilElapsed
+
         internal fun requestedAccessibilityEventTypes(): Int =
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or
                 AccessibilityEvent.TYPE_WINDOWS_CHANGED or
@@ -1601,22 +1636,13 @@ class BlockingAccessibilityService : AccessibilityService() {
                 AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED or
                 AccessibilityEvent.TYPE_VIEW_FOCUSED
 
-        /**
-         * Substitui a tarefa inteira de Configurações por uma raiz descartável.
-         * CLEAR_TASK elimina telas e diálogos anteriores; NO_HISTORY e
-         * EXCLUDE_FROM_RECENTS impedem que essa raiz de saneamento seja retomada.
-         */
-        internal fun createSettingsTaskResetIntent(): Intent =
-            Intent(Settings.ACTION_SETTINGS).apply {
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_NO_HISTORY or
-                        Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS or
-                        Intent.FLAG_ACTIVITY_NO_ANIMATION
-                )
-            }
+        internal fun shouldLaunchBlockNotice(
+            previousKey: String?,
+            previousLaunchElapsed: Long,
+            requestedKey: String,
+            nowElapsed: Long
+        ): Boolean = previousKey != requestedKey ||
+            nowElapsed - previousLaunchElapsed >= BLOCK_NOTICE_RELAUNCH_COOLDOWN_MILLIS
 
         internal fun createRefreshBlockingIntent(
             context: Context,
@@ -1650,6 +1676,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             addFlags(
                 Intent.FLAG_ACTIVITY_NEW_TASK or
                     Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
                     Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
             )
             putExtra(EXTRA_STRICT_BLOCK, strictBlock)

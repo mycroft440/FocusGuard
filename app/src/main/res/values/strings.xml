@@ -130,6 +130,7 @@
     <string name="block_customization">Personalizar bloqueio</string>
     <string name="pending_permissions_title">Permissões pendentes</string>
     <string name="pending_permissions_desc">Conclua todas as permissões de proteção para liberar a configuração de bloqueios.</string>
+    <string name="pending_self_protection_consent_desc">Revise e aceite o compromisso voluntário de autoproteção antes de criar um novo bloqueio.</string>
     <string name="pending_permissions_accessibility_desc">Ative Acessibilidade para liberar a configuração de bloqueios.</string>
     <string name="pending_permissions_usage_access_desc">Ative Acesso de uso para liberar a configuração de bloqueios.</string>
 

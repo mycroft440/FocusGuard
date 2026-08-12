@@ -130,6 +130,7 @@
     <string name="block_customization">Customize block</string>
     <string name="pending_permissions_title">Pending permissions</string>
     <string name="pending_permissions_desc">Complete every protection permission to enable block configuration.</string>
+    <string name="pending_self_protection_consent_desc">Review and accept the voluntary self-protection commitment before creating a new block.</string>
     <string name="pending_permissions_accessibility_desc">Enable Accessibility to allow block configuration.</string>
     <string name="pending_permissions_usage_access_desc">Enable Usage access to allow block configuration.</string>
 

@@ -30,22 +30,19 @@ class DeviceOwnerProtectionDiagnosticsTest {
         val diagnostics = protectedDiagnostics().copy(
             maintenanceActive = true,
             uninstallBlocked = false,
-            appsControlBlocked = false,
             userControlDisabled = false,
-            grantAdminBlocked = false,
             privateDnsChangesBlocked = false,
             vpnConfigurationBlocked = false
         )
 
         assertThat(diagnostics.isFullyProtected).isFalse()
-        assertThat(diagnostics.failedChecks).isEqualTo(6)
+        assertThat(diagnostics.failedChecks).isEqualTo(4)
     }
 
     @Test
     fun `unsupported optional checks do not create false failure`() {
         val diagnostics = protectedDiagnostics().copy(
             userControlDisabled = null,
-            grantAdminBlocked = null,
             automaticTimeEnabled = null,
             automaticTimeZoneEnabled = null
         )
@@ -95,7 +92,6 @@ class DeviceOwnerProtectionDiagnosticsTest {
             protectionArmed = false,
             adultContentProtectionArmed = false,
             uninstallBlocked = false,
-            appsControlBlocked = false,
             factoryResetBlocked = false,
             adultDnsEnforced = null,
             privateDnsChangesBlocked = null,
@@ -118,6 +114,16 @@ class DeviceOwnerProtectionDiagnosticsTest {
         assertThat(diagnostics.failedChecks).isEqualTo(1)
     }
 
+    @Test
+    fun `legacy global app restriction is reported as a protection failure`() {
+        val diagnostics = protectedDiagnostics().copy(
+            otherAppsControlAvailable = false
+        )
+
+        assertThat(diagnostics.isFullyProtected).isFalse()
+        assertThat(diagnostics.failedChecks).isEqualTo(1)
+    }
+
     private fun protectedDiagnostics() = DeviceOwnerProtectionDiagnostics(
         deviceAdminActive = true,
         deviceOwnerActive = true,
@@ -125,8 +131,8 @@ class DeviceOwnerProtectionDiagnosticsTest {
         protectionArmed = true,
         blockingProtectionArmed = false,
         adultContentProtectionArmed = true,
+        otherAppsControlAvailable = true,
         uninstallBlocked = true,
-        appsControlBlocked = true,
         userControlDisabled = true,
         factoryResetBlocked = true,
         safeBootBlocked = true,
@@ -135,7 +141,6 @@ class DeviceOwnerProtectionDiagnosticsTest {
         userSwitchBlocked = true,
         privateProfileCreationBlocked = true,
         dateTimeChangesBlocked = true,
-        grantAdminBlocked = true,
         notificationPermissionLocked = true,
         accessibilityServiceEnabled = true,
         usageAccessEnabled = true,

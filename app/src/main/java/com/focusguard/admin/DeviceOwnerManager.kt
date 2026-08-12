@@ -136,7 +136,16 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             }
         }
 
-        internal fun appControlRestrictionsForSdk(sdkInt: Int): List<String> = buildList {
+        /**
+         * Global restrictions used by older FocusGuard versions.
+         *
+         * They must never be applied again: DISALLOW_UNINSTALL_APPS and
+         * DISALLOW_APPS_CONTROL affect every package in the user. Keep the list
+         * only so an update can remove policies left behind by an older build.
+         */
+        internal fun legacyGlobalAppControlRestrictionsForSdk(
+            sdkInt: Int
+        ): List<String> = buildList {
             add(UserManager.DISALLOW_UNINSTALL_APPS)
             add(UserManager.DISALLOW_APPS_CONTROL)
             if (sdkInt >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
@@ -153,9 +162,12 @@ class DeviceOwnerManager private constructor(private val context: Context) {
 
         internal fun allShieldRestrictionsForSdk(sdkInt: Int): List<String> =
             ALWAYS_ON_RESTRICTIONS +
-                appControlRestrictionsForSdk(sdkInt) +
                 adultContentRestrictionsForSdk(sdkInt) +
                 activeBlockRestrictionsForSdk(sdkInt)
+
+        internal fun allRestrictionsForCleanupForSdk(sdkInt: Int): List<String> =
+            allShieldRestrictionsForSdk(sdkInt) +
+                legacyGlobalAppControlRestrictionsForSdk(sdkInt)
 
         internal fun requiresAdultDns(
             globalAdultFilterEnabled: Boolean,
@@ -486,14 +498,23 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     }
 
     /** Enforce strict device policies during an active block session. */
-    fun enforceBlockingPolicies() {
-        if (!isDeviceOwnerActive()) return
-        try {
+    fun enforceBlockingPolicies(): Boolean {
+        if (!isDeviceOwnerActive()) return false
+        return try {
+            // Apply and read back the package-scoped uninstall policy before
+            // persisting the armed state. A true result means Android confirmed
+            // the first-attempt guard; the session manager refuses to report
+            // successful activation otherwise.
+            check(enforceAppControlProtection()) {
+                "Android não confirmou o bloqueio de desinstalação do FocusGuard"
+            }
             setBlockingProtectionArmed(true)
             applyNuclearShield()
-            Log.d("FocusGuardAdmin", "Políticas de sessão aplicadas")
+            Log.d("FocusGuardAdmin", "Políticas de sessão aplicadas e confirmadas")
+            true
         } catch (e: Exception) {
             FocusGuardLogger.logError("DeviceOwner", "Falha ao aplicar políticas de sessão", e)
+            false
         }
     }
 
@@ -528,31 +549,35 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             DeviceOwnerMaintenanceGate.revoke(context)
         }
 
-        enforceTrustedAutomaticTime()
-        ALWAYS_ON_RESTRICTIONS.forEach { restriction ->
-            applyPolicySafely("direct_boot_add:$restriction") {
-                dpm.addUserRestriction(componentName, restriction)
-            }
-        }
-        enforceAppControlProtection()
-
-        if (shouldRestoreActiveBlockAtDirectBoot(
-                blockingProtectionArmed = isArmoredProtectionArmed(),
-                interruptedMaintenance = interruptedArmedMaintenance
-            )
-        ) {
+        val restoreAdultDns = shouldRestoreAdultDnsAtDirectBoot(
+            adultContentProtectionArmed = isAdultContentProtectionArmed(),
+            pornographyCategoryActive = isPornographyCategoryActive()
+        )
+        val restoreProtection = restoreAdultDns || shouldRestoreActiveBlockAtDirectBoot(
+            blockingProtectionArmed = isArmoredProtectionArmed(),
+            interruptedMaintenance = interruptedArmedMaintenance
+        )
+        if (restoreProtection) {
+            enforceTrustedAutomaticTime()
+            setRestrictions(ALWAYS_ON_RESTRICTIONS, enabled = true)
+            enforceAppControlProtection()
             activeBlockRestrictionsForSdk(Build.VERSION.SDK_INT).forEach { restriction ->
                 applyPolicySafely("direct_boot_add:$restriction") {
                     dpm.addUserRestriction(componentName, restriction)
                 }
             }
+        } else {
+            // An idle Device Owner must remain removable and must not inherit
+            // global restrictions from either a reboot or an older app version.
+            setRestrictions(ALWAYS_ON_RESTRICTIONS, enabled = false)
+            setRestrictions(
+                activeBlockRestrictionsForSdk(Build.VERSION.SDK_INT),
+                enabled = false
+            )
+            relaxAppControlProtection()
         }
 
-        if (shouldRestoreAdultDnsAtDirectBoot(
-                adultContentProtectionArmed = isAdultContentProtectionArmed(),
-                pornographyCategoryActive = isPornographyCategoryActive()
-            )
-        ) {
+        if (restoreAdultDns) {
             enforceAdultDns()
         }
 
@@ -639,29 +664,48 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         applyPolicySafely("auto_timezone") { dpm.setAutoTimeZoneEnabled(componentName, true) }
     }
 
-    private fun enforceAppControlProtection() {
-        appControlRestrictionsForSdk(Build.VERSION.SDK_INT).forEach { restriction ->
-            applyPolicySafely("add:$restriction") {
-                dpm.addUserRestriction(componentName, restriction)
-            }
-        }
-        applyPolicySafely("uninstall_blocked") {
+    private fun enforceAppControlProtection(): Boolean {
+        val legacyRestrictionsCleared = clearLegacyGlobalAppControlRestrictions()
+        // These policies are package-scoped. They close the first-attempt race
+        // for FocusGuard without affecting uninstall or app controls elsewhere.
+        val uninstallPolicyApplied = applyPolicySafely("uninstall_blocked") {
             dpm.setUninstallBlocked(componentName, context.packageName, true)
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+        val userControlPolicyApplied = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             applyPolicySafely("user_control_disabled") {
                 dpm.setUserControlDisabledPackages(componentName, listOf(context.packageName))
             }
-        }
+        } else true
         enforceRuntimePermissionProtection()
+        val uninstallPolicyVerified = runCatching {
+            dpm.isUninstallBlocked(componentName, context.packageName)
+        }.onFailure { error ->
+            FocusGuardLogger.logError(
+                "DeviceOwner",
+                "Falha ao verificar a política uninstall_blocked",
+                error
+            )
+        }.getOrDefault(false)
+        val userControlPolicyVerified = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            runCatching {
+                context.packageName in dpm.getUserControlDisabledPackages(componentName)
+            }.onFailure { error ->
+                FocusGuardLogger.logError(
+                    "DeviceOwner",
+                    "Falha ao verificar a política user_control_disabled",
+                    error
+                )
+            }.getOrDefault(false)
+        } else true
+        return legacyRestrictionsCleared &&
+            uninstallPolicyApplied &&
+            uninstallPolicyVerified &&
+            userControlPolicyApplied &&
+            userControlPolicyVerified
     }
 
     private fun relaxAppControlProtection() {
-        appControlRestrictionsForSdk(Build.VERSION.SDK_INT).forEach { restriction ->
-            applyPolicySafely("clear:$restriction") {
-                dpm.clearUserRestriction(componentName, restriction)
-            }
-        }
+        clearLegacyGlobalAppControlRestrictions()
         applyPolicySafely("uninstall_allowed") {
             dpm.setUninstallBlocked(componentName, context.packageName, false)
         }
@@ -671,6 +715,32 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             }
         }
         relaxRuntimePermissionProtection()
+    }
+
+    private fun clearLegacyGlobalAppControlRestrictions(): Boolean {
+        val restrictions = legacyGlobalAppControlRestrictionsForSdk(Build.VERSION.SDK_INT)
+        val operationsSucceeded = restrictions.map { restriction ->
+            applyPolicySafely("clear:$restriction") {
+                dpm.clearUserRestriction(componentName, restriction)
+            }
+        }.all { it }
+        val verified = runCatching {
+            val current = dpm.getUserRestrictions(componentName)
+            restrictions.none { restriction -> current.getBoolean(restriction, false) }
+        }.onFailure { error ->
+            FocusGuardLogger.logError(
+                "DeviceOwner",
+                "Falha ao verificar a remoção das restrições globais legadas",
+                error
+            )
+        }.getOrDefault(false)
+        if (!verified) {
+            FocusGuardLogger.log(
+                "DeviceOwner",
+                "O Android ainda reporta uma restrição global legada de controle de apps"
+            )
+        }
+        return operationsSucceeded && verified
     }
 
     private fun enforceRuntimePermissionProtection() {
@@ -713,7 +783,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     fun revokeNuclearShield() {
         if (!isDeviceOwnerActive() || !isMaintenanceActive()) return
 
-        allShieldRestrictionsForSdk(Build.VERSION.SDK_INT).forEach { restriction ->
+        allRestrictionsForCleanupForSdk(Build.VERSION.SDK_INT).forEach { restriction ->
             applyPolicySafely("clear:$restriction") {
                 dpm.clearUserRestriction(componentName, restriction)
             }
@@ -847,11 +917,13 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         (context.getSystemService(Context.USER_SERVICE) as UserManager).isUserUnlocked
     }.getOrDefault(true)
 
-    private inline fun applyPolicySafely(name: String, operation: () -> Unit) {
-        runCatching(operation).onFailure { error ->
+    private inline fun applyPolicySafely(name: String, operation: () -> Unit): Boolean =
+        runCatching {
+            operation()
+            true
+        }.onFailure { error ->
             FocusGuardLogger.logError("DeviceOwner", "Falha na política $name", error)
-        }
-    }
+        }.getOrDefault(false)
 
     /**
      * Aplica bloqueio preventivo no renderer dos navegadores gerenciáveis.

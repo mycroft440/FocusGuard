@@ -4,10 +4,11 @@ import java.text.Normalizer
 import java.util.Locale
 
 /**
- * Pure classifier for system screens that can weaken a fully managed FocusGuard device.
+ * Pure classifier for system screens that can weaken FocusGuard self-protection.
  *
- * The accessibility service only uses this policy while FocusGuard is the real Device Owner,
- * armored protection is active and the authenticated maintenance window is closed.
+ * The accessibility service uses it only while a user-created protection is active and the
+ * authenticated maintenance window is closed. Decisions still require FocusGuard identity;
+ * a screen class alone must never affect another package.
  */
 object ManagedSelfProtectionPolicy {
 
@@ -19,11 +20,8 @@ object ManagedSelfProtectionPolicy {
     )
 
     private val appDetailsClassMarkers = setOf(
-        // A lista Configurações > Aplicativos é a porta de entrada para os
-        // detalhes do FocusGuard. Cortá-la pela classe evita que a pessoa chegue
-        // à tela final por fabricantes que usam uma Activity genérica ali.
-        "ManageApplications",
-        "ApplicationsSettings",
+        // Somente superfícies de detalhes de um app. A lista geral de aplicativos
+        // precisa continuar disponível para administrar qualquer outro pacote.
         "InstalledAppDetails",
         "AppInfoDashboardFragment",
         "AppInfoDashboardActivity",
@@ -88,7 +86,8 @@ object ManagedSelfProtectionPolicy {
     internal val focusGuardSearchTerms = listOf(
         "FocusGuard",
         "Focus Guard",
-        "com.focusguard.v2"
+        "com.focusguard.v2",
+        "com.focusguard.v2.debug"
     )
 
     internal val destructiveControlSearchTerms = listOf(

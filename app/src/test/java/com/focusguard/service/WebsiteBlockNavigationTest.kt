@@ -120,6 +120,8 @@ class WebsiteBlockNavigationTest {
             )
         ).isEqualTo(CHROME_PACKAGE)
         assertThat(intent.flags and Intent.FLAG_ACTIVITY_NEW_TASK).isNotEqualTo(0)
+        assertThat(intent.flags and Intent.FLAG_ACTIVITY_CLEAR_TOP).isNotEqualTo(0)
+        assertThat(intent.flags and Intent.FLAG_ACTIVITY_CLEAR_TASK).isEqualTo(0)
     }
 
     @Test

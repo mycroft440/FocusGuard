@@ -3,7 +3,7 @@
     <string name="trust_disclosure_title">Privacidade e permissões</string>
     <string name="trust_disclosure_intro">Antes de abrir as permissões sensíveis do Android, confira como o FocusGuard funciona.</string>
     <string name="trust_accessibility_title">Acessibilidade</string>
-    <string name="trust_accessibility_body">Quando ativada, identifica o aplicativo ou navegador visível e pode ler o texto da janela, incluindo endereços exibidos, somente para aplicar os bloqueios e limites que você configurou.</string>
+    <string name="trust_accessibility_body">Quando ativada, identifica o aplicativo ou navegador visível e pode ler o texto da janela, incluindo endereços exibidos, para aplicar os bloqueios e limites configurados. Também reconhece telas do sistema referentes ao próprio FocusGuard para cumprir a autoproteção aceita; não interfere nos controles de outros apps.</string>
     <string name="trust_usage_title">Acesso de uso</string>
     <string name="trust_usage_body">Consulta o tempo de uso dos aplicativos para calcular limites diários e mostrar métricas no próprio aparelho.</string>
     <string name="trust_local_title">Processamento local</string>
@@ -12,11 +12,23 @@
     <string name="trust_camera_body">A câmera só é solicitada quando você ativa manualmente a foto de tentativa de acesso. As imagens ficam armazenadas no aplicativo.</string>
     <string name="trust_network_title">Uso da internet</string>
     <string name="trust_network_body">A internet é usada para carregar recursos públicos, como ícones de sites. A proteção principal e os dados privados permanecem no aparelho.</string>
-    <string name="trust_choice_notice">Você pode continuar sem concordar e usar os recursos que não dependem dessas permissões. As permissões também podem ser revogadas nas configurações do Android.</string>
+    <string name="trust_choice_notice">Você pode continuar sem concordar e usar os recursos que não dependem dessas permissões. Fora de uma proteção voluntária ativa, elas podem ser revogadas nas configurações do Android; durante a proteção, valem as condições do compromisso mostrado na etapa anterior.</string>
     <string name="trust_accept">Concordo e continuar</string>
     <string name="trust_decline">Agora não</string>
 
-    <string name="accessibility_service_description_transparent">O FocusGuard observa o aplicativo ou navegador em primeiro plano e o conteúdo visível da janela para aplicar bloqueios e limites configurados pelo usuário. O processamento é local, não controla o aparelho remotamente e não impede a desativação do serviço nas configurações do Android.</string>
+    <string name="self_protection_term_title">Compromisso de autoproteção</string>
+    <string name="self_protection_term_intro">O FocusGuard é uma ferramenta voluntária para apoiar o controle de hábitos. A proteção só é ativada por uma escolha feita neste aparelho.</string>
+    <string name="self_protection_term_scope_title">O que será protegido</string>
+    <string name="self_protection_term_scope_body">Enquanto um bloqueio, limite ou filtro escolhido por você estiver ativo, tentativas de desativar a proteção ou remover o próprio FocusGuard serão interrompidas. A autoproteção não bloqueará a desinstalação nem os controles de outros aplicativos. No Pomodoro rigoroso, toda a navegação fora da tela de foco permanece indisponível pelo prazo escolhido.</string>
+    <string name="self_protection_term_modes_title">Limites técnicos</string>
+    <string name="self_protection_term_modes_body">No modo comum, a Acessibilidade reage às telas do Android e não oferece garantia absoluta contra a primeira tentativa. No modo Device Owner, o Android bloqueia desde a primeira tentativa somente a desinstalação do FocusGuard e, nas versões compatíveis, a parada forçada e a limpeza de dados; as demais restrições reforçadas são exibidas antes do provisionamento.</string>
+    <string name="self_protection_term_exit_title">Como a proteção termina</string>
+    <string name="self_protection_term_exit_body">A saída segue exatamente o tipo de bloqueio escolhido: término do prazo, senha quando prevista ou manutenção autenticada. Não existe controle remoto oculto e você pode recusar este termo e não ativar novos bloqueios.</string>
+    <string name="self_protection_term_checkbox">Li, compreendi e concordo em impor voluntariamente essas condições de desbloqueio a mim mesmo.</string>
+    <string name="self_protection_term_accept">Concordar e continuar</string>
+    <string name="self_protection_term_decline">Não ativar autoproteção</string>
+
+    <string name="accessibility_service_description_transparent">O FocusGuard observa o aplicativo ou navegador em primeiro plano e o conteúdo visível da janela para aplicar bloqueios e limites configurados pelo usuário. O processamento é local e não há controle remoto. Durante uma proteção voluntária ativa, tentativas de desativar o próprio FocusGuard podem ser encerradas conforme o termo aceito no app.</string>
     <string name="accessibility_paused_channel">Status da proteção</string>
     <string name="accessibility_paused_channel_description">Avisos quando uma permissão necessária para bloqueio em tempo real é desativada.</string>
     <string name="accessibility_paused_title">Proteção em tempo real pausada</string>

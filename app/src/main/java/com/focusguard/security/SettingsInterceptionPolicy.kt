@@ -6,9 +6,8 @@ package com.focusguard.security
  *
  * The individual classifiers ([AccessibilitySettingsPolicy] and
  * [ManagedSelfProtectionPolicy]) already have their own tests; what lives here
- * is the *composition* of those signals — the eight interception paths that were
- * previously inlined in `BlockingAccessibilityService.handleSettingsInterception`
- * and therefore untestable without a device.
+ * is the composition of those signals. In particular, it encodes the invariant
+ * that an app-control class is never sufficient without FocusGuard identity.
  *
  * Reading the accessibility node tree is expensive, so the `root*` signals are
  * passed as lambdas and evaluated only on the branches that need them. Keep them
@@ -64,17 +63,10 @@ object SettingsInterceptionPolicy {
         val isWindowTransitionEvent: Boolean,
         val guardArmed: Boolean,
 
-        /**
-         * Tela individual que contém o interruptor de um serviço. Mantida
-         * separada da lista principal para diagnóstico; durante um bloqueio
-         * ativo, ambas são protegidas.
-         */
+        /** Tela individual que contém o interruptor de um serviço. */
         val classTargetsAccessibilityServiceToggle: Boolean,
 
-        /**
-         * Qualquer tela que apenas lista recursos de acessibilidade. É de onde
-         * se chega ao interruptor do FocusGuard.
-         */
+        /** Uma tela que apenas lista recursos de acessibilidade. */
         val classTargetsAccessibilityList: Boolean,
         val classTargetsDeviceAdmin: Boolean,
         val classTargetsAppDetails: Boolean,
@@ -124,64 +116,11 @@ object SettingsInterceptionPolicy {
 
         if (strictPomodoroActive) return Decision.POMODORO_LOCK
 
-        // Corte seco pela classe da tela, antes de qualquer texto ou leitura de
-        // árvore, e sem depender de o FocusGuard estar nomeado nela.
-        //
-        // É a decisão mais rápida que existe aqui — nenhum binder, nenhuma
-        // varredura — e é onde a velocidade importa: cada uma destas telas
-        // desliga a proteção em um ou dois toques, e qualquer condição conferida
-        // antes é tempo que o usuário tem para alcançar o botão.
-        //
-        // Informações do app e o diálogo de desinstalação entram sem exigir o
-        // nome porque a evidência de que a página é do FocusGuard só existe
-        // depois que a árvore renderiza. Esperar por ela era exatamente o
-        // intervalo em que dava para tocar em "Desinstalar" antes do bloqueio.
-        //
-        // O preço é grosso e assumido: enquanto houver bloqueio ativo, nenhuma
-        // página de informações de app abre e nenhuma desinstalação acontece —
-        // nem de outros aplicativos. Fora de bloqueio, tudo volta ao normal.
-        if (signals.classTargetsAccessibilityList ||
-            signals.classTargetsAccessibilityServiceToggle ||
-            signals.classTargetsDeviceAdmin ||
-            signals.classTargetsAppDetails ||
-            signals.classTargetsUninstall
-        ) {
-            return Decision.PROTECT_AND_ARM_GUARD
-        }
-
-        // Defesa específica para a rota da One UI mostrada no aparelho:
-        // Acessibilidade > Configurações avançadas > Aplicativos instalados.
-        // O rótulo chega no evento mesmo quando a classe OEM é genérica.
-        if (signals.textMentionsInstalledAccessibilityApps) {
-            return Decision.PROTECT_AND_ARM_GUARD
-        }
-
-        // Algumas versões da One UI entregam a tela principal numa Activity
-        // genérica. Na transição de janela, o título "Acessibilidade" identifica
-        // a tela sem varrer a árvore inteira. Eventos de conteúdo ficam fora
-        // desta regra para não fechar a tela inicial de Configurações só porque
-        // o item Acessibilidade aparece na lista.
-        if (signals.isWindowTransitionEvent && signals.textMentionsAccessibility) {
-            return Decision.PROTECT_AND_ARM_GUARD
-        }
-
-        // A click on an entry point fires before the destination screen opens, so
-        // arm a short guard and intercept the transition too.
-        //
-        // The Accessibility entry is blocked at the menu, without requiring the app
-        // to be named: it is the one choke point that does not depend on an OEM's
-        // class names, and it is where the switch that disables FocusGuard lives.
-        // The practical consequence is that the Accessibility section as a whole is
-        // unreachable while a block is armed — an explicit product decision, not an
-        // oversight. See `classTargetsAccessibilityServiceToggle` for the narrower
-        // rule that still guards the destination if this click is ever missed.
-        if (signals.isViewClickedEvent &&
-            (signals.textMentionsAccessibility ||
-                signals.textMentionsDeviceAdmin ||
-                (signals.textMentionsFocusGuard &&
-                    (signals.textMentionsDestructiveControl ||
-                        signals.textMentionsEssentialSpecialAccess)))
-        ) {
+        // O primeiro evento útil normalmente é o clique no item "FocusGuard".
+        // Interceptá-lo antes da transição fecha a principal corrida do modo
+        // consumidor sem interditar Acessibilidade, Informações do app ou o
+        // desinstalador de qualquer outro aplicativo.
+        if (signals.isViewClickedEvent && signals.textMentionsFocusGuard) {
             return Decision.PROTECT_AND_ARM_GUARD
         }
 
@@ -198,12 +137,19 @@ object SettingsInterceptionPolicy {
             return Decision.PROTECT_AND_ARM_GUARD
         }
 
-        if (signals.classTargetsDeviceAdmin ||
-            (signals.isGenericSubSettings &&
-                (signals.textMentionsDeviceAdmin || rootSignals.mentionsDeviceAdmin()))
+        // Uma classe de tela informa o tipo de controle, nunca de qual app ele
+        // trata. Exigir o nome do FocusGuard é o limite que evita bloquear os
+        // administradores, detalhes e desinstalações dos demais aplicativos.
+        if (signals.classTargetsDeviceAdmin &&
+            (signals.textMentionsFocusGuard || rootSignals.mentionsFocusGuard())
         ) {
             return Decision.PROTECT_AND_ARM_GUARD
         }
+
+        if (signals.isGenericSubSettings &&
+            (signals.textMentionsDeviceAdmin || rootSignals.mentionsDeviceAdmin()) &&
+            (signals.textMentionsFocusGuard || rootSignals.mentionsFocusGuard())
+        ) return Decision.PROTECT_AND_ARM_GUARD
 
         val onFocusGuardControlSurface =
             signals.classTargetsAppDetails ||
