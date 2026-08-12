@@ -309,7 +309,7 @@ fun HomeContent(
                         stringResource(id = R.string.focus_subtitle),
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 1.dp, bottom = 10.dp)
+                        modifier = Modifier.padding(top = 1.dp, bottom = 18.dp)
                     )
                 }
             }
@@ -378,7 +378,7 @@ fun HomeContent(
             ) {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     BlockTypeUi.entries.forEach { type ->
                         SessionCard(
@@ -598,12 +598,15 @@ fun SessionCard(
         border = BorderStroke(1.dp, CardBorder)
     ) {
         Row(
-            modifier = Modifier.padding(if (compact) 11.dp else 16.dp),
+            modifier = Modifier.padding(
+                horizontal = if (compact) 13.dp else 16.dp,
+                vertical = if (compact) 12.dp else 16.dp
+            ),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(if (compact) 40.dp else 48.dp)
+                    .size(if (compact) 44.dp else 48.dp)
                     .clip(RoundedCornerShape(if (compact) 13.dp else 16.dp))
                     .background(
                         Brush.linearGradient(
@@ -618,23 +621,23 @@ fun SessionCard(
                 Icon(
                     icon,
                     contentDescription = null,
-                    modifier = Modifier.size(if (compact) 22.dp else 26.dp),
+                    modifier = Modifier.size(if (compact) 24.dp else 26.dp),
                     tint = accent
                 )
             }
-            Spacer(modifier = Modifier.width(if (compact) 11.dp else 16.dp))
+            Spacer(modifier = Modifier.width(if (compact) 12.dp else 16.dp))
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     title,
-                    fontSize = if (compact) 14.sp else 16.sp,
+                    fontSize = if (compact) 15.sp else 16.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary
                 )
-                Spacer(modifier = Modifier.height(if (compact) 1.dp else 3.dp))
+                Spacer(modifier = Modifier.height(if (compact) 2.dp else 3.dp))
                 Text(
                     subtitle,
-                    fontSize = if (compact) 11.sp else 13.sp,
-                    lineHeight = if (compact) 14.sp else 17.sp,
+                    fontSize = if (compact) 12.sp else 13.sp,
+                    lineHeight = if (compact) 15.sp else 17.sp,
                     color = TextSecondary
                 )
             }
