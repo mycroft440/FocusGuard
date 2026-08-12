@@ -59,11 +59,12 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
-    fun `transition guard outlasts a cold settings start`() {
-        // Sized so the guard armed by the menu click still covers the destination
-        // window on a slow device.
+    fun `transition guard covers the protection handoff without restarting settings`() {
+        // The new flow never cold-starts Settings. It only needs to cover BACK,
+        // the delayed HOME action and the stable notice while follow-up window
+        // events from the intercepted attempt are still being delivered.
         assertThat(BlockingAccessibilityService.settingsTransitionGuardMillisForTest())
-            .isAtLeast(5_000L)
+            .isAtLeast(2_000L)
     }
 
     @Test
