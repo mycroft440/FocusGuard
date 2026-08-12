@@ -3,12 +3,13 @@ package com.focusguard.analytics
 import android.app.usage.UsageEvents
 import android.app.usage.UsageStatsManager
 import android.content.Context
-import android.content.Intent
 import android.content.pm.PackageManager
+import android.os.Build
 import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.util.Locale
 
@@ -27,17 +28,9 @@ class AdvancedUsageAnalytics(private val context: Context) {
     private val pm = context.packageManager
 
     companion object {
-        // [F3] Cache para reduzir I/O e overhead de CPU no Dashboard.
-        // ANTIGO: vars mutáveis estáticas sem sincronização — race condition
-        // se múltiplas threads acessassem concorrentemente.
-        // NOVO: @Volatile + sincronização no acesso (read-then-write atômico
-        // via @Synchronized methods). O custo de sincronização é desprezível
-        // vs. o custo de queryUsageStats (10-50ms).
-        @Volatile
-        private var cachedPhoneUsage: Pair<String, PhoneUsageInsights>? = null
-        @Volatile
-        private var lastPhoneUsageTime: Long = 0
-
+        // Cache somente das listas de aplicativos. O uso de tela não é
+        // armazenado aqui: ele precisa avançar enquanto a tela permanece ativa
+        // e deve ser atualizado toda vez que o Dashboard volta ao primeiro plano.
         @Volatile
         private var cachedMostUsed: Pair<String, List<AppUsageStat>>? = null // Key: "start-end"
         @Volatile
@@ -61,42 +54,30 @@ class AdvancedUsageAnalytics(private val context: Context) {
         historyDays: Int = 7,
         periodAverageDays: Int = PHONE_USAGE_PERIOD_ANALYSIS_DAYS
     ): PhoneUsageInsights = withContext(Dispatchers.IO) {
+        require(historyDays > 0) { "historyDays must be positive" }
+        require(periodAverageDays > 0) { "periodAverageDays must be positive" }
+
         val now = System.currentTimeMillis()
         val zoneId = ZoneId.systemDefault()
         val locale = Locale.getDefault()
         val today = Instant.ofEpochMilli(now).atZone(zoneId).toLocalDate()
-        val cacheKey = listOf(
-            historyDays,
-            periodAverageDays,
-            zoneId.id,
-            locale.toLanguageTag(),
-            today
-        ).joinToString("|")
-
-        synchronized(cacheLock) {
-            if (
-                cachedPhoneUsage?.first == cacheKey &&
-                (now - lastPhoneUsageTime) < CACHE_TTL
-            ) {
-                return@withContext cachedPhoneUsage!!.second
-            }
-        }
 
         val emptyInsights = {
             PhoneUsageInsightsCalculator.calculate(
-                intervals = emptyList(),
+                dailyScreenTimeByDate = emptyMap(),
+                detailedIntervals = emptyList(),
+                completePeriodDates = emptyList(),
                 nowMs = now,
                 historyDays = historyDays,
-                periodAverageDays = periodAverageDays,
                 zoneId = zoneId,
                 locale = locale
             )
         }
         val manager = usageStatsManager ?: return@withContext emptyInsights()
 
-        // O gráfico usa hoje + 6 dias; os períodos de maior e menor uso usam os
-        // 30 dias completos anteriores. Consultamos ainda um dia de aquecimento
-        // para reconhecer uma sessão aberta na virada do primeiro dia.
+        // O gráfico usa o histórico agregado do Android, que não sofre com a
+        // retenção curta de queryEvents. Os eventos detalhados abaixo servem
+        // apenas para distribuir o uso em blocos de três horas.
         val historyStartDate = today.minusDays(historyDays - 1L)
         val periodStartDate = today.minusDays(periodAverageDays.toLong())
         val earliestRequiredDate = minOf(historyStartDate, periodStartDate)
@@ -114,90 +95,133 @@ class AdvancedUsageAnalytics(private val context: Context) {
                 "Falha em queryEvents (phoneUsage)",
                 error
             )
-            return@withContext emptyInsights()
-        } ?: return@withContext emptyInsights()
-
-        val homePackage = try {
-            val homeIntent = Intent(Intent.ACTION_MAIN).apply {
-                addCategory(Intent.CATEGORY_HOME)
-            }
-            pm.resolveActivity(homeIntent, PackageManager.MATCH_DEFAULT_ONLY)
-                ?.activityInfo
-                ?.packageName
-        } catch (error: Throwable) {
             null
         }
-        val eligibilityCache = mutableMapOf<String, Boolean>()
-        val accumulator = PhoneUsageSessionAccumulator { packageName ->
-            eligibilityCache.getOrPut(packageName) {
-                when (packageName) {
-                    homePackage,
-                    "com.android.launcher",
-                    "com.android.systemui" -> false
 
-                    else -> try {
-                        pm.getLaunchIntentForPackage(packageName) != null
-                    } catch (error: Throwable) {
-                        false
-                    }
-                }
-            }
-        }
+        val accumulator = ScreenInteractiveSessionAccumulator()
         val event = UsageEvents.Event()
-        var eventLoopCompleted = true
+        var eventLoopCompleted = events != null
         var lastEventTimestamp = queryStart
 
-        try {
-            while (events.hasNextEvent()) {
-                events.getNextEvent(event)
-                lastEventTimestamp = maxOf(lastEventTimestamp, event.timeStamp)
-                when (event.eventType) {
-                    UsageEvents.Event.ACTIVITY_RESUMED ->
-                        accumulator.onActivityResumed(
-                            packageName = event.packageName,
-                            activityClassName = event.className,
-                            timestampMs = event.timeStamp
-                        )
+        if (events != null) {
+            try {
+                while (events.hasNextEvent()) {
+                    events.getNextEvent(event)
+                    lastEventTimestamp = maxOf(lastEventTimestamp, event.timeStamp)
+                    when (event.eventType) {
+                        UsageEvents.Event.SCREEN_INTERACTIVE ->
+                            accumulator.onScreenInteractive(event.timeStamp)
 
-                    UsageEvents.Event.ACTIVITY_PAUSED ->
-                        accumulator.onActivityPaused(
-                            packageName = event.packageName,
-                            activityClassName = event.className,
-                            timestampMs = event.timeStamp
-                        )
-
-                    UsageEvents.Event.SCREEN_NON_INTERACTIVE,
-                    UsageEvents.Event.KEYGUARD_SHOWN ->
-                        accumulator.onDeviceBecameInactive(event.timeStamp)
+                        UsageEvents.Event.SCREEN_NON_INTERACTIVE ->
+                            accumulator.onScreenNonInteractive(event.timeStamp)
+                    }
                 }
+            } catch (error: Throwable) {
+                // OEMs podem interromper a iteração. Os intervalos já lidos
+                // continuam úteis, mas o dia da interrupção não entra na média.
+                eventLoopCompleted = false
+                FocusGuardLogger.logError(
+                    "AdvancedUsageAnalytics",
+                    "Falha no loop de eventos (phoneUsage)",
+                    error
+                )
             }
-        } catch (error: Throwable) {
-            // OEMs podem interromper a iteração; os eventos já lidos ainda
-            // formam sessões válidas e são preservados.
-            eventLoopCompleted = false
-            FocusGuardLogger.logError(
-                "AdvancedUsageAnalytics",
-                "Falha no loop de eventos (phoneUsage)",
-                error
+        }
+
+        val activeIntervalStartTimeMs = accumulator.activeIntervalStartTimeMs
+        val detailedIntervals = accumulator.finish(
+            if (eventLoopCompleted) now else lastEventTimestamp
+        )
+        val completePeriodDates = completeDatesCoveredByDetailedEvents(
+            firstObservedEventTimeMs = accumulator.firstObservedEventTimeMs,
+            lastObservedEventTimeMs = lastEventTimestamp,
+            eventLoopCompleted = eventLoopCompleted,
+            periodStartDate = periodStartDate,
+            today = today,
+            zoneId = zoneId
+        )
+        val historyDates = (0 until historyDays).map { dayOffset ->
+            historyStartDate.plusDays(dayOffset.toLong())
+        }
+        val aggregatedDailyTotals = queryAggregatedDailyScreenTime(
+            manager = manager,
+            dates = historyDates,
+            nowMs = now,
+            zoneId = zoneId
+        )
+        val dailyTotals = historyDates.associateWith { date ->
+            val dayStartMs = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
+            val dayEndMs = date.plusDays(1)
+                .atStartOfDay(zoneId)
+                .toInstant()
+                .toEpochMilli()
+                .coerceAtMost(now)
+            val aggregatedTotalMs = aggregatedDailyTotals[date]
+
+            resolveDailyScreenTime(
+                aggregatedTotalMs = aggregatedTotalMs,
+                detailedIntervals = detailedIntervals,
+                rangeStartMs = dayStartMs,
+                rangeEndMs = dayEndMs,
+                activeIntervalStartTimeMs = activeIntervalStartTimeMs,
+                includeActiveTail = date == today
             )
         }
 
-        val result = PhoneUsageInsightsCalculator.calculate(
-            intervals = accumulator.finish(
-                if (eventLoopCompleted) now else lastEventTimestamp
-            ),
+        PhoneUsageInsightsCalculator.calculate(
+            dailyScreenTimeByDate = dailyTotals,
+            detailedIntervals = detailedIntervals,
+            completePeriodDates = completePeriodDates,
             nowMs = now,
             historyDays = historyDays,
-            periodAverageDays = periodAverageDays,
             zoneId = zoneId,
             locale = locale
         )
+    }
 
-        synchronized(cacheLock) {
-            cachedPhoneUsage = cacheKey to result
-            lastPhoneUsageTime = now
+    private fun queryAggregatedDailyScreenTime(
+        manager: UsageStatsManager,
+        dates: List<LocalDate>,
+        nowMs: Long,
+        zoneId: ZoneId
+    ): Map<LocalDate, Long> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return emptyMap()
+
+        return buildMap {
+            dates.forEach { date ->
+                val startMs = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
+                val endMs = date.plusDays(1)
+                    .atStartOfDay(zoneId)
+                    .toInstant()
+                    .toEpochMilli()
+                    .coerceAtMost(nowMs)
+                if (endMs <= startMs) {
+                    put(date, 0L)
+                    return@forEach
+                }
+
+                try {
+                    val totalTimeMs = manager.queryEventStats(
+                        UsageStatsManager.INTERVAL_DAILY,
+                        startMs,
+                        endMs
+                    ).orEmpty()
+                        .asSequence()
+                        .filter { it.eventType == UsageEvents.Event.SCREEN_INTERACTIVE }
+                        .sumOf { it.totalTime }
+                        .coerceIn(0L, endMs - startMs)
+                    put(date, totalTimeMs)
+                } catch (error: Throwable) {
+                    // A ausência desta chave ativa o fallback por eventos
+                    // detalhados somente para o dia afetado.
+                    FocusGuardLogger.logError(
+                        "AdvancedUsageAnalytics",
+                        "Falha em queryEventStats (screenInteractive)",
+                        error
+                    )
+                }
+            }
         }
-        result
     }
 
     suspend fun getMostUsedApps(startTime: Long, endTime: Long): List<AppUsageStat> = withContext(Dispatchers.IO) {

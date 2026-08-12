@@ -28,131 +28,134 @@ data class PhoneUsagePeriodSummary(
 
 data class PhoneUsageInsights(
     val dailyHistory: List<DailyPhoneUsage>,
-    val periodSummary: PhoneUsagePeriodSummary?
+    val periodSummary: PhoneUsagePeriodSummary?,
+    val completeDaysAverageMs: Long = 0L,
+    val completeDaysAnalyzed: Int = 0
 )
 
-internal data class ForegroundUsageInterval(
-    val packageName: String,
+internal data class ScreenInteractiveInterval(
     val startTimeMs: Long,
     val endTimeMs: Long
 )
 
 /**
- * Reconstrói o tempo real em primeiro plano a partir dos eventos de Activity.
+ * Reconstrói os intervalos detalhados em que a tela esteve interativa.
  *
- * Uma pausa fica pendente até sabermos se houve apenas uma troca de Activity
- * dentro do mesmo aplicativo. Ao trocar de pacote, apagar/bloquear a tela ou
- * terminar a consulta, a sessão é encerrada no instante correto.
+ * Os eventos detalhados são usados somente nos cartões por faixa de horário,
+ * pois o Android os mantém por poucos dias. O histórico diário vem dos dados
+ * agregados de [android.app.usage.UsageStatsManager.queryEventStats].
  */
-internal class PhoneUsageSessionAccumulator(
-    private val isEligibleApp: (String) -> Boolean
-) {
-    private data class ForegroundSession(
-        val packageName: String,
-        var activityClassName: String?,
-        val startedAtMs: Long,
-        val eligible: Boolean,
-        var pendingExitAtMs: Long? = null
-    )
+internal class ScreenInteractiveSessionAccumulator {
+    private val completedIntervals = mutableListOf<ScreenInteractiveInterval>()
+    private var interactiveSinceMs: Long? = null
 
-    private val completedIntervals = mutableListOf<ForegroundUsageInterval>()
-    private var foregroundSession: ForegroundSession? = null
+    var firstObservedEventTimeMs: Long? = null
+        private set
 
-    fun onActivityResumed(
-        packageName: String?,
-        activityClassName: String?,
-        timestampMs: Long
-    ) {
-        val resumedPackage = packageName?.takeIf(String::isNotBlank) ?: return
-        val current = foregroundSession
+    val activeIntervalStartTimeMs: Long?
+        get() = interactiveSinceMs
 
-        if (current == null) {
-            foregroundSession = newSession(resumedPackage, activityClassName, timestampMs)
-            return
-        }
-
-        if (current.packageName == resumedPackage) {
-            if (timestampMs < current.startedAtMs) return
-
-            // A pausa anterior pertence à transição entre Activities do mesmo
-            // app. Mantemos uma única sessão contínua de uso.
-            current.activityClassName = activityClassName
-            current.pendingExitAtMs = null
-            return
-        }
-
-        val exitAt = current.pendingExitAtMs
-            ?.coerceAtMost(timestampMs)
-            ?: timestampMs
-        completeCurrentSession(exitAt)
-        foregroundSession = newSession(resumedPackage, activityClassName, timestampMs)
-    }
-
-    fun onActivityPaused(
-        packageName: String?,
-        activityClassName: String?,
-        timestampMs: Long
-    ) {
-        val current = foregroundSession ?: return
-        if (packageName != current.packageName || timestampMs < current.startedAtMs) return
-
-        // Uma pausa atrasada da Activity anterior não pode encerrar a Activity
-        // que já está visível.
-        val belongsToCurrentActivity = current.activityClassName == null ||
-            activityClassName == null ||
-            current.activityClassName == activityClassName
-        if (belongsToCurrentActivity) {
-            current.pendingExitAtMs = current.pendingExitAtMs
-                ?.coerceAtMost(timestampMs)
-                ?: timestampMs
+    fun onScreenInteractive(timestampMs: Long) {
+        observe(timestampMs)
+        if (interactiveSinceMs == null) {
+            interactiveSinceMs = timestampMs
         }
     }
 
-    fun onDeviceBecameInactive(timestampMs: Long) {
-        val current = foregroundSession ?: return
-        val exitAt = current.pendingExitAtMs
-            ?.coerceAtMost(timestampMs)
-            ?: timestampMs
-        completeCurrentSession(exitAt)
-    }
-
-    /**
-     * Para tempo de uso, ao contrário do número de acessos, o app que continua
-     * aberto deve ser contabilizado até o fim da consulta.
-     */
-    fun finish(endTimeMs: Long): List<ForegroundUsageInterval> {
-        val current = foregroundSession
-        if (current != null) {
-            val exitAt = current.pendingExitAtMs
-                ?.coerceAtMost(endTimeMs)
-                ?: endTimeMs
-            completeCurrentSession(exitAt)
+    fun onScreenNonInteractive(timestampMs: Long) {
+        observe(timestampMs)
+        val startedAtMs = interactiveSinceMs ?: return
+        if (timestampMs > startedAtMs) {
+            completedIntervals += ScreenInteractiveInterval(
+                startTimeMs = startedAtMs,
+                endTimeMs = timestampMs
+            )
         }
-        return completedIntervals.toList()
+        interactiveSinceMs = null
     }
 
-    private fun newSession(
-        packageName: String,
-        activityClassName: String?,
-        timestampMs: Long
-    ) = ForegroundSession(
-        packageName = packageName,
-        activityClassName = activityClassName,
-        startedAtMs = timestampMs,
-        eligible = isEligibleApp(packageName)
-    )
-
-    private fun completeCurrentSession(endTimeMs: Long) {
-        val completed = foregroundSession ?: return
-        if (completed.eligible && endTimeMs > completed.startedAtMs) {
-            completedIntervals += ForegroundUsageInterval(
-                packageName = completed.packageName,
-                startTimeMs = completed.startedAtMs,
+    fun finish(endTimeMs: Long): List<ScreenInteractiveInterval> {
+        val startedAtMs = interactiveSinceMs
+        if (startedAtMs != null && endTimeMs > startedAtMs) {
+            completedIntervals += ScreenInteractiveInterval(
+                startTimeMs = startedAtMs,
                 endTimeMs = endTimeMs
             )
         }
-        foregroundSession = null
+        interactiveSinceMs = null
+        return completedIntervals.toList()
     }
+
+    private fun observe(timestampMs: Long) {
+        firstObservedEventTimeMs = firstObservedEventTimeMs
+            ?.coerceAtMost(timestampMs)
+            ?: timestampMs
+    }
+}
+
+internal fun completeDatesCoveredByDetailedEvents(
+    firstObservedEventTimeMs: Long?,
+    lastObservedEventTimeMs: Long,
+    eventLoopCompleted: Boolean,
+    periodStartDate: LocalDate,
+    today: LocalDate,
+    zoneId: ZoneId
+): List<LocalDate> {
+    val firstEventDate = firstObservedEventTimeMs
+        ?.let { Instant.ofEpochMilli(it).atZone(zoneId).toLocalDate() }
+        ?: return emptyList()
+
+    // O primeiro dia pode começar antes do primeiro evento ainda retido e não
+    // é confiável. Se a iteração falhou, o dia do último evento também pode
+    // estar incompleto. Só os dias estritamente entre esses limites entram.
+    var date = maxOf(periodStartDate, firstEventDate.plusDays(1))
+    val endExclusive = if (eventLoopCompleted) {
+        today
+    } else {
+        minOf(
+            today,
+            Instant.ofEpochMilli(lastObservedEventTimeMs)
+                .atZone(zoneId)
+                .toLocalDate()
+        )
+    }
+    val result = mutableListOf<LocalDate>()
+    while (date < endExclusive) {
+        result += date
+        date = date.plusDays(1)
+    }
+    return result
+}
+
+internal fun resolveDailyScreenTime(
+    aggregatedTotalMs: Long?,
+    detailedIntervals: List<ScreenInteractiveInterval>,
+    rangeStartMs: Long,
+    rangeEndMs: Long,
+    activeIntervalStartTimeMs: Long?,
+    includeActiveTail: Boolean
+): Long {
+    val maximumPossibleTimeMs = (rangeEndMs - rangeStartMs).coerceAtLeast(0L)
+    if (aggregatedTotalMs == null) {
+        return PhoneUsageInsightsCalculator.totalOverlap(
+            intervals = detailedIntervals,
+            rangeStartMs = rangeStartMs,
+            rangeEndMs = rangeEndMs
+        ).coerceAtMost(maximumPossibleTimeMs)
+    }
+
+    // EventStats fecha a duração no evento SCREEN_NON_INTERACTIVE. Para hoje,
+    // a sessão de tela que continua ativa precisa ser acrescentada à parte.
+    val activeTailMs = if (includeActiveTail) {
+        activeIntervalStartTimeMs
+            ?.let { rangeEndMs - maxOf(it, rangeStartMs) }
+            ?.coerceAtLeast(0L)
+            ?: 0L
+    } else {
+        0L
+    }
+    return (aggregatedTotalMs + activeTailMs)
+        .coerceIn(0L, maximumPossibleTimeMs)
 }
 
 internal object PhoneUsageInsightsCalculator {
@@ -160,15 +163,15 @@ internal object PhoneUsageInsightsCalculator {
     private const val PERIODS_PER_DAY = 24 / PERIOD_HOURS
 
     fun calculate(
-        intervals: List<ForegroundUsageInterval>,
+        dailyScreenTimeByDate: Map<LocalDate, Long>,
+        detailedIntervals: List<ScreenInteractiveInterval>,
+        completePeriodDates: List<LocalDate>,
         nowMs: Long,
         historyDays: Int,
-        periodAverageDays: Int,
         zoneId: ZoneId,
         locale: Locale
     ): PhoneUsageInsights {
         require(historyDays > 0) { "historyDays must be positive" }
-        require(periodAverageDays > 0) { "periodAverageDays must be positive" }
 
         val today = Instant.ofEpochMilli(nowMs).atZone(zoneId).toLocalDate()
         val historyStart = today.minusDays(historyDays - 1L)
@@ -179,19 +182,35 @@ internal object PhoneUsageInsightsCalculator {
             val dayStartMs = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
             val naturalDayEndMs = date.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
             val dayEndMs = naturalDayEndMs.coerceAtMost(nowMs)
+            val maximumPossibleTimeMs = (dayEndMs - dayStartMs).coerceAtLeast(0L)
 
             DailyPhoneUsage(
                 dateLabel = dayFormatter.format(date).uppercase(locale),
-                totalTimeMs = totalOverlap(intervals, dayStartMs, dayEndMs),
+                totalTimeMs = dailyScreenTimeByDate[date]
+                    ?.coerceIn(0L, maximumPossibleTimeMs)
+                    ?: 0L,
                 timestamp = dayStartMs
             )
         }
 
-        val periodTotals = LongArray(PERIODS_PER_DAY)
-        val firstCompleteDay = today.minusDays(periodAverageDays.toLong())
+        // Hoje ainda está em andamento. A média usa apenas dias encerrados
+        // para não cair artificialmente pela manhã e subir ao longo do dia.
+        val completeHistory = dailyHistory.dropLast(1)
+        val completeDaysAverageMs = if (completeHistory.isEmpty()) {
+            0L
+        } else {
+            completeHistory.sumOf(DailyPhoneUsage::totalTimeMs) / completeHistory.size
+        }
 
-        repeat(periodAverageDays) { dayOffset ->
-            val date = firstCompleteDay.plusDays(dayOffset.toLong())
+        val analyzedDates = completePeriodDates
+            .asSequence()
+            .filter { it < today }
+            .distinct()
+            .sorted()
+            .toList()
+        val periodTotals = LongArray(PERIODS_PER_DAY)
+
+        analyzedDates.forEach { date ->
             repeat(PERIODS_PER_DAY) { periodIndex ->
                 val startHour = periodIndex * PERIOD_HOURS
                 val endHour = startHour + PERIOD_HOURS
@@ -202,14 +221,14 @@ internal object PhoneUsageInsightsCalculator {
                     date.atHour(endHour, zoneId)
                 }
                 periodTotals[periodIndex] += totalOverlap(
-                    intervals,
-                    periodStartMs,
-                    periodEndMs
+                    intervals = detailedIntervals,
+                    rangeStartMs = periodStartMs,
+                    rangeEndMs = periodEndMs
                 )
             }
         }
 
-        val periodSummary = if (periodTotals.sum() == 0L) {
+        val periodSummary = if (analyzedDates.isEmpty() || periodTotals.sum() == 0L) {
             null
         } else {
             // maxByOrNull/minByOrNull preservam o primeiro índice nos empates,
@@ -221,21 +240,37 @@ internal object PhoneUsageInsightsCalculator {
                 mostUsed = periodAverage(
                     periodIndex = mostUsedIndex,
                     totalTimeMs = periodTotals[mostUsedIndex],
-                    days = periodAverageDays
+                    days = analyzedDates.size
                 ),
                 leastUsed = periodAverage(
                     periodIndex = leastUsedIndex,
                     totalTimeMs = periodTotals[leastUsedIndex],
-                    days = periodAverageDays
+                    days = analyzedDates.size
                 ),
-                daysAnalyzed = periodAverageDays
+                daysAnalyzed = analyzedDates.size
             )
         }
 
         return PhoneUsageInsights(
             dailyHistory = dailyHistory,
-            periodSummary = periodSummary
+            periodSummary = periodSummary,
+            completeDaysAverageMs = completeDaysAverageMs,
+            completeDaysAnalyzed = completeHistory.size
         )
+    }
+
+    fun totalOverlap(
+        intervals: List<ScreenInteractiveInterval>,
+        rangeStartMs: Long,
+        rangeEndMs: Long
+    ): Long {
+        if (rangeEndMs <= rangeStartMs) return 0L
+
+        return intervals.sumOf { interval ->
+            val overlapStart = maxOf(interval.startTimeMs, rangeStartMs)
+            val overlapEnd = minOf(interval.endTimeMs, rangeEndMs)
+            (overlapEnd - overlapStart).coerceAtLeast(0L)
+        }
     }
 
     private fun LocalDate.atHour(hour: Int, zoneId: ZoneId): Long =
@@ -250,18 +285,4 @@ internal object PhoneUsageInsightsCalculator {
         endHour = (periodIndex + 1) * PERIOD_HOURS,
         averageTimeMs = totalTimeMs / days
     )
-
-    private fun totalOverlap(
-        intervals: List<ForegroundUsageInterval>,
-        rangeStartMs: Long,
-        rangeEndMs: Long
-    ): Long {
-        if (rangeEndMs <= rangeStartMs) return 0L
-
-        return intervals.sumOf { interval ->
-            val overlapStart = maxOf(interval.startTimeMs, rangeStartMs)
-            val overlapEnd = minOf(interval.endTimeMs, rangeEndMs)
-            (overlapEnd - overlapStart).coerceAtLeast(0L)
-        }
-    }
 }

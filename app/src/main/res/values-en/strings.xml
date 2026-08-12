@@ -360,8 +360,12 @@
     <string name="dashboard_phone_usage">Phone Usage</string>
     <string name="dashboard_total_week">Last 7 Days</string>
     <string name="dashboard_daily_avg">Daily Average</string>
+    <plurals name="dashboard_complete_days_average">
+        <item quantity="one">Average (%1$d complete day)</item>
+        <item quantity="other">Average (%1$d complete days)</item>
+    </plurals>
     <string name="dashboard_usage_periods_title">Usage periods</string>
-    <string name="dashboard_usage_periods_desc">Daily average in 3-hour blocks, based on 1 month (the last %1$d complete days).</string>
+    <string name="dashboard_usage_periods_desc">Average in 3-hour blocks over the %1$d complete days with detailed data available.</string>
     <string name="dashboard_most_active_period">Most usage</string>
     <string name="dashboard_least_active_period">Least usage</string>
     <string name="dashboard_period_range">%1$02dh–%2$02dh</string>

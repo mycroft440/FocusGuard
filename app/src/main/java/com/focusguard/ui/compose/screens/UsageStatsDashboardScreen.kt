@@ -271,9 +271,8 @@ private fun InsightsFallback(
 @Composable
 fun PhoneUsageChartSection(insights: PhoneUsageInsights) {
     val currentWeek = insights.dailyHistory.takeLast(7)
-    
     val currentTotal = currentWeek.sumOf { it.totalTimeMs }
-    val currentAvg = currentTotal / currentWeek.size.coerceAtLeast(1)
+    val currentAvg = insights.completeDaysAverageMs
 
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -297,7 +296,15 @@ fun PhoneUsageChartSection(insights: PhoneUsageInsights) {
                     Text(formatTime(currentTotal), color = AccentCyan, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
                 Column(horizontalAlignment = Alignment.End) {
-                    Text(stringResource(R.string.dashboard_daily_avg), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
+                    Text(
+                        pluralStringResource(
+                            R.plurals.dashboard_complete_days_average,
+                            insights.completeDaysAnalyzed,
+                            insights.completeDaysAnalyzed
+                        ),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 12.sp
+                    )
                     Text(formatTime(currentAvg), color = AccentPurple, fontSize = 20.sp, fontWeight = FontWeight.Bold)
                 }
             }
@@ -363,7 +370,7 @@ fun PhoneUsageChartSection(insights: PhoneUsageInsights) {
                 text = stringResource(
                     R.string.dashboard_usage_periods_desc,
                     insights.periodSummary?.daysAnalyzed
-                        ?: PHONE_USAGE_PERIOD_ANALYSIS_DAYS
+                        ?: 0
                 ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp
