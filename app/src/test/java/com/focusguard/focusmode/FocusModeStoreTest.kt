@@ -29,7 +29,8 @@ class FocusModeStoreTest {
             durationMillis = 60_000L,
             allowedPackages = setOf("com.focusguard.v2", "com.phone"),
             blockedPackages = setOf("com.social", "com.game"),
-            nonSuspendablePackages = setOf("com.system.launcher")
+            nonSuspendablePackages = setOf("com.system.launcher"),
+            grayscaleEnabled = true
         )
 
         assertThat(FocusModeStore.saveSession(context, session)).isTrue()

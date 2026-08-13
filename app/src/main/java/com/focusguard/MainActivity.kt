@@ -2,10 +2,16 @@ package com.focusguard
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.ColorMatrix
+import android.graphics.ColorMatrixColorFilter
+import android.graphics.Paint
 import android.os.Bundle
+import android.view.View
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.manager.PomodoroManager
@@ -16,6 +22,7 @@ import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
@@ -28,6 +35,7 @@ class MainActivity : AppCompatActivity() {
     @Inject lateinit var focusModeManager: FocusModeManager
 
     private lateinit var pomodoroManager: PomodoroManager
+    private var grayscaleApplied: Boolean? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -60,6 +68,12 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
+        applyFocusModeGrayscale(
+            focusModeManager.session.value?.let {
+                it.isActive() && it.grayscaleEnabled
+            } == true
+        )
+        observeFocusModeVisualState()
     }
 
     override fun onResume() {
@@ -95,5 +109,38 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
         }
+    }
+
+    private fun observeFocusModeVisualState() {
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                focusModeManager.session.collect { session ->
+                    applyFocusModeGrayscale(
+                        session?.let { it.isActive() && it.grayscaleEnabled } == true
+                    )
+                }
+            }
+        }
+    }
+
+    /**
+     * Android exposes no public API for a third-party DPC to recolor every app.
+     * Focus Mode therefore desaturates the complete FocusGuard activity layer;
+     * selected external emergency/communication apps keep their own rendering.
+     */
+    private fun applyFocusModeGrayscale(enabled: Boolean) {
+        if (grayscaleApplied == enabled) return
+        grayscaleApplied = enabled
+        val decorView = window.decorView
+        if (enabled) {
+            val matrix = ColorMatrix().apply { setSaturation(0f) }
+            val paint = Paint().apply {
+                colorFilter = ColorMatrixColorFilter(matrix)
+            }
+            decorView.setLayerType(View.LAYER_TYPE_HARDWARE, paint)
+        } else {
+            decorView.setLayerType(View.LAYER_TYPE_NONE, null)
+        }
+        decorView.invalidate()
     }
 }

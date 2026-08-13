@@ -12,6 +12,7 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
 import android.os.Handler
@@ -32,6 +33,7 @@ import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.AppDatabase
+import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.StrictPomodoroLock
 import com.focusguard.security.AccessibilitySettingsPolicy
@@ -39,6 +41,7 @@ import com.focusguard.security.AuthenticatedRemovalWindow
 import com.focusguard.security.AuthManager
 import com.focusguard.security.ManagedSelfProtectionPolicy
 import com.focusguard.security.SettingsInterceptionPolicy
+import com.focusguard.security.SelfProtectionStateStore
 import com.focusguard.security.UsageAccessPausePolicy
 import com.focusguard.ui.BlockNoticeActivity
 import com.focusguard.ui.PomodoroLockActivity
@@ -248,6 +251,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         database = AppDatabase.getDatabase(this)
         sessionManager = BlockingSessionManager.getInstance(this)
         deviceOwnerManager = DeviceOwnerManager.getInstance(this)
+        refreshSynchronousProtectionState()
         usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
         powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
         windowManager = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
@@ -344,6 +348,10 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        // Do this before any node/tree work or asynchronous Room refresh. The
+        // persisted snapshot exists specifically to cover the first event after
+        // Android binds or recreates the service.
+        refreshSynchronousProtectionState()
         defaultLauncherPackage = calculateDefaultLauncher()
         foregroundPackageName = rootInActiveWindow?.packageName?.toString()
         calculateBrowserPackages()
@@ -539,6 +547,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             limitedWebsiteDomains = emptySet()
             limitedWebsiteAppDomains = emptyMap()
             isBlockingSessionActive = false
+            SelfProtectionStateStore.setArmed(applicationContext, false)
             isPomodoroStrictActive = false
             pendingSettingsProtectionUntilElapsed = 0L
             StrictPomodoroLock.clear(applicationContext)
@@ -629,10 +638,21 @@ class BlockingAccessibilityService : AccessibilityService() {
                             limitedWebsiteDomains = configuredWebsiteDomains
                             limitedWebsiteAppDomains = configuredWebsiteApps
                             hasActiveAppLimits = activeAppLimits.isNotEmpty()
-                            isBlockingSessionActive = enforcingSessions.isNotEmpty() ||
-                                limitApps.isNotEmpty() ||
-                                exceededWebsiteDomains.isNotEmpty() ||
-                                adultFilterEnabled
+                            isBlockingSessionActive = isSelfProtectionEngaged(
+                                cachedActive = enforcingSessions.isNotEmpty() ||
+                                    limitApps.isNotEmpty() ||
+                                    exceededWebsiteDomains.isNotEmpty() ||
+                                    adultFilterEnabled,
+                                persistedActive = SelfProtectionStateStore.isArmed(
+                                    applicationContext
+                                ),
+                                focusModeActive = FocusModeStore.isActive(
+                                    applicationContext
+                                ),
+                                armoredDeviceOwnerActive =
+                                    deviceOwnerManager.isDeviceOwnerActive() &&
+                                        deviceOwnerManager.isArmoredProtectionArmed()
+                            )
                             lastEnforcementFingerprint = enforcementFingerprint
                             lastLoadTime = System.currentTimeMillis()
                         }
@@ -847,13 +867,19 @@ class BlockingAccessibilityService : AccessibilityService() {
         // armado, então a defesa sobe junto com o bloqueio, sem depender de uma
         // recarga posterior.
         //
-        // O volátil barato vem antes das chamadas ao DevicePolicyManager: quando
-        // não há bloqueio ativo nem blindagem de Device Owner persistente, não há
-        // o que defender e saímos sem tocar em binder, mantendo o caminho quente
-        // enxuto — cada milissegundo aqui é margem para o usuário alcançar o botão.
+        // O cache e os dois snapshots em Device Protected Storage vêm antes das
+        // chamadas ao DevicePolicyManager. Assim o primeiro evento após um novo
+        // bind falha fechado, sem esperar Room, e o caminho ocioso ainda sai antes
+        // das consultas binder mais caras.
         val armorPersists = deviceOwnerManager.isDeviceOwnerActive() &&
             deviceOwnerManager.isArmoredProtectionArmed()
-        if (!isBlockingSessionActive && !armorPersists) return false
+        val protectionEngaged = isSelfProtectionEngaged(
+            cachedActive = isBlockingSessionActive,
+            persistedActive = SelfProtectionStateStore.isArmed(applicationContext),
+            focusModeActive = FocusModeStore.isActive(applicationContext),
+            armoredDeviceOwnerActive = armorPersists
+        )
+        if (!protectionEngaged) return false
 
         // A janela de manutenção do Device Owner é a saída sancionada e desliga a
         // defesa. Num aparelho sem Device Owner ela nunca abre, então lá a única
@@ -962,9 +988,54 @@ class BlockingAccessibilityService : AccessibilityService() {
                             recycleSafely(node)
                         }
                     }
+                    // A switch is commonly a sibling of the FocusGuard label,
+                    // not its parent. Match only markers sharing the clicked
+                    // control's horizontal row, instead of scanning/classifying
+                    // the whole list and accidentally protecting other services.
+                    addAll(sameRowClickTextValues(source))
                 }
                 recycleSafely(source)
             }
+        }
+    }
+
+    private fun refreshSynchronousProtectionState() {
+        isBlockingSessionActive = isSelfProtectionEngaged(
+            cachedActive = isBlockingSessionActive,
+            persistedActive = SelfProtectionStateStore.isArmed(applicationContext),
+            focusModeActive = FocusModeStore.isActive(applicationContext),
+            armoredDeviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive() &&
+                deviceOwnerManager.isArmoredProtectionArmed()
+        )
+    }
+
+    private fun sameRowClickTextValues(source: AccessibilityNodeInfo): List<CharSequence?> {
+        val sourceBounds = Rect().also(source::getBoundsInScreen)
+        if (sourceBounds.isEmpty || source.isScrollable) return emptyList()
+
+        val root = rootInActiveWindow ?: return emptyList()
+        return try {
+            val rootBounds = Rect().also(root::getBoundsInScreen)
+            if (!shouldSearchSameRowMarkers(sourceBounds, rootBounds)) return emptyList()
+
+            buildList {
+                clickInterceptionSearchTerms.forEach { term ->
+                    val matchingNodes = runCatching {
+                        root.findAccessibilityNodeInfosByText(term)
+                    }.getOrDefault(emptyList())
+                    matchingNodes.forEach { node ->
+                        val nodeBounds = Rect().also(node::getBoundsInScreen)
+                        if (boundsShareHorizontalRow(sourceBounds, nodeBounds)) {
+                            add(node.text)
+                            add(node.contentDescription)
+                            add(node.viewIdResourceName)
+                        }
+                        recycleSafely(node)
+                    }
+                }
+            }
+        } finally {
+            recycleSafely(root)
         }
     }
 
@@ -1673,6 +1744,26 @@ class BlockingAccessibilityService : AccessibilityService() {
             blockedUntilElapsed: Long,
             nowElapsed: Long
         ): Boolean = blockedUntilElapsed <= 0L || nowElapsed > blockedUntilElapsed
+
+        internal fun isSelfProtectionEngaged(
+            cachedActive: Boolean,
+            persistedActive: Boolean,
+            focusModeActive: Boolean,
+            armoredDeviceOwnerActive: Boolean
+        ): Boolean = cachedActive ||
+            persistedActive ||
+            focusModeActive ||
+            armoredDeviceOwnerActive
+
+        internal fun shouldSearchSameRowMarkers(clicked: Rect, root: Rect): Boolean =
+            !clicked.isEmpty &&
+                !root.isEmpty &&
+                clicked.height() * 3 < root.height()
+
+        internal fun boundsShareHorizontalRow(clicked: Rect, marker: Rect): Boolean =
+            !clicked.isEmpty &&
+                !marker.isEmpty &&
+                minOf(clicked.bottom, marker.bottom) > maxOf(clicked.top, marker.top)
 
         internal fun requestedAccessibilityEventTypes(): Int =
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED or

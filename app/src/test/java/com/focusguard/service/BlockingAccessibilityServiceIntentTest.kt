@@ -1,5 +1,6 @@
 package com.focusguard.service
 
+import android.graphics.Rect
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -70,5 +71,58 @@ class BlockingAccessibilityServiceIntentTest {
         assertThat(
             BlockingAccessibilityService.selfProtectionActionDebounceMillisForTest()
         ).isAtLeast(BlockingAccessibilityService.settingsTransitionGuardMillisForTest())
+    }
+
+    @Test
+    fun `persisted snapshot protects the first event before async refresh`() {
+        assertThat(
+            BlockingAccessibilityService.isSelfProtectionEngaged(
+                cachedActive = false,
+                persistedActive = true,
+                focusModeActive = false,
+                armoredDeviceOwnerActive = false
+            )
+        ).isTrue()
+        assertThat(
+            BlockingAccessibilityService.isSelfProtectionEngaged(
+                cachedActive = false,
+                persistedActive = false,
+                focusModeActive = false,
+                armoredDeviceOwnerActive = false
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `row marker must overlap clicked switch without scanning a whole screen`() {
+        val clickedSwitch = Rect(900, 420, 1030, 500)
+        val sameRowLabel = Rect(70, 430, 360, 480)
+        val otherServiceLabel = Rect(70, 560, 360, 610)
+        val wholeScreen = Rect(0, 0, 1080, 2200)
+
+        assertThat(
+            BlockingAccessibilityService.shouldSearchSameRowMarkers(
+                clickedSwitch,
+                wholeScreen
+            )
+        ).isTrue()
+        assertThat(
+            BlockingAccessibilityService.boundsShareHorizontalRow(
+                clickedSwitch,
+                sameRowLabel
+            )
+        ).isTrue()
+        assertThat(
+            BlockingAccessibilityService.boundsShareHorizontalRow(
+                clickedSwitch,
+                otherServiceLabel
+            )
+        ).isFalse()
+        assertThat(
+            BlockingAccessibilityService.shouldSearchSameRowMarkers(
+                clicked = Rect(0, 0, 1080, 1000),
+                root = wholeScreen
+            )
+        ).isFalse()
     }
 }

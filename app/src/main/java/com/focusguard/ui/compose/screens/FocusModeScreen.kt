@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -40,6 +41,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -58,6 +60,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -99,6 +102,7 @@ fun FocusModeScreen(
         mutableStateOf(FocusModePolicy.DurationUnit.MINUTES)
     }
     var searchQuery by rememberSaveable { mutableStateOf("") }
+    var grayscaleEnabled by rememberSaveable { mutableStateOf(false) }
     var showConfirmation by remember { mutableStateOf(false) }
     var termsAccepted by remember { mutableStateOf(false) }
     var isStarting by remember { mutableStateOf(false) }
@@ -134,6 +138,7 @@ fun FocusModeScreen(
     val notificationAccessActive = remember(permissionRevision, activeSession) {
         manager.isNotificationAccessEnabled()
     }
+    val systemLockdownSupported = remember { manager.isSystemLockdownSupported() }
     val mandatoryPackages = remember(context.applicationContext, permissionRevision) {
         FocusModeAppCatalog.mandatoryPackages(context.applicationContext)
     }
@@ -153,6 +158,7 @@ fun FocusModeScreen(
     if (showConfirmation && durationMillis != null) {
         FocusModeConsentDialog(
             durationMillis = durationMillis,
+            grayscaleEnabled = grayscaleEnabled,
             accepted = termsAccepted,
             isStarting = isStarting,
             onAcceptedChange = { termsAccepted = it },
@@ -167,7 +173,11 @@ fun FocusModeScreen(
                     isStarting = true
                     startOutcome = null
                     scope.launch {
-                        val result = manager.start(durationMillis, selectedPackages)
+                        val result = manager.start(
+                            durationMillis = durationMillis,
+                            selectedPackages = selectedPackages,
+                            grayscaleEnabled = grayscaleEnabled
+                        )
                         isStarting = false
                         startOutcome = result.outcome
                         if (result.outcome == FocusModeManager.StartOutcome.STARTED) {
@@ -215,6 +225,8 @@ fun FocusModeScreen(
                 startOutcome = null
             },
             durationValid = durationMillis != null,
+            grayscaleEnabled = grayscaleEnabled,
+            onGrayscaleEnabledChange = { grayscaleEnabled = it },
             searchQuery = searchQuery,
             onSearchQueryChange = { searchQuery = it },
             deviceOwnerActive = deviceOwnerActive,
@@ -226,6 +238,8 @@ fun FocusModeScreen(
             onStart = {
                 when {
                     !deviceOwnerActive -> showDeviceOwnerGuide = true
+                    !systemLockdownSupported -> startOutcome =
+                        FocusModeManager.StartOutcome.SYSTEM_LOCKDOWN_UNSUPPORTED
                     !notificationAccessActive -> openNotificationAccess(context)
                     durationMillis == null -> startOutcome =
                         FocusModeManager.StartOutcome.INVALID_DURATION
@@ -251,6 +265,8 @@ private fun FocusModeSetupContent(
     durationUnit: FocusModePolicy.DurationUnit,
     onDurationUnitChange: (FocusModePolicy.DurationUnit) -> Unit,
     durationValid: Boolean,
+    grayscaleEnabled: Boolean,
+    onGrayscaleEnabledChange: (Boolean) -> Unit,
     searchQuery: String,
     onSearchQueryChange: (String) -> Unit,
     deviceOwnerActive: Boolean,
@@ -368,6 +384,45 @@ private fun FocusModeSetupContent(
                     text = stringResource(R.string.focus_mode_sms),
                     modifier = Modifier.weight(1f)
                 )
+            }
+        }
+
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = DarkCard),
+                border = BorderStroke(1.dp, CardBorder),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .toggleable(
+                            value = grayscaleEnabled,
+                            role = Role.Switch,
+                            onValueChange = onGrayscaleEnabledChange
+                        )
+                        .padding(14.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            stringResource(R.string.focus_mode_grayscale_title),
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            stringResource(R.string.focus_mode_grayscale_description),
+                            color = TextHint,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
+                    Spacer(Modifier.size(12.dp))
+                    Switch(
+                        checked = grayscaleEnabled,
+                        onCheckedChange = null
+                    )
+                }
             }
         }
 
@@ -585,6 +640,17 @@ private fun FocusModeActiveContent(
             )
         }
 
+        if (session.grayscaleEnabled) {
+            item {
+                FocusInfoCard(
+                    title = stringResource(R.string.focus_mode_grayscale_active_title),
+                    description = stringResource(
+                        R.string.focus_mode_grayscale_active_description
+                    )
+                )
+            }
+        }
+
         item {
             Text(
                 stringResource(R.string.focus_mode_essential_actions),
@@ -725,6 +791,7 @@ private fun FocusModeActiveContent(
 @Composable
 private fun FocusModeConsentDialog(
     durationMillis: Long,
+    grayscaleEnabled: Boolean,
     accepted: Boolean,
     isStarting: Boolean,
     onAcceptedChange: (Boolean) -> Unit,
@@ -744,6 +811,16 @@ private fun FocusModeConsentDialog(
                 )
                 Text(stringResource(R.string.focus_mode_terms_effects))
                 Text(stringResource(R.string.focus_mode_terms_essentials))
+                Text(
+                    stringResource(
+                        if (grayscaleEnabled) {
+                            R.string.focus_mode_terms_grayscale_on
+                        } else {
+                            R.string.focus_mode_terms_grayscale_off
+                        }
+                    )
+                )
+                Text(stringResource(R.string.focus_mode_terms_power_limits))
                 Text(stringResource(R.string.focus_mode_terms_exit))
                 Row(
                     modifier = Modifier
@@ -888,6 +965,8 @@ private fun FocusModeStartError(outcome: FocusModeManager.StartOutcome?) {
             stringResource(R.string.focus_mode_duration_invalid)
         FocusModeManager.StartOutcome.DEVICE_OWNER_REQUIRED ->
             stringResource(R.string.focus_mode_device_owner_required)
+        FocusModeManager.StartOutcome.SYSTEM_LOCKDOWN_UNSUPPORTED ->
+            stringResource(R.string.focus_mode_system_lockdown_unsupported)
         FocusModeManager.StartOutcome.NOTIFICATION_ACCESS_REQUIRED ->
             stringResource(R.string.focus_mode_notification_access_required)
         FocusModeManager.StartOutcome.STRICT_POMODORO_ACTIVE ->

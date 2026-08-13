@@ -13,6 +13,7 @@ object FocusModeStore {
     private const val KEY_ALLOWED_PACKAGES = "allowed_packages"
     private const val KEY_BLOCKED_PACKAGES = "blocked_packages"
     private const val KEY_NON_SUSPENDABLE_PACKAGES = "non_suspendable_packages"
+    private const val KEY_GRAYSCALE_ENABLED = "grayscale_enabled"
     private const val KEY_DRAFT_PACKAGES = "draft_packages"
     private const val KEY_DRAFT_INITIALIZED = "draft_initialized"
 
@@ -25,6 +26,7 @@ object FocusModeStore {
             .putStringSet(KEY_ALLOWED_PACKAGES, session.allowedPackages)
             .putStringSet(KEY_BLOCKED_PACKAGES, session.blockedPackages)
             .putStringSet(KEY_NON_SUSPENDABLE_PACKAGES, session.nonSuspendablePackages)
+            .putBoolean(KEY_GRAYSCALE_ENABLED, session.grayscaleEnabled)
             .commit()
 
     fun readSession(context: Context): FocusModeSession? {
@@ -48,7 +50,8 @@ object FocusModeStore {
             nonSuspendablePackages = prefs.getStringSet(
                 KEY_NON_SUSPENDABLE_PACKAGES,
                 emptySet()
-            ).orEmpty().toSet()
+            ).orEmpty().toSet(),
+            grayscaleEnabled = prefs.getBoolean(KEY_GRAYSCALE_ENABLED, false)
         )
     }
 
@@ -69,6 +72,7 @@ object FocusModeStore {
         .remove(KEY_ALLOWED_PACKAGES)
         .remove(KEY_BLOCKED_PACKAGES)
         .remove(KEY_NON_SUSPENDABLE_PACKAGES)
+        .remove(KEY_GRAYSCALE_ENABLED)
         .commit()
 
     fun saveDraftPackages(context: Context, packageNames: Set<String>): Boolean =

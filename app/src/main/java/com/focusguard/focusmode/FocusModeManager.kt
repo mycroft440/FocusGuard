@@ -31,6 +31,7 @@ class FocusModeManager @Inject constructor(
         STARTED,
         INVALID_DURATION,
         DEVICE_OWNER_REQUIRED,
+        SYSTEM_LOCKDOWN_UNSUPPORTED,
         NOTIFICATION_ACCESS_REQUIRED,
         STRICT_POMODORO_ACTIVE,
         ENFORCEMENT_FAILED
@@ -84,6 +85,9 @@ class FocusModeManager @Inject constructor(
 
     fun isActive(): Boolean = FocusModeStore.isActive(context)
 
+    fun isSystemLockdownSupported(): Boolean =
+        deviceOwnerManager.isFocusModeSystemLockdownSupported()
+
     fun isNotificationAccessEnabled(): Boolean =
         NotificationManagerCompat.getEnabledListenerPackages(context)
             .contains(context.packageName)
@@ -106,13 +110,17 @@ class FocusModeManager @Inject constructor(
 
     suspend fun start(
         durationMillis: Long,
-        selectedPackages: Set<String>
+        selectedPackages: Set<String>,
+        grayscaleEnabled: Boolean
     ): StartResult = mutationMutex.withLock {
         if (durationMillis !in 1L..FocusModePolicy.MAX_DURATION_MILLIS) {
             return@withLock StartResult(StartOutcome.INVALID_DURATION)
         }
         if (!deviceOwnerManager.isDeviceOwnerActive()) {
             return@withLock StartResult(StartOutcome.DEVICE_OWNER_REQUIRED)
+        }
+        if (!deviceOwnerManager.isFocusModeSystemLockdownSupported()) {
+            return@withLock StartResult(StartOutcome.SYSTEM_LOCKDOWN_UNSUPPORTED)
         }
         if (!isNotificationAccessEnabled()) {
             return@withLock StartResult(StartOutcome.NOTIFICATION_ACCESS_REQUIRED)
@@ -142,7 +150,8 @@ class FocusModeManager @Inject constructor(
             endTimeMillis = now + durationMillis,
             durationMillis = durationMillis,
             allowedPackages = allowedPackages,
-            blockedPackages = blockedPackages
+            blockedPackages = blockedPackages,
+            grayscaleEnabled = grayscaleEnabled
         )
 
         if (!FocusModeStore.saveSession(context, session)) {
@@ -154,6 +163,9 @@ class FocusModeManager @Inject constructor(
                 "O Android não confirmou a lista de apps do quiosque"
             }
             blockingSessionManager.checkAndEnforceStrict()
+            check(deviceOwnerManager.isFocusModeSystemLockdownConfirmed()) {
+                "O Android não confirmou energia, quiosque e modo seguro"
+            }
             val nonSuspendable = blockedPackages.filterNotTo(mutableSetOf()) {
                 deviceOwnerManager.isPackageSuspendedByFocusMode(it)
             }
@@ -192,10 +204,12 @@ class FocusModeManager @Inject constructor(
             return@withLock false
         }
         if (!deviceOwnerManager.isDeviceOwnerActive()) return@withLock false
+        if (!deviceOwnerManager.isFocusModeSystemLockdownSupported()) return@withLock false
 
         return@withLock try {
             check(deviceOwnerManager.prepareFocusModeLockTaskPackages(stored.allowedPackages))
             blockingSessionManager.checkAndEnforceStrict()
+            check(deviceOwnerManager.isFocusModeSystemLockdownConfirmed())
             FocusModeForegroundService.start(context)
             FocusModeReceiver.scheduleExpiration(context, stored.endTimeMillis)
             FocusModeNotificationService.requestRefresh(context)

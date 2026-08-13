@@ -189,6 +189,12 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             pornographyCategoryActive: Boolean
         ): Boolean = adultContentProtectionArmed || pornographyCategoryActive
 
+        internal fun supportsStrictFocusModeLockdown(sdkInt: Int): Boolean =
+            sdkInt >= Build.VERSION_CODES.P
+
+        internal fun focusModeFeaturesAreStrict(features: Int): Boolean =
+            features == DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+
         internal fun buildManagedBrowserRestrictions(
             existing: Bundle,
             managedFilters: List<String>,
@@ -494,7 +500,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
      * and global actions remain unavailable because no SystemUI feature is enabled.
      */
     fun prepareFocusModeLockTaskPackages(allowedPackages: Collection<String>): Boolean {
-        if (!isDeviceOwnerActive()) return false
+        if (!isDeviceOwnerActive() || Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return false
         return try {
             val installedAllowlist = (allowedPackages + context.packageName)
                 .asSequence()
@@ -503,13 +509,15 @@ class DeviceOwnerManager private constructor(private val context: Context) {
                 .filter { it == context.packageName || isPackageInstalled(it) }
                 .toList()
             dpm.setLockTaskPackages(componentName, installedAllowlist.toTypedArray())
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                dpm.setLockTaskFeatures(
-                    componentName,
-                    DevicePolicyManager.LOCK_TASK_FEATURE_NONE
-                )
-            }
-            val confirmed = dpm.isLockTaskPermitted(context.packageName)
+            dpm.setLockTaskFeatures(
+                componentName,
+                DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+            )
+            // This official user restriction survives a reboot and prevents the
+            // hardware-key safe-mode path. Normal power/restart actions are
+            // removed by LOCK_TASK_FEATURE_NONE while the kiosk is running.
+            dpm.addUserRestriction(componentName, UserManager.DISALLOW_SAFE_BOOT)
+            val confirmed = isFocusModeSystemLockdownConfirmed()
             if (confirmed) {
                 Log.d("FocusGuardAdmin", "Modo Foco preparado: $installedAllowlist")
             }
@@ -546,6 +554,28 @@ class DeviceOwnerManager private constructor(private val context: Context) {
 
     fun isFocusModeLockTaskPermitted(): Boolean = isDeviceOwnerActive() &&
         runCatching { dpm.isLockTaskPermitted(context.packageName) }.getOrDefault(false)
+
+    fun isFocusModeSystemLockdownSupported(): Boolean =
+        supportsStrictFocusModeLockdown(Build.VERSION.SDK_INT)
+
+    /** Confirms every system-side invariant required before reporting STARTED. */
+    fun isFocusModeSystemLockdownConfirmed(): Boolean {
+        if (!isDeviceOwnerActive() || Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return false
+        return runCatching {
+            dpm.isLockTaskPermitted(context.packageName) &&
+                focusModeFeaturesAreStrict(dpm.getLockTaskFeatures(componentName)) &&
+                dpm.getUserRestrictions(componentName).getBoolean(
+                    UserManager.DISALLOW_SAFE_BOOT,
+                    false
+                )
+        }.onFailure { error ->
+            FocusGuardLogger.logError(
+                "FocusMode",
+                "Falha ao confirmar o bloqueio de sistema do Modo Foco",
+                error
+            )
+        }.getOrDefault(false)
+    }
 
     /** Direct-Boot restoration uses only DPM plus device-protected Focus Mode state. */
     fun applyFocusModeAtDirectBoot(): Boolean {

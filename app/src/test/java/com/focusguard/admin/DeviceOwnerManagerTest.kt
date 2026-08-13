@@ -141,6 +141,22 @@ class DeviceOwnerManagerTest {
     }
 
     @Test
+    fun `strict focus lockdown requires android 9 and disables every system ui feature`() {
+        assertThat(DeviceOwnerManager.supportsStrictFocusModeLockdown(27)).isFalse()
+        assertThat(DeviceOwnerManager.supportsStrictFocusModeLockdown(28)).isTrue()
+        assertThat(
+            DeviceOwnerManager.focusModeFeaturesAreStrict(
+                DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+            )
+        ).isTrue()
+        assertThat(
+            DeviceOwnerManager.focusModeFeaturesAreStrict(
+                DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
+            )
+        ).isFalse()
+    }
+
+    @Test
     fun `android 15 active block also prevents private profiles`() {
         assertThat(DeviceOwnerManager.activeBlockRestrictionsForSdk(35)).containsExactly(
             UserManager.DISALLOW_ADD_USER,

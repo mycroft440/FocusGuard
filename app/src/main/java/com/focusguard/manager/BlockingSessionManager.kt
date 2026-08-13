@@ -30,6 +30,7 @@ import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.DopamineStartPolicy
 import com.focusguard.security.MasterCredentialPolicy
 import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.security.SelfProtectionStateStore
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.utils.FocusGuardLogger
@@ -618,6 +619,7 @@ class BlockingSessionManager @Inject constructor(
                         .insert(SessionWebsiteCrossRef(sessionId, it))
                 }
             }
+            armSelfProtectionBeforeFirstExposure()
             checkAndEnforceOrThrow()
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -695,6 +697,7 @@ class BlockingSessionManager @Inject constructor(
                 }
             }
             sessionCreated = true
+            armSelfProtectionBeforeFirstExposure()
             checkAndEnforceOrThrow()
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -795,6 +798,7 @@ class BlockingSessionManager @Inject constructor(
                 }
             }
             sessionsCreated = true
+            armSelfProtectionBeforeFirstExposure()
             checkAndEnforceOrThrow()
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -833,6 +837,13 @@ class BlockingSessionManager @Inject constructor(
         )
     }
 
+    /** Closes the gap between committing a new session and full reconciliation. */
+    private fun armSelfProtectionBeforeFirstExposure() {
+        check(SelfProtectionStateStore.setArmed(context, true)) {
+            "Não foi possível armar a proteção síncrona da nova sessão"
+        }
+    }
+
     fun startPomodoroSession(durationMs: Long, isBlockingEnabled: Boolean = true) {
         scope.launch {
             runCatching {
@@ -854,6 +865,7 @@ class BlockingSessionManager @Inject constructor(
                         )
                     }
                 }
+                if (isBlockingEnabled) armSelfProtectionBeforeFirstExposure()
                 checkAndEnforce()
             }.onSuccess {
                 showToast(R.string.modo_pomodoro_ativado_foco_total, Toast.LENGTH_LONG)
@@ -906,6 +918,9 @@ class BlockingSessionManager @Inject constructor(
                 }
                 StrictPomodoroLock.clear(context)
                 PomodoroForegroundService.stop(context)
+                check(SelfProtectionStateStore.setArmed(context, false)) {
+                    "Não foi possível desarmar o estado síncrono de autoproteção"
+                }
                 BlockingScheduleReceiver.scheduleNext(
                     context = context,
                     sessions = emptyList(),
@@ -1418,6 +1433,12 @@ class BlockingSessionManager @Inject constructor(
                     focusModeActive = focusModeSession != null
                 )
                 if (selfProtectionRequired) {
+                    // Persist before DevicePolicyManager/broadcast work. The
+                    // AccessibilityService can be recreated between any two of
+                    // these calls; its very first event must already fail closed.
+                    check(SelfProtectionStateStore.setArmed(context, true)) {
+                        "Não foi possível persistir a autoproteção da primeira tentativa"
+                    }
                     val nativeProtectionConfirmed =
                         deviceOwnerManager.enforceBlockingPolicies()
                     check(
@@ -1428,6 +1449,11 @@ class BlockingSessionManager @Inject constructor(
                     }
                 } else {
                     deviceOwnerManager.clearBlockingPolicies()
+                    // Clear only after native cleanup. A failure therefore stays
+                    // safely armed until the next reconciliation or the Dev exit.
+                    check(SelfProtectionStateStore.setArmed(context, false)) {
+                        "Não foi possível persistir o fim da autoproteção"
+                    }
                 }
                 deviceOwnerManager.applyNuclearShield()
 

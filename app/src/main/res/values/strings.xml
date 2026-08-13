@@ -659,10 +659,10 @@
     <string name="focus_mode_title">Modo Foco</string>
     <string name="focus_mode_subtitle">Somente o essencial, pelo tempo que você escolher</string>
     <string name="focus_mode_how_title">Um ambiente temporário sem distrações</string>
-    <string name="focus_mode_how_description">O FocusGuard suspende os apps não permitidos, oculta suas notificações e usa o modo quiosque do Android. Você continua podendo navegar por todas as áreas do FocusGuard e abrir somente os apps escolhidos nesta tela.</string>
+    <string name="focus_mode_how_description">O FocusGuard suspende os apps não permitidos, oculta suas notificações e mantém o aparelho no ambiente quiosque do FocusGuard. Você continua podendo navegar por todas as áreas do app e abrir somente os recursos essenciais e apps escolhidos nesta tela.</string>
     <string name="focus_mode_requirements_title">Requisitos para um bloqueio confiável</string>
     <string name="focus_mode_device_owner_title">Controle nativo do aparelho</string>
-    <string name="focus_mode_device_owner_description">O Device Owner permite suspender apps e impedir o uso de Início e Recentes.</string>
+    <string name="focus_mode_device_owner_description">No Android 9 ou superior, o Device Owner permite suspender apps, bloquear Início, Recentes, o menu de energia e a inicialização em modo seguro.</string>
     <string name="focus_mode_configure_device_owner">Configurar</string>
     <string name="focus_mode_notification_access_title">Bloqueio de notificações</string>
     <string name="focus_mode_notification_access_description">O acesso às notificações permite remover alertas publicados por apps bloqueados.</string>
@@ -673,6 +673,8 @@
     <string name="focus_mode_essentials_description">Estes recursos nunca entram na lista de bloqueio, inclusive para uma emergência.</string>
     <string name="focus_mode_phone_emergency">Ligação e emergência</string>
     <string name="focus_mode_sms">SMS</string>
+    <string name="focus_mode_grayscale_title">Interface do FocusGuard em escala de cinza</string>
+    <string name="focus_mode_grayscale_description">Opcional. Retira as cores de todas as áreas do FocusGuard durante esta sessão. Apps essenciais ou liberados mantêm a aparência definida por eles.</string>
     <string name="focus_mode_duration_title">Tempo do bloqueio</string>
     <string name="focus_mode_duration_value">Quantidade</string>
     <string name="focus_mode_duration_invalid">Informe um período válido, entre 1 minuto e 120 dias.</string>
@@ -688,6 +690,9 @@
     <string name="focus_mode_terms_duration">O Modo Foco ficará ativo por %1$s.</string>
     <string name="focus_mode_terms_effects">Durante esse tempo, Início, Recentes e o painel de notificações ficam indisponíveis. Apps não escolhidos serão suspensos e suas notificações serão removidas.</string>
     <string name="focus_mode_terms_essentials">Ligação, emergência, SMS, FocusGuard e os apps que você selecionou continuam disponíveis.</string>
+    <string name="focus_mode_terms_grayscale_on">A escala de cinza será aplicada a toda a interface do FocusGuard nesta sessão.</string>
+    <string name="focus_mode_terms_grayscale_off">A escala de cinza ficará desativada nesta sessão.</string>
+    <string name="focus_mode_terms_power_limits">O menu normal de desligar/reiniciar e a inicialização em modo seguro ficam bloqueados. O Android não permite que um app impeça reinício físico forçado pelos botões ou remoção da bateria.</string>
     <string name="focus_mode_terms_exit">Não haverá encerramento antecipado pela tela comum. A Área Dev permanece como saída técnica do produto.</string>
     <string name="focus_mode_terms_accept">Eu escolhi este bloqueio voluntariamente, entendi os efeitos e concordo em mantê-lo até o prazo terminar.</string>
     <string name="focus_mode_confirm_start">Concordar e iniciar</string>
@@ -695,6 +700,8 @@
     <string name="focus_mode_remaining">tempo restante</string>
     <string name="focus_mode_kiosk_title">Você está no ambiente FocusGuard</string>
     <string name="focus_mode_kiosk_description">Use o menu inferior para ver o restante do FocusGuard. Para abrir um app liberado, volte a esta aba e toque nele.</string>
+    <string name="focus_mode_grayscale_active_title">Escala de cinza ativa</string>
+    <string name="focus_mode_grayscale_active_description">Todas as áreas do FocusGuard permanecem sem cores até esta sessão terminar.</string>
     <string name="focus_mode_essential_actions">Acesso essencial</string>
     <string name="focus_mode_call">Ligar</string>
     <string name="focus_mode_open_sms">SMS</string>
@@ -703,6 +710,7 @@
     <string name="focus_mode_system_apps_notice">O Android não permite suspender %1$d app(s) protegido(s) pelo sistema. Eles não aparecem nesta tela e o modo quiosque continua impedindo a saída normal.</string>
     <string name="focus_mode_no_early_stop">Não existe botão comum para encerrar antes do prazo. O modo termina automaticamente.</string>
     <string name="focus_mode_device_owner_required">Configure o Device Owner antes de iniciar o Modo Foco.</string>
+    <string name="focus_mode_system_lockdown_unsupported">O bloqueio completo do menu de energia exige Android 9 ou superior. O Modo Foco não foi iniciado neste aparelho.</string>
     <string name="focus_mode_notification_access_required">Permita o acesso às notificações antes de iniciar o Modo Foco.</string>
     <string name="focus_mode_start_failed">O Android não confirmou todas as regras do Modo Foco. Nenhuma sessão foi mantida; revise as permissões e tente novamente.</string>
     <string name="focus_mode_conflict_title">Outro modo de foco está ativo</string>
