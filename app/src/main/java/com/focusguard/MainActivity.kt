@@ -5,6 +5,9 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.security.AuthManager
 import com.focusguard.ui.PermissionsActivity
@@ -13,6 +16,7 @@ import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : AppCompatActivity() {
@@ -21,6 +25,7 @@ class MainActivity : AppCompatActivity() {
     // Antes eram instanciados direto, criando instâncias paralelas e disparando
     // migrações em paralelo (AuthManager) ou multiplas instâncias de manager.
     @Inject lateinit var authManager: AuthManager
+    @Inject lateinit var focusModeManager: FocusModeManager
 
     private lateinit var pomodoroManager: PomodoroManager
 
@@ -49,7 +54,9 @@ class MainActivity : AppCompatActivity() {
                 FocusGuardNavHost(
                     activity = this,
                     authManager = authManager,
-                    pomodoroManager = pomodoroManager
+                    pomodoroManager = pomodoroManager,
+                    focusModeManager = focusModeManager,
+                    onEnforceFocusModeLockTask = ::enforceFocusModeLockTask
                 )
             }
         }
@@ -58,10 +65,35 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         FocusGuardLogger.log("MainActivity", "onResume disparado")
+        enforceFocusModeLockTask()
     }
 
     override fun onPause() {
         super.onPause()
         FocusGuardLogger.log("MainActivity", "onPause disparado")
+    }
+
+    fun enforceFocusModeLockTask() {
+        val deviceOwnerManager = DeviceOwnerManager.getInstance(applicationContext)
+        // Lock Task allowlisting survives process death. Re-enter it immediately
+        // on resume, before the asynchronous full policy reconciliation, so there
+        // is no Home-button escape window after Android recreates this activity.
+        if (focusModeManager.isActive() &&
+            deviceOwnerManager.isFocusModeLockTaskPermitted()
+        ) {
+            runCatching { startLockTask() }
+        }
+        lifecycleScope.launch {
+            if (!focusModeManager.ensureEnforced()) return@launch
+            if (!deviceOwnerManager.isDeviceOwnerActive()) return@launch
+            runCatching { startLockTask() }
+                .onFailure { error ->
+                    FocusGuardLogger.logError(
+                        "FocusMode",
+                        "Falha ao iniciar Lock Task na atividade principal",
+                        error
+                    )
+                }
+        }
     }
 }

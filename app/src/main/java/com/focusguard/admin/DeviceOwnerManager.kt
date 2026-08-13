@@ -14,6 +14,7 @@ import android.util.Log
 import android.widget.Toast
 import com.focusguard.R
 import com.focusguard.data.PredefinedWebsites
+import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.security.ArmoredProtectionPolicy
 import com.focusguard.security.AuthManager
 import com.focusguard.security.DeviceOwnerMaintenanceGate
@@ -488,6 +489,89 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         }
     }
 
+    /**
+     * Configures a multi-app kiosk for Focus Mode. Home, Overview, notifications
+     * and global actions remain unavailable because no SystemUI feature is enabled.
+     */
+    fun prepareFocusModeLockTaskPackages(allowedPackages: Collection<String>): Boolean {
+        if (!isDeviceOwnerActive()) return false
+        return try {
+            val installedAllowlist = (allowedPackages + context.packageName)
+                .asSequence()
+                .filter(String::isNotBlank)
+                .distinct()
+                .filter { it == context.packageName || isPackageInstalled(it) }
+                .toList()
+            dpm.setLockTaskPackages(componentName, installedAllowlist.toTypedArray())
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                dpm.setLockTaskFeatures(
+                    componentName,
+                    DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+                )
+            }
+            val confirmed = dpm.isLockTaskPermitted(context.packageName)
+            if (confirmed) {
+                Log.d("FocusGuardAdmin", "Modo Foco preparado: $installedAllowlist")
+            }
+            confirmed
+        } catch (error: Exception) {
+            FocusGuardLogger.logError(
+                "FocusMode",
+                "Falha ao configurar a lista do Lock Task",
+                error
+            )
+            false
+        }
+    }
+
+    /** Removing the current app from the allowlist also ends an orphaned lock task. */
+    fun clearFocusModeLockTaskPackages() {
+        if (!isDeviceOwnerActive()) return
+        runCatching {
+            dpm.setLockTaskPackages(componentName, emptyArray<String>())
+        }.onFailure { error ->
+            FocusGuardLogger.logError(
+                "FocusMode",
+                "Falha ao encerrar o Lock Task do Modo Foco",
+                error
+            )
+        }
+    }
+
+    fun isPackageSuspendedByFocusMode(packageName: String): Boolean {
+        if (!isDeviceOwnerActive() || packageName.isBlank()) return false
+        return runCatching { dpm.isPackageSuspended(componentName, packageName) }
+            .getOrDefault(false)
+    }
+
+    fun isFocusModeLockTaskPermitted(): Boolean = isDeviceOwnerActive() &&
+        runCatching { dpm.isLockTaskPermitted(context.packageName) }.getOrDefault(false)
+
+    /** Direct-Boot restoration uses only DPM plus device-protected Focus Mode state. */
+    fun applyFocusModeAtDirectBoot(): Boolean {
+        if (!isDeviceOwnerActive()) return false
+        val session = FocusModeStore.readSession(context) ?: return false
+        if (!session.isActive()) return false
+
+        return try {
+            check(prepareFocusModeLockTaskPackages(session.allowedPackages))
+            val candidates = session.blockedPackages
+                .filterNot(SACRED_WHITELIST::contains)
+                .filter(::isPackageInstalled)
+            if (candidates.isNotEmpty()) {
+                dpm.setPackagesSuspended(componentName, candidates.toTypedArray(), true)
+            }
+            true
+        } catch (error: Exception) {
+            FocusGuardLogger.logError(
+                "FocusMode",
+                "Falha ao restaurar o Modo Foco no Direct Boot",
+                error
+            )
+            false
+        }
+    }
+
     /** Get Device Owner status information. */
     fun getStatusInfo(): String {
         val isAdmin = isDeviceAdminActive()
@@ -801,7 +885,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
 
         relaxAppControlProtection()
 
-        val suspendedPackages = managedSuspendedApps()
+        val suspendedPackages = managedSuspendedApps() +
+            FocusModeStore.readSession(context)?.blockedPackages.orEmpty()
         if (suspendedPackages.isNotEmpty()) {
             applyPolicySafely("unsuspend_all_for_removal") {
                 dpm.setPackagesSuspended(

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.net.Uri
 import com.focusguard.BuildConfig
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.utils.AccessibilityStateMonitor
@@ -45,6 +46,7 @@ object DevelopmentUninstallCoordinator {
 
         val released = try {
             withContext(Dispatchers.IO) {
+                FocusModeManager.getInstance(appContext).forceStopForDevelopmentExit()
                 val localStateDisarmed = BlockingSessionManager
                     .getInstance(appContext)
                     .removeAllBlocksForDevelopmentExit()

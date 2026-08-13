@@ -3,10 +3,15 @@ package com.focusguard
 import android.app.Application
 import android.os.UserManager
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.utils.AccessibilityStateMonitor
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.UsageAccessStateMonitor
 import dagger.hilt.android.HiltAndroidApp
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * Application class para o FocusGuard.
@@ -15,6 +20,8 @@ import dagger.hilt.android.HiltAndroidApp
  */
 @HiltAndroidApp
 class FocusGuardApplication : Application() {
+    private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     override fun onCreate() {
         super.onCreate()
         val userUnlocked = runCatching {
@@ -33,9 +40,13 @@ class FocusGuardApplication : Application() {
             deviceOwnerManager.applyNuclearShield()
             AccessibilityStateMonitor.start(this)
             UsageAccessStateMonitor.start(this)
+            applicationScope.launch {
+                FocusModeManager.getInstance(this@FocusGuardApplication).ensureEnforced()
+            }
         } else {
             // Antes do primeiro desbloqueio, usa somente DPM + Device Protected Storage.
             deviceOwnerManager.applyDirectBootShield()
+            deviceOwnerManager.applyFocusModeAtDirectBoot()
         }
     }
 }

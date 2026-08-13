@@ -64,6 +64,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.focusmode.FocusModePolicy
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.security.AuthManager
 import com.focusguard.security.ProtectionPermissionGate
@@ -94,6 +96,7 @@ fun PomodoroScreen(
     val scope = rememberCoroutineScope()
     var isBlockingEnabled by remember { mutableStateOf(false) }
     var showStrictBlockWarning by remember { mutableStateOf(false) }
+    var showFocusModeConflict by remember { mutableStateOf(false) }
     var selectedMinutes by remember { mutableIntStateOf(25) }
 
     val currentSession by pomodoroManager.currentSession.collectAsState()
@@ -117,7 +120,11 @@ fun PomodoroScreen(
         if (isStrictBlockingActive) {
             deviceOwnerManager.prepareStrictPomodoroLockTaskPackages()
             runCatching { activity?.startLockTask() }
-        } else {
+        } else if (
+            FocusModePolicy.canPomodoroReleaseKiosk(FocusModeStore.isActive(context))
+        ) {
+            // A normal Pomodoro may run inside Modo Foco. In that case this
+            // screen does not own the kiosk and must not stop or overwrite it.
             runCatching { activity?.stopLockTask() }
             deviceOwnerManager.clearStrictPomodoroLockTaskPackages()
         }
@@ -184,12 +191,27 @@ fun PomodoroScreen(
                     )
                 }
 
+                if (showFocusModeConflict) {
+                    AlertDialog(
+                        onDismissRequest = { showFocusModeConflict = false },
+                        title = { Text(stringResource(R.string.focus_mode_conflict_title)) },
+                        text = { Text(stringResource(R.string.focus_mode_pomodoro_conflict)) },
+                        confirmButton = {
+                            TextButton(onClick = { showFocusModeConflict = false }) {
+                                Text(stringResource(R.string.status_close))
+                            }
+                        }
+                    )
+                }
+
                 if (!isRunning) {
                     BlockingToggleCard(
                         isBlockingEnabled = isBlockingEnabled,
                         onToggle = { enabled ->
                             if (!enabled) {
                                 isBlockingEnabled = false
+                            } else if (FocusModeStore.isActive(context)) {
+                                showFocusModeConflict = true
                             } else if (ProtectionPermissionGate.read(context).isReady) {
                                 showStrictBlockWarning = true
                             } else {
@@ -202,7 +224,9 @@ fun PomodoroScreen(
 
                     Button(
                         onClick = {
-                            if (
+                            if (isBlockingEnabled && FocusModeStore.isActive(context)) {
+                                showFocusModeConflict = true
+                            } else if (
                                 isBlockingEnabled &&
                                 !ProtectionPermissionGate.read(context).isReady
                             ) {

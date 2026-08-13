@@ -49,6 +49,8 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.lifecycle.lifecycleScope
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.focusmode.FocusModePolicy
+import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.manager.StrictPomodoroLock
 import com.focusguard.ui.compose.theme.AccentCyan
@@ -199,8 +201,13 @@ class PomodoroLockActivity : ComponentActivity() {
     }
 
     private fun finishStrictLock() {
-        runCatching { stopLockTask() }
-        deviceOwnerManager.clearStrictPomodoroLockTaskPackages()
+        if (FocusModePolicy.canPomodoroReleaseKiosk(
+                FocusModeStore.isActive(applicationContext)
+            )
+        ) {
+            runCatching { stopLockTask() }
+            deviceOwnerManager.clearStrictPomodoroLockTaskPackages()
+        }
         cancelRelaunchAlarm()
         allowFinish = true
         finish()

@@ -136,9 +136,10 @@
 
     <!-- Navegação -->
     <string name="nav_protection">Proteção</string>
-    <string name="nav_focus">Foco</string>
+    <string name="nav_focus">Pomodoro</string>
     <string name="nav_metrics">Métricas</string>
     <string name="nav_recovery">AntiPorn</string>
+    <string name="nav_focus_mode">Modo foco</string>
     <string name="nav_settings">Configurações</string>
 
     <!-- AntiPorn e EasyPeasy -->
@@ -653,5 +654,63 @@
     <string name="uninstall_app_blocked_by_active_block">Há um bloqueio por tempo ativo. A desinstalação só fica disponível quando ele terminar ou durante a janela de manutenção do dia 15.</string>
     <string name="uninstall_app_failed">Não foi possível liberar a desinstalação.</string>
     <string name="block_notice_no_password_unlock">Este bloqueio foi configurado sem senha. O acesso volta automaticamente no prazo definido.</string>
+
+    <!-- Modo Foco -->
+    <string name="focus_mode_title">Modo Foco</string>
+    <string name="focus_mode_subtitle">Somente o essencial, pelo tempo que você escolher</string>
+    <string name="focus_mode_how_title">Um ambiente temporário sem distrações</string>
+    <string name="focus_mode_how_description">O FocusGuard suspende os apps não permitidos, oculta suas notificações e usa o modo quiosque do Android. Você continua podendo navegar por todas as áreas do FocusGuard e abrir somente os apps escolhidos nesta tela.</string>
+    <string name="focus_mode_requirements_title">Requisitos para um bloqueio confiável</string>
+    <string name="focus_mode_device_owner_title">Controle nativo do aparelho</string>
+    <string name="focus_mode_device_owner_description">O Device Owner permite suspender apps e impedir o uso de Início e Recentes.</string>
+    <string name="focus_mode_configure_device_owner">Configurar</string>
+    <string name="focus_mode_notification_access_title">Bloqueio de notificações</string>
+    <string name="focus_mode_notification_access_description">O acesso às notificações permite remover alertas publicados por apps bloqueados.</string>
+    <string name="focus_mode_open_notification_access">Permitir</string>
+    <string name="focus_mode_requirement_ready">Pronto</string>
+    <string name="focus_mode_requirement_pending">Pendente</string>
+    <string name="focus_mode_essentials_title">Sempre disponíveis</string>
+    <string name="focus_mode_essentials_description">Estes recursos nunca entram na lista de bloqueio, inclusive para uma emergência.</string>
+    <string name="focus_mode_phone_emergency">Ligação e emergência</string>
+    <string name="focus_mode_sms">SMS</string>
+    <string name="focus_mode_duration_title">Tempo do bloqueio</string>
+    <string name="focus_mode_duration_value">Quantidade</string>
+    <string name="focus_mode_duration_invalid">Informe um período válido, entre 1 minuto e 120 dias.</string>
+    <string name="focus_mode_minutes">Minutos</string>
+    <string name="focus_mode_hours">Horas</string>
+    <string name="focus_mode_days">Dias</string>
+    <string name="focus_mode_allowed_apps_title">Apps liberados por escolha (%1$d)</string>
+    <string name="focus_mode_whatsapp_hint">WhatsApp começa selecionado quando está instalado. Você pode manter ou retirar a seleção e liberar outros apps.</string>
+    <string name="focus_mode_search_apps">Buscar apps instalados</string>
+    <string name="focus_mode_no_apps">Nenhum app encontrado.</string>
+    <string name="focus_mode_start">Revisar e iniciar</string>
+    <string name="focus_mode_terms_title">Confirme seu compromisso de foco</string>
+    <string name="focus_mode_terms_duration">O Modo Foco ficará ativo por %1$s.</string>
+    <string name="focus_mode_terms_effects">Durante esse tempo, Início, Recentes e o painel de notificações ficam indisponíveis. Apps não escolhidos serão suspensos e suas notificações serão removidas.</string>
+    <string name="focus_mode_terms_essentials">Ligação, emergência, SMS, FocusGuard e os apps que você selecionou continuam disponíveis.</string>
+    <string name="focus_mode_terms_exit">Não haverá encerramento antecipado pela tela comum. A Área Dev permanece como saída técnica do produto.</string>
+    <string name="focus_mode_terms_accept">Eu escolhi este bloqueio voluntariamente, entendi os efeitos e concordo em mantê-lo até o prazo terminar.</string>
+    <string name="focus_mode_confirm_start">Concordar e iniciar</string>
+    <string name="focus_mode_active_title">Modo Foco ativo</string>
+    <string name="focus_mode_remaining">tempo restante</string>
+    <string name="focus_mode_kiosk_title">Você está no ambiente FocusGuard</string>
+    <string name="focus_mode_kiosk_description">Use o menu inferior para ver o restante do FocusGuard. Para abrir um app liberado, volte a esta aba e toque nele.</string>
+    <string name="focus_mode_essential_actions">Acesso essencial</string>
+    <string name="focus_mode_call">Ligar</string>
+    <string name="focus_mode_open_sms">SMS</string>
+    <string name="focus_mode_available_apps">Outros apps liberados</string>
+    <string name="focus_mode_only_essentials">Nenhum outro app foi liberado. Somente ligação, emergência, SMS e FocusGuard estão disponíveis.</string>
+    <string name="focus_mode_system_apps_notice">O Android não permite suspender %1$d app(s) protegido(s) pelo sistema. Eles não aparecem nesta tela e o modo quiosque continua impedindo a saída normal.</string>
+    <string name="focus_mode_no_early_stop">Não existe botão comum para encerrar antes do prazo. O modo termina automaticamente.</string>
+    <string name="focus_mode_device_owner_required">Configure o Device Owner antes de iniciar o Modo Foco.</string>
+    <string name="focus_mode_notification_access_required">Permita o acesso às notificações antes de iniciar o Modo Foco.</string>
+    <string name="focus_mode_start_failed">O Android não confirmou todas as regras do Modo Foco. Nenhuma sessão foi mantida; revise as permissões e tente novamente.</string>
+    <string name="focus_mode_conflict_title">Outro modo de foco está ativo</string>
+    <string name="focus_mode_pomodoro_conflict">O Modo Foco e o Pomodoro rigoroso usam o mesmo modo quiosque do Android e não podem funcionar ao mesmo tempo. Aguarde a sessão atual terminar.</string>
+    <string name="focus_mode_notification_title">Modo Foco ativo</string>
+    <string name="focus_mode_notification_time">Tempo restante: %1$s</string>
+    <string name="focus_mode_notification_channel">Temporizador do Modo Foco</string>
+    <string name="focus_mode_notification_channel_description">Mantém o prazo e a restauração automática do Modo Foco.</string>
+    <string name="focus_mode_notification_access_label">Controle de notificações do Modo Foco</string>
 
 </resources>

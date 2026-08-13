@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.focusguard.manager.PomodoroManager
+import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.security.AuthManager
 import com.focusguard.security.ProtectionPermission
 import com.focusguard.security.ProtectionPermissionGate
@@ -41,6 +42,7 @@ import com.focusguard.ui.compose.screens.BlockCustomizationScreen
 import com.focusguard.ui.compose.screens.BlockTypeDetailScreen
 import com.focusguard.ui.compose.screens.BlockTypeUi
 import com.focusguard.ui.compose.screens.DevelopmentAreaScreen
+import com.focusguard.ui.compose.screens.FocusModeScreen
 import com.focusguard.ui.compose.screens.IntruderLogScreen
 import com.focusguard.ui.compose.screens.LanguageScreen
 import com.focusguard.ui.compose.screens.LimitsSecurityScreen
@@ -82,7 +84,9 @@ private object FocusGuardRoute {
 fun FocusGuardNavHost(
     activity: AppCompatActivity,
     authManager: AuthManager,
-    pomodoroManager: PomodoroManager
+    pomodoroManager: PomodoroManager,
+    focusModeManager: FocusModeManager,
+    onEnforceFocusModeLockTask: () -> Unit
 ) {
     var isUnlocked by remember { mutableStateOf<Boolean?>(null) }
     var resumeKey by remember { mutableIntStateOf(0) }
@@ -146,6 +150,16 @@ fun FocusGuardNavHost(
     var showCreatorInstagramCard by remember { mutableStateOf(false) }
 
     val currentPomodoro by pomodoroManager.currentSession.collectAsState()
+    val activeFocusMode by focusModeManager.session.collectAsState()
+
+    // Enter the new session on its own tab once. The key stays unchanged while
+    // it is active, so the user can still browse every other FocusGuard section.
+    LaunchedEffect(activeFocusMode?.startedAtMillis) {
+        if (activeFocusMode?.isActive() == true) {
+            currentRoute = FocusGuardRoute.Home
+            selectedTab = 4
+        }
+    }
 
     LaunchedEffect(currentPomodoro) {
         if (currentPomodoro?.isActive == true) {
@@ -311,6 +325,12 @@ fun FocusGuardNavHost(
                                     OfflineBookActivity.createIntent(activity, offlineBook)
                                 )
                             }
+                        )
+                    },
+                    focusModeContent = {
+                        FocusModeScreen(
+                            manager = focusModeManager,
+                            onStartLockTask = onEnforceFocusModeLockTask
                         )
                     }
                 )

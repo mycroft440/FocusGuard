@@ -19,6 +19,8 @@ import com.focusguard.database.BlockSession
 import com.focusguard.database.SessionAppCrossRef
 import com.focusguard.database.SessionWebsiteCrossRef
 import com.focusguard.database.WebsiteUsageLimit
+import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.focusmode.FocusModePolicy
 import com.focusguard.receiver.BlockingScheduleCalculator
 import com.focusguard.receiver.BlockingScheduleReceiver
 import com.focusguard.security.AuthManager
@@ -363,11 +365,13 @@ class BlockingSessionManager @Inject constructor(
             hasEnforcingSessions: Boolean,
             hasBlockedApps: Boolean,
             hasBlockedSites: Boolean,
-            adultFilterEnabled: Boolean
+            adultFilterEnabled: Boolean,
+            focusModeActive: Boolean = false
         ): Boolean = hasEnforcingSessions ||
             hasBlockedApps ||
             hasBlockedSites ||
-            adultFilterEnabled
+            adultFilterEnabled ||
+            focusModeActive
     }
 
     @dagger.hilt.EntryPoint
@@ -1239,9 +1243,16 @@ class BlockingSessionManager @Inject constructor(
         }
     }
 
+    internal suspend fun checkAndEnforceStrict() {
+        checkAndEnforceOrThrow()
+    }
+
     private suspend fun checkAndEnforceOrThrow() {
         enforcementMutex.withLock {
                 val now = System.currentTimeMillis()
+                val focusModeSession = FocusModeStore.readSession(context)
+                    ?.takeIf { it.isActive(now) }
+                val focusModeApps = focusModeSession?.blockedPackages.orEmpty()
                 val beforeExpiration = database.blockSessionDao().getAllActiveSessionsStatic()
                 val expiredPomodoro = beforeExpiration.any {
                     it.sessionType == "POMODORO" && it.endTime != null && it.endTime <= now
@@ -1296,7 +1307,8 @@ class BlockingSessionManager @Inject constructor(
                     activeSessions.isNotEmpty() ||
                     activeAppLimits.isNotEmpty() ||
                     activeWebsiteLimits.isNotEmpty() ||
-                    adultFilterEnabled
+                    adultFilterEnabled ||
+                    focusModeSession != null
                 ) {
                     now + POLICY_RECONCILIATION_INTERVAL_MILLIS
                 } else null
@@ -1304,7 +1316,11 @@ class BlockingSessionManager @Inject constructor(
                     context = context,
                     sessions = activeSessions,
                     additionalBoundaries = policyExpirations +
-                        listOfNotNull(nextDailyReset, nextReconciliation),
+                        listOfNotNull(
+                            nextDailyReset,
+                            nextReconciliation,
+                            focusModeSession?.endTimeMillis
+                        ),
                     nowMillis = now
                 )
                 val activeWebsiteDomains = WebsiteBlocker.normalizeRules(
@@ -1353,9 +1369,22 @@ class BlockingSessionManager @Inject constructor(
                 val websiteAppsToBlock = WebsiteBlocker.appPackageDomainsFor(sitesToBlock)
                     .keys
                     .filter(::isPackageInstalled)
-                val appsToBlock = (sessionApps + limitApps + websiteAppsToBlock)
-                    .filter { it.isNotBlank() }
-                    .distinct()
+                // A Focus Mode allowlist is an explicit temporary override:
+                // phone, SMS and the apps chosen for that session must remain
+                // fully launchable even if another FocusGuard rule also names them.
+                val appsToBlock = FocusModePolicy.packagesToEnforce(
+                    configuredBlockedPackages = sessionApps + limitApps + websiteAppsToBlock,
+                    focusModeBlockedPackages = focusModeApps,
+                    focusModeAllowedPackages = focusModeSession?.allowedPackages.orEmpty()
+                ).toList()
+                // Focus Mode is enforced natively by suspension + Lock Task. Sending
+                // those same packages to Accessibility would open BlockNoticeActivity
+                // on transient system foreground events and recreate the old flashing
+                // loop. Existing rules outside Focus Mode keep their normal overlay path.
+                val accessibilityAppsToBlock = FocusModePolicy.packagesForAccessibility(
+                    enforcedPackages = appsToBlock,
+                    focusModeBlockedPackages = focusModeApps
+                ).toList()
 
                 val allSessionApps = getAppsForSessions(activeSessions.map { it.id })
                 val allSessionSites = getSitesForSessions(activeSessions.map { it.id })
@@ -1365,7 +1394,8 @@ class BlockingSessionManager @Inject constructor(
                 val allKnownApps = (
                     allSessionApps +
                         activeAppLimits.map { it.packageName } +
-                        allKnownWebsiteApps
+                        allKnownWebsiteApps +
+                        focusModeApps
                 ).distinct()
 
                 deviceOwnerManager.syncSuspendedApps(
@@ -1384,7 +1414,8 @@ class BlockingSessionManager @Inject constructor(
                     hasEnforcingSessions = enforcingSessions.isNotEmpty(),
                     hasBlockedApps = appsToBlock.isNotEmpty(),
                     hasBlockedSites = sitesToBlock.isNotEmpty(),
-                    adultFilterEnabled = adultFilterEnabled
+                    adultFilterEnabled = adultFilterEnabled,
+                    focusModeActive = focusModeSession != null
                 )
                 if (selfProtectionRequired) {
                     val nativeProtectionConfirmed =
@@ -1403,7 +1434,7 @@ class BlockingSessionManager @Inject constructor(
                 context.sendBroadcast(
                     BlockingAccessibilityService.createRefreshBlockingIntent(
                         context = context,
-                        blockedApps = appsToBlock,
+                        blockedApps = accessibilityAppsToBlock,
                         blockedSites = sitesToBlock,
                         blockingActive = selfProtectionRequired,
                         strictPomodoro = strictPomodoro

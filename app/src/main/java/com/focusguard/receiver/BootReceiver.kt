@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Build
 import com.focusguard.MainActivity
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.manager.StrictPomodoroLock
@@ -48,6 +49,7 @@ class BootReceiver : BroadcastReceiver() {
             // Native Device Owner policy restores app-removal protection before unlock.
             // USB and ADB intentionally remain outside FocusGuard's restriction set.
             deviceOwnerManager.applyDirectBootShield()
+            deviceOwnerManager.applyFocusModeAtDirectBoot()
             FocusGuardLogger.log(
                 "BootReceiver",
                 "Proteção nativa restaurada antes do primeiro desbloqueio"
@@ -93,15 +95,17 @@ class BootReceiver : BroadcastReceiver() {
             try {
                 val sessionManager = BlockingSessionManager.getInstance(context)
                 val pomodoroManager = PomodoroManager.getInstance(context)
+                val focusModeManager = FocusModeManager.getInstance(context)
 
                 sessionManager.checkAndEnforce()
+                val focusModeActive = focusModeManager.ensureEnforced()
 
                 val hasActiveSessions = sessionManager.activeSessionsFlow.first().isNotEmpty()
                 val isPomodoroActive = pomodoroManager.isPomodoroActive()
 
                 FocusGuardLogger.log("BootReceiver", "Status após boot: Sessões=$hasActiveSessions, Pomodoro=$isPomodoroActive")
 
-                if (hasActiveSessions && !isPomodoroActive) {
+                if ((hasActiveSessions || focusModeActive) && !isPomodoroActive) {
                     FocusGuardLogger.log("BootReceiver", "Restaurando interface principal devido a bloqueio ativo.")
                     val i = Intent(context, MainActivity::class.java)
                     i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)

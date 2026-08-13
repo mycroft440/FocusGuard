@@ -190,6 +190,19 @@ class BlockingSessionManagerTargetsTest {
     }
 
     @Test
+    fun `active focus mode arms self protection even when its blocked list is empty`() {
+        assertThat(
+            BlockingSessionManager.shouldArmSelfProtection(
+                hasEnforcingSessions = false,
+                hasBlockedApps = false,
+                hasBlockedSites = false,
+                adultFilterEnabled = false,
+                focusModeActive = true
+            )
+        ).isTrue()
+    }
+
+    @Test
     fun `self protection disarms only when no target is being blocked`() {
         assertThat(
             BlockingSessionManager.shouldArmSelfProtection(

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.media.RingtoneManager
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.PomodoroSession
+import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.security.ProtectionPermissionGate
@@ -186,6 +187,9 @@ class PomodoroManager @Inject constructor(
         isBlockingEnabled: Boolean = true
     ) {
         require(durationMinutes in 1..24 * 60) { "Duração do Pomodoro inválida" }
+        check(!isBlockingEnabled || !FocusModeStore.isActive(context)) {
+            "O Pomodoro rigoroso não pode substituir um Modo Foco ativo"
+        }
         check(!isBlockingEnabled || ProtectionPermissionGate.read(context).isReady) {
             "Todas as permissões de proteção são necessárias para o Pomodoro com bloqueio"
         }

@@ -49,7 +49,8 @@ fun MainScreen(
     onSettingsClick: () -> Unit,
     usageStatsContent: @Composable () -> Unit,
     pomodoroContent: @Composable () -> Unit,
-    recoveryContent: @Composable () -> Unit
+    recoveryContent: @Composable () -> Unit,
+    focusModeContent: @Composable () -> Unit
 ) {
     val settingsContentDescription = if (profile.isConfigured) {
         stringResource(R.string.profile_settings_content_description, profile.displayName)
@@ -150,6 +151,18 @@ fun MainScreen(
                     label = { Text(stringResource(R.string.nav_recovery)) },
                     colors = navigationItemColors()
                 )
+                NavigationBarItem(
+                    selected = selectedTab == 4,
+                    onClick = { onTabChange(4) },
+                    icon = {
+                        Icon(
+                            Icons.Default.LockClock,
+                            contentDescription = stringResource(R.string.nav_focus_mode)
+                        )
+                    },
+                    label = { Text(stringResource(R.string.nav_focus_mode)) },
+                    colors = navigationItemColors()
+                )
             }
         }
     ) { paddingValues ->
@@ -180,6 +193,7 @@ fun MainScreen(
                     )
                     2 -> pomodoroContent()
                     3 -> recoveryContent()
+                    4 -> focusModeContent()
                 }
             }
         }

@@ -136,9 +136,10 @@
 
     <!-- Navigation -->
     <string name="nav_protection">Protection</string>
-    <string name="nav_focus">Focus</string>
+    <string name="nav_focus">Pomodoro</string>
     <string name="nav_metrics">Metrics</string>
     <string name="nav_recovery">AntiPorn</string>
+    <string name="nav_focus_mode">Focus mode</string>
     <string name="nav_settings">Settings</string>
 
     <!-- AntiPorn and EasyPeasy -->
@@ -653,5 +654,63 @@
     <string name="uninstall_app_blocked_by_active_block">A time block is active. Uninstall is available only after it ends or during the day-15 maintenance window.</string>
     <string name="uninstall_app_failed">Could not release the uninstall.</string>
     <string name="block_notice_no_password_unlock">This block was configured without a password. Access returns automatically at the selected time.</string>
+
+    <!-- Focus Mode -->
+    <string name="focus_mode_title">Focus Mode</string>
+    <string name="focus_mode_subtitle">Only the essentials, for as long as you choose</string>
+    <string name="focus_mode_how_title">A temporary distraction-free environment</string>
+    <string name="focus_mode_how_description">FocusGuard suspends apps that are not allowed, hides their notifications, and uses Android kiosk mode. You can still browse every FocusGuard section and open only the apps selected on this screen.</string>
+    <string name="focus_mode_requirements_title">Requirements for reliable blocking</string>
+    <string name="focus_mode_device_owner_title">Native device control</string>
+    <string name="focus_mode_device_owner_description">Device Owner makes it possible to suspend apps and disable Home and Recents.</string>
+    <string name="focus_mode_configure_device_owner">Set up</string>
+    <string name="focus_mode_notification_access_title">Notification blocking</string>
+    <string name="focus_mode_notification_access_description">Notification access lets FocusGuard remove alerts posted by blocked apps.</string>
+    <string name="focus_mode_open_notification_access">Allow</string>
+    <string name="focus_mode_requirement_ready">Ready</string>
+    <string name="focus_mode_requirement_pending">Pending</string>
+    <string name="focus_mode_essentials_title">Always available</string>
+    <string name="focus_mode_essentials_description">These capabilities never enter the block list, including in an emergency.</string>
+    <string name="focus_mode_phone_emergency">Calls and emergency</string>
+    <string name="focus_mode_sms">SMS</string>
+    <string name="focus_mode_duration_title">Block duration</string>
+    <string name="focus_mode_duration_value">Amount</string>
+    <string name="focus_mode_duration_invalid">Enter a valid duration between 1 minute and 120 days.</string>
+    <string name="focus_mode_minutes">Minutes</string>
+    <string name="focus_mode_hours">Hours</string>
+    <string name="focus_mode_days">Days</string>
+    <string name="focus_mode_allowed_apps_title">Apps allowed by choice (%1$d)</string>
+    <string name="focus_mode_whatsapp_hint">WhatsApp starts selected when installed. You can keep or remove it and allow other apps.</string>
+    <string name="focus_mode_search_apps">Search installed apps</string>
+    <string name="focus_mode_no_apps">No apps found.</string>
+    <string name="focus_mode_start">Review and start</string>
+    <string name="focus_mode_terms_title">Confirm your focus commitment</string>
+    <string name="focus_mode_terms_duration">Focus Mode will remain active for %1$s.</string>
+    <string name="focus_mode_terms_effects">During this period, Home, Recents, and the notification panel are unavailable. Unselected apps are suspended and their notifications are removed.</string>
+    <string name="focus_mode_terms_essentials">Calls, emergency, SMS, FocusGuard, and the apps you selected remain available.</string>
+    <string name="focus_mode_terms_exit">There is no early stop in the normal screen. Dev Area remains the product technical exit.</string>
+    <string name="focus_mode_terms_accept">I chose this block voluntarily, understand its effects, and agree to keep it until the period ends.</string>
+    <string name="focus_mode_confirm_start">Agree and start</string>
+    <string name="focus_mode_active_title">Focus Mode active</string>
+    <string name="focus_mode_remaining">time remaining</string>
+    <string name="focus_mode_kiosk_title">You are in the FocusGuard environment</string>
+    <string name="focus_mode_kiosk_description">Use the bottom menu to browse the rest of FocusGuard. To open an allowed app, return to this tab and tap it.</string>
+    <string name="focus_mode_essential_actions">Essential access</string>
+    <string name="focus_mode_call">Call</string>
+    <string name="focus_mode_open_sms">SMS</string>
+    <string name="focus_mode_available_apps">Other allowed apps</string>
+    <string name="focus_mode_only_essentials">No other app was allowed. Only calls, emergency, SMS, and FocusGuard are available.</string>
+    <string name="focus_mode_system_apps_notice">Android does not allow %1$d protected system app(s) to be suspended. They are not shown here, and kiosk mode still prevents normal exit.</string>
+    <string name="focus_mode_no_early_stop">There is no normal button to stop early. The mode ends automatically.</string>
+    <string name="focus_mode_device_owner_required">Set up Device Owner before starting Focus Mode.</string>
+    <string name="focus_mode_notification_access_required">Allow notification access before starting Focus Mode.</string>
+    <string name="focus_mode_start_failed">Android did not confirm every Focus Mode rule. No session was kept; review permissions and try again.</string>
+    <string name="focus_mode_conflict_title">Another focus mode is active</string>
+    <string name="focus_mode_pomodoro_conflict">Focus Mode and strict Pomodoro use the same Android kiosk mode and cannot run at the same time. Wait for the current session to end.</string>
+    <string name="focus_mode_notification_title">Focus Mode active</string>
+    <string name="focus_mode_notification_time">Time remaining: %1$s</string>
+    <string name="focus_mode_notification_channel">Focus Mode timer</string>
+    <string name="focus_mode_notification_channel_description">Keeps the Focus Mode deadline and automatic restoration running.</string>
+    <string name="focus_mode_notification_access_label">Focus Mode notification control</string>
 
 </resources>
