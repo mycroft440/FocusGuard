@@ -9,7 +9,6 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.widget.Toast
 import androidx.room.withTransaction
-import com.focusguard.BuildConfig
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.data.PredefinedWebsites
@@ -885,22 +884,21 @@ class BlockingSessionManager @Inject constructor(
         }.getOrDefault(false)
     }
 
-    /**
-     * Permanently disarms the local session state before a debug uninstall.
-     *
-     * This deliberately does not call [checkAndEnforce]: doing so could re-arm
-     * usage limits while the development exit is releasing Device Owner. The
-     * coordinator disables Accessibility immediately after native policies are
-     * released, and uninstall removes the database a moment later.
-     */
-    suspend fun prepareForDevelopmentUninstall(): Boolean {
-        if (!BuildConfig.DEBUG) return false
-
+    /** Permanently removes every local source that can re-arm a block. */
+    internal suspend fun removeAllBlocksForDevelopmentExit(): Boolean {
         return enforcementMutex.withLock {
             try {
                 database.withTransaction {
                     database.blockSessionDao().deactivateAllActiveSessions()
                     database.pomodoroSessionDao().deleteSession()
+                    database.appUsageLimitDao().deleteAll()
+                    database.websiteUsageLimitDao().deleteAll()
+                    database.usageLimitsLockDao().deleteAll()
+                    database.blockedAppDao().deleteAllBlockedApps()
+                    database.blockedWebsiteDao().deleteAllBlockedWebsites()
+                }
+                check(AuthManager.disableAdultFilterForDevelopmentExit(context)) {
+                    "Não foi possível persistir a desativação do filtro adulto"
                 }
                 StrictPomodoroLock.clear(context)
                 PomodoroForegroundService.stop(context)
@@ -915,8 +913,8 @@ class BlockingSessionManager @Inject constructor(
                 throw cancelled
             } catch (error: Exception) {
                 FocusGuardLogger.logError(
-                    "DevelopmentUninstall",
-                    "Falha ao desarmar sessões para a desinstalação de desenvolvimento",
+                    "DevelopmentExit",
+                    "Falha ao remover os bloqueios pela Área Dev",
                     error
                 )
                 false

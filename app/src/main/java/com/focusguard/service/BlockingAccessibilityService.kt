@@ -28,7 +28,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
-import com.focusguard.BuildConfig
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.data.PredefinedWebsites
@@ -528,7 +527,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun relinquishAccessibilityForDevelopment() {
-        if (!BuildConfig.DEBUG || !AuthenticatedRemovalWindow.isActive(this)) return
+        if (!AuthenticatedRemovalWindow.isActive(this)) return
 
         runCatching {
             blockedAppsSet = emptySet()

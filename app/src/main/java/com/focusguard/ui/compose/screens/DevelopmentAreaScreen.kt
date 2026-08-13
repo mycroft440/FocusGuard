@@ -13,6 +13,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.DeveloperMode
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -22,6 +23,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,24 +52,48 @@ fun DevelopmentAreaScreen(onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     var password by remember { mutableStateOf("") }
     var working by remember { mutableStateOf(false) }
+    var showUninstallConfirmation by remember { mutableStateOf(false) }
     var outcome by remember {
         mutableStateOf<DevelopmentUninstallCoordinator.Outcome?>(null)
     }
 
-    fun relinquishAndUninstall() {
+    fun removeBlocksAndProtections() {
         if (working) return
         working = true
         outcome = null
         scope.launch {
-            val result = DevelopmentUninstallCoordinator.relinquishAndOpenUninstall(
+            val result = DevelopmentUninstallCoordinator.removeAllBlocksAndProtections(
                 context = context,
                 password = password
             )
             working = false
-            if (result != DevelopmentUninstallCoordinator.Outcome.STARTED) {
-                outcome = result
+            outcome = result
+            if (result == DevelopmentUninstallCoordinator.Outcome.BLOCKS_REMOVED) {
+                password = ""
+                showUninstallConfirmation = true
             }
         }
+    }
+
+    fun openUninstaller() {
+        if (working) return
+        showUninstallConfirmation = false
+        working = true
+        scope.launch {
+            val result = DevelopmentUninstallCoordinator.openUninstall(context)
+            working = false
+            outcome = if (result == DevelopmentUninstallCoordinator.Outcome.STARTED) {
+                DevelopmentUninstallCoordinator.Outcome.BLOCKS_REMOVED
+            } else {
+                result
+            }
+        }
+    }
+
+    fun keepInstalled() {
+        showUninstallConfirmation = false
+        DevelopmentUninstallCoordinator.finishWithoutUninstall(context)
+        outcome = DevelopmentUninstallCoordinator.Outcome.BLOCKS_REMOVED
     }
 
     val errorResource = when (outcome) {
@@ -79,6 +105,11 @@ fun DevelopmentAreaScreen(onBack: () -> Unit) {
             R.string.dev_area_release_failed
         DevelopmentUninstallCoordinator.Outcome.UNINSTALL_UI_FAILED ->
             R.string.dev_area_uninstall_failed
+        else -> null
+    }
+    val successResource = when (outcome) {
+        DevelopmentUninstallCoordinator.Outcome.BLOCKS_REMOVED ->
+            R.string.dev_area_blocks_removed_kept
         else -> null
     }
 
@@ -159,7 +190,7 @@ fun DevelopmentAreaScreen(onBack: () -> Unit) {
                     imeAction = ImeAction.Done
                 ),
                 keyboardActions = KeyboardActions(
-                    onDone = { relinquishAndUninstall() }
+                    onDone = { removeBlocksAndProtections() }
                 ),
                 isError = errorResource != null,
                 modifier = Modifier.fillMaxWidth()
@@ -169,10 +200,17 @@ fun DevelopmentAreaScreen(onBack: () -> Unit) {
                 Spacer(Modifier.height(8.dp))
                 Text(text = stringResource(resource), color = DangerRed)
             }
+            successResource?.let { resource ->
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = stringResource(resource),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
 
             Spacer(Modifier.height(20.dp))
             Button(
-                onClick = { relinquishAndUninstall() },
+                onClick = { removeBlocksAndProtections() },
                 enabled = password.isNotBlank() && !working,
                 colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
                 modifier = Modifier
@@ -193,5 +231,23 @@ fun DevelopmentAreaScreen(onBack: () -> Unit) {
                 }
             }
         }
+    }
+
+    if (showUninstallConfirmation) {
+        AlertDialog(
+            onDismissRequest = { keepInstalled() },
+            title = { Text(stringResource(R.string.dev_area_blocks_removed_title)) },
+            text = { Text(stringResource(R.string.dev_area_uninstall_question)) },
+            confirmButton = {
+                TextButton(onClick = { openUninstaller() }) {
+                    Text(stringResource(R.string.dev_area_uninstall_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { keepInstalled() }) {
+                    Text(stringResource(R.string.dev_area_uninstall_decline))
+                }
+            }
+        )
     }
 }

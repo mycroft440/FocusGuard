@@ -235,15 +235,20 @@
     <string name="settings_intruder_log_subtitle">Ver fotos de tentativas falhas</string>
     <string name="language_settings">Idioma</string>
     <string name="dev_area_title">Área Dev</string>
-    <string name="dev_area_subtitle">Saída técnica disponível somente no APK debug</string>
-    <string name="dev_area_description">Esta área desarma as sessões e o Pomodoro, revoga Acessibilidade, Device Admin e Device Owner, remove as políticas aplicadas pelo FocusGuard e abre o desinstalador do Android.</string>
-    <string name="dev_area_warning">A ação é irreversível dentro desta instalação. Se você cancelar a confirmação do Android, as proteções não serão reativadas automaticamente. As permissões especiais restantes são removidas quando a desinstalação é confirmada.</string>
+    <string name="dev_area_subtitle">Saída técnica para remover bloqueios e proteções</string>
+    <string name="dev_area_description">Esta área remove sessões, Pomodoro, limites de uso, listas de bloqueio, filtro adulto e as proteções administrativas aplicadas pelo FocusGuard. Depois, você decide se deseja desinstalar o app.</string>
+    <string name="dev_area_warning">Ao confirmar a senha, todos os bloqueios do FocusGuard serão removidos imediatamente. Se você optar por não desinstalar, eles não serão restaurados automaticamente.</string>
     <string name="dev_area_password_label">Senha Dev</string>
-    <string name="dev_area_relinquish_action">Abdicar permissões e desinstalar</string>
+    <string name="dev_area_relinquish_action">Remover todos os bloqueios</string>
     <string name="dev_area_invalid_password">Senha Dev incorreta.</string>
-    <string name="dev_area_unavailable">A Área Dev não está disponível nesta compilação.</string>
-    <string name="dev_area_release_failed">Não foi possível revogar todas as proteções administrativas.</string>
+    <string name="dev_area_unavailable">A Área Dev não está configurada ou a autorização expirou. Digite a senha novamente.</string>
+    <string name="dev_area_release_failed">Não foi possível remover todas as proteções do FocusGuard.</string>
     <string name="dev_area_uninstall_failed">As proteções foram revogadas, mas o desinstalador do Android não pôde ser aberto.</string>
+    <string name="dev_area_blocks_removed_title">Bloqueios removidos</string>
+    <string name="dev_area_uninstall_question">Todos os bloqueios e proteções foram removidos. Deseja desinstalar o app?</string>
+    <string name="dev_area_uninstall_confirm">Desinstalar</string>
+    <string name="dev_area_uninstall_decline">Agora não</string>
+    <string name="dev_area_blocks_removed_kept">Bloqueios removidos. O FocusGuard permanece instalado.</string>
 
     <!-- Autenticação -->
     <string name="auth_locked_content_description">App bloqueado</string>

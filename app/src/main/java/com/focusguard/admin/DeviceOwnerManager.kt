@@ -12,7 +12,6 @@ import android.os.UserManager
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
-import com.focusguard.BuildConfig
 import com.focusguard.R
 import com.focusguard.data.PredefinedWebsites
 import com.focusguard.security.ArmoredProtectionPolicy
@@ -869,40 +868,33 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         }
     }
 
-    /**
-     * Debug-only escape hatch used by Área Dev.
-     *
-     * Unlike the user-facing flow, this intentionally ignores active block and
-     * maintenance gates. The runtime build check means a release APK can never
-     * use this method, even if code tries to call it indirectly.
-     */
+    /** Technical exit used after the Área Dev password has been verified. */
     @Suppress("DEPRECATION")
-    suspend fun releaseRemovalProtectionForDevelopment(): Boolean = withContext(Dispatchers.IO) {
-        if (!BuildConfig.DEBUG) return@withContext false
+    internal suspend fun releaseRemovalProtectionForDevelopmentExit(): Boolean =
+        withContext(Dispatchers.IO) {
+            try {
+                if (isDeviceOwnerActive()) {
+                    clearOwnedPoliciesForRemoval()
+                    dpm.clearDeviceOwnerApp(context.packageName)
+                    DeviceOwnerMaintenanceGate.revoke(context)
+                }
 
-        try {
-            if (isDeviceOwnerActive()) {
-                clearOwnedPoliciesForRemoval()
-                dpm.clearDeviceOwnerApp(context.packageName)
-                DeviceOwnerMaintenanceGate.revoke(context)
+                if (isDeviceAdminActive()) {
+                    dpm.removeActiveAdmin(componentName)
+                }
+
+                awaitAdministrativeRolesReleased()
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                FocusGuardLogger.logError(
+                    "DevelopmentExit",
+                    "Falha ao liberar funções administrativas pela Área Dev",
+                    error
+                )
+                false
             }
-
-            if (isDeviceAdminActive()) {
-                dpm.removeActiveAdmin(componentName)
-            }
-
-            awaitAdministrativeRolesReleased()
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Exception) {
-            FocusGuardLogger.logError(
-                "DevelopmentUninstall",
-                "Falha ao liberar funções administrativas no modo de desenvolvimento",
-                error
-            )
-            false
         }
-    }
 
     /** Device Admin removal is asynchronous; wait briefly before opening uninstall. */
     private suspend fun awaitAdministrativeRolesReleased(): Boolean {

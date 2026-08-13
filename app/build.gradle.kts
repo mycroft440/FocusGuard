@@ -70,9 +70,8 @@ android {
             buildConfigField("String", "DEV_AREA_PASSWORD", "\"Dev00\"")
         }
         release {
-            // The development escape hatch must not carry a usable credential
-            // in production, even if an unreachable screen survives shrinking.
-            buildConfigField("String", "DEV_AREA_PASSWORD", "\"\"")
+            // Deliberately available in the final product as a technical exit.
+            buildConfigField("String", "DEV_AREA_PASSWORD", "\"Dev00\"")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

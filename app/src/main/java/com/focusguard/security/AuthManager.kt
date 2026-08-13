@@ -383,6 +383,29 @@ class AuthManager(context: Context) {
             }
         }
 
+        /** Permanently disables both stores read by the adult-content filter. */
+        internal fun disableAdultFilterForDevelopmentExit(context: Context): Boolean {
+            val appContext = context.applicationContext
+            val legacySaved = appContext
+                .getSharedPreferences(AUTH_PREFERENCES, Context.MODE_PRIVATE)
+                .edit()
+                .putBoolean(ADULT_FILTER_ENABLED_KEY, false)
+                .commit()
+            val secureSaved = runCatching {
+                SecurePrefsManager(appContext).prefs
+                    .edit()
+                    .putBoolean(ADULT_FILTER_ENABLED_KEY, false)
+                    .commit()
+            }.onFailure { error ->
+                com.focusguard.utils.FocusGuardLogger.logError(
+                    "DevelopmentExit",
+                    "Falha ao desativar o filtro adulto no armazenamento seguro",
+                    error
+                )
+            }.getOrDefault(false)
+            return legacySaved && secureSaved
+        }
+
         fun generateSalt(): String {
             val random = SecureRandom()
             val salt = ByteArray(16)

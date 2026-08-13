@@ -217,18 +217,16 @@ fun SettingsScreen(
                 onClick = onLimitsClick
             )
 
-            if (BuildConfig.DEBUG) {
-                Spacer(Modifier.height(24.dp))
-                FocusGuardSectionHeader(
-                    stringResource(R.string.settings_category_development)
-                )
-                SettingsItem(
-                    Icons.Default.DeveloperMode,
-                    stringResource(R.string.dev_area_title),
-                    stringResource(R.string.dev_area_subtitle),
-                    onClick = onDevAreaClick
-                )
-            }
+            Spacer(Modifier.height(24.dp))
+            FocusGuardSectionHeader(
+                stringResource(R.string.settings_category_development)
+            )
+            SettingsItem(
+                Icons.Default.DeveloperMode,
+                stringResource(R.string.dev_area_title),
+                stringResource(R.string.dev_area_subtitle),
+                onClick = onDevAreaClick
+            )
 
             Spacer(Modifier.height(24.dp))
             FocusGuardSectionHeader(

@@ -1,15 +1,13 @@
 package com.focusguard.security
 
-/** Pure policy for the debug-only development escape hatch. */
+/** Pure policy for the password-protected technical exit. */
 object DevelopmentAccessPolicy {
 
-    fun isAvailable(isDebugBuild: Boolean, configuredPassword: String): Boolean =
-        isDebugBuild && configuredPassword.isNotEmpty()
+    fun isAvailable(configuredPassword: String): Boolean = configuredPassword.isNotEmpty()
 
     fun acceptsPassword(
         input: String,
-        isDebugBuild: Boolean,
         configuredPassword: String
-    ): Boolean = isAvailable(isDebugBuild, configuredPassword) &&
+    ): Boolean = isAvailable(configuredPassword) &&
         input == configuredPassword
 }

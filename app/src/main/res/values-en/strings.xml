@@ -235,15 +235,20 @@
     <string name="settings_intruder_log_subtitle">View photos of failed attempts</string>
     <string name="language_settings">Language</string>
     <string name="dev_area_title">Dev Area</string>
-    <string name="dev_area_subtitle">Technical exit available only in the debug APK</string>
-    <string name="dev_area_description">This area disarms sessions and Pomodoro, relinquishes Accessibility, Device Admin and Device Owner, removes FocusGuard policies, and opens Android\'s uninstaller.</string>
-    <string name="dev_area_warning">This action is irreversible within this installation. If you cancel Android\'s confirmation, protections will not be re-enabled automatically. Remaining special permissions are removed when uninstall is confirmed.</string>
+    <string name="dev_area_subtitle">Technical exit to remove blocks and protections</string>
+    <string name="dev_area_description">This area removes sessions, Pomodoro, usage limits, block lists, the adult filter, and administrative protections applied by FocusGuard. Then you decide whether to uninstall the app.</string>
+    <string name="dev_area_warning">After the password is confirmed, all FocusGuard blocks are removed immediately. If you choose not to uninstall, they are not restored automatically.</string>
     <string name="dev_area_password_label">Dev password</string>
-    <string name="dev_area_relinquish_action">Relinquish permissions and uninstall</string>
+    <string name="dev_area_relinquish_action">Remove all blocks</string>
     <string name="dev_area_invalid_password">Incorrect Dev password.</string>
-    <string name="dev_area_unavailable">Dev Area is not available in this build.</string>
-    <string name="dev_area_release_failed">Could not relinquish all administrative protections.</string>
+    <string name="dev_area_unavailable">Dev Area is not configured or authorization expired. Enter the password again.</string>
+    <string name="dev_area_release_failed">Could not remove all FocusGuard protections.</string>
     <string name="dev_area_uninstall_failed">Protections were relinquished, but Android\'s uninstaller could not be opened.</string>
+    <string name="dev_area_blocks_removed_title">Blocks removed</string>
+    <string name="dev_area_uninstall_question">All blocks and protections have been removed. Do you want to uninstall the app?</string>
+    <string name="dev_area_uninstall_confirm">Uninstall</string>
+    <string name="dev_area_uninstall_decline">Not now</string>
+    <string name="dev_area_blocks_removed_kept">Blocks removed. FocusGuard remains installed.</string>
 
     <!-- Authentication -->
     <string name="auth_locked_content_description">App locked</string>

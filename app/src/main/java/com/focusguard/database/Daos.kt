@@ -174,6 +174,9 @@ interface AppUsageLimitDao {
 
     @Query("DELETE FROM app_usage_limits WHERE packageName = :packageName")
     suspend fun deleteLimitByPackage(packageName: String)
+
+    @Query("DELETE FROM app_usage_limits")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -189,6 +192,9 @@ interface WebsiteUsageLimitDao {
 
     @Delete
     suspend fun delete(limit: WebsiteUsageLimit)
+
+    @Query("DELETE FROM website_usage_limits")
+    suspend fun deleteAll()
 }
 
 @Dao
@@ -198,6 +204,9 @@ interface UsageLimitsLockDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insert(lock: UsageLimitsLock)
+
+    @Query("DELETE FROM usage_limits_locks")
+    suspend fun deleteAll()
 }
 
 @Dao

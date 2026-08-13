@@ -14,10 +14,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Coordinates the intentionally destructive, debug-only uninstall escape hatch. */
+/** Coordinates the intentionally destructive, password-protected technical exit. */
 object DevelopmentUninstallCoordinator {
 
     enum class Outcome {
+        BLOCKS_REMOVED,
         STARTED,
         INVALID_PASSWORD,
         UNAVAILABLE,
@@ -25,19 +26,16 @@ object DevelopmentUninstallCoordinator {
         UNINSTALL_UI_FAILED
     }
 
-    suspend fun relinquishAndOpenUninstall(
+    suspend fun removeAllBlocksAndProtections(
         context: Context,
         password: String
     ): Outcome {
-        if (!DevelopmentAccessPolicy.isAvailable(
-                isDebugBuild = BuildConfig.DEBUG,
-                configuredPassword = BuildConfig.DEV_AREA_PASSWORD
-            )
-        ) return Outcome.UNAVAILABLE
+        if (!DevelopmentAccessPolicy.isAvailable(BuildConfig.DEV_AREA_PASSWORD)) {
+            return Outcome.UNAVAILABLE
+        }
 
         if (!DevelopmentAccessPolicy.acceptsPassword(
                 input = password,
-                isDebugBuild = BuildConfig.DEBUG,
                 configuredPassword = BuildConfig.DEV_AREA_PASSWORD
             )
         ) return Outcome.INVALID_PASSWORD
@@ -49,18 +47,19 @@ object DevelopmentUninstallCoordinator {
             withContext(Dispatchers.IO) {
                 val localStateDisarmed = BlockingSessionManager
                     .getInstance(appContext)
-                    .prepareForDevelopmentUninstall()
-                localStateDisarmed && DeviceOwnerManager
+                    .removeAllBlocksForDevelopmentExit()
+                val administrativeRolesReleased = DeviceOwnerManager
                     .getInstance(appContext)
-                    .releaseRemovalProtectionForDevelopment()
+                    .releaseRemovalProtectionForDevelopmentExit()
+                localStateDisarmed && administrativeRolesReleased
             }
         } catch (error: CancellationException) {
             AuthenticatedRemovalWindow.close(appContext)
             throw error
         } catch (error: Exception) {
             FocusGuardLogger.logError(
-                "DevelopmentUninstall",
-                "Falha inesperada ao preparar a desinstalação de desenvolvimento",
+                "DevelopmentExit",
+                "Falha inesperada ao remover bloqueios e proteções",
                 error
             )
             false
@@ -72,9 +71,32 @@ object DevelopmentUninstallCoordinator {
 
         AccessibilityStateMonitor.stop(appContext)
         UsageAccessStateMonitor.stop()
-        appContext.sendBroadcast(
-            BlockingAccessibilityService.createDevelopmentRelinquishIntent(appContext)
-        )
+        val accessibilityReleased = runCatching {
+            appContext.sendBroadcast(
+                BlockingAccessibilityService.createDevelopmentRelinquishIntent(appContext)
+            )
+        }.onFailure { error ->
+            FocusGuardLogger.logError(
+                "DevelopmentExit",
+                "Falha ao solicitar a desativação da Acessibilidade",
+                error
+            )
+        }.isSuccess
+        if (!accessibilityReleased) {
+            AuthenticatedRemovalWindow.close(appContext)
+            return Outcome.RELEASE_FAILED
+        }
+
+        return Outcome.BLOCKS_REMOVED
+    }
+
+    suspend fun openUninstall(context: Context): Outcome {
+        val appContext = context.applicationContext
+        if (!AuthenticatedRemovalWindow.isActive(appContext)) return Outcome.UNAVAILABLE
+
+        // Refresh the short authorization bridge immediately before handing the
+        // flow to Android's own uninstall UI.
+        AuthenticatedRemovalWindow.open(appContext)
 
         return withContext(Dispatchers.Main.immediate) {
             runCatching {
@@ -83,12 +105,16 @@ object DevelopmentUninstallCoordinator {
             }.onFailure { error ->
                 AuthenticatedRemovalWindow.close(appContext)
                 FocusGuardLogger.logError(
-                    "DevelopmentUninstall",
+                    "DevelopmentExit",
                     "Falha ao abrir o desinstalador do Android",
                     error
                 )
             }.getOrDefault(Outcome.UNINSTALL_UI_FAILED)
         }
+    }
+
+    fun finishWithoutUninstall(context: Context) {
+        AuthenticatedRemovalWindow.close(context.applicationContext)
     }
 
     internal fun createUninstallIntent(context: Context): Intent =
