@@ -4,11 +4,23 @@ import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class BlockingAccessibilityServiceIntentTest {
+
+    @Test
+    fun `development relinquish broadcast is package scoped`() {
+        val context = RuntimeEnvironment.getApplication()
+
+        val intent = BlockingAccessibilityService.createDevelopmentRelinquishIntent(context)
+
+        assertThat(intent.action)
+            .isEqualTo(BlockingAccessibilityService.ACTION_DEV_RELINQUISH_ACCESSIBILITY)
+        assertThat(intent.`package`).isEqualTo(context.packageName)
+    }
 
     @Test
     fun `duplicate block notice is coalesced during cooldown`() {

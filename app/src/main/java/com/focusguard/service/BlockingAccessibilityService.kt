@@ -28,6 +28,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import com.focusguard.BuildConfig
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.data.PredefinedWebsites
@@ -213,6 +214,10 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private val refreshReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == ACTION_DEV_RELINQUISH_ACCESSIBILITY) {
+                relinquishAccessibilityForDevelopment()
+                return
+            }
             intent?.let(::applyImmediateBlockingSnapshot)
             lastLoadTime = 0L
             refreshData()
@@ -269,7 +274,10 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun registerRefreshReceiver() {
-        val filter = IntentFilter(ACTION_REFRESH_BLOCKING)
+        val filter = IntentFilter().apply {
+            addAction(ACTION_REFRESH_BLOCKING)
+            addAction(ACTION_DEV_RELINQUISH_ACCESSIBILITY)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(refreshReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
@@ -517,6 +525,34 @@ class BlockingAccessibilityService : AccessibilityService() {
             apps.isNotEmpty() || sites.isNotEmpty()
         )
         lastLoadTime = System.currentTimeMillis()
+    }
+
+    private fun relinquishAccessibilityForDevelopment() {
+        if (!BuildConfig.DEBUG || !AuthenticatedRemovalWindow.isActive(this)) return
+
+        runCatching {
+            blockedAppsSet = emptySet()
+            blockedWebsitesDomainSet = emptySet()
+            blockedWebsiteAppDomains = emptyMap()
+            limitedWebsiteDomains = emptySet()
+            limitedWebsiteAppDomains = emptyMap()
+            isBlockingSessionActive = false
+            isPomodoroStrictActive = false
+            pendingSettingsProtectionUntilElapsed = 0L
+            StrictPomodoroLock.clear(applicationContext)
+            PomodoroForegroundService.stop(applicationContext)
+            foregroundPackageName = null
+            stopWebsiteTracking()
+            dismissInstantBlockCurtain()
+            stopForeground(STOP_FOREGROUND_REMOVE)
+        }.onFailure { error ->
+            FocusGuardLogger.logError(
+                "DevelopmentUninstall",
+                "Falha parcial ao limpar o serviço de Acessibilidade",
+                error
+            )
+        }
+        disableSelf()
     }
 
     override fun onInterrupt() {
@@ -1603,6 +1639,8 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal const val WEBSITE_BLOCK_NOTICE_DURATION_MILLIS = 1_000L
         const val ACTION_REFRESH_BLOCKING = "com.focusguard.ACTION_REFRESH_BLOCKING"
         const val ACTION_BLOCK_NOTICE_READY = "com.focusguard.ACTION_BLOCK_NOTICE_READY"
+        internal const val ACTION_DEV_RELINQUISH_ACCESSIBILITY =
+            "com.focusguard.ACTION_DEV_RELINQUISH_ACCESSIBILITY"
         const val EXTRA_STRICT_BLOCK = "STRICT_BLOCK"
         const val EXTRA_BLOCKED_PACKAGE = "BLOCKED_PACKAGE"
         const val EXTRA_BLOCKED_DOMAIN = "BLOCKED_DOMAIN"
@@ -1664,6 +1702,9 @@ class BlockingAccessibilityService : AccessibilityService() {
             putExtra(EXTRA_BLOCKING_ACTIVE_SNAPSHOT, blockingActive)
             putExtra(EXTRA_STRICT_POMODORO_SNAPSHOT, strictPomodoro)
         }
+
+        internal fun createDevelopmentRelinquishIntent(context: Context): Intent =
+            Intent(ACTION_DEV_RELINQUISH_ACCESSIBILITY).setPackage(context.packageName)
 
         internal fun createBlockNoticeIntent(
             context: Context,

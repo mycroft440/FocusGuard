@@ -12,6 +12,7 @@ import android.os.UserManager
 import android.provider.Settings
 import android.util.Log
 import android.widget.Toast
+import com.focusguard.BuildConfig
 import com.focusguard.R
 import com.focusguard.data.PredefinedWebsites
 import com.focusguard.security.ArmoredProtectionPolicy
@@ -19,9 +20,11 @@ import com.focusguard.security.AuthManager
 import com.focusguard.security.DeviceOwnerMaintenanceGate
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -76,6 +79,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         private const val PREVIOUS_PRIVATE_DNS_CAPTURED_KEY = "previous_private_dns_captured"
         private const val PREVIOUS_PRIVATE_DNS_MODE_KEY = "previous_private_dns_mode"
         private const val PREVIOUS_PRIVATE_DNS_HOST_KEY = "previous_private_dns_host"
+        private const val ADMIN_ROLE_RELEASE_POLL_ATTEMPTS = 50
+        private const val ADMIN_ROLE_RELEASE_POLL_INTERVAL_MILLIS = 100L
         internal const val ADULT_DNS_HOST = "family-filter-dns.cleanbrowsing.org"
         private val CHROME_MANAGED_PACKAGES = setOf(
             "com.android.chrome",
@@ -783,23 +788,50 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     fun revokeNuclearShield() {
         if (!isDeviceOwnerActive() || !isMaintenanceActive()) return
 
+        clearOwnedPoliciesForRemoval()
+        Log.d("FocusGuardAdmin", "Nuclear Shield revogado para remoção legítima")
+    }
+
+    /** Clears policy side effects while FocusGuard still owns the required role. */
+    private fun clearOwnedPoliciesForRemoval() {
         allRestrictionsForCleanupForSdk(Build.VERSION.SDK_INT).forEach { restriction ->
             applyPolicySafely("clear:$restriction") {
                 dpm.clearUserRestriction(componentName, restriction)
             }
         }
-        applyPolicySafely("uninstall_allowed") {
-            dpm.setUninstallBlocked(componentName, context.packageName, false)
-        }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            applyPolicySafely("user_control_enabled") {
-                dpm.setUserControlDisabledPackages(componentName, emptyList())
+
+        relaxAppControlProtection()
+
+        val suspendedPackages = managedSuspendedApps()
+        if (suspendedPackages.isNotEmpty()) {
+            applyPolicySafely("unsuspend_all_for_removal") {
+                dpm.setPackagesSuspended(
+                    componentName,
+                    suspendedPackages.toTypedArray(),
+                    false
+                )
             }
         }
-        relaxRuntimePermissionProtection()
+        saveManagedSuspendedApps(emptySet())
+
+        (CHROME_MANAGED_PACKAGES + EDGE_MANAGED_PACKAGES)
+            .filter(::isPackageInstalled)
+            .forEach { packageName ->
+                applyPolicySafely("clear_browser_restrictions:$packageName") {
+                    dpm.setApplicationRestrictions(componentName, packageName, Bundle.EMPTY)
+                }
+            }
+
+        applyPolicySafely("clear_lock_task_packages") {
+            dpm.setLockTaskPackages(componentName, emptyArray<String>())
+        }
+
+        policyStatePreferences.edit()
+            .putBoolean(PORNOGRAPHY_CATEGORY_ACTIVE_KEY, false)
+            .commit()
         setBlockingProtectionArmed(false)
         setAdultContentProtectionArmed(false)
-        Log.d("FocusGuardAdmin", "Nuclear Shield revogado para remoção legítima")
+        restorePrivateDnsAfterCategory()
     }
 
     /**
@@ -809,10 +841,10 @@ class DeviceOwnerManager private constructor(private val context: Context) {
      * a second, unverified route around the shield.
      */
     @Suppress("DEPRECATION")
-    fun releaseRemovalProtectionForUninstall(): Boolean {
-        return try {
+    suspend fun releaseRemovalProtectionForUninstall(): Boolean = withContext(Dispatchers.IO) {
+        try {
             if (isDeviceOwnerActive()) {
-                if (!isMaintenanceActive()) return false
+                if (!isMaintenanceActive()) return@withContext false
                 revokeNuclearShield()
                 dpm.clearDeviceOwnerApp(context.packageName)
                 DeviceOwnerMaintenanceGate.revoke(context)
@@ -824,7 +856,9 @@ class DeviceOwnerManager private constructor(private val context: Context) {
                 dpm.removeActiveAdmin(componentName)
             }
 
-            !isDeviceOwnerActive() && !isDeviceAdminActive()
+            awaitAdministrativeRolesReleased()
+        } catch (error: CancellationException) {
+            throw error
         } catch (error: Exception) {
             FocusGuardLogger.logError(
                 "DeviceOwner",
@@ -833,6 +867,50 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             )
             false
         }
+    }
+
+    /**
+     * Debug-only escape hatch used by Área Dev.
+     *
+     * Unlike the user-facing flow, this intentionally ignores active block and
+     * maintenance gates. The runtime build check means a release APK can never
+     * use this method, even if code tries to call it indirectly.
+     */
+    @Suppress("DEPRECATION")
+    suspend fun releaseRemovalProtectionForDevelopment(): Boolean = withContext(Dispatchers.IO) {
+        if (!BuildConfig.DEBUG) return@withContext false
+
+        try {
+            if (isDeviceOwnerActive()) {
+                clearOwnedPoliciesForRemoval()
+                dpm.clearDeviceOwnerApp(context.packageName)
+                DeviceOwnerMaintenanceGate.revoke(context)
+            }
+
+            if (isDeviceAdminActive()) {
+                dpm.removeActiveAdmin(componentName)
+            }
+
+            awaitAdministrativeRolesReleased()
+        } catch (error: CancellationException) {
+            throw error
+        } catch (error: Exception) {
+            FocusGuardLogger.logError(
+                "DevelopmentUninstall",
+                "Falha ao liberar funções administrativas no modo de desenvolvimento",
+                error
+            )
+            false
+        }
+    }
+
+    /** Device Admin removal is asynchronous; wait briefly before opening uninstall. */
+    private suspend fun awaitAdministrativeRolesReleased(): Boolean {
+        repeat(ADMIN_ROLE_RELEASE_POLL_ATTEMPTS) {
+            if (!isDeviceOwnerActive() && !isDeviceAdminActive()) return true
+            delay(ADMIN_ROLE_RELEASE_POLL_INTERVAL_MILLIS)
+        }
+        return !isDeviceOwnerActive() && !isDeviceAdminActive()
     }
 
     private fun setBlockingProtectionArmed(armed: Boolean) {

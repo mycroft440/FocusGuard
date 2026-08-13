@@ -67,8 +67,12 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
+            buildConfigField("String", "DEV_AREA_PASSWORD", "\"Dev00\"")
         }
         release {
+            // The development escape hatch must not carry a usable credential
+            // in production, even if an unreachable screen survives shrinking.
+            buildConfigField("String", "DEV_AREA_PASSWORD", "\"\"")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(

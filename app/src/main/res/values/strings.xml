@@ -224,6 +224,7 @@
     <string name="settings_category_general">Geral</string>
     <string name="settings_category_blocking">Bloqueio</string>
     <string name="settings_category_advanced_security">Segurança avançada</string>
+    <string name="settings_category_development">Desenvolvimento</string>
     <string name="settings_category_danger">Zona de perigo</string>
     <string name="settings_password_subtitle">Configurar senha e biometria</string>
     <string name="settings_language_subtitle">Alterar o idioma do aplicativo</string>
@@ -233,6 +234,16 @@
     <string name="intruder_log">Registro de intrusos</string>
     <string name="settings_intruder_log_subtitle">Ver fotos de tentativas falhas</string>
     <string name="language_settings">Idioma</string>
+    <string name="dev_area_title">Área Dev</string>
+    <string name="dev_area_subtitle">Saída técnica disponível somente no APK debug</string>
+    <string name="dev_area_description">Esta área desarma as sessões e o Pomodoro, revoga Acessibilidade, Device Admin e Device Owner, remove as políticas aplicadas pelo FocusGuard e abre o desinstalador do Android.</string>
+    <string name="dev_area_warning">A ação é irreversível dentro desta instalação. Se você cancelar a confirmação do Android, as proteções não serão reativadas automaticamente. As permissões especiais restantes são removidas quando a desinstalação é confirmada.</string>
+    <string name="dev_area_password_label">Senha Dev</string>
+    <string name="dev_area_relinquish_action">Abdicar permissões e desinstalar</string>
+    <string name="dev_area_invalid_password">Senha Dev incorreta.</string>
+    <string name="dev_area_unavailable">A Área Dev não está disponível nesta compilação.</string>
+    <string name="dev_area_release_failed">Não foi possível revogar todas as proteções administrativas.</string>
+    <string name="dev_area_uninstall_failed">As proteções foram revogadas, mas o desinstalador do Android não pôde ser aberto.</string>
 
     <!-- Autenticação -->
     <string name="auth_locked_content_description">App bloqueado</string>

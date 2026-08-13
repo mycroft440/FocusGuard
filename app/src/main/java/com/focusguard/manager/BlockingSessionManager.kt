@@ -9,6 +9,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.widget.Toast
 import androidx.room.withTransaction
+import com.focusguard.BuildConfig
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.data.PredefinedWebsites
@@ -882,6 +883,45 @@ class BlockingSessionManager @Inject constructor(
                 it
             )
         }.getOrDefault(false)
+    }
+
+    /**
+     * Permanently disarms the local session state before a debug uninstall.
+     *
+     * This deliberately does not call [checkAndEnforce]: doing so could re-arm
+     * usage limits while the development exit is releasing Device Owner. The
+     * coordinator disables Accessibility immediately after native policies are
+     * released, and uninstall removes the database a moment later.
+     */
+    suspend fun prepareForDevelopmentUninstall(): Boolean {
+        if (!BuildConfig.DEBUG) return false
+
+        return enforcementMutex.withLock {
+            try {
+                database.withTransaction {
+                    database.blockSessionDao().deactivateAllActiveSessions()
+                    database.pomodoroSessionDao().deleteSession()
+                }
+                StrictPomodoroLock.clear(context)
+                PomodoroForegroundService.stop(context)
+                BlockingScheduleReceiver.scheduleNext(
+                    context = context,
+                    sessions = emptyList(),
+                    additionalBoundaries = emptyList()
+                )
+                setDoNotDisturbMode(enabled = false)
+                true
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: Exception) {
+                FocusGuardLogger.logError(
+                    "DevelopmentUninstall",
+                    "Falha ao desarmar sessões para a desinstalação de desenvolvimento",
+                    error
+                )
+                false
+            }
+        }
     }
 
     suspend fun hasTimeSession(): Boolean {

@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -24,13 +25,14 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
-import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.AuthenticatedRemovalWindow
+import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.DeviceOwnerMaintenanceGate
 import com.focusguard.security.MasterCredentialPolicy
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.utils.FocusGuardLogger
+import kotlinx.coroutines.launch
 
 /**
  * Authenticated way out of the app.
@@ -51,6 +53,7 @@ internal fun AuthenticatedUninstallDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val credentialManager = remember(context) { DeactivationCredentialManager(context) }
     val deviceOwnerManager = remember(context) { DeviceOwnerManager.getInstance(context) }
 
@@ -80,8 +83,8 @@ internal fun AuthenticatedUninstallDialog(
         maintenanceWindowActive = maintenanceActive
     )
 
-    fun handOffToAndroidUninstall() {
-        runCatching {
+    fun handOffToAndroidUninstall(): Boolean {
+        val started = runCatching {
             AuthenticatedRemovalWindow.open(context)
             context.startActivity(
                 Intent(Intent.ACTION_DELETE).apply {
@@ -96,14 +99,27 @@ internal fun AuthenticatedUninstallDialog(
                 "Falha ao abrir a tela de desinstalação do Android",
                 error
             )
-        }
-        onDismiss()
+        }.isSuccess
+        if (started) onDismiss()
+        return started
     }
 
     fun releaseAndHandOff() {
         if (working) return
         working = true
         errorMessage = null
+
+        fun releaseAfterAuthorization() {
+            scope.launch {
+                val released = deviceOwnerManager.releaseRemovalProtectionForUninstall()
+                if (released) {
+                    if (!handOffToAndroidUninstall()) errorMessage = failedMessage
+                } else {
+                    errorMessage = failedMessage
+                }
+                working = false
+            }
+        }
 
         // Without Device Owner there is no removal protection to release; the
         // master credential is still required because the user asked for it.
@@ -114,24 +130,18 @@ internal fun AuthenticatedUninstallDialog(
                 verification ==
                 DeactivationCredentialManager.VerificationResult.RECOVERY_ACCEPTED
             if (verified) {
-                if (deviceOwnerManager.releaseRemovalProtectionForUninstall()) {
-                    handOffToAndroidUninstall()
-                } else {
-                    errorMessage = failedMessage
-                }
+                releaseAfterAuthorization()
             } else {
                 errorMessage = invalidCredentialMessage
+                working = false
             }
-            working = false
             return
         }
 
         // Se a janela do dia 15 já está aberta, não peça uma senha que o fluxo
         // mensal deliberadamente não exige.
         if (deviceOwnerManager.isMaintenanceActive()) {
-            val released = deviceOwnerManager.releaseRemovalProtectionForUninstall()
-            if (released) handOffToAndroidUninstall() else errorMessage = failedMessage
-            working = false
+            releaseAfterAuthorization()
             return
         }
 
@@ -145,8 +155,8 @@ internal fun AuthenticatedUninstallDialog(
 
         when (unlock) {
             DeviceOwnerMaintenanceGate.UnlockResult.UNLOCKED -> {
-                val released = deviceOwnerManager.releaseRemovalProtectionForUninstall()
-                if (released) handOffToAndroidUninstall() else errorMessage = failedMessage
+                releaseAfterAuthorization()
+                return
             }
 
             DeviceOwnerMaintenanceGate.UnlockResult.INVALID_CREDENTIAL ->

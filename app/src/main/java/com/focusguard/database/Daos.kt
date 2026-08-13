@@ -83,6 +83,9 @@ interface BlockSessionDao {
     @Query("UPDATE block_sessions SET isActive = 0 WHERE isActive = 1 AND sessionType = :sessionType")
     suspend fun deactivateActiveSessionsByType(sessionType: String): Int
 
+    @Query("UPDATE block_sessions SET isActive = 0 WHERE isActive = 1")
+    suspend fun deactivateAllActiveSessions(): Int
+
     @Query("UPDATE block_sessions SET isActive = 0 WHERE isActive = 1 AND endTime IS NOT NULL AND endTime <= :now")
     suspend fun deactivateExpiredSessions(now: Long): Int
 
