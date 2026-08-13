@@ -156,7 +156,10 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     // Fonte única em SettingsInterceptionPolicy — estas listas estavam duplicadas aqui.
     private val settingsPackages = SettingsInterceptionPolicy.settingsPackages
-    private val protectedSystemPackages = SettingsInterceptionPolicy.protectedSystemPackages
+    private val interceptionPackages = SettingsInterceptionPolicy.interceptionPackages
+    private val clickInterceptionSearchTerms =
+        (ManagedSelfProtectionPolicy.focusGuardSearchTerms +
+            AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms).distinct()
 
     private var pendingSettingsProtectionUntilElapsed = 0L
 
@@ -441,7 +444,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             val directPackage = event.packageName?.toString().orEmpty()
             val eligibleForInterception = event.eventType in settingsInterceptionEventTypes
             if (eligibleForInterception &&
-                directPackage in protectedSystemPackages &&
+                directPackage in interceptionPackages &&
                 handleSettingsInterception(event, directPackage)
             ) {
                 return
@@ -453,7 +456,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             // actually changed. Only reached when the fast path could not decide.
             if (eligibleForInterception &&
                 packageName != directPackage &&
-                packageName in protectedSystemPackages &&
+                packageName in interceptionPackages &&
                 handleSettingsInterception(event, packageName)
             ) {
                 return
@@ -825,7 +828,10 @@ class BlockingAccessibilityService : AccessibilityService() {
     ): Boolean {
         // Cheap guards stay ahead of the signal extraction below: this runs on every
         // accessibility event, and eventTextValues() plus the classifiers are not free.
-        if (packageName !in protectedSystemPackages) return false
+        if (packageName !in interceptionPackages) return false
+        if (packageName in SettingsInterceptionPolicy.systemUiPackages &&
+            event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED
+        ) return false
 
         // ACTION_DELETE was opened by FocusGuard itself after the master
         // credential (or the day-15 window) authorized removal. Do not block
@@ -882,6 +888,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                 AccessibilitySettingsPolicy.textTargetsAccessibility(eventValues),
             textMentionsInstalledAccessibilityApps =
                 AccessibilitySettingsPolicy.textTargetsInstalledAccessibilityApps(eventValues),
+            textMentionsAccessibilityDisclosure =
+                AccessibilitySettingsPolicy.textTargetsAccessibilityDisclosure(eventValues),
             textMentionsDeviceAdmin =
                 ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(eventValues),
             textMentionsFocusGuard =
@@ -939,10 +947,11 @@ class BlockingAccessibilityService : AccessibilityService() {
                 add(source.contentDescription)
                 add(source.viewIdResourceName)
                 if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-                    // OEM list rows are often the clickable parent while the app
-                    // label is a child. Read only FocusGuard markers from that
-                    // small subtree so the very first click can arm the guard.
-                    ManagedSelfProtectionPolicy.focusGuardSearchTerms.forEach { term ->
+                    // OEM rows and notifications are often clickable parents
+                    // while the label/body lives in children. Read only the two
+                    // narrow marker sets from that small subtree so the first
+                    // click can be classified without scanning the whole window.
+                    clickInterceptionSearchTerms.forEach { term ->
                         val matchingNodes = runCatching {
                             source.findAccessibilityNodeInfosByText(term)
                         }.getOrDefault(emptyList())

@@ -20,6 +20,7 @@ class SettingsInterceptionPolicyTest {
         isGenericSubSettings: Boolean = false,
         textMentionsAccessibility: Boolean = false,
         textMentionsInstalledAccessibilityApps: Boolean = false,
+        textMentionsAccessibilityDisclosure: Boolean = false,
         textMentionsDeviceAdmin: Boolean = false,
         textMentionsFocusGuard: Boolean = false,
         textMentionsDestructiveControl: Boolean = false,
@@ -38,6 +39,7 @@ class SettingsInterceptionPolicyTest {
         isGenericSubSettings = isGenericSubSettings,
         textMentionsAccessibility = textMentionsAccessibility,
         textMentionsInstalledAccessibilityApps = textMentionsInstalledAccessibilityApps,
+        textMentionsAccessibilityDisclosure = textMentionsAccessibilityDisclosure,
         textMentionsDeviceAdmin = textMentionsDeviceAdmin,
         textMentionsFocusGuard = textMentionsFocusGuard,
         textMentionsDestructiveControl = textMentionsDestructiveControl,
@@ -135,6 +137,64 @@ class SettingsInterceptionPolicyTest {
                 )
             )
         ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+    }
+
+    @Test
+    fun `System UI accessibility disclosure click for FocusGuard is intercepted`() {
+        assertThat(
+            decide(
+                signals(
+                    packageName = SYSTEM_UI,
+                    isViewClickedEvent = true,
+                    textMentionsFocusGuard = true,
+                    textMentionsAccessibilityDisclosure = true
+                )
+            )
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+    }
+
+    @Test
+    fun `System UI requires a click plus FocusGuard plus disclosure`() {
+        assertThat(
+            decide(
+                signals(
+                    packageName = SYSTEM_UI,
+                    isViewClickedEvent = true,
+                    textMentionsFocusGuard = true
+                )
+            )
+        ).isEqualTo(Decision.IGNORE)
+        assertThat(
+            decide(
+                signals(
+                    packageName = SYSTEM_UI,
+                    isViewClickedEvent = true,
+                    textMentionsAccessibilityDisclosure = true
+                )
+            )
+        ).isEqualTo(Decision.IGNORE)
+        assertThat(
+            decide(
+                signals(
+                    packageName = SYSTEM_UI,
+                    textMentionsFocusGuard = true,
+                    textMentionsAccessibilityDisclosure = true
+                )
+            )
+        ).isEqualTo(Decision.IGNORE)
+    }
+
+    @Test
+    fun `normal FocusGuard notifications are not mistaken for disclosure`() {
+        assertThat(
+            decide(
+                signals(
+                    packageName = SYSTEM_UI,
+                    isViewClickedEvent = true,
+                    textMentionsFocusGuard = true
+                )
+            )
+        ).isEqualTo(Decision.IGNORE)
     }
 
     @Test
@@ -284,5 +344,6 @@ class SettingsInterceptionPolicyTest {
     private companion object {
         const val SETTINGS = "com.android.settings"
         const val INSTALLER = "com.android.packageinstaller"
+        const val SYSTEM_UI = "com.android.systemui"
     }
 }

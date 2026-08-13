@@ -4,6 +4,7 @@ import android.app.Application
 import android.os.UserManager
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeManager
+import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.utils.AccessibilityStateMonitor
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.UsageAccessStateMonitor
@@ -40,8 +41,14 @@ class FocusGuardApplication : Application() {
             deviceOwnerManager.applyNuclearShield()
             AccessibilityStateMonitor.start(this)
             UsageAccessStateMonitor.start(this)
-            applicationScope.launch {
-                FocusModeManager.getInstance(this@FocusGuardApplication).ensureEnforced()
+            // Instanciar o manager também instancia dependências protegidas pelo
+            // AndroidKeyStore. Sem sessão persistida não existe nada a restaurar,
+            // então evitamos esse custo no boot normal e em ambientes de teste
+            // que corretamente não oferecem o AndroidKeyStore real.
+            if (FocusModeStore.readSession(this) != null) {
+                applicationScope.launch {
+                    FocusModeManager.getInstance(this@FocusGuardApplication).ensureEnforced()
+                }
             }
         } else {
             // Antes do primeiro desbloqueio, usa somente DPM + Device Protected Storage.

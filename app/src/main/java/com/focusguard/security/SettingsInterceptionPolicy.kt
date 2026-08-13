@@ -30,7 +30,17 @@ object SettingsInterceptionPolicy {
         "com.miui.packageinstaller"
     )
 
+    val systemUiPackages = setOf("com.android.systemui")
+
     val protectedSystemPackages = settingsPackages + packageInstallerPackages
+
+    /**
+     * System UI is included only so a click on Android's accessibility privacy
+     * disclosure can be classified before it deep-links into Settings. It is
+     * handled by a closed branch in [decide] and never inherits the broader
+     * Settings interception rules.
+     */
+    val interceptionPackages = protectedSystemPackages + systemUiPackages
 
     /** What the service should do with the event. */
     enum class Decision {
@@ -75,6 +85,7 @@ object SettingsInterceptionPolicy {
         val isGenericSubSettings: Boolean,
         val textMentionsAccessibility: Boolean,
         val textMentionsInstalledAccessibilityApps: Boolean,
+        val textMentionsAccessibilityDisclosure: Boolean,
         val textMentionsDeviceAdmin: Boolean,
         val textMentionsFocusGuard: Boolean,
         val textMentionsDestructiveControl: Boolean,
@@ -111,8 +122,24 @@ object SettingsInterceptionPolicy {
         strictPomodoroActive: Boolean,
         rootSignals: RootSignals
     ): Decision {
-        if (signals.packageName !in protectedSystemPackages) return Decision.IGNORE
+        if (signals.packageName !in interceptionPackages) return Decision.IGNORE
         if (!selfProtectionEngaged) return Decision.IGNORE
+
+        // Android owns and keeps showing this privacy disclosure. We only stop
+        // its direct deep-link to FocusGuard's own service switch while a
+        // consented protection is active. Requiring all three signals prevents
+        // normal FocusGuard notifications (timers, status, warnings) and every
+        // other System UI interaction from being swallowed.
+        if (signals.packageName in systemUiPackages) {
+            return if (signals.isViewClickedEvent &&
+                signals.textMentionsFocusGuard &&
+                signals.textMentionsAccessibilityDisclosure
+            ) {
+                Decision.PROTECT_AND_ARM_GUARD
+            } else {
+                Decision.IGNORE
+            }
+        }
 
         if (strictPomodoroActive) return Decision.POMODORO_LOCK
 

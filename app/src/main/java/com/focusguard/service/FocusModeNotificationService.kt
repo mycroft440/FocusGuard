@@ -4,9 +4,9 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.os.Build
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import androidx.core.content.ContextCompat
 import com.focusguard.focusmode.FocusModePolicy
 import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.utils.FocusGuardLogger
@@ -21,12 +21,12 @@ class FocusModeNotificationService : NotificationListenerService() {
     override fun onCreate() {
         super.onCreate()
         val filter = IntentFilter(ACTION_REFRESH)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(refreshReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("DEPRECATION")
-            registerReceiver(refreshReceiver, filter)
-        }
+        ContextCompat.registerReceiver(
+            this,
+            refreshReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     override fun onListenerConnected() {

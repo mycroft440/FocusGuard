@@ -113,4 +113,27 @@ class AccessibilitySettingsPolicyTest {
             AccessibilitySettingsPolicy.classTargetsAccessibilityList(className)
         ).isFalse()
     }
+
+    @Test
+    fun `recognizes Android accessibility privacy disclosure in Portuguese and English`() {
+        assertThat(
+            AccessibilitySettingsPolicy.textTargetsAccessibilityDisclosure(
+                listOf("FocusGuard pode ver o que você está fazendo. Toque para revisar")
+            )
+        ).isTrue()
+        assertThat(
+            AccessibilitySettingsPolicy.textTargetsAccessibilityDisclosure(
+                listOf("FocusGuard can see what you're doing — tap to review")
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun `does not confuse a normal FocusGuard notification with the privacy disclosure`() {
+        assertThat(
+            AccessibilitySettingsPolicy.textTargetsAccessibilityDisclosure(
+                listOf("FocusGuard ativo", "12 minutos restantes")
+            )
+        ).isFalse()
+    }
 }

@@ -68,6 +68,31 @@ object AccessibilitySettingsPolicy {
         "Servicios instalados"
     )
 
+    /**
+     * Texto da divulgação de privacidade exibida pelo Android enquanto um
+     * serviço de acessibilidade observa a tela. A notificação continua visível;
+     * este marcador serve apenas para distinguir o toque que abre diretamente
+     * o interruptor do FocusGuard de qualquer outra notificação do aplicativo.
+     */
+    internal val accessibilityDisclosureSearchTerms = listOf(
+        "pode ver o que você está fazendo",
+        "pode ver o que voce esta fazendo",
+        "pode ver o que vc está fazendo",
+        "pode ver o que vc esta fazendo",
+        "toque para revisar",
+        "can see what you're doing",
+        "can see what you are doing",
+        "tap to review"
+    )
+
+    /** Short partials used only to locate the notification body's child node. */
+    internal val accessibilityDisclosureNodeSearchTerms = listOf(
+        "pode ver",
+        "toque para revisar",
+        "can see",
+        "tap to review"
+    )
+
     fun classTargetsAccessibility(className: String): Boolean {
         return accessibilityClassMarkers.any { marker ->
             className.contains(marker, ignoreCase = true)
@@ -102,6 +127,12 @@ object AccessibilitySettingsPolicy {
         values: Iterable<CharSequence?>
     ): Boolean {
         return valuesContainAny(values, installedAccessibilityAppsTerms)
+    }
+
+    fun textTargetsAccessibilityDisclosure(
+        values: Iterable<CharSequence?>
+    ): Boolean {
+        return valuesContainAny(values, accessibilityDisclosureSearchTerms)
     }
 
     private fun valuesContainAny(
