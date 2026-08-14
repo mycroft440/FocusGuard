@@ -16,7 +16,7 @@
         <ImageView
             android:layout_width="24dp"
             android:layout_height="24dp"
-            android:contentDescription="Pomodoro"
+            android:contentDescription="@string/fg_pomodoro_title"
             android:src="@drawable/ic_shield"
             app:tint="#FF4DD0E1" />
 
@@ -26,7 +26,7 @@
             android:layout_height="wrap_content"
             android:layout_marginStart="9dp"
             android:layout_weight="1"
-            android:text="Pomodoro"
+            android:text="@string/fg_pomodoro_title"
             android:textColor="#FFF8FAFC"
             android:textSize="17sp"
             android:textStyle="bold" />
@@ -38,7 +38,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:maxLines="1"
-        android:text="Foco 25m • pausa 5m"
+        android:text="@string/fg_pomodoro_ready"
         android:textColor="#FFD5DBE5"
         android:textSize="12sp" />
 
@@ -48,7 +48,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="3dp"
         android:maxLines="1"
-        android:text="Longa 15m a cada 4 sessões"
+        android:text="@string/fg_pomodoro_title"
         android:textColor="#FF9AA7B8"
         android:textSize="11sp" />
 
@@ -58,7 +58,7 @@
         android:layout_height="wrap_content"
         android:layout_marginTop="3dp"
         android:maxLines="1"
-        android:text="Sessões: Até eu parar"
+        android:text="@string/fg_pomodoro_title"
         android:textColor="#FF9AA7B8"
         android:textSize="11sp" />
 
@@ -80,7 +80,7 @@
             android:minWidth="0dp"
             android:paddingStart="7dp"
             android:paddingEnd="7dp"
-            android:text="Girar relógio"
+            android:text="@string/fg_pomodoro_dial_title"
             android:textAllCaps="false"
             android:textColor="#FFF8FAFC"
             android:textSize="11sp" />
@@ -96,7 +96,7 @@
             android:minWidth="0dp"
             android:paddingStart="7dp"
             android:paddingEnd="7dp"
-            android:text="Iniciar"
+            android:text="@string/fg_pomodoro_start"
             android:textAllCaps="false"
             android:textColor="#FF07141D"
             android:textSize="11sp"
