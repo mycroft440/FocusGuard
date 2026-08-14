@@ -80,6 +80,13 @@
             android:turnScreenOn="true" />
 
         <activity
+            android:name=".widget.PomodoroWidgetDialActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:theme="@style/Theme.FocusGuard"
+            android:windowSoftInputMode="adjustResize" />
+
+        <activity
             android:name=".ui.PermissionsActivity"
             android:exported="false"
             android:theme="@style/Theme.FocusGuard" />
@@ -117,6 +124,17 @@
             <meta-data
                 android:name="android.app.device_admin"
                 android:resource="@xml/device_admin_policy" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.PomodoroWidgetProvider"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/pomodoro_widget_info" />
         </receiver>
 
         <receiver
@@ -180,7 +198,7 @@
             android:stopWithTask="false">
             <property
                 android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
-                android:value="Maintains a user-started focus timer and its visible status notification until the selected session ends" />
+                android:value="Maintains a user-started Pomodoro focus and break cycle, its visible timer status, and optional strict focus enforcement until the user-selected plan ends" />
         </service>
 
         <service
