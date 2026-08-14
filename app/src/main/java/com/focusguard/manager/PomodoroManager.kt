@@ -245,6 +245,12 @@ class PomodoroManager @Inject constructor(
             intervalDurationMillis = session.durationMillis
         ).also(planStore::saveRuntime)
 
+        // O bloqueador rigoroso legado também pode mexer no DND. Tirar o
+        // snapshot antes da reconciliação permite respeitar o toggle novo mesmo
+        // quando "Silenciar notificações" está desligado.
+        if (runtime.config.strictBlocking && !runtime.config.silenceNotifications) {
+            notificationController.captureCurrentFilter()
+        }
         reconcileRestoredBlockingState(session)
         applyNotificationPolicyForInterval(runtime.config)
 
@@ -323,11 +329,10 @@ class PomodoroManager @Inject constructor(
                     "Não Perturbe não pôde ser reaplicado neste intervalo"
                 )
             }
-        } else {
-            // No Android 15+ isto também desativa a AutomaticZenRule que o
-            // bloqueio rigoroso pode ter usado no intervalo anterior. Em versões
-            // antigas restore() é no-op quando o Pomodoro não salvou um filtro.
-            notificationController.restore()
+        } else if (config.strictBlocking) {
+            // Mantém o snapshot até o fim do plano, mas neutraliza o PRIORITY
+            // que o mecanismo rigoroso antigo aplica automaticamente.
+            notificationController.restoreForActivePlan()
         }
     }
 
@@ -491,6 +496,13 @@ class PomodoroManager @Inject constructor(
         )
         planStore.saveRuntime(updatedRuntime)
         _cycleState.value = updatedRuntime
+
+        // Se o toggle estiver desligado, ainda precisamos guardar o DND antes de
+        // o bloqueador rigoroso antigo aplicar PRIORITY; sem acesso à política a
+        // captura simplesmente falha e nenhuma alteração de DND será feita.
+        if (config.strictBlocking && !config.silenceNotifications) {
+            notificationController.captureCurrentFilter()
+        }
 
         // endPomodoroSessionAndWait() encerra também o foreground service. Por
         // isso ele precisa acontecer ANTES de iniciarmos o serviço do intervalo
