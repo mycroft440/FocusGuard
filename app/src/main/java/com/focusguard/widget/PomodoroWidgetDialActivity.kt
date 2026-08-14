@@ -37,14 +37,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.focusguard.R
 import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.manager.PomodoroManager
-import com.focusguard.pomodoro.PomodoroCyclePolicy
 import com.focusguard.pomodoro.PomodoroNotificationController
 import com.focusguard.pomodoro.PomodoroPlanConfig
 import com.focusguard.pomodoro.PomodoroPlanStore
@@ -97,25 +98,27 @@ class PomodoroWidgetDialActivity : AppCompatActivity() {
         fun start() {
             when {
                 store.readRuntime()?.active == true -> {
-                    error = "Já existe um Pomodoro em andamento. Esta configuração ficará salva para o próximo ciclo."
+                    error = context.getString(R.string.fg_pomodoro_already_running)
                     PomodoroWidgetProvider.requestUpdate(context)
                 }
                 config.strictBlocking && FocusModeStore.isActive(context) -> {
-                    error = "Desative o Modo Foco antes do Pomodoro rigoroso."
+                    error = context.getString(R.string.fg_pomodoro_disable_focus_strict)
                 }
                 config.strictBlocking && !ProtectionPermissionGate.read(context).isReady -> {
                     startActivity(PermissionsActivity.createPendingProtectionIntent(context))
                 }
                 config.silenceNotifications && !notificationController.hasPolicyAccess() -> {
                     startActivity(notificationController.policyAccessIntent())
-                    error = "Autorize o Não Perturbe e volte para iniciar."
+                    error = context.getString(R.string.fg_pomodoro_authorize_dnd_return)
                 }
                 config.hideNotifications &&
                     !notificationController.hasNotificationListenerAccess(
                         FocusModeNotificationService::class.java
                     ) -> {
                     startActivity(notificationController.notificationListenerIntent())
-                    error = "Autorize o acesso às notificações e volte para iniciar."
+                    error = context.getString(
+                        R.string.fg_pomodoro_authorize_notifications_return
+                    )
                 }
                 else -> scope.launch {
                     try {
@@ -124,8 +127,8 @@ class PomodoroWidgetDialActivity : AppCompatActivity() {
                         onClose()
                     } catch (cancelled: CancellationException) {
                         throw cancelled
-                    } catch (failure: Exception) {
-                        error = failure.message ?: "Não foi possível iniciar o Pomodoro."
+                    } catch (_: Exception) {
+                        error = context.getString(R.string.fg_pomodoro_start_failed)
                     }
                 }
             }
@@ -145,19 +148,23 @@ class PomodoroWidgetDialActivity : AppCompatActivity() {
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    "Girar relógio",
+                    stringResource(R.string.fg_pomodoro_dial_title),
                     modifier = Modifier.weight(1f),
                     color = TextPrimary,
                     fontSize = 21.sp,
                     fontWeight = FontWeight.Bold
                 )
                 IconButton(onClick = onClose) {
-                    Icon(Icons.Default.Close, contentDescription = "Fechar", tint = TextPrimary)
+                    Icon(
+                        Icons.Default.Close,
+                        contentDescription = stringResource(R.string.fg_close),
+                        tint = TextPrimary
+                    )
                 }
             }
 
             Text(
-                "Gire o relógio ou escreva o tempo. Os dois permanecem sincronizados.",
+                stringResource(R.string.fg_pomodoro_dial_desc),
                 color = TextSecondary,
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center
@@ -180,7 +187,7 @@ class PomodoroWidgetDialActivity : AppCompatActivity() {
                         persist(config.copy(focusMinutes = minutes.coerceIn(1, 180)))
                     }
                 },
-                label = { Text("Tempo de foco") },
+                label = { Text(stringResource(R.string.fg_pomodoro_focus_time)) },
                 trailingIcon = { Text("min", color = TextHint) },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
                 singleLine = true,
@@ -197,19 +204,36 @@ class PomodoroWidgetDialActivity : AppCompatActivity() {
                     modifier = Modifier.padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(5.dp)
                 ) {
-                    Text("Intervalos definidos", color = TextPrimary, fontWeight = FontWeight.Bold)
                     Text(
-                        "Foco ${formatMinutes(config.focusMinutes)} • pausa ${formatMinutes(config.shortBreakMinutes)}",
+                        stringResource(R.string.fg_pomodoro_intervals_defined),
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        stringResource(
+                            R.string.fg_pomodoro_focus_break_summary,
+                            formatMinutes(config.focusMinutes),
+                            formatMinutes(config.shortBreakMinutes)
+                        ),
                         color = TextSecondary,
                         fontSize = 13.sp
                     )
                     Text(
-                        "Pausa longa ${formatMinutes(config.longBreakMinutes)} a cada ${config.longBreakEvery} sessões",
+                        stringResource(
+                            R.string.fg_pomodoro_long_break_summary,
+                            formatMinutes(config.longBreakMinutes),
+                            config.longBreakEvery
+                        ),
                         color = TextSecondary,
                         fontSize = 13.sp
                     )
+                    val target = if (config.targetSessions == 0) {
+                        stringResource(R.string.fg_pomodoro_until_i_stop)
+                    } else {
+                        config.targetSessions.toString()
+                    }
                     Text(
-                        "Sessões: ${PomodoroCyclePolicy.targetLabel(config)}",
+                        stringResource(R.string.fg_pomodoro_sessions_label, target),
                         color = TextSecondary,
                         fontSize = 13.sp
                     )
@@ -228,7 +252,11 @@ class PomodoroWidgetDialActivity : AppCompatActivity() {
             ) {
                 Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkBg)
                 Spacer(Modifier.width(7.dp))
-                Text("Iniciar Pomodoro", color = DarkBg, fontWeight = FontWeight.Bold)
+                Text(
+                    stringResource(R.string.fg_pomodoro_start_button),
+                    color = DarkBg,
+                    fontWeight = FontWeight.Bold
+                )
             }
         }
     }
