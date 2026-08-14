@@ -1,11 +1,12 @@
 package com.focusguard.pomodoro
 
 import android.content.Context
+import com.focusguard.R
 import com.focusguard.utils.SecurePrefsManager
 import com.focusguard.widget.PomodoroWidgetProvider
+import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.UUID
 
 /**
  * Configuração completa de um ciclo Pomodoro.
@@ -129,13 +130,13 @@ class PomodoroPlanStore(context: Context) {
     fun builtInProfiles(): List<PomodoroProfile> = listOf(
         PomodoroProfile(
             id = "builtin-classic",
-            name = "Clássico 25/5",
+            name = appContext.getString(R.string.fg_pomodoro_profile_classic),
             builtIn = true,
             config = DEFAULT_CONFIG
         ),
         PomodoroProfile(
             id = "builtin-deep",
-            name = "Foco profundo 50/10",
+            name = appContext.getString(R.string.fg_pomodoro_profile_deep),
             builtIn = true,
             config = DEFAULT_CONFIG.copy(
                 focusMinutes = 50,
@@ -145,7 +146,7 @@ class PomodoroPlanStore(context: Context) {
         ),
         PomodoroProfile(
             id = "builtin-sprint",
-            name = "Sprint 15/3",
+            name = appContext.getString(R.string.fg_pomodoro_profile_sprint),
             builtIn = true,
             config = DEFAULT_CONFIG.copy(
                 focusMinutes = 15,
