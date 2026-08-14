@@ -75,11 +75,11 @@ fun PatternLockInput(
                             val dx = position.x - center.x
                             val dy = position.y - center.y
                             if (sqrt(dx * dx + dy * dy) <= threshold) {
-                                return@nodeAt row * 3 + column
+                                return row * 3 + column
                             }
                         }
                     }
-                    return@nodeAt null
+                    return null
                 }
 
                 detectDragGestures(
