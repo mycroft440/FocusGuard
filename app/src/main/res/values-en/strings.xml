@@ -293,7 +293,7 @@
     <string name="permission_usage_access_detail">In the Android list, find FocusGuard and enable access.</string>
     <string name="permission_usage_access_action">Open usage access</string>
     <string name="permission_device_admin_title">Standard device administrator</string>
-    <string name="permission_device_admin_desc">This is Android's standard administrator permission, not Device Owner. It is required to configure blocks and adds protection against impulsive removal.</string>
+    <string name="permission_device_admin_desc">This is Android\'s standard administrator permission, not Device Owner. It is required to configure blocks and adds protection against impulsive removal.</string>
     <string name="permission_device_admin_detail">On the Android screen, tap \"Activate\". Device Owner is configured only in Settings &gt; Nuclear protection.</string>
     <string name="permission_device_admin_action">Enable standard administrator</string>
     <string name="permission_device_admin_manual_action">Open administrator list</string>
