@@ -61,6 +61,7 @@ import com.focusguard.manager.BlockingSessionManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.fragment.app.FragmentActivity
 import com.focusguard.security.AuthManager
+import com.focusguard.security.BiometricAppUnlockPolicy
 import com.focusguard.security.CameraManager
 import com.focusguard.security.IntruderCapturePolicy
 import com.focusguard.security.DeactivationCredentialManager
@@ -268,7 +269,10 @@ private fun BlockNoticeContent(
     var error by remember { mutableStateOf<String?>(null) }
     var verifying by remember { mutableStateOf(false) }
     var unlocked by remember { mutableStateOf(false) }
-    var passwordUnlockAvailable by remember { mutableStateOf<Boolean?>(null) }
+    var credentialUnlockOrigin by remember {
+        mutableStateOf<BiometricAppUnlockPolicy.BlockOrigin?>(null)
+    }
+    var credentialUnlockResolved by remember { mutableStateOf(false) }
 
     val wrongPasswordMessage = stringResource(R.string.sessions_wrong_password)
     val pomodoroMessage = stringResource(R.string.block_notice_pomodoro_cannot_stop)
@@ -277,15 +281,17 @@ private fun BlockNoticeContent(
     val failureMessage = stringResource(R.string.block_notice_unlock_failed)
 
     LaunchedEffect(strictBlock, blockedPackage, blockedDomain) {
-        passwordUnlockAvailable = if (strictBlock) {
-            false
+        credentialUnlockResolved = false
+        credentialUnlockOrigin = if (strictBlock) {
+            null
         } else {
             blockingSessionManager.credentialUnlockOrigin(
                 blockedPackage = blockedPackage,
                 blockedDomain = blockedDomain,
                 strictPomodoroActive = false
-            ) != null
+            )
         }
+        credentialUnlockResolved = true
     }
 
     LaunchedEffect(
@@ -393,8 +399,12 @@ private fun BlockNoticeContent(
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center
                 )
-            } else if (passwordUnlockAvailable == true) {
-                if (blockedPackage != null && customUnlockConfig != null) {
+            } else if (credentialUnlockOrigin != null) {
+                if (
+                    blockedPackage != null &&
+                    customUnlockConfig != null &&
+                    credentialUnlockOrigin == BiometricAppUnlockPolicy.BlockOrigin.PASSWORD_SESSION
+                ) {
                     PasswordProtectedAppUnlockPanel(
                         blockedPackage = blockedPackage,
                         authManager = authManager,
@@ -417,7 +427,7 @@ private fun BlockNoticeContent(
                         )
                     }
                 }
-            } else if (passwordUnlockAvailable == false) {
+            } else if (credentialUnlockResolved) {
                 Text(
                     text = stringResource(R.string.block_notice_no_password_unlock),
                     color = TextHint,
