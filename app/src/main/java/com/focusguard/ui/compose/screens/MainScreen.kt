@@ -73,7 +73,17 @@ fun MainScreen(
                     .statusBarsPadding()
                     .height(64.dp)
             ) {
-                if (!focusModeActive && selectedTab != 4) {
+                if (selectedTab == 4) {
+                    Text(
+                        stringResource(R.string.nav_focus_mode),
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 16.dp),
+                        color = TextPrimary,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                } else if (!focusModeActive) {
                     Card(
                         onClick = { onTabChange(0) },
                         modifier = Modifier

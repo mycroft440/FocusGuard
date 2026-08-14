@@ -19,13 +19,13 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -350,74 +350,38 @@ private fun FocusModeSetupContent(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        item {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    Icons.Default.LockClock,
-                    contentDescription = null,
-                    tint = AccentCyan,
-                    modifier = Modifier.size(36.dp)
-                )
-                Spacer(Modifier.size(12.dp))
-                Column {
-                    Text(
-                        stringResource(R.string.focus_mode_title),
-                        color = TextPrimary,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        stringResource(R.string.focus_mode_subtitle),
-                        color = TextHint,
-                        fontSize = 13.sp
-                    )
-                }
-            }
-        }
-
         item {
             Card(
                 colors = CardDefaults.cardColors(containerColor = DarkCard),
                 border = BorderStroke(1.dp, CardBorder),
-                shape = RoundedCornerShape(18.dp)
+                shape = RoundedCornerShape(14.dp)
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Text(
-                        stringResource(R.string.focus_mode_setup_title),
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
-                    )
-                    Text(
-                        stringResource(R.string.focus_mode_duration_title),
-                        color = TextHint,
-                        fontSize = 13.sp
-                    )
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
+                        Text(
+                            "Selecione o Tempo:",
+                            color = TextPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            modifier = Modifier.weight(1f)
+                        )
                         OutlinedTextField(
                             value = durationText,
                             onValueChange = onDurationTextChange,
-                            modifier = Modifier.weight(1f),
-                            label = {
-                                Text(stringResource(R.string.focus_mode_duration_value))
-                            },
-                            leadingIcon = {
-                                Icon(Icons.Default.AccessTime, contentDescription = null)
-                            },
+                            modifier = Modifier.width(72.dp),
                             isError = durationText.isNotBlank() && !durationValid,
-                            supportingText = if (!durationValid) {
-                                { Text(stringResource(R.string.focus_mode_duration_invalid)) }
-                            } else null,
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(
                                 keyboardType = KeyboardType.Number
@@ -427,20 +391,20 @@ private fun FocusModeSetupContent(
                         Box {
                             OutlinedButton(
                                 onClick = { durationUnitMenuExpanded = true },
-                                modifier = Modifier.height(56.dp)
+                                modifier = Modifier.height(56.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp)
                             ) {
                                 Text(
-                                    stringResource(
-                                        if (durationUnit == FocusModePolicy.DurationUnit.HOURS) {
-                                            R.string.focus_mode_hours
-                                        } else {
-                                            R.string.focus_mode_minutes
-                                        }
-                                    )
+                                    if (durationUnit == FocusModePolicy.DurationUnit.HOURS) {
+                                        "h"
+                                    } else {
+                                        "min"
+                                    }
                                 )
                                 Icon(
                                     Icons.Default.ArrowDropDown,
-                                    contentDescription = null
+                                    contentDescription = null,
+                                    modifier = Modifier.size(18.dp)
                                 )
                             }
 
@@ -470,6 +434,14 @@ private fun FocusModeSetupContent(
                         }
                     }
 
+                    if (durationText.isNotBlank() && !durationValid) {
+                        Text(
+                            stringResource(R.string.focus_mode_duration_invalid),
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 11.sp
+                        )
+                    }
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -477,27 +449,18 @@ private fun FocusModeSetupContent(
                                 value = grayscaleEnabled,
                                 role = Role.Switch,
                                 onValueChange = onGrayscaleEnabledChange
-                            )
-                            .padding(vertical = 4.dp),
+                            ),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                stringResource(R.string.focus_mode_grayscale_title),
-                                color = TextPrimary,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                stringResource(R.string.focus_mode_grayscale_description),
-                                color = TextHint,
-                                fontSize = 12.sp,
-                                modifier = Modifier.padding(top = 3.dp)
-                            )
-                        }
-                        Spacer(Modifier.size(12.dp))
+                        Text(
+                            "Tela cinza",
+                            color = TextPrimary,
+                            fontWeight = FontWeight.SemiBold,
+                            fontSize = 14.sp,
+                            modifier = Modifier.weight(1f)
+                        )
                         Switch(checked = grayscaleEnabled, onCheckedChange = null)
                     }
-
                 }
             }
         }
@@ -515,19 +478,19 @@ private fun FocusModeSetupContent(
                         ),
                         color = TextPrimary,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 17.sp
+                        fontSize = 15.sp
                     )
                     Text(
                         stringResource(R.string.focus_mode_allowed_grid_description),
                         color = TextHint,
-                        fontSize = 12.sp,
-                        modifier = Modifier.padding(top = 3.dp)
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(top = 2.dp)
                     )
                 }
                 OutlinedButton(onClick = onAddApps, enabled = !isLoadingApps) {
                     Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(Modifier.size(6.dp))
-                    Text(stringResource(R.string.focus_mode_add_apps))
+                    Spacer(Modifier.size(4.dp))
+                    Text(stringResource(R.string.focus_mode_add_apps), fontSize = 13.sp)
                 }
             }
         }
@@ -535,7 +498,7 @@ private fun FocusModeSetupContent(
         item {
             if (isLoadingApps) {
                 Box(
-                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    modifier = Modifier.fillMaxWidth().padding(18.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     CircularProgressIndicator(color = AccentCyan)
@@ -552,36 +515,36 @@ private fun FocusModeSetupContent(
             Card(
                 colors = CardDefaults.cardColors(containerColor = DarkCard),
                 border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.45f)),
-                shape = RoundedCornerShape(18.dp)
+                shape = RoundedCornerShape(14.dp)
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
                     Text(
                         stringResource(R.string.focus_mode_final_step_title),
                         color = TextPrimary,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
+                        fontSize = 16.sp
                     )
                     Text(
                         stringResource(R.string.focus_mode_final_step_description),
                         color = TextHint,
-                        fontSize = 13.sp
+                        fontSize = 12.sp
                     )
                     FocusModeStartError(startOutcome)
                     Button(
                         onClick = onStart,
                         enabled = !isStarting && durationValid && !isLoadingApps,
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        modifier = Modifier.fillMaxWidth().height(46.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-                        shape = RoundedCornerShape(16.dp)
+                        shape = RoundedCornerShape(14.dp)
                     ) {
                         if (isStarting) {
                             CircularProgressIndicator(
                                 color = MaterialTheme.colorScheme.onPrimary,
                                 strokeWidth = 2.dp,
-                                modifier = Modifier.size(22.dp)
+                                modifier = Modifier.size(20.dp)
                             )
                         } else {
                             Text(
@@ -592,13 +555,6 @@ private fun FocusModeSetupContent(
                     }
                 }
             }
-        }
-
-        item {
-            FocusInfoCard(
-                title = stringResource(R.string.focus_mode_how_title),
-                description = stringResource(R.string.focus_mode_how_description)
-            )
         }
     }
 }
@@ -944,11 +900,11 @@ private fun FocusAppGrid(
         }
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         entries.chunked(3).forEach { rowEntries ->
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 rowEntries.forEach { entry ->
                     val onClick = when (entry.type) {
@@ -982,16 +938,16 @@ private fun FocusAppTile(
 ) {
     Card(
         modifier = modifier
-            .height(112.dp)
+            .height(92.dp)
             .then(
                 if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
             ),
         colors = CardDefaults.cardColors(containerColor = DarkCard),
         border = BorderStroke(1.dp, CardBorder),
-        shape = RoundedCornerShape(16.dp)
+        shape = RoundedCornerShape(14.dp)
     ) {
         Column(
-            modifier = Modifier.fillMaxSize().padding(8.dp),
+            modifier = Modifier.fillMaxSize().padding(6.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
@@ -1000,24 +956,24 @@ private fun FocusAppTile(
                     Icons.Default.Phone,
                     contentDescription = null,
                     tint = AccentCyan,
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier.size(36.dp)
                 )
                 FocusGridEntryType.SMS -> Icon(
                     Icons.Default.Message,
                     contentDescription = null,
                     tint = AccentCyan,
-                    modifier = Modifier.size(44.dp)
+                    modifier = Modifier.size(36.dp)
                 )
                 FocusGridEntryType.INSTALLED_APP -> InstalledAppIcon(
                     packageName = requireNotNull(entry.packageName),
                     appName = entry.label
                 )
             }
-            Spacer(Modifier.height(7.dp))
+            Spacer(Modifier.height(5.dp))
             Text(
                 text = entry.label,
                 color = TextPrimary,
-                fontSize = 12.sp,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.SemiBold,
                 textAlign = TextAlign.Center,
                 maxLines = 2,
@@ -1045,14 +1001,14 @@ private fun InstalledAppIcon(packageName: String, appName: String) {
         Image(
             bitmap = requireNotNull(icon),
             contentDescription = appName,
-            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp))
+            modifier = Modifier.size(40.dp).clip(RoundedCornerShape(10.dp))
         )
     } else {
         Icon(
             Icons.Default.Apps,
             contentDescription = appName,
             tint = AccentCyan,
-            modifier = Modifier.size(44.dp)
+            modifier = Modifier.size(36.dp)
         )
     }
 }
