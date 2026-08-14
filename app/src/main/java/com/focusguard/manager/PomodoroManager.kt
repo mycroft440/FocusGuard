@@ -42,6 +42,9 @@ class PomodoroManager @Inject constructor(
 ) {
 
     companion object {
+        private const val STRICT_ARM_TIMEOUT_MILLIS = 3_000L
+        private const val STRICT_ARM_POLL_MILLIS = 25L
+
         @Volatile
         private var legacyInstance: PomodoroManager? = null
 
@@ -119,6 +122,9 @@ class PomodoroManager @Inject constructor(
 
                     if (runtime != null) {
                         _cycleState.value = runtime
+                        // Aplicar antes da reconciliação rigorosa preserva o filtro
+                        // original do usuário. Depois da reconciliação reaplicamos
+                        // ALARMS para que o modo rigoroso não sobreponha a escolha.
                         if (runtime.config.silenceNotifications) {
                             notificationController.apply(runtime.config)
                         }
@@ -209,7 +215,6 @@ class PomodoroManager @Inject constructor(
                         planStore.saveRuntime(restoredRuntime)
                         _cycleState.value = restoredRuntime
                         restoreSessionLocked(restored, restoredRuntime)
-                        sessionManager.startPomodoroSession(remaining, true)
                     } else {
                         cleanupAllStateLocked(emitFinished = false, cancelAlarm = true)
                     }
@@ -240,6 +245,12 @@ class PomodoroManager @Inject constructor(
             intervalDurationMillis = session.durationMillis
         ).also(planStore::saveRuntime)
 
+        reconcileRestoredBlockingState(session)
+        applyNotificationPolicyForInterval(runtime.config)
+
+        // Só ligamos o serviço depois de qualquer endPomodoroSessionAndWait(),
+        // porque esse método encerra o próprio foreground service como parte da
+        // limpeza do bloqueio anterior.
         PomodoroForegroundService.start(context)
         if (session.isBlockingEnabled) {
             StrictPomodoroLock.save(context, session.endTime, session.durationMillis)
@@ -250,6 +261,74 @@ class PomodoroManager @Inject constructor(
             PomodoroForegroundService.cancelWatchdogAlarm(context)
         }
         startTicker()
+    }
+
+    private suspend fun reconcileRestoredBlockingState(session: PomodoroSession) {
+        if (!session.isBlockingEnabled) {
+            sessionManager.endPomodoroSessionAndWait()
+            return
+        }
+
+        val now = System.currentTimeMillis()
+        val existingStrictSession = database.blockSessionDao()
+            .getAllActiveSessionsStatic()
+            .any { blockSession ->
+                blockSession.sessionType == "POMODORO" &&
+                    blockSession.isBlockingEnabled &&
+                    (blockSession.endTime ?: 0L) > now
+            }
+
+        if (!existingStrictSession) {
+            sessionManager.endPomodoroSessionAndWait()
+            val remaining = (session.endTime - now).coerceAtLeast(1L)
+            sessionManager.startPomodoroSession(remaining, true)
+            awaitStrictPomodoroEnforcement()
+        } else {
+            // O registro persistiu, mas o processo/AccessibilityService pode ter
+            // sido recriado. Reconciliar novamente garante a suspensão real.
+            sessionManager.checkAndEnforceStrict()
+        }
+    }
+
+    private suspend fun awaitStrictPomodoroEnforcement() {
+        val deadline = android.os.SystemClock.elapsedRealtime() + STRICT_ARM_TIMEOUT_MILLIS
+        while (true) {
+            val now = System.currentTimeMillis()
+            val armed = database.blockSessionDao()
+                .getAllActiveSessionsStatic()
+                .any { blockSession ->
+                    blockSession.sessionType == "POMODORO" &&
+                        blockSession.isBlockingEnabled &&
+                        (blockSession.endTime ?: 0L) > now
+                }
+            if (armed) {
+                // startPomodoroSession() é legado e fire-and-forget. A segunda
+                // reconciliação síncrona elimina a janela em que a Activity
+                // rigorosa poderia abrir antes de o bloqueio estar aplicado.
+                sessionManager.checkAndEnforceStrict()
+                return
+            }
+            check(android.os.SystemClock.elapsedRealtime() < deadline) {
+                "O bloqueio rigoroso não pôde ser armado a tempo"
+            }
+            delay(STRICT_ARM_POLL_MILLIS)
+        }
+    }
+
+    private fun applyNotificationPolicyForInterval(config: PomodoroPlanConfig) {
+        if (config.silenceNotifications) {
+            if (!notificationController.apply(config)) {
+                FocusGuardLogger.log(
+                    "PomodoroManager",
+                    "Não Perturbe não pôde ser reaplicado neste intervalo"
+                )
+            }
+        } else {
+            // No Android 15+ isto também desativa a AutomaticZenRule que o
+            // bloqueio rigoroso pode ter usado no intervalo anterior. Em versões
+            // antigas restore() é no-op quando o Pomodoro não salvou um filtro.
+            notificationController.restore()
+        }
     }
 
     private fun startTicker() {
@@ -314,11 +393,24 @@ class PomodoroManager @Inject constructor(
             val saved = planStore.saveConfig(normalized)
             val runtime = planStore.beginRuntime(saved)
             _cycleState.value = runtime
+            // Captura o filtro original antes de o modo rigoroso poder trocar o
+            // estado de DND. startIntervalLocked reaplica ALARMS depois da
+            // reconciliação, sem substituir esse snapshot original.
             if (saved.silenceNotifications) {
-                notificationController.apply(saved)
+                check(notificationController.apply(saved)) {
+                    "Não foi possível ativar o Não Perturbe do Pomodoro"
+                }
             }
             FocusModeNotificationService.requestRefresh(context)
-            startIntervalLocked(PomodoroPhase.FOCUS, saved)
+            try {
+                startIntervalLocked(PomodoroPhase.FOCUS, saved)
+            } catch (cancelled: CancellationException) {
+                cleanupAllStateLocked(emitFinished = false, cancelAlarm = true)
+                throw cancelled
+            } catch (error: Exception) {
+                cleanupAllStateLocked(emitFinished = false, cancelAlarm = true)
+                throw error
+            }
         }
     }
 
@@ -400,6 +492,20 @@ class PomodoroManager @Inject constructor(
         planStore.saveRuntime(updatedRuntime)
         _cycleState.value = updatedRuntime
 
+        // endPomodoroSessionAndWait() encerra também o foreground service. Por
+        // isso ele precisa acontecer ANTES de iniciarmos o serviço do intervalo
+        // novo; a ordem anterior ligava e desligava o watchdog imediatamente.
+        sessionManager.endPomodoroSessionAndWait()
+        if (blocking) {
+            sessionManager.startPomodoroSession(durationMillis, true)
+            awaitStrictPomodoroEnforcement()
+        }
+
+        // A reconciliação rigorosa usa PRIORITY por legado. Reaplicar a escolha
+        // do usuário depois dela garante que "Silenciar notificações" continue
+        // significando somente alarmes, inclusive durante o foco rigoroso.
+        applyNotificationPolicyForInterval(config)
+
         PomodoroForegroundService.start(context)
         if (blocking) {
             StrictPomodoroLock.save(context, endTime, durationMillis)
@@ -409,8 +515,6 @@ class PomodoroManager @Inject constructor(
             PomodoroForegroundService.cancelWatchdogAlarm(context)
         }
 
-        sessionManager.endPomodoroSessionAndWait()
-        sessionManager.startPomodoroSession(durationMillis, blocking)
         notifyBlockingChanged()
         FocusModeNotificationService.requestRefresh(context)
         startTicker()
