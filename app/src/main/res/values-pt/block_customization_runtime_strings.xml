@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fg_block_custom_default_message">Você é mais forte que sua distração!</string>
+    <string name="fg_block_custom_phrase_title">Frase inspiradora</string>
+    <string name="fg_block_custom_phrase_example">Ex.: Foque no que importa!</string>
+    <string name="fg_block_custom_background_title">Imagem de fundo</string>
+    <string name="fg_block_custom_choose_image">Toque para escolher uma imagem</string>
+    <string name="fg_block_custom_remove_image">Remover imagem</string>
+</resources>
