@@ -12,7 +12,6 @@ import android.widget.RemoteViews
 import android.widget.Toast
 import com.focusguard.R
 import com.focusguard.manager.PomodoroManager
-import com.focusguard.pomodoro.PomodoroCyclePolicy
 import com.focusguard.pomodoro.PomodoroPhase
 import com.focusguard.pomodoro.PomodoroPlanStore
 import kotlinx.coroutines.CoroutineScope
@@ -54,7 +53,9 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
                 Handler(Looper.getMainLooper()).post {
                     Toast.makeText(
                         context.applicationContext,
-                        error.message ?: "Abra o FocusGuard para revisar as permissões do Pomodoro.",
+                        error.message ?: context.getString(
+                            R.string.fg_pomodoro_widget_permissions_error
+                        ),
                         Toast.LENGTH_LONG
                     ).show()
                 }
@@ -90,40 +91,70 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
             val displayConfig = runtime?.config ?: savedConfig
             val views = RemoteViews(context.packageName, R.layout.widget_pomodoro)
 
+            val phaseLabel = runtime?.let {
+                context.getString(
+                    when (it.phase) {
+                        PomodoroPhase.FOCUS -> R.string.fg_pomodoro_phase_focus
+                        PomodoroPhase.SHORT_BREAK -> R.string.fg_pomodoro_phase_short_break
+                        PomodoroPhase.LONG_BREAK -> R.string.fg_pomodoro_phase_long_break
+                    }
+                )
+            }
             views.setTextViewText(
                 R.id.widget_pomodoro_title,
-                runtime?.let {
-                    when (it.phase) {
-                        PomodoroPhase.FOCUS -> "Pomodoro • Foco"
-                        PomodoroPhase.SHORT_BREAK -> "Pomodoro • Pausa"
-                        PomodoroPhase.LONG_BREAK -> "Pomodoro • Pausa longa"
-                    }
-                } ?: "Pomodoro"
+                phaseLabel?.let {
+                    context.getString(R.string.fg_pomodoro_widget_title_phase, it)
+                } ?: context.getString(R.string.fg_pomodoro_title)
             )
             views.setTextViewText(
                 R.id.widget_pomodoro_focus,
-                "Foco ${formatMinutes(displayConfig.focusMinutes)} • pausa ${formatMinutes(displayConfig.shortBreakMinutes)}"
+                context.getString(
+                    R.string.fg_pomodoro_widget_focus_break,
+                    formatMinutes(displayConfig.focusMinutes),
+                    formatMinutes(displayConfig.shortBreakMinutes)
+                )
             )
             views.setTextViewText(
                 R.id.widget_pomodoro_break,
-                "Longa ${formatMinutes(displayConfig.longBreakMinutes)} a cada ${displayConfig.longBreakEvery} sessões"
+                context.getString(
+                    R.string.fg_pomodoro_widget_long_break,
+                    formatMinutes(displayConfig.longBreakMinutes),
+                    displayConfig.longBreakEvery
+                )
             )
             views.setTextViewText(
                 R.id.widget_pomodoro_sessions,
                 if (runtime != null) {
-                    val target = if (runtime.config.targetSessions == 0) {
-                        "até eu parar"
+                    if (runtime.config.targetSessions == 0) {
+                        context.getString(
+                            R.string.fg_pomodoro_widget_completed_unlimited,
+                            runtime.completedFocusSessions
+                        )
                     } else {
-                        "${runtime.config.targetSessions}"
+                        context.getString(
+                            R.string.fg_pomodoro_widget_completed_target,
+                            runtime.completedFocusSessions,
+                            runtime.config.targetSessions
+                        )
                     }
-                    "Concluídas ${runtime.completedFocusSessions} • $target"
                 } else {
-                    "Sessões: ${PomodoroCyclePolicy.targetLabel(savedConfig)}"
+                    val target = if (savedConfig.targetSessions == 0) {
+                        context.getString(R.string.fg_pomodoro_until_i_stop)
+                    } else {
+                        savedConfig.targetSessions.toString()
+                    }
+                    context.getString(R.string.fg_pomodoro_widget_sessions, target)
                 }
             )
             views.setTextViewText(
                 R.id.widget_pomodoro_start,
-                if (runtime != null) "Em andamento" else "Iniciar"
+                context.getString(
+                    if (runtime != null) {
+                        R.string.fg_pomodoro_running
+                    } else {
+                        R.string.fg_pomodoro_start
+                    }
+                )
             )
 
             val dialIntent = Intent(context, PomodoroWidgetDialActivity::class.java)
