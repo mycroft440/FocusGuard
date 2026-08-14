@@ -47,6 +47,7 @@ class AdvancedUsageAnalytics(private val context: Context) {
         private var lastNeverUsedTime: Long = 0
 
         private const val CACHE_TTL = 5 * 60 * 1000L // 5 minutos
+        private const val FOREGROUND_LOOKBACK_MS = 24L * 60L * 60L * 1_000L
         private val cacheLock = Any()
     }
 
@@ -244,6 +245,7 @@ class AdvancedUsageAnalytics(private val context: Context) {
     }
 
     suspend fun getMostUsedApps(startTime: Long, endTime: Long): List<AppUsageStat> = withContext(Dispatchers.IO) {
+        require(endTime > startTime) { "endTime must be after startTime" }
         val now = System.currentTimeMillis()
         val key = "$startTime-$endTime"
         synchronized(cacheLock) {
@@ -252,32 +254,144 @@ class AdvancedUsageAnalytics(private val context: Context) {
             }
         }
 
-        if (usageStatsManager == null) return@withContext emptyList()
-        val stats = try {
-            usageStatsManager.queryUsageStats(UsageStatsManager.INTERVAL_DAILY, startTime, endTime)
-        } catch (e: Throwable) {
-            FocusGuardLogger.logError("AdvancedUsageAnalytics", "Falha em queryUsageStats (mostUsed)", e)
-            return@withContext emptyList()
-        }
-        val map = mutableMapOf<String, Long>()
-        
-        stats?.forEach { usage ->
-            val hasLaunchIntent = try {
-                pm.getLaunchIntentForPackage(usage.packageName) != null
-            } catch (e: Throwable) {
-                false
+        val manager = usageStatsManager ?: return@withContext emptyList()
+        val launchablePackages = mutableMapOf<String, Boolean>()
+        val isEligible: (String) -> Boolean = { packageName ->
+            launchablePackages.getOrPut(packageName) {
+                try {
+                    pm.getLaunchIntentForPackage(packageName) != null
+                } catch (error: Throwable) {
+                    false
+                }
             }
+        }
 
-            if (usage.totalTimeInForeground > 60000L && hasLaunchIntent) {
-                map[usage.packageName] = (map[usage.packageName] ?: 0L) + usage.totalTimeInForeground
+        // Consulta um pequeno trecho anterior apenas para descobrir qual app já
+        // estava em primeiro plano exatamente no início da janela. O acumulador
+        // corta todo tempo anterior a startTime, portanto esse lookback não infla
+        // os valores exibidos.
+        val queryStart = (startTime - FOREGROUND_LOOKBACK_MS).coerceAtLeast(0L)
+        val events = try {
+            manager.queryEvents(queryStart, endTime)
+        } catch (error: Throwable) {
+            FocusGuardLogger.logError(
+                "AdvancedUsageAnalytics",
+                "Falha em queryEvents (mostUsed)",
+                error
+            )
+            null
+        }
+
+        val accumulator = AppForegroundUsageAccumulator(
+            rangeStartMs = startTime,
+            rangeEndMs = endTime,
+            isEligibleApp = isEligible
+        )
+        var eventLoopCompleted = events != null
+
+        if (events != null) {
+            val event = UsageEvents.Event()
+            try {
+                while (events.hasNextEvent()) {
+                    events.getNextEvent(event)
+                    when (event.eventType) {
+                        UsageEvents.Event.ACTIVITY_RESUMED ->
+                            accumulator.onActivityResumed(
+                                packageName = event.packageName,
+                                activityClassName = event.className,
+                                timestampMs = event.timeStamp
+                            )
+
+                        UsageEvents.Event.ACTIVITY_PAUSED ->
+                            accumulator.onActivityPaused(
+                                packageName = event.packageName,
+                                activityClassName = event.className,
+                                timestampMs = event.timeStamp
+                            )
+
+                        UsageEvents.Event.SCREEN_NON_INTERACTIVE,
+                        UsageEvents.Event.KEYGUARD_SHOWN ->
+                            accumulator.onDeviceBecameInactive(event.timeStamp)
+                    }
+                }
+            } catch (error: Throwable) {
+                eventLoopCompleted = false
+                FocusGuardLogger.logError(
+                    "AdvancedUsageAnalytics",
+                    "Falha no loop de eventos (mostUsed)",
+                    error
+                )
             }
         }
-        val result = map.map { AppUsageStat(it.key, it.value) }.sortedByDescending { it.timeSpentMs }
+
+        val exactTotals = accumulator.finish()
+        val result = if (
+            eventLoopCompleted &&
+            accumulator.hasObservedLifecycleEvents() &&
+            exactTotals.isNotEmpty()
+        ) {
+            exactTotals.asSequence()
+                .filter { (_, timeSpentMs) -> timeSpentMs > 60_000L }
+                .map { (packageName, timeSpentMs) ->
+                    AppUsageStat(packageName, timeSpentMs)
+                }
+                .sortedByDescending(AppUsageStat::timeSpentMs)
+                .toList()
+        } else {
+            // Alguns OEMs removem eventos detalhados antes do histórico agregado.
+            // Nesse caso ainda mostramos dados, mas registramos que o Android
+            // precisou fornecer a aproximação por buckets.
+            FocusGuardLogger.log(
+                "AdvancedUsageAnalytics",
+                "Eventos detalhados insuficientes; usando fallback agregado para apps"
+            )
+            queryApproximateMostUsedApps(
+                manager = manager,
+                startTime = startTime,
+                endTime = endTime,
+                isEligible = isEligible
+            )
+        }
+
         synchronized(cacheLock) {
             cachedMostUsed = key to result
             lastMostUsedTime = now
         }
         result
+    }
+
+    private fun queryApproximateMostUsedApps(
+        manager: UsageStatsManager,
+        startTime: Long,
+        endTime: Long,
+        isEligible: (String) -> Boolean
+    ): List<AppUsageStat> {
+        return try {
+            manager.queryAndAggregateUsageStats(startTime, endTime)
+                .values
+                .asSequence()
+                .filter { usage ->
+                    usage.totalTimeInForeground > 60_000L &&
+                        isEligible(usage.packageName)
+                }
+                .map { usage ->
+                    AppUsageStat(
+                        packageName = usage.packageName,
+                        timeSpentMs = usage.totalTimeInForeground.coerceAtMost(
+                            endTime - startTime
+                        )
+                    )
+                }
+                .sortedByDescending(AppUsageStat::timeSpentMs)
+                .toList()
+        } catch (error: Throwable) {
+            FocusGuardLogger.logError(
+                "AdvancedUsageAnalytics",
+                "Falha no fallback agregado (mostUsed)",
+                error
+            )
+            emptyList()
+        }
     }
 
     /**
