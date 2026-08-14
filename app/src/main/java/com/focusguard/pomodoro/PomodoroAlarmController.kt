@@ -11,44 +11,56 @@ import kotlinx.coroutines.delay
 object PomodoroAlarmController {
     data class AlarmSound(
         val id: Int,
-        val name: String,
-        internal val pattern: List<ToneStep>
+        val name: String
     )
 
-    internal data class ToneStep(
+    private data class ToneStep(
         val tone: Int,
         val durationMs: Int,
         val pauseMs: Long
     )
 
     val sounds: List<AlarmSound> = listOf(
-        AlarmSound(0, "Clássico", listOf(ToneStep(ToneGenerator.TONE_PROP_BEEP, 280, 160))),
-        AlarmSound(1, "Duplo", listOf(
+        AlarmSound(0, "Clássico"),
+        AlarmSound(1, "Duplo"),
+        AlarmSound(2, "Confirmação"),
+        AlarmSound(3, "Profundo"),
+        AlarmSound(4, "Suave"),
+        AlarmSound(5, "Campainha"),
+        AlarmSound(6, "Pulso 1"),
+        AlarmSound(7, "Pulso 2"),
+        AlarmSound(8, "Pulso 3"),
+        AlarmSound(9, "Escada")
+    )
+
+    private val patterns: Map<Int, List<ToneStep>> = mapOf(
+        0 to listOf(ToneStep(ToneGenerator.TONE_PROP_BEEP, 280, 160)),
+        1 to listOf(
             ToneStep(ToneGenerator.TONE_PROP_BEEP2, 180, 90),
             ToneStep(ToneGenerator.TONE_PROP_BEEP2, 180, 220)
-        )),
-        AlarmSound(2, "Confirmação", listOf(ToneStep(ToneGenerator.TONE_PROP_ACK, 320, 180))),
-        AlarmSound(3, "Profundo", listOf(ToneStep(ToneGenerator.TONE_PROP_NACK, 360, 220))),
-        AlarmSound(4, "Suave", listOf(ToneStep(ToneGenerator.TONE_PROP_PROMPT, 250, 210))),
-        AlarmSound(5, "Campainha", listOf(ToneStep(ToneGenerator.TONE_SUP_RINGTONE, 420, 180))),
-        AlarmSound(6, "Pulso 1", listOf(
+        ),
+        2 to listOf(ToneStep(ToneGenerator.TONE_PROP_ACK, 320, 180)),
+        3 to listOf(ToneStep(ToneGenerator.TONE_PROP_NACK, 360, 220)),
+        4 to listOf(ToneStep(ToneGenerator.TONE_PROP_PROMPT, 250, 210)),
+        5 to listOf(ToneStep(ToneGenerator.TONE_SUP_RINGTONE, 420, 180)),
+        6 to listOf(
             ToneStep(ToneGenerator.TONE_DTMF_1, 150, 80),
             ToneStep(ToneGenerator.TONE_DTMF_3, 150, 220)
-        )),
-        AlarmSound(7, "Pulso 2", listOf(
+        ),
+        7 to listOf(
             ToneStep(ToneGenerator.TONE_DTMF_3, 170, 70),
             ToneStep(ToneGenerator.TONE_DTMF_6, 170, 220)
-        )),
-        AlarmSound(8, "Pulso 3", listOf(
+        ),
+        8 to listOf(
             ToneStep(ToneGenerator.TONE_DTMF_6, 170, 70),
             ToneStep(ToneGenerator.TONE_DTMF_9, 170, 220)
-        )),
-        AlarmSound(9, "Escada", listOf(
+        ),
+        9 to listOf(
             ToneStep(ToneGenerator.TONE_DTMF_1, 120, 60),
             ToneStep(ToneGenerator.TONE_DTMF_3, 120, 60),
             ToneStep(ToneGenerator.TONE_DTMF_6, 120, 60),
             ToneStep(ToneGenerator.TONE_DTMF_9, 180, 220)
-        ))
+        )
     )
 
     fun soundName(index: Int): String = sounds.getOrElse(index) { sounds.first() }.name
@@ -80,7 +92,7 @@ object PomodoroAlarmController {
         vibrationEnabled: Boolean,
         soundEnabled: Boolean = true
     ) {
-        val sound = sounds.getOrElse(soundIndex) { sounds.first() }
+        val pattern = patterns[soundIndex] ?: patterns.getValue(0)
         val toneGenerator = if (soundEnabled) {
             runCatching { ToneGenerator(AudioManager.STREAM_ALARM, 90) }.getOrNull()
         } else {
@@ -106,7 +118,7 @@ object PomodoroAlarmController {
         val deadline = android.os.SystemClock.elapsedRealtime() + durationMillis
         try {
             while (android.os.SystemClock.elapsedRealtime() < deadline) {
-                sound.pattern.forEach { step ->
+                pattern.forEach { step ->
                     if (android.os.SystemClock.elapsedRealtime() >= deadline) return@forEach
                     toneGenerator?.startTone(step.tone, step.durationMs)
                     delay(step.durationMs.toLong())
