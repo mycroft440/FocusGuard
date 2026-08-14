@@ -2,6 +2,7 @@ package com.focusguard.pomodoro
 
 import android.content.Context
 import com.focusguard.utils.SecurePrefsManager
+import com.focusguard.widget.PomodoroWidgetProvider
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.UUID
@@ -59,7 +60,8 @@ data class PomodoroProfile(
 )
 
 class PomodoroPlanStore(context: Context) {
-    private val prefs = SecurePrefsManager(context.applicationContext).prefs
+    private val appContext = context.applicationContext
+    private val prefs = SecurePrefsManager(appContext).prefs
 
     fun loadConfig(): PomodoroPlanConfig {
         val raw = prefs.getString(KEY_CONFIG, null) ?: return DEFAULT_CONFIG
@@ -71,6 +73,7 @@ class PomodoroPlanStore(context: Context) {
     fun saveConfig(config: PomodoroPlanConfig): PomodoroPlanConfig {
         val normalized = config.normalized()
         prefs.edit().putString(KEY_CONFIG, configToJson(normalized).toString()).commit()
+        refreshWidgets()
         return normalized
     }
 
@@ -115,10 +118,12 @@ class PomodoroPlanStore(context: Context) {
             .put("intervalEndTime", runtime.intervalEndTime)
             .put("intervalDurationMillis", runtime.intervalDurationMillis)
         prefs.edit().putString(KEY_RUNTIME, json.toString()).commit()
+        refreshWidgets()
     }
 
     fun clearRuntime() {
         prefs.edit().remove(KEY_RUNTIME).commit()
+        refreshWidgets()
     }
 
     fun builtInProfiles(): List<PomodoroProfile> = listOf(
@@ -224,6 +229,11 @@ class PomodoroPlanStore(context: Context) {
             )
         }
         prefs.edit().putString(KEY_PROFILES, array.toString()).commit()
+        refreshWidgets()
+    }
+
+    private fun refreshWidgets() {
+        runCatching { PomodoroWidgetProvider.requestUpdate(appContext) }
     }
 
     companion object {
