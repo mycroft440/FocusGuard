@@ -69,8 +69,6 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
     var loadFailed by remember { mutableStateOf(false) }
 
     var showAverageForMostUsed by remember { mutableStateOf(false) }
-    var expandMostUsed by remember { mutableStateOf(false) }
-    var expandMostOpened by remember { mutableStateOf(false) }
     var expandNeverUsed by remember { mutableStateOf(false) }
 
     // Recarrega ao voltar das configurações sem manter um CoroutineScope
@@ -195,18 +193,14 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                             apps = mostUsedApps,
                             pm = pm,
                             showAverage = showAverageForMostUsed,
-                            onToggleAverage = { showAverageForMostUsed = it },
-                            expanded = expandMostUsed,
-                            onToggleExpand = { expandMostUsed = it }
+                            onToggleAverage = { showAverageForMostUsed = it }
                         )
                     }
 
                     item(key = "most_opened_apps") {
                         MostOpenedAppsSection(
                             apps = mostOpenedApps,
-                            pm = pm,
-                            expanded = expandMostOpened,
-                            onToggleExpand = { expandMostOpened = it }
+                            pm = pm
                         )
                     }
 
@@ -709,12 +703,10 @@ private fun UsagePatternStatement(
 
 @Composable
 fun MostUsedAppsSection(
-    apps: List<AppUsageStat>, 
-    pm: PackageManager, 
-    showAverage: Boolean, 
-    onToggleAverage: (Boolean) -> Unit,
-    expanded: Boolean,
-    onToggleExpand: (Boolean) -> Unit
+    apps: List<AppUsageStat>,
+    pm: PackageManager,
+    showAverage: Boolean,
+    onToggleAverage: (Boolean) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -730,11 +722,11 @@ fun MostUsedAppsSection(
                     Switch(checked = showAverage, onCheckedChange = onToggleAverage, modifier = Modifier.scale(0.8f))
                 }
             }
-            
+
             Spacer(Modifier.height(16.dp))
-            
-            val displayList = if (expanded) apps else apps.take(5)
-            
+
+            val displayList = apps.take(3)
+
             if (displayList.isEmpty()) {
                 Text(stringResource(R.string.dashboard_no_data), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
@@ -744,12 +736,6 @@ fun MostUsedAppsSection(
                     Spacer(Modifier.height(12.dp))
                 }
             }
-            
-            if (apps.size > 5) {
-                TextButton(onClick = { onToggleExpand(!expanded) }, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (expanded) stringResource(R.string.dashboard_hide) else stringResource(R.string.dashboard_show_all, apps.size), color = AccentCyan)
-                }
-            }
         }
     }
 }
@@ -757,9 +743,7 @@ fun MostUsedAppsSection(
 @Composable
 fun MostOpenedAppsSection(
     apps: List<AppAccessStat>,
-    pm: PackageManager,
-    expanded: Boolean,
-    onToggleExpand: (Boolean) -> Unit
+    pm: PackageManager
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -769,9 +753,9 @@ fun MostOpenedAppsSection(
         Column(modifier = Modifier.padding(16.dp)) {
             Text(stringResource(R.string.dashboard_most_opened_title), color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(16.dp))
-            
-            val displayList = if (expanded) apps else apps.take(5)
-            
+
+            val displayList = apps.take(3)
+
             if (displayList.isEmpty()) {
                 Text(stringResource(R.string.dashboard_no_accesses), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
@@ -793,12 +777,6 @@ fun MostOpenedAppsSection(
                     }
                 }
             }
-            
-            if (apps.size > 5) {
-                TextButton(onClick = { onToggleExpand(!expanded) }, modifier = Modifier.fillMaxWidth()) {
-                    Text(if (expanded) stringResource(R.string.dashboard_hide) else stringResource(R.string.dashboard_show_all, apps.size), color = AccentCyan)
-                }
-            }
         }
     }
 }
@@ -818,9 +796,9 @@ fun NeverUsedAppsSection(
         Column(modifier = Modifier.padding(16.dp)) {
             Text(stringResource(R.string.dashboard_never_used), color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(16.dp))
-            
+
             val displayList = if (expanded) apps else apps.take(3)
-            
+
             if (displayList.isEmpty()) {
                 Text(stringResource(R.string.dashboard_no_inactive), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
@@ -832,7 +810,7 @@ fun NeverUsedAppsSection(
                     }
                 }
             }
-            
+
             if (apps.size > 3) {
                 TextButton(onClick = { onToggleExpand(!expanded) }, modifier = Modifier.fillMaxWidth()) {
                     Text(if (expanded) stringResource(R.string.dashboard_hide) else stringResource(R.string.dashboard_show_all, apps.size), color = AccentCyan)
