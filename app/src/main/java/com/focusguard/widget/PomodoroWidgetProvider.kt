@@ -38,8 +38,17 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
+                val store = PomodoroPlanStore(context)
+                // "Iniciar" nunca deve reiniciar silenciosamente um ciclo que já
+                // está rodando. A edição pelo relógio continua valendo para o
+                // próximo plano, mas o runtime atual permanece imutável.
+                if (store.readRuntime()?.active == true) {
+                    requestUpdate(context)
+                    return@launch
+                }
+
                 val manager = PomodoroManager.getInstance(context.applicationContext)
-                manager.startPlan(PomodoroPlanStore(context).loadConfig())
+                manager.startPlan(store.loadConfig())
                 requestUpdate(context)
             } catch (error: Exception) {
                 Handler(Looper.getMainLooper()).post {
@@ -76,8 +85,9 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
             appWidgetId: Int
         ) {
             val store = PomodoroPlanStore(context)
-            val config = store.loadConfig()
+            val savedConfig = store.loadConfig()
             val runtime = store.readRuntime()?.takeIf { it.active }
+            val displayConfig = runtime?.config ?: savedConfig
             val views = RemoteViews(context.packageName, R.layout.widget_pomodoro)
 
             views.setTextViewText(
@@ -92,11 +102,11 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
             )
             views.setTextViewText(
                 R.id.widget_pomodoro_focus,
-                "Foco ${formatMinutes(config.focusMinutes)} • pausa ${formatMinutes(config.shortBreakMinutes)}"
+                "Foco ${formatMinutes(displayConfig.focusMinutes)} • pausa ${formatMinutes(displayConfig.shortBreakMinutes)}"
             )
             views.setTextViewText(
                 R.id.widget_pomodoro_break,
-                "Longa ${formatMinutes(config.longBreakMinutes)} a cada ${config.longBreakEvery} sessões"
+                "Longa ${formatMinutes(displayConfig.longBreakMinutes)} a cada ${displayConfig.longBreakEvery} sessões"
             )
             views.setTextViewText(
                 R.id.widget_pomodoro_sessions,
@@ -108,8 +118,12 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
                     }
                     "Concluídas ${runtime.completedFocusSessions} • $target"
                 } else {
-                    "Sessões: ${PomodoroCyclePolicy.targetLabel(config)}"
+                    "Sessões: ${PomodoroCyclePolicy.targetLabel(savedConfig)}"
                 }
+            )
+            views.setTextViewText(
+                R.id.widget_pomodoro_start,
+                if (runtime != null) "Em andamento" else "Iniciar"
             )
 
             val dialIntent = Intent(context, PomodoroWidgetDialActivity::class.java)
