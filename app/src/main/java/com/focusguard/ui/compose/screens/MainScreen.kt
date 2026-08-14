@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.data.UserProfile
+import com.focusguard.pomodoro.PomodoroUiSignal
 import com.focusguard.security.ProtectionPermission
 import com.focusguard.ui.compose.theme.*
 import kotlinx.coroutines.delay
@@ -84,8 +85,15 @@ fun MainScreen(
                         fontWeight = FontWeight.Bold
                     )
                 } else if (!focusModeActive) {
+                    val configuringPomodoro = selectedTab == 2
                     Card(
-                        onClick = { onTabChange(0) },
+                        onClick = {
+                            if (configuringPomodoro) {
+                                PomodoroUiSignal.requestConfig()
+                            } else {
+                                onTabChange(0)
+                            }
+                        },
                         modifier = Modifier
                             .align(Alignment.CenterStart)
                             .padding(start = 16.dp),
@@ -98,14 +106,18 @@ fun MainScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Icon(
-                                Icons.Default.Public,
+                                if (configuringPomodoro) Icons.Default.Settings else Icons.Default.Public,
                                 contentDescription = null,
                                 tint = AccentCyan,
                                 modifier = Modifier.size(22.dp)
                             )
                             Spacer(modifier = Modifier.width(10.dp))
                             Text(
-                                stringResource(R.string.nav_metrics),
+                                if (configuringPomodoro) {
+                                    "Configurar Pomodoro"
+                                } else {
+                                    stringResource(R.string.nav_metrics)
+                                },
                                 color = TextPrimary,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
@@ -364,8 +376,6 @@ fun HomeContent(
                 ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // Cabeçalho e cards compartilham o mesmo fluxo vertical. Isso evita
-            // sobreposição quando a fonte do sistema ou a tela forem maiores.
             AnimatedVisibility(
                 visible = visible,
                 modifier = Modifier.fillMaxWidth(),
@@ -448,13 +458,6 @@ fun HomeContent(
                 }
             }
 
-            // [F2] Agrupamento de cards de funcionalidade
-            //
-            // Um card por tipo de proteção, em vez de uma entrada única: as três
-            // se comportam de formas muito diferentes — uma abre com senha, uma
-            // limita por dia, uma não abre de jeito nenhum até o prazo acabar — e
-            // escolher entre elas dentro de um assistente escondia essa diferença
-            // justamente de quem ainda não a conhece.
             AnimatedVisibility(
                 visible = visible,
                 modifier = Modifier.fillMaxWidth(),
@@ -654,8 +657,6 @@ fun SessionCard(
     title: String,
     subtitle: String,
     onClick: () -> Unit,
-    // Cor própria por tipo de proteção, para o card ser reconhecível antes de o
-    // texto ser lido. O padrão mantém o visual das chamadas antigas.
     accent: Color = AccentCyan,
     compact: Boolean = false
 ) {
@@ -667,7 +668,7 @@ fun SessionCard(
     )
 
     Card(
-        onClick = { 
+        onClick = {
             isPressed = true
             onClick()
         },
@@ -728,8 +729,7 @@ fun SessionCard(
             Icon(Icons.Filled.ChevronRight, contentDescription = stringResource(R.string.action_open), modifier = Modifier.size(20.dp), tint = TextHint)
         }
     }
-    
-    // Reset pressed state after a delay or interaction
+
     LaunchedEffect(isPressed) {
         if (isPressed) {
             kotlinx.coroutines.delay(100)
