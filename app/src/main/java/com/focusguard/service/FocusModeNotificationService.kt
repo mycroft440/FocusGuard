@@ -6,11 +6,18 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.service.notification.NotificationListenerService
 import android.service.notification.StatusBarNotification
+import android.telecom.TelecomManager
 import androidx.core.content.ContextCompat
 import com.focusguard.focusmode.FocusModePolicy
 import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.pomodoro.PomodoroPlanStore
 import com.focusguard.utils.FocusGuardLogger
 
+/**
+ * Um único NotificationListenerService atende Modo Foco e Pomodoro. Assim o
+ * usuário concede acesso às notificações uma vez só e o FocusGuard não cria
+ * dois listeners concorrentes.
+ */
 class FocusModeNotificationService : NotificationListenerService() {
     private val refreshReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -51,7 +58,7 @@ class FocusModeNotificationService : NotificationListenerService() {
                 ?.let(::cancelNotifications)
         }.onFailure { error ->
             FocusGuardLogger.logError(
-                "FocusMode",
+                "NotificationFilter",
                 "Falha ao limpar notificações bloqueadas",
                 error
             )
@@ -59,6 +66,8 @@ class FocusModeNotificationService : NotificationListenerService() {
     }
 
     private fun shouldCancel(packageName: String): Boolean {
+        if (shouldPomodoroHide(packageName)) return true
+
         val session = FocusModeStore.readSession(applicationContext)
         return FocusModePolicy.shouldSuppressNotification(
             focusModeActive = session?.isActive() == true,
@@ -67,6 +76,20 @@ class FocusModeNotificationService : NotificationListenerService() {
             blockedPackages = session?.blockedPackages.orEmpty(),
             exemptPackages = session?.nonSuspendablePackages.orEmpty()
         )
+    }
+
+    private fun shouldPomodoroHide(packageName: String): Boolean {
+        val runtime = PomodoroPlanStore(applicationContext).readRuntime()
+        if (runtime?.active != true || !runtime.config.hideNotifications) return false
+        if (packageName == applicationContext.packageName) return false
+
+        // Não escondemos componentes essenciais do sistema nem o discador para
+        // preservar chamadas durante um Pomodoro, inclusive no modo rigoroso.
+        if (packageName == "android" || packageName == "com.android.systemui") return false
+        val telecom = getSystemService(TelecomManager::class.java)
+        if (packageName == telecom?.defaultDialerPackage) return false
+
+        return true
     }
 
     override fun onDestroy() {
