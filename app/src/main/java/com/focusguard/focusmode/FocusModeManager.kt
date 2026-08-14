@@ -164,7 +164,7 @@ class FocusModeManager @Inject constructor(
             }
             blockingSessionManager.checkAndEnforceStrict()
             check(deviceOwnerManager.isFocusModeSystemLockdownConfirmed()) {
-                "O Android não confirmou energia, quiosque e modo seguro"
+                "O Android não confirmou o quiosque e o bloqueio de modo seguro"
             }
             val nonSuspendable = blockedPackages.filterNotTo(mutableSetOf()) {
                 deviceOwnerManager.isPackageSuspendedByFocusMode(it)

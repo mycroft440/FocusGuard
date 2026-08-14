@@ -192,8 +192,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         internal fun supportsStrictFocusModeLockdown(sdkInt: Int): Boolean =
             sdkInt >= Build.VERSION_CODES.P
 
-        internal fun focusModeFeaturesAreStrict(features: Int): Boolean =
-            features == DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+        internal fun lockTaskFeaturesKeepOnlyGlobalActions(features: Int): Boolean =
+            features == DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
 
         internal fun buildManagedBrowserRestrictions(
             existing: Bundle,
@@ -476,7 +476,10 @@ class DeviceOwnerManager private constructor(private val context: Context) {
 
             dpm.setLockTaskPackages(componentName, allowedPackages.toTypedArray())
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                dpm.setLockTaskFeatures(componentName, DevicePolicyManager.LOCK_TASK_FEATURE_NONE)
+                dpm.setLockTaskFeatures(
+                    componentName,
+                    DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
+                )
             }
             Log.d("FocusGuardAdmin", "Lock Task rigoroso preparado: $allowedPackages")
         } catch (e: Exception) {
@@ -496,8 +499,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     }
 
     /**
-     * Configures a multi-app kiosk for Focus Mode. Home, Overview, notifications
-     * and global actions remain unavailable because no SystemUI feature is enabled.
+     * Configures a multi-app kiosk for Focus Mode. Home, Overview and notifications
+     * remain unavailable, while global actions keep normal shutdown and restart available.
      */
     fun prepareFocusModeLockTaskPackages(allowedPackages: Collection<String>): Boolean {
         if (!isDeviceOwnerActive() || Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return false
@@ -511,11 +514,11 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             dpm.setLockTaskPackages(componentName, installedAllowlist.toTypedArray())
             dpm.setLockTaskFeatures(
                 componentName,
-                DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+                DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
             )
             // This official user restriction survives a reboot and prevents the
-            // hardware-key safe-mode path. Normal power/restart actions are
-            // removed by LOCK_TASK_FEATURE_NONE while the kiosk is running.
+            // hardware-key safe-mode path. Global actions intentionally remain
+            // available so normal shutdown and restart continue to work.
             dpm.addUserRestriction(componentName, UserManager.DISALLOW_SAFE_BOOT)
             val confirmed = isFocusModeSystemLockdownConfirmed()
             if (confirmed) {
@@ -563,7 +566,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         if (!isDeviceOwnerActive() || Build.VERSION.SDK_INT < Build.VERSION_CODES.P) return false
         return runCatching {
             dpm.isLockTaskPermitted(context.packageName) &&
-                focusModeFeaturesAreStrict(dpm.getLockTaskFeatures(componentName)) &&
+                lockTaskFeaturesKeepOnlyGlobalActions(dpm.getLockTaskFeatures(componentName)) &&
                 dpm.getUserRestrictions(componentName).getBoolean(
                     UserManager.DISALLOW_SAFE_BOOT,
                     false

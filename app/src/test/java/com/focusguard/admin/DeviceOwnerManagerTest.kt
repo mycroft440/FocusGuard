@@ -141,17 +141,23 @@ class DeviceOwnerManagerTest {
     }
 
     @Test
-    fun `strict focus lockdown requires android 9 and disables every system ui feature`() {
+    fun `strict focus lockdown requires android 9 and keeps only global actions`() {
         assertThat(DeviceOwnerManager.supportsStrictFocusModeLockdown(27)).isFalse()
         assertThat(DeviceOwnerManager.supportsStrictFocusModeLockdown(28)).isTrue()
         assertThat(
-            DeviceOwnerManager.focusModeFeaturesAreStrict(
-                DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+            DeviceOwnerManager.lockTaskFeaturesKeepOnlyGlobalActions(
+                DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
             )
         ).isTrue()
         assertThat(
-            DeviceOwnerManager.focusModeFeaturesAreStrict(
-                DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS
+            DeviceOwnerManager.lockTaskFeaturesKeepOnlyGlobalActions(
+                DevicePolicyManager.LOCK_TASK_FEATURE_NONE
+            )
+        ).isFalse()
+        assertThat(
+            DeviceOwnerManager.lockTaskFeaturesKeepOnlyGlobalActions(
+                DevicePolicyManager.LOCK_TASK_FEATURE_GLOBAL_ACTIONS or
+                    DevicePolicyManager.LOCK_TASK_FEATURE_HOME
             )
         ).isFalse()
     }

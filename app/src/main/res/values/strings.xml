@@ -662,7 +662,7 @@
     <string name="focus_mode_how_description">O FocusGuard suspende os apps não permitidos, oculta suas notificações e mantém o aparelho no ambiente quiosque do FocusGuard. Você continua podendo navegar por todas as áreas do app e abrir somente os recursos essenciais e apps escolhidos nesta tela.</string>
     <string name="focus_mode_requirements_title">Requisitos para um bloqueio confiável</string>
     <string name="focus_mode_device_owner_title">Controle nativo do aparelho</string>
-    <string name="focus_mode_device_owner_description">No Android 9 ou superior, o Device Owner permite suspender apps, bloquear Início, Recentes, o menu de energia e a inicialização em modo seguro.</string>
+    <string name="focus_mode_device_owner_description">No Android 9 ou superior, o Device Owner permite suspender apps, bloquear Início e Recentes e impedir a inicialização em modo seguro. O menu normal de energia permanece disponível.</string>
     <string name="focus_mode_configure_device_owner">Configurar</string>
     <string name="focus_mode_notification_access_title">Bloqueio de notificações</string>
     <string name="focus_mode_notification_access_description">O acesso às notificações permite remover alertas publicados por apps bloqueados.</string>
@@ -692,7 +692,7 @@
     <string name="focus_mode_terms_essentials">Ligação, emergência, SMS, FocusGuard e os apps que você selecionou continuam disponíveis.</string>
     <string name="focus_mode_terms_grayscale_on">A escala de cinza será aplicada a toda a interface do FocusGuard nesta sessão.</string>
     <string name="focus_mode_terms_grayscale_off">A escala de cinza ficará desativada nesta sessão.</string>
-    <string name="focus_mode_terms_power_limits">O menu normal de desligar/reiniciar e a inicialização em modo seguro ficam bloqueados. O Android não permite que um app impeça reinício físico forçado pelos botões ou remoção da bateria.</string>
+    <string name="focus_mode_terms_power_limits">Desligar e reiniciar normalmente continuam disponíveis. Enquanto qualquer bloqueio do FocusGuard estiver ativo, a inicialização em modo seguro fica impedida.</string>
     <string name="focus_mode_terms_exit">Não haverá encerramento antecipado pela tela comum. A Área Dev permanece como saída técnica do produto.</string>
     <string name="focus_mode_terms_accept">Eu escolhi este bloqueio voluntariamente, entendi os efeitos e concordo em mantê-lo até o prazo terminar.</string>
     <string name="focus_mode_confirm_start">Concordar e iniciar</string>
@@ -710,7 +710,7 @@
     <string name="focus_mode_system_apps_notice">O Android não permite suspender %1$d app(s) protegido(s) pelo sistema. Eles não aparecem nesta tela e o modo quiosque continua impedindo a saída normal.</string>
     <string name="focus_mode_no_early_stop">Não existe botão comum para encerrar antes do prazo. O modo termina automaticamente.</string>
     <string name="focus_mode_device_owner_required">Configure o Device Owner antes de iniciar o Modo Foco.</string>
-    <string name="focus_mode_system_lockdown_unsupported">O bloqueio completo do menu de energia exige Android 9 ou superior. O Modo Foco não foi iniciado neste aparelho.</string>
+    <string name="focus_mode_system_lockdown_unsupported">A confirmação completa do quiosque e do bloqueio de modo seguro exige Android 9 ou superior. O Modo Foco não foi iniciado neste aparelho.</string>
     <string name="focus_mode_notification_access_required">Permita o acesso às notificações antes de iniciar o Modo Foco.</string>
     <string name="focus_mode_start_failed">O Android não confirmou todas as regras do Modo Foco. Nenhuma sessão foi mantida; revise as permissões e tente novamente.</string>
     <string name="focus_mode_conflict_title">Outro modo de foco está ativo</string>

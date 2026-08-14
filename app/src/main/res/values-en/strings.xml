@@ -662,7 +662,7 @@
     <string name="focus_mode_how_description">FocusGuard suspends apps that are not allowed, hides their notifications, and keeps the device inside the FocusGuard kiosk environment. You can still browse every app section and open only essential resources and apps selected on this screen.</string>
     <string name="focus_mode_requirements_title">Requirements for reliable blocking</string>
     <string name="focus_mode_device_owner_title">Native device control</string>
-    <string name="focus_mode_device_owner_description">On Android 9 or later, Device Owner can suspend apps and disable Home, Recents, the power menu, and safe-mode boot.</string>
+    <string name="focus_mode_device_owner_description">On Android 9 or later, Device Owner can suspend apps, disable Home and Recents, and prevent safe-mode boot. The normal power menu remains available.</string>
     <string name="focus_mode_configure_device_owner">Set up</string>
     <string name="focus_mode_notification_access_title">Notification blocking</string>
     <string name="focus_mode_notification_access_description">Notification access lets FocusGuard remove alerts posted by blocked apps.</string>
@@ -692,7 +692,7 @@
     <string name="focus_mode_terms_essentials">Calls, emergency, SMS, FocusGuard, and the apps you selected remain available.</string>
     <string name="focus_mode_terms_grayscale_on">Grayscale will be applied to the entire FocusGuard interface for this session.</string>
     <string name="focus_mode_terms_grayscale_off">Grayscale will remain disabled for this session.</string>
-    <string name="focus_mode_terms_power_limits">The normal power/restart menu and safe-mode boot are blocked. Android does not let an app prevent a forced hardware reboot using the buttons or battery removal.</string>
+    <string name="focus_mode_terms_power_limits">Normal shutdown and restart remain available. While any FocusGuard block is active, safe-mode boot is prevented.</string>
     <string name="focus_mode_terms_exit">There is no early stop in the normal screen. Dev Area remains the product technical exit.</string>
     <string name="focus_mode_terms_accept">I chose this block voluntarily, understand its effects, and agree to keep it until the period ends.</string>
     <string name="focus_mode_confirm_start">Agree and start</string>
@@ -710,7 +710,7 @@
     <string name="focus_mode_system_apps_notice">Android does not allow %1$d protected system app(s) to be suspended. They are not shown here, and kiosk mode still prevents normal exit.</string>
     <string name="focus_mode_no_early_stop">There is no normal button to stop early. The mode ends automatically.</string>
     <string name="focus_mode_device_owner_required">Set up Device Owner before starting Focus Mode.</string>
-    <string name="focus_mode_system_lockdown_unsupported">Full power-menu blocking requires Android 9 or later. Focus Mode was not started on this device.</string>
+    <string name="focus_mode_system_lockdown_unsupported">Full kiosk and safe-mode blocking confirmation requires Android 9 or later. Focus Mode was not started on this device.</string>
     <string name="focus_mode_notification_access_required">Allow notification access before starting Focus Mode.</string>
     <string name="focus_mode_start_failed">Android did not confirm every Focus Mode rule. No session was kept; review permissions and try again.</string>
     <string name="focus_mode_conflict_title">Another focus mode is active</string>
