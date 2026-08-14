@@ -173,18 +173,13 @@ class PomodoroLockActivity : ComponentActivity() {
         if (expirationHandled) return
         expirationHandled = true
         lifecycleScope.launch {
-            try {
-                pomodoroManager.stopSession()
-            } catch (error: Exception) {
-                FocusGuardLogger.logError(
-                    "PomodoroLock",
-                    "Falha ao concluir Pomodoro expirado",
-                    error
-                )
-                StrictPomodoroLock.clear(applicationContext)
-            } finally {
-                finishStrictLock()
-            }
+            // O gerente é a única autoridade sobre a transição do ciclo. O
+            // ticker dele detecta o fim deste intervalo e decide entre pausa
+            // curta, pausa longa ou término do plano. Esta Activity apenas sai
+            // do kiosk quando o prazo rigoroso expirou; chamar stopSession()
+            // aqui encerraria indevidamente todas as próximas sessões.
+            delay(150L)
+            finishStrictLock()
         }
     }
 
