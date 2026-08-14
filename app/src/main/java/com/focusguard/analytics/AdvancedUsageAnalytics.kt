@@ -327,9 +327,11 @@ class AdvancedUsageAnalytics(private val context: Context) {
         val exactTotals = accumulator.finish()
         val result = if (
             eventLoopCompleted &&
-            accumulator.hasObservedLifecycleEvents() &&
-            exactTotals.isNotEmpty()
+            accumulator.hasObservedLifecycleEvents()
         ) {
+            // Zero também é um resultado exato. Exigir um mapa não-vazio aqui
+            // fazia um intervalo realmente sem uso cair no fallback agregado,
+            // que pode incluir tempo pertencente a buckets fora da janela.
             exactTotals.asSequence()
                 .filter { (_, timeSpentMs) -> timeSpentMs > 60_000L }
                 .map { (packageName, timeSpentMs) ->
