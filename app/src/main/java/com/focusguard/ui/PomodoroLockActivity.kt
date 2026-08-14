@@ -46,7 +46,6 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
-import androidx.lifecycle.lifecycleScope
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModePolicy
@@ -65,20 +64,21 @@ import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.AndroidEntryPoint
 import java.util.Locale
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class PomodoroLockActivity : ComponentActivity() {
 
     private lateinit var deviceOwnerManager: DeviceOwnerManager
-    private lateinit var pomodoroManager: PomodoroManager
     private var allowFinish = false
     private var expirationHandled = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         deviceOwnerManager = DeviceOwnerManager.getInstance(applicationContext)
-        pomodoroManager = PomodoroManager.getInstance(applicationContext)
+
+        // Inicializa/restaura o motor. A transição foco -> pausa pertence ao
+        // PomodoroManager; esta Activity apenas mantém o intervalo rigoroso fechado.
+        PomodoroManager.getInstance(applicationContext)
 
         window.addFlags(
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
@@ -172,20 +172,11 @@ class PomodoroLockActivity : ComponentActivity() {
     private fun handleExpiration() {
         if (expirationHandled) return
         expirationHandled = true
-        lifecycleScope.launch {
-            try {
-                pomodoroManager.stopSession()
-            } catch (error: Exception) {
-                FocusGuardLogger.logError(
-                    "PomodoroLock",
-                    "Falha ao concluir Pomodoro expirado",
-                    error
-                )
-                StrictPomodoroLock.clear(applicationContext)
-            } finally {
-                finishStrictLock()
-            }
-        }
+
+        // Não chama stopSession(): isso encerraria o plano inteiro e impediria a
+        // pausa configurada. O ticker do PomodoroManager processa a expiração e
+        // cria a pausa curta/longa; aqui apenas liberamos o quiosque que expirou.
+        finishStrictLock()
     }
 
     private fun enforceStrictLock() {
@@ -201,10 +192,7 @@ class PomodoroLockActivity : ComponentActivity() {
     }
 
     private fun finishStrictLock() {
-        if (FocusModePolicy.canPomodoroReleaseKiosk(
-                FocusModeStore.isActive(applicationContext)
-            )
-        ) {
+        if (FocusModePolicy.canPomodoroReleaseKiosk(FocusModeStore.isActive(applicationContext))) {
             runCatching { stopLockTask() }
             deviceOwnerManager.clearStrictPomodoroLockTaskPackages()
         }
@@ -214,11 +202,10 @@ class PomodoroLockActivity : ComponentActivity() {
     }
 
     private fun openEmergencyDialer() {
-        runCatching {
-            startActivity(Intent(Intent.ACTION_DIAL))
-        }.onFailure {
-            FocusGuardLogger.logError("PomodoroLock", "Falha ao abrir telefone", it)
-        }
+        runCatching { startActivity(Intent(Intent.ACTION_DIAL)) }
+            .onFailure {
+                FocusGuardLogger.logError("PomodoroLock", "Falha ao abrir telefone", it)
+            }
     }
 
     private fun enableImmersiveMode() {
