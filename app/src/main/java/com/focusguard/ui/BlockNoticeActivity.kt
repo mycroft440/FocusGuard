@@ -64,7 +64,9 @@ import com.focusguard.security.AuthManager
 import com.focusguard.security.CameraManager
 import com.focusguard.security.IntruderCapturePolicy
 import com.focusguard.security.DeactivationCredentialManager
+import com.focusguard.security.PasswordAppUnlockStore
 import com.focusguard.service.BlockingAccessibilityService
+import com.focusguard.ui.compose.screens.PasswordProtectedAppUnlockPanel
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
@@ -257,6 +259,10 @@ private fun BlockNoticeContent(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val focusRequester = remember { FocusRequester() }
+    val appUnlockStore = remember(context) { PasswordAppUnlockStore(context) }
+    val customUnlockConfig = remember(blockedPackage) {
+        appUnlockStore.get(blockedPackage)
+    }
     var showUnlockDialog by remember { mutableStateOf(false) }
     var password by remember { mutableStateOf("") }
     var error by remember { mutableStateOf<String?>(null) }
@@ -388,19 +394,28 @@ private fun BlockNoticeContent(
                     textAlign = TextAlign.Center
                 )
             } else if (passwordUnlockAvailable == true) {
-                Button(
-                    onClick = { showUnlockDialog = true },
-                    modifier = Modifier.fillMaxWidth().height(50.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Icon(Icons.Default.LockOpen, contentDescription = null, tint = DarkBg)
-                    Spacer(Modifier.width(8.dp))
-                    Text(
-                        stringResource(R.string.block_notice_unlock_with_password),
-                        color = DarkBg,
-                        fontWeight = FontWeight.Bold
+                if (blockedPackage != null && customUnlockConfig != null) {
+                    PasswordProtectedAppUnlockPanel(
+                        blockedPackage = blockedPackage,
+                        authManager = authManager,
+                        sessionManager = blockingSessionManager,
+                        onUnlocked = { unlocked = true }
                     )
+                } else {
+                    Button(
+                        onClick = { showUnlockDialog = true },
+                        modifier = Modifier.fillMaxWidth().height(50.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Icon(Icons.Default.LockOpen, contentDescription = null, tint = DarkBg)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            stringResource(R.string.block_notice_unlock_with_password),
+                            color = DarkBg,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             } else if (passwordUnlockAvailable == false) {
                 Text(
