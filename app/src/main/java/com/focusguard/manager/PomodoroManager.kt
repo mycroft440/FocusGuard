@@ -157,7 +157,11 @@ class PomodoroManager @Inject constructor(
                                 finishCurrentIntervalLocked(playAlarm = false)
                             }
                             else -> {
-                                startIntervalLocked(runtime.phase, runtime.config)
+                                startIntervalLocked(
+                                    phase = runtime.phase,
+                                    config = runtime.config,
+                                    ensureForegroundService = true
+                                )
                             }
                         }
                     } else if (session?.isActive == true && session.endTime > now) {
@@ -381,8 +385,7 @@ class PomodoroManager @Inject constructor(
         check(
             !normalized.hideNotifications ||
                 notificationController.hasNotificationListenerAccess(
-                    FocusModeNotificationService::class.java
-                )
+                    FocusModeNotificationService::class.java)
         ) {
             "Acesso às notificações é necessário para ocultá-las"
         }
@@ -399,7 +402,11 @@ class PomodoroManager @Inject constructor(
             }
             FocusModeNotificationService.requestRefresh(context)
             try {
-                startIntervalLocked(PomodoroPhase.FOCUS, saved)
+                startIntervalLocked(
+                    phase = PomodoroPhase.FOCUS,
+                    config = saved,
+                    ensureForegroundService = true
+                )
             } catch (cancelled: CancellationException) {
                 cleanupAllStateLocked(emitFinished = false, cancelAlarm = true)
                 throw cancelled
@@ -448,13 +455,18 @@ class PomodoroManager @Inject constructor(
             )
             planStore.saveRuntime(runtime)
             _cycleState.value = runtime
-            startIntervalLocked(PomodoroPhase.SHORT_BREAK, config)
+            startIntervalLocked(
+                phase = PomodoroPhase.SHORT_BREAK,
+                config = config,
+                ensureForegroundService = true
+            )
         }
     }
 
     private suspend fun startIntervalLocked(
         phase: PomodoroPhase,
-        config: PomodoroPlanConfig
+        config: PomodoroPlanConfig,
+        ensureForegroundService: Boolean
     ) {
         val durationMinutes = PomodoroCyclePolicy.durationMinutes(config, phase)
         val durationMillis = durationMinutes * 60_000L
@@ -496,10 +508,9 @@ class PomodoroManager @Inject constructor(
 
         applyNotificationPolicyForInterval(config)
 
-        // start() é idempotente quando o serviço já existe. No primeiro intervalo
-        // ele cria o FGS; nas transições apenas atualiza o comando sem jamais
-        // atravessar uma janela em que o plano ficou sem foreground service.
-        PomodoroForegroundService.start(context)
+        if (ensureForegroundService) {
+            PomodoroForegroundService.start(context)
+        }
         if (blocking) {
             StrictPomodoroLock.save(context, endTime, durationMillis)
             PomodoroForegroundService.scheduleWatchdogAlarm(context)
@@ -576,7 +587,11 @@ class PomodoroManager @Inject constructor(
                 )
                 planStore.saveRuntime(nextRuntime)
                 _cycleState.value = nextRuntime
-                startIntervalLocked(nextBreak, runtime.config)
+                startIntervalLocked(
+                    phase = nextBreak,
+                    config = runtime.config,
+                    ensureForegroundService = false
+                )
             }
 
             PomodoroPhase.SHORT_BREAK,
@@ -588,7 +603,11 @@ class PomodoroManager @Inject constructor(
                 )
                 planStore.saveRuntime(nextRuntime)
                 _cycleState.value = nextRuntime
-                startIntervalLocked(PomodoroPhase.FOCUS, runtime.config)
+                startIntervalLocked(
+                    phase = PomodoroPhase.FOCUS,
+                    config = runtime.config,
+                    ensureForegroundService = false
+                )
             }
         }
     }
