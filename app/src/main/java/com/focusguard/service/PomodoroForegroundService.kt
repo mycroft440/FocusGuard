@@ -12,8 +12,12 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
+import com.focusguard.MainActivity
 import com.focusguard.R
+import com.focusguard.manager.PomodoroManager
 import com.focusguard.manager.StrictPomodoroLock
+import com.focusguard.pomodoro.PomodoroPhase
+import com.focusguard.pomodoro.PomodoroPlanStore
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.CoroutineScope
@@ -25,12 +29,13 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Foreground Service that acts as an unkillable watchdog for the Pomodoro strict lock.
- * Ensures the lock screen stays active even if the app process is killed.
- * Uses START_STICKY + AlarmManager failsafe for maximum persistence.
+ * Serviço foreground do Pomodoro.
+ *
+ * Antes ele existia apenas enquanto o bloqueio rigoroso estava ativo. Agora
+ * mantém também os ciclos normais (foco/pausa/foco) vivos em segundo plano. O
+ * watchdog agressivo e a LockActivity continuam exclusivos do modo rigoroso.
  */
 class PomodoroForegroundService : Service() {
-
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var watchdogJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -49,80 +54,68 @@ class PomodoroForegroundService : Service() {
                 } else {
                     context.startService(intent)
                 }
-            } catch (e: Exception) {
-                FocusGuardLogger.logError("PomodoroFGService", "Falha ao iniciar serviço", e)
+            } catch (error: Exception) {
+                FocusGuardLogger.logError("PomodoroFGService", "Falha ao iniciar serviço", error)
             }
         }
 
         fun stop(context: Context) {
-            val intent = Intent(context, PomodoroForegroundService::class.java)
-            try {
-                context.stopService(intent)
-            } catch (e: Exception) {
-                FocusGuardLogger.logError("PomodoroFGService", "Falha ao parar serviço", e)
+            runCatching {
+                context.stopService(Intent(context, PomodoroForegroundService::class.java))
             }
             cancelWatchdogAlarm(context)
         }
 
         fun scheduleWatchdogAlarm(context: Context) {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-
-            // Em Android 12+ (S), apps precisam solicitar explicitamente a
-            // permissão SCHEDULE_EXACT_ALARM ao usuário. Sem ela,
-            // setExactAndAllowWhileIdle lança SecurityException.
-            // Checamos canScheduleExactAlarms e fazemos fallback para set()
-            // (que é inexact mas não crasha) se a permissão não estiver concedida.
             val canScheduleExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 alarmManager.canScheduleExactAlarms()
             } else {
                 true
             }
-
-            val intent = Intent(context, com.focusguard.receiver.PomodoroWatchdogReceiver::class.java)
-            val pendingIntent = PendingIntent.getBroadcast(
-                context,
-                WATCHDOG_ALARM_REQUEST_CODE,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
+            val pendingIntent = watchdogPendingIntent(context)
             val triggerAt = System.currentTimeMillis() + WATCHDOG_INTERVAL_MS
             try {
                 if (canScheduleExact) {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                        alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
-                    } else {
-                        alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
-                    }
+                    alarmManager.setExactAndAllowWhileIdle(
+                        AlarmManager.RTC_WAKEUP,
+                        triggerAt,
+                        pendingIntent
+                    )
                 } else {
-                    // Fallback inexact — melhor que crashar. O watchdog loop
-                    // (delay 2s) ainda garante recuperação em ~2s.
                     alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
-                    FocusGuardLogger.log("PomodoroFGService", "Permissão SCHEDULE_EXACT_ALARM negada; usando alarme inexact")
                 }
-            } catch (e: SecurityException) {
-                // Mesmo com canScheduleExactAlarms true, ROMs OEM podem lançar SecurityException
-                FocusGuardLogger.logError("PomodoroFGService", "SecurityException ao agendar alarme watchdog (fallback para inexact)", e)
-                try {
+            } catch (error: SecurityException) {
+                FocusGuardLogger.logError(
+                    "PomodoroFGService",
+                    "Sem permissão de alarme exato; usando fallback",
+                    error
+                )
+                runCatching {
                     alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
-                } catch (_: Throwable) {
-                    // Se até set() falhar, não há muito o que fazer — o
-                    // watchdog loop ainda roda no Foreground Service.
                 }
-            } catch (e: Throwable) {
-                FocusGuardLogger.logError("PomodoroFGService", "Falha ao agendar alarme watchdog", e)
+            } catch (error: Throwable) {
+                FocusGuardLogger.logError(
+                    "PomodoroFGService",
+                    "Falha ao agendar watchdog",
+                    error
+                )
             }
         }
 
         fun cancelWatchdogAlarm(context: Context) {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+            alarmManager.cancel(watchdogPendingIntent(context))
+        }
+
+        private fun watchdogPendingIntent(context: Context): PendingIntent {
             val intent = Intent(context, com.focusguard.receiver.PomodoroWatchdogReceiver::class.java)
-            val pendingIntent = PendingIntent.getBroadcast(
+            return PendingIntent.getBroadcast(
                 context,
                 WATCHDOG_ALARM_REQUEST_CODE,
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            alarmManager.cancel(pendingIntent)
         }
     }
 
@@ -130,12 +123,14 @@ class PomodoroForegroundService : Service() {
         super.onCreate()
         createNotificationChannel()
         acquireWakeLock()
-        FocusGuardLogger.log("PomodoroFGService", "onCreate: Watchdog criado")
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (!StrictPomodoroLock.isActive(applicationContext)) {
-            FocusGuardLogger.log("PomodoroFGService", "Nenhum Pomodoro ativo. Encerrando serviço.")
+        // Força a restauração do gerente quando o Android recria somente o
+        // serviço após matar o processo.
+        PomodoroManager.getInstance(applicationContext)
+
+        if (!hasActivePlan()) {
             stopSelf()
             return START_NOT_STICKY
         }
@@ -151,169 +146,170 @@ class PomodoroForegroundService : Service() {
             } else {
                 startForeground(NOTIFICATION_ID, notification)
             }
-        } catch (e: Exception) {
-            FocusGuardLogger.logError("PomodoroFGService", "Falha no startForeground", e)
+        } catch (error: Exception) {
+            FocusGuardLogger.logError("PomodoroFGService", "Falha no startForeground", error)
         }
 
         startWatchdogLoop()
-        scheduleWatchdogAlarm(applicationContext)
-
-        FocusGuardLogger.log("PomodoroFGService", "onStartCommand: Watchdog ativo e vigilante")
+        if (StrictPomodoroLock.isActive(applicationContext)) {
+            scheduleWatchdogAlarm(applicationContext)
+        } else {
+            cancelWatchdogAlarm(applicationContext)
+        }
         return START_STICKY
+    }
+
+    private fun hasActivePlan(): Boolean {
+        val runtime = PomodoroPlanStore(applicationContext).readRuntime()
+        return runtime?.active == true || StrictPomodoroLock.isActive(applicationContext)
     }
 
     private fun startWatchdogLoop() {
         watchdogJob?.cancel()
         watchdogJob = scope.launch {
-            // Loop com delay de 2s em vez de 300ms — antes chamava
-            // ensureLockActivityOnTop() via PendingIntent.send() 3.3x/segundo,
-            // consumindo bateria e podendo causar ANR se o PendingIntent travar.
-            // 2s é suficiente para garantir que o lock screen volte em tempo
-            // razoável sem saturar o main thread.
             while (true) {
                 try {
-                    if (!StrictPomodoroLock.isActive(applicationContext)) {
-                        FocusGuardLogger.log("PomodoroFGService", "Pomodoro expirou. Encerrando watchdog.")
+                    if (!hasActivePlan()) {
                         cancelWatchdogAlarm(applicationContext)
                         stopSelf()
                         break
                     }
 
-                    // Atualizar notificação com tempo restante (a cada 2s é suficiente)
                     updateNotification()
-
-                    // Garantir que a PomodoroLockActivity esteja no topo
-                    // — chamado apenas a cada iteração (2s), não a cada 300ms
-                    ensureLockActivityOnTop()
-
-                } catch (e: Throwable) {
-                    FocusGuardLogger.logError("PomodoroFGService", "Erro no loop watchdog", e)
+                    if (StrictPomodoroLock.isActive(applicationContext)) {
+                        ensureLockActivityOnTop()
+                        scheduleWatchdogAlarm(applicationContext)
+                    } else {
+                        cancelWatchdogAlarm(applicationContext)
+                    }
+                } catch (error: Throwable) {
+                    FocusGuardLogger.logError("PomodoroFGService", "Erro no loop", error)
                 }
-                delay(2000)
+                delay(2_000L)
             }
         }
     }
 
-        private fun ensureLockActivityOnTop() {
+    private fun ensureLockActivityOnTop() {
         try {
             val intent = Intent(applicationContext, PomodoroLockActivity::class.java).apply {
                 addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT
                 )
             }
-            val pendingIntent = PendingIntent.getActivity(
+            PendingIntent.getActivity(
                 applicationContext,
                 0,
                 intent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            ).send()
+        } catch (error: Exception) {
+            FocusGuardLogger.logError(
+                "PomodoroFGService",
+                "Falha ao manter LockActivity no topo",
+                error
             )
-            pendingIntent.send()
-        } catch (e: Exception) {
-            FocusGuardLogger.logError("PomodoroFGService", "Falha ao garantir LockActivity no topo via PendingIntent", e)
-            try {
-                val fbIntent = Intent(applicationContext, PomodoroLockActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                }
-                applicationContext.startActivity(fbIntent)
-            } catch (_: Exception) {}
         }
     }
 
     private fun buildNotification(): Notification {
-        val remaining = StrictPomodoroLock.remainingMillis(applicationContext)
-        val minutes = remaining / 60000
-        val seconds = (remaining % 60000) / 1000
+        val runtime = PomodoroPlanStore(applicationContext).readRuntime()
+        val remaining = runtime?.intervalEndTime
+            ?.minus(System.currentTimeMillis())
+            ?.coerceAtLeast(0L)
+            ?: StrictPomodoroLock.remainingMillis(applicationContext)
+        val minutes = remaining / 60_000L
+        val seconds = (remaining % 60_000L) / 1_000L
         val timeText = String.format("%02d:%02d", minutes, seconds)
-
-        val lockIntent = Intent(applicationContext, PomodoroLockActivity::class.java).apply {
-            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        val strict = StrictPomodoroLock.isActive(applicationContext)
+        val phase = runtime?.phase ?: PomodoroPhase.FOCUS
+        val phaseText = when (phase) {
+            PomodoroPhase.FOCUS -> "Foco"
+            PomodoroPhase.SHORT_BREAK -> "Pausa"
+            PomodoroPhase.LONG_BREAK -> "Pausa longa"
         }
-        val pendingIntent = PendingIntent.getActivity(
-            applicationContext, 0, lockIntent,
+
+        val targetActivity = if (strict) PomodoroLockActivity::class.java else MainActivity::class.java
+        val contentIntent = PendingIntent.getActivity(
+            applicationContext,
+            0,
+            Intent(applicationContext, targetActivity).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
         return NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setContentTitle("🔒 Pomodoro Rigoroso Ativo")
+            .setContentTitle(if (strict) "Pomodoro rigoroso" else "Pomodoro • $phaseText")
             .setContentText("Tempo restante: $timeText")
             .setSmallIcon(R.drawable.ic_shield)
-            .setPriority(NotificationCompat.PRIORITY_HIGH)
+            .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(Notification.CATEGORY_SERVICE)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setContentIntent(pendingIntent)
-            .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
+            .setContentIntent(contentIntent)
             .build()
     }
 
     private fun updateNotification() {
-        try {
-            val notification = buildNotification()
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.notify(NOTIFICATION_ID, notification)
-        } catch (_: Exception) {}
+        runCatching {
+            getSystemService(NotificationManager::class.java)
+                ?.notify(NOTIFICATION_ID, buildNotification())
+        }
     }
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Pomodoro Watchdog",
-                NotificationManager.IMPORTANCE_HIGH
+                "Pomodoro",
+                NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = getString(R.string.garante_que_o_bloqueio_rigoroso_do_pomod)
+                description = "Mantém o ciclo Pomodoro e o contador ativos em segundo plano"
                 setShowBadge(false)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
-            val manager = getSystemService(NotificationManager::class.java)
-            manager?.createNotificationChannel(channel)
+            getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
         }
     }
 
     private fun acquireWakeLock() {
-        try {
+        runCatching {
             val powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
             wakeLock = powerManager?.newWakeLock(
                 PowerManager.PARTIAL_WAKE_LOCK,
-                "focusguard:pomodoro_watchdog"
+                "focusguard:pomodoro_cycle"
             )?.apply {
-                acquire(4 * 60 * 60 * 1000L) // Máximo 4h
+                acquire(12 * 60 * 60 * 1_000L)
             }
-        } catch (e: Exception) {
-            FocusGuardLogger.logError("PomodoroFGService", "Falha ao adquirir WakeLock", e)
         }
     }
 
     private fun releaseWakeLock() {
-        try {
-            if (wakeLock?.isHeld == true) {
-                wakeLock?.release()
-            }
-        } catch (_: Exception) {}
+        runCatching {
+            if (wakeLock?.isHeld == true) wakeLock?.release()
+        }
         wakeLock = null
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        FocusGuardLogger.log("PomodoroFGService", "onTaskRemoved: Reagendando watchdog")
         if (StrictPomodoroLock.isActive(applicationContext)) {
             scheduleWatchdogAlarm(applicationContext)
         }
     }
 
     override fun onDestroy() {
-        super.onDestroy()
         watchdogJob?.cancel()
         releaseWakeLock()
         if (StrictPomodoroLock.isActive(applicationContext)) {
-            FocusGuardLogger.log("PomodoroFGService", "onDestroy durante Pomodoro ativo! Reagendando...")
             scheduleWatchdogAlarm(applicationContext)
         }
         scope.cancel()
-        FocusGuardLogger.log("PomodoroFGService", "onDestroy: Watchdog destruído")
+        super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
