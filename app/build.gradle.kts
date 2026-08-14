@@ -20,18 +20,24 @@ android {
         ksp {
             arg("room.schemaLocation", "$projectDir/schemas")
         }
-        // Somente locales com tradução 100% completa. `values/` (pt-BR) é o
-        // default e é sempre mantido; "pt"/"pt-rBR" preservam também os recursos
-        // em português das bibliotecas (AppCompat), que o filtro descartaria.
+        // English is the universal fallback in unqualified `values/`.
+        // Portuguese lives in `values-pt/`; pt-rBR also keeps Portuguese
+        // resources supplied by AndroidX/AppCompat libraries when filtering.
         resourceConfigurations += setOf("en", "pt", "pt-rBR")
+    }
+
+    // AGP 8.7 generates the Android 13+ per-app language configuration from
+    // the actual resource folders. With no manual override selected, AppCompat
+    // follows the phone locale automatically.
+    androidResources {
+        generateLocaleConfig = true
     }
 
     lint {
         abortOnError = true
         checkReleaseBuilds = true
-        // Ambos como erro: os dois locales precisam ficar em paridade exata.
-        // Rebaixar MissingTranslation para warning já mascarou 591 strings
-        // não traduzidas passando pelo CI em verde.
+        // Both locales must stay in exact parity. The default English fallback
+        // and Portuguese translation are treated as a release invariant.
         error.add("MissingTranslation")
         error.add("ExtraTranslation")
     }
