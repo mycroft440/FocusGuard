@@ -1,0 +1,89 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fg_focus_select_time">Selecione o tempo:</string>
+    <string name="fg_focus_grayscale">Tela cinza</string>
+    <string name="fg_language_system_default">Automático do sistema</string>
+    <string name="fg_language_portuguese">Português</string>
+    <string name="fg_language_english">English</string>
+    <string name="fg_close">Fechar</string>
+    <string name="fg_phone">Telefone</string>
+    <string name="fg_allow">Permitir</string>
+    <string name="fg_notifications">Notificações</string>
+    <string name="fg_alarm">Alarme</string>
+    <string name="fg_sound">Som</string>
+    <string name="fg_vibration">Vibração</string>
+
+    <string name="fg_pomodoro_title">Pomodoro</string>
+    <string name="fg_pomodoro_ready">Pronto para focar</string>
+    <string name="fg_pomodoro_disable_focus_for_strict">Desative o Modo Foco antes de usar o Pomodoro rigoroso.</string>
+    <string name="fg_pomodoro_authorize_dnd_start">Autorize o acesso ao Não Perturbe e depois toque em Iniciar.</string>
+    <string name="fg_pomodoro_authorize_notification_access_start">Autorize o acesso às notificações e depois toque em Iniciar.</string>
+    <string name="fg_pomodoro_start_failed">Não foi possível iniciar o Pomodoro.</string>
+    <string name="fg_pomodoro_save_profile_title">Salvar perfil</string>
+    <string name="fg_pomodoro_profile_name">Nome do perfil</string>
+    <string name="fg_pomodoro_profile_saved">Perfil salvo.</string>
+    <string name="fg_pomodoro_profile_save_failed">Não foi possível salvar o perfil.</string>
+    <string name="fg_pomodoro_hide_config">Ocultar configuração</string>
+    <string name="fg_pomodoro_configure">Configurar</string>
+    <string name="fg_pomodoro_start">Iniciar</string>
+    <string name="fg_pomodoro_running">Em andamento</string>
+    <string name="fg_pomodoro_phase_focus">Foco</string>
+    <string name="fg_pomodoro_phase_short_break">Pausa</string>
+    <string name="fg_pomodoro_phase_long_break">Pausa longa</string>
+    <string name="fg_pomodoro_sessions_completed_unlimited">Sessões concluídas: %1$d • até eu parar</string>
+    <string name="fg_pomodoro_sessions_completed_target">Sessões concluídas: %1$d de %2$d</string>
+    <string name="fg_pomodoro_strict_active_hint">Bloqueio rigoroso ativo durante o foco. As pausas liberam o aparelho.</string>
+    <string name="fg_pomodoro_stop">Parar Pomodoro</string>
+    <string name="fg_pomodoro_current_cycle">Ciclo atual</string>
+    <string name="fg_pomodoro_focus_break_summary">Foco %1$s • pausa %2$s</string>
+    <string name="fg_pomodoro_long_break_summary">Pausa longa %1$s a cada %2$d sessões</string>
+    <string name="fg_pomodoro_sessions_label">Sessões: %1$s</string>
+    <string name="fg_pomodoro_profiles">Perfis de Pomodoro</string>
+    <string name="fg_pomodoro_delete_profile_cd">Excluir perfil</string>
+    <string name="fg_pomodoro_profile_summary">%1$d/%2$d • longa %3$d min</string>
+    <string name="fg_pomodoro_config_title">Configurar Pomodoro</string>
+    <string name="fg_pomodoro_focus_time">Tempo de foco</string>
+    <string name="fg_pomodoro_break_time">Tempo de pausa</string>
+    <string name="fg_pomodoro_longer_break">Pausa mais longa</string>
+    <string name="fg_pomodoro_long_break_every">Pausa longa a cada</string>
+    <string name="fg_pomodoro_sessions_value">%1$d sessões</string>
+    <string name="fg_pomodoro_session_count">Número de sessões</string>
+    <string name="fg_pomodoro_until_i_stop">Até eu parar</string>
+    <string name="fg_pomodoro_strict_focus">Bloqueio rigoroso durante o foco</string>
+    <string name="fg_pomodoro_alarm_duration">Tempo do alarme</string>
+    <string name="fg_seconds_short">%1$d s</string>
+    <string name="fg_pomodoro_silence_notifications">Silenciar notificações</string>
+    <string name="fg_pomodoro_dnd_pending">Acesso ao Não Perturbe pendente</string>
+    <string name="fg_pomodoro_hide_notifications_temp">Ocultar notificações temporariamente</string>
+    <string name="fg_pomodoro_notification_access_pending">Acesso às notificações pendente</string>
+    <string name="fg_pomodoro_save_as_profile">Salvar configuração como perfil</string>
+    <string name="fg_pomodoro_sound_label">Som: %1$s</string>
+    <string name="fg_pomodoro_preview_sound_cd">Ouvir som</string>
+
+    <string name="fg_pomodoro_widget_permissions_error">Abra o FocusGuard para revisar as permissões do Pomodoro.</string>
+    <string name="fg_pomodoro_widget_title_phase">Pomodoro • %1$s</string>
+    <string name="fg_pomodoro_widget_focus_break">Foco %1$s • pausa %2$s</string>
+    <string name="fg_pomodoro_widget_long_break">Longa %1$s a cada %2$d sessões</string>
+    <string name="fg_pomodoro_widget_completed_unlimited">Concluídas %1$d • até eu parar</string>
+    <string name="fg_pomodoro_widget_completed_target">Concluídas %1$d • %2$d</string>
+    <string name="fg_pomodoro_widget_sessions">Sessões: %1$s</string>
+
+    <string name="fg_pomodoro_already_running">Já existe um Pomodoro em andamento. Esta configuração ficará salva para o próximo ciclo.</string>
+    <string name="fg_pomodoro_disable_focus_strict">Desative o Modo Foco antes do Pomodoro rigoroso.</string>
+    <string name="fg_pomodoro_authorize_dnd_return">Autorize o Não Perturbe e volte para iniciar.</string>
+    <string name="fg_pomodoro_authorize_notifications_return">Autorize o acesso às notificações e volte para iniciar.</string>
+    <string name="fg_pomodoro_dial_title">Girar relógio</string>
+    <string name="fg_pomodoro_dial_desc">Gire o relógio ou escreva o tempo. Os dois permanecem sincronizados.</string>
+    <string name="fg_pomodoro_intervals_defined">Intervalos definidos</string>
+    <string name="fg_pomodoro_start_button">Iniciar Pomodoro</string>
+
+    <string name="fg_pomodoro_strict_title">Pomodoro rigoroso</string>
+    <string name="fg_pomodoro_notification_title_phase">Pomodoro • %1$s</string>
+    <string name="fg_pomodoro_time_remaining">Tempo restante: %1$s</string>
+    <string name="fg_pomodoro_channel_name">Pomodoro</string>
+    <string name="fg_pomodoro_channel_desc">Mantém o ciclo Pomodoro e o contador ativos em segundo plano</string>
+
+    <string name="fg_blocked_items_count">Itens bloqueados (%1$d)</string>
+    <string name="fg_cannot_revoke_active">Não é possível revogar enquanto o bloqueio está ativo</string>
+    <string name="fg_revoke_device_owner">Revogar Device Owner</string>
+</resources>

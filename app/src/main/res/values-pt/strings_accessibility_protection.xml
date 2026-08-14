@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="accessibility_protection_blocked_toast">Bloqueio ativo: este controle do sistema só é liberado pela manutenção autenticada.</string>
+    <string name="accessibility_protection_blocked_notice">A tentativa de remover ou desativar o FocusGuard foi encerrada.</string>
+
+    <string name="device_owner_status_active">Device Owner ativo — proteção oficial reforçada</string>
+    <string name="device_admin_status_only">Somente Administrador do dispositivo — proteção limitada pelo Android</string>
+    <string name="device_owner_status_inactive">Administrador e Device Owner inativos</string>
+</resources>
