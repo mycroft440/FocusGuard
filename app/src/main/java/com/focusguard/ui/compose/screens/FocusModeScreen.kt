@@ -371,7 +371,7 @@ private fun FocusModeSetupContent(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "Selecione o Tempo:",
+                            stringResource(R.string.fg_focus_select_time),
                             color = TextPrimary,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 14.sp,
@@ -453,7 +453,7 @@ private fun FocusModeSetupContent(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Text(
-                            "Tela cinza",
+                            stringResource(R.string.fg_focus_grayscale),
                             color = TextPrimary,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 14.sp,
