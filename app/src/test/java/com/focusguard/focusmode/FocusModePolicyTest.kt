@@ -83,6 +83,29 @@ class FocusModePolicyTest {
     }
 
     @Test
+    fun `launcher grid contains only chosen launchable non essential apps`() {
+        val visible = FocusModePolicy.visibleAllowedPackages(
+            launchablePackages = listOf(
+                "com.phone",
+                "com.sms",
+                "com.whatsapp",
+                "com.music",
+                "com.blocked"
+            ),
+            allowedPackages = setOf(
+                "com.focusguard.v2",
+                "com.phone",
+                "com.sms",
+                "com.whatsapp",
+                "com.music"
+            ),
+            mandatoryPackages = setOf("com.focusguard.v2", "com.phone", "com.sms")
+        )
+
+        assertThat(visible).containsExactly("com.whatsapp", "com.music")
+    }
+
+    @Test
     fun `temporary allowlist overrides older blocks for phone sms and chosen apps`() {
         val enforced = FocusModePolicy.packagesToEnforce(
             configuredBlockedPackages = setOf("com.phone", "com.sms", "com.whatsapp"),

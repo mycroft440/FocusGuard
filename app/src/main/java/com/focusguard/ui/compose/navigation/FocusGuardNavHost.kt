@@ -151,6 +151,7 @@ fun FocusGuardNavHost(
 
     val currentPomodoro by pomodoroManager.currentSession.collectAsState()
     val activeFocusMode by focusModeManager.session.collectAsState()
+    val focusModeActive = activeFocusMode?.isActive() == true
 
     // Enter the new session on its own tab once. The key stays unchanged while
     // it is active, so the user can still browse every other FocusGuard section.
@@ -161,12 +162,16 @@ fun FocusGuardNavHost(
         }
     }
 
-    LaunchedEffect(currentPomodoro) {
+    LaunchedEffect(currentPomodoro, focusModeActive) {
         if (currentPomodoro?.isActive == true) {
             val now = System.currentTimeMillis()
             if (currentPomodoro!!.endTime <= now) {
                 FocusGuardLogger.log("MainActivity", "Detectado Pomodoro expirado na abertura. Limpando...")
                 pomodoroManager.stopSession()
+                currentRoute = FocusGuardRoute.Home
+            } else if (focusModeActive) {
+                // A normal Pomodoro lives inside the Focus Mode shell so the
+                // lateral navigation and the allowed-app launcher stay reachable.
                 currentRoute = FocusGuardRoute.Home
             } else {
                 FocusGuardLogger.log("MainActivity", "Pomodoro ativo detectado. Redirecionando para tela de foco.")
@@ -231,7 +236,10 @@ fun FocusGuardNavHost(
         refreshProtectionPermissions()
     }
 
-    if (currentPomodoro?.isActive == true && currentPomodoro!!.endTime > System.currentTimeMillis()) {
+    if (!focusModeActive &&
+        currentPomodoro?.isActive == true &&
+        currentPomodoro!!.endTime > System.currentTimeMillis()
+    ) {
         FocusGuardLogger.log("MainActivity", "Pomodoro Ativo detectado na UI. Exibindo tela de foco.")
         Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             PomodoroScreen(
@@ -274,6 +282,7 @@ fun FocusGuardNavHost(
                     profile = userProfile,
                     selectedTab = selectedTab,
                     onTabChange = { selectedTab = it },
+                    focusModeActive = focusModeActive,
                     missingProtectionPermissions = missingProtectionPermissions,
                     showCreatorInstagramCard = showCreatorInstagramCard,
                     showCreatorFeedbackButton =
@@ -309,7 +318,8 @@ fun FocusGuardNavHost(
                                     PermissionsActivity.createPendingProtectionIntent(activity)
                                 )
                             },
-                            onBack = { currentRoute = FocusGuardRoute.Home }
+                            onBack = { currentRoute = FocusGuardRoute.Home },
+                            compactLayout = focusModeActive
                         )
                     },
                     recoveryContent = {

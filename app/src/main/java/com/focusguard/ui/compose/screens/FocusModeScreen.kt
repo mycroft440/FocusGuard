@@ -5,6 +5,7 @@ import android.content.Intent
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -24,6 +26,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.LockClock
 import androidx.compose.material.icons.filled.Message
@@ -41,6 +45,7 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -51,12 +56,16 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
@@ -64,10 +73,12 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.core.graphics.drawable.toBitmap
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeAppCatalog
@@ -81,8 +92,10 @@ import com.focusguard.ui.compose.theme.DarkCard
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import java.util.Locale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @Composable
 fun FocusModeScreen(
@@ -103,6 +116,7 @@ fun FocusModeScreen(
     }
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var grayscaleEnabled by rememberSaveable { mutableStateOf(false) }
+    var showAppPicker by rememberSaveable { mutableStateOf(false) }
     var showConfirmation by remember { mutableStateOf(false) }
     var termsAccepted by remember { mutableStateOf(false) }
     var isStarting by remember { mutableStateOf(false) }
@@ -183,6 +197,29 @@ fun FocusModeScreen(
         )
     }
 
+    if (showAppPicker && activeSession == null) {
+        AccessibleAppPickerDialog(
+            apps = apps,
+            mandatoryPackages = mandatoryPackages,
+            selectedPackages = selectedPackages,
+            searchQuery = searchQuery,
+            onSearchQueryChange = { searchQuery = it },
+            onTogglePackage = { packageName ->
+                val updatedSelection = if (packageName in selectedPackages) {
+                    selectedPackages - packageName
+                } else {
+                    selectedPackages + packageName
+                }
+                selectedPackages = updatedSelection
+                manager.saveDraftPackages(updatedSelection)
+            },
+            onDismiss = {
+                searchQuery = ""
+                showAppPicker = false
+            }
+        )
+    }
+
     val session = activeSession
     if (session != null) {
         FocusModeActiveContent(
@@ -197,15 +234,6 @@ fun FocusModeScreen(
             mandatoryPackages = mandatoryPackages,
             isLoadingApps = isLoadingApps,
             selectedPackages = selectedPackages,
-            onTogglePackage = { packageName ->
-                val updatedSelection = if (packageName in selectedPackages) {
-                    selectedPackages - packageName
-                } else {
-                    selectedPackages + packageName
-                }
-                selectedPackages = updatedSelection
-                manager.saveDraftPackages(updatedSelection)
-            },
             durationText = durationText,
             onDurationTextChange = {
                 durationText = it.filter(Char::isDigit)
@@ -219,8 +247,7 @@ fun FocusModeScreen(
             durationValid = durationMillis != null,
             grayscaleEnabled = grayscaleEnabled,
             onGrayscaleEnabledChange = { grayscaleEnabled = it },
-            searchQuery = searchQuery,
-            onSearchQueryChange = { searchQuery = it },
+            onAddApps = { showAppPicker = true },
             deviceOwnerActive = deviceOwnerActive,
             notificationAccessActive = notificationAccessActive,
             onOpenNotificationAccess = { openNotificationAccess(context) },
@@ -251,7 +278,6 @@ private fun FocusModeSetupContent(
     mandatoryPackages: Set<String>,
     isLoadingApps: Boolean,
     selectedPackages: Set<String>,
-    onTogglePackage: (String) -> Unit,
     durationText: String,
     onDurationTextChange: (String) -> Unit,
     durationUnit: FocusModePolicy.DurationUnit,
@@ -259,8 +285,7 @@ private fun FocusModeSetupContent(
     durationValid: Boolean,
     grayscaleEnabled: Boolean,
     onGrayscaleEnabledChange: (Boolean) -> Unit,
-    searchQuery: String,
-    onSearchQueryChange: (String) -> Unit,
+    onAddApps: () -> Unit,
     deviceOwnerActive: Boolean,
     notificationAccessActive: Boolean,
     onOpenNotificationAccess: () -> Unit,
@@ -268,13 +293,10 @@ private fun FocusModeSetupContent(
     startOutcome: FocusModeManager.StartOutcome?,
     onStart: () -> Unit
 ) {
-    val selectableApps = remember(apps, mandatoryPackages, searchQuery) {
-        apps.filterNot { it.packageName in mandatoryPackages }
-            .filter {
-                searchQuery.isBlank() ||
-                    it.appName.contains(searchQuery, ignoreCase = true) ||
-                    it.packageName.contains(searchQuery, ignoreCase = true)
-            }
+    val selectedApps = remember(apps, mandatoryPackages, selectedPackages) {
+        apps.filter {
+            it.packageName in selectedPackages && it.packageName !in mandatoryPackages
+        }
     }
 
     LazyColumn(
@@ -308,10 +330,168 @@ private fun FocusModeSetupContent(
         }
 
         item {
-            FocusInfoCard(
-                title = stringResource(R.string.focus_mode_how_title),
-                description = stringResource(R.string.focus_mode_how_description)
-            )
+            Card(
+                colors = CardDefaults.cardColors(containerColor = DarkCard),
+                border = BorderStroke(1.dp, CardBorder),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.focus_mode_setup_title),
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                    Text(
+                        stringResource(R.string.focus_mode_duration_title),
+                        color = TextHint,
+                        fontSize = 13.sp
+                    )
+
+                    OutlinedTextField(
+                        value = durationText,
+                        onValueChange = onDurationTextChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        label = { Text(stringResource(R.string.focus_mode_duration_value)) },
+                        leadingIcon = {
+                            Icon(Icons.Default.AccessTime, contentDescription = null)
+                        },
+                        isError = durationText.isNotBlank() && !durationValid,
+                        supportingText = if (!durationValid) {
+                            { Text(stringResource(R.string.focus_mode_duration_invalid)) }
+                        } else null,
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        DurationUnitChip(
+                            label = stringResource(R.string.focus_mode_minutes),
+                            selected = durationUnit == FocusModePolicy.DurationUnit.MINUTES,
+                            onClick = {
+                                onDurationUnitChange(FocusModePolicy.DurationUnit.MINUTES)
+                            }
+                        )
+                        DurationUnitChip(
+                            label = stringResource(R.string.focus_mode_hours),
+                            selected = durationUnit == FocusModePolicy.DurationUnit.HOURS,
+                            onClick = {
+                                onDurationUnitChange(FocusModePolicy.DurationUnit.HOURS)
+                            }
+                        )
+                        DurationUnitChip(
+                            label = stringResource(R.string.focus_mode_days),
+                            selected = durationUnit == FocusModePolicy.DurationUnit.DAYS,
+                            onClick = {
+                                onDurationUnitChange(FocusModePolicy.DurationUnit.DAYS)
+                            }
+                        )
+                    }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .toggleable(
+                                value = grayscaleEnabled,
+                                role = Role.Switch,
+                                onValueChange = onGrayscaleEnabledChange
+                            )
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                stringResource(R.string.focus_mode_grayscale_title),
+                                color = TextPrimary,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                stringResource(R.string.focus_mode_grayscale_description),
+                                color = TextHint,
+                                fontSize = 12.sp,
+                                modifier = Modifier.padding(top = 3.dp)
+                            )
+                        }
+                        Spacer(Modifier.size(12.dp))
+                        Switch(checked = grayscaleEnabled, onCheckedChange = null)
+                    }
+
+                    FocusModeStartError(startOutcome)
+
+                    Button(
+                        onClick = onStart,
+                        enabled = !isStarting && durationValid,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        if (isStarting) {
+                            CircularProgressIndicator(
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        } else {
+                            Text(
+                                stringResource(R.string.focus_mode_start),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        stringResource(
+                            R.string.focus_mode_allowed_apps_title,
+                            selectedApps.size
+                        ),
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 17.sp
+                    )
+                    Text(
+                        stringResource(R.string.focus_mode_allowed_grid_description),
+                        color = TextHint,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 3.dp)
+                    )
+                }
+                OutlinedButton(onClick = onAddApps, enabled = !isLoadingApps) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(Modifier.size(6.dp))
+                    Text(stringResource(R.string.focus_mode_add_apps))
+                }
+            }
+        }
+
+        item {
+            if (isLoadingApps) {
+                Box(
+                    modifier = Modifier.fillMaxWidth().padding(24.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(color = AccentCyan)
+                }
+            } else {
+                FocusAppGrid(
+                    apps = selectedApps,
+                    includeEssentials = true
+                )
+            }
         }
 
         item {
@@ -344,212 +524,10 @@ private fun FocusModeSetupContent(
         }
 
         item {
-            Text(
-                stringResource(R.string.focus_mode_essentials_title),
-                color = TextPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 17.sp
+            FocusInfoCard(
+                title = stringResource(R.string.focus_mode_how_title),
+                description = stringResource(R.string.focus_mode_how_description)
             )
-            Text(
-                stringResource(R.string.focus_mode_essentials_description),
-                color = TextHint,
-                fontSize = 13.sp,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-        }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                EssentialBadge(
-                    icon = Icons.Default.Phone,
-                    text = stringResource(R.string.focus_mode_phone_emergency),
-                    modifier = Modifier.weight(1f)
-                )
-                EssentialBadge(
-                    icon = Icons.Default.Message,
-                    text = stringResource(R.string.focus_mode_sms),
-                    modifier = Modifier.weight(1f)
-                )
-            }
-        }
-
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = DarkCard),
-                border = BorderStroke(1.dp, CardBorder),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .toggleable(
-                            value = grayscaleEnabled,
-                            role = Role.Switch,
-                            onValueChange = onGrayscaleEnabledChange
-                        )
-                        .padding(14.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            stringResource(R.string.focus_mode_grayscale_title),
-                            color = TextPrimary,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            stringResource(R.string.focus_mode_grayscale_description),
-                            color = TextHint,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(top = 4.dp)
-                        )
-                    }
-                    Spacer(Modifier.size(12.dp))
-                    Switch(
-                        checked = grayscaleEnabled,
-                        onCheckedChange = null
-                    )
-                }
-            }
-        }
-
-        item {
-            Text(
-                stringResource(R.string.focus_mode_duration_title),
-                color = TextPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 17.sp
-            )
-        }
-
-        item {
-            OutlinedTextField(
-                value = durationText,
-                onValueChange = onDurationTextChange,
-                modifier = Modifier.fillMaxWidth(),
-                label = { Text(stringResource(R.string.focus_mode_duration_value)) },
-                leadingIcon = { Icon(Icons.Default.AccessTime, contentDescription = null) },
-                isError = durationText.isNotBlank() && !durationValid,
-                supportingText = if (!durationValid) {
-                    { Text(stringResource(R.string.focus_mode_duration_invalid)) }
-                } else null,
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-            )
-        }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                DurationUnitChip(
-                    label = stringResource(R.string.focus_mode_minutes),
-                    selected = durationUnit == FocusModePolicy.DurationUnit.MINUTES,
-                    onClick = {
-                        onDurationUnitChange(FocusModePolicy.DurationUnit.MINUTES)
-                    }
-                )
-                DurationUnitChip(
-                    label = stringResource(R.string.focus_mode_hours),
-                    selected = durationUnit == FocusModePolicy.DurationUnit.HOURS,
-                    onClick = { onDurationUnitChange(FocusModePolicy.DurationUnit.HOURS) }
-                )
-                DurationUnitChip(
-                    label = stringResource(R.string.focus_mode_days),
-                    selected = durationUnit == FocusModePolicy.DurationUnit.DAYS,
-                    onClick = { onDurationUnitChange(FocusModePolicy.DurationUnit.DAYS) }
-                )
-            }
-        }
-
-        item {
-            Text(
-                stringResource(
-                    R.string.focus_mode_allowed_apps_title,
-                    selectedPackages.size
-                ),
-                color = TextPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 17.sp
-            )
-            Text(
-                stringResource(R.string.focus_mode_whatsapp_hint),
-                color = TextHint,
-                fontSize = 13.sp,
-                modifier = Modifier.padding(top = 4.dp)
-            )
-        }
-
-        item {
-            OutlinedTextField(
-                value = searchQuery,
-                onValueChange = onSearchQueryChange,
-                modifier = Modifier.fillMaxWidth(),
-                placeholder = { Text(stringResource(R.string.focus_mode_search_apps)) },
-                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                singleLine = true
-            )
-        }
-
-        if (isLoadingApps) {
-            item {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(24.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = AccentCyan)
-                }
-            }
-        } else if (selectableApps.isEmpty()) {
-            item {
-                Text(
-                    stringResource(R.string.focus_mode_no_apps),
-                    color = TextHint,
-                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                    textAlign = TextAlign.Center
-                )
-            }
-        } else {
-            items(selectableApps, key = { it.packageName }) { app ->
-                AppSelectionItem(
-                    app = SelectableAppUi(
-                        packageName = app.packageName,
-                        appName = app.appName,
-                        isSelected = app.packageName in selectedPackages
-                    ),
-                    onToggle = { onTogglePackage(app.packageName) }
-                )
-            }
-        }
-
-        item {
-            FocusModeStartError(startOutcome)
-        }
-
-        item {
-            Button(
-                onClick = onStart,
-                enabled = !isStarting && durationValid,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                if (isStarting) {
-                    CircularProgressIndicator(
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp,
-                        modifier = Modifier.size(22.dp)
-                    )
-                } else {
-                    Text(
-                        stringResource(R.string.focus_mode_start),
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
         }
     }
 }
@@ -566,10 +544,12 @@ private fun FocusModeActiveContent(
         mutableStateOf(System.currentTimeMillis())
     }
     val allowedApps = remember(apps, session.allowedPackages, mandatoryPackages) {
-        apps.filter {
-            it.packageName in session.allowedPackages &&
-                it.packageName !in mandatoryPackages
-        }
+        val visiblePackages = FocusModePolicy.visibleAllowedPackages(
+            launchablePackages = apps.map { it.packageName },
+            allowedPackages = session.allowedPackages,
+            mandatoryPackages = mandatoryPackages
+        )
+        apps.filter { it.packageName in visiblePackages }
     }
 
     BackHandler(enabled = true) {
@@ -590,35 +570,41 @@ private fun FocusModeActiveContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Column(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalAlignment = Alignment.CenterHorizontally
+            Card(
+                colors = CardDefaults.cardColors(containerColor = DarkCard),
+                border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.45f)),
+                shape = RoundedCornerShape(18.dp)
             ) {
-                Icon(
-                    Icons.Default.LockClock,
-                    contentDescription = null,
-                    tint = AccentCyan,
-                    modifier = Modifier.size(44.dp)
-                )
-                Spacer(Modifier.height(8.dp))
-                Text(
-                    stringResource(R.string.focus_mode_active_title),
-                    color = TextPrimary,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 23.sp
-                )
-                Text(
-                    formatRemaining(session.remainingMillis(nowMillis)),
-                    color = AccentCyan,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 34.sp,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
-                Text(
-                    stringResource(R.string.focus_mode_remaining),
-                    color = TextHint,
-                    fontSize = 13.sp
-                )
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Icon(
+                        Icons.Default.LockClock,
+                        contentDescription = null,
+                        tint = AccentCyan,
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        stringResource(R.string.focus_mode_active_title),
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp
+                    )
+                    Text(
+                        formatRemaining(session.remainingMillis(nowMillis)),
+                        color = AccentCyan,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 30.sp,
+                        modifier = Modifier.padding(top = 5.dp)
+                    )
+                    Text(
+                        stringResource(R.string.focus_mode_remaining),
+                        color = TextHint,
+                        fontSize = 13.sp
+                    )
+                }
             }
         }
 
@@ -642,95 +628,44 @@ private fun FocusModeActiveContent(
 
         item {
             Text(
-                stringResource(R.string.focus_mode_essential_actions),
-                color = TextPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 17.sp
-            )
-        }
-
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Button(
-                    onClick = {
-                        launchFocusIntent(context, FocusModeAppCatalog.phoneIntent())
-                    },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-                ) {
-                    Icon(Icons.Default.Phone, contentDescription = null)
-                    Spacer(Modifier.size(6.dp))
-                    Text(stringResource(R.string.focus_mode_call))
-                }
-                Button(
-                    onClick = {
-                        launchFocusIntent(context, FocusModeAppCatalog.smsIntent())
-                    },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-                ) {
-                    Icon(Icons.Default.Message, contentDescription = null)
-                    Spacer(Modifier.size(6.dp))
-                    Text(stringResource(R.string.focus_mode_open_sms))
-                }
-            }
-        }
-
-        item {
-            Text(
                 stringResource(R.string.focus_mode_available_apps),
                 color = TextPrimary,
                 fontWeight = FontWeight.Bold,
                 fontSize = 17.sp
             )
+            Text(
+                stringResource(R.string.focus_mode_active_apps_locked),
+                color = TextHint,
+                fontSize = 12.sp,
+                modifier = Modifier.padding(top = 3.dp)
+            )
         }
 
-        if (allowedApps.isEmpty()) {
-            item {
+        item {
+            FocusAppGrid(
+                apps = allowedApps,
+                includeEssentials = true,
+                onOpenPhone = {
+                    launchFocusIntent(context, FocusModeAppCatalog.phoneIntent())
+                },
+                onOpenSms = {
+                    launchFocusIntent(context, FocusModeAppCatalog.smsIntent())
+                },
+                onOpenApp = { packageName ->
+                    manager.createOpenAppIntent(packageName)?.let {
+                        launchFocusIntent(context, it)
+                    }
+                }
+            )
+
+            if (allowedApps.isEmpty()) {
                 Text(
                     stringResource(R.string.focus_mode_only_essentials),
                     color = TextHint,
-                    modifier = Modifier.padding(vertical = 8.dp)
+                    fontSize = 12.sp,
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    textAlign = TextAlign.Center
                 )
-            }
-        } else {
-            items(allowedApps, key = { it.packageName }) { app ->
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            manager.createOpenAppIntent(app.packageName)?.let {
-                                launchFocusIntent(context, it)
-                            }
-                        },
-                    colors = CardDefaults.cardColors(containerColor = DarkCard),
-                    border = BorderStroke(1.dp, CardBorder),
-                    shape = RoundedCornerShape(14.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = null,
-                            tint = AccentCyan
-                        )
-                        Spacer(Modifier.size(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(app.appName, color = TextPrimary, fontWeight = FontWeight.Bold)
-                            Text(app.packageName, color = TextHint, fontSize = 11.sp)
-                        }
-                        Text(
-                            stringResource(R.string.action_open),
-                            color = AccentCyan,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
             }
         }
 
@@ -774,6 +709,237 @@ private fun FocusModeActiveContent(
                 modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
             )
         }
+    }
+}
+
+@Composable
+private fun AccessibleAppPickerDialog(
+    apps: List<FocusModeSelectableApp>,
+    mandatoryPackages: Set<String>,
+    selectedPackages: Set<String>,
+    searchQuery: String,
+    onSearchQueryChange: (String) -> Unit,
+    onTogglePackage: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    val selectableApps = remember(apps, mandatoryPackages, searchQuery) {
+        apps.filterNot { it.packageName in mandatoryPackages }
+            .filter {
+                searchQuery.isBlank() ||
+                    it.appName.contains(searchQuery, ignoreCase = true) ||
+                    it.packageName.contains(searchQuery, ignoreCase = true)
+            }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.focus_mode_picker_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    stringResource(R.string.focus_mode_picker_description),
+                    color = TextHint,
+                    fontSize = 13.sp
+                )
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = onSearchQueryChange,
+                    modifier = Modifier.fillMaxWidth(),
+                    placeholder = { Text(stringResource(R.string.focus_mode_search_apps)) },
+                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                    singleLine = true
+                )
+                if (selectableApps.isEmpty()) {
+                    Text(
+                        stringResource(R.string.focus_mode_no_apps),
+                        color = TextHint,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth().padding(16.dp)
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxWidth().heightIn(max = 430.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        items(selectableApps, key = { it.packageName }) { app ->
+                            AppSelectionItem(
+                                app = SelectableAppUi(
+                                    packageName = app.packageName,
+                                    appName = app.appName,
+                                    isSelected = app.packageName in selectedPackages
+                                ),
+                                onToggle = { onTogglePackage(app.packageName) }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDismiss) {
+                Text(stringResource(R.string.focus_mode_picker_done))
+            }
+        }
+    )
+}
+
+private enum class FocusGridEntryType {
+    PHONE,
+    SMS,
+    INSTALLED_APP
+}
+
+private data class FocusGridEntry(
+    val label: String,
+    val type: FocusGridEntryType,
+    val packageName: String? = null
+)
+
+@Composable
+private fun FocusAppGrid(
+    apps: List<FocusModeSelectableApp>,
+    includeEssentials: Boolean,
+    onOpenPhone: (() -> Unit)? = null,
+    onOpenSms: (() -> Unit)? = null,
+    onOpenApp: ((String) -> Unit)? = null
+) {
+    val phoneLabel = stringResource(R.string.focus_mode_phone_emergency)
+    val smsLabel = stringResource(R.string.focus_mode_open_sms)
+    val entries = buildList {
+        if (includeEssentials) {
+            add(
+                FocusGridEntry(
+                    label = phoneLabel,
+                    type = FocusGridEntryType.PHONE
+                )
+            )
+            add(
+                FocusGridEntry(
+                    label = smsLabel,
+                    type = FocusGridEntryType.SMS
+                )
+            )
+        }
+        apps.forEach { app ->
+            add(
+                FocusGridEntry(
+                    label = app.appName,
+                    type = FocusGridEntryType.INSTALLED_APP,
+                    packageName = app.packageName
+                )
+            )
+        }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        entries.chunked(3).forEach { rowEntries ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                rowEntries.forEach { entry ->
+                    val onClick = when (entry.type) {
+                        FocusGridEntryType.PHONE -> onOpenPhone
+                        FocusGridEntryType.SMS -> onOpenSms
+                        FocusGridEntryType.INSTALLED_APP -> {
+                            entry.packageName?.let { packageName ->
+                                onOpenApp?.let { open -> { open(packageName) } }
+                            }
+                        }
+                    }
+                    FocusAppTile(
+                        entry = entry,
+                        onClick = onClick,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                repeat(3 - rowEntries.size) {
+                    Spacer(modifier = Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FocusAppTile(
+    entry: FocusGridEntry,
+    onClick: (() -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    Card(
+        modifier = modifier
+            .height(112.dp)
+            .then(
+                if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+            ),
+        colors = CardDefaults.cardColors(containerColor = DarkCard),
+        border = BorderStroke(1.dp, CardBorder),
+        shape = RoundedCornerShape(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            when (entry.type) {
+                FocusGridEntryType.PHONE -> Icon(
+                    Icons.Default.Phone,
+                    contentDescription = null,
+                    tint = AccentCyan,
+                    modifier = Modifier.size(44.dp)
+                )
+                FocusGridEntryType.SMS -> Icon(
+                    Icons.Default.Message,
+                    contentDescription = null,
+                    tint = AccentCyan,
+                    modifier = Modifier.size(44.dp)
+                )
+                FocusGridEntryType.INSTALLED_APP -> InstalledAppIcon(
+                    packageName = requireNotNull(entry.packageName),
+                    appName = entry.label
+                )
+            }
+            Spacer(Modifier.height(7.dp))
+            Text(
+                text = entry.label,
+                color = TextPrimary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+@Composable
+private fun InstalledAppIcon(packageName: String, appName: String) {
+    val context = LocalContext.current
+    val icon by produceState<ImageBitmap?>(initialValue = null, packageName) {
+        value = withContext(Dispatchers.IO) {
+            runCatching {
+                context.packageManager.getApplicationIcon(packageName)
+                    .toBitmap(width = 96, height = 96)
+                    .asImageBitmap()
+            }.getOrNull()
+        }
+    }
+
+    if (icon != null) {
+        Image(
+            bitmap = requireNotNull(icon),
+            contentDescription = appName,
+            modifier = Modifier.size(48.dp).clip(RoundedCornerShape(12.dp))
+        )
+    } else {
+        Icon(
+            Icons.Default.Apps,
+            contentDescription = appName,
+            tint = AccentCyan,
+            modifier = Modifier.size(44.dp)
+        )
     }
 }
 
@@ -888,29 +1054,6 @@ private fun FocusRequirementCard(
             if (!ready && actionLabel != null && onAction != null) {
                 TextButton(onClick = onAction) { Text(actionLabel) }
             }
-        }
-    }
-}
-
-@Composable
-private fun EssentialBadge(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    text: String,
-    modifier: Modifier = Modifier
-) {
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(containerColor = AccentCyan.copy(alpha = 0.1f)),
-        border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.35f)),
-        shape = RoundedCornerShape(14.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(icon, contentDescription = null, tint = AccentCyan)
-            Spacer(Modifier.size(8.dp))
-            Text(text, color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
         }
     }
 }

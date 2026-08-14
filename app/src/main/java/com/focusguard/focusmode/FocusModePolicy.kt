@@ -48,6 +48,21 @@ object FocusModePolicy {
         .filterNot(allowedPackages.toSet()::contains)
         .toSet()
 
+    fun visibleAllowedPackages(
+        launchablePackages: Collection<String>,
+        allowedPackages: Collection<String>,
+        mandatoryPackages: Collection<String>
+    ): Set<String> {
+        val allowed = allowedPackages.toSet()
+        val mandatory = mandatoryPackages.toSet()
+        return launchablePackages
+            .asSequence()
+            .filter(String::isNotBlank)
+            .filter(allowed::contains)
+            .filterNot(mandatory::contains)
+            .toSet()
+    }
+
     fun packagesToEnforce(
         configuredBlockedPackages: Collection<String>,
         focusModeBlockedPackages: Collection<String>,

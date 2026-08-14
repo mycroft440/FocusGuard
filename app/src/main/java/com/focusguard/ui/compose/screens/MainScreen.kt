@@ -1,6 +1,7 @@
 package com.focusguard.ui.compose.screens
 
 import kotlin.OptIn
+import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -40,6 +41,7 @@ fun MainScreen(
     profile: UserProfile,
     selectedTab: Int,
     onTabChange: (Int) -> Unit,
+    focusModeActive: Boolean,
     missingProtectionPermissions: List<ProtectionPermission>,
     showCreatorInstagramCard: Boolean,
     showCreatorFeedbackButton: Boolean,
@@ -56,6 +58,10 @@ fun MainScreen(
         stringResource(R.string.profile_settings_content_description, profile.displayName)
     } else {
         stringResource(R.string.nav_settings)
+    }
+
+    BackHandler(enabled = focusModeActive) {
+        if (selectedTab != 4) onTabChange(4)
     }
 
     Scaffold(
@@ -121,84 +127,134 @@ fun MainScreen(
             }
         },
         bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                tonalElevation = 8.dp
-            ) {
-                NavigationBarItem(
-                    selected = selectedTab == 1,
-                    onClick = { onTabChange(1) },
-                    icon = { Icon(Icons.Default.Shield, contentDescription = stringResource(R.string.nav_protection)) },
-                    label = { Text(stringResource(R.string.nav_protection)) },
-                    colors = navigationItemColors()
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 2,
-                    onClick = { onTabChange(2) },
-                    icon = { Icon(Icons.Default.Timer, contentDescription = stringResource(R.string.nav_focus)) },
-                    label = { Text(stringResource(R.string.nav_focus)) },
-                    colors = navigationItemColors()
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 3,
-                    onClick = { onTabChange(3) },
-                    icon = {
-                        Icon(
-                            Icons.Outlined.VisibilityOff,
-                            contentDescription = stringResource(R.string.nav_recovery)
-                        )
-                    },
-                    label = { Text(stringResource(R.string.nav_recovery)) },
-                    colors = navigationItemColors()
-                )
-                NavigationBarItem(
-                    selected = selectedTab == 4,
-                    onClick = { onTabChange(4) },
-                    icon = {
-                        Icon(
-                            Icons.Default.LockClock,
-                            contentDescription = stringResource(R.string.nav_focus_mode)
-                        )
-                    },
-                    label = { Text(stringResource(R.string.nav_focus_mode)) },
-                    colors = navigationItemColors()
+            if (!focusModeActive) {
+                FocusGuardBottomNavigation(
+                    selectedTab = selectedTab,
+                    onTabChange = onTabChange
                 )
             }
         }
     ) { paddingValues ->
-        Box(
+        Row(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background)
                 .padding(paddingValues)
         ) {
-            AnimatedContent(
-                targetState = selectedTab,
-                transitionSpec = {
-                    fadeIn(animationSpec = tween(180)) togetherWith
-                        fadeOut(animationSpec = tween(180))
-                },
-                label = "MainContent"
-            ) { targetTab ->
-                when (targetTab) {
-                    0 -> usageStatsContent()
-                    1 -> HomeContent(
-                        missingProtectionPermissions = missingProtectionPermissions,
-                        showCreatorInstagramCard = showCreatorInstagramCard,
-                        showCreatorFeedbackButton = showCreatorFeedbackButton,
-                        onPermissionsClick = onPermissionsClick,
-                        onCreatorInstagramClick = onCreatorInstagramClick,
-                        onBlockTypeClick = onBlockTypeClick,
-                        pagerHint = false
-                    )
-                    2 -> pomodoroContent()
-                    3 -> recoveryContent()
-                    4 -> focusModeContent()
+            if (focusModeActive) {
+                FocusModeNavigationRail(
+                    selectedTab = selectedTab,
+                    onTabChange = onTabChange
+                )
+            }
+            Box(modifier = Modifier.weight(1f).fillMaxSize()) {
+                AnimatedContent(
+                    targetState = selectedTab,
+                    transitionSpec = {
+                        fadeIn(animationSpec = tween(180)) togetherWith
+                            fadeOut(animationSpec = tween(180))
+                    },
+                    label = "MainContent"
+                ) { targetTab ->
+                    when (targetTab) {
+                        0 -> usageStatsContent()
+                        1 -> HomeContent(
+                            missingProtectionPermissions = missingProtectionPermissions,
+                            showCreatorInstagramCard = showCreatorInstagramCard,
+                            showCreatorFeedbackButton = showCreatorFeedbackButton,
+                            onPermissionsClick = onPermissionsClick,
+                            onCreatorInstagramClick = onCreatorInstagramClick,
+                            onBlockTypeClick = onBlockTypeClick,
+                            pagerHint = false
+                        )
+                        2 -> pomodoroContent()
+                        3 -> recoveryContent()
+                        4 -> focusModeContent()
+                    }
                 }
             }
         }
     }
 }
+
+@Composable
+private fun FocusGuardBottomNavigation(
+    selectedTab: Int,
+    onTabChange: (Int) -> Unit
+) {
+    NavigationBar(
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 8.dp
+    ) {
+        focusGuardNavigationItems().forEach { item ->
+            NavigationBarItem(
+                selected = selectedTab == item.tab,
+                onClick = { onTabChange(item.tab) },
+                icon = {
+                    Icon(
+                        item.icon,
+                        contentDescription = stringResource(item.labelRes)
+                    )
+                },
+                label = { Text(stringResource(item.labelRes)) },
+                colors = navigationItemColors()
+            )
+        }
+    }
+}
+
+@Composable
+private fun FocusModeNavigationRail(
+    selectedTab: Int,
+    onTabChange: (Int) -> Unit
+) {
+    NavigationRail(
+        containerColor = MaterialTheme.colorScheme.surface,
+        header = {
+            Icon(
+                Icons.Default.LockClock,
+                contentDescription = stringResource(R.string.nav_focus_mode),
+                tint = AccentCyan,
+                modifier = Modifier.padding(vertical = 12.dp).size(28.dp)
+            )
+        }
+    ) {
+        focusGuardNavigationItems().forEach { item ->
+            NavigationRailItem(
+                selected = selectedTab == item.tab,
+                onClick = { onTabChange(item.tab) },
+                icon = {
+                    Icon(
+                        item.icon,
+                        contentDescription = stringResource(item.labelRes)
+                    )
+                },
+                label = { Text(stringResource(item.labelRes), fontSize = 10.sp) },
+                alwaysShowLabel = true,
+                colors = NavigationRailItemDefaults.colors(
+                    selectedIconColor = AccentCyan,
+                    selectedTextColor = AccentCyan,
+                    unselectedIconColor = TextHint,
+                    unselectedTextColor = TextHint,
+                    indicatorColor = AccentCyan.copy(alpha = 0.1f)
+                )
+            )
+        }
+    }
+}
+
+private data class FocusGuardNavigationItem(
+    val tab: Int,
+    val icon: ImageVector,
+    val labelRes: Int
+)
+
+private fun focusGuardNavigationItems() = listOf(
+    FocusGuardNavigationItem(1, Icons.Default.Shield, R.string.nav_protection),
+    FocusGuardNavigationItem(2, Icons.Default.Timer, R.string.nav_focus),
+    FocusGuardNavigationItem(3, Icons.Outlined.VisibilityOff, R.string.nav_recovery),
+    FocusGuardNavigationItem(4, Icons.Default.LockClock, R.string.nav_focus_mode)
+)
 
 internal fun pendingPermissionsDescriptionRes(
     missingPermissions: List<ProtectionPermission>

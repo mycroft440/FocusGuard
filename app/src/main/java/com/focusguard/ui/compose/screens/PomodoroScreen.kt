@@ -88,7 +88,8 @@ fun PomodoroScreen(
     pomodoroManager: PomodoroManager,
     authManager: AuthManager,
     onPermissionsRequired: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    compactLayout: Boolean = false
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
@@ -133,7 +134,10 @@ fun PomodoroScreen(
     Scaffold(containerColor = DarkBg) { padding ->
         Box(modifier = Modifier.fillMaxSize().padding(padding)) {
             Column(
-                modifier = Modifier.fillMaxSize().padding(horizontal = 16.dp, vertical = 12.dp),
+                modifier = Modifier.fillMaxSize().padding(
+                    horizontal = if (compactLayout) 8.dp else 16.dp,
+                    vertical = 12.dp
+                ),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
@@ -154,7 +158,7 @@ fun PomodoroScreen(
                     )
                 }
 
-                Spacer(modifier = Modifier.height(24.dp))
+                Spacer(modifier = Modifier.height(if (compactLayout) 12.dp else 24.dp))
 
                 StopwatchTimer(
                     minutes = if (isRunning) remainingMinutes else selectedMinutes,
@@ -162,7 +166,7 @@ fun PomodoroScreen(
                     progress = progress,
                     isActive = isRunning,
                     onMinutesChange = { selectedMinutes = it },
-                    modifier = Modifier.size(280.dp)
+                    modifier = Modifier.size(if (compactLayout) 208.dp else 280.dp)
                 )
 
                 Spacer(modifier = Modifier.height(14.dp))
