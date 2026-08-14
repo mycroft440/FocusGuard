@@ -20,6 +20,7 @@ import com.focusguard.pomodoro.PomodoroPhase
 import com.focusguard.pomodoro.PomodoroPlanStore
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.FocusGuardLogger
+import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -223,14 +224,16 @@ class PomodoroForegroundService : Service() {
             ?: StrictPomodoroLock.remainingMillis(applicationContext)
         val minutes = remaining / 60_000L
         val seconds = (remaining % 60_000L) / 1_000L
-        val timeText = String.format("%02d:%02d", minutes, seconds)
+        val timeText = String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
         val strict = StrictPomodoroLock.isActive(applicationContext)
         val phase = runtime?.phase ?: PomodoroPhase.FOCUS
-        val phaseText = when (phase) {
-            PomodoroPhase.FOCUS -> "Foco"
-            PomodoroPhase.SHORT_BREAK -> "Pausa"
-            PomodoroPhase.LONG_BREAK -> "Pausa longa"
-        }
+        val phaseText = getString(
+            when (phase) {
+                PomodoroPhase.FOCUS -> R.string.fg_pomodoro_phase_focus
+                PomodoroPhase.SHORT_BREAK -> R.string.fg_pomodoro_phase_short_break
+                PomodoroPhase.LONG_BREAK -> R.string.fg_pomodoro_phase_long_break
+            }
+        )
 
         val targetActivity = if (strict) PomodoroLockActivity::class.java else MainActivity::class.java
         val contentIntent = PendingIntent.getActivity(
@@ -242,9 +245,15 @@ class PomodoroForegroundService : Service() {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
+        val title = if (strict) {
+            getString(R.string.fg_pomodoro_strict_title)
+        } else {
+            getString(R.string.fg_pomodoro_notification_title_phase, phaseText)
+        }
+
         return NotificationCompat.Builder(applicationContext, CHANNEL_ID)
-            .setContentTitle(if (strict) "Pomodoro rigoroso" else "Pomodoro • $phaseText")
-            .setContentText("Tempo restante: $timeText")
+            .setContentTitle(title)
+            .setContentText(getString(R.string.fg_pomodoro_time_remaining, timeText))
             .setSmallIcon(R.drawable.ic_shield)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .setCategory(Notification.CATEGORY_SERVICE)
@@ -265,10 +274,10 @@ class PomodoroForegroundService : Service() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             val channel = NotificationChannel(
                 CHANNEL_ID,
-                "Pomodoro",
+                getString(R.string.fg_pomodoro_channel_name),
                 NotificationManager.IMPORTANCE_LOW
             ).apply {
-                description = "Mantém o ciclo Pomodoro e o contador ativos em segundo plano"
+                description = getString(R.string.fg_pomodoro_channel_desc)
                 setShowBadge(false)
                 lockscreenVisibility = Notification.VISIBILITY_PUBLIC
             }
