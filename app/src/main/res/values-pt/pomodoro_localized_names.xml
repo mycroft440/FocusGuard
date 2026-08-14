@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fg_pomodoro_profile_classic">Clássico 25/5</string>
+    <string name="fg_pomodoro_profile_deep">Foco profundo 50/10</string>
+    <string name="fg_pomodoro_profile_sprint">Sprint 15/3</string>
+    <string name="fg_pomodoro_sound_classic">Clássico</string>
+    <string name="fg_pomodoro_sound_double">Duplo</string>
+    <string name="fg_pomodoro_sound_confirmation">Confirmação</string>
+    <string name="fg_pomodoro_sound_deep">Profundo</string>
+    <string name="fg_pomodoro_sound_soft">Suave</string>
+    <string name="fg_pomodoro_sound_bell">Campainha</string>
+    <string name="fg_pomodoro_sound_pulse_1">Pulso 1</string>
+    <string name="fg_pomodoro_sound_pulse_2">Pulso 2</string>
+    <string name="fg_pomodoro_sound_pulse_3">Pulso 3</string>
+    <string name="fg_pomodoro_sound_stair">Escada</string>
+</resources>
