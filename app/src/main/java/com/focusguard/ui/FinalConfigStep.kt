@@ -130,11 +130,6 @@ fun FinalConfigStep(
     val passwordValid = PasswordAppUnlockStore.isPasswordValid(unlockPassword) &&
         unlockPassword == unlockPasswordConfirmation
     val patternValid = PasswordAppUnlockStore.isPatternValid(patternCredential)
-    val unlockConfigValid = when (unlockMode) {
-        PasswordAppUnlockMode.PASSWORD -> passwordValid
-        PasswordAppUnlockMode.PATTERN -> patternValid
-        PasswordAppUnlockMode.BIOMETRIC_ONLY -> biometricAvailable
-    }
 
     Scaffold(
         topBar = {
@@ -494,7 +489,7 @@ fun FinalConfigStep(
                         }
                     }
                 },
-                enabled = !isSaving && apps.isNotEmpty() && (hasPassword || !unlockConfigValid),
+                enabled = !isSaving && apps.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                 shape = RoundedCornerShape(16.dp)
@@ -546,6 +541,14 @@ private fun PatternSetupDialog(
         PasswordAppUnlockStore.MIN_PATTERN_POINTS
     )
     val mismatch = stringResource(R.string.password_app_unlock_pattern_mismatch)
+    val instruction = if (firstPattern == null) {
+        stringResource(
+            R.string.password_app_unlock_pattern_first,
+            PasswordAppUnlockStore.MIN_PATTERN_POINTS
+        )
+    } else {
+        stringResource(R.string.password_app_unlock_pattern_confirm)
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -553,14 +556,7 @@ private fun PatternSetupDialog(
         text = {
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
-                    stringResource(
-                        if (firstPattern == null) {
-                            R.string.password_app_unlock_pattern_first
-                        } else {
-                            R.string.password_app_unlock_pattern_confirm
-                        },
-                        PasswordAppUnlockStore.MIN_PATTERN_POINTS
-                    ),
+                    instruction,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 13.sp
                 )
