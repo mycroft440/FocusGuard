@@ -96,6 +96,10 @@ class PomodoroWidgetDialActivity : AppCompatActivity() {
 
         fun start() {
             when {
+                store.readRuntime()?.active == true -> {
+                    error = "Já existe um Pomodoro em andamento. Esta configuração ficará salva para o próximo ciclo."
+                    PomodoroWidgetProvider.requestUpdate(context)
+                }
                 config.strictBlocking && FocusModeStore.isActive(context) -> {
                     error = "Desative o Modo Foco antes do Pomodoro rigoroso."
                 }
