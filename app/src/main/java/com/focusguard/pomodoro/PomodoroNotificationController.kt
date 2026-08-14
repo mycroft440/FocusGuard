@@ -45,16 +45,27 @@ class PomodoroNotificationController(context: Context) {
             .any { it == component }
     }
 
+    /**
+     * Guarda uma única vez o filtro que existia antes do plano. O snapshot é
+     * usado também quando o modo rigoroso está ativo com o toggle "silenciar"
+     * desligado, pois o bloqueador legado muda o DND para PRIORITY por conta
+     * própria e precisamos desfazer essa mudança sem perder a escolha do usuário.
+     */
+    fun captureCurrentFilter(): Boolean {
+        val notificationManager = manager ?: return false
+        if (!notificationManager.isNotificationPolicyAccessGranted) return false
+        if (prefs.contains(KEY_PREVIOUS_FILTER)) return true
+        return prefs.edit()
+            .putInt(KEY_PREVIOUS_FILTER, notificationManager.currentInterruptionFilter)
+            .commit()
+    }
+
     fun apply(config: PomodoroPlanConfig): Boolean {
         if (!config.silenceNotifications) return true
         val notificationManager = manager ?: return false
         if (!notificationManager.isNotificationPolicyAccessGranted) return false
+        if (!captureCurrentFilter()) return false
 
-        if (!prefs.contains(KEY_PREVIOUS_FILTER)) {
-            prefs.edit()
-                .putInt(KEY_PREVIOUS_FILTER, notificationManager.currentInterruptionFilter)
-                .commit()
-        }
         return runCatching {
             notificationManager.setInterruptionFilter(
                 NotificationManager.INTERRUPTION_FILTER_ALARMS
@@ -64,7 +75,16 @@ class PomodoroNotificationController(context: Context) {
     }
 
     /**
-     * Restaura apenas o estado que o FocusGuard realmente alterou.
+     * Reaplica temporariamente o estado anterior sem apagar o snapshot. É usado
+     * entre fases de um mesmo plano quando "Silenciar notificações" está
+     * desligado, para neutralizar o DND automático do bloqueio rigoroso.
+     */
+    fun restoreForActivePlan() {
+        restoreInternal(clearSnapshot = false)
+    }
+
+    /**
+     * Restaura o estado anterior e encerra a posse do Pomodoro sobre o DND.
      *
      * Em Android 15+ para apps target 35+, setInterruptionFilter() controla uma
      * AutomaticZenRule pertencente ao próprio app. Nesse modelo, ALL desativa a
@@ -73,6 +93,10 @@ class PomodoroNotificationController(context: Context) {
      * filtro global que existia antes de o Pomodoro assumir o controle.
      */
     fun restore() {
+        restoreInternal(clearSnapshot = true)
+    }
+
+    private fun restoreInternal(clearSnapshot: Boolean) {
         val hadPreviousFilter = prefs.contains(KEY_PREVIOUS_FILTER)
         val notificationManager = manager
 
@@ -80,8 +104,8 @@ class PomodoroNotificationController(context: Context) {
             if (notificationManager?.isNotificationPolicyAccessGranted == true) {
                 when {
                     Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM -> {
-                        // Também limpa uma eventual regra moderna deixada pelo
-                        // bloqueio rigoroso, mesmo quando "silenciar" estava off.
+                        // No target 35+, ALL desativa a regra automática do app;
+                        // não substitui o DND global configurado pelo usuário.
                         runCatching {
                             notificationManager.setInterruptionFilter(
                                 NotificationManager.INTERRUPTION_FILTER_ALL
@@ -100,7 +124,7 @@ class PomodoroNotificationController(context: Context) {
                 }
             }
         } finally {
-            if (hadPreviousFilter) {
+            if (clearSnapshot && hadPreviousFilter) {
                 prefs.edit().remove(KEY_PREVIOUS_FILTER).commit()
             }
         }
