@@ -5,13 +5,15 @@ import android.media.AudioManager
 import android.media.ToneGenerator
 import android.os.VibrationEffect
 import android.os.Vibrator
+import androidx.annotation.StringRes
+import com.focusguard.R
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 
 object PomodoroAlarmController {
     data class AlarmSound(
         val id: Int,
-        val name: String
+        @StringRes val nameRes: Int
     )
 
     private data class ToneStep(
@@ -21,16 +23,16 @@ object PomodoroAlarmController {
     )
 
     val sounds: List<AlarmSound> = listOf(
-        AlarmSound(0, "Clássico"),
-        AlarmSound(1, "Duplo"),
-        AlarmSound(2, "Confirmação"),
-        AlarmSound(3, "Profundo"),
-        AlarmSound(4, "Suave"),
-        AlarmSound(5, "Campainha"),
-        AlarmSound(6, "Pulso 1"),
-        AlarmSound(7, "Pulso 2"),
-        AlarmSound(8, "Pulso 3"),
-        AlarmSound(9, "Escada")
+        AlarmSound(0, R.string.fg_pomodoro_sound_classic),
+        AlarmSound(1, R.string.fg_pomodoro_sound_double),
+        AlarmSound(2, R.string.fg_pomodoro_sound_confirmation),
+        AlarmSound(3, R.string.fg_pomodoro_sound_deep),
+        AlarmSound(4, R.string.fg_pomodoro_sound_soft),
+        AlarmSound(5, R.string.fg_pomodoro_sound_bell),
+        AlarmSound(6, R.string.fg_pomodoro_sound_pulse_1),
+        AlarmSound(7, R.string.fg_pomodoro_sound_pulse_2),
+        AlarmSound(8, R.string.fg_pomodoro_sound_pulse_3),
+        AlarmSound(9, R.string.fg_pomodoro_sound_stair)
     )
 
     private val patterns: Map<Int, List<ToneStep>> = mapOf(
@@ -63,7 +65,8 @@ object PomodoroAlarmController {
         )
     )
 
-    fun soundName(index: Int): String = sounds.getOrElse(index) { sounds.first() }.name
+    fun soundName(context: Context, index: Int): String =
+        context.getString(sounds.getOrElse(index) { sounds.first() }.nameRes)
 
     suspend fun preview(context: Context, soundIndex: Int) {
         playPattern(
