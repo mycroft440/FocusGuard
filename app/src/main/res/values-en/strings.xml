@@ -382,9 +382,26 @@
     <string name="dashboard_daily_chart_title">Usage time for each day</string>
     <string name="dashboard_usage_periods_title">Your usual usage times</string>
     <string name="dashboard_usage_periods_desc">Calculated from the %1$d complete days with detailed data available.</string>
-    <string name="dashboard_most_active_period_sentence">Highest usage: between %1$02d:00 and %2$02d:00</string>
+    <string name="dashboard_most_active_period_sentence">Highest usage period (3-hour average): between %1$02d:00 and %2$02d:00</string>
     <string name="dashboard_least_active_period_sentence">Lowest usage: between %1$02d:00 and %2$02d:00</string>
     <string name="dashboard_period_no_data">We need at least %1$d complete days to identify your usual usage times without guessing.</string>
+    <string name="dashboard_hourly_profile_title">Your rhythm throughout the day</string>
+    <string name="dashboard_hourly_profile_desc">Each bar shows your average usage during that hour.</string>
+    <string name="dashboard_hourly_profile_sleep_desc">Each bar shows your average usage during that hour. Purple marks the likely sleep window.</string>
+    <string name="dashboard_sleep_title">Sleep estimated by local AI</string>
+    <string name="dashboard_sleep_window_sentence">You probably sleep between %1$s and %2$s</string>
+    <string name="dashboard_clock_time">%1$02d:%2$02d</string>
+    <string name="dashboard_sleep_duration">Estimated duration: %1$s</string>
+    <string name="dashboard_sleep_confidence">%1$s confidence (%2$d%%) · %3$s</string>
+    <string name="dashboard_sleep_confidence_low">Low</string>
+    <string name="dashboard_sleep_confidence_medium">Medium</string>
+    <string name="dashboard_sleep_confidence_high">High</string>
+    <plurals name="dashboard_sleep_nights">
+        <item quantity="one">%1$d night analyzed</item>
+        <item quantity="other">%1$d nights analyzed</item>
+    </plurals>
+    <string name="dashboard_sleep_insufficient">The local AI needs at least %1$d complete nights to learn your pattern. Valid nights so far: %2$d.</string>
+    <string name="dashboard_sleep_disclaimer">Private estimate based only on screen events. It is not a clinical measurement and may be inaccurate when your phone is away from you or your night routine is irregular.</string>
     <string name="dashboard_most_used">Most Used Apps</string>
     <string name="dashboard_no_data">No data found.</string>
     <string name="dashboard_hide">Hide</string>

@@ -77,7 +77,7 @@ class AdvancedUsageAnalytics(private val context: Context) {
 
         // O gráfico usa o histórico agregado do Android, que não sofre com a
         // retenção curta de queryEvents. Os eventos detalhados abaixo servem
-        // apenas para distribuir o uso em blocos de três horas.
+        // para distribuir o uso por hora e gerar os resumos noturnos locais.
         val historyStartDate = today.minusDays(historyDays - 1L)
         val periodStartDate = today.minusDays(periodAverageDays.toLong())
         val earliestRequiredDate = minOf(historyStartDate, periodStartDate)
@@ -140,6 +140,24 @@ class AdvancedUsageAnalytics(private val context: Context) {
             today = today,
             zoneId = zoneId
         )
+        val recentSleepObservations = SleepPatternEstimator.extractObservations(
+            intervals = detailedIntervals,
+            completeDates = completePeriodDates,
+            zoneId = zoneId
+        )
+        val sleepHistory = runCatching {
+            SleepPatternHistoryStore(context).mergeAndLoad(
+                recentObservations = recentSleepObservations,
+                today = today
+            )
+        }.getOrElse { error ->
+            FocusGuardLogger.logError(
+                "AdvancedUsageAnalytics",
+                "Falha ao atualizar o histórico local de sono estimado",
+                error
+            )
+            recentSleepObservations
+        }
         val historyDates = (0 until historyDays).map { dayOffset ->
             historyStartDate.plusDays(dayOffset.toLong())
         }
@@ -175,7 +193,8 @@ class AdvancedUsageAnalytics(private val context: Context) {
             nowMs = now,
             historyDays = historyDays,
             zoneId = zoneId,
-            locale = locale
+            locale = locale,
+            historicalSleepObservations = sleepHistory
         )
     }
 

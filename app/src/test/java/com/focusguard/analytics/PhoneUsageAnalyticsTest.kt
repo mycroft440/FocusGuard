@@ -183,12 +183,12 @@ class PhoneUsageInsightsCalculatorTest {
     }
 
     @Test
-    fun `busiest usage is calculated in one hour ranges`() {
+    fun `busiest usage is calculated in rolling three hour ranges`() {
         val insights = calculate(
             detailedIntervals = (5..7).flatMap { day ->
                 listOf(
                     interval("2026-01-%02dT09:00".format(day), "2026-01-%02dT09:15".format(day)),
-                    interval("2026-01-%02dT14:00".format(day), "2026-01-%02dT15:00".format(day))
+                    interval("2026-01-%02dT14:00".format(day), "2026-01-%02dT17:00".format(day))
                 )
             },
             completePeriodDates = (5..7).map { date("2026-01-%02d".format(it)) },
@@ -198,8 +198,34 @@ class PhoneUsageInsightsCalculatorTest {
         assertThat(insights.periodSummary?.mostUsed).isEqualTo(
             PhoneUsagePeriodAverage(
                 startHour = 14,
-                endHour = 15,
-                averageTimeMs = 1.hours
+                endHour = 17,
+                averageTimeMs = 3.hours
+            )
+        )
+        assertThat(insights.hourlyProfile).hasSize(24)
+        assertThat(insights.hourlyProfile[14]).isEqualTo(
+            PhoneUsageHourAverage(hour = 14, averageTimeMs = 1.hours)
+        )
+    }
+
+    @Test
+    fun `busiest three hour range can cross midnight`() {
+        val insights = calculate(
+            detailedIntervals = (5..8).map { day ->
+                interval(
+                    "2026-01-%02dT23:00".format(day),
+                    "2026-01-%02dT02:00".format(day + 1)
+                )
+            },
+            completePeriodDates = (6..8).map { date("2026-01-%02d".format(it)) },
+            now = "2026-01-10T12:00"
+        )
+
+        assertThat(insights.periodSummary?.mostUsed).isEqualTo(
+            PhoneUsagePeriodAverage(
+                startHour = 23,
+                endHour = 2,
+                averageTimeMs = 3.hours
             )
         )
     }
@@ -208,7 +234,7 @@ class PhoneUsageInsightsCalculatorTest {
     fun `period average divides by available complete days instead of thirty`() {
         val insights = calculate(
             detailedIntervals = listOf(
-                interval("2026-01-07T04:00", "2026-01-07T05:00")
+                interval("2026-01-07T04:00", "2026-01-07T07:00")
             ),
             completePeriodDates = listOf(
                 date("2026-01-05"),
@@ -222,8 +248,8 @@ class PhoneUsageInsightsCalculatorTest {
         assertThat(insights.periodSummary?.mostUsed).isEqualTo(
             PhoneUsagePeriodAverage(
                 startHour = 4,
-                endHour = 5,
-                averageTimeMs = 1.hours / 3
+                endHour = 7,
+                averageTimeMs = 1.hours
             )
         )
     }
@@ -271,7 +297,7 @@ class PhoneUsageInsightsCalculatorTest {
     fun `current incomplete day does not influence period averages`() {
         val insights = calculate(
             detailedIntervals = listOf(
-                interval("2026-01-07T18:00", "2026-01-07T20:00"),
+                interval("2026-01-07T18:00", "2026-01-07T21:00"),
                 interval("2026-01-08T00:00", "2026-01-08T10:00")
             ),
             completePeriodDates = listOf(
@@ -284,8 +310,8 @@ class PhoneUsageInsightsCalculatorTest {
         )
 
         assertThat(insights.periodSummary?.mostUsed?.startHour).isEqualTo(18)
-        assertThat(insights.periodSummary?.mostUsed?.endHour).isEqualTo(19)
-        assertThat(insights.periodSummary?.mostUsed?.averageTimeMs).isEqualTo(1.hours / 3)
+        assertThat(insights.periodSummary?.mostUsed?.endHour).isEqualTo(21)
+        assertThat(insights.periodSummary?.mostUsed?.averageTimeMs).isEqualTo(1.hours)
         assertThat(insights.periodSummary?.daysAnalyzed).isEqualTo(3)
     }
 
@@ -311,12 +337,36 @@ class PhoneUsageInsightsCalculatorTest {
         assertThat(insights.periodSummary).isNull()
     }
 
+    @Test
+    fun `persisted sleep summaries survive expiration of detailed events`() {
+        val historicalSleep = (5..7).map { day ->
+            NightlySleepObservation(
+                nightDate = date("2026-01-%02d".format(day)),
+                bedtimeMinuteOfDay = 23 * 60,
+                wakeMinuteOfDay = 7 * 60,
+                durationMs = 8.hours,
+                interruptionDurationMs = 0L,
+                interruptionCount = 0
+            )
+        }
+
+        val insights = calculate(
+            now = "2026-01-20T12:00",
+            historicalSleepObservations = historicalSleep
+        )
+
+        assertThat(insights.sleepNightsAvailable).isEqualTo(3)
+        assertThat(insights.estimatedSleepWindow?.bedtimeMinuteOfDay).isEqualTo(23 * 60)
+        assertThat(insights.estimatedSleepWindow?.wakeMinuteOfDay).isEqualTo(7 * 60)
+    }
+
     private fun calculate(
         dailyScreenTimeByDate: Map<LocalDate, Long> = emptyMap(),
         detailedIntervals: List<ScreenInteractiveInterval> = emptyList(),
         completePeriodDates: List<LocalDate> = emptyList(),
         now: String,
-        historyDays: Int = 7
+        historyDays: Int = 7,
+        historicalSleepObservations: List<NightlySleepObservation> = emptyList()
     ) = PhoneUsageInsightsCalculator.calculate(
         dailyScreenTimeByDate = dailyScreenTimeByDate,
         detailedIntervals = detailedIntervals,
@@ -324,7 +374,8 @@ class PhoneUsageInsightsCalculatorTest {
         nowMs = timestamp(now),
         historyDays = historyDays,
         zoneId = zoneId,
-        locale = locale
+        locale = locale,
+        historicalSleepObservations = historicalSleepObservations
     )
 
     private fun interval(start: String, end: String) = ScreenInteractiveInterval(

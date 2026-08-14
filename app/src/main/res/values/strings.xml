@@ -382,9 +382,26 @@
     <string name="dashboard_daily_chart_title">Tempo de uso em cada dia</string>
     <string name="dashboard_usage_periods_title">Seus horários habituais</string>
     <string name="dashboard_usage_periods_desc">Calculado com base nos %1$d dias completos com dados detalhados disponíveis.</string>
-    <string name="dashboard_most_active_period_sentence">Horário de maior uso: entre %1$02dh e %2$02dh</string>
+    <string name="dashboard_most_active_period_sentence">Período de maior uso (média de 3 horas): entre %1$02dh e %2$02dh</string>
     <string name="dashboard_least_active_period_sentence">Horário de menor uso: entre %1$02dh e %2$02dh</string>
     <string name="dashboard_period_no_data">Precisamos de pelo menos %1$d dias completos para identificar seus horários habituais sem adivinhar.</string>
+    <string name="dashboard_hourly_profile_title">Seu ritmo ao longo do dia</string>
+    <string name="dashboard_hourly_profile_desc">Cada barra mostra a média de uso naquela hora.</string>
+    <string name="dashboard_hourly_profile_sleep_desc">Cada barra mostra a média de uso naquela hora. A faixa roxa marca a janela provável de sono.</string>
+    <string name="dashboard_sleep_title">Sono estimado pela IA local</string>
+    <string name="dashboard_sleep_window_sentence">Você provavelmente dorme entre %1$s e %2$s</string>
+    <string name="dashboard_clock_time">%1$02dh%2$02d</string>
+    <string name="dashboard_sleep_duration">Duração estimada: %1$s</string>
+    <string name="dashboard_sleep_confidence">Confiança %1$s (%2$d%%) · %3$s</string>
+    <string name="dashboard_sleep_confidence_low">baixa</string>
+    <string name="dashboard_sleep_confidence_medium">média</string>
+    <string name="dashboard_sleep_confidence_high">alta</string>
+    <plurals name="dashboard_sleep_nights">
+        <item quantity="one">%1$d noite analisada</item>
+        <item quantity="other">%1$d noites analisadas</item>
+    </plurals>
+    <string name="dashboard_sleep_insufficient">A IA local precisa de pelo menos %1$d noites completas para aprender seu padrão. Noites válidas até agora: %2$d.</string>
+    <string name="dashboard_sleep_disclaimer">Estimativa privada baseada somente nos eventos de tela. Não é uma medição clínica e pode errar quando o celular fica longe de você ou em rotinas noturnas irregulares.</string>
     <string name="dashboard_most_used">Apps Mais Usados</string>
     <string name="dashboard_no_data">Nenhum dado encontrado.</string>
     <string name="dashboard_hide">Ocultar</string>

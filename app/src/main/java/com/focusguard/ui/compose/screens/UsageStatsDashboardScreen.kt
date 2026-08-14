@@ -367,7 +367,235 @@ fun PhoneUsageChartSection(insights: PhoneUsageInsights) {
                     accent = AccentPurple
                 )
             }
+
+            if (insights.hourlyProfile.isNotEmpty()) {
+                Spacer(Modifier.height(24.dp))
+                HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f))
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    text = stringResource(R.string.dashboard_hourly_profile_title),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(
+                        if (insights.estimatedSleepWindow == null) {
+                            R.string.dashboard_hourly_profile_desc
+                        } else {
+                            R.string.dashboard_hourly_profile_sleep_desc
+                        }
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp
+                )
+                Spacer(Modifier.height(14.dp))
+                HourlyUsageProfileChart(
+                    hourlyProfile = insights.hourlyProfile,
+                    estimatedSleepWindow = insights.estimatedSleepWindow
+                )
+            }
+
+            Spacer(Modifier.height(24.dp))
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f))
+            Spacer(Modifier.height(20.dp))
+            SleepEstimateSection(insights)
         }
+    }
+}
+
+@Composable
+private fun HourlyUsageProfileChart(
+    hourlyProfile: List<PhoneUsageHourAverage>,
+    estimatedSleepWindow: EstimatedSleepWindow?
+) {
+    val maxTimeMs = hourlyProfile.maxOfOrNull(PhoneUsageHourAverage::averageTimeMs)
+        ?.coerceAtLeast(60_000L)
+        ?: 60_000L
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(112.dp),
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+        verticalAlignment = Alignment.Bottom
+    ) {
+        hourlyProfile.forEach { usage ->
+            val isLikelySleep = estimatedSleepWindow?.let { estimate ->
+                isHourInsideSleepWindow(usage.hour, estimate)
+            } == true
+            val actualFraction = usage.averageTimeMs.toFloat() / maxTimeMs.toFloat()
+            val visibleFraction = if (usage.averageTimeMs > 0L) {
+                actualFraction.coerceIn(0.04f, 1f)
+            } else {
+                0.012f
+            }
+            val accent = if (isLikelySleep) AccentPurple else AccentCyan
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .background(
+                        if (isLikelySleep) {
+                            AccentPurple.copy(alpha = 0.08f)
+                        } else {
+                            androidx.compose.ui.graphics.Color.Transparent
+                        }
+                    ),
+                contentAlignment = Alignment.BottomCenter
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .fillMaxHeight(visibleFraction)
+                        .clip(
+                            RoundedCornerShape(
+                                topStart = 3.dp,
+                                topEnd = 3.dp,
+                                bottomEnd = 0.dp,
+                                bottomStart = 0.dp
+                            )
+                        )
+                        .background(
+                            if (usage.averageTimeMs > 0L) {
+                                accent
+                            } else {
+                                accent.copy(alpha = 0.2f)
+                            }
+                        )
+                )
+            }
+        }
+    }
+    Spacer(Modifier.height(7.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        listOf("00h", "06h", "12h", "18h", "24h").forEach { label ->
+            Text(
+                text = label,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 9.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun SleepEstimateSection(insights: PhoneUsageInsights) {
+    Text(
+        text = stringResource(R.string.dashboard_sleep_title),
+        color = MaterialTheme.colorScheme.onSurface,
+        fontSize = 16.sp,
+        fontWeight = FontWeight.Bold
+    )
+    Spacer(Modifier.height(8.dp))
+
+    val estimate = insights.estimatedSleepWindow
+    if (estimate == null) {
+        Text(
+            text = stringResource(
+                R.string.dashboard_sleep_insufficient,
+                MIN_SLEEP_PATTERN_NIGHTS,
+                insights.sleepNightsAvailable
+            ),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 13.sp,
+            lineHeight = 19.sp
+        )
+    } else {
+        val bedtime = localizedClockTime(estimate.bedtimeMinuteOfDay)
+        val wakeTime = localizedClockTime(estimate.wakeMinuteOfDay)
+        val confidenceLabel = when (estimate.confidence) {
+            SleepEstimateConfidence.LOW ->
+                stringResource(R.string.dashboard_sleep_confidence_low)
+
+            SleepEstimateConfidence.MEDIUM ->
+                stringResource(R.string.dashboard_sleep_confidence_medium)
+
+            SleepEstimateConfidence.HIGH ->
+                stringResource(R.string.dashboard_sleep_confidence_high)
+        }
+        val confidenceColor = when (estimate.confidence) {
+            SleepEstimateConfidence.LOW -> MaterialTheme.colorScheme.error
+            SleepEstimateConfidence.MEDIUM -> AccentPurple
+            SleepEstimateConfidence.HIGH -> AccentCyan
+        }
+        val nightsLabel = pluralStringResource(
+            R.plurals.dashboard_sleep_nights,
+            estimate.nightsAnalyzed,
+            estimate.nightsAnalyzed
+        )
+
+        Text(
+            text = stringResource(
+                R.string.dashboard_sleep_window_sentence,
+                bedtime,
+                wakeTime
+            ),
+            color = AccentPurple,
+            fontSize = 18.sp,
+            lineHeight = 24.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(
+            text = stringResource(
+                R.string.dashboard_sleep_duration,
+                formatTime(estimate.averageDurationMs)
+            ),
+            color = MaterialTheme.colorScheme.onSurface,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium
+        )
+        Spacer(Modifier.height(5.dp))
+        Text(
+            text = stringResource(
+                R.string.dashboard_sleep_confidence,
+                confidenceLabel,
+                estimate.confidenceScore,
+                nightsLabel
+            ),
+            color = confidenceColor,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+
+    Spacer(Modifier.height(10.dp))
+    Text(
+        text = stringResource(R.string.dashboard_sleep_disclaimer),
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        fontSize = 11.sp,
+        lineHeight = 16.sp
+    )
+}
+
+@Composable
+private fun localizedClockTime(minuteOfDay: Int): String {
+    val normalizedMinute = ((minuteOfDay % (24 * 60)) + (24 * 60)) % (24 * 60)
+    return stringResource(
+        R.string.dashboard_clock_time,
+        normalizedMinute / 60,
+        normalizedMinute % 60
+    )
+}
+
+private fun isHourInsideSleepWindow(
+    hour: Int,
+    estimate: EstimatedSleepWindow
+): Boolean {
+    val hourMidpointMinute = hour * 60 + 30
+    val startMinute = estimate.bedtimeMinuteOfDay
+    val endMinute = estimate.wakeMinuteOfDay
+    return if (startMinute < endMinute) {
+        hourMidpointMinute in startMinute until endMinute
+    } else {
+        hourMidpointMinute >= startMinute || hourMidpointMinute < endMinute
     }
 }
 

@@ -27,11 +27,19 @@ data class PhoneUsagePeriodSummary(
     val daysAnalyzed: Int
 )
 
+data class PhoneUsageHourAverage(
+    val hour: Int,
+    val averageTimeMs: Long
+)
+
 data class PhoneUsageInsights(
     val dailyHistory: List<DailyPhoneUsage>,
     val periodSummary: PhoneUsagePeriodSummary?,
     val completeDaysAverageMs: Long = 0L,
-    val completeDaysAnalyzed: Int = 0
+    val completeDaysAnalyzed: Int = 0,
+    val hourlyProfile: List<PhoneUsageHourAverage> = emptyList(),
+    val estimatedSleepWindow: EstimatedSleepWindow? = null,
+    val sleepNightsAvailable: Int = 0
 )
 
 internal data class ScreenInteractiveInterval(
@@ -42,8 +50,8 @@ internal data class ScreenInteractiveInterval(
 /**
  * Reconstrói os intervalos detalhados em que a tela esteve interativa.
  *
- * Os eventos detalhados são usados somente nos cartões por faixa de horário,
- * pois o Android os mantém por poucos dias. O histórico diário vem dos dados
+ * Os eventos detalhados alimentam os padrões por hora e o sono estimado, pois
+ * o Android os mantém por poucos dias. O histórico diário vem dos dados
  * agregados de [android.app.usage.UsageStatsManager.queryEventStats].
  */
 internal class ScreenInteractiveSessionAccumulator {
@@ -161,6 +169,7 @@ internal fun resolveDailyScreenTime(
 
 internal object PhoneUsageInsightsCalculator {
     private const val HOURS_PER_DAY = 24
+    private const val PEAK_USAGE_WINDOW_HOURS = 3
 
     fun calculate(
         dailyScreenTimeByDate: Map<LocalDate, Long>,
@@ -169,7 +178,8 @@ internal object PhoneUsageInsightsCalculator {
         nowMs: Long,
         historyDays: Int,
         zoneId: ZoneId,
-        locale: Locale
+        locale: Locale,
+        historicalSleepObservations: List<NightlySleepObservation> = emptyList()
     ): PhoneUsageInsights {
         require(historyDays > 0) { "historyDays must be positive" }
 
@@ -228,28 +238,49 @@ internal object PhoneUsageInsightsCalculator {
             }
         }
 
+        val hasReliableHourlyPattern =
+            analyzedDates.size >= MIN_PHONE_USAGE_PATTERN_DAYS && hourlyTotals.sum() > 0L
+        val hourlyAverages = if (hasReliableHourlyPattern) {
+            LongArray(HOURS_PER_DAY) { hour ->
+                hourlyTotals[hour] / analyzedDates.size
+            }
+        } else {
+            LongArray(0)
+        }
+        val hourlyProfile = hourlyAverages.mapIndexed { hour, averageTimeMs ->
+            PhoneUsageHourAverage(hour = hour, averageTimeMs = averageTimeMs)
+        }
+
         val periodSummary = if (
-            analyzedDates.size < MIN_PHONE_USAGE_PATTERN_DAYS ||
-            hourlyTotals.sum() == 0L
+            !hasReliableHourlyPattern
         ) {
             null
         } else {
             val daysAnalyzed = analyzedDates.size
-            val hourlyAverages = LongArray(HOURS_PER_DAY) { hour ->
-                hourlyTotals[hour] / daysAnalyzed
-            }
-            // maxByOrNull preserva o primeiro índice nos empates, tornando o
-            // resultado estável e escolhendo a hora mais cedo.
-            val mostUsedHour = hourlyAverages.indices
-                .maxByOrNull { hourlyAverages[it] }
+            // Uma janela móvel evita que limites fixos (00h–03h, 03h–06h...)
+            // escondam um pico real como 14h–17h. Em empates, maxByOrNull
+            // preserva o primeiro início e mantém o resultado estável.
+            val mostUsedWindowStart = hourlyAverages.indices
+                .maxByOrNull { startHour ->
+                    rollingUsage(
+                        hourlyAverages = hourlyAverages,
+                        startHour = startHour,
+                        lengthHours = PEAK_USAGE_WINDOW_HOURS
+                    )
+                }
                 ?: 0
+            val mostUsedWindowAverageMs = rollingUsage(
+                hourlyAverages = hourlyAverages,
+                startHour = mostUsedWindowStart,
+                lengthHours = PEAK_USAGE_WINDOW_HOURS
+            )
             val quietestWindow = findQuietestWindow(hourlyAverages)
 
             PhoneUsagePeriodSummary(
                 mostUsed = PhoneUsagePeriodAverage(
-                    startHour = mostUsedHour,
-                    endHour = (mostUsedHour + 1) % HOURS_PER_DAY,
-                    averageTimeMs = hourlyAverages[mostUsedHour]
+                    startHour = mostUsedWindowStart,
+                    endHour = (mostUsedWindowStart + PEAK_USAGE_WINDOW_HOURS) % HOURS_PER_DAY,
+                    averageTimeMs = mostUsedWindowAverageMs
                 ),
                 leastUsed = PhoneUsagePeriodAverage(
                     startHour = quietestWindow.startHour,
@@ -260,11 +291,27 @@ internal object PhoneUsageInsightsCalculator {
             )
         }
 
+        val recentSleepObservations = SleepPatternEstimator.extractObservations(
+            intervals = detailedIntervals,
+            completeDates = analyzedDates,
+            zoneId = zoneId
+        )
+        val sleepObservations = (
+            historicalSleepObservations + recentSleepObservations
+        ).filter(SleepPatternEstimator::isPlausibleObservation)
+            .associateBy(NightlySleepObservation::nightDate)
+            .values
+            .sortedBy(NightlySleepObservation::nightDate)
+        val estimatedSleepWindow = SleepPatternEstimator.estimate(sleepObservations)
+
         return PhoneUsageInsights(
             dailyHistory = dailyHistory,
             periodSummary = periodSummary,
             completeDaysAverageMs = completeDaysAverageMs,
-            completeDaysAnalyzed = completeHistory.size
+            completeDaysAnalyzed = completeHistory.size,
+            hourlyProfile = hourlyProfile,
+            estimatedSleepWindow = estimatedSleepWindow,
+            sleepNightsAvailable = sleepObservations.size
         )
     }
 
@@ -284,6 +331,14 @@ internal object PhoneUsageInsightsCalculator {
 
     private fun LocalDate.atHour(hour: Int, zoneId: ZoneId): Long =
         atTime(hour, 0).atZone(zoneId).toInstant().toEpochMilli()
+
+    private fun rollingUsage(
+        hourlyAverages: LongArray,
+        startHour: Int,
+        lengthHours: Int
+    ): Long = (0 until lengthHours).sumOf { offset ->
+        hourlyAverages[(startHour + offset) % HOURS_PER_DAY]
+    }
 
     /**
      * Encontra o maior trecho circular de horas com uso abaixo da média
