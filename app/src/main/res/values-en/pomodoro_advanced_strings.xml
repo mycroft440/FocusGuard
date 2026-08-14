@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="pomodoro_configure_action">Configure Pomodoro</string>
+    <string name="pomodoro_config_title">Configure Pomodoro</string>
+    <string name="pomodoro_config_intervals">Intervals</string>
+    <string name="pomodoro_config_focus_time">Focus time</string>
+    <string name="pomodoro_config_short_break">Break</string>
+    <string name="pomodoro_config_long_break">Long break</string>
+    <string name="pomodoro_config_long_break_every">Long break after how many sessions</string>
+    <string name="pomodoro_config_sessions">Number of sessions</string>
+    <string name="pomodoro_sessions_until_stop">Until I stop</string>
+    <string name="pomodoro_sessions_counted">Set from 1 to 100 sessions</string>
+    <string name="pomodoro_sessions_selected">%1$d sessions</string>
+    <string name="pomodoro_config_alarm">Alarm</string>
+    <string name="pomodoro_alarm_sound">Sound</string>
+    <string name="pomodoro_alarm_vibration">Vibration</string>
+    <string name="pomodoro_alarm_duration">Alarm ring duration</string>
+    <string name="pomodoro_alarm_duration_value">%1$d seconds</string>
+    <string name="pomodoro_alarm_sound_type">Alarm sound — tap to preview</string>
+    <string-array name="pomodoro_alarm_sound_names">
+        <item>Classic</item>
+        <item>Double</item>
+        <item>Confirm</item>
+        <item>Deep</item>
+        <item>Soft</item>
+        <item>Bell</item>
+        <item>Pulse 1</item>
+        <item>Pulse 2</item>
+        <item>Pulse 3</item>
+        <item>Stairs</item>
+    </string-array>
+    <string name="pomodoro_config_notifications">Notifications during Pomodoro</string>
+    <string name="pomodoro_hide_notifications">Hide notifications</string>
+    <string name="pomodoro_hide_notifications_desc">Removes notifications received while the cycle is active, while preserving calls and essential system alerts.</string>
+    <string name="pomodoro_notification_listener_required">Allow notification access to hide notifications.</string>
+    <string name="pomodoro_silence_notifications">Silence notifications</string>
+    <string name="pomodoro_silence_notifications_desc">Enables Do Not Disturb during the cycle and restores your previous state when you stop.</string>
+    <string name="pomodoro_dnd_access_required">Allow Do Not Disturb access to silence alerts.</string>
+    <string name="pomodoro_foreground_notification_note">FocusGuard's own persistent timer notification remains visible while the timer runs because Android requires it to keep the cycle alive in the background.</string>
+    <string name="pomodoro_grant_access">Allow</string>
+    <string name="pomodoro_profiles_title">Pomodoro profiles</string>
+    <string name="pomodoro_profile_name">Profile name</string>
+    <string name="pomodoro_profile_save">Save configuration as profile</string>
+    <string name="pomodoro_profile_classic">Classic 25/5</string>
+    <string name="pomodoro_profile_deep">Deep focus 50/10</string>
+    <string name="pomodoro_profile_sprint">Sprint 15/3</string>
+    <string name="pomodoro_profile_apply">Use</string>
+    <string name="pomodoro_profile_delete">Delete profile</string>
+    <string name="pomodoro_profile_summary">Focus %1$d min • break %2$d min • long %3$s • sessions %4$s</string>
+    <string name="pomodoro_sessions_infinite_short">∞</string>
+    <string name="pomodoro_hours_suffix">h</string>
+    <string name="pomodoro_minutes_suffix">min</string>
+    <string name="pomodoro_long_break_input_hint">Type HH:MM, for example 01:30. The mini clock follows the value.</string>
+    <string name="pomodoro_minutes_input_hint">Type minutes or rotate the mini clock.</string>
+    <string name="pomodoro_phase_focus">Focus</string>
+    <string name="pomodoro_phase_short_break">Break</string>
+    <string name="pomodoro_phase_long_break">Long break</string>
+    <string name="pomodoro_cycle_progress">Session %1$d of %2$d</string>
+    <string name="pomodoro_cycle_progress_infinite">%1$d sessions completed • until I stop</string>
+    <string name="pomodoro_quick_profiles_title">Profiles</string>
+    <string name="pomodoro_plan_summary">Focus %1$d min • break %2$d min • long %3$s every %4$d • %5$s</string>
+    <string name="pomodoro_plan_sessions_infinite">until I stop</string>
+    <string name="pomodoro_plan_sessions_finite">%1$d sessions</string>
+    <string name="pomodoro_start_failed">Could not start. Review permissions in Configure Pomodoro.</string>
+    <string name="pomodoro_widget_title">Pomodoro</string>
+    <string name="pomodoro_widget_start">↻ Start</string>
+    <string name="pomodoro_widget_active">In progress</string>
+    <string name="pomodoro_widget_summary">%1$d min • break %2$d • long %3$s</string>
+    <string name="pomodoro_widget_sessions_infinite">Sessions: until I stop</string>
+    <string name="pomodoro_widget_sessions_finite">Sessions: %1$d</string>
+    <string name="pomodoro_widget_start_error">Open FocusGuard and review Configure Pomodoro.</string>
+</resources>
