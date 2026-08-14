@@ -122,9 +122,6 @@ class PomodoroManager @Inject constructor(
 
                     if (runtime != null) {
                         _cycleState.value = runtime
-                        // Aplicar antes da reconciliação rigorosa preserva o filtro
-                        // original do usuário. Depois da reconciliação reaplicamos
-                        // ALARMS para que o modo rigoroso não sobreponha a escolha.
                         if (runtime.config.silenceNotifications) {
                             notificationController.apply(runtime.config)
                         }
@@ -164,7 +161,6 @@ class PomodoroManager @Inject constructor(
                             }
                         }
                     } else if (session?.isActive == true && session.endTime > now) {
-                        // Migração transparente do Pomodoro antigo de sessão única.
                         val legacyConfig = planStore.loadConfig().copy(
                             focusMinutes = ((session.durationMillis + 59_999L) / 60_000L)
                                 .toInt()
@@ -245,18 +241,12 @@ class PomodoroManager @Inject constructor(
             intervalDurationMillis = session.durationMillis
         ).also(planStore::saveRuntime)
 
-        // O bloqueador rigoroso legado também pode mexer no DND. Tirar o
-        // snapshot antes da reconciliação permite respeitar o toggle novo mesmo
-        // quando "Silenciar notificações" está desligado.
         if (runtime.config.strictBlocking && !runtime.config.silenceNotifications) {
             notificationController.captureCurrentFilter()
         }
         reconcileRestoredBlockingState(session)
         applyNotificationPolicyForInterval(runtime.config)
 
-        // Só ligamos o serviço depois de qualquer endPomodoroSessionAndWait(),
-        // porque esse método encerra o próprio foreground service como parte da
-        // limpeza do bloqueio anterior.
         PomodoroForegroundService.start(context)
         if (session.isBlockingEnabled) {
             StrictPomodoroLock.save(context, session.endTime, session.durationMillis)
@@ -271,7 +261,7 @@ class PomodoroManager @Inject constructor(
 
     private suspend fun reconcileRestoredBlockingState(session: PomodoroSession) {
         if (!session.isBlockingEnabled) {
-            sessionManager.endPomodoroSessionAndWait()
+            clearLegacyPomodoroBlockingLocked()
             return
         }
 
@@ -285,15 +275,24 @@ class PomodoroManager @Inject constructor(
             }
 
         if (!existingStrictSession) {
-            sessionManager.endPomodoroSessionAndWait()
+            clearLegacyPomodoroBlockingLocked()
             val remaining = (session.endTime - now).coerceAtLeast(1L)
             sessionManager.startPomodoroSession(remaining, true)
             awaitStrictPomodoroEnforcement()
         } else {
-            // O registro persistiu, mas o processo/AccessibilityService pode ter
-            // sido recriado. Reconciliar novamente garante a suspensão real.
             sessionManager.checkAndEnforceStrict()
         }
+    }
+
+    /**
+     * Remove somente o registro de bloqueio POMODORO do motor legado e reconcilia
+     * as políticas. Não toca no PomodoroForegroundService: ele pertence ao plano
+     * inteiro e deve sobreviver continuamente às transições foco/pausa.
+     */
+    private suspend fun clearLegacyPomodoroBlockingLocked() {
+        database.blockSessionDao().deactivateActiveSessionsByType("POMODORO")
+        StrictPomodoroLock.clear(context)
+        sessionManager.checkAndEnforceStrict()
     }
 
     private suspend fun awaitStrictPomodoroEnforcement() {
@@ -308,9 +307,6 @@ class PomodoroManager @Inject constructor(
                         (blockSession.endTime ?: 0L) > now
                 }
             if (armed) {
-                // startPomodoroSession() é legado e fire-and-forget. A segunda
-                // reconciliação síncrona elimina a janela em que a Activity
-                // rigorosa poderia abrir antes de o bloqueio estar aplicado.
                 sessionManager.checkAndEnforceStrict()
                 return
             }
@@ -330,8 +326,6 @@ class PomodoroManager @Inject constructor(
                 )
             }
         } else if (config.strictBlocking) {
-            // Mantém o snapshot até o fim do plano, mas neutraliza o PRIORITY
-            // que o mecanismo rigoroso antigo aplica automaticamente.
             notificationController.restoreForActivePlan()
         }
     }
@@ -398,9 +392,6 @@ class PomodoroManager @Inject constructor(
             val saved = planStore.saveConfig(normalized)
             val runtime = planStore.beginRuntime(saved)
             _cycleState.value = runtime
-            // Captura o filtro original antes de o modo rigoroso poder trocar o
-            // estado de DND. startIntervalLocked reaplica ALARMS depois da
-            // reconciliação, sem substituir esse snapshot original.
             if (saved.silenceNotifications) {
                 check(notificationController.apply(saved)) {
                     "Não foi possível ativar o Não Perturbe do Pomodoro"
@@ -419,10 +410,6 @@ class PomodoroManager @Inject constructor(
         }
     }
 
-    /**
-     * Compatibilidade com chamadas antigas: uma sessão isolada vira um plano de
-     * exatamente uma sessão de foco.
-     */
     suspend fun startSession(
         durationMinutes: Int,
         isBreak: Boolean = false,
@@ -497,27 +484,21 @@ class PomodoroManager @Inject constructor(
         planStore.saveRuntime(updatedRuntime)
         _cycleState.value = updatedRuntime
 
-        // Se o toggle estiver desligado, ainda precisamos guardar o DND antes de
-        // o bloqueador rigoroso antigo aplicar PRIORITY; sem acesso à política a
-        // captura simplesmente falha e nenhuma alteração de DND será feita.
         if (config.strictBlocking && !config.silenceNotifications) {
             notificationController.captureCurrentFilter()
         }
 
-        // endPomodoroSessionAndWait() encerra também o foreground service. Por
-        // isso ele precisa acontecer ANTES de iniciarmos o serviço do intervalo
-        // novo; a ordem anterior ligava e desligava o watchdog imediatamente.
-        sessionManager.endPomodoroSessionAndWait()
+        clearLegacyPomodoroBlockingLocked()
         if (blocking) {
             sessionManager.startPomodoroSession(durationMillis, true)
             awaitStrictPomodoroEnforcement()
         }
 
-        // A reconciliação rigorosa usa PRIORITY por legado. Reaplicar a escolha
-        // do usuário depois dela garante que "Silenciar notificações" continue
-        // significando somente alarmes, inclusive durante o foco rigoroso.
         applyNotificationPolicyForInterval(config)
 
+        // start() é idempotente quando o serviço já existe. No primeiro intervalo
+        // ele cria o FGS; nas transições apenas atualiza o comando sem jamais
+        // atravessar uma janela em que o plano ficou sem foreground service.
         PomodoroForegroundService.start(context)
         if (blocking) {
             StrictPomodoroLock.save(context, endTime, durationMillis)
@@ -547,7 +528,7 @@ class PomodoroManager @Inject constructor(
         PomodoroForegroundService.cancelWatchdogAlarm(context)
         _currentSession.value = null
         _timeLeftMillis.value = 0L
-        sessionManager.endPomodoroSessionAndWait()
+        clearLegacyPomodoroBlockingLocked()
         notifyBlockingChanged()
 
         if (playAlarm) {
@@ -629,12 +610,12 @@ class PomodoroManager @Inject constructor(
         }
         dao.deleteSession()
         StrictPomodoroLock.clear(context)
-        PomodoroForegroundService.stop(context)
         _currentSession.value = null
         _timeLeftMillis.value = 0L
         _cycleState.value = null
         planStore.clearRuntime()
-        sessionManager.endPomodoroSessionAndWait()
+        clearLegacyPomodoroBlockingLocked()
+        PomodoroForegroundService.stop(context)
         notificationController.restore()
         notifyBlockingChanged()
         FocusModeNotificationService.requestRefresh(context)
