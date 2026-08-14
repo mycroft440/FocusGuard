@@ -1,9 +1,5 @@
 package com.focusguard.ui.compose.screens
 
-import kotlin.OptIn
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.material3.ExperimentalMaterial3Api
 import android.content.Context
 import android.net.Uri
 import android.widget.Toast
@@ -11,12 +7,11 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Image
@@ -35,52 +30,79 @@ import androidx.compose.ui.unit.sp
 import coil.compose.rememberAsyncImagePainter
 import com.focusguard.R
 import com.focusguard.ui.compose.theme.*
+import kotlin.OptIn
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BlockCustomizationScreen(onBack: () -> Unit) {
     val context = LocalContext.current
-    val prefs = remember { context.getSharedPreferences("FocusGuardBlockCustom", Context.MODE_PRIVATE) }
-    
-    var customText by remember { mutableStateOf(prefs.getString("block_text", "Você é mais forte que sua distração!") ?: "") }
-    var imageUriString by remember { mutableStateOf(prefs.getString("block_image_uri", "") ?: "") }
-    
+    val prefs = remember {
+        context.getSharedPreferences("FocusGuardBlockCustom", Context.MODE_PRIVATE)
+    }
+    val defaultBlockText = stringResource(R.string.fg_block_custom_default_message)
+
+    var customText by remember(defaultBlockText) {
+        mutableStateOf(prefs.getString("block_text", null) ?: defaultBlockText)
+    }
+    var imageUriString by remember {
+        mutableStateOf(prefs.getString("block_image_uri", "") ?: "")
+    }
+
     val imagePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
     ) { uri: Uri? ->
         uri?.let {
             try {
-                // Solicita permissão persistente de leitura para que a imagem continue acessível após o reboot
                 context.contentResolver.takePersistableUriPermission(
-                    it, 
+                    it,
                     android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
                 )
-            } catch (e: Exception) {
-                com.focusguard.utils.FocusGuardLogger.logError("Customization", "Erro ao persistir permissão de URI", e)
+            } catch (error: Exception) {
+                com.focusguard.utils.FocusGuardLogger.logError(
+                    "Customization",
+                    "Falha ao persistir permissão de URI",
+                    error
+                )
             }
             imageUriString = it.toString()
         }
     }
 
+    fun saveAndClose() {
+        prefs.edit()
+            .putString("block_text", customText)
+            .putString("block_image_uri", imageUriString)
+            .apply()
+        Toast.makeText(
+            context,
+            context.getString(R.string.configuracoes_salvas),
+            Toast.LENGTH_SHORT
+        ).show()
+        onBack()
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.personalizar_bloqueio), color = TextPrimary) },
+                title = {
+                    Text(stringResource(R.string.personalizar_bloqueio), color = TextPrimary)
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = TextPrimary)
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.action_back),
+                            tint = TextPrimary
+                        )
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
-                        prefs.edit()
-                            .putString("block_text", customText)
-                            .putString("block_image_uri", imageUriString)
-                            .apply()
-                        Toast.makeText(context, context.getString(R.string.configuracoes_salvas), Toast.LENGTH_SHORT).show()
-                        onBack()
-                    }) {
-                        Icon(Icons.Default.Save, contentDescription = stringResource(R.string.save), tint = AccentCyan)
+                    IconButton(onClick = ::saveAndClose) {
+                        Icon(
+                            Icons.Default.Save,
+                            contentDescription = stringResource(R.string.save),
+                            tint = AccentCyan
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBg)
@@ -103,7 +125,7 @@ fun BlockCustomizationScreen(onBack: () -> Unit) {
             )
 
             Text(
-                text = "Frase Inspiradora",
+                text = stringResource(R.string.fg_block_custom_phrase_title),
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
@@ -113,7 +135,12 @@ fun BlockCustomizationScreen(onBack: () -> Unit) {
             OutlinedTextField(
                 value = customText,
                 onValueChange = { customText = it },
-                placeholder = { Text("Ex: Foque no que importa!", color = TextHint) },
+                placeholder = {
+                    Text(
+                        stringResource(R.string.fg_block_custom_phrase_example),
+                        color = TextHint
+                    )
+                },
                 modifier = Modifier.fillMaxWidth(),
                 colors = OutlinedTextFieldDefaults.colors(
                     focusedTextColor = TextPrimary,
@@ -126,7 +153,7 @@ fun BlockCustomizationScreen(onBack: () -> Unit) {
             Spacer(modifier = Modifier.height(32.dp))
 
             Text(
-                text = "Imagem de Fundo",
+                text = stringResource(R.string.fg_block_custom_background_title),
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Bold,
                 color = TextPrimary,
@@ -155,34 +182,41 @@ fun BlockCustomizationScreen(onBack: () -> Unit) {
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Icon(Icons.Default.Image, contentDescription = null, tint = TextHint, modifier = Modifier.size(48.dp))
+                            Icon(
+                                Icons.Default.Image,
+                                contentDescription = null,
+                                tint = TextHint,
+                                modifier = Modifier.size(48.dp)
+                            )
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text("Toque para escolher uma imagem", color = TextHint, fontSize = 12.sp)
+                            Text(
+                                stringResource(R.string.fg_block_custom_choose_image),
+                                color = TextHint,
+                                fontSize = 12.sp
+                            )
                         }
                     }
                 }
             }
-            
+
             if (imageUriString.isNotEmpty()) {
                 TextButton(
                     onClick = { imageUriString = "" },
-                    modifier = Modifier.align(Alignment.CenterHorizontally).padding(top = 8.dp)
+                    modifier = Modifier
+                        .align(Alignment.CenterHorizontally)
+                        .padding(top = 8.dp)
                 ) {
-                    Text("Remover Imagem", color = DangerRed)
+                    Text(
+                        stringResource(R.string.fg_block_custom_remove_image),
+                        color = DangerRed
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.height(40.dp))
-            
+
             Button(
-                onClick = {
-                    prefs.edit()
-                        .putString("block_text", customText)
-                        .putString("block_image_uri", imageUriString)
-                        .apply()
-                    Toast.makeText(context, context.getString(R.string.configuracoes_salvas), Toast.LENGTH_SHORT).show()
-                    onBack()
-                },
+                onClick = ::saveAndClose,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
