@@ -1,41 +1,56 @@
 package com.focusguard.ui.compose.screens
 
-import androidx.compose.runtime.*
 import android.app.Activity
 import android.content.Intent
-import android.graphics.Typeface
 import androidx.activity.compose.BackHandler
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.Phone
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Save
+import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
-import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -43,39 +58,48 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.focusguard.R
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.focusguard.admin.DeviceOwnerManager
-import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.focusmode.FocusModePolicy
+import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.manager.PomodoroManager
+import com.focusguard.pomodoro.PomodoroAlarmController
+import com.focusguard.pomodoro.PomodoroCyclePolicy
+import com.focusguard.pomodoro.PomodoroPhase
+import com.focusguard.pomodoro.PomodoroPlanConfig
+import com.focusguard.pomodoro.PomodoroPlanStore
+import com.focusguard.pomodoro.PomodoroProfile
+import com.focusguard.pomodoro.PomodoroNotificationController
+import com.focusguard.pomodoro.PomodoroUiSignal
 import com.focusguard.security.AuthManager
 import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.service.FocusModeNotificationService
 import com.focusguard.ui.compose.theme.AccentCyan
+import com.focusguard.ui.compose.theme.CardBorder
+import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
 import com.focusguard.ui.compose.theme.DarkCard
-import com.focusguard.ui.compose.theme.DarkCardElevated
-import com.focusguard.ui.compose.theme.DarkSurface
+import com.focusguard.ui.compose.theme.SuccessGreen
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
+import com.focusguard.ui.compose.theme.TextSecondary
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlin.math.PI
 import kotlin.math.atan2
@@ -83,6 +107,7 @@ import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
 
+@Suppress("UNUSED_PARAMETER")
 @Composable
 fun PomodoroScreen(
     pomodoroManager: PomodoroManager,
@@ -93,208 +118,403 @@ fun PomodoroScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? Activity
-    val deviceOwnerManager = remember { DeviceOwnerManager.getInstance(context.applicationContext) }
+    val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    var isBlockingEnabled by remember { mutableStateOf(false) }
-    var showStrictBlockWarning by remember { mutableStateOf(false) }
-    var showFocusModeConflict by remember { mutableStateOf(false) }
-    var selectedMinutes by remember { mutableIntStateOf(25) }
-    val focusModeActive = compactLayout || FocusModeStore.isActive(context)
+    val planStore = remember(context) { PomodoroPlanStore(context) }
+    val notificationController = remember(context) { PomodoroNotificationController(context) }
+    val deviceOwnerManager = remember(context) {
+        DeviceOwnerManager.getInstance(context.applicationContext)
+    }
 
     val currentSession by pomodoroManager.currentSession.collectAsState()
+    val cycleState by pomodoroManager.cycleState.collectAsState()
     val timeLeftMillis by pomodoroManager.timeLeftMillis.collectAsState()
-    val isRunning = currentSession != null
-    val isStrictBlockingActive = currentSession?.isActive == true && currentSession?.isBlockingEnabled == true && currentSession?.endTime ?: 0L > System.currentTimeMillis()
-    val remainingMinutes = (timeLeftMillis / 60000).toInt()
-    val remainingSeconds = ((timeLeftMillis % 60000) / 1000).toInt()
-    val sessionDurationMillis = currentSession?.durationMillis ?: 0L
-    val progress = if (isRunning && sessionDurationMillis > 0L) {
-        timeLeftMillis.toFloat() / sessionDurationMillis
-    } else {
-        1f
-    }
+    val isRunning = currentSession?.isActive == true && cycleState?.active == true
+    val isStrictBlockingActive = currentSession?.isBlockingEnabled == true &&
+        currentSession?.endTime?.let { it > System.currentTimeMillis() } == true
+    val focusModeActive = compactLayout || FocusModeStore.isActive(context)
 
-    LaunchedEffect(focusModeActive) {
-        if (focusModeActive) {
-            isBlockingEnabled = false
-            showStrictBlockWarning = false
+    var config by remember { mutableStateOf(planStore.loadConfig()) }
+    var showConfig by rememberSaveable { mutableStateOf(false) }
+    var profileRevision by remember { mutableIntStateOf(0) }
+    var showSaveProfile by remember { mutableStateOf(false) }
+    var profileName by remember { mutableStateOf("") }
+    var message by remember { mutableStateOf<String?>(null) }
+    var permissionRevision by remember { mutableIntStateOf(0) }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) permissionRevision++
         }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    BackHandler(enabled = isStrictBlockingActive) {
-        // Bloqueio rigoroso: botão voltar não faz nada até o tempo acabar.
+    LaunchedEffect(Unit) {
+        PomodoroUiSignal.configRequests.collect {
+            showConfig = true
+        }
     }
 
     LaunchedEffect(isStrictBlockingActive) {
         if (isStrictBlockingActive) {
             deviceOwnerManager.prepareStrictPomodoroLockTaskPackages()
             runCatching { activity?.startLockTask() }
-        } else if (
-            FocusModePolicy.canPomodoroReleaseKiosk(FocusModeStore.isActive(context))
-        ) {
-            // A normal Pomodoro may run inside Modo Foco. In that case this
-            // screen does not own the kiosk and must not stop or overwrite it.
+        } else if (FocusModePolicy.canPomodoroReleaseKiosk(FocusModeStore.isActive(context))) {
             runCatching { activity?.stopLockTask() }
             deviceOwnerManager.clearStrictPomodoroLockTaskPackages()
         }
     }
 
+    BackHandler(enabled = isStrictBlockingActive) {
+        // No foco rigoroso, voltar não encerra nem contorna o período.
+    }
+
+    val hasDndAccess = remember(permissionRevision) {
+        notificationController.hasPolicyAccess()
+    }
+    val hasNotificationAccess = remember(permissionRevision) {
+        notificationController.hasNotificationListenerAccess(
+            FocusModeNotificationService::class.java
+        )
+    }
+    val profiles = remember(profileRevision) { planStore.allProfiles() }
+
+    fun saveConfig(updated: PomodoroPlanConfig) {
+        config = planStore.saveConfig(updated.normalized())
+        message = null
+    }
+
+    fun startConfiguredPlan() {
+        when {
+            config.strictBlocking && focusModeActive -> {
+                message = "Desative o Modo Foco antes de usar o Pomodoro rigoroso."
+            }
+            config.strictBlocking && !ProtectionPermissionGate.read(context).isReady -> {
+                onPermissionsRequired()
+            }
+            config.silenceNotifications && !hasDndAccess -> {
+                message = "Autorize o acesso ao Não Perturbe e depois toque em Iniciar."
+                runCatching { context.startActivity(notificationController.policyAccessIntent()) }
+            }
+            config.hideNotifications && !hasNotificationAccess -> {
+                message = "Autorize o acesso às notificações e depois toque em Iniciar."
+                runCatching { context.startActivity(notificationController.notificationListenerIntent()) }
+            }
+            else -> scope.launch {
+                try {
+                    pomodoroManager.startPlan(config)
+                    showConfig = false
+                    message = null
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (error: Exception) {
+                    message = error.message ?: "Não foi possível iniciar o Pomodoro."
+                }
+            }
+        }
+    }
+
+    if (showSaveProfile) {
+        AlertDialog(
+            onDismissRequest = { showSaveProfile = false },
+            title = { Text("Salvar perfil") },
+            text = {
+                OutlinedTextField(
+                    value = profileName,
+                    onValueChange = { profileName = it.take(PomodoroPlanStore.MAX_PROFILE_NAME_LENGTH) },
+                    label = { Text("Nome do perfil") },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val saved = planStore.saveProfile(profileName, config)
+                        if (saved != null) {
+                            profileRevision++
+                            profileName = ""
+                            showSaveProfile = false
+                            message = "Perfil salvo."
+                        } else {
+                            message = "Não foi possível salvar o perfil."
+                        }
+                    },
+                    enabled = profileName.isNotBlank()
+                ) {
+                    Text("Salvar")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSaveProfile = false }) { Text("Cancelar") }
+            }
+        )
+    }
+
     Scaffold(containerColor = DarkBg) { padding ->
-        Box(modifier = Modifier.fillMaxSize().padding(padding)) {
-            Column(
-                modifier = Modifier.fillMaxSize().padding(
-                    horizontal = if (compactLayout) 8.dp else 16.dp,
-                    vertical = 12.dp
-                ),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = if (compactLayout) 10.dp else 16.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            if (isRunning) {
+                ActivePomodoroPanel(
+                    phase = cycleState?.phase ?: PomodoroPhase.FOCUS,
+                    completedSessions = cycleState?.completedFocusSessions ?: 0,
+                    targetSessions = cycleState?.config?.targetSessions ?: 0,
+                    timeLeftMillis = timeLeftMillis,
+                    durationMillis = currentSession?.durationMillis ?: 1L,
+                    isStrict = isStrictBlockingActive,
+                    onStop = { scope.launch { pomodoroManager.stopSession() } },
+                    onPhone = {
+                        runCatching {
+                            context.startActivity(
+                                Intent(Intent.ACTION_DIAL).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
+                    }
+                )
+            } else {
                 Text(
-                    text = if (isStrictBlockingActive) "Bloqueio Rigoroso ativo" else if (isRunning) stringResource(R.string.pomodoro_status_focus) else stringResource(R.string.pomodoro_status_ready),
+                    "Pronto para focar",
                     color = AccentCyan,
                     fontSize = 18.sp,
-                    fontWeight = FontWeight.Medium,
+                    fontWeight = FontWeight.SemiBold
+                )
+
+                PomodoroDurationDial(
+                    minutes = config.focusMinutes.coerceIn(1, 180),
+                    maxMinutes = 180,
+                    activeProgress = null,
+                    onMinutesChange = { saveConfig(config.copy(focusMinutes = it)) },
+                    modifier = Modifier.size(if (compactLayout) 210.dp else 270.dp)
+                )
+
+                Text(
+                    formatMinutes(config.focusMinutes),
+                    color = TextPrimary,
+                    fontSize = 34.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                CurrentPlanSummary(config)
+
+                ProfileStrip(
+                    profiles = profiles,
+                    onUse = { profile -> saveConfig(profile.config) },
+                    onDelete = { profile ->
+                        if (planStore.deleteProfile(profile.id)) profileRevision++
+                    }
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = { showConfig = !showConfig },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(Icons.Default.Settings, contentDescription = null)
+                        Spacer(Modifier.width(6.dp))
+                        Text(if (showConfig) "Ocultar configuração" else "Configurar")
+                    }
+                    Button(
+                        onClick = ::startConfiguredPlan,
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                    ) {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkBg)
+                        Spacer(Modifier.width(6.dp))
+                        Text("Iniciar", color = DarkBg, fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                if (showConfig) {
+                    PomodoroConfigurationPanel(
+                        config = config,
+                        hasDndAccess = hasDndAccess,
+                        hasNotificationAccess = hasNotificationAccess,
+                        onConfigChange = ::saveConfig,
+                        onRequestDnd = {
+                            runCatching { context.startActivity(notificationController.policyAccessIntent()) }
+                        },
+                        onRequestNotificationAccess = {
+                            runCatching {
+                                context.startActivity(notificationController.notificationListenerIntent())
+                            }
+                        },
+                        onPreviewSound = {
+                            scope.launch { PomodoroAlarmController.preview(context, config.soundIndex) }
+                        },
+                        onSaveProfile = { showSaveProfile = true }
+                    )
+                }
+            }
+
+            message?.let {
+                Text(
+                    text = it,
+                    color = if (it.contains("salvo", ignoreCase = true)) SuccessGreen else DangerRed,
+                    fontSize = 12.sp,
                     textAlign = TextAlign.Center
                 )
+            }
+        }
+    }
+}
 
-                if (isStrictBlockingActive) {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = stringResource(R.string.pomodoro_strict_calls_only_notice),
-                        color = TextHint,
-                        fontSize = 12.sp,
-                        textAlign = TextAlign.Center
-                    )
-                }
+@Composable
+private fun ActivePomodoroPanel(
+    phase: PomodoroPhase,
+    completedSessions: Int,
+    targetSessions: Int,
+    timeLeftMillis: Long,
+    durationMillis: Long,
+    isStrict: Boolean,
+    onStop: () -> Unit,
+    onPhone: () -> Unit
+) {
+    val totalSeconds = (timeLeftMillis / 1_000L).coerceAtLeast(0L)
+    val minutes = totalSeconds / 60L
+    val seconds = totalSeconds % 60L
+    val progress = if (durationMillis > 0L) {
+        (timeLeftMillis.toFloat() / durationMillis.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val phaseLabel = when (phase) {
+        PomodoroPhase.FOCUS -> "Foco"
+        PomodoroPhase.SHORT_BREAK -> "Pausa"
+        PomodoroPhase.LONG_BREAK -> "Pausa longa"
+    }
 
-                Spacer(modifier = Modifier.height(if (compactLayout) 12.dp else 24.dp))
+    Text(phaseLabel, color = AccentCyan, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+    PomodoroDurationDial(
+        minutes = minutes.toInt().coerceAtLeast(1),
+        maxMinutes = 60,
+        activeProgress = progress,
+        onMinutesChange = {},
+        modifier = Modifier.size(270.dp)
+    )
+    Text(
+        String.format("%02d:%02d", minutes, seconds),
+        color = TextPrimary,
+        fontSize = 40.sp,
+        fontWeight = FontWeight.Bold
+    )
+    Text(
+        if (targetSessions == 0) {
+            "Sessões concluídas: $completedSessions • até eu parar"
+        } else {
+            "Sessões concluídas: $completedSessions de $targetSessions"
+        },
+        color = TextSecondary,
+        fontSize = 13.sp
+    )
 
-                StopwatchTimer(
-                    minutes = if (isRunning) remainingMinutes else selectedMinutes,
-                    seconds = if (isRunning) remainingSeconds else 0,
-                    progress = progress,
-                    isActive = isRunning,
-                    onMinutesChange = { selectedMinutes = it },
-                    modifier = Modifier.size(if (compactLayout) 208.dp else 280.dp)
-                )
+    if (isStrict) {
+        Text(
+            "Bloqueio rigoroso ativo durante o foco. As pausas liberam o aparelho.",
+            color = TextHint,
+            fontSize = 12.sp,
+            textAlign = TextAlign.Center
+        )
+        Button(onClick = onPhone, colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)) {
+            Icon(Icons.Default.Phone, contentDescription = null, tint = DarkBg)
+            Spacer(Modifier.width(8.dp))
+            Text("Telefone", color = DarkBg)
+        }
+    } else {
+        Button(
+            onClick = onStop,
+            colors = ButtonDefaults.buttonColors(containerColor = DangerRed.copy(alpha = 0.8f))
+        ) {
+            Text("Parar Pomodoro")
+        }
+    }
+}
 
-                Spacer(modifier = Modifier.height(14.dp))
+@Composable
+private fun CurrentPlanSummary(config: PomodoroPlanConfig) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = DarkCard),
+        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+    ) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text("Ciclo atual", color = TextPrimary, fontWeight = FontWeight.Bold)
+            Text(
+                "Foco ${formatMinutes(config.focusMinutes)} • pausa ${formatMinutes(config.shortBreakMinutes)}",
+                color = TextSecondary,
+                fontSize = 13.sp
+            )
+            Text(
+                "Pausa longa ${formatMinutes(config.longBreakMinutes)} a cada ${config.longBreakEvery} sessões",
+                color = TextSecondary,
+                fontSize = 13.sp
+            )
+            Text(
+                "Sessões: ${PomodoroCyclePolicy.targetLabel(config)}",
+                color = TextSecondary,
+                fontSize = 13.sp
+            )
+        }
+    }
+}
 
-                DigitalClockDisplay(
-                    minutes = if (isRunning) remainingMinutes else selectedMinutes,
-                    seconds = if (isRunning) remainingSeconds else 0
-                )
-
-                Spacer(modifier = Modifier.height(18.dp))
-
-                if (showStrictBlockWarning) {
-                    AlertDialog(
-                        onDismissRequest = { showStrictBlockWarning = false },
-                        title = { Text(stringResource(R.string.aviso_de_bloqueio_rigoroso)) },
-                        text = { Text(stringResource(R.string.o_bloqueio_rigoroso_ira_impedir_que_voce)) },
-                        confirmButton = {
-                            Button(onClick = {
-                                showStrictBlockWarning = false
-                                if (FocusModeStore.isActive(context)) {
-                                    isBlockingEnabled = false
-                                    showFocusModeConflict = true
-                                } else {
-                                    isBlockingEnabled = true
-                                }
-                            }) { Text(stringResource(R.string.ativar)) }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showStrictBlockWarning = false }) { Text(stringResource(R.string.pomodoro_cancel_btn)) }
-                        }
-                    )
-                }
-
-                if (showFocusModeConflict) {
-                    AlertDialog(
-                        onDismissRequest = { showFocusModeConflict = false },
-                        title = { Text(stringResource(R.string.focus_mode_conflict_title)) },
-                        text = { Text(stringResource(R.string.focus_mode_pomodoro_conflict)) },
-                        confirmButton = {
-                            TextButton(onClick = { showFocusModeConflict = false }) {
-                                Text(stringResource(R.string.status_close))
-                            }
-                        }
-                    )
-                }
-
-                if (!isRunning) {
-                    BlockingToggleCard(
-                        isBlockingEnabled = isBlockingEnabled,
-                        enabled = !focusModeActive,
-                        onToggle = { enabled ->
-                            if (!enabled) {
-                                isBlockingEnabled = false
-                            } else if (FocusModeStore.isActive(context)) {
-                                isBlockingEnabled = false
-                                showFocusModeConflict = true
-                            } else if (ProtectionPermissionGate.read(context).isReady) {
-                                showStrictBlockWarning = true
-                            } else {
-                                onPermissionsRequired()
-                            }
-                        }
-                    )
-
-                    Spacer(modifier = Modifier.height(18.dp))
-
-                    Button(
-                        onClick = {
-                            if (isBlockingEnabled && FocusModeStore.isActive(context)) {
-                                isBlockingEnabled = false
-                                showFocusModeConflict = true
-                            } else if (
-                                isBlockingEnabled &&
-                                !ProtectionPermissionGate.read(context).isReady
-                            ) {
-                                onPermissionsRequired()
-                            } else {
-                                scope.launch {
-                                    pomodoroManager.startSession(
-                                        selectedMinutes,
-                                        isBlockingEnabled = isBlockingEnabled
+@Composable
+private fun ProfileStrip(
+    profiles: List<PomodoroProfile>,
+    onUse: (PomodoroProfile) -> Unit,
+    onDelete: (PomodoroProfile) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Text("Perfis de Pomodoro", color = TextPrimary, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.height(7.dp))
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            profiles.forEach { profile ->
+                Card(
+                    modifier = Modifier.width(178.dp).clickable { onUse(profile) },
+                    colors = CardDefaults.cardColors(containerColor = DarkCard),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+                ) {
+                    Column(Modifier.padding(12.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                profile.name,
+                                modifier = Modifier.weight(1f),
+                                color = TextPrimary,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 13.sp
+                            )
+                            if (!profile.builtIn) {
+                                IconButton(
+                                    onClick = { onDelete(profile) },
+                                    modifier = Modifier.size(28.dp)
+                                ) {
+                                    Icon(
+                                        Icons.Default.Delete,
+                                        contentDescription = "Excluir perfil",
+                                        tint = TextHint,
+                                        modifier = Modifier.size(17.dp)
                                     )
                                 }
                             }
-                        },
-                        modifier = Modifier.width(220.dp).height(44.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 0.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-                    ) {
-                        Text(stringResource(R.string.pomodoro_start_btn), fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                    }
-                } else {
-                    Spacer(modifier = Modifier.height(24.dp))
-
-                    if (currentSession?.isBlockingEnabled == true) {
-                        Button(
-                            onClick = {
-                                runCatching {
-                                    val intent = Intent(Intent.ACTION_DIAL).apply {
-                                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                    }
-                                    context.startActivity(intent)
-                                }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Icon(Icons.Default.Phone, contentDescription = stringResource(R.string.content_emergency_call))
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(stringResource(R.string.pomodoro_phone_btn))
                         }
-                    } else {
-                        Button(
-                            onClick = { scope.launch { pomodoroManager.stopSession() } },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color.Red.copy(alpha = 0.7f)),
-                            shape = RoundedCornerShape(16.dp)
-                        ) {
-                            Text(stringResource(R.string.pomodoro_cancel_timer_btn))
-                        }
+                        Text(
+                            "${profile.config.focusMinutes}/${profile.config.shortBreakMinutes} • longa ${profile.config.longBreakMinutes}m",
+                            color = TextHint,
+                            fontSize = 11.sp
+                        )
                     }
                 }
             }
@@ -303,219 +523,463 @@ fun PomodoroScreen(
 }
 
 @Composable
-fun StopwatchTimer(
+private fun PomodoroConfigurationPanel(
+    config: PomodoroPlanConfig,
+    hasDndAccess: Boolean,
+    hasNotificationAccess: Boolean,
+    onConfigChange: (PomodoroPlanConfig) -> Unit,
+    onRequestDnd: () -> Unit,
+    onRequestNotificationAccess: () -> Unit,
+    onPreviewSound: () -> Unit,
+    onSaveProfile: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(containerColor = DarkCard),
+        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Text("Configurar Pomodoro", color = TextPrimary, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+
+            MiniDurationControl(
+                label = "Tempo de foco",
+                minutes = config.focusMinutes,
+                maxMinutes = 180,
+                hoursMode = false,
+                onChange = { onConfigChange(config.copy(focusMinutes = it)) }
+            )
+            MiniDurationControl(
+                label = "Tempo de pausa",
+                minutes = config.shortBreakMinutes,
+                maxMinutes = 120,
+                hoursMode = false,
+                onChange = { onConfigChange(config.copy(shortBreakMinutes = it)) }
+            )
+            MiniDurationControl(
+                label = "Pausa mais longa",
+                minutes = config.longBreakMinutes,
+                maxMinutes = 720,
+                hoursMode = true,
+                onChange = { onConfigChange(config.copy(longBreakMinutes = it)) }
+            )
+
+            NumberSelector(
+                label = "Pausa longa a cada",
+                value = config.longBreakEvery,
+                values = (1..20).toList(),
+                valueLabel = { "$it sessões" },
+                onChange = { onConfigChange(config.copy(longBreakEvery = it)) }
+            )
+            NumberSelector(
+                label = "Número de sessões",
+                value = config.targetSessions,
+                values = (0..100).toList(),
+                valueLabel = { if (it == 0) "Até eu parar" else it.toString() },
+                onChange = { onConfigChange(config.copy(targetSessions = it)) }
+            )
+
+            ToggleRow(
+                label = "Bloqueio rigoroso durante o foco",
+                checked = config.strictBlocking,
+                onCheckedChange = { onConfigChange(config.copy(strictBlocking = it)) }
+            )
+
+            Text("Alarme", color = AccentCyan, fontWeight = FontWeight.Bold)
+            ToggleRow(
+                label = "Som",
+                checked = config.soundEnabled,
+                onCheckedChange = { onConfigChange(config.copy(soundEnabled = it)) }
+            )
+            ToggleRow(
+                label = "Vibração",
+                checked = config.vibrationEnabled,
+                onCheckedChange = { onConfigChange(config.copy(vibrationEnabled = it)) }
+            )
+            SoundSelector(
+                selectedIndex = config.soundIndex,
+                onChange = { onConfigChange(config.copy(soundIndex = it)) },
+                onPreview = onPreviewSound
+            )
+            NumberSelector(
+                label = "Tempo do alarme",
+                value = config.alarmDurationSeconds,
+                values = listOf(1, 2, 3, 5, 8, 10, 15, 20, 30, 45, 60),
+                valueLabel = { "$it s" },
+                onChange = { onConfigChange(config.copy(alarmDurationSeconds = it)) }
+            )
+
+            Text("Notificações", color = AccentCyan, fontWeight = FontWeight.Bold)
+            ToggleRow(
+                label = "Silenciar notificações",
+                icon = { Icon(Icons.Default.NotificationsOff, contentDescription = null, tint = AccentCyan) },
+                checked = config.silenceNotifications,
+                onCheckedChange = { enabled ->
+                    onConfigChange(config.copy(silenceNotifications = enabled))
+                    if (enabled && !hasDndAccess) onRequestDnd()
+                }
+            )
+            if (config.silenceNotifications && !hasDndAccess) {
+                PermissionHint("Acesso ao Não Perturbe pendente", onRequestDnd)
+            }
+            ToggleRow(
+                label = "Omitir notificações",
+                icon = { Icon(Icons.Default.VisibilityOff, contentDescription = null, tint = AccentCyan) },
+                checked = config.hideNotifications,
+                onCheckedChange = { enabled ->
+                    onConfigChange(config.copy(hideNotifications = enabled))
+                    if (enabled && !hasNotificationAccess) onRequestNotificationAccess()
+                }
+            )
+            if (config.hideNotifications && !hasNotificationAccess) {
+                PermissionHint("Acesso às notificações pendente", onRequestNotificationAccess)
+            }
+
+            OutlinedButton(onClick = onSaveProfile, modifier = Modifier.fillMaxWidth()) {
+                Icon(Icons.Default.Save, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text("Salvar configuração como perfil")
+            }
+        }
+    }
+}
+
+@Composable
+private fun PermissionHint(text: String, onClick: () -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(text, modifier = Modifier.weight(1f), color = DangerRed, fontSize = 11.sp)
+        TextButton(onClick = onClick) { Text("Permitir") }
+    }
+}
+
+@Composable
+private fun ToggleRow(
+    label: String,
+    checked: Boolean,
+    icon: (@Composable () -> Unit)? = null,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        icon?.invoke()
+        if (icon != null) Spacer(Modifier.width(8.dp))
+        Text(label, modifier = Modifier.weight(1f), color = TextPrimary, fontSize = 13.sp)
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+@Composable
+private fun SoundSelector(
+    selectedIndex: Int,
+    onChange: (Int) -> Unit,
+    onPreview: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Box(modifier = Modifier.weight(1f)) {
+            OutlinedButton(onClick = { expanded = true }, modifier = Modifier.fillMaxWidth()) {
+                Text("Som: ${PomodoroAlarmController.soundName(selectedIndex)}")
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                modifier = Modifier.heightIn(max = 320.dp)
+            ) {
+                PomodoroAlarmController.sounds.forEach { sound ->
+                    DropdownMenuItem(
+                        text = { Text(sound.name) },
+                        onClick = {
+                            onChange(sound.id)
+                            expanded = false
+                        }
+                    )
+                }
+            }
+        }
+        IconButton(onClick = onPreview) {
+            Icon(Icons.Default.VolumeUp, contentDescription = "Ouvir som", tint = AccentCyan)
+        }
+    }
+}
+
+@Composable
+private fun NumberSelector(
+    label: String,
+    value: Int,
+    values: List<Int>,
+    valueLabel: (Int) -> String,
+    onChange: (Int) -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, modifier = Modifier.weight(1f), color = TextPrimary, fontSize = 13.sp)
+        Box {
+            OutlinedButton(onClick = { expanded = true }) {
+                Text(valueLabel(value))
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+                modifier = Modifier.heightIn(max = 300.dp)
+            ) {
+                values.forEach { option ->
+                    DropdownMenuItem(
+                        text = { Text(valueLabel(option)) },
+                        onClick = {
+                            onChange(option)
+                            expanded = false
+                        }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniDurationControl(
+    label: String,
     minutes: Int,
-    seconds: Int,
-    progress: Float,
-    isActive: Boolean,
+    maxMinutes: Int,
+    hoursMode: Boolean,
+    onChange: (Int) -> Unit
+) {
+    var minutesText by rememberSaveable(minutes, hoursMode) {
+        mutableStateOf(if (hoursMode) (minutes % 60).toString() else minutes.toString())
+    }
+    var hoursText by rememberSaveable(minutes, hoursMode) {
+        mutableStateOf(if (hoursMode) (minutes / 60).toString() else "0")
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        MiniClockDial(
+            minutes = minutes,
+            maxMinutes = maxMinutes,
+            onMinutesChange = { newValue ->
+                val safe = newValue.coerceIn(1, maxMinutes)
+                if (hoursMode) {
+                    hoursText = (safe / 60).toString()
+                    minutesText = (safe % 60).toString()
+                } else {
+                    minutesText = safe.toString()
+                }
+                onChange(safe)
+            },
+            modifier = Modifier.size(86.dp)
+        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(label, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.height(5.dp))
+            if (hoursMode) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    CompactNumberField(
+                        value = hoursText,
+                        suffix = "h",
+                        modifier = Modifier.weight(1f),
+                        onValueChange = { raw ->
+                            hoursText = raw
+                            val hours = raw.toIntOrNull() ?: 0
+                            val mins = minutesText.toIntOrNull() ?: 0
+                            onChange((hours * 60 + mins).coerceIn(1, maxMinutes))
+                        }
+                    )
+                    CompactNumberField(
+                        value = minutesText,
+                        suffix = "min",
+                        modifier = Modifier.weight(1f),
+                        onValueChange = { raw ->
+                            minutesText = raw
+                            val hours = hoursText.toIntOrNull() ?: 0
+                            val mins = (raw.toIntOrNull() ?: 0).coerceIn(0, 59)
+                            onChange((hours * 60 + mins).coerceIn(1, maxMinutes))
+                        }
+                    )
+                }
+            } else {
+                CompactNumberField(
+                    value = minutesText,
+                    suffix = "min",
+                    modifier = Modifier.fillMaxWidth(),
+                    onValueChange = { raw ->
+                        minutesText = raw
+                        raw.toIntOrNull()?.let { onChange(it.coerceIn(1, maxMinutes)) }
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CompactNumberField(
+    value: String,
+    suffix: String,
+    modifier: Modifier,
+    onValueChange: (String) -> Unit
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = { raw ->
+            val filtered = raw.filter(Char::isDigit).take(4)
+            onValueChange(filtered)
+        },
+        modifier = modifier,
+        singleLine = true,
+        trailingIcon = { Text(suffix, color = TextHint, fontSize = 11.sp) },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+    )
+}
+
+@Composable
+private fun MiniClockDial(
+    minutes: Int,
+    maxMinutes: Int,
     onMinutesChange: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     Canvas(
-        modifier = modifier
-            .pointerInput(isActive) {
-                if (!isActive) {
-                    detectDragGestures { change, _ ->
-                        val center = Offset(size.width / 2f, size.height / 2f)
-                        val x = change.position.x - center.x
-                        val y = change.position.y - center.y
-                        var angle = atan2(y, x) * (180 / PI).toFloat() + 90f
-                        if (angle < 0) angle += 360f
-
-                        val newMinutes = (angle / 3f).roundToInt().coerceIn(1, 120)
-                        onMinutesChange(newMinutes)
-                    }
+        modifier = modifier.pointerInput(maxMinutes) {
+            detectDragGestures(
+                onDragStart = { position ->
+                    onMinutesChange(minutesFromPosition(position, size.width, size.height, maxMinutes))
+                },
+                onDrag = { change, _ ->
+                    onMinutesChange(minutesFromPosition(change.position, size.width, size.height, maxMinutes))
                 }
-            }
+            )
+        }
     ) {
-        val radius = size.minDimension / 2f
         val center = Offset(size.width / 2f, size.height / 2f)
-        val outerRadius = radius * 0.96f
-        val dialRadius = radius * 0.84f
-        val tickOuter = radius * 0.78f
-        val tickMajorInner = radius * 0.68f
-        val tickMinorInner = radius * 0.73f
-
-        drawCircle(
-            brush = Brush.radialGradient(
-                colors = listOf(DarkCardElevated, DarkCard, DarkBg),
-                center = center,
-                radius = outerRadius
-            ),
-            radius = outerRadius,
-            center = center
+        val radius = size.minDimension * 0.46f
+        drawCircle(DarkBg, radius, center)
+        drawCircle(AccentCyan.copy(alpha = 0.45f), radius, center, style = Stroke(2.dp.toPx()))
+        repeat(12) { tick ->
+            val angle = (tick * 30f - 90f) * PI / 180f
+            val start = Offset(
+                center.x + cos(angle).toFloat() * radius * 0.78f,
+                center.y + sin(angle).toFloat() * radius * 0.78f
+            )
+            val end = Offset(
+                center.x + cos(angle).toFloat() * radius * 0.92f,
+                center.y + sin(angle).toFloat() * radius * 0.92f
+            )
+            drawLine(TextHint, start, end, 1.5.dp.toPx(), cap = StrokeCap.Round)
+        }
+        val fraction = minutes.coerceIn(1, maxMinutes).toFloat() / maxMinutes.toFloat()
+        val angle = (fraction * 360f - 90f) * PI / 180f
+        val handEnd = Offset(
+            center.x + cos(angle).toFloat() * radius * 0.68f,
+            center.y + sin(angle).toFloat() * radius * 0.68f
         )
-        drawCircle(color = DarkSurface, radius = dialRadius, center = center)
-        drawCircle(color = AccentCyan.copy(alpha = 0.16f), radius = outerRadius, center = center, style = Stroke(width = 10.dp.toPx()))
+        drawLine(AccentCyan, center, handEnd, 3.dp.toPx(), cap = StrokeCap.Round)
+        drawCircle(AccentCyan, 4.dp.toPx(), center)
+    }
+}
+
+@Composable
+fun PomodoroDurationDial(
+    minutes: Int,
+    maxMinutes: Int,
+    activeProgress: Float?,
+    onMinutesChange: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val interactive = activeProgress == null
+    Canvas(
+        modifier = modifier.pointerInput(interactive, maxMinutes) {
+            if (!interactive) return@pointerInput
+            detectDragGestures(
+                onDragStart = { position ->
+                    onMinutesChange(minutesFromPosition(position, size.width, size.height, maxMinutes))
+                },
+                onDrag = { change, _ ->
+                    onMinutesChange(minutesFromPosition(change.position, size.width, size.height, maxMinutes))
+                }
+            )
+        }
+    ) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val radius = size.minDimension * 0.46f
+        drawCircle(DarkCard, radius, center)
+        drawCircle(
+            AccentCyan.copy(alpha = 0.25f),
+            radius,
+            center,
+            style = Stroke(10.dp.toPx())
+        )
+        val progress = activeProgress ?: (minutes.toFloat() / maxMinutes.toFloat())
         drawArc(
             color = AccentCyan,
             startAngle = -90f,
             sweepAngle = 360f * progress.coerceIn(0f, 1f),
             useCenter = false,
-            style = Stroke(width = 10.dp.toPx(), cap = StrokeCap.Round),
-            topLeft = Offset(center.x - outerRadius, center.y - outerRadius),
-            size = Size(outerRadius * 2f, outerRadius * 2f)
+            topLeft = Offset(center.x - radius, center.y - radius),
+            size = androidx.compose.ui.geometry.Size(radius * 2f, radius * 2f),
+            style = Stroke(10.dp.toPx(), cap = StrokeCap.Round)
         )
-        drawCircle(color = AccentCyan.copy(alpha = 0.38f), radius = dialRadius, center = center, style = Stroke(width = 2.dp.toPx()))
-
-        for (minute in 0 until 120) {
-            val angleRad = ((minute * 3f - 90f) * PI / 180f).toFloat()
-            val isMajor = minute % 10 == 0
-            val startRadius = if (isMajor) tickMajorInner else tickMinorInner
-            val strokeWidth = if (isMajor) 3.5.dp.toPx() else 1.6.dp.toPx()
-            val start = Offset(center.x + cos(angleRad) * startRadius, center.y + sin(angleRad) * startRadius)
-            val end = Offset(center.x + cos(angleRad) * tickOuter, center.y + sin(angleRad) * tickOuter)
-            drawLine(
-                color = if (isMajor) TextPrimary else TextHint,
-                start = start,
-                end = end,
-                strokeWidth = strokeWidth,
-                cap = StrokeCap.Round
+        repeat(12) { tick ->
+            val angle = (tick * 30f - 90f) * PI / 180f
+            val start = Offset(
+                center.x + cos(angle).toFloat() * radius * 0.76f,
+                center.y + sin(angle).toFloat() * radius * 0.76f
             )
+            val end = Offset(
+                center.x + cos(angle).toFloat() * radius * 0.90f,
+                center.y + sin(angle).toFloat() * radius * 0.90f
+            )
+            drawLine(TextHint, start, end, 2.dp.toPx(), cap = StrokeCap.Round)
         }
-
-        val textPaint = android.graphics.Paint().apply {
-            color = android.graphics.Color.WHITE
-            textAlign = android.graphics.Paint.Align.CENTER
-            textSize = 20.sp.toPx()
-            typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
-            isAntiAlias = true
-        }
-        for (minute in 0 until 120 step 10) {
-            val label = if (minute == 0) "120" else minute.toString()
-            val angleRad = ((minute * 3f - 90f) * PI / 180f).toFloat()
-            val textRadius = radius * 0.57f
-            drawContext.canvas.nativeCanvas.drawText(
-                label,
-                center.x + cos(angleRad) * textRadius,
-                center.y + sin(angleRad) * textRadius + textPaint.textSize / 3f,
-                textPaint
+        if (interactive) {
+            val fraction = minutes.coerceIn(1, maxMinutes).toFloat() / maxMinutes.toFloat()
+            val handAngle = (fraction * 360f - 90f) * PI / 180f
+            val end = Offset(
+                center.x + cos(handAngle).toFloat() * radius * 0.66f,
+                center.y + sin(handAngle).toFloat() * radius * 0.66f
             )
-        }
-
-        val currentMinutes = if (isActive) minutes.toFloat() + (seconds.toFloat() / 60f) else minutes.toFloat()
-        val handAngle = ((currentMinutes * 3f) - 90f) * PI / 180f
-        val handLength = radius * 0.46f
-        val handEnd = Offset(
-            center.x + cos(handAngle).toFloat() * handLength,
-            center.y + sin(handAngle).toFloat() * handLength
-        )
-
-        val baseWidth = 5.dp.toPx()
-        val tipWidth = 1.dp.toPx()
-        val anglePerp = handAngle + PI / 2.0
-        val p1 = Offset(center.x + cos(anglePerp).toFloat() * (baseWidth / 2f), center.y + sin(anglePerp).toFloat() * (baseWidth / 2f))
-        val p2 = Offset(center.x - cos(anglePerp).toFloat() * (baseWidth / 2f), center.y - sin(anglePerp).toFloat() * (baseWidth / 2f))
-        val p3 = Offset(handEnd.x - cos(anglePerp).toFloat() * (tipWidth / 2f), handEnd.y - sin(anglePerp).toFloat() * (tipWidth / 2f))
-        val p4 = Offset(handEnd.x + cos(anglePerp).toFloat() * (tipWidth / 2f), handEnd.y + sin(anglePerp).toFloat() * (tipWidth / 2f))
-
-        val handPath = Path().apply {
-            moveTo(p1.x, p1.y)
-            lineTo(p2.x, p2.y)
-            lineTo(p3.x, p3.y)
-            lineTo(p4.x, p4.y)
-            close()
-        }
-
-        drawPath(handPath, color = Color.Black.copy(alpha = 0.2f))
-        drawPath(
-            path = handPath,
-            brush = Brush.linearGradient(
-                colors = listOf(AccentCyan, AccentCyan.copy(alpha = 0.7f)),
-                start = center,
-                end = handEnd
-            )
-        )
-
-        val hollowRadius = 5.dp.toPx()
-        val tipCenter = Offset(
-            center.x + cos(handAngle).toFloat() * (handLength + hollowRadius + 4.dp.toPx()),
-            center.y + sin(handAngle).toFloat() * (handLength + hollowRadius + 4.dp.toPx())
-        )
-
-        drawCircle(color = AccentCyan, radius = hollowRadius, center = tipCenter, style = Stroke(width = 2.dp.toPx()))
-        drawCircle(color = AccentCyan, radius = 1.dp.toPx(), center = tipCenter)
-        drawCircle(color = AccentCyan, radius = 7.dp.toPx(), center = center)
-        drawCircle(color = DarkBg, radius = 3.dp.toPx(), center = center)
-    }
-}
-
-@Composable
-fun DigitalClockDisplay(
-    minutes: Int,
-    seconds: Int
-) {
-    Surface(
-        color = DarkCard,
-        shape = RoundedCornerShape(10.dp),
-        border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.35f)),
-        modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = String.format("%02d", minutes),
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = AccentCyan,
-                fontFamily = MaterialTheme.typography.displayLarge.fontFamily
-            )
-            Text(
-                text = ":",
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = AccentCyan,
-                modifier = Modifier.padding(horizontal = 2.dp)
-            )
-            Text(
-                text = String.format("%02d", seconds),
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = AccentCyan
-            )
+            drawLine(AccentCyan, center, end, 5.dp.toPx(), cap = StrokeCap.Round)
+            drawCircle(AccentCyan, 6.dp.toPx(), center)
         }
     }
 }
 
-@Composable
-fun BlockingToggleCard(
-    isBlockingEnabled: Boolean,
-    enabled: Boolean = true,
-    onToggle: (Boolean) -> Unit
-) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
-            .background(DarkCard)
-            .padding(horizontal = 16.dp, vertical = 10.dp)
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                stringResource(R.string.pomodoro_enable_block_switch),
-                color = if (enabled) TextPrimary else TextHint,
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Text(
-                stringResource(R.string.pomodoro_enable_block_subtitle),
-                color = TextHint,
-                fontSize = 11.sp
-            )
-        }
-        Spacer(modifier = Modifier.width(16.dp))
-        Switch(
-            checked = isBlockingEnabled,
-            onCheckedChange = onToggle,
-            enabled = enabled,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = AccentCyan,
-                checkedTrackColor = AccentCyan.copy(alpha = 0.5f)
-            )
-        )
+private fun minutesFromPosition(
+    position: Offset,
+    width: Int,
+    height: Int,
+    maxMinutes: Int
+): Int {
+    val centerX = width / 2f
+    val centerY = height / 2f
+    var angle = atan2(position.y - centerY, position.x - centerX) * (180f / PI.toFloat()) + 90f
+    if (angle < 0f) angle += 360f
+    val fraction = angle / 360f
+    return (fraction * maxMinutes).roundToInt().coerceIn(1, maxMinutes)
+}
+
+private fun formatMinutes(minutes: Int): String {
+    val hours = minutes / 60
+    val rest = minutes % 60
+    return when {
+        hours <= 0 -> "$minutes min"
+        rest == 0 -> "${hours}h"
+        else -> "${hours}h ${rest}min"
     }
 }
