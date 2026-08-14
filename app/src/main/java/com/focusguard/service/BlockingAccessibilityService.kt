@@ -39,6 +39,7 @@ import com.focusguard.manager.StrictPomodoroLock
 import com.focusguard.security.AccessibilitySettingsPolicy
 import com.focusguard.security.AuthenticatedRemovalWindow
 import com.focusguard.security.AuthManager
+import com.focusguard.security.DeviceAdminActivationWindow
 import com.focusguard.security.ManagedSelfProtectionPolicy
 import com.focusguard.security.SettingsInterceptionPolicy
 import com.focusguard.security.SelfProtectionStateStore
@@ -932,6 +933,10 @@ class BlockingAccessibilityService : AccessibilityService() {
             // própria porque é testada isoladamente.
             selfProtectionEngaged = true,
             strictPomodoroActive = isPomodoroStrictActive,
+            deviceAdminActivationAuthorized = DeviceAdminActivationWindow.isAuthorized(
+                context = this,
+                deviceAdminActive = deviceOwnerManager.isDeviceAdminActive()
+            ),
             rootSignals = SettingsInterceptionPolicy.RootSignals(
                 mentionsAccessibility = ::rootMentionsAccessibility,
                 mentionsDeviceAdmin = ::rootMentionsDeviceAdmin,

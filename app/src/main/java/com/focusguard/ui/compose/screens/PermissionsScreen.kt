@@ -66,6 +66,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.security.DeviceAdminActivationWindow
 import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
@@ -185,6 +186,9 @@ fun PermissionsScreen(
         val pendingStep = pendingExternalStepName?.let { stepName ->
             runCatching { PermissionStepType.valueOf(stepName) }.getOrNull()
         }
+        if (pendingStep == PermissionStepType.DeviceAdmin) {
+            DeviceAdminActivationWindow.close(context)
+        }
         val updated = refreshPermissions()
 
         if (pendingStep != null) {
@@ -219,12 +223,30 @@ fun PermissionsScreen(
     val deviceAdminLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
+        DeviceAdminActivationWindow.close(context)
         applyPermissionResult(PermissionStepType.DeviceAdmin, refreshPermissions())
     }
 
     fun markPending(step: PermissionStepType) {
         unsuccessfulStepName = null
         pendingExternalStepName = step.name
+    }
+
+    fun openAuthorizedDeviceAdminSettings(): Boolean {
+        if (!DeviceAdminActivationWindow.open(context)) {
+            FocusGuardLogger.log(
+                "Permissions",
+                "Não foi possível autorizar temporariamente a ativação do administrador"
+            )
+            return false
+        }
+        markPending(PermissionStepType.DeviceAdmin)
+        val launched = deviceOwnerManager.openDeviceAdminSettings(context)
+        if (!launched) {
+            DeviceAdminActivationWindow.close(context)
+            pendingExternalStepName = null
+        }
+        return launched
     }
 
     fun openCurrentStep(step: PermissionStepType) {
@@ -262,17 +284,20 @@ fun PermissionsScreen(
             }
             PermissionStepType.DeviceAdmin -> {
                 unsuccessfulStepName = null
+                if (!DeviceAdminActivationWindow.open(context)) {
+                    unsuccessfulStepName = step.name
+                    return
+                }
                 runCatching {
                     deviceAdminLauncher.launch(deviceOwnerManager.createDeviceAdminActivationIntent())
                 }.onFailure { error ->
+                    DeviceAdminActivationWindow.close(context)
                     FocusGuardLogger.logError(
                         "Permissions",
                         "Falha ao abrir confirmação de Device Admin",
                         error
                     )
-                    markPending(step)
-                    if (!deviceOwnerManager.openDeviceAdminSettings(context)) {
-                        pendingExternalStepName = null
+                    if (!openAuthorizedDeviceAdminSettings()) {
                         unsuccessfulStepName = step.name
                     }
                 }
@@ -416,9 +441,7 @@ fun PermissionsScreen(
                             when (step) {
                                 PermissionStepType.Accessibility -> showRestrictedDialog = true
                                 PermissionStepType.DeviceAdmin -> {
-                                    markPending(step)
-                                    if (!deviceOwnerManager.openDeviceAdminSettings(context)) {
-                                        pendingExternalStepName = null
+                                    if (!openAuthorizedDeviceAdminSettings()) {
                                         unsuccessfulStepName = step.name
                                     }
                                 }

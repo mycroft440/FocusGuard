@@ -115,11 +115,14 @@ object SettingsInterceptionPolicy {
      *
      *   When it is off, every screen is ignored — the whole point is that the
      *   app never traps a user who has nothing running.
+     * @param deviceAdminActivationAuthorized true only during a permission
+     *   enrollment initiated inside FocusGuard while it is not an administrator.
      */
     fun decide(
         signals: EventSignals,
         selfProtectionEngaged: Boolean,
         strictPomodoroActive: Boolean,
+        deviceAdminActivationAuthorized: Boolean,
         rootSignals: RootSignals
     ): Decision {
         if (signals.packageName !in interceptionPackages) return Decision.IGNORE
@@ -142,6 +145,28 @@ object SettingsInterceptionPolicy {
         }
 
         if (strictPomodoroActive) return Decision.POMODORO_LOCK
+
+        // The permission wizard deliberately opened Android's enrollment UI.
+        // Allow only the FocusGuard Device Admin surface; app details,
+        // accessibility controls and uninstall surfaces remain protected.
+        if (deviceAdminActivationAuthorized) {
+            val isKnownNonAdminSurface =
+                signals.classTargetsAccessibilityServiceToggle ||
+                    signals.classTargetsAccessibilityList ||
+                    signals.classTargetsAppDetails ||
+                    signals.classTargetsUninstall ||
+                    signals.classTargetsEssentialSpecialAccess
+            val onDeviceAdminSurface = !isKnownNonAdminSurface &&
+                (signals.classTargetsDeviceAdmin ||
+                    (signals.isGenericSubSettings &&
+                        (signals.textMentionsDeviceAdmin ||
+                            rootSignals.mentionsDeviceAdmin())))
+            if (onDeviceAdminSurface &&
+                (signals.textMentionsFocusGuard || rootSignals.mentionsFocusGuard())
+            ) {
+                return Decision.IGNORE
+            }
+        }
 
         // O primeiro evento útil normalmente é o clique no item "FocusGuard".
         // Interceptá-lo antes da transição fecha a principal corrida do modo

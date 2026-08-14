@@ -292,10 +292,10 @@
     <string name="permission_usage_access_desc">Permite medir o tempo gasto em apps e gerar insights.</string>
     <string name="permission_usage_access_detail">Na lista do Android, localize FocusGuard e habilite o acesso.</string>
     <string name="permission_usage_access_action">Abrir acesso de uso</string>
-    <string name="permission_device_admin_title">Admin do dispositivo</string>
-    <string name="permission_device_admin_desc">É obrigatório para configurar bloqueios e adiciona proteção contra remoção impulsiva, embora o Android ainda permita revogar um administrador comum.</string>
-    <string name="permission_device_admin_detail">Na tela do Android, toque em \"Ativar\". Para proteção anti-remoção oficial, provisione também o modo Device Owner.</string>
-    <string name="permission_device_admin_action">Ativar proteção avançada</string>
+    <string name="permission_device_admin_title">Administrador comum do dispositivo</string>
+    <string name="permission_device_admin_desc">Esta é a permissão comum do Android, não o Device Owner. Ela é obrigatória para configurar bloqueios e adiciona proteção contra remoção impulsiva.</string>
+    <string name="permission_device_admin_detail">Na tela do Android, toque em \"Ativar\". O Device Owner é configurado somente em Configurações &gt; Proteção nuclear.</string>
+    <string name="permission_device_admin_action">Ativar administrador comum</string>
     <string name="permission_device_admin_manual_action">Abrir lista de administradores</string>
     <string name="permission_battery_title">Bateria irrestrita</string>
     <string name="permission_battery_desc">Mantém os bloqueios ativos com mais confiabilidade em segundo plano.</string>
@@ -662,8 +662,7 @@
     <string name="focus_mode_how_description">O FocusGuard suspende os apps não permitidos, oculta suas notificações e mantém o aparelho no ambiente quiosque do FocusGuard. Você continua podendo navegar por todas as áreas do app e abrir somente os recursos essenciais e apps escolhidos nesta tela.</string>
     <string name="focus_mode_requirements_title">Requisitos para um bloqueio confiável</string>
     <string name="focus_mode_device_owner_title">Controle nativo do aparelho</string>
-    <string name="focus_mode_device_owner_description">No Android 9 ou superior, o Device Owner permite suspender apps, bloquear Início e Recentes e impedir a inicialização em modo seguro. O menu normal de energia permanece disponível.</string>
-    <string name="focus_mode_configure_device_owner">Configurar</string>
+    <string name="focus_mode_device_owner_description">No Android 9 ou superior, o Device Owner permite suspender apps, bloquear Início e Recentes e impedir a inicialização em modo seguro. A configuração é feita somente em Configurações &gt; Proteção nuclear.</string>
     <string name="focus_mode_notification_access_title">Bloqueio de notificações</string>
     <string name="focus_mode_notification_access_description">O acesso às notificações permite remover alertas publicados por apps bloqueados.</string>
     <string name="focus_mode_open_notification_access">Permitir</string>
@@ -709,7 +708,7 @@
     <string name="focus_mode_only_essentials">Nenhum outro app foi liberado. Somente ligação, emergência, SMS e FocusGuard estão disponíveis.</string>
     <string name="focus_mode_system_apps_notice">O Android não permite suspender %1$d app(s) protegido(s) pelo sistema. Eles não aparecem nesta tela e o modo quiosque continua impedindo a saída normal.</string>
     <string name="focus_mode_no_early_stop">Não existe botão comum para encerrar antes do prazo. O modo termina automaticamente.</string>
-    <string name="focus_mode_device_owner_required">Configure o Device Owner antes de iniciar o Modo Foco.</string>
+    <string name="focus_mode_device_owner_required">Configure o Device Owner em Configurações &gt; Proteção nuclear antes de iniciar o Modo Foco.</string>
     <string name="focus_mode_system_lockdown_unsupported">A confirmação completa do quiosque e do bloqueio de modo seguro exige Android 9 ou superior. O Modo Foco não foi iniciado neste aparelho.</string>
     <string name="focus_mode_notification_access_required">Permita o acesso às notificações antes de iniciar o Modo Foco.</string>
     <string name="focus_mode_start_failed">O Android não confirmou todas as regras do Modo Foco. Nenhuma sessão foi mantida; revise as permissões e tente novamente.</string>

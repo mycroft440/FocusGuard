@@ -292,10 +292,10 @@
     <string name="permission_usage_access_desc">Lets the app measure time spent in apps and generate insights.</string>
     <string name="permission_usage_access_detail">In the Android list, find FocusGuard and enable access.</string>
     <string name="permission_usage_access_action">Open usage access</string>
-    <string name="permission_device_admin_title">Device admin</string>
-    <string name="permission_device_admin_desc">Required for block configuration and adds protection against impulsive removal, although Android can still revoke a standard administrator.</string>
-    <string name="permission_device_admin_detail">On the Android screen, tap \"Activate\". For official anti-removal protection, also provision Device Owner mode.</string>
-    <string name="permission_device_admin_action">Enable advanced protection</string>
+    <string name="permission_device_admin_title">Standard device administrator</string>
+    <string name="permission_device_admin_desc">This is Android's standard administrator permission, not Device Owner. It is required to configure blocks and adds protection against impulsive removal.</string>
+    <string name="permission_device_admin_detail">On the Android screen, tap \"Activate\". Device Owner is configured only in Settings &gt; Nuclear protection.</string>
+    <string name="permission_device_admin_action">Enable standard administrator</string>
     <string name="permission_device_admin_manual_action">Open administrator list</string>
     <string name="permission_battery_title">Unrestricted battery</string>
     <string name="permission_battery_desc">Keeps blocks running more reliably in the background.</string>
@@ -662,8 +662,7 @@
     <string name="focus_mode_how_description">FocusGuard suspends apps that are not allowed, hides their notifications, and keeps the device inside the FocusGuard kiosk environment. You can still browse every app section and open only essential resources and apps selected on this screen.</string>
     <string name="focus_mode_requirements_title">Requirements for reliable blocking</string>
     <string name="focus_mode_device_owner_title">Native device control</string>
-    <string name="focus_mode_device_owner_description">On Android 9 or later, Device Owner can suspend apps, disable Home and Recents, and prevent safe-mode boot. The normal power menu remains available.</string>
-    <string name="focus_mode_configure_device_owner">Set up</string>
+    <string name="focus_mode_device_owner_description">On Android 9 or later, Device Owner can suspend apps, disable Home and Recents, and prevent safe-mode boot. Setup is available only in Settings &gt; Nuclear protection.</string>
     <string name="focus_mode_notification_access_title">Notification blocking</string>
     <string name="focus_mode_notification_access_description">Notification access lets FocusGuard remove alerts posted by blocked apps.</string>
     <string name="focus_mode_open_notification_access">Allow</string>
@@ -709,7 +708,7 @@
     <string name="focus_mode_only_essentials">No other app was allowed. Only calls, emergency, SMS, and FocusGuard are available.</string>
     <string name="focus_mode_system_apps_notice">Android does not allow %1$d protected system app(s) to be suspended. They are not shown here, and kiosk mode still prevents normal exit.</string>
     <string name="focus_mode_no_early_stop">There is no normal button to stop early. The mode ends automatically.</string>
-    <string name="focus_mode_device_owner_required">Set up Device Owner before starting Focus Mode.</string>
+    <string name="focus_mode_device_owner_required">Set up Device Owner in Settings &gt; Nuclear protection before starting Focus Mode.</string>
     <string name="focus_mode_system_lockdown_unsupported">Full kiosk and safe-mode blocking confirmation requires Android 9 or later. Focus Mode was not started on this device.</string>
     <string name="focus_mode_notification_access_required">Allow notification access before starting Focus Mode.</string>
     <string name="focus_mode_start_failed">Android did not confirm every Focus Mode rule. No session was kept; review permissions and try again.</string>

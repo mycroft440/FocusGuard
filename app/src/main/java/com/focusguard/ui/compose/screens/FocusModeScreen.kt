@@ -107,7 +107,6 @@ fun FocusModeScreen(
     var termsAccepted by remember { mutableStateOf(false) }
     var isStarting by remember { mutableStateOf(false) }
     var startOutcome by remember { mutableStateOf<FocusModeManager.StartOutcome?>(null) }
-    var showDeviceOwnerGuide by remember { mutableStateOf(false) }
     var permissionRevision by remember { mutableIntStateOf(0) }
 
     DisposableEffect(lifecycleOwner) {
@@ -141,13 +140,6 @@ fun FocusModeScreen(
     val systemLockdownSupported = remember { manager.isSystemLockdownSupported() }
     val mandatoryPackages = remember(context.applicationContext, permissionRevision) {
         FocusModeAppCatalog.mandatoryPackages(context.applicationContext)
-    }
-
-    if (showDeviceOwnerGuide) {
-        DeviceOwnerSetupGuideDialog(
-            onDismiss = { showDeviceOwnerGuide = false },
-            onStateChanged = { permissionRevision++ }
-        )
     }
 
     val durationMillis = FocusModePolicy.resolveDurationMillis(
@@ -231,13 +223,13 @@ fun FocusModeScreen(
             onSearchQueryChange = { searchQuery = it },
             deviceOwnerActive = deviceOwnerActive,
             notificationAccessActive = notificationAccessActive,
-            onOpenDeviceOwnerGuide = { showDeviceOwnerGuide = true },
             onOpenNotificationAccess = { openNotificationAccess(context) },
             isStarting = isStarting,
             startOutcome = startOutcome,
             onStart = {
                 when {
-                    !deviceOwnerActive -> showDeviceOwnerGuide = true
+                    !deviceOwnerActive -> startOutcome =
+                        FocusModeManager.StartOutcome.DEVICE_OWNER_REQUIRED
                     !systemLockdownSupported -> startOutcome =
                         FocusModeManager.StartOutcome.SYSTEM_LOCKDOWN_UNSUPPORTED
                     !notificationAccessActive -> openNotificationAccess(context)
@@ -271,7 +263,6 @@ private fun FocusModeSetupContent(
     onSearchQueryChange: (String) -> Unit,
     deviceOwnerActive: Boolean,
     notificationAccessActive: Boolean,
-    onOpenDeviceOwnerGuide: () -> Unit,
     onOpenNotificationAccess: () -> Unit,
     isStarting: Boolean,
     startOutcome: FocusModeManager.StartOutcome?,
@@ -336,9 +327,7 @@ private fun FocusModeSetupContent(
             FocusRequirementCard(
                 title = stringResource(R.string.focus_mode_device_owner_title),
                 description = stringResource(R.string.focus_mode_device_owner_description),
-                ready = deviceOwnerActive,
-                actionLabel = stringResource(R.string.focus_mode_configure_device_owner),
-                onAction = onOpenDeviceOwnerGuide
+                ready = deviceOwnerActive
             )
         }
 
@@ -863,8 +852,8 @@ private fun FocusRequirementCard(
     title: String,
     description: String,
     ready: Boolean,
-    actionLabel: String,
-    onAction: () -> Unit
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null
 ) {
     Card(
         colors = CardDefaults.cardColors(containerColor = DarkCard),
@@ -896,7 +885,7 @@ private fun FocusRequirementCard(
                     modifier = Modifier.padding(top = 4.dp)
                 )
             }
-            if (!ready) {
+            if (!ready && actionLabel != null && onAction != null) {
                 TextButton(onClick = onAction) { Text(actionLabel) }
             }
         }

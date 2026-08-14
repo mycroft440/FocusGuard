@@ -68,11 +68,13 @@ class SettingsInterceptionPolicyTest {
         signals: SettingsInterceptionPolicy.EventSignals,
         engaged: Boolean = true,
         strictPomodoro: Boolean = false,
+        deviceAdminActivationAuthorized: Boolean = false,
         roots: RecordingRoots = RecordingRoots()
     ) = SettingsInterceptionPolicy.decide(
         signals = signals,
         selfProtectionEngaged = engaged,
         strictPomodoroActive = strictPomodoro,
+        deviceAdminActivationAuthorized = deviceAdminActivationAuthorized,
         rootSignals = roots.asRootSignals()
     )
 
@@ -339,6 +341,54 @@ class SettingsInterceptionPolicyTest {
     @Test
     fun `unremarkable settings screen is left alone`() {
         assertThat(decide(signals())).isEqualTo(Decision.IGNORE)
+    }
+
+    @Test
+    fun authorizedEnrollmentAllowsOnlyFocusGuardDeviceAdminSurfaces() {
+        assertThat(
+            decide(
+                signals(
+                    classTargetsDeviceAdmin = true,
+                    textMentionsFocusGuard = true
+                ),
+                deviceAdminActivationAuthorized = true
+            )
+        ).isEqualTo(Decision.IGNORE)
+
+        val genericAdmin = RecordingRoots(deviceAdmin = true, focusGuard = true)
+        assertThat(
+            decide(
+                signals(isGenericSubSettings = true),
+                deviceAdminActivationAuthorized = true,
+                roots = genericAdmin
+            )
+        ).isEqualTo(Decision.IGNORE)
+
+        assertThat(
+            decide(
+                signals(
+                    classTargetsAppDetails = true,
+                    isGenericSubSettings = true,
+                    textMentionsDeviceAdmin = true,
+                    textMentionsFocusGuard = true
+                ),
+                deviceAdminActivationAuthorized = true
+            )
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+    }
+
+    @Test
+    fun strictPomodoroOverridesAuthorizedDeviceAdminEnrollment() {
+        assertThat(
+            decide(
+                signals(
+                    classTargetsDeviceAdmin = true,
+                    textMentionsFocusGuard = true
+                ),
+                strictPomodoro = true,
+                deviceAdminActivationAuthorized = true
+            )
+        ).isEqualTo(Decision.POMODORO_LOCK)
     }
 
     private companion object {
