@@ -1,30 +1,61 @@
 package com.focusguard.ui.compose.screens
 
-import kotlin.OptIn
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Color
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.foundation.*
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.runtime.*
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import com.focusguard.R
-import com.focusguard.ui.compose.theme.*
+import com.focusguard.ui.compose.theme.AccentCyan
+import com.focusguard.ui.compose.theme.CardBorder
+import com.focusguard.ui.compose.theme.DangerRed
+import com.focusguard.ui.compose.theme.DarkBg
+import com.focusguard.ui.compose.theme.DarkCard
+import com.focusguard.ui.compose.theme.DarkCardElevated
+import com.focusguard.ui.compose.theme.SuccessGreen
+import com.focusguard.ui.compose.theme.TextDisabled
+import com.focusguard.ui.compose.theme.TextPrimary
+import com.focusguard.ui.compose.theme.TextSecondary
+import com.focusguard.ui.compose.theme.WarningAmber
 import com.focusguard.utils.WebsiteBlocker
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -82,7 +113,6 @@ fun ActiveSessionsScreen(
                 .padding(24.dp)
                 .verticalScroll(rememberScrollState())
         ) {
-            // Status indicator
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier.padding(bottom = 16.dp)
@@ -101,7 +131,6 @@ fun ActiveSessionsScreen(
                 )
             }
 
-            // Details
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -121,23 +150,26 @@ fun ActiveSessionsScreen(
 
             if (apps.isNotEmpty() || sites.isNotEmpty()) {
                 Text(
-                    text = "Itens Bloqueados (${apps.size + sites.size})",
+                    text = stringResource(
+                        R.string.fg_blocked_items_count,
+                        apps.size + sites.size
+                    ),
                     fontSize = 14.sp,
                     fontWeight = FontWeight.Bold,
                     color = TextPrimary,
                     modifier = Modifier.padding(bottom = 8.dp)
                 )
 
-                // Vertical list of icons and domains
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    // Apps
                     apps.forEach { pkg ->
-                        var iconBmp by remember { mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null) }
+                        var iconBmp by remember {
+                            mutableStateOf<androidx.compose.ui.graphics.ImageBitmap?>(null)
+                        }
                         var appName by remember { mutableStateOf(pkg) }
 
                         LaunchedEffect(pkg) {
@@ -145,16 +177,20 @@ fun ActiveSessionsScreen(
                                 val pm = context.packageManager
                                 val info = pm.getApplicationInfo(pkg, 0)
                                 appName = pm.getApplicationLabel(info).toString()
-                                val drawable = pm.getApplicationIcon(info)
-                                iconBmp = drawable.toBitmap(80, 80).asImageBitmap()
-                            } catch (e: Exception) {
-                                // Leave default values
+                                iconBmp = pm.getApplicationIcon(info)
+                                    .toBitmap(80, 80)
+                                    .asImageBitmap()
+                            } catch (_: Exception) {
+                                // Leave default values.
                             }
                         }
 
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().background(DarkCard, RoundedCornerShape(12.dp)).padding(12.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(DarkCard, RoundedCornerShape(12.dp))
+                                .padding(12.dp)
                         ) {
                             if (iconBmp != null) {
                                 Image(
@@ -186,11 +222,13 @@ fun ActiveSessionsScreen(
                         }
                     }
 
-                    // Sites
                     sites.forEach { site ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier.fillMaxWidth().background(DarkCard, RoundedCornerShape(12.dp)).padding(12.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(DarkCard, RoundedCornerShape(12.dp))
+                                .padding(12.dp)
                         ) {
                             Box(
                                 modifier = Modifier
@@ -216,7 +254,6 @@ fun ActiveSessionsScreen(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // Renounce button
             OutlinedButton(
                 onClick = onRenounce,
                 modifier = Modifier.fillMaxWidth(),
@@ -225,15 +262,18 @@ fun ActiveSessionsScreen(
                 border = BorderStroke(
                     1.5.dp,
                     if (!hasSession) DangerRed else TextDisabled
-                ),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = if (!hasSession) DangerRed else TextDisabled
                 )
             ) {
                 Text(
-                    text = if (isBlocking) "Não é possível revogar (Bloqueio ativo)"
-                           else "Revogar Device Owner",
-                    fontWeight = FontWeight.Bold
+                    text = stringResource(
+                        if (isBlocking) {
+                            R.string.fg_cannot_revoke_active
+                        } else {
+                            R.string.fg_revoke_device_owner
+                        }
+                    ),
+                    fontWeight = FontWeight.Bold,
+                    color = if (!hasSession) DangerRed else TextDisabled
                 )
             }
         }
