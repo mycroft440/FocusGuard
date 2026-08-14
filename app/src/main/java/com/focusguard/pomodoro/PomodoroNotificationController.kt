@@ -63,16 +63,55 @@ class PomodoroNotificationController(context: Context) {
         }.getOrDefault(false)
     }
 
+    /**
+     * Restaura apenas o estado que o FocusGuard realmente alterou.
+     *
+     * Em Android 15+ para apps target 35+, setInterruptionFilter() controla uma
+     * AutomaticZenRule pertencente ao próprio app. Nesse modelo, ALL desativa a
+     * regra do FocusGuard e deixa as demais regras/Não Perturbe do usuário
+     * continuarem sendo a fonte de verdade. Em versões anteriores restauramos o
+     * filtro global que existia antes de o Pomodoro assumir o controle.
+     */
     fun restore() {
-        val notificationManager = manager ?: return
-        val previous = prefs.getInt(
-            KEY_PREVIOUS_FILTER,
-            NotificationManager.INTERRUPTION_FILTER_ALL
-        )
-        if (notificationManager.isNotificationPolicyAccessGranted) {
-            runCatching { notificationManager.setInterruptionFilter(previous) }
+        val hadPreviousFilter = prefs.contains(KEY_PREVIOUS_FILTER)
+        val notificationManager = manager
+
+        try {
+            if (notificationManager?.isNotificationPolicyAccessGranted == true) {
+                when {
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM -> {
+                        // Também limpa uma eventual regra moderna deixada pelo
+                        // bloqueio rigoroso, mesmo quando "silenciar" estava off.
+                        runCatching {
+                            notificationManager.setInterruptionFilter(
+                                NotificationManager.INTERRUPTION_FILTER_ALL
+                            )
+                        }
+                    }
+                    hadPreviousFilter -> {
+                        val previous = sanitizeFilter(
+                            prefs.getInt(
+                                KEY_PREVIOUS_FILTER,
+                                NotificationManager.INTERRUPTION_FILTER_ALL
+                            )
+                        )
+                        runCatching { notificationManager.setInterruptionFilter(previous) }
+                    }
+                }
+            }
+        } finally {
+            if (hadPreviousFilter) {
+                prefs.edit().remove(KEY_PREVIOUS_FILTER).commit()
+            }
         }
-        prefs.edit().remove(KEY_PREVIOUS_FILTER).commit()
+    }
+
+    private fun sanitizeFilter(filter: Int): Int = when (filter) {
+        NotificationManager.INTERRUPTION_FILTER_ALL,
+        NotificationManager.INTERRUPTION_FILTER_PRIORITY,
+        NotificationManager.INTERRUPTION_FILTER_NONE,
+        NotificationManager.INTERRUPTION_FILTER_ALARMS -> filter
+        else -> NotificationManager.INTERRUPTION_FILTER_ALL
     }
 
     companion object {
