@@ -1,8 +1,8 @@
 package com.focusguard.ui.compose.screens
 
-import android.app.NotificationManager
 import android.content.Intent
 import android.provider.Settings
+import android.view.ViewGroup
 import android.widget.NumberPicker
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -11,6 +11,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -22,6 +23,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -62,16 +64,15 @@ import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import com.focusguard.R
 import com.focusguard.pomodoro.PomodoroAlarmController
 import com.focusguard.pomodoro.PomodoroNotificationController
@@ -109,25 +110,22 @@ fun PomodoroConfigDialog(
     var config by remember { mutableStateOf(store.loadConfig()) }
     var profiles by remember { mutableStateOf(store.allProfiles()) }
     var profileName by remember { mutableStateOf("") }
-    var notificationPolicyAccess by remember {
-        mutableStateOf(notificationController.hasPolicyAccess())
-    }
-    var notificationListenerAccess by remember {
+    var policyAccess by remember { mutableStateOf(notificationController.hasPolicyAccess()) }
+    var listenerAccess by remember {
         mutableStateOf(
             NotificationManagerCompat.getEnabledListenerPackages(context)
                 .contains(context.packageName)
         )
     }
 
-    fun refreshNotificationAccess() {
-        notificationPolicyAccess = notificationController.hasPolicyAccess()
-        notificationListenerAccess = NotificationManagerCompat
-            .getEnabledListenerPackages(context)
+    fun refreshAccess() {
+        policyAccess = notificationController.hasPolicyAccess()
+        listenerAccess = NotificationManagerCompat.getEnabledListenerPackages(context)
             .contains(context.packageName)
     }
 
-    fun persist(updated: PomodoroPlanConfig) {
-        val saved = store.saveConfig(updated)
+    fun persist(newConfig: PomodoroPlanConfig) {
+        val saved = store.saveConfig(newConfig)
         config = saved
         onConfigChanged(saved)
         PomodoroWidgetProvider.updateAll(context)
@@ -135,7 +133,7 @@ fun PomodoroConfigDialog(
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
-            if (event == Lifecycle.Event.ON_RESUME) refreshNotificationAccess()
+            if (event == Lifecycle.Event.ON_RESUME) refreshAccess()
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
@@ -146,12 +144,12 @@ fun PomodoroConfigDialog(
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
         Box(
-            modifier = Modifier
+            Modifier
                 .fillMaxSize()
                 .background(DarkBg)
                 .statusBarsPadding()
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize()) {
                 TopAppBar(
                     title = {
                         Text(
@@ -179,7 +177,7 @@ fun PomodoroConfigDialog(
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    ConfigSection(title = stringResource(R.string.pomodoro_config_intervals)) {
+                    ConfigSection(stringResource(R.string.pomodoro_config_intervals)) {
                         DurationClockEditor(
                             title = stringResource(R.string.pomodoro_config_focus_time),
                             valueMinutes = config.focusMinutes,
@@ -210,19 +208,19 @@ fun PomodoroConfigDialog(
                         IntegerWheelPicker(
                             value = config.longBreakEvery,
                             minValue = 1,
-                            maxValue = 20,
+                            maxValue = 100,
                             onValueChange = { persist(config.copy(longBreakEvery = it)) }
                         )
                     }
 
-                    ConfigSection(title = stringResource(R.string.pomodoro_config_sessions)) {
+                    ConfigSection(stringResource(R.string.pomodoro_config_sessions)) {
                         ChoiceRow(
                             selected = config.targetSessions == 0,
                             label = stringResource(R.string.pomodoro_sessions_until_stop),
                             onClick = { persist(config.copy(targetSessions = 0)) }
                         )
                         ChoiceRow(
-                            selected = config.targetSessions != 0,
+                            selected = config.targetSessions > 0,
                             label = stringResource(R.string.pomodoro_sessions_counted),
                             onClick = {
                                 if (config.targetSessions == 0) {
@@ -230,7 +228,7 @@ fun PomodoroConfigDialog(
                                 }
                             }
                         )
-                        if (config.targetSessions != 0) {
+                        if (config.targetSessions > 0) {
                             IntegerWheelPicker(
                                 value = config.targetSessions,
                                 minValue = 1,
@@ -249,7 +247,7 @@ fun PomodoroConfigDialog(
                         }
                     }
 
-                    ConfigSection(title = stringResource(R.string.pomodoro_config_alarm)) {
+                    ConfigSection(stringResource(R.string.pomodoro_config_alarm)) {
                         ToggleRow(
                             title = stringResource(R.string.pomodoro_alarm_sound),
                             checked = config.soundEnabled,
@@ -260,7 +258,6 @@ fun PomodoroConfigDialog(
                             checked = config.vibrationEnabled,
                             onCheckedChange = { persist(config.copy(vibrationEnabled = it)) }
                         )
-
                         Text(
                             stringResource(R.string.pomodoro_alarm_duration),
                             color = TextSecondary,
@@ -288,54 +285,52 @@ fun PomodoroConfigDialog(
                             fontSize = 13.sp
                         )
                         val soundNames = stringArrayResource(R.array.pomodoro_alarm_sound_names)
-                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                            for (row in 0 until 5) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    repeat(2) { column ->
-                                        val index = row * 2 + column
-                                        val selected = config.soundIndex == index
-                                        OutlinedButton(
-                                            onClick = {
-                                                persist(config.copy(soundIndex = index))
-                                                scope.launch {
-                                                    PomodoroAlarmController.preview(context, index)
-                                                }
-                                            },
-                                            modifier = Modifier.weight(1f),
-                                            border = BorderStroke(
-                                                1.dp,
-                                                if (selected) AccentCyan else CardBorder
-                                            )
-                                        ) {
-                                            Icon(
-                                                Icons.Default.VolumeUp,
-                                                contentDescription = null,
-                                                modifier = Modifier.size(16.dp)
-                                            )
-                                            Spacer(Modifier.width(5.dp))
-                                            Text(
-                                                soundNames.getOrElse(index) { "${index + 1}" },
-                                                fontSize = 11.sp,
-                                                maxLines = 1
-                                            )
-                                        }
+                        repeat(5) { rowIndex ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                repeat(2) { columnIndex ->
+                                    val soundIndex = rowIndex * 2 + columnIndex
+                                    val selected = config.soundIndex == soundIndex
+                                    OutlinedButton(
+                                        onClick = {
+                                            persist(config.copy(soundIndex = soundIndex))
+                                            scope.launch {
+                                                PomodoroAlarmController.preview(context, soundIndex)
+                                            }
+                                        },
+                                        modifier = Modifier.weight(1f),
+                                        border = BorderStroke(
+                                            1.dp,
+                                            if (selected) AccentCyan else CardBorder
+                                        )
+                                    ) {
+                                        Icon(
+                                            Icons.Default.VolumeUp,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(Modifier.width(5.dp))
+                                        Text(
+                                            soundNames.getOrElse(soundIndex) { "${soundIndex + 1}" },
+                                            fontSize = 11.sp,
+                                            maxLines = 1
+                                        )
                                     }
                                 }
                             }
                         }
                     }
 
-                    ConfigSection(title = stringResource(R.string.pomodoro_config_notifications)) {
+                    ConfigSection(stringResource(R.string.pomodoro_config_notifications)) {
                         ToggleRow(
                             title = stringResource(R.string.pomodoro_hide_notifications),
                             subtitle = stringResource(R.string.pomodoro_hide_notifications_desc),
                             checked = config.hideNotifications,
                             onCheckedChange = { persist(config.copy(hideNotifications = it)) }
                         )
-                        if (config.hideNotifications && !notificationListenerAccess) {
+                        if (config.hideNotifications && !listenerAccess) {
                             AccessRequiredRow(
                                 text = stringResource(R.string.pomodoro_notification_listener_required),
                                 onClick = {
@@ -352,7 +347,7 @@ fun PomodoroConfigDialog(
                             checked = config.silenceNotifications,
                             onCheckedChange = { persist(config.copy(silenceNotifications = it)) }
                         )
-                        if (config.silenceNotifications && !notificationPolicyAccess) {
+                        if (config.silenceNotifications && !policyAccess) {
                             AccessRequiredRow(
                                 text = stringResource(R.string.pomodoro_dnd_access_required),
                                 onClick = {
@@ -370,7 +365,7 @@ fun PomodoroConfigDialog(
                         )
                     }
 
-                    ConfigSection(title = stringResource(R.string.pomodoro_profiles_title)) {
+                    ConfigSection(stringResource(R.string.pomodoro_profiles_title)) {
                         OutlinedTextField(
                             value = profileName,
                             onValueChange = {
@@ -382,8 +377,7 @@ fun PomodoroConfigDialog(
                         )
                         Button(
                             onClick = {
-                                val created = store.saveProfile(profileName, config)
-                                if (created != null) {
+                                if (store.saveProfile(profileName, config) != null) {
                                     profileName = ""
                                     profiles = store.allProfiles()
                                 }
@@ -426,7 +420,7 @@ fun PomodoroConfigDialog(
 @Composable
 private fun ConfigSection(
     title: String,
-    content: @Composable Column.() -> Unit
+    content: @Composable ColumnScope.() -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -438,27 +432,15 @@ private fun ConfigSection(
             modifier = Modifier.fillMaxWidth().padding(14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            Text(
-                title,
-                color = TextPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
-            )
+            Text(title, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 16.sp)
             content()
         }
     }
 }
 
 @Composable
-private fun ChoiceRow(
-    selected: Boolean,
-    label: String,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
+private fun ChoiceRow(selected: Boolean, label: String, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
         RadioButton(selected = selected, onClick = onClick)
         TextButton(onClick = onClick, modifier = Modifier.weight(1f)) {
             Text(label, color = TextPrimary, modifier = Modifier.fillMaxWidth())
@@ -473,15 +455,10 @@ private fun ToggleRow(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.weight(1f)) {
             Text(title, color = TextPrimary, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
-            subtitle?.let {
-                Text(it, color = TextHint, fontSize = 11.sp)
-            }
+            subtitle?.let { Text(it, color = TextHint, fontSize = 11.sp) }
         }
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
@@ -521,22 +498,20 @@ private fun IntegerWheelPicker(
     onValueChange: (Int) -> Unit
 ) {
     AndroidView(
-        factory = { ctx ->
-            NumberPicker(ctx).apply {
+        factory = { context ->
+            NumberPicker(context).apply {
                 this.minValue = minValue
                 this.maxValue = maxValue
                 wrapSelectorWheel = false
-                descendantFocusability = NumberPicker.FOCUS_BLOCK_DESCENDANTS
+                descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
             }
         },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(116.dp),
+        modifier = Modifier.fillMaxWidth().height(116.dp),
         update = { picker ->
             picker.minValue = minValue
             picker.maxValue = maxValue
-            val safeValue = value.coerceIn(minValue, maxValue)
-            if (picker.value != safeValue) picker.value = safeValue
+            val safe = value.coerceIn(minValue, maxValue)
+            if (picker.value != safe) picker.value = safe
             picker.setOnValueChangedListener { _, _, newValue -> onValueChange(newValue) }
         }
     )
@@ -550,15 +525,11 @@ private fun DurationClockEditor(
     longFormat: Boolean,
     onValueChange: (Int) -> Unit
 ) {
-    var text by remember {
-        mutableStateOf(formatDurationInput(valueMinutes, longFormat))
-    }
+    var text by remember { mutableStateOf(formatDurationInput(valueMinutes, longFormat)) }
 
     LaunchedEffect(valueMinutes, longFormat) {
         val parsed = parseDurationInput(text, longFormat, maxMinutes)
-        if (parsed != valueMinutes) {
-            text = formatDurationInput(valueMinutes, longFormat)
-        }
+        if (parsed != valueMinutes) text = formatDurationInput(valueMinutes, longFormat)
     }
 
     Row(
@@ -575,7 +546,7 @@ private fun DurationClockEditor(
             },
             modifier = Modifier.size(92.dp)
         )
-        Column(modifier = Modifier.weight(1f)) {
+        Column(Modifier.weight(1f)) {
             Text(title, color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
             Spacer(Modifier.height(5.dp))
             OutlinedTextField(
@@ -596,14 +567,18 @@ private fun DurationClockEditor(
                 ),
                 suffix = {
                     Text(
-                        if (longFormat) stringResource(R.string.pomodoro_hours_suffix)
-                        else stringResource(R.string.pomodoro_minutes_suffix)
+                        stringResource(
+                            if (longFormat) R.string.pomodoro_hours_suffix
+                            else R.string.pomodoro_minutes_suffix
+                        )
                     )
                 }
             )
             Text(
-                if (longFormat) stringResource(R.string.pomodoro_long_break_input_hint)
-                else stringResource(R.string.pomodoro_minutes_input_hint),
+                stringResource(
+                    if (longFormat) R.string.pomodoro_long_break_input_hint
+                    else R.string.pomodoro_minutes_input_hint
+                ),
                 color = TextHint,
                 fontSize = 10.sp
             )
@@ -618,25 +593,21 @@ private fun MiniDurationDial(
     onValueChange: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    fun minutesForPosition(position: Offset, width: Float, height: Float): Int {
+    fun valueAt(position: Offset, width: Float, height: Float): Int {
         val center = Offset(width / 2f, height / 2f)
-        val dx = position.x - center.x
-        val dy = position.y - center.y
-        var angle = atan2(dy, dx) * 180f / PI.toFloat() + 90f
+        var angle = atan2(position.y - center.y, position.x - center.x) *
+            180f / PI.toFloat() + 90f
         if (angle < 0f) angle += 360f
-        val fraction = angle / 360f
-        val raw = (fraction * maxMinutes).roundToInt()
+        val raw = ((angle / 360f) * maxMinutes).roundToInt()
         return if (raw == 0) maxMinutes else raw.coerceIn(1, maxMinutes)
     }
 
     Canvas(
         modifier = modifier.pointerInput(maxMinutes) {
             detectDragGestures(
-                onDragStart = { position ->
-                    onValueChange(minutesForPosition(position, size.width, size.height))
-                },
+                onDragStart = { onValueChange(valueAt(it, size.width, size.height)) },
                 onDrag = { change, _ ->
-                    onValueChange(minutesForPosition(change.position, size.width, size.height))
+                    onValueChange(valueAt(change.position, size.width, size.height))
                 }
             )
         }
@@ -650,36 +621,31 @@ private fun MiniDurationDial(
             center = center,
             style = Stroke(width = 2.dp.toPx())
         )
-
         repeat(12) { tick ->
             val angle = (tick * 30f - 90f) * PI.toFloat() / 180f
-            val outer = Offset(
-                center.x + cos(angle) * radius * 0.86f,
-                center.y + sin(angle) * radius * 0.86f
-            )
-            val inner = Offset(
-                center.x + cos(angle) * radius * 0.72f,
-                center.y + sin(angle) * radius * 0.72f
-            )
             drawLine(
                 color = TextHint,
-                start = inner,
-                end = outer,
+                start = Offset(
+                    center.x + cos(angle) * radius * 0.72f,
+                    center.y + sin(angle) * radius * 0.72f
+                ),
+                end = Offset(
+                    center.x + cos(angle) * radius * 0.86f,
+                    center.y + sin(angle) * radius * 0.86f
+                ),
                 strokeWidth = 1.5.dp.toPx(),
                 cap = StrokeCap.Round
             )
         }
-
-        val fraction = valueMinutes.coerceIn(1, maxMinutes).toFloat() / maxMinutes.toFloat()
-        val handAngle = (fraction * 360f - 90f) * PI.toFloat() / 180f
-        val handEnd = Offset(
-            center.x + cos(handAngle) * radius * 0.62f,
-            center.y + sin(handAngle) * radius * 0.62f
-        )
+        val fraction = valueMinutes.coerceIn(1, maxMinutes).toFloat() / maxMinutes
+        val angle = (fraction * 360f - 90f) * PI.toFloat() / 180f
         drawLine(
             color = AccentCyan,
             start = center,
-            end = handEnd,
+            end = Offset(
+                center.x + cos(angle) * radius * 0.62f,
+                center.y + sin(angle) * radius * 0.62f
+            ),
             strokeWidth = 3.dp.toPx(),
             cap = StrokeCap.Round
         )
@@ -714,7 +680,7 @@ private fun ProfileConfigRow(
             modifier = Modifier.fillMaxWidth().padding(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(modifier = Modifier.weight(1f)) {
+            Column(Modifier.weight(1f)) {
                 Text(displayName, color = TextPrimary, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
                 Text(
                     stringResource(
@@ -744,31 +710,26 @@ private fun ProfileConfigRow(
     }
 }
 
-private fun formatDurationInput(minutes: Int, longFormat: Boolean): String {
-    return if (longFormat) formatLongBreak(minutes) else minutes.toString()
-}
+private fun formatDurationInput(minutes: Int, longFormat: Boolean): String =
+    if (longFormat) formatLongBreak(minutes) else minutes.toString()
 
 private fun formatLongBreak(minutes: Int): String {
     val safe = minutes.coerceAtLeast(0)
     return "%02d:%02d".format(safe / 60, safe % 60)
 }
 
-private fun parseDurationInput(
-    value: String,
-    longFormat: Boolean,
-    maxMinutes: Int
-): Int? {
+private fun parseDurationInput(value: String, longFormat: Boolean, maxMinutes: Int): Int? {
     if (value.isBlank()) return null
-    val minutes = if (!longFormat) {
+    val parsed = if (!longFormat) {
         value.toIntOrNull()
     } else if (value.contains(':')) {
         val parts = value.split(':', limit = 2)
         val hours = parts.getOrNull(0)?.takeIf(String::isNotBlank)?.toIntOrNull() ?: 0
-        val minutePart = parts.getOrNull(1)?.takeIf(String::isNotBlank)?.toIntOrNull() ?: 0
-        if (minutePart !in 0..59) return null
-        hours * 60 + minutePart
+        val minutes = parts.getOrNull(1)?.takeIf(String::isNotBlank)?.toIntOrNull() ?: 0
+        if (minutes !in 0..59) return null
+        hours * 60 + minutes
     } else {
         value.toIntOrNull()?.times(60)
     }
-    return minutes?.takeIf { it in 1..maxMinutes }
+    return parsed?.takeIf { it in 1..maxMinutes }
 }
