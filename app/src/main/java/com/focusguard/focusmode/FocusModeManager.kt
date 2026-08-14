@@ -10,6 +10,7 @@ import com.focusguard.receiver.FocusModeReceiver
 import com.focusguard.service.FocusModeForegroundService
 import com.focusguard.service.FocusModeNotificationService
 import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.utils.PermissionUtils
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -30,8 +31,7 @@ class FocusModeManager @Inject constructor(
     enum class StartOutcome {
         STARTED,
         INVALID_DURATION,
-        DEVICE_OWNER_REQUIRED,
-        SYSTEM_LOCKDOWN_UNSUPPORTED,
+        ACCESSIBILITY_REQUIRED,
         NOTIFICATION_ACCESS_REQUIRED,
         STRICT_POMODORO_ACTIVE,
         ENFORCEMENT_FAILED
@@ -85,8 +85,8 @@ class FocusModeManager @Inject constructor(
 
     fun isActive(): Boolean = FocusModeStore.isActive(context)
 
-    fun isSystemLockdownSupported(): Boolean =
-        deviceOwnerManager.isFocusModeSystemLockdownSupported()
+    fun isAccessibilityServiceEnabled(): Boolean =
+        PermissionUtils.isAccessibilityServiceEnabled(context)
 
     fun isNotificationAccessEnabled(): Boolean =
         NotificationManagerCompat.getEnabledListenerPackages(context)
@@ -116,11 +116,8 @@ class FocusModeManager @Inject constructor(
         if (durationMillis !in 1L..FocusModePolicy.MAX_DURATION_MILLIS) {
             return@withLock StartResult(StartOutcome.INVALID_DURATION)
         }
-        if (!deviceOwnerManager.isDeviceOwnerActive()) {
-            return@withLock StartResult(StartOutcome.DEVICE_OWNER_REQUIRED)
-        }
-        if (!deviceOwnerManager.isFocusModeSystemLockdownSupported()) {
-            return@withLock StartResult(StartOutcome.SYSTEM_LOCKDOWN_UNSUPPORTED)
+        if (!isAccessibilityServiceEnabled()) {
+            return@withLock StartResult(StartOutcome.ACCESSIBILITY_REQUIRED)
         }
         if (!isNotificationAccessEnabled()) {
             return@withLock StartResult(StartOutcome.NOTIFICATION_ACCESS_REQUIRED)
@@ -159,15 +156,28 @@ class FocusModeManager @Inject constructor(
         }
 
         try {
-            check(deviceOwnerManager.prepareFocusModeLockTaskPackages(allowedPackages)) {
-                "O Android não confirmou a lista de apps do quiosque"
+            val nativeFocusLockdownActive = FocusModePolicy.usesNativeFocusLockdown(
+                deviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive(),
+                systemLockdownSupported =
+                    deviceOwnerManager.isFocusModeSystemLockdownSupported()
+            )
+            if (nativeFocusLockdownActive) {
+                check(deviceOwnerManager.prepareFocusModeLockTaskPackages(allowedPackages)) {
+                    "O Android não confirmou a lista de apps do quiosque"
+                }
             }
             blockingSessionManager.checkAndEnforceStrict()
-            check(deviceOwnerManager.isFocusModeSystemLockdownConfirmed()) {
-                "O Android não confirmou o quiosque e o bloqueio de modo seguro"
+            if (nativeFocusLockdownActive) {
+                check(deviceOwnerManager.isFocusModeSystemLockdownConfirmed()) {
+                    "O Android não confirmou o quiosque e o bloqueio de modo seguro"
+                }
             }
-            val nonSuspendable = blockedPackages.filterNotTo(mutableSetOf()) {
-                deviceOwnerManager.isPackageSuspendedByFocusMode(it)
+            val nonSuspendable = if (nativeFocusLockdownActive) {
+                blockedPackages.filterNotTo(mutableSetOf()) {
+                    deviceOwnerManager.isPackageSuspendedByFocusMode(it)
+                }
+            } else {
+                emptySet()
             }
             val verifiedSession = FocusModeStore.updateNonSuspendablePackages(
                 context,
@@ -203,13 +213,19 @@ class FocusModeManager @Inject constructor(
             finishSessionLocked()
             return@withLock false
         }
-        if (!deviceOwnerManager.isDeviceOwnerActive()) return@withLock false
-        if (!deviceOwnerManager.isFocusModeSystemLockdownSupported()) return@withLock false
-
         return@withLock try {
-            check(deviceOwnerManager.prepareFocusModeLockTaskPackages(stored.allowedPackages))
+            val nativeFocusLockdownActive = FocusModePolicy.usesNativeFocusLockdown(
+                deviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive(),
+                systemLockdownSupported =
+                    deviceOwnerManager.isFocusModeSystemLockdownSupported()
+            )
+            if (nativeFocusLockdownActive) {
+                check(deviceOwnerManager.prepareFocusModeLockTaskPackages(stored.allowedPackages))
+            }
             blockingSessionManager.checkAndEnforceStrict()
-            check(deviceOwnerManager.isFocusModeSystemLockdownConfirmed())
+            if (nativeFocusLockdownActive) {
+                check(deviceOwnerManager.isFocusModeSystemLockdownConfirmed())
+            }
             FocusModeForegroundService.start(context)
             FocusModeReceiver.scheduleExpiration(context, stored.endTimeMillis)
             FocusModeNotificationService.requestRefresh(context)

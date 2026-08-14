@@ -117,13 +117,60 @@ class FocusModePolicyTest {
     }
 
     @Test
-    fun `focus mode packages never enter the accessibility overlay list`() {
+    fun `native focus mode packages do not enter the accessibility overlay list`() {
         val accessibilityPackages = FocusModePolicy.packagesForAccessibility(
             enforcedPackages = setOf("com.password.block", "com.social", "com.game"),
-            focusModeBlockedPackages = setOf("com.social", "com.game")
+            focusModeBlockedPackages = setOf("com.social", "com.game"),
+            nativeFocusLockdownActive = true
         )
 
         assertThat(accessibilityPackages).containsExactly("com.password.block")
+    }
+
+    @Test
+    fun `consumer focus mode sends blocked packages to accessibility`() {
+        val accessibilityPackages = FocusModePolicy.packagesForAccessibility(
+            enforcedPackages = setOf("com.password.block", "com.social", "com.game"),
+            focusModeBlockedPackages = setOf("com.social", "com.game"),
+            nativeFocusLockdownActive = false
+        )
+
+        assertThat(accessibilityPackages).containsExactly(
+            "com.password.block",
+            "com.social",
+            "com.game"
+        )
+    }
+
+    @Test
+    fun `consumer focus redirects blocked apps and the launcher`() {
+        assertThat(
+            FocusModePolicy.shouldRedirectToFocusGuard(
+                focusModeFallbackActive = true,
+                foregroundPackage = "com.social",
+                focusGuardPackage = "com.focusguard.v2",
+                launcherPackage = "com.launcher",
+                focusModeBlockedPackages = setOf("com.social")
+            )
+        ).isTrue()
+        assertThat(
+            FocusModePolicy.shouldRedirectToFocusGuard(
+                focusModeFallbackActive = true,
+                foregroundPackage = "com.launcher",
+                focusGuardPackage = "com.focusguard.v2",
+                launcherPackage = "com.launcher",
+                focusModeBlockedPackages = emptySet()
+            )
+        ).isTrue()
+        assertThat(
+            FocusModePolicy.shouldRedirectToFocusGuard(
+                focusModeFallbackActive = true,
+                foregroundPackage = "com.whatsapp",
+                focusGuardPackage = "com.focusguard.v2",
+                launcherPackage = "com.launcher",
+                focusModeBlockedPackages = setOf("com.social")
+            )
+        ).isFalse()
     }
 
     @Test

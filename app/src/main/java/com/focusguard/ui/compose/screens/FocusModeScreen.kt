@@ -28,7 +28,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
-import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.LockClock
 import androidx.compose.material.icons.filled.Message
 import androidx.compose.material.icons.filled.Phone
@@ -41,7 +41,8 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -79,7 +80,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.core.graphics.drawable.toBitmap
 import com.focusguard.R
-import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeAppCatalog
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.focusmode.FocusModePolicy
@@ -116,11 +116,20 @@ fun FocusModeScreen(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var grayscaleEnabled by rememberSaveable { mutableStateOf(false) }
     var showAppPicker by rememberSaveable { mutableStateOf(false) }
+    var showPermissionReview by rememberSaveable { mutableStateOf(false) }
+    var pendingFinalStart by rememberSaveable { mutableStateOf(false) }
     var showConfirmation by remember { mutableStateOf(false) }
     var termsAccepted by remember { mutableStateOf(false) }
     var isStarting by remember { mutableStateOf(false) }
     var startOutcome by remember { mutableStateOf<FocusModeManager.StartOutcome?>(null) }
     var permissionRevision by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(durationUnit) {
+        if (durationUnit == FocusModePolicy.DurationUnit.DAYS) {
+            durationUnit = FocusModePolicy.DurationUnit.HOURS
+            startOutcome = null
+        }
+    }
 
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -141,16 +150,12 @@ fun FocusModeScreen(
         isLoadingApps = false
     }
 
-    val deviceOwnerManager = remember(context.applicationContext) {
-        DeviceOwnerManager.getInstance(context.applicationContext)
-    }
-    val deviceOwnerActive = remember(permissionRevision, activeSession) {
-        deviceOwnerManager.isDeviceOwnerActive()
+    val accessibilityActive = remember(permissionRevision, activeSession) {
+        manager.isAccessibilityServiceEnabled()
     }
     val notificationAccessActive = remember(permissionRevision, activeSession) {
         manager.isNotificationAccessEnabled()
     }
-    val systemLockdownSupported = remember { manager.isSystemLockdownSupported() }
     val mandatoryPackages = remember(context.applicationContext, permissionRevision) {
         FocusModeAppCatalog.mandatoryPackages(context.applicationContext)
     }
@@ -159,6 +164,27 @@ fun FocusModeScreen(
         unit = durationUnit,
         amount = durationText.toIntOrNull()
     )
+
+    LaunchedEffect(
+        permissionRevision,
+        pendingFinalStart,
+        accessibilityActive,
+        notificationAccessActive
+    ) {
+        if (!pendingFinalStart ||
+            !lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+        ) {
+            return@LaunchedEffect
+        }
+        if (!accessibilityActive || !notificationAccessActive) {
+            showPermissionReview = true
+        } else {
+            pendingFinalStart = false
+            showPermissionReview = false
+            termsAccepted = false
+            showConfirmation = true
+        }
+    }
 
     if (showConfirmation && durationMillis != null) {
         FocusModeConsentDialog(
@@ -185,10 +211,20 @@ fun FocusModeScreen(
                         )
                         isStarting = false
                         startOutcome = result.outcome
-                        if (result.outcome == FocusModeManager.StartOutcome.STARTED) {
-                            showConfirmation = false
-                            termsAccepted = false
-                            onStartLockTask()
+                        when (result.outcome) {
+                            FocusModeManager.StartOutcome.STARTED -> {
+                                showConfirmation = false
+                                termsAccepted = false
+                                onStartLockTask()
+                            }
+                            FocusModeManager.StartOutcome.ACCESSIBILITY_REQUIRED,
+                            FocusModeManager.StartOutcome.NOTIFICATION_ACCESS_REQUIRED -> {
+                                showConfirmation = false
+                                termsAccepted = false
+                                pendingFinalStart = true
+                                showPermissionReview = true
+                            }
+                            else -> Unit
                         }
                     }
                 }
@@ -215,6 +251,25 @@ fun FocusModeScreen(
             onDismiss = {
                 searchQuery = ""
                 showAppPicker = false
+            }
+        )
+    }
+
+    if (showPermissionReview && activeSession == null) {
+        FocusModeFinalPermissionsDialog(
+            accessibilityActive = accessibilityActive,
+            notificationAccessActive = notificationAccessActive,
+            onDismiss = {
+                pendingFinalStart = false
+                showPermissionReview = false
+            },
+            onResolveNext = {
+                showPermissionReview = false
+                if (!accessibilityActive) {
+                    openAccessibilitySettings(context)
+                } else if (!notificationAccessActive) {
+                    openNotificationAccess(context)
+                }
             }
         )
     }
@@ -247,20 +302,17 @@ fun FocusModeScreen(
             grayscaleEnabled = grayscaleEnabled,
             onGrayscaleEnabledChange = { grayscaleEnabled = it },
             onAddApps = { showAppPicker = true },
-            deviceOwnerActive = deviceOwnerActive,
-            notificationAccessActive = notificationAccessActive,
-            onOpenNotificationAccess = { openNotificationAccess(context) },
             isStarting = isStarting,
             startOutcome = startOutcome,
             onStart = {
                 when {
-                    !deviceOwnerActive -> startOutcome =
-                        FocusModeManager.StartOutcome.DEVICE_OWNER_REQUIRED
-                    !systemLockdownSupported -> startOutcome =
-                        FocusModeManager.StartOutcome.SYSTEM_LOCKDOWN_UNSUPPORTED
-                    !notificationAccessActive -> openNotificationAccess(context)
                     durationMillis == null -> startOutcome =
                         FocusModeManager.StartOutcome.INVALID_DURATION
+                    !accessibilityActive || !notificationAccessActive -> {
+                        startOutcome = null
+                        pendingFinalStart = true
+                        showPermissionReview = true
+                    }
                     else -> {
                         termsAccepted = false
                         showConfirmation = true
@@ -285,13 +337,11 @@ private fun FocusModeSetupContent(
     grayscaleEnabled: Boolean,
     onGrayscaleEnabledChange: (Boolean) -> Unit,
     onAddApps: () -> Unit,
-    deviceOwnerActive: Boolean,
-    notificationAccessActive: Boolean,
-    onOpenNotificationAccess: () -> Unit,
     isStarting: Boolean,
     startOutcome: FocusModeManager.StartOutcome?,
     onStart: () -> Unit
 ) {
+    var durationUnitMenuExpanded by remember { mutableStateOf(false) }
     val selectedApps = remember(apps, mandatoryPackages, selectedPackages) {
         apps.filter {
             it.packageName in selectedPackages && it.packageName !in mandatoryPackages
@@ -350,47 +400,74 @@ private fun FocusModeSetupContent(
                         fontSize = 13.sp
                     )
 
-                    OutlinedTextField(
-                        value = durationText,
-                        onValueChange = onDurationTextChange,
-                        modifier = Modifier.fillMaxWidth(),
-                        label = { Text(stringResource(R.string.focus_mode_duration_value)) },
-                        leadingIcon = {
-                            Icon(Icons.Default.AccessTime, contentDescription = null)
-                        },
-                        isError = durationText.isNotBlank() && !durationValid,
-                        supportingText = if (!durationValid) {
-                            { Text(stringResource(R.string.focus_mode_duration_invalid)) }
-                        } else null,
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
-                    )
-
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        DurationUnitChip(
-                            label = stringResource(R.string.focus_mode_minutes),
-                            selected = durationUnit == FocusModePolicy.DurationUnit.MINUTES,
-                            onClick = {
-                                onDurationUnitChange(FocusModePolicy.DurationUnit.MINUTES)
-                            }
+                        OutlinedTextField(
+                            value = durationText,
+                            onValueChange = onDurationTextChange,
+                            modifier = Modifier.weight(1f),
+                            label = {
+                                Text(stringResource(R.string.focus_mode_duration_value))
+                            },
+                            leadingIcon = {
+                                Icon(Icons.Default.AccessTime, contentDescription = null)
+                            },
+                            isError = durationText.isNotBlank() && !durationValid,
+                            supportingText = if (!durationValid) {
+                                { Text(stringResource(R.string.focus_mode_duration_invalid)) }
+                            } else null,
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Number
+                            )
                         )
-                        DurationUnitChip(
-                            label = stringResource(R.string.focus_mode_hours),
-                            selected = durationUnit == FocusModePolicy.DurationUnit.HOURS,
-                            onClick = {
-                                onDurationUnitChange(FocusModePolicy.DurationUnit.HOURS)
+
+                        Box {
+                            OutlinedButton(
+                                onClick = { durationUnitMenuExpanded = true },
+                                modifier = Modifier.height(56.dp)
+                            ) {
+                                Text(
+                                    stringResource(
+                                        if (durationUnit == FocusModePolicy.DurationUnit.HOURS) {
+                                            R.string.focus_mode_hours
+                                        } else {
+                                            R.string.focus_mode_minutes
+                                        }
+                                    )
+                                )
+                                Icon(
+                                    Icons.Default.ArrowDropDown,
+                                    contentDescription = null
+                                )
                             }
-                        )
-                        DurationUnitChip(
-                            label = stringResource(R.string.focus_mode_days),
-                            selected = durationUnit == FocusModePolicy.DurationUnit.DAYS,
-                            onClick = {
-                                onDurationUnitChange(FocusModePolicy.DurationUnit.DAYS)
+
+                            DropdownMenu(
+                                expanded = durationUnitMenuExpanded,
+                                onDismissRequest = { durationUnitMenuExpanded = false }
+                            ) {
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.focus_mode_minutes)) },
+                                    onClick = {
+                                        onDurationUnitChange(
+                                            FocusModePolicy.DurationUnit.MINUTES
+                                        )
+                                        durationUnitMenuExpanded = false
+                                    }
+                                )
+                                DropdownMenuItem(
+                                    text = { Text(stringResource(R.string.focus_mode_hours)) },
+                                    onClick = {
+                                        onDurationUnitChange(
+                                            FocusModePolicy.DurationUnit.HOURS
+                                        )
+                                        durationUnitMenuExpanded = false
+                                    }
+                                )
                             }
-                        )
+                        }
                     }
 
                     Row(
@@ -421,28 +498,6 @@ private fun FocusModeSetupContent(
                         Switch(checked = grayscaleEnabled, onCheckedChange = null)
                     }
 
-                    FocusModeStartError(startOutcome)
-
-                    Button(
-                        onClick = onStart,
-                        enabled = !isStarting && durationValid,
-                        modifier = Modifier.fillMaxWidth().height(52.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        if (isStarting) {
-                            CircularProgressIndicator(
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                strokeWidth = 2.dp,
-                                modifier = Modifier.size(22.dp)
-                            )
-                        } else {
-                            Text(
-                                stringResource(R.string.focus_mode_start),
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
                 }
             }
         }
@@ -494,32 +549,49 @@ private fun FocusModeSetupContent(
         }
 
         item {
-            Text(
-                stringResource(R.string.focus_mode_requirements_title),
-                color = TextPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 17.sp
-            )
-        }
-
-        item {
-            FocusRequirementCard(
-                title = stringResource(R.string.focus_mode_device_owner_title),
-                description = stringResource(R.string.focus_mode_device_owner_description),
-                ready = deviceOwnerActive
-            )
-        }
-
-        item {
-            FocusRequirementCard(
-                title = stringResource(R.string.focus_mode_notification_access_title),
-                description = stringResource(
-                    R.string.focus_mode_notification_access_description
-                ),
-                ready = notificationAccessActive,
-                actionLabel = stringResource(R.string.focus_mode_open_notification_access),
-                onAction = onOpenNotificationAccess
-            )
+            Card(
+                colors = CardDefaults.cardColors(containerColor = DarkCard),
+                border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.45f)),
+                shape = RoundedCornerShape(18.dp)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        stringResource(R.string.focus_mode_final_step_title),
+                        color = TextPrimary,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 18.sp
+                    )
+                    Text(
+                        stringResource(R.string.focus_mode_final_step_description),
+                        color = TextHint,
+                        fontSize = 13.sp
+                    )
+                    FocusModeStartError(startOutcome)
+                    Button(
+                        onClick = onStart,
+                        enabled = !isStarting && durationValid && !isLoadingApps,
+                        modifier = Modifier.fillMaxWidth().height(52.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        if (isStarting) {
+                            CircularProgressIndicator(
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                strokeWidth = 2.dp,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        } else {
+                            Text(
+                                stringResource(R.string.focus_mode_start),
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
         }
 
         item {
@@ -709,6 +781,48 @@ private fun FocusModeActiveContent(
             )
         }
     }
+}
+
+@Composable
+private fun FocusModeFinalPermissionsDialog(
+    accessibilityActive: Boolean,
+    notificationAccessActive: Boolean,
+    onDismiss: () -> Unit,
+    onResolveNext: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.focus_mode_final_permissions_title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(stringResource(R.string.focus_mode_final_permissions_description))
+                if (!accessibilityActive) {
+                    Text(stringResource(R.string.focus_mode_final_accessibility_missing))
+                }
+                if (!notificationAccessActive) {
+                    Text(stringResource(R.string.focus_mode_final_notification_missing))
+                }
+            }
+        },
+        confirmButton = {
+            Button(onClick = onResolveNext) {
+                Text(
+                    stringResource(
+                        if (!accessibilityActive) {
+                            R.string.focus_mode_open_accessibility
+                        } else {
+                            R.string.focus_mode_open_notification_access
+                        }
+                    )
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(stringResource(R.string.cancel))
+            }
+        }
+    )
 }
 
 @Composable
@@ -1014,51 +1128,6 @@ private fun FocusModeConsentDialog(
 }
 
 @Composable
-private fun FocusRequirementCard(
-    title: String,
-    description: String,
-    ready: Boolean,
-    actionLabel: String? = null,
-    onAction: (() -> Unit)? = null
-) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
-        border = BorderStroke(1.dp, if (ready) AccentCyan.copy(alpha = 0.5f) else CardBorder),
-        shape = RoundedCornerShape(14.dp)
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                if (ready) Icons.Default.CheckCircle else Icons.Default.Warning,
-                contentDescription = null,
-                tint = if (ready) AccentCyan else MaterialTheme.colorScheme.error
-            )
-            Spacer(Modifier.size(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(title, color = TextPrimary, fontWeight = FontWeight.Bold)
-                Text(description, color = TextHint, fontSize = 12.sp)
-                Text(
-                    if (ready) {
-                        stringResource(R.string.focus_mode_requirement_ready)
-                    } else {
-                        stringResource(R.string.focus_mode_requirement_pending)
-                    },
-                    color = if (ready) AccentCyan else MaterialTheme.colorScheme.error,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.SemiBold,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-            if (!ready && actionLabel != null && onAction != null) {
-                TextButton(onClick = onAction) { Text(actionLabel) }
-            }
-        }
-    }
-}
-
-@Composable
 private fun FocusInfoCard(title: String, description: String) {
     Card(
         colors = CardDefaults.cardColors(containerColor = DarkCard),
@@ -1078,27 +1147,12 @@ private fun FocusInfoCard(title: String, description: String) {
 }
 
 @Composable
-private fun DurationUnitChip(
-    label: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    FilterChip(
-        selected = selected,
-        onClick = onClick,
-        label = { Text(label) }
-    )
-}
-
-@Composable
 private fun FocusModeStartError(outcome: FocusModeManager.StartOutcome?) {
     val message = when (outcome) {
         FocusModeManager.StartOutcome.INVALID_DURATION ->
             stringResource(R.string.focus_mode_duration_invalid)
-        FocusModeManager.StartOutcome.DEVICE_OWNER_REQUIRED ->
-            stringResource(R.string.focus_mode_device_owner_required)
-        FocusModeManager.StartOutcome.SYSTEM_LOCKDOWN_UNSUPPORTED ->
-            stringResource(R.string.focus_mode_system_lockdown_unsupported)
+        FocusModeManager.StartOutcome.ACCESSIBILITY_REQUIRED ->
+            stringResource(R.string.focus_mode_accessibility_required)
         FocusModeManager.StartOutcome.NOTIFICATION_ACCESS_REQUIRED ->
             stringResource(R.string.focus_mode_notification_access_required)
         FocusModeManager.StartOutcome.STRICT_POMODORO_ACTIVE ->
@@ -1134,6 +1188,16 @@ private fun formatRemaining(milliseconds: Long): String {
 private fun openNotificationAccess(context: Context) {
     val opened = runCatching {
         context.startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))
+        true
+    }.getOrDefault(false)
+    if (!opened) {
+        runCatching { context.startActivity(Intent(Settings.ACTION_SETTINGS)) }
+    }
+}
+
+private fun openAccessibilitySettings(context: Context) {
+    val opened = runCatching {
+        context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
         true
     }.getOrDefault(false)
     if (!opened) {

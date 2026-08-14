@@ -1392,13 +1392,19 @@ class BlockingSessionManager @Inject constructor(
                     focusModeBlockedPackages = focusModeApps,
                     focusModeAllowedPackages = focusModeSession?.allowedPackages.orEmpty()
                 ).toList()
-                // Focus Mode is enforced natively by suspension + Lock Task. Sending
-                // those same packages to Accessibility would open BlockNoticeActivity
-                // on transient system foreground events and recreate the old flashing
-                // loop. Existing rules outside Focus Mode keep their normal overlay path.
+                val nativeFocusLockdownActive = focusModeSession != null &&
+                    FocusModePolicy.usesNativeFocusLockdown(
+                        deviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive(),
+                        systemLockdownSupported =
+                            deviceOwnerManager.isFocusModeSystemLockdownSupported()
+                    )
+                // Native mode suspends the Focus Mode targets. Consumer mode keeps
+                // them in Accessibility's snapshot so attempts can be redirected
+                // straight back to FocusGuard without opening BlockNoticeActivity.
                 val accessibilityAppsToBlock = FocusModePolicy.packagesForAccessibility(
                     enforcedPackages = appsToBlock,
-                    focusModeBlockedPackages = focusModeApps
+                    focusModeBlockedPackages = focusModeApps,
+                    nativeFocusLockdownActive = nativeFocusLockdownActive
                 ).toList()
 
                 val allSessionApps = getAppsForSessions(activeSessions.map { it.id })

@@ -73,32 +73,34 @@ fun MainScreen(
                     .statusBarsPadding()
                     .height(64.dp)
             ) {
-                Card(
-                    onClick = { onTabChange(0) },
-                    modifier = Modifier
-                        .align(Alignment.CenterStart)
-                        .padding(start = 16.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = DarkCard),
-                    border = BorderStroke(1.dp, CardBorder)
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                if (!focusModeActive && selectedTab != 4) {
+                    Card(
+                        onClick = { onTabChange(0) },
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 16.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = DarkCard),
+                        border = BorderStroke(1.dp, CardBorder)
                     ) {
-                        Icon(
-                            Icons.Default.Public,
-                            contentDescription = null,
-                            tint = AccentCyan,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(modifier = Modifier.width(10.dp))
-                        Text(
-                            stringResource(R.string.nav_metrics),
-                            color = TextPrimary,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Public,
+                                contentDescription = null,
+                                tint = AccentCyan,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                stringResource(R.string.nav_metrics),
+                                color = TextPrimary,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
 

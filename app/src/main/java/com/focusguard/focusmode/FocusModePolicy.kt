@@ -75,11 +75,30 @@ object FocusModePolicy {
 
     fun packagesForAccessibility(
         enforcedPackages: Collection<String>,
-        focusModeBlockedPackages: Collection<String>
+        focusModeBlockedPackages: Collection<String>,
+        nativeFocusLockdownActive: Boolean
     ): Set<String> = enforcedPackages
         .asSequence()
-        .filterNot(focusModeBlockedPackages.toSet()::contains)
+        .filterNot {
+            nativeFocusLockdownActive && it in focusModeBlockedPackages
+        }
         .toSet()
+
+    fun usesNativeFocusLockdown(
+        deviceOwnerActive: Boolean,
+        systemLockdownSupported: Boolean
+    ): Boolean = deviceOwnerActive && systemLockdownSupported
+
+    fun shouldRedirectToFocusGuard(
+        focusModeFallbackActive: Boolean,
+        foregroundPackage: String,
+        focusGuardPackage: String,
+        launcherPackage: String?,
+        focusModeBlockedPackages: Collection<String>
+    ): Boolean = focusModeFallbackActive &&
+        foregroundPackage.isNotBlank() &&
+        foregroundPackage != focusGuardPackage &&
+        (foregroundPackage == launcherPackage || foregroundPackage in focusModeBlockedPackages)
 
     fun shouldSuppressNotification(
         focusModeActive: Boolean,

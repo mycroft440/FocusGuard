@@ -29,10 +29,12 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import com.focusguard.MainActivity
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.AppDatabase
+import com.focusguard.focusmode.FocusModePolicy
 import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.StrictPomodoroLock
@@ -90,6 +92,10 @@ class BlockingAccessibilityService : AccessibilityService() {
     @Volatile private var limitedWebsiteAppDomains: Map<String, String> = emptyMap()
     @Volatile private var isBlockingSessionActive = false
     @Volatile private var isPomodoroStrictActive = false
+    @Volatile private var focusModeSessionActive = false
+    @Volatile private var focusModeFallbackActive = false
+    @Volatile private var focusModeBlockedAppsSet: Set<String> = emptySet()
+    @Volatile private var focusModeAllowedAppsSet: Set<String> = emptySet()
     @Volatile private var hasActiveAppLimits = false
     @Volatile private var lastEnforcementFingerprint: String? = null
 
@@ -98,6 +104,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var lastWebsiteBlockTime = 0L
     private var lastWebsiteBlockKey: String? = null
     private var lastToastTime = 0L
+    private var lastFocusModeRedirectElapsed = 0L
     private var defaultLauncherPackage: String? = null
     private var usageStatsManager: UsageStatsManager? = null
     private var powerManager: PowerManager? = null
@@ -471,9 +478,13 @@ class BlockingAccessibilityService : AccessibilityService() {
                 return
             }
 
-            if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-                event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
-            ) {
+            val isWindowTransition =
+                event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+            if (isWindowTransition) {
+                if (FocusModeStore.isActive(applicationContext) != focusModeSessionActive) {
+                    refreshFocusModeFallbackState()
+                }
                 foregroundPackageName = packageName.takeIf(String::isNotBlank)
                 if (packageName !in browserPackages &&
                     packageName !in limitedWebsiteAppDomains
@@ -483,10 +494,16 @@ class BlockingAccessibilityService : AccessibilityService() {
             }
 
             if (isPomodoroStrictActive &&
-                (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED)
+                isWindowTransition
             ) {
                 handleStrictPomodoro(packageName, event.className?.toString().orEmpty())
+                return
+            }
+
+            val focusLauncherMustReturn = focusModeFallbackActive &&
+                packageName == defaultLauncherPackage
+            if (packageName in focusModeAllowedAppsSet && !focusLauncherMustReturn) {
+                stopWebsiteTracking(now)
                 return
             }
 
@@ -517,6 +534,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private fun applyImmediateBlockingSnapshot(intent: Intent) {
         if (!intent.hasExtra(EXTRA_BLOCKING_SNAPSHOT_PRESENT)) return
 
+        refreshFocusModeFallbackState()
         val apps = intent.getStringArrayListExtra(EXTRA_BLOCKED_APPS_SNAPSHOT)
             .orEmpty()
             .filter(String::isNotBlank)
@@ -548,6 +566,10 @@ class BlockingAccessibilityService : AccessibilityService() {
             limitedWebsiteDomains = emptySet()
             limitedWebsiteAppDomains = emptyMap()
             isBlockingSessionActive = false
+            focusModeSessionActive = false
+            focusModeFallbackActive = false
+            focusModeBlockedAppsSet = emptySet()
+            focusModeAllowedAppsSet = emptySet()
             SelfProtectionStateStore.setArmed(applicationContext, false)
             isPomodoroStrictActive = false
             pendingSettingsProtectionUntilElapsed = 0L
@@ -586,6 +608,22 @@ class BlockingAccessibilityService : AccessibilityService() {
                         } else {
                             emptySet()
                         }
+                        val focusModeSession = FocusModeStore.readSession(applicationContext)
+                            ?.takeIf { it.isActive() }
+                        val nativeFocusLockdownActive = focusModeSession != null &&
+                            FocusModePolicy.usesNativeFocusLockdown(
+                                deviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive(),
+                                systemLockdownSupported =
+                                    deviceOwnerManager.isFocusModeSystemLockdownSupported()
+                            )
+                        val focusFallbackActive =
+                            focusModeSession != null && !nativeFocusLockdownActive
+                        val focusFallbackApps = if (focusFallbackActive) {
+                            focusModeSession?.blockedPackages.orEmpty()
+                        } else {
+                            emptySet()
+                        }
+                        val focusAllowedApps = focusModeSession?.allowedPackages.orEmpty()
 
                         val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
                         val enforcingSessions = activeSessions.filter {
@@ -611,11 +649,23 @@ class BlockingAccessibilityService : AccessibilityService() {
                         val blockedWebsiteDomains = WebsiteBlocker.normalizeRules(
                             sessionSites + exceededWebsiteDomains + adultRules
                         )
-                        val configuredWebsiteApps = WebsiteBlocker.appPackageDomainsFor(
-                            configuredWebsiteDomains
-                        )
                         val blockedWebsiteApps = WebsiteBlocker.appPackageDomainsFor(
                             sessionSites + exceededWebsiteDomains
+                        ).filterKeys { it !in focusAllowedApps }
+                        val limitedWebsiteApps = WebsiteBlocker.appPackageDomainsFor(
+                            configuredWebsiteDomains
+                        ).filterKeys { it !in focusAllowedApps }
+                        val enforcedApps = FocusModePolicy.packagesToEnforce(
+                            configuredBlockedPackages = sessionApps + limitApps,
+                            focusModeBlockedPackages =
+                                focusModeSession?.blockedPackages.orEmpty(),
+                            focusModeAllowedPackages = focusAllowedApps
+                        )
+                        val accessibilityApps = FocusModePolicy.packagesForAccessibility(
+                            enforcedPackages = enforcedApps,
+                            focusModeBlockedPackages =
+                                focusModeSession?.blockedPackages.orEmpty(),
+                            nativeFocusLockdownActive = nativeFocusLockdownActive
                         )
                         val enforcementFingerprint = listOf(
                             enforcingIds.sorted().joinToString(","),
@@ -623,7 +673,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                             sessionSites.sorted().joinToString(","),
                             limitApps.sorted().joinToString(","),
                             exceededWebsiteDomains.sorted().joinToString(","),
-                            adultFilterEnabled.toString()
+                            adultFilterEnabled.toString(),
+                            focusModeSession?.startedAtMillis?.toString().orEmpty()
                         ).joinToString("|")
                         val shouldReconcilePolicies = lastEnforcementFingerprint?.let {
                             it != enforcementFingerprint
@@ -633,11 +684,15 @@ class BlockingAccessibilityService : AccessibilityService() {
                             isPomodoroStrictActive = enforcingSessions.any {
                                 it.sessionType == "POMODORO" && it.isBlockingEnabled
                             }
-                            blockedAppsSet = sessionApps + limitApps
+                            focusModeSessionActive = focusModeSession != null
+                            focusModeFallbackActive = focusFallbackActive
+                            focusModeBlockedAppsSet = focusFallbackApps
+                            focusModeAllowedAppsSet = focusAllowedApps
+                            blockedAppsSet = accessibilityApps
                             blockedWebsitesDomainSet = blockedWebsiteDomains
                             blockedWebsiteAppDomains = blockedWebsiteApps
                             limitedWebsiteDomains = configuredWebsiteDomains
-                            limitedWebsiteAppDomains = configuredWebsiteApps
+                            limitedWebsiteAppDomains = limitedWebsiteApps
                             hasActiveAppLimits = activeAppLimits.isNotEmpty()
                             isBlockingSessionActive = isSelfProtectionEngaged(
                                 cachedActive = enforcingSessions.isNotEmpty() ||
@@ -794,7 +849,20 @@ class BlockingAccessibilityService : AccessibilityService() {
         if (packageName.isBlank()) return
         val className = event.className?.toString().orEmpty()
         if (className.contains("Toast") || className.contains("PopupWindow")) return
-        if (packageName == this.packageName || packageName == defaultLauncherPackage) return
+        if (packageName == this.packageName) return
+        if (FocusModePolicy.shouldRedirectToFocusGuard(
+                focusModeFallbackActive = focusModeFallbackActive,
+                foregroundPackage = packageName,
+                focusGuardPackage = this.packageName,
+                launcherPackage = defaultLauncherPackage,
+                focusModeBlockedPackages = focusModeBlockedAppsSet
+            )
+        ) {
+            redirectToFocusGuard(packageName)
+            return
+        }
+        if (packageName in focusModeAllowedAppsSet) return
+        if (packageName == defaultLauncherPackage) return
 
         val blockedWebsiteDomain = blockedWebsiteAppDomains[packageName]
         val limitedWebsiteDomain = limitedWebsiteAppDomains[packageName]
@@ -1005,6 +1073,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun refreshSynchronousProtectionState() {
+        refreshFocusModeFallbackState()
         isBlockingSessionActive = isSelfProtectionEngaged(
             cachedActive = isBlockingSessionActive,
             persistedActive = SelfProtectionStateStore.isArmed(applicationContext),
@@ -1012,6 +1081,54 @@ class BlockingAccessibilityService : AccessibilityService() {
             armoredDeviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive() &&
                 deviceOwnerManager.isArmoredProtectionArmed()
         )
+    }
+
+    private fun refreshFocusModeFallbackState() {
+        val session = FocusModeStore.readSession(applicationContext)
+            ?.takeIf { it.isActive() }
+        focusModeSessionActive = session != null
+        val nativeLockdownActive = session != null &&
+            FocusModePolicy.usesNativeFocusLockdown(
+                deviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive(),
+                systemLockdownSupported =
+                    deviceOwnerManager.isFocusModeSystemLockdownSupported()
+            )
+        focusModeFallbackActive = session != null && !nativeLockdownActive
+        focusModeAllowedAppsSet = session?.allowedPackages.orEmpty()
+        focusModeBlockedAppsSet = if (focusModeFallbackActive) {
+            session?.blockedPackages.orEmpty()
+        } else {
+            emptySet()
+        }
+    }
+
+    private fun redirectToFocusGuard(blockedPackage: String) {
+        val nowElapsed = SystemClock.elapsedRealtime()
+        if (nowElapsed - lastFocusModeRedirectElapsed < FOCUS_MODE_REDIRECT_COOLDOWN_MILLIS) {
+            return
+        }
+        lastFocusModeRedirectElapsed = nowElapsed
+        FocusGuardLogger.log(
+            "FocusMode",
+            "Modo consumidor redirecionou $blockedPackage para o FocusGuard"
+        )
+        runCatching {
+            startActivity(
+                Intent(this, MainActivity::class.java).apply {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    )
+                }
+            )
+        }.onFailure { error ->
+            FocusGuardLogger.logError(
+                "FocusMode",
+                "Falha ao retornar ao FocusGuard",
+                error
+            )
+        }
     }
 
     private fun sameRowClickTextValues(source: AccessibilityNodeInfo): List<CharSequence?> {
@@ -1697,6 +1814,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         private const val SELF_PROTECTION_ACTION_DEBOUNCE_MILLIS = 2_500L
         private const val SELF_PROTECTION_NOTICE_DURATION_MILLIS = 1_200L
         internal const val BLOCK_NOTICE_RELAUNCH_COOLDOWN_MILLIS = 1_500L
+        private const val FOCUS_MODE_REDIRECT_COOLDOWN_MILLIS = 600L
         private const val INSTANT_CURTAIN_FAILSAFE_MILLIS = 5_000L
         internal const val EVENT_NOTIFICATION_TIMEOUT_MILLIS = 0L
         /**
