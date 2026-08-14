@@ -1,12 +1,9 @@
 package com.focusguard.ui.compose.screens
 
-import kotlin.OptIn
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.ui.graphics.graphicsLayer
 import android.widget.Toast
 import androidx.compose.animation.*
+import androidx.compose.animation.core.*
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -22,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -29,37 +27,35 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import kotlinx.coroutines.launch
+import androidx.fragment.app.FragmentActivity
+import com.focusguard.R
 import com.focusguard.security.AuthManager
 import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.ui.compose.theme.*
-import com.focusguard.R
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.animation.core.*
-import androidx.fragment.app.FragmentActivity
+import kotlinx.coroutines.launch
+import kotlin.OptIn
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
     var hasPasswords by remember { mutableStateOf(false) }
-    var isAuthenticated by remember { mutableStateOf(true) } // Temporarily true to avoid flicker if no passwords
+    var isAuthenticated by remember { mutableStateOf(true) }
     var authInput by remember { mutableStateOf("") }
     var authError by remember { mutableStateOf("") }
 
-    // Password list state
     var passwords by remember { mutableStateOf<List<String>>(emptyList()) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val activity = context as? FragmentActivity
-    // P2-4: usa Hilt EntryPoint via rememberAppDatabase() — substitui 4
-    // chamadas diretas a AppDatabase.getDatabase(context) neste arquivo.
     val db = rememberAppDatabase()
 
-    // Animation states
     var shakeOffset by remember { mutableStateOf(0f) }
     val animatedShakeOffset by animateFloatAsState(
         targetValue = shakeOffset,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioHighBouncy, stiffness = Spring.StiffnessMedium)
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioHighBouncy,
+            stiffness = Spring.StiffnessMedium
+        )
     )
 
     LaunchedEffect(shakeOffset) {
@@ -74,40 +70,56 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
         isAuthenticated = !hasPasswords
         passwords = authManager.getStoredPasswordLabels()
     }
+
     var showAddDialog by remember { mutableStateOf(false) }
     var showEditDialog by remember { mutableStateOf<Int?>(null) }
     var showDeleteAuthDialog by remember { mutableStateOf<Int?>(null) }
-    
     var tempPassword by remember { mutableStateOf("") }
     var tempPasswordLabel by remember { mutableStateOf("") }
     var actionError by remember { mutableStateOf("") }
-    
     var currentAuthType by remember { mutableStateOf(authManager.getPreferredAuthType()) }
 
-    // Add/Edit password dialog
     if (showAddDialog || showEditDialog != null) {
         val isEditing = showEditDialog != null
         var currentPasswordForEdit by remember { mutableStateOf("") }
-        val context = LocalContext.current
 
         AlertDialog(
-            onDismissRequest = { 
+            onDismissRequest = {
                 showAddDialog = false
-                showEditDialog = null 
+                showEditDialog = null
                 actionError = ""
                 currentPasswordForEdit = ""
             },
             containerColor = DarkSurface,
-            title = { Text(if (isEditing) "Editar Senha" else stringResource(R.string.create_session_new_password), color = TextPrimary, fontWeight = FontWeight.Bold) },
+            title = {
+                Text(
+                    if (isEditing) {
+                        stringResource(R.string.fg_password_edit_title)
+                    } else {
+                        stringResource(R.string.create_session_new_password)
+                    },
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+            },
             text = {
                 Column {
                     if (isEditing) {
-                        Text(stringResource(R.string.password_mgmt_confirm_change), color = TextSecondary, fontSize = 14.sp)
+                        Text(
+                            stringResource(R.string.password_mgmt_confirm_change),
+                            color = TextSecondary,
+                            fontSize = 14.sp
+                        )
                         Spacer(modifier = Modifier.height(8.dp))
                         OutlinedTextField(
                             value = currentPasswordForEdit,
                             onValueChange = { currentPasswordForEdit = it },
-                            label = { Text(stringResource(R.string.password_mgmt_current_password), color = TextHint) },
+                            label = {
+                                Text(
+                                    stringResource(R.string.password_mgmt_current_password),
+                                    color = TextHint
+                                )
+                            },
                             visualTransformation = PasswordVisualTransformation(),
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
@@ -119,11 +131,16 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                     }
-                    
+
                     OutlinedTextField(
                         value = tempPasswordLabel,
                         onValueChange = { tempPasswordLabel = it },
-                        label = { Text(stringResource(R.string.password_mgmt_label), color = TextHint) },
+                        label = {
+                            Text(
+                                stringResource(R.string.password_mgmt_label),
+                                color = TextHint
+                            )
+                        },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = TextPrimary,
@@ -136,7 +153,12 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                     OutlinedTextField(
                         value = tempPassword,
                         onValueChange = { tempPassword = it },
-                        label = { Text(stringResource(R.string.password_mgmt_password_numeric), color = TextHint) },
+                        label = {
+                            Text(
+                                stringResource(R.string.password_mgmt_password_numeric),
+                                color = TextHint
+                            )
+                        },
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -147,69 +169,102 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth()
                     )
                     if (actionError.isNotEmpty()) {
-                        Text(actionError, color = DangerRed, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                        Text(
+                            actionError,
+                            color = DangerRed,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
                     }
                 }
             },
             confirmButton = {
-                val activity = LocalContext.current as? androidx.fragment.app.FragmentActivity
+                val dialogActivity = LocalContext.current as? FragmentActivity
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (isEditing && activity != null) {
-                        IconButton(onClick = {
-                            authManager.showBiometricPrompt(
-                                activity = activity,
-                                onSuccess = {
-                                    scope.launch {
-                                        // When using biometric to edit, we need a special method that doesn't check old password
-                                        // or we can just bypass the check since biometric is strong.
-                                        // For now, let's assume we need to update the password Dao directly.
-                                        // I'll add a new method to AuthManager or just use a flag.
-                                        // Actually, let's just use the verified state.
-                                        val entries = authManager.getStoredPasswordLabels()
-                                        if (showEditDialog!! in entries.indices) {
-                                            // Update logic moved here
-                                            val currentEntries = db.appPasswordDao().getAllStatic()
-                                            val entry = currentEntries[showEditDialog!!]
-                                            val newSalt = AuthManager.generateSalt()
-                                            val newHash = AuthManager.hashPasswordWithSalt(tempPassword, newSalt)
-                                            db.appPasswordDao().update(entry.copy(label = tempPasswordLabel, passwordHash = newHash, salt = newSalt))
-                                            
-                                            passwords = authManager.getStoredPasswordLabels()
-                                            tempPassword = ""
-                                            tempPasswordLabel = ""
-                                            currentPasswordForEdit = ""
-                                            actionError = ""
-                                            showAddDialog = false
-                                            showEditDialog = null
-                                            Toast.makeText(context, context.getString(R.string.security_updated_success), Toast.LENGTH_SHORT).show()
+                    if (isEditing && dialogActivity != null) {
+                        IconButton(
+                            onClick = {
+                                authManager.showBiometricPrompt(
+                                    activity = dialogActivity,
+                                    onSuccess = {
+                                        scope.launch {
+                                            val entries = authManager.getStoredPasswordLabels()
+                                            val editIndex = showEditDialog
+                                            if (editIndex != null && editIndex in entries.indices) {
+                                                val currentEntries = db.appPasswordDao().getAllStatic()
+                                                val entry = currentEntries[editIndex]
+                                                val newSalt = AuthManager.generateSalt()
+                                                val newHash = AuthManager.hashPasswordWithSalt(
+                                                    tempPassword,
+                                                    newSalt
+                                                )
+                                                db.appPasswordDao().update(
+                                                    entry.copy(
+                                                        label = tempPasswordLabel,
+                                                        passwordHash = newHash,
+                                                        salt = newSalt
+                                                    )
+                                                )
+
+                                                passwords = authManager.getStoredPasswordLabels()
+                                                tempPassword = ""
+                                                tempPasswordLabel = ""
+                                                currentPasswordForEdit = ""
+                                                actionError = ""
+                                                showAddDialog = false
+                                                showEditDialog = null
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(
+                                                        R.string.security_updated_success
+                                                    ),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            }
                                         }
-                                    }
-                                },
-                                onError = { actionError = it }
-                            )
-                        }) {
+                                    },
+                                    onError = { actionError = it }
+                                )
+                            }
+                        ) {
                             Icon(Icons.Default.Fingerprint, null, tint = AccentCyan)
                         }
                         Spacer(Modifier.width(8.dp))
                     }
-                    
+
                     Button(
                         onClick = {
                             scope.launch {
                                 if (isEditing) {
-                                    if (authManager.verifyAndUpdatePasswordByIndex(showEditDialog!!, currentPasswordForEdit, tempPassword, tempPasswordLabel)) {
-                                        // Success
-                                    } else {
-                                        actionError = "Senha atual incorreta."
+                                    val editIndex = showEditDialog ?: return@launch
+                                    if (!authManager.verifyAndUpdatePasswordByIndex(
+                                            editIndex,
+                                            currentPasswordForEdit,
+                                            tempPassword,
+                                            tempPasswordLabel
+                                        )
+                                    ) {
+                                        actionError = context.getString(
+                                            R.string.fg_password_wrong_current
+                                        )
                                         return@launch
                                     }
                                 } else {
-                                    val label = tempPasswordLabel.ifBlank { "Senha ${passwords.size + 1}" }
+                                    val label = tempPasswordLabel.ifBlank {
+                                        context.getString(
+                                            R.string.fg_password_default_label,
+                                            passwords.size + 1
+                                        )
+                                    }
                                     authManager.addPasswordWithLabel(tempPassword, label)
                                 }
-                                
-                                Toast.makeText(context, context.getString(R.string.security_saved_success), Toast.LENGTH_SHORT).show()
-                                
+
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.security_saved_success),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+
                                 passwords = authManager.getStoredPasswordLabels()
                                 tempPassword = ""
                                 tempPasswordLabel = ""
@@ -221,23 +276,30 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                         shape = RoundedCornerShape(12.dp)
-                    ) { Text(stringResource(R.string.save), color = DarkBg, fontWeight = FontWeight.Bold) }
+                    ) {
+                        Text(
+                            stringResource(R.string.save),
+                            color = DarkBg,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { 
-                    showAddDialog = false
-                    showEditDialog = null
-                    actionError = ""
-                    currentPasswordForEdit = ""
-                }) {
+                TextButton(
+                    onClick = {
+                        showAddDialog = false
+                        showEditDialog = null
+                        actionError = ""
+                        currentPasswordForEdit = ""
+                    }
+                ) {
                     Text(stringResource(R.string.cancel), color = TextHint)
                 }
             }
         )
     }
 
-    // Delete Auth Dialog
     if (showDeleteAuthDialog != null) {
         var deleteAuthInput by remember { mutableStateOf("") }
         var deleteAuthError by remember { mutableStateOf("") }
@@ -245,15 +307,30 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
         AlertDialog(
             onDismissRequest = { showDeleteAuthDialog = null },
             containerColor = DarkSurface,
-            title = { Text(stringResource(R.string.password_mgmt_confirm_delete), color = TextPrimary, fontWeight = FontWeight.Bold) },
+            title = {
+                Text(
+                    stringResource(R.string.password_mgmt_confirm_delete),
+                    color = TextPrimary,
+                    fontWeight = FontWeight.Bold
+                )
+            },
             text = {
                 Column {
-                    Text(stringResource(R.string.password_mgmt_confirm_delete_desc), color = TextSecondary, fontSize = 14.sp)
+                    Text(
+                        stringResource(R.string.password_mgmt_confirm_delete_desc),
+                        color = TextSecondary,
+                        fontSize = 14.sp
+                    )
                     Spacer(modifier = Modifier.height(16.dp))
                     OutlinedTextField(
                         value = deleteAuthInput,
                         onValueChange = { deleteAuthInput = it },
-                        label = { Text(stringResource(R.string.password_mgmt_current_password), color = TextHint) },
+                        label = {
+                            Text(
+                                stringResource(R.string.password_mgmt_current_password),
+                                color = TextHint
+                            )
+                        },
                         visualTransformation = PasswordVisualTransformation(),
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
@@ -264,50 +341,73 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                         modifier = Modifier.fillMaxWidth()
                     )
                     if (deleteAuthError.isNotEmpty()) {
-                        Text(deleteAuthError, color = DangerRed, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                        Text(
+                            deleteAuthError,
+                            color = DangerRed,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
                     }
                 }
             },
             confirmButton = {
-                val context = LocalContext.current
-                val activity = context as? androidx.fragment.app.FragmentActivity
+                val dialogActivity = LocalContext.current as? FragmentActivity
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    if (activity != null) {
-                        IconButton(onClick = {
-                            authManager.showBiometricPrompt(
-                                activity = activity,
-                                onSuccess = {
-                                    scope.launch {
-                                        val currentEntries = db.appPasswordDao().getAllStatic()
-                                        if (showDeleteAuthDialog!! in currentEntries.indices) {
-                                            db.appPasswordDao().delete(currentEntries[showDeleteAuthDialog!!])
-                                            passwords = authManager.getStoredPasswordLabels()
-                                            showDeleteAuthDialog = null
+                    if (dialogActivity != null) {
+                        IconButton(
+                            onClick = {
+                                authManager.showBiometricPrompt(
+                                    activity = dialogActivity,
+                                    onSuccess = {
+                                        scope.launch {
+                                            val currentEntries = db.appPasswordDao().getAllStatic()
+                                            val deleteIndex = showDeleteAuthDialog
+                                            if (
+                                                deleteIndex != null &&
+                                                deleteIndex in currentEntries.indices
+                                            ) {
+                                                db.appPasswordDao().delete(
+                                                    currentEntries[deleteIndex]
+                                                )
+                                                passwords = authManager.getStoredPasswordLabels()
+                                                showDeleteAuthDialog = null
+                                            }
                                         }
-                                    }
-                                },
-                                onError = { deleteAuthError = it }
-                            )
-                        }) {
+                                    },
+                                    onError = { deleteAuthError = it }
+                                )
+                            }
+                        ) {
                             Icon(Icons.Default.Fingerprint, null, tint = AccentCyan)
                         }
                         Spacer(Modifier.width(8.dp))
                     }
-                    
+
                     Button(
                         onClick = {
                             scope.launch {
-                                if (authManager.verifyAndRemovePasswordByIndex(showDeleteAuthDialog!!, deleteAuthInput)) {
+                                val deleteIndex = showDeleteAuthDialog ?: return@launch
+                                if (authManager.verifyAndRemovePasswordByIndex(
+                                        deleteIndex,
+                                        deleteAuthInput
+                                    )
+                                ) {
                                     passwords = authManager.getStoredPasswordLabels()
                                     showDeleteAuthDialog = null
                                 } else {
-                                    deleteAuthError = "Senha incorreta."
+                                    deleteAuthError = context.getString(R.string.fg_password_wrong)
                                 }
                             }
                         },
                         colors = ButtonDefaults.buttonColors(containerColor = DangerRed),
                         shape = RoundedCornerShape(12.dp)
-                    ) { Text(stringResource(R.string.remove_button), color = TextPrimary, fontWeight = FontWeight.Bold) }
+                    ) {
+                        Text(
+                            stringResource(R.string.remove_button),
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
             },
             dismissButton = {
@@ -321,10 +421,16 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.manage_passwords), color = TextPrimary) },
+                title = {
+                    Text(stringResource(R.string.manage_passwords), color = TextPrimary)
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = TextPrimary)
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = stringResource(R.string.action_back),
+                            tint = TextPrimary
+                        )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkSurface)
@@ -333,30 +439,31 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
         floatingActionButton = {
             if (isAuthenticated) {
                 FloatingActionButton(
-                    onClick = { 
+                    onClick = {
                         tempPassword = ""
                         tempPasswordLabel = ""
-                        showAddDialog = true 
+                        showAddDialog = true
                     },
                     containerColor = AccentCyan,
                     contentColor = DarkBg,
                     shape = CircleShape
                 ) {
-                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.add_app_button)) // Using existing add_app for add icon desc
+                    Icon(
+                        Icons.Default.Add,
+                        contentDescription = stringResource(R.string.add_app_button)
+                    )
                 }
             }
         },
         containerColor = DarkBg
     ) { paddingValues ->
-
         if (!isAuthenticated) {
-            // [L2] Authentication gate with improved layout and security [S3]
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
                     .padding(32.dp)
-                    .offset(x = animatedShakeOffset.dp), // [L1] Shake animation
+                    .offset(x = animatedShakeOffset.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
@@ -380,13 +487,20 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                         .clip(RoundedCornerShape(24.dp))
                         .background(
                             Brush.linearGradient(
-                                listOf(AccentCyan.copy(alpha = 0.15f), AccentPurple.copy(alpha = 0.15f))
+                                listOf(
+                                    AccentCyan.copy(alpha = 0.15f),
+                                    AccentPurple.copy(alpha = 0.15f)
+                                )
                             )
                         ),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        imageVector = if (isAuthenticated) Icons.Default.LockOpen else Icons.Default.Lock,
+                        imageVector = if (isAuthenticated) {
+                            Icons.Default.LockOpen
+                        } else {
+                            Icons.Default.Lock
+                        },
                         contentDescription = null,
                         tint = AccentCyan,
                         modifier = Modifier.size(40.dp)
@@ -396,13 +510,13 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                 Spacer(modifier = Modifier.height(24.dp))
 
                 Text(
-                    "Área Protegida",
+                    stringResource(R.string.fg_password_protected_area),
                     fontSize = 24.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = TextPrimary
                 )
                 Text(
-                    "Confirme sua identidade para gerenciar suas chaves de segurança.",
+                    stringResource(R.string.fg_password_protected_desc),
                     fontSize = 14.sp,
                     color = TextSecondary,
                     textAlign = TextAlign.Center,
@@ -414,14 +528,27 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                 OutlinedTextField(
                     value = authInput,
                     onValueChange = { authInput = it },
-                    label = { Text(stringResource(R.string.security_master_password), color = TextHint) },
+                    label = {
+                        Text(
+                            stringResource(R.string.security_master_password),
+                            color = TextHint
+                        )
+                    },
                     visualTransformation = PasswordVisualTransformation(),
                     singleLine = true,
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = TextPrimary,
                         unfocusedTextColor = TextPrimary,
-                        focusedBorderColor = if (authError.isNotEmpty()) DangerRed else AccentCyan,
-                        unfocusedBorderColor = if (authError.isNotEmpty()) DangerRed else Border
+                        focusedBorderColor = if (authError.isNotEmpty()) {
+                            DangerRed
+                        } else {
+                            AccentCyan
+                        },
+                        unfocusedBorderColor = if (authError.isNotEmpty()) {
+                            DangerRed
+                        } else {
+                            Border
+                        }
                     ),
                     modifier = Modifier.fillMaxWidth()
                 )
@@ -443,18 +570,28 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                         onClick = {
                             authManager.showBiometricPrompt(
                                 activity = activity,
-                                onSuccess = { isAuthenticated = true; authError = "" },
+                                onSuccess = {
+                                    isAuthenticated = true
+                                    authError = ""
+                                },
                                 onError = { authError = it }
                             )
                         },
-                        modifier = Modifier.fillMaxWidth().height(54.dp).padding(bottom = 8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(54.dp)
+                            .padding(bottom = 8.dp),
                         colors = ButtonDefaults.buttonColors(containerColor = DarkSurface),
                         border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.3f)),
                         shape = RoundedCornerShape(16.dp)
                     ) {
                         Icon(Icons.Default.Fingerprint, null, tint = AccentCyan)
                         Spacer(Modifier.width(10.dp))
-                        Text(stringResource(R.string.security_biometric_auth), color = TextPrimary, fontWeight = FontWeight.Bold)
+                        Text(
+                            stringResource(R.string.security_biometric_auth),
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
 
@@ -465,15 +602,10 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                                 isAuthenticated = true
                                 authError = ""
                             } else {
-                                // [S3] Security Hardening: Count failed attempts
                                 val failed = authManager.incrementFailedAttempts()
                                 val limit = authManager.getMaxPasswordAttempts()
-                                
-                                shakeOffset = 20f // Trigger shake
+                                shakeOffset = 20f
 
-                                // Sem selfie aqui: esta area so e alcancavel depois
-                                // de autenticar, entao quem esta nela ja passou.
-                                // Ver IntruderCapturePolicy.
                                 authError = when {
                                     limit > 0 && failed >= limit ->
                                         context.getString(R.string.auth_wrong_password_limit)
@@ -491,11 +623,14 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                     colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                     shape = RoundedCornerShape(16.dp)
                 ) {
-                    Text(stringResource(R.string.security_unlock_access), fontWeight = FontWeight.ExtraBold, color = DarkBg)
+                    Text(
+                        stringResource(R.string.security_unlock_access),
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DarkBg
+                    )
                 }
             }
         } else {
-            // Password list
             LazyColumn(
                 modifier = Modifier
                     .fillMaxSize()
@@ -505,21 +640,26 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
             ) {
                 item {
                     Text(
-                        "Tipo de Bloqueio Principal",
+                        stringResource(R.string.fg_password_primary_lock_type),
                         color = TextPrimary,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
                     )
-                    
+
+                    val authOptions = listOf(
+                        "NUMERIC" to stringResource(R.string.fg_password_auth_password),
+                        "PATTERN" to stringResource(R.string.fg_password_auth_pattern),
+                        "DIGITAL" to stringResource(R.string.fg_password_auth_biometric)
+                    )
                     Row(
                         modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        listOf("NUMERIC" to "Senha", "PATTERN" to "Padrão", "DIGITAL" to "Digital").forEach { (type, label) ->
+                        authOptions.forEach { (type, label) ->
                             FilterChip(
                                 selected = currentAuthType == type,
-                                onClick = { 
+                                onClick = {
                                     currentAuthType = type
                                     authManager.setPreferredAuthType(type)
                                 },
@@ -542,15 +682,24 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                             modifier = Modifier.fillMaxWidth().padding(32.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Icon(Icons.Default.Key, contentDescription = null, tint = TextHint, modifier = Modifier.size(64.dp))
+                            Icon(
+                                Icons.Default.Key,
+                                contentDescription = null,
+                                tint = TextHint,
+                                modifier = Modifier.size(64.dp)
+                            )
                             Spacer(modifier = Modifier.height(16.dp))
-                            Text(stringResource(R.string.security_none_saved), color = TextHint, fontSize = 16.sp)
+                            Text(
+                                stringResource(R.string.security_none_saved),
+                                color = TextHint,
+                                fontSize = 16.sp
+                            )
                         }
                     }
                 } else {
                     item {
                         Text(
-                            "${passwords.size} senha(s) cadastrada(s)",
+                            stringResource(R.string.fg_password_count, passwords.size),
                             color = TextSecondary,
                             fontSize = 13.sp,
                             modifier = Modifier.padding(bottom = 8.dp, start = 4.dp)
@@ -562,7 +711,7 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
                             index = index + 1,
                             label = label,
                             onEdit = {
-                                tempPassword = "" // For security, don't show old password hash
+                                tempPassword = ""
                                 tempPasswordLabel = label
                                 showEditDialog = index
                             },
@@ -578,11 +727,16 @@ fun PasswordManagementScreen(authManager: AuthManager, onBack: () -> Unit) {
 }
 
 @Composable
-fun PasswordCard(index: Int, label: String, onEdit: () -> Unit, onDelete: () -> Unit) {
+fun PasswordCard(
+    index: Int,
+    label: String,
+    onEdit: () -> Unit,
+    onDelete: () -> Unit
+) {
     Card(
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = DarkCard),
-        border = BorderStroke(1.dp, CardBorder), // [L2] Added border
+        border = BorderStroke(1.dp, CardBorder),
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
@@ -596,21 +750,39 @@ fun PasswordCard(index: Int, label: String, onEdit: () -> Unit, onDelete: () -> 
                     .background(AccentCyan.copy(alpha = 0.12f)),
                 contentAlignment = Alignment.Center
             ) {
-                Text("$index", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = AccentCyan)
+                Text(
+                    "$index",
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = AccentCyan
+                )
             }
 
             Spacer(modifier = Modifier.width(14.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(label, fontSize = 15.sp, fontWeight = FontWeight.Medium, color = TextPrimary)
+                Text(
+                    label,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = TextPrimary
+                )
                 Text("••••••••", fontSize = 13.sp, color = TextHint)
             }
 
             IconButton(onClick = onEdit) {
-                Icon(Icons.Default.Edit, contentDescription = stringResource(R.string.editar), tint = AccentCyan.copy(alpha = 0.7f))
+                Icon(
+                    Icons.Default.Edit,
+                    contentDescription = stringResource(R.string.editar),
+                    tint = AccentCyan.copy(alpha = 0.7f)
+                )
             }
             IconButton(onClick = onDelete) {
-                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.sessions_remove_item), tint = DangerRed.copy(alpha = 0.7f))
+                Icon(
+                    Icons.Default.Delete,
+                    contentDescription = stringResource(R.string.sessions_remove_item),
+                    tint = DangerRed.copy(alpha = 0.7f)
+                )
             }
         }
     }
