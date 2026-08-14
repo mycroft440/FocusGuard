@@ -71,7 +71,7 @@ import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
-@androidx.compose.material3.ExperimentalMaterial3Api
+@OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun FinalConfigStep(
     sessionType: String,
