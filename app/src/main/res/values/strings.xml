@@ -376,19 +376,15 @@
     <string name="dashboard_load_failed_desc">Tente novamente em instantes.</string>
     <string name="dashboard_try_again">Tentar novamente</string>
     <string name="dashboard_phone_usage">Uso do Telefone</string>
-    <string name="dashboard_total_week">Últimos 7 Dias</string>
     <string name="dashboard_daily_avg">Média Diária</string>
-    <plurals name="dashboard_complete_days_average">
-        <item quantity="one">Média (%1$d dia completo)</item>
-        <item quantity="other">Média (%1$d dias completos)</item>
-    </plurals>
-    <string name="dashboard_usage_periods_title">Períodos de uso</string>
-    <string name="dashboard_usage_periods_desc">Média em blocos de 3 horas nos %1$d dias completos com dados detalhados disponíveis.</string>
-    <string name="dashboard_most_active_period">Maior uso</string>
-    <string name="dashboard_least_active_period">Menor uso</string>
-    <string name="dashboard_period_range">%1$02dh–%2$02dh</string>
-    <string name="dashboard_period_average">Média: %1$s</string>
-    <string name="dashboard_period_no_data">Ainda não há uso suficiente para calcular esses períodos.</string>
+    <string name="dashboard_daily_average_sentence">Você costuma usar seu celular em média: %1$s por dia.</string>
+    <string name="dashboard_daily_average_no_data">O primeiro dia completo de uso mostrará sua média diária.</string>
+    <string name="dashboard_daily_chart_title">Tempo de uso em cada dia</string>
+    <string name="dashboard_usage_periods_title">Seus horários habituais</string>
+    <string name="dashboard_usage_periods_desc">Calculado com base nos %1$d dias completos com dados detalhados disponíveis.</string>
+    <string name="dashboard_most_active_period_sentence">Horário de maior uso: entre %1$02dh e %2$02dh</string>
+    <string name="dashboard_least_active_period_sentence">Horário de menor uso: entre %1$02dh e %2$02dh</string>
+    <string name="dashboard_period_no_data">Precisamos de pelo menos %1$d dias completos para identificar seus horários habituais sem adivinhar.</string>
     <string name="dashboard_most_used">Apps Mais Usados</string>
     <string name="dashboard_no_data">Nenhum dado encontrado.</string>
     <string name="dashboard_hide">Ocultar</string>

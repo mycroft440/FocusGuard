@@ -183,28 +183,23 @@ class PhoneUsageInsightsCalculatorTest {
     }
 
     @Test
-    fun `period average splits an interval at a three hour boundary`() {
+    fun `busiest usage is calculated in one hour ranges`() {
         val insights = calculate(
-            detailedIntervals = listOf(
-                interval("2026-01-01T02:30", "2026-01-01T03:30"),
-                interval("2026-01-01T04:00", "2026-01-01T05:00")
-            ),
-            completePeriodDates = (1..7).map { date("2026-01-%02d".format(it)) },
+            detailedIntervals = (5..7).flatMap { day ->
+                listOf(
+                    interval("2026-01-%02dT09:00".format(day), "2026-01-%02dT09:15".format(day)),
+                    interval("2026-01-%02dT14:00".format(day), "2026-01-%02dT15:00".format(day))
+                )
+            },
+            completePeriodDates = (5..7).map { date("2026-01-%02d".format(it)) },
             now = "2026-01-08T12:00"
         )
 
         assertThat(insights.periodSummary?.mostUsed).isEqualTo(
             PhoneUsagePeriodAverage(
-                startHour = 3,
-                endHour = 6,
-                averageTimeMs = 90.minutes / 7
-            )
-        )
-        assertThat(insights.periodSummary?.leastUsed).isEqualTo(
-            PhoneUsagePeriodAverage(
-                startHour = 6,
-                endHour = 9,
-                averageTimeMs = 0L
+                startHour = 14,
+                endHour = 15,
+                averageTimeMs = 1.hours
             )
         )
     }
@@ -226,11 +221,50 @@ class PhoneUsageInsightsCalculatorTest {
         assertThat(insights.periodSummary?.daysAnalyzed).isEqualTo(3)
         assertThat(insights.periodSummary?.mostUsed).isEqualTo(
             PhoneUsagePeriodAverage(
-                startHour = 3,
-                endHour = 6,
+                startHour = 4,
+                endHour = 5,
                 averageTimeMs = 1.hours / 3
             )
         )
+    }
+
+    @Test
+    fun `quietest continuous window is joined across midnight`() {
+        val insights = calculate(
+            detailedIntervals = (5..7).map { day ->
+                interval(
+                    "2026-01-%02dT06:00".format(day),
+                    "2026-01-%02dT21:00".format(day)
+                )
+            },
+            completePeriodDates = (5..7).map { date("2026-01-%02d".format(it)) },
+            now = "2026-01-08T12:00"
+        )
+
+        assertThat(insights.periodSummary?.leastUsed).isEqualTo(
+            PhoneUsagePeriodAverage(
+                startHour = 21,
+                endHour = 6,
+                averageTimeMs = 0L
+            )
+        )
+    }
+
+    @Test
+    fun `usage pattern waits for three complete days`() {
+        val insights = calculate(
+            detailedIntervals = listOf(
+                interval("2026-01-06T14:00", "2026-01-06T15:00"),
+                interval("2026-01-07T14:00", "2026-01-07T15:00")
+            ),
+            completePeriodDates = listOf(
+                date("2026-01-06"),
+                date("2026-01-07")
+            ),
+            now = "2026-01-08T12:00"
+        )
+
+        assertThat(insights.periodSummary).isNull()
     }
 
     @Test
@@ -241,6 +275,8 @@ class PhoneUsageInsightsCalculatorTest {
                 interval("2026-01-08T00:00", "2026-01-08T10:00")
             ),
             completePeriodDates = listOf(
+                date("2026-01-05"),
+                date("2026-01-06"),
                 date("2026-01-07"),
                 date("2026-01-08")
             ),
@@ -248,8 +284,9 @@ class PhoneUsageInsightsCalculatorTest {
         )
 
         assertThat(insights.periodSummary?.mostUsed?.startHour).isEqualTo(18)
-        assertThat(insights.periodSummary?.mostUsed?.averageTimeMs).isEqualTo(2.hours)
-        assertThat(insights.periodSummary?.daysAnalyzed).isEqualTo(1)
+        assertThat(insights.periodSummary?.mostUsed?.endHour).isEqualTo(19)
+        assertThat(insights.periodSummary?.mostUsed?.averageTimeMs).isEqualTo(1.hours / 3)
+        assertThat(insights.periodSummary?.daysAnalyzed).isEqualTo(3)
     }
 
     @Test

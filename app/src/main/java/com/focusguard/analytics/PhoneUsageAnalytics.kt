@@ -7,6 +7,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 internal const val PHONE_USAGE_PERIOD_ANALYSIS_DAYS = 30
+internal const val MIN_PHONE_USAGE_PATTERN_DAYS = 3
 
 data class DailyPhoneUsage(
     val dateLabel: String,
@@ -159,8 +160,7 @@ internal fun resolveDailyScreenTime(
 }
 
 internal object PhoneUsageInsightsCalculator {
-    private const val PERIOD_HOURS = 3
-    private const val PERIODS_PER_DAY = 24 / PERIOD_HOURS
+    private const val HOURS_PER_DAY = 24
 
     fun calculate(
         dailyScreenTimeByDate: Map<LocalDate, Long>,
@@ -208,19 +208,19 @@ internal object PhoneUsageInsightsCalculator {
             .distinct()
             .sorted()
             .toList()
-        val periodTotals = LongArray(PERIODS_PER_DAY)
+        val hourlyTotals = LongArray(HOURS_PER_DAY)
 
         analyzedDates.forEach { date ->
-            repeat(PERIODS_PER_DAY) { periodIndex ->
-                val startHour = periodIndex * PERIOD_HOURS
-                val endHour = startHour + PERIOD_HOURS
+            repeat(HOURS_PER_DAY) { hour ->
+                val startHour = hour
+                val endHour = hour + 1
                 val periodStartMs = date.atHour(startHour, zoneId)
                 val periodEndMs = if (endHour == 24) {
                     date.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
                 } else {
                     date.atHour(endHour, zoneId)
                 }
-                periodTotals[periodIndex] += totalOverlap(
+                hourlyTotals[hour] += totalOverlap(
                     intervals = detailedIntervals,
                     rangeStartMs = periodStartMs,
                     rangeEndMs = periodEndMs
@@ -228,26 +228,35 @@ internal object PhoneUsageInsightsCalculator {
             }
         }
 
-        val periodSummary = if (analyzedDates.isEmpty() || periodTotals.sum() == 0L) {
+        val periodSummary = if (
+            analyzedDates.size < MIN_PHONE_USAGE_PATTERN_DAYS ||
+            hourlyTotals.sum() == 0L
+        ) {
             null
         } else {
-            // maxByOrNull/minByOrNull preservam o primeiro índice nos empates,
-            // tornando o resultado estável e escolhendo o período mais cedo.
-            val mostUsedIndex = periodTotals.indices.maxByOrNull { periodTotals[it] } ?: 0
-            val leastUsedIndex = periodTotals.indices.minByOrNull { periodTotals[it] } ?: 0
+            val daysAnalyzed = analyzedDates.size
+            val hourlyAverages = LongArray(HOURS_PER_DAY) { hour ->
+                hourlyTotals[hour] / daysAnalyzed
+            }
+            // maxByOrNull preserva o primeiro índice nos empates, tornando o
+            // resultado estável e escolhendo a hora mais cedo.
+            val mostUsedHour = hourlyAverages.indices
+                .maxByOrNull { hourlyAverages[it] }
+                ?: 0
+            val quietestWindow = findQuietestWindow(hourlyAverages)
 
             PhoneUsagePeriodSummary(
-                mostUsed = periodAverage(
-                    periodIndex = mostUsedIndex,
-                    totalTimeMs = periodTotals[mostUsedIndex],
-                    days = analyzedDates.size
+                mostUsed = PhoneUsagePeriodAverage(
+                    startHour = mostUsedHour,
+                    endHour = (mostUsedHour + 1) % HOURS_PER_DAY,
+                    averageTimeMs = hourlyAverages[mostUsedHour]
                 ),
-                leastUsed = periodAverage(
-                    periodIndex = leastUsedIndex,
-                    totalTimeMs = periodTotals[leastUsedIndex],
-                    days = analyzedDates.size
+                leastUsed = PhoneUsagePeriodAverage(
+                    startHour = quietestWindow.startHour,
+                    endHour = (quietestWindow.startHour + quietestWindow.lengthHours) % HOURS_PER_DAY,
+                    averageTimeMs = quietestWindow.averageUsageMs
                 ),
-                daysAnalyzed = analyzedDates.size
+                daysAnalyzed = daysAnalyzed
             )
         }
 
@@ -276,13 +285,73 @@ internal object PhoneUsageInsightsCalculator {
     private fun LocalDate.atHour(hour: Int, zoneId: ZoneId): Long =
         atTime(hour, 0).atZone(zoneId).toInstant().toEpochMilli()
 
-    private fun periodAverage(
-        periodIndex: Int,
-        totalTimeMs: Long,
-        days: Int
-    ) = PhoneUsagePeriodAverage(
-        startHour = periodIndex * PERIOD_HOURS,
-        endHour = (periodIndex + 1) * PERIOD_HOURS,
-        averageTimeMs = totalTimeMs / days
+    /**
+     * Encontra o maior trecho circular de horas com uso abaixo da média
+     * horária pessoal. Isso evita chamar uma única hora zerada de "menor
+     * período" e reconhece corretamente faixas que atravessam a meia-noite,
+     * como 21h–06h.
+     */
+    private fun findQuietestWindow(hourlyAverages: LongArray): QuietUsageWindow {
+        require(hourlyAverages.size == HOURS_PER_DAY)
+
+        val typicalHourlyUsageMs = hourlyAverages.sum() / HOURS_PER_DAY
+        val isQuietHour = BooleanArray(HOURS_PER_DAY) { hour ->
+            hourlyAverages[hour] < typicalHourlyUsageMs
+        }
+
+        // Em um padrão perfeitamente uniforme não existe uma faixa abaixo da
+        // média. Nesse caso, a hora de menor uso é a resposta mais honesta.
+        if (isQuietHour.none { it }) {
+            val leastUsedHour = hourlyAverages.indices
+                .minByOrNull { hourlyAverages[it] }
+                ?: 0
+            return QuietUsageWindow(
+                startHour = leastUsedHour,
+                lengthHours = 1,
+                averageUsageMs = hourlyAverages[leastUsedHour]
+            )
+        }
+
+        var best: QuietUsageWindow? = null
+        for (startHour in 0 until HOURS_PER_DAY) {
+            val previousHour = (startHour - 1 + HOURS_PER_DAY) % HOURS_PER_DAY
+            if (!isQuietHour[startHour] || isQuietHour[previousHour]) continue
+
+            var lengthHours = 0
+            var totalUsageMs = 0L
+            while (
+                lengthHours < HOURS_PER_DAY &&
+                isQuietHour[(startHour + lengthHours) % HOURS_PER_DAY]
+            ) {
+                totalUsageMs += hourlyAverages[(startHour + lengthHours) % HOURS_PER_DAY]
+                lengthHours++
+            }
+
+            val candidate = QuietUsageWindow(
+                startHour = startHour,
+                lengthHours = lengthHours,
+                averageUsageMs = totalUsageMs
+            )
+            val currentBest = best
+            if (
+                currentBest == null ||
+                candidate.lengthHours > currentBest.lengthHours ||
+                (
+                    candidate.lengthHours == currentBest.lengthHours &&
+                    candidate.averageUsageMs < currentBest.averageUsageMs
+                )
+            ) {
+                best = candidate
+            }
+        }
+
+        return checkNotNull(best)
+    }
+
+    private data class QuietUsageWindow(
+        val startHour: Int,
+        val lengthHours: Int,
+        /** Uso médio total dentro da faixa, por dia analisado. */
+        val averageUsageMs: Long
     )
 }

@@ -376,19 +376,15 @@
     <string name="dashboard_load_failed_desc">Try again in a moment.</string>
     <string name="dashboard_try_again">Try again</string>
     <string name="dashboard_phone_usage">Phone Usage</string>
-    <string name="dashboard_total_week">Last 7 Days</string>
     <string name="dashboard_daily_avg">Daily Average</string>
-    <plurals name="dashboard_complete_days_average">
-        <item quantity="one">Average (%1$d complete day)</item>
-        <item quantity="other">Average (%1$d complete days)</item>
-    </plurals>
-    <string name="dashboard_usage_periods_title">Usage periods</string>
-    <string name="dashboard_usage_periods_desc">Average in 3-hour blocks over the %1$d complete days with detailed data available.</string>
-    <string name="dashboard_most_active_period">Most usage</string>
-    <string name="dashboard_least_active_period">Least usage</string>
-    <string name="dashboard_period_range">%1$02dh–%2$02dh</string>
-    <string name="dashboard_period_average">Average: %1$s</string>
-    <string name="dashboard_period_no_data">There is not enough usage yet to calculate these periods.</string>
+    <string name="dashboard_daily_average_sentence">You usually use your phone for an average of %1$s per day.</string>
+    <string name="dashboard_daily_average_no_data">Your daily average will appear after the first complete day of use.</string>
+    <string name="dashboard_daily_chart_title">Usage time for each day</string>
+    <string name="dashboard_usage_periods_title">Your usual usage times</string>
+    <string name="dashboard_usage_periods_desc">Calculated from the %1$d complete days with detailed data available.</string>
+    <string name="dashboard_most_active_period_sentence">Highest usage: between %1$02d:00 and %2$02d:00</string>
+    <string name="dashboard_least_active_period_sentence">Lowest usage: between %1$02d:00 and %2$02d:00</string>
+    <string name="dashboard_period_no_data">We need at least %1$d complete days to identify your usual usage times without guessing.</string>
     <string name="dashboard_most_used">Most Used Apps</string>
     <string name="dashboard_no_data">No data found.</string>
     <string name="dashboard_hide">Hide</string>

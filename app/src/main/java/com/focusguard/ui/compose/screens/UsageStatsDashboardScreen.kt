@@ -7,7 +7,6 @@ import android.content.pm.PackageManager
 import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.provider.Settings
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
@@ -24,8 +23,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -271,7 +268,6 @@ private fun InsightsFallback(
 @Composable
 fun PhoneUsageChartSection(insights: PhoneUsageInsights) {
     val currentWeek = insights.dailyHistory.takeLast(7)
-    val currentTotal = currentWeek.sumOf { it.totalTimeMs }
     val currentAvg = insights.completeDaysAverageMs
 
     Card(
@@ -288,72 +284,37 @@ fun PhoneUsageChartSection(insights: PhoneUsageInsights) {
                 fontWeight = FontWeight.Bold
             )
             
-            Spacer(Modifier.height(16.dp))
-            
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Column {
-                    Text(stringResource(R.string.dashboard_total_week), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                    Text(formatTime(currentTotal), color = AccentCyan, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                }
-                Column(horizontalAlignment = Alignment.End) {
-                    Text(
-                        pluralStringResource(
-                            R.plurals.dashboard_complete_days_average,
-                            insights.completeDaysAnalyzed,
-                            insights.completeDaysAnalyzed
-                        ),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 12.sp
-                    )
-                    Text(formatTime(currentAvg), color = AccentPurple, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-                }
+            Spacer(Modifier.height(14.dp))
+
+            if (insights.completeDaysAnalyzed > 0) {
+                Text(
+                    text = stringResource(
+                        R.string.dashboard_daily_average_sentence,
+                        formatTime(currentAvg)
+                    ),
+                    color = AccentCyan,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    lineHeight = 27.sp
+                )
+            } else {
+                Text(
+                    text = stringResource(R.string.dashboard_daily_average_no_data),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 14.sp
+                )
             }
-            
-            Spacer(Modifier.height(24.dp))
-            
-            Column {
-                Canvas(modifier = Modifier.fillMaxWidth().height(150.dp)) {
-                    val maxTime = currentWeek.maxOfOrNull { it.totalTimeMs }?.coerceAtLeast(60000L) ?: 60000L
-                    val barGap = 12.dp.toPx()
-                    val totalBars = currentWeek.size
-                    if (totalBars == 0) return@Canvas
-                    val barWidth = (size.width - (totalBars - 1) * barGap) / totalBars
-                    
-                    currentWeek.forEachIndexed { index, usage ->
-                        val barHeight = (usage.totalTimeMs.toFloat() / maxTime.toFloat()) * size.height
-                        drawRoundRect(
-                            color = AccentCyan,
-                            topLeft = Offset(x = index * (barWidth + barGap), y = size.height - barHeight),
-                            size = Size(width = barWidth, height = barHeight),
-                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(6.dp.toPx())
-                        )
-                    }
-                    
-                    val avgY = size.height - ((currentAvg.toFloat() / maxTime.toFloat()) * size.height)
-                    drawLine(
-                        color = AccentPurple.copy(alpha = 0.5f),
-                        start = Offset(0f, avgY),
-                        end = Offset(size.width, avgY),
-                        strokeWidth = 1.dp.toPx(),
-                        pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 10f))
-                    )
-                }
-                
-                Spacer(Modifier.height(8.dp))
-                
-                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    currentWeek.forEach { usage ->
-                        Text(
-                            text = usage.dateLabel.take(3),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.weight(1f),
-                            textAlign = TextAlign.Center
-                        )
-                    }
-                }
-            }
+
+            Spacer(Modifier.height(22.dp))
+
+            Text(
+                text = stringResource(R.string.dashboard_daily_chart_title),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(12.dp))
+            DailyUsageBarChart(currentWeek)
 
             Spacer(Modifier.height(24.dp))
             HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = 0.16f))
@@ -366,88 +327,156 @@ fun PhoneUsageChartSection(insights: PhoneUsageInsights) {
                 fontWeight = FontWeight.Bold
             )
             Spacer(Modifier.height(4.dp))
-            Text(
-                text = stringResource(
-                    R.string.dashboard_usage_periods_desc,
-                    insights.periodSummary?.daysAnalyzed
-                        ?: 0
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp
-            )
-            Spacer(Modifier.height(14.dp))
-
             val periodSummary = insights.periodSummary
             if (periodSummary == null) {
+                Spacer(Modifier.height(6.dp))
                 Text(
-                    text = stringResource(R.string.dashboard_period_no_data),
+                    text = stringResource(
+                        R.string.dashboard_period_no_data,
+                        MIN_PHONE_USAGE_PATTERN_DAYS
+                    ),
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     fontSize = 13.sp
                 )
             } else {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    UsagePeriodCard(
-                        modifier = Modifier.weight(1f),
-                        title = stringResource(R.string.dashboard_most_active_period),
-                        period = periodSummary.mostUsed,
-                        accent = AccentCyan
-                    )
-                    UsagePeriodCard(
-                        modifier = Modifier.weight(1f),
-                        title = stringResource(R.string.dashboard_least_active_period),
-                        period = periodSummary.leastUsed,
-                        accent = AccentPurple
-                    )
-                }
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(
+                        R.string.dashboard_usage_periods_desc,
+                        periodSummary.daysAnalyzed
+                    ),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp
+                )
+                Spacer(Modifier.height(14.dp))
+                UsagePatternStatement(
+                    text = stringResource(
+                        R.string.dashboard_most_active_period_sentence,
+                        periodSummary.mostUsed.startHour,
+                        periodSummary.mostUsed.endHour
+                    ),
+                    accent = AccentCyan
+                )
+                Spacer(Modifier.height(10.dp))
+                UsagePatternStatement(
+                    text = stringResource(
+                        R.string.dashboard_least_active_period_sentence,
+                        periodSummary.leastUsed.startHour,
+                        periodSummary.leastUsed.endHour
+                    ),
+                    accent = AccentPurple
+                )
             }
         }
     }
 }
 
 @Composable
-private fun UsagePeriodCard(
-    modifier: Modifier,
-    title: String,
-    period: PhoneUsagePeriodAverage,
+private fun DailyUsageBarChart(dailyUsage: List<DailyPhoneUsage>) {
+    val maxTimeMs = dailyUsage.maxOfOrNull { it.totalTimeMs }
+        ?.coerceAtLeast(60_000L)
+        ?: 60_000L
+
+    if (dailyUsage.isEmpty()) {
+        Text(
+            text = stringResource(R.string.dashboard_no_data),
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        return
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(190.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp)
+    ) {
+        dailyUsage.forEachIndexed { index, usage ->
+            val actualFraction = usage.totalTimeMs.toFloat() / maxTimeMs.toFloat()
+            val visibleFraction = if (usage.totalTimeMs > 0L) {
+                actualFraction.coerceIn(0.035f, 1f)
+            } else {
+                0.012f
+            }
+            val accent = if (index == dailyUsage.lastIndex) AccentPurple else AccentCyan
+
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight(),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    text = formatChartTime(usage.totalTimeMs),
+                    color = accent,
+                    fontSize = 9.sp,
+                    lineHeight = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    minLines = 2,
+                    maxLines = 2
+                )
+                Spacer(Modifier.height(5.dp))
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentAlignment = Alignment.BottomCenter
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth(0.62f)
+                            .fillMaxHeight(visibleFraction)
+                            .clip(
+                                RoundedCornerShape(
+                                    topStart = 6.dp,
+                                    topEnd = 6.dp,
+                                    bottomEnd = 0.dp,
+                                    bottomStart = 0.dp
+                                )
+                            )
+                            .background(
+                                if (usage.totalTimeMs > 0L) {
+                                    accent
+                                } else {
+                                    accent.copy(alpha = 0.2f)
+                                }
+                            )
+                    )
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    text = usage.dateLabel.take(3),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun UsagePatternStatement(
+    text: String,
     accent: androidx.compose.ui.graphics.Color
 ) {
-    Column(
-        modifier = modifier
+    Text(
+        text = text,
+        modifier = Modifier
+            .fillMaxWidth()
             .background(
                 color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
                 shape = RoundedCornerShape(12.dp)
             )
-            .padding(12.dp)
-    ) {
-        Text(
-            text = title,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 11.sp
-        )
-        Spacer(Modifier.height(5.dp))
-        Text(
-            text = stringResource(
-                R.string.dashboard_period_range,
-                period.startHour,
-                period.endHour
-            ),
-            color = accent,
-            fontSize = 17.sp,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(Modifier.height(3.dp))
-        Text(
-            text = stringResource(
-                R.string.dashboard_period_average,
-                formatTime(period.averageTimeMs)
-            ),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 11.sp
-        )
-    }
+            .padding(horizontal = 14.dp, vertical = 13.dp),
+        color = accent,
+        fontSize = 15.sp,
+        lineHeight = 21.sp,
+        fontWeight = FontWeight.Bold
+    )
 }
 
 @Composable
@@ -655,7 +684,24 @@ private fun formatTime(millis: Long): String {
     val totalMinutes = millis / 1000 / 60
     val h = totalMinutes / 60
     val m = totalMinutes % 60
-    return if (h > 0) "${h}h ${m}m" else "${m}m"
+    return when {
+        h > 0 && m > 0 -> "${h}h ${m}m"
+        h > 0 -> "${h}h"
+        else -> "${m}m"
+    }
+}
+
+private fun formatChartTime(millis: Long): String {
+    if (millis <= 0L) return "0m"
+    if (millis < 60_000L) return "<1m"
+    val totalMinutes = millis / 60_000L
+    val hours = totalMinutes / 60L
+    val minutes = totalMinutes % 60L
+    return when {
+        hours > 0L && minutes > 0L -> "${hours}h\n${minutes}m"
+        hours > 0L -> "${hours}h"
+        else -> "${minutes}m"
+    }
 }
 
 private fun openUsageAccessSettings(context: Context) {
