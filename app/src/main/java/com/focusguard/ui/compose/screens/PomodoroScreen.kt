@@ -99,6 +99,7 @@ fun PomodoroScreen(
     var showStrictBlockWarning by remember { mutableStateOf(false) }
     var showFocusModeConflict by remember { mutableStateOf(false) }
     var selectedMinutes by remember { mutableIntStateOf(25) }
+    val focusModeActive = compactLayout || FocusModeStore.isActive(context)
 
     val currentSession by pomodoroManager.currentSession.collectAsState()
     val timeLeftMillis by pomodoroManager.timeLeftMillis.collectAsState()
@@ -111,6 +112,13 @@ fun PomodoroScreen(
         timeLeftMillis.toFloat() / sessionDurationMillis
     } else {
         1f
+    }
+
+    LaunchedEffect(focusModeActive) {
+        if (focusModeActive) {
+            isBlockingEnabled = false
+            showStrictBlockWarning = false
+        }
     }
 
     BackHandler(enabled = isStrictBlockingActive) {
@@ -186,7 +194,12 @@ fun PomodoroScreen(
                         confirmButton = {
                             Button(onClick = {
                                 showStrictBlockWarning = false
-                                isBlockingEnabled = true
+                                if (FocusModeStore.isActive(context)) {
+                                    isBlockingEnabled = false
+                                    showFocusModeConflict = true
+                                } else {
+                                    isBlockingEnabled = true
+                                }
                             }) { Text(stringResource(R.string.ativar)) }
                         },
                         dismissButton = {
@@ -211,10 +224,12 @@ fun PomodoroScreen(
                 if (!isRunning) {
                     BlockingToggleCard(
                         isBlockingEnabled = isBlockingEnabled,
+                        enabled = !focusModeActive,
                         onToggle = { enabled ->
                             if (!enabled) {
                                 isBlockingEnabled = false
                             } else if (FocusModeStore.isActive(context)) {
+                                isBlockingEnabled = false
                                 showFocusModeConflict = true
                             } else if (ProtectionPermissionGate.read(context).isReady) {
                                 showStrictBlockWarning = true
@@ -229,6 +244,7 @@ fun PomodoroScreen(
                     Button(
                         onClick = {
                             if (isBlockingEnabled && FocusModeStore.isActive(context)) {
+                                isBlockingEnabled = false
                                 showFocusModeConflict = true
                             } else if (
                                 isBlockingEnabled &&
@@ -467,6 +483,7 @@ fun DigitalClockDisplay(
 @Composable
 fun BlockingToggleCard(
     isBlockingEnabled: Boolean,
+    enabled: Boolean = true,
     onToggle: (Boolean) -> Unit
 ) {
     Row(
@@ -478,13 +495,23 @@ fun BlockingToggleCard(
             .padding(horizontal = 16.dp, vertical = 10.dp)
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(stringResource(R.string.pomodoro_enable_block_switch), color = TextPrimary, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-            Text(stringResource(R.string.pomodoro_enable_block_subtitle), color = TextHint, fontSize = 11.sp)
+            Text(
+                stringResource(R.string.pomodoro_enable_block_switch),
+                color = if (enabled) TextPrimary else TextHint,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                stringResource(R.string.pomodoro_enable_block_subtitle),
+                color = TextHint,
+                fontSize = 11.sp
+            )
         }
         Spacer(modifier = Modifier.width(16.dp))
         Switch(
             checked = isBlockingEnabled,
             onCheckedChange = onToggle,
+            enabled = enabled,
             colors = SwitchDefaults.colors(
                 checkedThumbColor = AccentCyan,
                 checkedTrackColor = AccentCyan.copy(alpha = 0.5f)
