@@ -1,8 +1,10 @@
 package com.focusguard.pomodoro
 
 import android.app.NotificationManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.provider.Settings
 import com.focusguard.utils.SecurePrefsManager
 
@@ -26,9 +28,21 @@ class PomodoroNotificationController(context: Context) {
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
     fun hasNotificationListenerAccess(listenerClass: Class<*>): Boolean {
-        val notificationManager = manager ?: return false
-        val component = android.content.ComponentName(appContext, listenerClass)
-        return notificationManager.isNotificationListenerAccessGranted(component)
+        val component = ComponentName(appContext, listenerClass)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
+            return manager?.isNotificationListenerAccessGranted(component) == true
+        }
+
+        // Android 8.0 não possui isNotificationListenerAccessGranted(). A lista
+        // segura de componentes autorizados é a fonte usada pelo próprio painel
+        // de configurações nessa versão.
+        val enabled = Settings.Secure.getString(
+            appContext.contentResolver,
+            "enabled_notification_listeners"
+        ).orEmpty()
+        return enabled.split(':')
+            .mapNotNull(ComponentName::unflattenFromString)
+            .any { it == component }
     }
 
     fun apply(config: PomodoroPlanConfig): Boolean {
