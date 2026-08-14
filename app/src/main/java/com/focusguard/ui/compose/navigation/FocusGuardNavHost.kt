@@ -57,7 +57,6 @@ import com.focusguard.ui.compose.screens.SettingsScreen
 import com.focusguard.ui.compose.screens.UsageLimitsScreen
 import com.focusguard.ui.compose.screens.UsageStatsDashboardScreen
 import com.focusguard.ui.compose.theme.DarkBg
-import com.focusguard.utils.FocusGuardLogger
 import androidx.lifecycle.Lifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -100,8 +99,7 @@ fun FocusGuardNavHost(
         activity.lifecycle.addObserver(callback)
         onDispose { activity.lifecycle.removeObserver(callback) }
     }
-    // Reavalia a trava em toda volta ao primeiro plano. Isso inclui o retorno
-    // do assistente logo após criar um bloqueio por senha.
+
     LaunchedEffect(resumeKey) {
         withContext(Dispatchers.IO) {
             val locked = authManager.isAppLocked()
@@ -131,8 +129,6 @@ fun FocusGuardNavHost(
     var selectedBlockType by remember { mutableStateOf(BlockTypeUi.PASSWORD) }
     var selectedTab by remember { mutableIntStateOf(1) }
     var selectedSessionType by remember { mutableStateOf("PASSWORD") }
-    // Começa fechado até a primeira leitura real terminar. Assim nem um toque
-    // muito rápido na abertura consegue entrar na configuração sem validação.
     var missingProtectionPermissions by remember {
         mutableStateOf(ProtectionPermission.entries.toList())
     }
@@ -150,11 +146,10 @@ fun FocusGuardNavHost(
     var showCreatorInstagramCard by remember { mutableStateOf(false) }
 
     val currentPomodoro by pomodoroManager.currentSession.collectAsState()
+    val pomodoroCycle by pomodoroManager.cycleState.collectAsState()
     val activeFocusMode by focusModeManager.session.collectAsState()
     val focusModeActive = activeFocusMode?.isActive() == true
 
-    // Enter the new session on its own tab once. The key stays unchanged while
-    // it is active, so the user can still browse every other FocusGuard section.
     LaunchedEffect(activeFocusMode?.startedAtMillis) {
         if (activeFocusMode?.isActive() == true) {
             currentRoute = FocusGuardRoute.Home
@@ -162,23 +157,21 @@ fun FocusGuardNavHost(
         }
     }
 
-    LaunchedEffect(currentPomodoro, focusModeActive) {
-        if (currentPomodoro?.isActive == true) {
-            val now = System.currentTimeMillis()
-            if (currentPomodoro!!.endTime <= now) {
-                FocusGuardLogger.log("MainActivity", "Detectado Pomodoro expirado na abertura. Limpando...")
-                pomodoroManager.stopSession()
-                currentRoute = FocusGuardRoute.Home
-            } else if (focusModeActive) {
-                // A normal Pomodoro lives inside the Focus Mode shell so the
-                // lateral navigation and the allowed-app launcher stay reachable.
+    LaunchedEffect(currentPomodoro, pomodoroCycle, focusModeActive) {
+        val cycleActive = pomodoroCycle?.active == true
+        if (currentPomodoro?.isActive == true || cycleActive) {
+            val intervalStillRunning = (currentPomodoro?.endTime ?: 0L) > System.currentTimeMillis()
+            if (!intervalStillRunning) {
+                // Não encerra o plano aqui. O PomodoroManager é o único dono da
+                // transição foco -> pausa -> foco e resolve este intervalo expirado.
+                return@LaunchedEffect
+            }
+            if (focusModeActive) {
                 currentRoute = FocusGuardRoute.Home
             } else {
-                FocusGuardLogger.log("MainActivity", "Pomodoro ativo detectado. Redirecionando para tela de foco.")
                 currentRoute = FocusGuardRoute.Pomodoro
             }
         } else if (currentRoute == FocusGuardRoute.Pomodoro) {
-            FocusGuardLogger.log("MainActivity", "Pomodoro inativado. Voltando para Home.")
             currentRoute = FocusGuardRoute.Home
         }
     }
@@ -238,9 +231,8 @@ fun FocusGuardNavHost(
 
     if (!focusModeActive &&
         currentPomodoro?.isActive == true &&
-        currentPomodoro!!.endTime > System.currentTimeMillis()
+        (currentPomodoro?.endTime ?: 0L) > System.currentTimeMillis()
     ) {
-        FocusGuardLogger.log("MainActivity", "Pomodoro Ativo detectado na UI. Exibindo tela de foco.")
         Box(modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
             PomodoroScreen(
                 pomodoroManager = pomodoroManager,
@@ -250,7 +242,7 @@ fun FocusGuardNavHost(
                         PermissionsActivity.createPendingProtectionIntent(activity)
                     )
                 },
-                onBack = { /* Bloqueado */ }
+                onBack = { /* Bloqueado enquanto um intervalo está em execução. */ }
             )
         }
         return
@@ -307,7 +299,10 @@ fun FocusGuardNavHost(
                     },
                     onSettingsClick = { currentRoute = FocusGuardRoute.Settings },
                     usageStatsContent = {
-                        UsageStatsDashboardScreen(onBack = { currentRoute = FocusGuardRoute.Home }, showTopBar = false)
+                        UsageStatsDashboardScreen(
+                            onBack = { currentRoute = FocusGuardRoute.Home },
+                            showTopBar = false
+                        )
                     },
                     pomodoroContent = {
                         PomodoroScreen(
@@ -349,18 +344,12 @@ fun FocusGuardNavHost(
                     onAddClick = {
                         withProtectionPermissions {
                             when (selectedBlockType) {
-                                // Limites de uso já têm tela própria de configuração;
-                                // os outros dois entram no assistente com o tipo fixo,
-                                // em vez de perguntar de novo o que o usuário já disse
-                                // ao escolher o card.
                                 BlockTypeUi.DAILY_LIMIT ->
                                     currentRoute = FocusGuardRoute.UsageLimits
-
                                 BlockTypeUi.PASSWORD -> activity.startActivity(
                                     Intent(activity, CreateSessionActivity::class.java)
                                         .putExtra("SESSION_TYPE", "PASSWORD")
                                 )
-
                                 BlockTypeUi.DOPAMINE_FAST -> activity.startActivity(
                                     Intent(activity, CreateSessionActivity::class.java)
                                         .putExtra("SESSION_TYPE", "TIME")
@@ -403,11 +392,16 @@ fun FocusGuardNavHost(
                     },
                     onBack = { currentRoute = FocusGuardRoute.Home }
                 )
-                FocusGuardRoute.Limits -> LimitsSecurityScreen(authManager = authManager, onBack = { currentRoute = FocusGuardRoute.Settings })
-                FocusGuardRoute.IntruderLog -> IntruderLogScreen(onBack = { currentRoute = FocusGuardRoute.BlockTypeDetail })
-                FocusGuardRoute.Language -> LanguageScreen(onBack = { currentRoute = FocusGuardRoute.Settings })
-                // Volta para a lista do tipo de bloqueio, não para a Home: é de lá
-                // que se chega aqui, e é lá que o limite recém-criado aparece.
+                FocusGuardRoute.Limits -> LimitsSecurityScreen(
+                    authManager = authManager,
+                    onBack = { currentRoute = FocusGuardRoute.Settings }
+                )
+                FocusGuardRoute.IntruderLog -> IntruderLogScreen(
+                    onBack = { currentRoute = FocusGuardRoute.BlockTypeDetail }
+                )
+                FocusGuardRoute.Language -> LanguageScreen(
+                    onBack = { currentRoute = FocusGuardRoute.Settings }
+                )
                 FocusGuardRoute.UsageLimits -> UsageLimitsScreen(
                     authManager = authManager,
                     onPermissionsRequired = {
@@ -417,12 +411,19 @@ fun FocusGuardNavHost(
                     },
                     onBack = { currentRoute = FocusGuardRoute.BlockTypeDetail }
                 )
-                FocusGuardRoute.Dashboard -> UsageStatsDashboardScreen(onBack = { currentRoute = FocusGuardRoute.Home })
-                FocusGuardRoute.BlockCustomization -> BlockCustomizationScreen(onBack = { currentRoute = FocusGuardRoute.Settings })
+                FocusGuardRoute.Dashboard -> UsageStatsDashboardScreen(
+                    onBack = { currentRoute = FocusGuardRoute.Home }
+                )
+                FocusGuardRoute.BlockCustomization -> BlockCustomizationScreen(
+                    onBack = { currentRoute = FocusGuardRoute.Settings }
+                )
                 FocusGuardRoute.DevArea -> DevelopmentAreaScreen(
                     onBack = { currentRoute = FocusGuardRoute.Settings }
                 )
-                FocusGuardRoute.SessionsList -> SessionsListScreen(sessionType = selectedSessionType, onBack = { currentRoute = FocusGuardRoute.Home })
+                FocusGuardRoute.SessionsList -> SessionsListScreen(
+                    sessionType = selectedSessionType,
+                    onBack = { currentRoute = FocusGuardRoute.Home }
+                )
             }
         }
     }
