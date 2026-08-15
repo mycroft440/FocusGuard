@@ -1,0 +1,32 @@
+name: Apply Focus Mode Purpose Copy
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/apply-focus-mode-purpose-copy.py'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-copy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply purpose copy
+        run: python .github/scripts/apply-focus-mode-purpose-copy.py
+      - name: Commit changes and remove helper
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/scripts/apply-focus-mode-purpose-copy.py
+          git rm .github/workflows/apply-focus-mode-purpose-copy.yml
+          git add app/src/main/java/com/focusguard/ui/compose/screens/FocusModeScreen.kt
+          git add app/src/main/res/values/focus_mode_static_strings.xml
+          git add app/src/main/res/values-en/focus_mode_static_strings.xml
+          git add app/src/main/res/values-pt/focus_mode_static_strings.xml
+          git commit -m "copy: explain focus mode purpose"
+          git push
