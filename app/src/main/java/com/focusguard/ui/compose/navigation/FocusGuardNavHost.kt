@@ -51,6 +51,7 @@ import com.focusguard.ui.compose.screens.openCreatorInstagram
 import com.focusguard.ui.compose.screens.PomodoroScreen
 import com.focusguard.ui.compose.screens.ProfileScreen
 import com.focusguard.ui.compose.screens.RecoveryBook
+import com.focusguard.ui.compose.screens.RecoveryCourseGatewayScreen
 import com.focusguard.ui.compose.screens.RecoveryHubScreen
 import com.focusguard.ui.compose.screens.SessionsListScreen
 import com.focusguard.ui.compose.screens.SettingsScreen
@@ -318,19 +319,21 @@ fun FocusGuardNavHost(
                         )
                     },
                     recoveryContent = {
-                        RecoveryHubScreen(
-                            onReadBook = { book ->
-                                val offlineBook = when (book) {
-                                    RecoveryBook.CREATOR_INSTRUCTIONS ->
-                                        OfflineBookActivity.OfflineBook.CREATOR_INSTRUCTIONS
-                                    RecoveryBook.EASYPEASY ->
-                                        OfflineBookActivity.OfflineBook.EASYPEASY
+                        RecoveryCourseGatewayScreen {
+                            RecoveryHubScreen(
+                                onReadBook = { book ->
+                                    val offlineBook = when (book) {
+                                        RecoveryBook.CREATOR_INSTRUCTIONS ->
+                                            OfflineBookActivity.OfflineBook.CREATOR_INSTRUCTIONS
+                                        RecoveryBook.EASYPEASY ->
+                                            OfflineBookActivity.OfflineBook.EASYPEASY
+                                    }
+                                    activity.startActivity(
+                                        OfflineBookActivity.createIntent(activity, offlineBook)
+                                    )
                                 }
-                                activity.startActivity(
-                                    OfflineBookActivity.createIntent(activity, offlineBook)
-                                )
-                            }
-                        )
+                            )
+                        }
                     },
                     focusModeContent = {
                         FocusModeScreen(
