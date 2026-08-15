@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Build
 import com.focusguard.MainActivity
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.focusmode.FocusModeKioskController
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.PomodoroManager
@@ -50,9 +51,10 @@ class BootReceiver : BroadcastReceiver() {
             // USB and ADB intentionally remain outside FocusGuard's restriction set.
             deviceOwnerManager.applyDirectBootShield()
             deviceOwnerManager.applyFocusModeAtDirectBoot()
+            FocusModeKioskController.reconcileSystemRestrictions(context)
             FocusGuardLogger.log(
                 "BootReceiver",
-                "Proteção nativa restaurada antes do primeiro desbloqueio"
+                "Proteção nativa do Modo Foco restaurada antes do primeiro desbloqueio"
             )
             return
         }
@@ -63,23 +65,23 @@ class BootReceiver : BroadcastReceiver() {
 
         // Após BOOT_COMPLETED, os dois armazenamentos estão disponíveis.
         val isPomodoroStrictActive = StrictPomodoroLock.isActive(storageContext)
-        
+
         if (isPomodoroStrictActive) {
             FocusGuardLogger.log("BootReceiver", "Pomodoro rigoroso ativo detectado! Restaurando imediatamente...")
-            
+
             // 1. Iniciar serviço foreground watchdog
             PomodoroForegroundService.start(context)
-            
+
             // 2. Agendar alarme watchdog como failsafe
             PomodoroForegroundService.scheduleWatchdogAlarm(context)
-            
+
             // 3. Lançar tela de bloqueio
             try {
                 val lockIntent = Intent(context, PomodoroLockActivity::class.java).apply {
                     addFlags(
                         Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP
                     )
                 }
                 context.startActivity(lockIntent)
@@ -99,14 +101,42 @@ class BootReceiver : BroadcastReceiver() {
 
                 sessionManager.checkAndEnforce()
                 val focusModeActive = focusModeManager.ensureEnforced()
+                FocusModeKioskController.reconcileSystemRestrictions(context)
 
                 val hasActiveSessions = sessionManager.activeSessionsFlow.first().isNotEmpty()
                 val isPomodoroActive = pomodoroManager.isPomodoroActive()
 
-                FocusGuardLogger.log("BootReceiver", "Status após boot: Sessões=$hasActiveSessions, Pomodoro=$isPomodoroActive")
+                FocusGuardLogger.log(
+                    "BootReceiver",
+                    "Status após boot: Sessões=$hasActiveSessions, Pomodoro=$isPomodoroActive, " +
+                        "ModoFoco=$focusModeActive"
+                )
 
-                if ((hasActiveSessions || focusModeActive) && !isPomodoroActive) {
-                    FocusGuardLogger.log("BootReceiver", "Restaurando interface principal devido a bloqueio ativo.")
+                if (focusModeActive) {
+                    // Focus Mode takes precedence over the normal home restore. On
+                    // Device Owner Android 9+, this launch enters Lock Task in the
+                    // same startActivity call, eliminating the launcher escape gap.
+                    val restored = FocusModeKioskController.launchFocusGuardHome(context)
+                    if (!restored) {
+                        context.startActivity(
+                            Intent(context, MainActivity::class.java).apply {
+                                addFlags(
+                                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                )
+                            }
+                        )
+                    }
+                    FocusGuardLogger.log(
+                        "BootReceiver",
+                        "Interface do Modo Foco restaurada após boot"
+                    )
+                } else if (hasActiveSessions && !isPomodoroActive) {
+                    FocusGuardLogger.log(
+                        "BootReceiver",
+                        "Restaurando interface principal devido a bloqueio ativo."
+                    )
                     val i = Intent(context, MainActivity::class.java)
                     i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     context.startActivity(i)
