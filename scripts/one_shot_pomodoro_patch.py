@@ -1,0 +1,147 @@
+from pathlib import Path
+
+main_path = Path("app/src/main/java/com/focusguard/ui/compose/screens/MainScreen.kt")
+main = main_path.read_text()
+main = main.replace("import com.focusguard.pomodoro.PomodoroUiSignal\n", "")
+old_header = '''                } else if (!focusModeActive) {
+                    val configuringPomodoro = selectedTab == 2
+                    Card(
+                        onClick = {
+                            if (configuringPomodoro) {
+                                PomodoroUiSignal.requestConfig()
+                            } else {
+                                onTabChange(0)
+                            }
+                        },
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 16.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = DarkCard),
+                        border = BorderStroke(1.dp, CardBorder)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                if (configuringPomodoro) Icons.Default.Settings else Icons.Default.Public,
+                                contentDescription = null,
+                                tint = AccentCyan,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                if (configuringPomodoro) {
+                                    "Configurar Pomodoro"
+                                } else {
+                                    stringResource(R.string.nav_metrics)
+                                },
+                                color = TextPrimary,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+'''
+new_header = '''                } else if (!focusModeActive && selectedTab != 2) {
+                    Card(
+                        onClick = { onTabChange(0) },
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .padding(start = 16.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = DarkCard),
+                        border = BorderStroke(1.dp, CardBorder)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 11.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                Icons.Default.Public,
+                                contentDescription = null,
+                                tint = AccentCyan,
+                                modifier = Modifier.size(22.dp)
+                            )
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Text(
+                                stringResource(R.string.nav_metrics),
+                                color = TextPrimary,
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+'''
+if old_header not in main:
+    raise SystemExit("MainScreen Pomodoro header block not found")
+main_path.write_text(main.replace(old_header, new_header))
+
+pomo_path = Path("app/src/main/java/com/focusguard/ui/compose/screens/PomodoroScreen.kt")
+pomo = pomo_path.read_text()
+replacements = [
+    (
+        ".verticalScroll(rememberScrollState())\n                .padding(horizontal = if (compactLayout) 10.dp else 16.dp, vertical = 12.dp)",
+        ".verticalScroll(rememberScrollState(), enabled = showConfig)\n                .padding(horizontal = if (compactLayout) 10.dp else 16.dp, vertical = 6.dp)",
+    ),
+    (
+        "verticalArrangement = Arrangement.spacedBy(14.dp)\n        ) {\n            if (isRunning)",
+        "verticalArrangement = Arrangement.spacedBy(8.dp)\n        ) {\n            if (isRunning)",
+    ),
+    (
+        "fontSize = 18.sp,\n                    fontWeight = FontWeight.SemiBold",
+        "fontSize = 15.sp,\n                    fontWeight = FontWeight.SemiBold",
+    ),
+    (
+        "modifier = Modifier.size(if (compactLayout) 210.dp else 270.dp)",
+        "modifier = Modifier.size(if (compactLayout) 180.dp else 205.dp)",
+    ),
+    (
+        "fontSize = 34.sp,\n                    fontWeight = FontWeight.Bold",
+        "fontSize = 30.sp,\n                    fontWeight = FontWeight.Bold",
+    ),
+    (
+        "modifier = Modifier.size(270.dp)\n    )\n    Text(\n        String.format",
+        "modifier = Modifier.size(205.dp)\n    )\n    Text(\n        String.format",
+    ),
+    (
+        "fontSize = 40.sp,\n        fontWeight = FontWeight.Bold",
+        "fontSize = 34.sp,\n        fontWeight = FontWeight.Bold",
+    ),
+    (
+        "Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp))",
+        "Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(2.dp))",
+    ),
+    ("Spacer(Modifier.height(7.dp))", "Spacer(Modifier.height(4.dp))"),
+    (
+        "horizontalArrangement = Arrangement.spacedBy(8.dp)\n        ) {\n            profiles.forEach",
+        "horizontalArrangement = Arrangement.spacedBy(6.dp)\n        ) {\n            profiles.forEach",
+    ),
+    (
+        "modifier = Modifier.width(178.dp).clickable { onUse(profile) }",
+        "modifier = Modifier.width(160.dp).clickable { onUse(profile) }",
+    ),
+    (
+        "Column(Modifier.padding(12.dp)) {\n                        Row(verticalAlignment",
+        "Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {\n                        Row(verticalAlignment",
+    ),
+    (
+        "fontSize = 13.sp\n                            )\n                            if (!profile.builtIn)",
+        "fontSize = 12.sp\n                            )\n                            if (!profile.builtIn)",
+    ),
+    (
+        "color = TextHint,\n                            fontSize = 11.sp\n                        )",
+        "color = TextHint,\n                            fontSize = 10.sp\n                        )",
+    ),
+]
+for old, new in replacements:
+    if old not in pomo:
+        raise SystemExit(f"Pomodoro pattern not found: {old[:90]!r}")
+    pomo = pomo.replace(old, new, 1)
+pomo_path.write_text(pomo)
+
+Path(".github/workflows/one-shot-pomodoro-layout.yml").unlink(missing_ok=True)
+Path("scripts/one_shot_pomodoro_patch.py").unlink(missing_ok=True)
