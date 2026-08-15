@@ -147,10 +147,15 @@ fun MainScreen(
             }
         }
     ) { paddingValues ->
+        val contentBackground = if (selectedTab == 2) {
+            DarkBg
+        } else {
+            MaterialTheme.colorScheme.background
+        }
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
+                .background(contentBackground)
                 .padding(paddingValues)
         ) {
             if (focusModeActive) {
@@ -159,7 +164,12 @@ fun MainScreen(
                     onTabChange = onTabChange
                 )
             }
-            Box(modifier = Modifier.weight(1f).fillMaxSize()) {
+            Box(
+      modifier = Modifier
+          .weight(1f)
+          .fillMaxSize()
+          .background(contentBackground)
+  ) {
                 AnimatedContent(
                     targetState = selectedTab,
                     transitionSpec = {
