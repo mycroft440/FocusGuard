@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="recovery_course_badge">CURSO GRATUITO • PRIVADO • OFFLINE</string>
+    <string name="recovery_course_title">CURSO GRATUITO PARA SAIR DO CICLO DA PORNOGRAFIA</string>
+    <string name="recovery_course_hero">ABSOLUTAMENTE TUDO PARA ENTENDER E ROMPER A ARMADILHA — feito por quem já caiu nela.</string>
+    <string name="recovery_course_subtitle">Muito mais do que usar força de vontade. Entenda o que pode acontecer antes, durante e depois da pornografia, por que o ciclo se torna automático e como construir uma saída prática.</string>
+    <string name="recovery_course_not_willpower_title">Isso não é uma competição de força de vontade</string>
+    <string name="recovery_course_not_willpower_body">A proposta não é passar o dia inteiro lutando contra si mesmo. O curso organiza o problema em torno de aprendizagem, gatilhos, recompensa, respostas automáticas, ambiente e prevenção de recaídas — para agir sobre o mecanismo em vez de apenas aguentar a vontade.</string>
+    <string name="recovery_course_point_reward">Entenda como expectativa, recompensa e repetição podem fortalecer um ciclo automático de hábito.</string>
+    <string name="recovery_course_point_triggers">Identifique gatilhos como tédio, estresse, solidão, ansiedade, lugares, dispositivos e rotinas que podem despertar a vontade.</string>
+    <string name="recovery_course_point_before_after">Mapeie o que acontece antes da vontade, durante o comportamento e depois dele — sem usar moralismo ou vergonha como estratégia.</string>
+    <string name="recovery_course_point_rewire">Aprenda formas de enfraquecer antigas associações entre gatilho e resposta e construir alternativas mais fáceis de repetir.</string>
+    <string name="recovery_course_point_relapse">Prepare-se para deslizes sem transformar um episódio em abandono e aprenda a revisar a cadeia que levou até ele.</string>
+    <string name="recovery_course_point_protection">Combine entendimento com a proteção prática do FocusGuard para reduzir o acesso fácil enquanto novas rotinas são construídas.</string>
+    <string name="recovery_course_no_cliches_title">SEM MAIS DA MESMA HISTÓRIA DE SEMPRE</string>
+    <string name="recovery_course_no_cliches_body">Nada de “é só tomar banho gelado”, “não pense em sexo” ou “seja mais forte”. A proposta é entender por que o comportamento continua voltando e mudar as condições que alimentam o ciclo.</string>
+    <string name="recovery_course_science_title">CONSTRUÍDO EM CIMA DE COMPORTAMENTO E NEUROCIÊNCIA</string>
+    <string name="recovery_course_science_body">O material trabalha conceitos de aprendizagem por recompensa, reatividade a gatilhos, formação de hábitos, controle inibitório e mudança de comportamento. É apoio educativo, não tratamento médico nem promessa de cura.</string>
+    <string name="recovery_course_bridge">Pare de lutar no escuro. Primeiro entenda o ciclo. Depois feche as portas que fazem ele recomeçar.</string>
+    <string name="recovery_course_cta">COMEÇAR O CURSO GRATUITO</string>
+    <string name="recovery_course_footer">Conteúdo educativo. Pode complementar acompanhamento profissional quando necessário, mas não substitui tratamento psicológico ou psiquiátrico.</string>
+</resources>
