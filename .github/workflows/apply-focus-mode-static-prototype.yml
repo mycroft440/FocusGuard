@@ -1,0 +1,32 @@
+name: Apply Focus Mode Static Prototype
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/scripts/apply-focus-mode-static-prototype.py'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-redesign:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply static prototype redesign
+        run: python .github/scripts/apply-focus-mode-static-prototype.py
+      - name: Commit redesign and remove temporary helper
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/scripts/apply-focus-mode-static-prototype.py
+          git rm .github/workflows/apply-focus-mode-static-prototype.yml
+          git add app/src/main/java/com/focusguard/ui/compose/screens/FocusModeScreen.kt
+          git add app/src/main/res/values/focus_mode_static_strings.xml
+          git add app/src/main/res/values-en/focus_mode_static_strings.xml
+          git add app/src/main/res/values-pt/focus_mode_static_strings.xml
+          git commit -m "feat: adopt static focus mode prototype layout"
+          git push
