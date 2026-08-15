@@ -14,6 +14,9 @@
     <string name="focus_mode_static_other">Outro</string>
     <string name="focus_mode_static_custom_minutes">minutos personalizados</string>
     <string name="focus_mode_static_custom_duration_value">%1$s min</string>
+    <string name="focus_mode_static_hours_short">h</string>
+    <string name="focus_mode_static_minutes_short">min</string>
+    <string name="focus_mode_static_custom_duration_hours_minutes">%1$d h %2$d min</string>
     <string name="focus_mode_static_grayscale_desc">Deixa o celular em preto e branco durante o foco — telas sem cor puxam menos a atenção.</string>
     <string name="focus_mode_static_allowed_section">LIBERADOS DURANTE O FOCO</string>
     <string name="focus_mode_static_phone">Ligação</string>

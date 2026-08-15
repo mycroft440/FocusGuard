@@ -355,6 +355,26 @@ private fun FocusModeSetupContent(
     var customDurationOpen by rememberSaveable {
         mutableStateOf(!(fixed45Selected || fixed2hSelected || fixed5hSelected))
     }
+    val initialCustomTotalMinutes = when (durationUnit) {
+        FocusModePolicy.DurationUnit.MINUTES -> durationText.toLongOrNull() ?: 60L
+        FocusModePolicy.DurationUnit.HOURS -> (durationText.toLongOrNull() ?: 1L) * 60L
+        FocusModePolicy.DurationUnit.DAYS -> (durationText.toLongOrNull() ?: 0L) * 24L * 60L
+    }.coerceAtLeast(0L)
+    var customHoursText by rememberSaveable {
+        mutableStateOf((initialCustomTotalMinutes / 60L).toString())
+    }
+    var customMinutesText by rememberSaveable {
+        mutableStateOf((initialCustomTotalMinutes % 60L).toString())
+    }
+
+    fun applyCustomDuration(hoursText: String, minutesText: String) {
+        val hours = hoursText.toLongOrNull() ?: 0L
+        val minutes = minutesText.toLongOrNull() ?: 0L
+        val totalMinutes = (hours * 60L + minutes)
+            .coerceAtMost(Int.MAX_VALUE.toLong())
+        onDurationUnitChange(FocusModePolicy.DurationUnit.MINUTES)
+        onDurationTextChange(totalMinutes.toString())
+    }
 
     val durationLabel = when {
         fixed45Selected && !customDurationOpen ->
@@ -364,10 +384,12 @@ private fun FocusModeSetupContent(
         fixed5hSelected && !customDurationOpen ->
             stringResource(R.string.focus_mode_static_duration_5h)
         else -> stringResource(
-            R.string.focus_mode_static_custom_duration_value,
-            durationText.ifBlank { "0" }
+            R.string.focus_mode_static_custom_duration_hours_minutes,
+            customHoursText.toIntOrNull() ?: 0,
+            customMinutesText.toIntOrNull() ?: 0
         )
     }
+
     val allowedSummary = when (selectedApps.size) {
         0 -> stringResource(R.string.focus_mode_static_no_extra_apps)
         1 -> stringResource(R.string.focus_mode_static_one_extra_app)
@@ -458,39 +480,63 @@ private fun FocusModeSetupContent(
                 selected = customDurationOpen,
                 modifier = Modifier.weight(1f),
                 onClick = {
-                    val wasFixed = fixed45Selected || fixed2hSelected || fixed5hSelected
                     customDurationOpen = true
-                    onDurationUnitChange(FocusModePolicy.DurationUnit.MINUTES)
-                    if (wasFixed) onDurationTextChange("60")
+                    applyCustomDuration(customHoursText, customMinutesText)
                 }
             )
         }
 
         if (customDurationOpen) {
             Row(
-                modifier = Modifier.fillMaxWidth().height(52.dp),
+                modifier = Modifier.fillMaxWidth().height(56.dp),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
                 OutlinedTextField(
-                    value = durationText,
-                    onValueChange = onDurationTextChange,
-                    modifier = Modifier.width(112.dp),
+                    value = customHoursText,
+                    onValueChange = { raw ->
+                        val filtered = raw.filter(Char::isDigit).take(4)
+                        customHoursText = filtered
+                        applyCustomDuration(filtered, customMinutesText)
+                    },
+                    modifier = Modifier.width(78.dp),
                     singleLine = true,
-                    isError = durationText.isNotBlank() && !durationValid,
+                    isError = !durationValid,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
                 )
                 Text(
-                    text = stringResource(R.string.focus_mode_static_custom_minutes),
+                    text = stringResource(R.string.focus_mode_static_hours_short),
                     color = TextHint,
                     fontSize = 13.sp
                 )
-                if (durationText.isNotBlank() && !durationValid) {
+                OutlinedTextField(
+                    value = customMinutesText,
+                    onValueChange = { raw ->
+                        val digits = raw.filter(Char::isDigit).take(2)
+                        val normalized = digits.toIntOrNull()
+                            ?.coerceAtMost(59)
+                            ?.toString()
+                            ?: ""
+                        customMinutesText = normalized
+                        applyCustomDuration(customHoursText, normalized)
+                    },
+                    modifier = Modifier.width(78.dp),
+                    singleLine = true,
+                    isError = !durationValid,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                Text(
+                    text = stringResource(R.string.focus_mode_static_minutes_short),
+                    color = TextHint,
+                    fontSize = 13.sp
+                )
+                if (!durationValid) {
                     Text(
                         text = stringResource(R.string.focus_mode_duration_invalid),
                         color = MaterialTheme.colorScheme.error,
                         fontSize = 10.sp,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        maxLines = 2
                     )
                 }
             }

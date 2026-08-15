@@ -14,6 +14,9 @@
     <string name="focus_mode_static_other">Other</string>
     <string name="focus_mode_static_custom_minutes">custom minutes</string>
     <string name="focus_mode_static_custom_duration_value">%1$s min</string>
+    <string name="focus_mode_static_hours_short">h</string>
+    <string name="focus_mode_static_minutes_short">min</string>
+    <string name="focus_mode_static_custom_duration_hours_minutes">%1$d h %2$d min</string>
     <string name="focus_mode_static_grayscale_desc">Turns the phone black and white during focus — colorless screens pull less attention.</string>
     <string name="focus_mode_static_allowed_section">ALLOWED DURING FOCUS</string>
     <string name="focus_mode_static_phone">Phone</string>
