@@ -1,0 +1,78 @@
+name: Apply uniform Pomodoro background v2
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/apply-pomodoro-uniform-background-v2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Uniform Pomodoro background
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          p = Path('app/src/main/java/com/focusguard/ui/compose/screens/MainScreen.kt')
+          s = p.read_text()
+
+          pattern = re.compile(
+              r'(\) \{ paddingValues ->\n)(\s*)Row\(\n'
+              r'\s*modifier = Modifier\n'
+              r'\s*\.fillMaxSize\(\)\n'
+              r'\s*\.background\(MaterialTheme\.colorScheme\.background\)\n'
+              r'\s*\.padding\(paddingValues\)\n'
+              r'\s*\) \{'
+          )
+          match = pattern.search(s)
+          if not match:
+              raise SystemExit('main content container not found')
+          indent = match.group(2)
+          replacement = (
+              match.group(1)
+              + indent + 'val contentBackground = if (selectedTab == 2) {\n'
+              + indent + '    DarkBg\n'
+              + indent + '} else {\n'
+              + indent + '    MaterialTheme.colorScheme.background\n'
+              + indent + '}\n'
+              + indent + 'Row(\n'
+              + indent + '    modifier = Modifier\n'
+              + indent + '        .fillMaxSize()\n'
+              + indent + '        .background(contentBackground)\n'
+              + indent + '        .padding(paddingValues)\n'
+              + indent + ') {'
+          )
+          s = pattern.sub(replacement, s, count=1)
+
+          old_box = '            Box(modifier = Modifier.weight(1f).fillMaxSize()) {'
+          new_box = '''            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxSize()
+                    .background(contentBackground)
+            ) {'''
+          if old_box not in s:
+              raise SystemExit('main content box not found')
+          s = s.replace(old_box, new_box, 1)
+          p.write_text(s)
+          PY
+      - name: Commit final change and remove helpers
+        shell: bash
+        run: |
+          rm -f .github/workflows/apply-pomodoro-uniform-background.yml
+          rm -f .github/workflows/apply-pomodoro-uniform-background-v2.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: unify pomodoro background"
+          git push origin main
