@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="recovery_course_badge">FREE COURSE • PRIVATE • OFFLINE</string>
+    <string name="recovery_course_progress_title">Your progress</string>
+    <string name="recovery_course_progress_value">%1$d%% complete</string>
     <string name="recovery_course_title">A FREE COURSE TO HELP YOU BREAK THE PORNOGRAPHY CYCLE</string>
     <string name="recovery_course_hero">EVERYTHING YOU NEED TO UNDERSTAND THE TRAP — built by someone who has already fallen into it.</string>
     <string name="recovery_course_subtitle">More than willpower. Learn what can happen before, during and after pornography use, why the cycle becomes automatic, and how to build a practical way out.</string>
@@ -18,5 +20,6 @@
     <string name="recovery_course_science_body">The material uses concepts from reward learning, cue reactivity, habit formation, inhibitory control and behavior change. It is educational support, not a medical treatment or a promise of cure.</string>
     <string name="recovery_course_bridge">Stop fighting in the dark. First understand the cycle. Then close the doors that keep restarting it.</string>
     <string name="recovery_course_cta">START THE FREE COURSE</string>
+    <string name="recovery_course_cta_continue">CONTINUE THE COURSE</string>
     <string name="recovery_course_footer">Educational content. It can complement professional care when needed, but does not replace psychological or psychiatric treatment.</string>
 </resources>

@@ -1,11 +1,13 @@
 package com.focusguard.ui.compose.screens
 
+import android.content.Context
+import android.content.SharedPreferences
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -33,36 +35,65 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
+import com.focusguard.data.RecoveryJourney
+import com.focusguard.data.RecoveryJourney.Stage
+import kotlin.math.roundToInt
 
 /**
  * Marketing/education gateway shown before the existing AntiPorn recovery hub.
  *
- * The copy is intentionally persuasive, but avoids promises of cure, guaranteed
- * absence of discomfort or claims that the material replaces/shortens psychiatric
- * treatment. The existing recovery hub remains unchanged behind this gateway.
+ * The gateway intentionally starts on the presentation every time it is composed.
+ * Course-started state and journey progress are persistent, so returning to AntiPorn
+ * shows the same presentation with a Continue CTA and the real progress bar.
  */
 @Composable
 fun RecoveryCourseGatewayScreen(
     recoveryContent: @Composable () -> Unit
 ) {
-    var enteredCourse by rememberSaveable { mutableStateOf(false) }
+    val context = LocalContext.current
+    val preferences = remember(context) {
+        context.getSharedPreferences(RECOVERY_COURSE_PREFS, Context.MODE_PRIVATE)
+    }
+    val initialCompleted = remember(preferences) {
+        preferences.readRecoveryCompletedStages()
+    }
+
+    // Deliberately not rememberSaveable: leaving the AntiPorn tab and opening it
+    // again must always return to the presentation screen.
+    var enteredCourse by remember { mutableStateOf(false) }
+    var completedStages by remember { mutableStateOf(initialCompleted) }
+    var courseStarted by remember {
+        mutableStateOf(preferences.hasRecoveryCourseStarted(initialCompleted))
+    }
+
+    LaunchedEffect(enteredCourse) {
+        if (!enteredCourse) {
+            val refreshed = preferences.readRecoveryCompletedStages()
+            completedStages = refreshed
+            courseStarted = preferences.hasRecoveryCourseStarted(refreshed)
+        }
+    }
 
     BackHandler(enabled = enteredCourse) {
         enteredCourse = false
@@ -79,18 +110,35 @@ fun RecoveryCourseGatewayScreen(
         if (entered) {
             recoveryContent()
         } else {
-            RecoveryCourseIntroScreen(onStart = { enteredCourse = true })
+            RecoveryCourseIntroScreen(
+                courseStarted = courseStarted,
+                progress = RecoveryJourney.progress(completedStages),
+                onStart = {
+                    if (!courseStarted) {
+                        preferences.edit()
+                            .putBoolean(RECOVERY_COURSE_STARTED, true)
+                            .apply()
+                        courseStarted = true
+                    }
+                    enteredCourse = true
+                }
+            )
         }
     }
 }
 
 @Composable
-private fun RecoveryCourseIntroScreen(onStart: () -> Unit) {
+private fun RecoveryCourseIntroScreen(
+    courseStarted: Boolean,
+    progress: Float,
+    onStart: () -> Unit
+) {
     val primary = MaterialTheme.colorScheme.primary
     val surface = MaterialTheme.colorScheme.surface
     val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
     val onBackground = MaterialTheme.colorScheme.onBackground
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+    val progressPercent = (progress.coerceIn(0f, 1f) * 100f).roundToInt()
 
     Box(
         modifier = Modifier
@@ -133,6 +181,51 @@ private fun RecoveryCourseIntroScreen(onStart: () -> Unit) {
                         color = primary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(14.dp))
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(containerColor = surfaceVariant),
+                border = BorderStroke(1.dp, primary.copy(alpha = 0.32f))
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 13.dp),
+                    verticalArrangement = Arrangement.spacedBy(9.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = stringResource(R.string.recovery_course_progress_title),
+                            modifier = Modifier.weight(1f),
+                            color = onBackground,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = stringResource(
+                                R.string.recovery_course_progress_value,
+                                progressPercent
+                            ),
+                            color = primary,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+                    }
+                    LinearProgressIndicator(
+                        progress = { progress.coerceIn(0f, 1f) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(7.dp),
+                        color = primary,
+                        trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
+                        strokeCap = StrokeCap.Round
                     )
                 }
             }
@@ -304,7 +397,13 @@ private fun RecoveryCourseIntroScreen(onStart: () -> Unit) {
                 colors = ButtonDefaults.buttonColors(containerColor = primary)
             ) {
                 Text(
-                    text = stringResource(R.string.recovery_course_cta),
+                    text = stringResource(
+                        if (courseStarted) {
+                            R.string.recovery_course_cta_continue
+                        } else {
+                            R.string.recovery_course_cta
+                        }
+                    ),
                     fontSize = 15.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
@@ -353,3 +452,19 @@ private fun CoursePoint(textRes: Int) {
         )
     }
 }
+
+private fun SharedPreferences.readRecoveryCompletedStages(): Set<Stage> =
+    Stage.entries.filterTo(linkedSetOf()) { stage ->
+        getBoolean("stage_${stage.name.lowercase()}_done", false)
+    }
+
+private fun SharedPreferences.hasRecoveryCourseStarted(completed: Set<Stage>): Boolean =
+    getBoolean(RECOVERY_COURSE_STARTED, false) ||
+        completed.isNotEmpty() ||
+        getBoolean(CREATOR_INSTRUCTIONS_STARTED, false) ||
+        getBoolean(EASYPEASY_STARTED, false)
+
+private const val RECOVERY_COURSE_PREFS = "recovery_preferences"
+private const val RECOVERY_COURSE_STARTED = "recovery_course_started"
+private const val CREATOR_INSTRUCTIONS_STARTED = "creator_instructions_started"
+private const val EASYPEASY_STARTED = "easypeasy_started"
