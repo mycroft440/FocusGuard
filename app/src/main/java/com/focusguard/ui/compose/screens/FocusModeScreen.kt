@@ -302,13 +302,6 @@ fun FocusModeScreen(
             grayscaleEnabled = grayscaleEnabled,
             onGrayscaleEnabledChange = { grayscaleEnabled = it },
             onAddApps = { showAppPicker = true },
-            onApplyPreset = { amount, unit, packages ->
-                durationText = amount
-                durationUnit = unit
-                selectedPackages = packages
-                manager.saveDraftPackages(packages)
-                startOutcome = null
-            },
             isStarting = isStarting,
             startOutcome = startOutcome,
             onStart = {
@@ -344,7 +337,6 @@ private fun FocusModeSetupContent(
     grayscaleEnabled: Boolean,
     onGrayscaleEnabledChange: (Boolean) -> Unit,
     onAddApps: () -> Unit,
-    onApplyPreset: (String, FocusModePolicy.DurationUnit, Set<String>) -> Unit,
     isStarting: Boolean,
     startOutcome: FocusModeManager.StartOutcome?,
     onStart: () -> Unit
@@ -354,22 +346,6 @@ private fun FocusModeSetupContent(
             it.packageName in selectedPackages && it.packageName !in mandatoryPackages
         }
     }
-    val whatsappPackage = remember(apps) {
-        apps.firstOrNull {
-            it.appName.equals("WhatsApp", ignoreCase = true) ||
-                it.packageName.contains("whatsapp", ignoreCase = true)
-        }?.packageName
-    }
-    val spotifyPackage = remember(apps) {
-        apps.firstOrNull {
-            it.appName.equals("Spotify", ignoreCase = true) ||
-                it.packageName.contains("spotify", ignoreCase = true)
-        }?.packageName
-    }
-    val workPackages = remember(whatsappPackage) { setOfNotNull(whatsappPackage) }
-    val studyPackages = remember { emptySet<String>() }
-    val readingPackages = remember(spotifyPackage) { setOfNotNull(spotifyPackage) }
-
     val fixed45Selected = durationUnit == FocusModePolicy.DurationUnit.MINUTES &&
         durationText == "45"
     val fixed2hSelected = durationUnit == FocusModePolicy.DurationUnit.HOURS &&
@@ -407,92 +383,31 @@ private fun FocusModeSetupContent(
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        Text(
-            text = stringResource(R.string.focus_mode_static_profiles),
-            color = TextHint,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp
-        )
-
-        Row(
+        Card(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            colors = CardDefaults.cardColors(containerColor = DarkCard),
+            border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.35f)),
+            shape = RoundedCornerShape(14.dp)
         ) {
-            val workDuration = stringResource(R.string.focus_mode_static_duration_2h)
-            FocusPresetCard(
-                title = stringResource(R.string.focus_mode_static_profile_work),
-                meta = if (whatsappPackage != null) {
-                    stringResource(
-                        R.string.focus_mode_static_profile_meta_with_app,
-                        workDuration,
-                        "WhatsApp"
-                    )
-                } else {
-                    stringResource(
-                        R.string.focus_mode_static_profile_meta_no_app,
-                        workDuration
-                    )
-                },
-                selected = fixed2hSelected && !customDurationOpen &&
-                    selectedPackages == workPackages,
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    customDurationOpen = false
-                    onApplyPreset(
-                        "2",
-                        FocusModePolicy.DurationUnit.HOURS,
-                        workPackages
-                    )
-                }
-            )
-
-            val studyDuration = stringResource(R.string.focus_mode_static_duration_45)
-            FocusPresetCard(
-                title = stringResource(R.string.focus_mode_static_profile_study),
-                meta = stringResource(
-                    R.string.focus_mode_static_profile_meta_no_app,
-                    studyDuration
-                ),
-                selected = fixed45Selected && !customDurationOpen &&
-                    selectedPackages == studyPackages,
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    customDurationOpen = false
-                    onApplyPreset(
-                        "45",
-                        FocusModePolicy.DurationUnit.MINUTES,
-                        studyPackages
-                    )
-                }
-            )
-
-            FocusPresetCard(
-                title = stringResource(R.string.focus_mode_static_profile_reading),
-                meta = if (spotifyPackage != null) {
-                    stringResource(
-                        R.string.focus_mode_static_profile_meta_with_app,
-                        studyDuration,
-                        "Spotify"
-                    )
-                } else {
-                    stringResource(
-                        R.string.focus_mode_static_profile_meta_no_app,
-                        studyDuration
-                    )
-                },
-                selected = fixed45Selected && !customDurationOpen &&
-                    selectedPackages == readingPackages,
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    customDurationOpen = false
-                    onApplyPreset(
-                        "45",
-                        FocusModePolicy.DurationUnit.MINUTES,
-                        readingPackages
-                    )
-                }
-            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(5.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.focus_mode_static_purpose_title),
+                    color = TextPrimary,
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = stringResource(R.string.focus_mode_static_purpose_body),
+                    color = TextHint,
+                    fontSize = 12.sp,
+                    lineHeight = 17.sp
+                )
+            }
         }
 
         Text(
@@ -702,56 +617,6 @@ private fun FocusModeSetupContent(
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth()
         )
-    }
-}
-
-@Composable
-private fun FocusPresetCard(
-    title: String,
-    meta: String,
-    selected: Boolean,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = modifier
-            .height(76.dp)
-            .clickable(onClick = onClick),
-        colors = CardDefaults.cardColors(
-            containerColor = if (selected) {
-                AccentCyan.copy(alpha = 0.10f)
-            } else {
-                DarkCard
-            }
-        ),
-        border = BorderStroke(
-            1.dp,
-            if (selected) AccentCyan else CardBorder
-        ),
-        shape = RoundedCornerShape(14.dp)
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 9.dp),
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = title,
-                color = TextPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 13.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = meta,
-                color = TextHint,
-                fontSize = 10.5.sp,
-                lineHeight = 14.sp,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 3.dp)
-            )
-        }
     }
 }
 

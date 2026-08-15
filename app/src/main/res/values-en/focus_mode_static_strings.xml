@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="focus_mode_static_profiles">PROFILES</string>
+    <string name="focus_mode_static_purpose_title">What is Focus Mode for?</string>
+    <string name="focus_mode_static_purpose_body">Completely block access to your phone so technology addiction cannot keep feeding itself. Meanwhile, work or study with a phone that only releases the essential apps you need at that moment.</string>
     <string name="focus_mode_static_profile_work">Work</string>
     <string name="focus_mode_static_profile_study">Study</string>
     <string name="focus_mode_static_profile_reading">Reading</string>

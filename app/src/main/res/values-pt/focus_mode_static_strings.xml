@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="focus_mode_static_profiles">PERFIS</string>
+    <string name="focus_mode_static_purpose_title">Para que serve o Modo foco?</string>
+    <string name="focus_mode_static_purpose_body">Bloqueie completamente o acesso ao seu telefone impedindo que o vício em tecnologia se sustente. Enquanto isso, trabalhe ou estude com um telefone que só vai liberar apps essenciais para uso naquele momento.</string>
     <string name="focus_mode_static_profile_work">Trabalho</string>
     <string name="focus_mode_static_profile_study">Estudo</string>
     <string name="focus_mode_static_profile_reading">Leitura</string>
