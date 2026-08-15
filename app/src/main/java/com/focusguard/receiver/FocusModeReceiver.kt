@@ -6,6 +6,7 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import com.focusguard.focusmode.FocusModeKioskController
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.CoroutineScope
@@ -24,10 +25,20 @@ class FocusModeReceiver : BroadcastReceiver() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val manager = FocusModeManager.getInstance(context)
-                if (intent.action == ACTION_EXPIRE) {
+                val active = if (intent.action == ACTION_EXPIRE) {
                     manager.finishExpiredSession()
+                    manager.isActive()
                 } else {
                     manager.ensureEnforced()
+                }
+                FocusModeKioskController.reconcileSystemRestrictions(context)
+
+                // Updating FocusGuard can recreate the app process and drop the
+                // visible task even though Device Owner policies survive. Restore
+                // the Focus Mode shell exactly like a reboot, but do not steal the
+                // foreground on ordinary clock/timezone changes.
+                if (active && intent.action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+                    FocusModeKioskController.launchFocusGuardHome(context)
                 }
             } catch (error: Exception) {
                 FocusGuardLogger.logError(
