@@ -1,0 +1,1 @@
+Validate static Focus Mode prototype redesign.
