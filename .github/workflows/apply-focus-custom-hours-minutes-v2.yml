@@ -1,0 +1,198 @@
+name: Apply Focus custom hours and minutes v2
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/apply-focus-custom-hours-minutes-v2.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Patch Focus Mode UI
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          p = Path('app/src/main/java/com/focusguard/ui/compose/screens/FocusModeScreen.kt')
+          s = p.read_text()
+
+          def replace_between(text, start_marker, end_marker, replacement):
+              start = text.index(start_marker)
+              end = text.index(end_marker, start)
+              return text[:start] + replacement + text[end:]
+
+          state = textwrap.indent(textwrap.dedent('''
+          var customDurationOpen by rememberSaveable {
+              mutableStateOf(!(fixed45Selected || fixed2hSelected || fixed5hSelected))
+          }
+          val initialCustomTotalMinutes = when (durationUnit) {
+              FocusModePolicy.DurationUnit.MINUTES -> durationText.toLongOrNull() ?: 60L
+              FocusModePolicy.DurationUnit.HOURS -> (durationText.toLongOrNull() ?: 1L) * 60L
+              FocusModePolicy.DurationUnit.DAYS -> (durationText.toLongOrNull() ?: 0L) * 24L * 60L
+          }.coerceAtLeast(0L)
+          var customHoursText by rememberSaveable {
+              mutableStateOf((initialCustomTotalMinutes / 60L).toString())
+          }
+          var customMinutesText by rememberSaveable {
+              mutableStateOf((initialCustomTotalMinutes % 60L).toString())
+          }
+
+          fun applyCustomDuration(hoursText: String, minutesText: String) {
+              val hours = hoursText.toLongOrNull() ?: 0L
+              val minutes = minutesText.toLongOrNull() ?: 0L
+              val totalMinutes = (hours * 60L + minutes)
+                  .coerceAtMost(Int.MAX_VALUE.toLong())
+              onDurationUnitChange(FocusModePolicy.DurationUnit.MINUTES)
+              onDurationTextChange(totalMinutes.toString())
+          }
+          ''').strip('\n'), '    ')
+          s = replace_between(
+              s,
+              '    var customDurationOpen by rememberSaveable {',
+              '\n\n    val durationLabel = when',
+              state
+          )
+
+          label = textwrap.indent(textwrap.dedent('''
+          val durationLabel = when {
+              fixed45Selected && !customDurationOpen ->
+                  stringResource(R.string.focus_mode_static_duration_45)
+              fixed2hSelected && !customDurationOpen ->
+                  stringResource(R.string.focus_mode_static_duration_2h)
+              fixed5hSelected && !customDurationOpen ->
+                  stringResource(R.string.focus_mode_static_duration_5h)
+              else -> stringResource(
+                  R.string.focus_mode_static_custom_duration_hours_minutes,
+                  customHoursText.toIntOrNull() ?: 0,
+                  customMinutesText.toIntOrNull() ?: 0
+              )
+          }
+          ''').strip('\n'), '    ')
+          s = replace_between(
+              s,
+              '    val durationLabel = when {',
+              '\n    val allowedSummary = when',
+              label + '\n'
+          )
+
+          other = textwrap.indent(textwrap.dedent('''
+          FocusDurationChip(
+              label = stringResource(R.string.focus_mode_static_other),
+              selected = customDurationOpen,
+              modifier = Modifier.weight(1f),
+              onClick = {
+                  customDurationOpen = true
+                  applyCustomDuration(customHoursText, customMinutesText)
+              }
+          )
+          ''').strip('\n'), '            ')
+          s = replace_between(
+              s,
+              '            FocusDurationChip(\n                label = stringResource(R.string.focus_mode_static_other),',
+              '\n        }\n\n        if (customDurationOpen) {',
+              other
+          )
+
+          row = textwrap.indent(textwrap.dedent('''
+          if (customDurationOpen) {
+              Row(
+                  modifier = Modifier.fillMaxWidth().height(56.dp),
+                  verticalAlignment = Alignment.CenterVertically,
+                  horizontalArrangement = Arrangement.spacedBy(7.dp)
+              ) {
+                  OutlinedTextField(
+                      value = customHoursText,
+                      onValueChange = { raw ->
+                          val filtered = raw.filter(Char::isDigit).take(4)
+                          customHoursText = filtered
+                          applyCustomDuration(filtered, customMinutesText)
+                      },
+                      modifier = Modifier.width(78.dp),
+                      singleLine = true,
+                      isError = !durationValid,
+                      keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                  )
+                  Text(
+                      text = stringResource(R.string.focus_mode_static_hours_short),
+                      color = TextHint,
+                      fontSize = 13.sp
+                  )
+                  OutlinedTextField(
+                      value = customMinutesText,
+                      onValueChange = { raw ->
+                          val digits = raw.filter(Char::isDigit).take(2)
+                          val normalized = digits.toIntOrNull()
+                              ?.coerceAtMost(59)
+                              ?.toString()
+                              ?: ""
+                          customMinutesText = normalized
+                          applyCustomDuration(customHoursText, normalized)
+                      },
+                      modifier = Modifier.width(78.dp),
+                      singleLine = true,
+                      isError = !durationValid,
+                      keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                  )
+                  Text(
+                      text = stringResource(R.string.focus_mode_static_minutes_short),
+                      color = TextHint,
+                      fontSize = 13.sp
+                  )
+                  if (!durationValid) {
+                      Text(
+                          text = stringResource(R.string.focus_mode_duration_invalid),
+                          color = MaterialTheme.colorScheme.error,
+                          fontSize = 10.sp,
+                          modifier = Modifier.weight(1f),
+                          maxLines = 2
+                      )
+                  }
+              }
+          }
+          ''').strip('\n'), '        ')
+          s = replace_between(
+              s,
+              '        if (customDurationOpen) {',
+              '\n\n        Card(',
+              row
+          )
+          p.write_text(s)
+
+          for rp in [
+              Path('app/src/main/res/values/focus_mode_static_strings.xml'),
+              Path('app/src/main/res/values-en/focus_mode_static_strings.xml'),
+              Path('app/src/main/res/values-pt/focus_mode_static_strings.xml'),
+          ]:
+              x = rp.read_text()
+              if 'focus_mode_static_custom_duration_hours_minutes' not in x:
+                  anchor = '    <string name="focus_mode_static_custom_duration_value">%1$s min</string>\n'
+                  addition = (
+                      anchor
+                      + '    <string name="focus_mode_static_hours_short">h</string>\n'
+                      + '    <string name="focus_mode_static_minutes_short">min</string>\n'
+                      + '    <string name="focus_mode_static_custom_duration_hours_minutes">%1$d h %2$d min</string>\n'
+                  )
+                  if anchor not in x:
+                      raise RuntimeError(f'missing resource anchor in {rp}')
+                  rp.write_text(x.replace(anchor, addition, 1))
+          PY
+      - name: Commit app change and remove helpers
+        shell: bash
+        run: |
+          rm -f .github/workflows/apply-focus-custom-hours-minutes.yml
+          rm -f .github/workflows/apply-focus-custom-hours-minutes-v2.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: select custom focus hours and minutes"
+          git push origin main
