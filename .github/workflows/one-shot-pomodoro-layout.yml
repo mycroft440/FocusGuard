@@ -17,8 +17,8 @@ jobs:
         with:
           fetch-depth: 0
       - name: Apply Pomodoro layout changes
-        shell: python
         run: |
+          python <<'PY'
           from pathlib import Path
 
           main_path = Path('app/src/main/java/com/focusguard/ui/compose/screens/MainScreen.kt')
@@ -138,8 +138,8 @@ jobs:
               pomo = pomo.replace(old, new, 1)
           pomo_path.write_text(pomo)
 
-          workflow = Path('.github/workflows/one-shot-pomodoro-layout.yml')
-          workflow.unlink()
+          Path('.github/workflows/one-shot-pomodoro-layout.yml').unlink()
+          PY
       - name: Commit changes
         run: |
           git config user.name "FocusGuard CI"
