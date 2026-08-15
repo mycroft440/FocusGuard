@@ -275,10 +275,10 @@ fun PomodoroScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = if (compactLayout) 10.dp else 16.dp, vertical = 12.dp),
+                .verticalScroll(rememberScrollState(), enabled = showConfig)
+                .padding(horizontal = if (compactLayout) 10.dp else 16.dp, vertical = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             if (isRunning) {
                 ActivePomodoroPanel(
@@ -302,7 +302,7 @@ fun PomodoroScreen(
                 Text(
                     stringResource(R.string.fg_pomodoro_ready),
                     color = AccentCyan,
-                    fontSize = 18.sp,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.SemiBold
                 )
 
@@ -311,13 +311,13 @@ fun PomodoroScreen(
                     maxMinutes = 180,
                     activeProgress = null,
                     onMinutesChange = { saveConfig(config.copy(focusMinutes = it)) },
-                    modifier = Modifier.size(if (compactLayout) 210.dp else 270.dp)
+                    modifier = Modifier.size(if (compactLayout) 180.dp else 205.dp)
                 )
 
                 Text(
                     formatMinutes(config.focusMinutes),
                     color = TextPrimary,
-                    fontSize = 34.sp,
+                    fontSize = 30.sp,
                     fontWeight = FontWeight.Bold
                 )
 
@@ -439,12 +439,12 @@ private fun ActivePomodoroPanel(
         maxMinutes = 60,
         activeProgress = progress,
         onMinutesChange = {},
-        modifier = Modifier.size(270.dp)
+        modifier = Modifier.size(205.dp)
     )
     Text(
         String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds),
         color = TextPrimary,
-        fontSize = 40.sp,
+        fontSize = 34.sp,
         fontWeight = FontWeight.Bold
     )
     Text(
@@ -496,7 +496,7 @@ private fun CurrentPlanSummary(config: PomodoroPlanConfig) {
         colors = CardDefaults.cardColors(containerColor = DarkCard),
         border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
     ) {
-        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
             Text(
                 stringResource(R.string.fg_pomodoro_current_cycle),
                 color = TextPrimary,
@@ -546,25 +546,25 @@ private fun ProfileStrip(
             color = TextPrimary,
             fontWeight = FontWeight.Bold
         )
-        Spacer(Modifier.height(7.dp))
+        Spacer(Modifier.height(4.dp))
         Row(
             modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             profiles.forEach { profile ->
                 Card(
-                    modifier = Modifier.width(178.dp).clickable { onUse(profile) },
+                    modifier = Modifier.width(160.dp).clickable { onUse(profile) },
                     colors = CardDefaults.cardColors(containerColor = DarkCard),
                     border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
                 ) {
-                    Column(Modifier.padding(12.dp)) {
+                    Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 profile.name,
                                 modifier = Modifier.weight(1f),
                                 color = TextPrimary,
                                 fontWeight = FontWeight.SemiBold,
-                                fontSize = 13.sp
+                                fontSize = 12.sp
                             )
                             if (!profile.builtIn) {
                                 IconButton(
@@ -590,7 +590,7 @@ private fun ProfileStrip(
                                 profile.config.longBreakMinutes
                             ),
                             color = TextHint,
-                            fontSize = 11.sp
+                            fontSize = 10.sp
                         )
                     }
                 }
