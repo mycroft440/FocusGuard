@@ -7,12 +7,14 @@ import android.graphics.ColorMatrixColorFilter
 import android.graphics.Paint
 import android.os.Bundle
 import android.view.View
+import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.focusmode.FocusModeKioskController
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.security.AuthManager
@@ -37,6 +39,26 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pomodoroManager: PomodoroManager
     private var grayscaleApplied: Boolean? = null
 
+    /**
+     * Last-resort Back guard for every FocusGuard screen. Compose screens keep
+     * their own navigation handlers, but if one of them stops consuming Back,
+     * an active Focus Mode must never finish the root Activity and reveal Home.
+     */
+    private val focusModeBackGuard = object : OnBackPressedCallback(false) {
+        override fun handleOnBackPressed() {
+            if (!focusModeManager.isActive()) {
+                isEnabled = false
+                onBackPressedDispatcher.onBackPressed()
+                isEnabled = true
+                return
+            }
+
+            FocusGuardLogger.log("FocusMode", "Voltar interceptado pelo shell do Modo Foco")
+            FocusModeKioskController.reconcileSystemRestrictions(this@MainActivity)
+            enforceFocusModeLockTask()
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         FocusGuardLogger.init(this)
@@ -54,6 +76,9 @@ class MainActivity : AppCompatActivity() {
 
         // PomodoroManager ainda usa o singleton legado.
         pomodoroManager = PomodoroManager.getInstance(applicationContext)
+        onBackPressedDispatcher.addCallback(this, focusModeBackGuard)
+        updateFocusModeBackGuard()
+        FocusModeKioskController.reconcileSystemRestrictions(this)
 
         FocusGuardLogger.log("MainActivity", "Managers inicializados com sucesso")
 
@@ -76,9 +101,18 @@ class MainActivity : AppCompatActivity() {
         observeFocusModeVisualState()
     }
 
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        updateFocusModeBackGuard()
+        enforceFocusModeLockTask()
+    }
+
     override fun onResume() {
         super.onResume()
         FocusGuardLogger.log("MainActivity", "onResume disparado")
+        updateFocusModeBackGuard()
+        FocusModeKioskController.reconcileSystemRestrictions(this)
         enforceFocusModeLockTask()
     }
 
@@ -88,6 +122,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     fun enforceFocusModeLockTask() {
+        updateFocusModeBackGuard()
+        FocusModeKioskController.reconcileSystemRestrictions(this)
         val deviceOwnerManager = DeviceOwnerManager.getInstance(applicationContext)
         // Lock Task allowlisting survives process death. Re-enter it immediately
         // on resume, before the asynchronous full policy reconciliation, so there
@@ -98,7 +134,13 @@ class MainActivity : AppCompatActivity() {
             runCatching { startLockTask() }
         }
         lifecycleScope.launch {
-            if (!focusModeManager.ensureEnforced()) return@launch
+            if (!focusModeManager.ensureEnforced()) {
+                updateFocusModeBackGuard()
+                FocusModeKioskController.reconcileSystemRestrictions(this@MainActivity)
+                return@launch
+            }
+            updateFocusModeBackGuard()
+            FocusModeKioskController.reconcileSystemRestrictions(this@MainActivity)
             if (!deviceOwnerManager.isDeviceOwnerActive()) return@launch
             runCatching { startLockTask() }
                 .onFailure { error ->
@@ -111,13 +153,24 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun updateFocusModeBackGuard() {
+        focusModeBackGuard.isEnabled = focusModeManager.isActive()
+    }
+
     private fun observeFocusModeVisualState() {
         lifecycleScope.launch {
             repeatOnLifecycle(Lifecycle.State.STARTED) {
                 focusModeManager.session.collect { session ->
-                    applyFocusModeGrayscale(
-                        session?.let { it.isActive() && it.grayscaleEnabled } == true
-                    )
+                    val active = session?.isActive() == true
+                    focusModeBackGuard.isEnabled = active
+                    FocusModeKioskController.reconcileSystemRestrictions(this@MainActivity)
+                    applyFocusModeGrayscale(active && session?.grayscaleEnabled == true)
+                    if (active) {
+                        val deviceOwnerManager = DeviceOwnerManager.getInstance(applicationContext)
+                        if (deviceOwnerManager.isFocusModeLockTaskPermitted()) {
+                            runCatching { startLockTask() }
+                        }
+                    }
                 }
             }
         }
