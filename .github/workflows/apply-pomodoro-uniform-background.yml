@@ -1,0 +1,70 @@
+name: Apply uniform Pomodoro background
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/apply-pomodoro-uniform-background.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Uniform Pomodoro background
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/focusguard/ui/compose/screens/MainScreen.kt')
+          s = p.read_text()
+          old = '''    ) { paddingValues ->
+              Row(
+                  modifier = Modifier
+                      .fillMaxSize()
+                      .background(MaterialTheme.colorScheme.background)
+                      .padding(paddingValues)
+              ) {
+          '''
+          new = '''    ) { paddingValues ->
+              val contentBackground = if (selectedTab == 2) {
+                  DarkBg
+              } else {
+                  MaterialTheme.colorScheme.background
+              }
+              Row(
+                  modifier = Modifier
+                      .fillMaxSize()
+                      .background(contentBackground)
+                      .padding(paddingValues)
+              ) {
+          '''
+          if old not in s:
+              raise SystemExit('MainScreen content background block not found')
+          s = s.replace(old, new, 1)
+          old_box = '            Box(modifier = Modifier.weight(1f).fillMaxSize()) {'
+          new_box = '''            Box(
+                  modifier = Modifier
+                      .weight(1f)
+                      .fillMaxSize()
+                      .background(contentBackground)
+              ) {'''
+          if old_box not in s:
+              raise SystemExit('MainScreen content box not found')
+          s = s.replace(old_box, new_box, 1)
+          p.write_text(s)
+          PY
+      - name: Commit final change and remove helper
+        shell: bash
+        run: |
+          rm -f .github/workflows/apply-pomodoro-uniform-background.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "fix: unify pomodoro background"
+          git push origin main
