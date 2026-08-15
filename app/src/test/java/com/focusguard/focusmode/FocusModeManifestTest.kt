@@ -9,7 +9,7 @@ import org.w3c.dom.Element
 class FocusModeManifestTest {
 
     @Test
-    fun `manifest declares timed service notification listener phone visibility and kiosk entry`() {
+    fun `manifest declares timed service notification listener phone visibility and direct boot`() {
         val document = DocumentBuilderFactory.newInstance().apply {
             isNamespaceAware = true
         }.newDocumentBuilder().parse(File("src/main/AndroidManifest.xml"))
@@ -33,14 +33,17 @@ class FocusModeManifestTest {
         assertThat(listener.getAttributeNS(androidNamespace, "permission"))
             .isEqualTo("android.permission.BIND_NOTIFICATION_LISTENER_SERVICE")
 
+        // MainActivity must not auto-enter Lock Task merely because another
+        // FocusGuard feature temporarily allowlisted the package. Focus Mode
+        // launches it into Lock Task explicitly only while its persisted session
+        // is active.
         val activities = document.getElementsByTagName("activity").let { nodes ->
             (0 until nodes.length).map { index -> nodes.item(index) as Element }
         }
         val mainActivity = activities.single {
             it.getAttributeNS(androidNamespace, "name") == ".MainActivity"
         }
-        assertThat(mainActivity.getAttributeNS(androidNamespace, "lockTaskMode"))
-            .isEqualTo("if_whitelisted")
+        assertThat(mainActivity.hasAttributeNS(androidNamespace, "lockTaskMode")).isFalse()
 
         val receivers = document.getElementsByTagName("receiver").let { nodes ->
             (0 until nodes.length).map { index -> nodes.item(index) as Element }
