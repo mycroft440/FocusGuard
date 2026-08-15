@@ -9,7 +9,7 @@ import org.w3c.dom.Element
 class FocusModeManifestTest {
 
     @Test
-    fun `manifest declares timed service notification listener and phone visibility`() {
+    fun `manifest declares timed service notification listener phone visibility and kiosk entry`() {
         val document = DocumentBuilderFactory.newInstance().apply {
             isNamespaceAware = true
         }.newDocumentBuilder().parse(File("src/main/AndroidManifest.xml"))
@@ -33,6 +33,24 @@ class FocusModeManifestTest {
         assertThat(listener.getAttributeNS(androidNamespace, "permission"))
             .isEqualTo("android.permission.BIND_NOTIFICATION_LISTENER_SERVICE")
 
+        val activities = document.getElementsByTagName("activity").let { nodes ->
+            (0 until nodes.length).map { index -> nodes.item(index) as Element }
+        }
+        val mainActivity = activities.single {
+            it.getAttributeNS(androidNamespace, "name") == ".MainActivity"
+        }
+        assertThat(mainActivity.getAttributeNS(androidNamespace, "lockTaskMode"))
+            .isEqualTo("if_whitelisted")
+
+        val receivers = document.getElementsByTagName("receiver").let { nodes ->
+            (0 until nodes.length).map { index -> nodes.item(index) as Element }
+        }
+        val bootReceiver = receivers.single {
+            it.getAttributeNS(androidNamespace, "name") == ".receiver.BootReceiver"
+        }
+        assertThat(bootReceiver.getAttributeNS(androidNamespace, "directBootAware"))
+            .isEqualTo("true")
+
         val actions = document.getElementsByTagName("action").let { nodes ->
             (0 until nodes.length).mapNotNull { index ->
                 (nodes.item(index) as? Element)
@@ -41,7 +59,9 @@ class FocusModeManifestTest {
         }
         assertThat(actions).containsAtLeast(
             "android.intent.action.DIAL",
-            "android.intent.action.SENDTO"
+            "android.intent.action.SENDTO",
+            "android.intent.action.BOOT_COMPLETED",
+            "android.intent.action.LOCKED_BOOT_COMPLETED"
         )
     }
 }
