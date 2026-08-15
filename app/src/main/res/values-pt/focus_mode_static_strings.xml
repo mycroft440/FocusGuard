@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="focus_mode_static_profiles">PERFIS</string>
+    <string name="focus_mode_static_profile_work">Trabalho</string>
+    <string name="focus_mode_static_profile_study">Estudo</string>
+    <string name="focus_mode_static_profile_reading">Leitura</string>
+    <string name="focus_mode_static_profile_meta_with_app">%1$s · %2$s</string>
+    <string name="focus_mode_static_profile_meta_no_app">%1$s · nenhum app</string>
+    <string name="focus_mode_static_duration_section">DURAÇÃO</string>
+    <string name="focus_mode_static_duration_45">45 min</string>
+    <string name="focus_mode_static_duration_2h">2 h</string>
+    <string name="focus_mode_static_duration_5h">5 h</string>
+    <string name="focus_mode_static_other">Outro</string>
+    <string name="focus_mode_static_custom_minutes">minutos personalizados</string>
+    <string name="focus_mode_static_custom_duration_value">%1$s min</string>
+    <string name="focus_mode_static_grayscale_desc">Deixa o celular em preto e branco durante o foco — telas sem cor puxam menos a atenção.</string>
+    <string name="focus_mode_static_allowed_section">LIBERADOS DURANTE O FOCO</string>
+    <string name="focus_mode_static_phone">Ligação</string>
+    <string name="focus_mode_static_sms">SMS</string>
+    <string name="focus_mode_static_always">sempre</string>
+    <string name="focus_mode_static_apps">Apps</string>
+    <string name="focus_mode_static_apps_count">%1$d apps</string>
+    <string name="focus_mode_static_loading">carregando</string>
+    <string name="focus_mode_static_tap_choose">toque para escolher</string>
+    <string name="focus_mode_static_selected">você escolheu</string>
+    <string name="focus_mode_static_tap_edit">toque para editar</string>
+    <string name="focus_mode_static_no_extra_apps">nenhum app extra liberado</string>
+    <string name="focus_mode_static_one_extra_app">1 app liberado</string>
+    <string name="focus_mode_static_many_extra_apps">%1$d apps liberados</string>
+    <string name="focus_mode_static_dock_summary">%1$s · %2$s</string>
+</resources>

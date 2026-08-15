@@ -109,7 +109,7 @@ fun FocusModeScreen(
     var isLoadingApps by remember { mutableStateOf(true) }
     var selectedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectionInitialized by remember { mutableStateOf(false) }
-    var durationText by rememberSaveable { mutableStateOf("60") }
+    var durationText by rememberSaveable { mutableStateOf("45") }
     var durationUnit by rememberSaveable {
         mutableStateOf(FocusModePolicy.DurationUnit.MINUTES)
     }
@@ -302,6 +302,13 @@ fun FocusModeScreen(
             grayscaleEnabled = grayscaleEnabled,
             onGrayscaleEnabledChange = { grayscaleEnabled = it },
             onAddApps = { showAppPicker = true },
+            onApplyPreset = { amount, unit, packages ->
+                durationText = amount
+                durationUnit = unit
+                selectedPackages = packages
+                manager.saveDraftPackages(packages)
+                startOutcome = null
+            },
             isStarting = isStarting,
             startOutcome = startOutcome,
             onStart = {
@@ -337,224 +344,548 @@ private fun FocusModeSetupContent(
     grayscaleEnabled: Boolean,
     onGrayscaleEnabledChange: (Boolean) -> Unit,
     onAddApps: () -> Unit,
+    onApplyPreset: (String, FocusModePolicy.DurationUnit, Set<String>) -> Unit,
     isStarting: Boolean,
     startOutcome: FocusModeManager.StartOutcome?,
     onStart: () -> Unit
 ) {
-    var durationUnitMenuExpanded by remember { mutableStateOf(false) }
     val selectedApps = remember(apps, mandatoryPackages, selectedPackages) {
         apps.filter {
             it.packageName in selectedPackages && it.packageName !in mandatoryPackages
         }
     }
+    val whatsappPackage = remember(apps) {
+        apps.firstOrNull {
+            it.appName.equals("WhatsApp", ignoreCase = true) ||
+                it.packageName.contains("whatsapp", ignoreCase = true)
+        }?.packageName
+    }
+    val spotifyPackage = remember(apps) {
+        apps.firstOrNull {
+            it.appName.equals("Spotify", ignoreCase = true) ||
+                it.packageName.contains("spotify", ignoreCase = true)
+        }?.packageName
+    }
+    val workPackages = remember(whatsappPackage) { setOfNotNull(whatsappPackage) }
+    val studyPackages = remember { emptySet<String>() }
+    val readingPackages = remember(spotifyPackage) { setOfNotNull(spotifyPackage) }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+    val fixed45Selected = durationUnit == FocusModePolicy.DurationUnit.MINUTES &&
+        durationText == "45"
+    val fixed2hSelected = durationUnit == FocusModePolicy.DurationUnit.HOURS &&
+        durationText == "2"
+    val fixed5hSelected = durationUnit == FocusModePolicy.DurationUnit.HOURS &&
+        durationText == "5"
+    var customDurationOpen by rememberSaveable {
+        mutableStateOf(!(fixed45Selected || fixed2hSelected || fixed5hSelected))
+    }
+
+    val durationLabel = when {
+        fixed45Selected && !customDurationOpen ->
+            stringResource(R.string.focus_mode_static_duration_45)
+        fixed2hSelected && !customDurationOpen ->
+            stringResource(R.string.focus_mode_static_duration_2h)
+        fixed5hSelected && !customDurationOpen ->
+            stringResource(R.string.focus_mode_static_duration_5h)
+        else -> stringResource(
+            R.string.focus_mode_static_custom_duration_value,
+            durationText.ifBlank { "0" }
+        )
+    }
+    val allowedSummary = when (selectedApps.size) {
+        0 -> stringResource(R.string.focus_mode_static_no_extra_apps)
+        1 -> stringResource(R.string.focus_mode_static_one_extra_app)
+        else -> stringResource(
+            R.string.focus_mode_static_many_extra_apps,
+            selectedApps.size
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = DarkCard),
-                border = BorderStroke(1.dp, CardBorder),
-                shape = RoundedCornerShape(14.dp)
+        Text(
+            text = stringResource(R.string.focus_mode_static_profiles),
+            color = TextHint,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            val workDuration = stringResource(R.string.focus_mode_static_duration_2h)
+            FocusPresetCard(
+                title = stringResource(R.string.focus_mode_static_profile_work),
+                meta = if (whatsappPackage != null) {
+                    stringResource(
+                        R.string.focus_mode_static_profile_meta_with_app,
+                        workDuration,
+                        "WhatsApp"
+                    )
+                } else {
+                    stringResource(
+                        R.string.focus_mode_static_profile_meta_no_app,
+                        workDuration
+                    )
+                },
+                selected = fixed2hSelected && !customDurationOpen &&
+                    selectedPackages == workPackages,
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    customDurationOpen = false
+                    onApplyPreset(
+                        "2",
+                        FocusModePolicy.DurationUnit.HOURS,
+                        workPackages
+                    )
+                }
+            )
+
+            val studyDuration = stringResource(R.string.focus_mode_static_duration_45)
+            FocusPresetCard(
+                title = stringResource(R.string.focus_mode_static_profile_study),
+                meta = stringResource(
+                    R.string.focus_mode_static_profile_meta_no_app,
+                    studyDuration
+                ),
+                selected = fixed45Selected && !customDurationOpen &&
+                    selectedPackages == studyPackages,
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    customDurationOpen = false
+                    onApplyPreset(
+                        "45",
+                        FocusModePolicy.DurationUnit.MINUTES,
+                        studyPackages
+                    )
+                }
+            )
+
+            FocusPresetCard(
+                title = stringResource(R.string.focus_mode_static_profile_reading),
+                meta = if (spotifyPackage != null) {
+                    stringResource(
+                        R.string.focus_mode_static_profile_meta_with_app,
+                        studyDuration,
+                        "Spotify"
+                    )
+                } else {
+                    stringResource(
+                        R.string.focus_mode_static_profile_meta_no_app,
+                        studyDuration
+                    )
+                },
+                selected = fixed45Selected && !customDurationOpen &&
+                    selectedPackages == readingPackages,
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    customDurationOpen = false
+                    onApplyPreset(
+                        "45",
+                        FocusModePolicy.DurationUnit.MINUTES,
+                        readingPackages
+                    )
+                }
+            )
+        }
+
+        Text(
+            text = stringResource(R.string.focus_mode_static_duration_section),
+            color = TextHint,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(7.dp)
+        ) {
+            FocusDurationChip(
+                label = stringResource(R.string.focus_mode_static_duration_45),
+                selected = fixed45Selected && !customDurationOpen,
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    customDurationOpen = false
+                    onDurationUnitChange(FocusModePolicy.DurationUnit.MINUTES)
+                    onDurationTextChange("45")
+                }
+            )
+            FocusDurationChip(
+                label = stringResource(R.string.focus_mode_static_duration_2h),
+                selected = fixed2hSelected && !customDurationOpen,
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    customDurationOpen = false
+                    onDurationUnitChange(FocusModePolicy.DurationUnit.HOURS)
+                    onDurationTextChange("2")
+                }
+            )
+            FocusDurationChip(
+                label = stringResource(R.string.focus_mode_static_duration_5h),
+                selected = fixed5hSelected && !customDurationOpen,
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    customDurationOpen = false
+                    onDurationUnitChange(FocusModePolicy.DurationUnit.HOURS)
+                    onDurationTextChange("5")
+                }
+            )
+            FocusDurationChip(
+                label = stringResource(R.string.focus_mode_static_other),
+                selected = customDurationOpen,
+                modifier = Modifier.weight(1f),
+                onClick = {
+                    val wasFixed = fixed45Selected || fixed2hSelected || fixed5hSelected
+                    customDurationOpen = true
+                    onDurationUnitChange(FocusModePolicy.DurationUnit.MINUTES)
+                    if (wasFixed) onDurationTextChange("60")
+                }
+            )
+        }
+
+        if (customDurationOpen) {
+            Row(
+                modifier = Modifier.fillMaxWidth().height(52.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            stringResource(R.string.fg_focus_select_time),
-                            color = TextPrimary,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp,
-                            modifier = Modifier.weight(1f)
-                        )
-                        OutlinedTextField(
-                            value = durationText,
-                            onValueChange = onDurationTextChange,
-                            modifier = Modifier.width(72.dp),
-                            isError = durationText.isNotBlank() && !durationValid,
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(
-                                keyboardType = KeyboardType.Number
-                            )
-                        )
-
-                        Box {
-                            OutlinedButton(
-                                onClick = { durationUnitMenuExpanded = true },
-                                modifier = Modifier.height(56.dp),
-                                contentPadding = PaddingValues(horizontal = 10.dp)
-                            ) {
-                                Text(
-                                    if (durationUnit == FocusModePolicy.DurationUnit.HOURS) {
-                                        "h"
-                                    } else {
-                                        "min"
-                                    }
-                                )
-                                Icon(
-                                    Icons.Default.ArrowDropDown,
-                                    contentDescription = null,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-
-                            DropdownMenu(
-                                expanded = durationUnitMenuExpanded,
-                                onDismissRequest = { durationUnitMenuExpanded = false }
-                            ) {
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.focus_mode_minutes)) },
-                                    onClick = {
-                                        onDurationUnitChange(
-                                            FocusModePolicy.DurationUnit.MINUTES
-                                        )
-                                        durationUnitMenuExpanded = false
-                                    }
-                                )
-                                DropdownMenuItem(
-                                    text = { Text(stringResource(R.string.focus_mode_hours)) },
-                                    onClick = {
-                                        onDurationUnitChange(
-                                            FocusModePolicy.DurationUnit.HOURS
-                                        )
-                                        durationUnitMenuExpanded = false
-                                    }
-                                )
-                            }
-                        }
-                    }
-
-                    if (durationText.isNotBlank() && !durationValid) {
-                        Text(
-                            stringResource(R.string.focus_mode_duration_invalid),
-                            color = MaterialTheme.colorScheme.error,
-                            fontSize = 11.sp
-                        )
-                    }
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .toggleable(
-                                value = grayscaleEnabled,
-                                role = Role.Switch,
-                                onValueChange = onGrayscaleEnabledChange
-                            ),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            stringResource(R.string.fg_focus_grayscale),
-                            color = TextPrimary,
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Switch(checked = grayscaleEnabled, onCheckedChange = null)
-                    }
+                OutlinedTextField(
+                    value = durationText,
+                    onValueChange = onDurationTextChange,
+                    modifier = Modifier.width(112.dp),
+                    singleLine = true,
+                    isError = durationText.isNotBlank() && !durationValid,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                )
+                Text(
+                    text = stringResource(R.string.focus_mode_static_custom_minutes),
+                    color = TextHint,
+                    fontSize = 13.sp
+                )
+                if (durationText.isNotBlank() && !durationValid) {
+                    Text(
+                        text = stringResource(R.string.focus_mode_duration_invalid),
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 10.sp,
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
         }
 
-        item {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = grayscaleEnabled,
+                    role = Role.Switch,
+                    onValueChange = onGrayscaleEnabledChange
+                ),
+            colors = CardDefaults.cardColors(containerColor = DarkCard),
+            border = BorderStroke(1.dp, CardBorder),
+            shape = RoundedCornerShape(14.dp)
+        ) {
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 11.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        stringResource(
-                            R.string.focus_mode_allowed_apps_title,
-                            selectedApps.size
-                        ),
+                        text = stringResource(R.string.fg_focus_grayscale),
                         color = TextPrimary,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 15.sp
+                        fontSize = 14.sp
                     )
                     Text(
-                        stringResource(R.string.focus_mode_allowed_grid_description),
+                        text = stringResource(R.string.focus_mode_static_grayscale_desc),
                         color = TextHint,
                         fontSize = 11.sp,
+                        lineHeight = 15.sp,
                         modifier = Modifier.padding(top = 2.dp)
                     )
                 }
-                OutlinedButton(onClick = onAddApps, enabled = !isLoadingApps) {
-                    Icon(Icons.Default.Add, contentDescription = null)
-                    Spacer(Modifier.size(4.dp))
-                    Text(stringResource(R.string.focus_mode_add_apps), fontSize = 13.sp)
-                }
+                Switch(checked = grayscaleEnabled, onCheckedChange = null)
             }
         }
 
-        item {
-            if (isLoadingApps) {
-                Box(
-                    modifier = Modifier.fillMaxWidth().padding(18.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    CircularProgressIndicator(color = AccentCyan)
-                }
+        Text(
+            text = stringResource(R.string.focus_mode_static_allowed_section),
+            color = TextHint,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp,
+            modifier = Modifier.padding(top = 2.dp)
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FocusPrototypeAppTile(
+                label = stringResource(R.string.focus_mode_static_phone),
+                tag = stringResource(R.string.focus_mode_static_always),
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    Icons.Default.Phone,
+                    contentDescription = null,
+                    tint = TextHint,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+            FocusPrototypeAppTile(
+                label = stringResource(R.string.focus_mode_static_sms),
+                tag = stringResource(R.string.focus_mode_static_always),
+                modifier = Modifier.weight(1f)
+            ) {
+                Icon(
+                    Icons.Default.Message,
+                    contentDescription = null,
+                    tint = TextPrimary,
+                    modifier = Modifier.size(32.dp)
+                )
+            }
+            FocusPrototypeSelectedAppsTile(
+                selectedApps = selectedApps,
+                isLoading = isLoadingApps,
+                onClick = onAddApps,
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        if (startOutcome != null) {
+            FocusModeStartError(startOutcome)
+        }
+
+        Spacer(modifier = Modifier.weight(1f))
+
+        Button(
+            onClick = onStart,
+            enabled = !isStarting && durationValid && !isLoadingApps,
+            modifier = Modifier.fillMaxWidth().height(52.dp),
+            colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            if (isStarting) {
+                CircularProgressIndicator(
+                    color = MaterialTheme.colorScheme.onPrimary,
+                    strokeWidth = 2.dp,
+                    modifier = Modifier.size(20.dp)
+                )
             } else {
-                FocusAppGrid(
-                    apps = selectedApps,
-                    includeEssentials = true
+                Text(
+                    stringResource(R.string.focus_mode_start),
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 16.sp
                 )
             }
         }
 
-        item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = DarkCard),
-                border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.45f)),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    Text(
-                        stringResource(R.string.focus_mode_final_step_title),
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
-                    )
-                    Text(
-                        stringResource(R.string.focus_mode_final_step_description),
-                        color = TextHint,
-                        fontSize = 12.sp
-                    )
-                    FocusModeStartError(startOutcome)
-                    Button(
-                        onClick = onStart,
-                        enabled = !isStarting && durationValid && !isLoadingApps,
-                        modifier = Modifier.fillMaxWidth().height(46.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-                        shape = RoundedCornerShape(14.dp)
-                    ) {
-                        if (isStarting) {
-                            CircularProgressIndicator(
-                                color = MaterialTheme.colorScheme.onPrimary,
-                                strokeWidth = 2.dp,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        } else {
-                            Text(
-                                stringResource(R.string.focus_mode_start),
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-                }
+        Text(
+            text = stringResource(
+                R.string.focus_mode_static_dock_summary,
+                durationLabel,
+                allowedSummary
+            ),
+            color = TextHint,
+            fontSize = 11.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+private fun FocusPresetCard(
+    title: String,
+    meta: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = modifier
+            .height(76.dp)
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) {
+                AccentCyan.copy(alpha = 0.10f)
+            } else {
+                DarkCard
             }
+        ),
+        border = BorderStroke(
+            1.dp,
+            if (selected) AccentCyan else CardBorder
+        ),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 10.dp, vertical = 9.dp),
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = title,
+                color = TextPrimary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = meta,
+                color = TextHint,
+                fontSize = 10.5.sp,
+                lineHeight = 14.sp,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = 3.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun FocusDurationChip(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = modifier
+            .height(44.dp)
+            .clickable(onClick = onClick),
+        colors = CardDefaults.cardColors(
+            containerColor = if (selected) AccentCyan else DarkCard
+        ),
+        border = BorderStroke(
+            1.dp,
+            if (selected) AccentCyan else CardBorder
+        ),
+        shape = RoundedCornerShape(24.dp)
+    ) {
+        Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+            Text(
+                text = label,
+                color = if (selected) MaterialTheme.colorScheme.onPrimary else TextPrimary,
+                fontWeight = FontWeight.Bold,
+                fontSize = 13.sp,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+@Composable
+private fun FocusPrototypeAppTile(
+    label: String,
+    tag: String,
+    modifier: Modifier = Modifier,
+    onClick: (() -> Unit)? = null,
+    icon: @Composable () -> Unit
+) {
+    Card(
+        modifier = modifier
+            .height(88.dp)
+            .then(
+                if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
+            ),
+        colors = CardDefaults.cardColors(containerColor = DarkCard),
+        border = BorderStroke(1.dp, CardBorder),
+        shape = RoundedCornerShape(14.dp)
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(horizontal = 7.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            icon()
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = label,
+                color = TextPrimary,
+                fontWeight = FontWeight.SemiBold,
+                fontSize = 11.sp,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            if (tag.isNotBlank()) {
+                Text(
+                    text = tag,
+                    color = TextHint,
+                    fontSize = 9.5.sp,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun FocusPrototypeSelectedAppsTile(
+    selectedApps: List<FocusModeSelectableApp>,
+    isLoading: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val label = when {
+        isLoading -> stringResource(R.string.focus_mode_static_apps)
+        selectedApps.isEmpty() -> stringResource(R.string.focus_mode_add_apps)
+        selectedApps.size == 1 -> selectedApps.first().appName
+        else -> stringResource(
+            R.string.focus_mode_static_apps_count,
+            selectedApps.size
+        )
+    }
+    val tag = when {
+        isLoading -> stringResource(R.string.focus_mode_static_loading)
+        selectedApps.isEmpty() -> stringResource(R.string.focus_mode_static_tap_choose)
+        selectedApps.size == 1 -> stringResource(R.string.focus_mode_static_selected)
+        else -> stringResource(R.string.focus_mode_static_tap_edit)
+    }
+
+    FocusPrototypeAppTile(
+        label = label,
+        tag = tag,
+        modifier = modifier,
+        onClick = if (isLoading) null else onClick
+    ) {
+        when {
+            isLoading -> CircularProgressIndicator(
+                color = AccentCyan,
+                strokeWidth = 2.dp,
+                modifier = Modifier.size(28.dp)
+            )
+            selectedApps.isEmpty() -> Icon(
+                Icons.Default.Add,
+                contentDescription = null,
+                tint = AccentCyan,
+                modifier = Modifier.size(32.dp)
+            )
+            selectedApps.size == 1 -> InstalledAppIcon(
+                packageName = selectedApps.first().packageName,
+                appName = selectedApps.first().appName
+            )
+            else -> Icon(
+                Icons.Default.Apps,
+                contentDescription = null,
+                tint = AccentCyan,
+                modifier = Modifier.size(32.dp)
+            )
         }
     }
 }

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="focus_mode_static_profiles">PROFILES</string>
+    <string name="focus_mode_static_profile_work">Work</string>
+    <string name="focus_mode_static_profile_study">Study</string>
+    <string name="focus_mode_static_profile_reading">Reading</string>
+    <string name="focus_mode_static_profile_meta_with_app">%1$s · %2$s</string>
+    <string name="focus_mode_static_profile_meta_no_app">%1$s · no app</string>
+    <string name="focus_mode_static_duration_section">DURATION</string>
+    <string name="focus_mode_static_duration_45">45 min</string>
+    <string name="focus_mode_static_duration_2h">2 h</string>
+    <string name="focus_mode_static_duration_5h">5 h</string>
+    <string name="focus_mode_static_other">Other</string>
+    <string name="focus_mode_static_custom_minutes">custom minutes</string>
+    <string name="focus_mode_static_custom_duration_value">%1$s min</string>
+    <string name="focus_mode_static_grayscale_desc">Turns the phone black and white during focus — colorless screens pull less attention.</string>
+    <string name="focus_mode_static_allowed_section">ALLOWED DURING FOCUS</string>
+    <string name="focus_mode_static_phone">Phone</string>
+    <string name="focus_mode_static_sms">SMS</string>
+    <string name="focus_mode_static_always">always</string>
+    <string name="focus_mode_static_apps">Apps</string>
+    <string name="focus_mode_static_apps_count">%1$d apps</string>
+    <string name="focus_mode_static_loading">loading</string>
+    <string name="focus_mode_static_tap_choose">tap to choose</string>
+    <string name="focus_mode_static_selected">selected</string>
+    <string name="focus_mode_static_tap_edit">tap to edit</string>
+    <string name="focus_mode_static_no_extra_apps">no extra app allowed</string>
+    <string name="focus_mode_static_one_extra_app">1 app allowed</string>
+    <string name="focus_mode_static_many_extra_apps">%1$d apps allowed</string>
+    <string name="focus_mode_static_dock_summary">%1$s · %2$s</string>
+</resources>
