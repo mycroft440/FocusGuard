@@ -19,7 +19,7 @@ import java.io.File
 object IntruderPhotoExporter {
 
     private const val TAG = "IntruderExport"
-    private const val ALBUM = "FocusGuard"
+    private const val ALBUM = "HardBlock"
 
     sealed interface Result {
         data object Exported : Result

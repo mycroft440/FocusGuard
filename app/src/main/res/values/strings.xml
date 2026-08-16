@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="app_name">FocusGuard</string>
-    <string name="accessibility_service_description">FocusGuard Accessibility Service - Blocks distracting apps and websites</string>
+    <string name="app_name">HardBlock</string>
+    <string name="accessibility_service_description">HardBlock Accessibility Service - Blocks distracting apps and websites</string>
     <string name="add_app_button">Add App</string>
     <string name="remove_button">Remove</string>
     <string name="manage_passwords">Manage App Passwords</string>
@@ -9,14 +9,14 @@
     <string name="save">Save</string>
     <string name="cancel">Cancel</string>
     <string name="nuclear_protection">Nuclear Protection</string>
-    <string name="dopamine_accessibility_required">Enable FocusGuard Accessibility before starting the Dopamine Fast.</string>
+    <string name="dopamine_accessibility_required">Enable HardBlock Accessibility before starting the Dopamine Fast.</string>
     <string name="dopamine_requirement_title">Requirement pending</string>
     <string name="dopamine_open_permissions">Open permissions</string>
 
     <!-- Common actions and accessibility -->
     <string name="action_back">Back</string>
     <string name="action_open">Open</string>
-    <string name="content_focusguard_logo">FocusGuard logo</string>
+    <string name="content_focusguard_logo">HardBlock logo</string>
     <string name="content_warning">Warning</string>
     <string name="content_emergency_call">Make an emergency call</string>
 
@@ -70,7 +70,7 @@
 
     <!-- Export intruder photo -->
     <string name="intruder_export_action">Export to gallery</string>
-    <string name="intruder_export_success">Copy saved to the gallery, in Pictures/FocusGuard.</string>
+    <string name="intruder_export_success">Copy saved to the gallery, in Pictures/HardBlock.</string>
     <string name="intruder_export_failed">Could not export the photo.</string>
     <string name="protection_setup_title">Protection and limits</string>
     <string name="protection_add_apps_title">Add apps to the list</string>
@@ -147,8 +147,8 @@
     <string name="recovery_privacy_badge">Private and available offline</string>
     <string name="recovery_creator_ebook_title">Creator\'s Instructions</string>
     <string name="recovery_creator_ebook_card_subtitle">Everything about leaving pornography starts here</string>
-    <string name="recovery_creator_ebook_description">Everything about leaving pornography starts here. This e-book is an original space prepared to gather the instructions from the creator of FocusGuard.</string>
-    <string name="recovery_creator_content_feature">Original content from the creator of FocusGuard</string>
+    <string name="recovery_creator_ebook_description">Everything about leaving pornography starts here. This e-book is an original space prepared to gather the instructions from the creator of HardBlock.</string>
+    <string name="recovery_creator_content_feature">Original content from the creator of HardBlock</string>
     <string name="recovery_creator_offline_feature">Private reading, available without internet</string>
     <string name="recovery_creator_ebook_note">The book space is already available in the app and ready to receive the chapters written by the creator.</string>
     <string name="recovery_ebook_title">EasyPeasy Method e-book</string>
@@ -193,7 +193,7 @@
     <string name="recovery_protection_success">Protection activated: pornography with no end date and social networks for 180 days.</string>
     <string name="recovery_protection_failed">The blocks could not be activated. Try again.</string>
     <string name="recovery_protection_permission_title">Protection permissions required</string>
-    <string name="recovery_protection_permission_body">Complete every FocusGuard permission before making this commitment. When you return, type the confirmation phrase again.</string>
+    <string name="recovery_protection_permission_body">Complete every HardBlock permission before making this commitment. When you return, type the confirmation phrase again.</string>
     <string name="recovery_protection_open_permissions">Open permissions</string>
     <string name="recovery_book_back">Back to AntiPorn</string>
 
@@ -202,7 +202,7 @@
     <string name="settings_profile_not_configured">Set up your profile</string>
     <string name="settings_profile_subtitle">Tap to edit your name and avatar</string>
     <string name="profile_settings_content_description">%1$s profile. Open settings.</string>
-    <string name="profile_intro">Personalize how you appear inside FocusGuard. Your name and avatar are stored only on this device.</string>
+    <string name="profile_intro">Personalize how you appear inside HardBlock. Your name and avatar are stored only on this device.</string>
     <string name="profile_name_section">Your name</string>
     <string name="profile_name_label">Name</string>
     <string name="profile_name_placeholder">Enter what you want to be called</string>
@@ -237,24 +237,24 @@
     <string name="language_settings">Language</string>
     <string name="dev_area_title">Dev Area</string>
     <string name="dev_area_subtitle">Technical exit to remove blocks and protections</string>
-    <string name="dev_area_description">This area removes sessions, Pomodoro, usage limits, block lists, the adult filter, and administrative protections applied by FocusGuard. Then you decide whether to uninstall the app.</string>
-    <string name="dev_area_warning">After the password is confirmed, all FocusGuard blocks are removed immediately. If you choose not to uninstall, they are not restored automatically.</string>
+    <string name="dev_area_description">This area removes sessions, Pomodoro, usage limits, block lists, the adult filter, and administrative protections applied by HardBlock. Then you decide whether to uninstall the app.</string>
+    <string name="dev_area_warning">After the password is confirmed, all HardBlock blocks are removed immediately. If you choose not to uninstall, they are not restored automatically.</string>
     <string name="dev_area_password_label">Dev password</string>
     <string name="dev_area_relinquish_action">Remove all blocks</string>
     <string name="dev_area_invalid_password">Incorrect Dev password.</string>
     <string name="dev_area_unavailable">Dev Area is not configured or authorization expired. Enter the password again.</string>
-    <string name="dev_area_release_failed">Could not remove all FocusGuard protections.</string>
+    <string name="dev_area_release_failed">Could not remove all HardBlock protections.</string>
     <string name="dev_area_uninstall_failed">Protections were relinquished, but Android\'s uninstaller could not be opened.</string>
     <string name="dev_area_blocks_removed_title">Blocks removed</string>
     <string name="dev_area_uninstall_question">All blocks and protections have been removed. Do you want to uninstall the app?</string>
     <string name="dev_area_uninstall_confirm">Uninstall</string>
     <string name="dev_area_uninstall_decline">Not now</string>
-    <string name="dev_area_blocks_removed_kept">Blocks removed. FocusGuard remains installed.</string>
+    <string name="dev_area_blocks_removed_kept">Blocks removed. HardBlock remains installed.</string>
 
     <!-- Authentication -->
     <string name="auth_locked_content_description">App locked</string>
     <string name="auth_locked_title">App locked</string>
-    <string name="auth_locked_description">Enter your password to access FocusGuard</string>
+    <string name="auth_locked_description">Enter your password to access HardBlock</string>
     <string name="auth_password_label">Password</string>
     <string name="auth_show_password">Show password</string>
     <string name="auth_hide_password">Hide password</string>
@@ -279,18 +279,18 @@
     <string name="permissions_incomplete_desc">Every displayed protection permission is required before any block can be configured.</string>
     <string name="permissions_review_essentials">Review pending permissions</string>
     <string name="permissions_continue_limited">Continue with limited features</string>
-    <string name="permissions_enter_app">Enter FocusGuard</string>
+    <string name="permissions_enter_app">Enter HardBlock</string>
     <string name="permissions_badge_required">Required</string>
     <string name="permissions_badge_recommended">Recommended</string>
     <string name="permissions_badge_advanced">Advanced</string>
     <string name="permission_accessibility_title">Accessibility</string>
     <string name="permission_accessibility_desc">Lets the app identify open apps and sites in order to apply blocks.</string>
-    <string name="permission_accessibility_detail">On the Android screen, tap FocusGuard and turn on \"Use service\".</string>
+    <string name="permission_accessibility_detail">On the Android screen, tap HardBlock and turn on \"Use service\".</string>
     <string name="permission_accessibility_action">Open accessibility</string>
     <string name="permission_accessibility_help">Option not showing up?</string>
     <string name="permission_usage_access_title">Usage access</string>
     <string name="permission_usage_access_desc">Lets the app measure time spent in apps and generate insights.</string>
-    <string name="permission_usage_access_detail">In the Android list, find FocusGuard and enable access.</string>
+    <string name="permission_usage_access_detail">In the Android list, find HardBlock and enable access.</string>
     <string name="permission_usage_access_action">Open usage access</string>
     <string name="permission_device_admin_title">Standard device administrator</string>
     <string name="permission_device_admin_desc">This is Android\'s standard administrator permission, not Device Owner. It is required to configure blocks and adds protection against impulsive removal.</string>
@@ -303,25 +303,25 @@
     <string name="permission_battery_action">Allow battery usage</string>
     <string name="permission_restricted_title">Accessibility not showing up?</string>
     <string name="permission_restricted_steps_title">Follow these steps:</string>
-    <string name="permission_restricted_intro">If Android said settings are restricted, allow FocusGuard from the app info screen.</string>
+    <string name="permission_restricted_intro">If Android said settings are restricted, allow HardBlock from the app info screen.</string>
     <string name="permission_restricted_step_1">Tap \"Open app info\" below.</string>
     <string name="permission_restricted_step_2">In the top right corner, tap the three dots (⋮).</string>
     <string name="permission_restricted_step_3">Tap \"Allow restricted settings\".</string>
-    <string name="permission_restricted_step_4">Go back to FocusGuard and open Accessibility again.</string>
+    <string name="permission_restricted_step_4">Go back to HardBlock and open Accessibility again.</string>
     <string name="permission_restricted_tip">This step is usually only needed for installations made outside the device store.</string>
     <string name="permission_open_app_info">Open app info</string>
     <string name="permission_notifications_title">Focus notifications</string>
-    <string name="permission_notifications_desc">Lets FocusGuard keep you informed about active blocks and protection alerts.</string>
+    <string name="permission_notifications_desc">Lets HardBlock keep you informed about active blocks and protection alerts.</string>
     <string name="permission_notifications_detail">Shows session progress and important protection alerts.</string>
     <string name="permission_notifications_action">Allow notifications</string>
     <string name="permission_notifications_settings_action">Open notification settings</string>
-    <string name="permission_not_detected">We have not detected this authorization yet. Enable it in Android and come back to FocusGuard.</string>
+    <string name="permission_not_detected">We have not detected this authorization yet. Enable it in Android and come back to HardBlock.</string>
     <string name="permission_granted">Granted</string>
     <string name="blocking_permissions_required_desc">Complete every pending permission before configuring or starting a block.</string>
 
     <!-- Pomodoro -->
     <string name="pomodoro_cancel_btn">Cancel</string>
-    <string name="pomodoro_status_focus">FocusGuard</string>
+    <string name="pomodoro_status_focus">HardBlock</string>
     <string name="pomodoro_enable_block_switch">Strict Block</string>
     <string name="pomodoro_enable_block_subtitle">Turn it on before starting to block exits and distractions.</string>
     <string name="pomodoro_phone_btn">Emergency Call</string>
@@ -446,7 +446,7 @@
     <string name="limits_security_days_label">For how many days do you want to limit the time?</string>
     <string name="limits_security_password_question">Unlock the app with a password when the time runs out?</string>
     <string name="limits_security_password_label">Set the unlock password</string>
-    <string name="limits_master_password_configured">Master password configured. It will also protect entry to FocusGuard.</string>
+    <string name="limits_master_password_configured">Master password configured. It will also protect entry to HardBlock.</string>
     <string name="limits_master_password_missing">Set the master password to use this option.</string>
     <string name="limits_master_password_change_action">View or change master password</string>
     <string name="limits_security_no_password_warning">Warning: if the block has no password, the app will be impossible to unlock until the next day or until the block days end.</string>
@@ -554,14 +554,14 @@
     <string name="limits_permission_denied_feature">Permission denied. Feature disabled.</string>
     <string name="acesso_device_owner_revogado">Device Owner access revoked</string>
     <string name="falha_ao_revogar_device_owner_e_message">Failed to revoke Device Owner: %1$s</string>
-    <string name="focusguard_device_admin_habilitado">FocusGuard Device Admin enabled</string>
-    <string name="focusguard_device_admin_desabilitado">FocusGuard Device Admin disabled</string>
+    <string name="focusguard_device_admin_habilitado">HardBlock Device Admin enabled</string>
+    <string name="focusguard_device_admin_desabilitado">HardBlock Device Admin disabled</string>
     <string name="erro_ao_iniciar_sessao">Error starting session</string>
     <string name="modo_pomodoro_ativado_foco_total">POMODORO MODE ENABLED: Total Focus.</string>
     <string name="bloqueios_por_senha_encerrados">Password Blocks ended</string>
     <string name="senha_count_1">Password %1$d</string>
-    <string name="mantem_o_focusguard_ativo_para_garantir_">Keeps FocusGuard active to enforce your blocks</string>
-    <string name="servico_focusguard_parado">FocusGuard service stopped</string>
+    <string name="mantem_o_focusguard_ativo_para_garantir_">Keeps HardBlock active to enforce your blocks</string>
+    <string name="servico_focusguard_parado">HardBlock service stopped</string>
     <string name="garante_que_o_bloqueio_rigoroso_do_pomod">Ensures the strict Pomodoro block stays active</string>
     <string name="criar_senha">Create password</string>
     <string name="confirmar_senha">Confirm password</string>
@@ -609,11 +609,11 @@
     <string name="block_notice_time_cannot_revoke">The time block cannot be revoked during the active window. Wait for the time to run out.</string>
     <string name="block_notice_no_active_session">No active session found to end.</string>
     <string name="block_notice_unlock_failed">Could not end the block.</string>
-    <string name="block_notice_instant_title">Blocked by FocusGuard</string>
-    <string name="block_notice_instant_content_description">FocusGuard instant protection</string>
+    <string name="block_notice_instant_title">Blocked by HardBlock</string>
+    <string name="block_notice_instant_content_description">HardBlock instant protection</string>
 
     <!-- Extracted from text that was written directly in Kotlin -->
-    <string name="service_notification_title">FocusGuard Active</string>
+    <string name="service_notification_title">HardBlock Active</string>
     <string name="service_notification_text">Distraction protection running</string>
     <string name="block_customization_description">Customize the message and image shown when an app is blocked.</string>
     <string name="limits_intrusion_security_title">Anti-Intrusion Security</string>
@@ -653,13 +653,13 @@
     <string name="biometric_app_unlock_prompt_title">Unlock app</string>
     <string name="biometric_app_unlock_prompt_subtitle">Confirm your identity to open this app.</string>
     <string name="biometric_app_unlock_action">Use fingerprint</string>
-    <string name="biometric_prompt_default_title">Unlock FocusGuard</string>
+    <string name="biometric_prompt_default_title">Unlock HardBlock</string>
     <string name="biometric_prompt_default_subtitle">Confirm your identity to access the app</string>
     <string name="biometric_unavailable_use_password">Biometrics unavailable. Use your password.</string>
     <string name="biometric_auth_failed">Biometric authentication failed.</string>
 
     <!-- Authenticated uninstall -->
-    <string name="uninstall_app_title">Uninstall FocusGuard</string>
+    <string name="uninstall_app_title">Uninstall HardBlock</string>
     <string name="uninstall_app_subtitle">Requires the master password</string>
     <string name="uninstall_app_description">The master password releases removal protection and opens Android\'s uninstall screen. You can leave the app whenever you want.</string>
     <string name="uninstall_app_maintenance_description">The day-15 maintenance window is active. You can release protection and continue to Android\'s uninstall screen.</string>
@@ -672,12 +672,12 @@
     <string name="focus_mode_title">Focus Mode</string>
     <string name="focus_mode_subtitle">Only the essentials, for as long as you choose</string>
     <string name="focus_mode_how_title">A temporary distraction-free environment</string>
-    <string name="focus_mode_how_description">FocusGuard uses Accessibility to return any attempt to open a disallowed app to the focus environment and hides notifications from those apps. You can still browse every FocusGuard section and open only essential resources and apps selected on this screen. If optional native protection is already configured, it reinforces the block automatically.</string>
+    <string name="focus_mode_how_description">HardBlock uses Accessibility to return any attempt to open a disallowed app to the focus environment and hides notifications from those apps. You can still browse every HardBlock section and open only essential resources and apps selected on this screen. If optional native protection is already configured, it reinforces the block automatically.</string>
     <string name="focus_mode_requirements_title">Requirements for reliable blocking</string>
     <string name="focus_mode_device_owner_title">Native device control</string>
     <string name="focus_mode_device_owner_description">On Android 9 or later, Device Owner can suspend apps, disable Home and Recents, and prevent safe-mode boot. Setup is available only in Settings &gt; Nuclear protection.</string>
     <string name="focus_mode_notification_access_title">Notification blocking</string>
-    <string name="focus_mode_notification_access_description">Notification access lets FocusGuard remove alerts posted by blocked apps.</string>
+    <string name="focus_mode_notification_access_description">Notification access lets HardBlock remove alerts posted by blocked apps.</string>
     <string name="focus_mode_open_notification_access">Allow</string>
     <string name="focus_mode_requirement_ready">Ready</string>
     <string name="focus_mode_requirement_pending">Pending</string>
@@ -686,7 +686,7 @@
     <string name="focus_mode_phone_emergency">Calls and emergency</string>
     <string name="focus_mode_sms">SMS</string>
     <string name="focus_mode_grayscale_title">Make the screen gray</string>
-    <string name="focus_mode_grayscale_description">Optional. Removes color from every FocusGuard section during this session. Essential or allowed apps keep their own appearance.</string>
+    <string name="focus_mode_grayscale_description">Optional. Removes color from every HardBlock section during this session. Essential or allowed apps keep their own appearance.</string>
     <string name="focus_mode_setup_title">Set the time</string>
     <string name="focus_mode_duration_title">Block duration</string>
     <string name="focus_mode_duration_value">Amount</string>
@@ -704,18 +704,18 @@
     <string name="focus_mode_search_apps">Search installed apps</string>
     <string name="focus_mode_no_apps">No apps found.</string>
     <string name="focus_mode_final_step_title">Review and start</string>
-    <string name="focus_mode_final_step_description">After choosing the apps, tap below. Only then will FocusGuard check and request any authorizations that are still missing.</string>
+    <string name="focus_mode_final_step_description">After choosing the apps, tap below. Only then will HardBlock check and request any authorizations that are still missing.</string>
     <string name="focus_mode_final_permissions_title">Final authorizations</string>
     <string name="focus_mode_final_permissions_description">Your chosen time and apps were preserved. Complete only what is still required to start.</string>
-    <string name="focus_mode_final_accessibility_missing">• Enable FocusGuard Accessibility to redirect blocked apps.</string>
+    <string name="focus_mode_final_accessibility_missing">• Enable HardBlock Accessibility to redirect blocked apps.</string>
     <string name="focus_mode_final_notification_missing">• Allow notification access to remove alerts from blocked apps.</string>
     <string name="focus_mode_open_accessibility">Open Accessibility</string>
     <string name="focus_mode_start">Review and start</string>
     <string name="focus_mode_terms_title">Confirm your focus commitment</string>
     <string name="focus_mode_terms_duration">Focus Mode will remain active for %1$s.</string>
-    <string name="focus_mode_terms_effects">During this period, unselected apps are redirected back to FocusGuard and their notifications are removed. If optional native protection is active, Android also suspends those apps and restricts Home and Recents.</string>
-    <string name="focus_mode_terms_essentials">Calls, emergency, SMS, FocusGuard, and the apps you selected remain available.</string>
-    <string name="focus_mode_terms_grayscale_on">Grayscale will be applied to the entire FocusGuard interface for this session.</string>
+    <string name="focus_mode_terms_effects">During this period, unselected apps are redirected back to HardBlock and their notifications are removed. If optional native protection is active, Android also suspends those apps and restricts Home and Recents.</string>
+    <string name="focus_mode_terms_essentials">Calls, emergency, SMS, HardBlock, and the apps you selected remain available.</string>
+    <string name="focus_mode_terms_grayscale_on">Grayscale will be applied to the entire HardBlock interface for this session.</string>
     <string name="focus_mode_terms_grayscale_off">Grayscale will remain disabled for this session.</string>
     <string name="focus_mode_terms_power_limits">Normal shutdown and restart remain available. Safe-mode boot can only be blocked when optional native protection has already been configured in Settings.</string>
     <string name="focus_mode_terms_exit">There is no early stop in the normal screen. Dev Area remains the product technical exit.</string>
@@ -723,21 +723,21 @@
     <string name="focus_mode_confirm_start">Agree and start</string>
     <string name="focus_mode_active_title">Focus Mode active</string>
     <string name="focus_mode_remaining">time remaining</string>
-    <string name="focus_mode_kiosk_title">You are in the FocusGuard environment</string>
+    <string name="focus_mode_kiosk_title">You are in the HardBlock environment</string>
     <string name="focus_mode_kiosk_description">Use the side menu to access Protection, Pomodoro, and AntiPorn. Return to Focus Mode to open allowed apps.</string>
     <string name="focus_mode_grayscale_active_title">Grayscale active</string>
-    <string name="focus_mode_grayscale_active_description">Every FocusGuard section remains colorless until this session ends.</string>
+    <string name="focus_mode_grayscale_active_description">Every HardBlock section remains colorless until this session ends.</string>
     <string name="focus_mode_essential_actions">Essential access</string>
     <string name="focus_mode_call">Call</string>
     <string name="focus_mode_open_sms">SMS</string>
     <string name="focus_mode_available_apps">Available apps</string>
     <string name="focus_mode_active_apps_locked">Tap to open. This list remains locked until the timer ends.</string>
-    <string name="focus_mode_only_essentials">No other app was allowed. Only calls, emergency, SMS, and FocusGuard are available.</string>
+    <string name="focus_mode_only_essentials">No other app was allowed. Only calls, emergency, SMS, and HardBlock are available.</string>
     <string name="focus_mode_system_apps_notice">Android does not allow %1$d protected system app(s) to be suspended. They are not shown here, and kiosk mode still prevents normal exit.</string>
     <string name="focus_mode_no_early_stop">There is no normal button to stop early. The mode ends automatically.</string>
     <string name="focus_mode_device_owner_required">Set up Device Owner in Settings &gt; Nuclear protection before starting Focus Mode.</string>
     <string name="focus_mode_system_lockdown_unsupported">Full kiosk and safe-mode blocking confirmation requires Android 9 or later. Focus Mode was not started on this device.</string>
-    <string name="focus_mode_accessibility_required">Enable FocusGuard Accessibility before starting Focus Mode.</string>
+    <string name="focus_mode_accessibility_required">Enable HardBlock Accessibility before starting Focus Mode.</string>
     <string name="focus_mode_notification_access_required">Allow notification access before starting Focus Mode.</string>
     <string name="focus_mode_start_failed">Android did not confirm every Focus Mode rule. No session was kept; review permissions and try again.</string>
     <string name="focus_mode_conflict_title">Another focus mode is active</string>
