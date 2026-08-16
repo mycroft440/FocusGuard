@@ -73,11 +73,8 @@ android {
         debug {
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
-            buildConfigField("String", "DEV_AREA_PASSWORD", "\"Dev00\"")
         }
         release {
-            // Deliberately available in the final product as a technical exit.
-            buildConfigField("String", "DEV_AREA_PASSWORD", "\"Dev00\"")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
