@@ -1,0 +1,52 @@
+name: Apply HardBlock brand
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/apply-hardblock-brand.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Replace user-facing FocusGuard brand
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          resource_files = [
+              Path('app/src/main/res/values/strings.xml'),
+              Path('app/src/main/res/values-en/strings.xml'),
+              Path('app/src/main/res/values-pt/strings.xml'),
+          ]
+          for path in resource_files:
+              text = path.read_text()
+              if 'FocusGuard' not in text:
+                  raise SystemExit(f'Expected FocusGuard brand not found in {path}')
+              path.write_text(text.replace('FocusGuard', 'HardBlock'))
+
+          exporter = Path('app/src/main/java/com/focusguard/utils/IntruderPhotoExporter.kt')
+          text = exporter.read_text()
+          old = 'private const val ALBUM = "FocusGuard"'
+          new = 'private const val ALBUM = "HardBlock"'
+          if old not in text:
+              raise SystemExit('Intruder album brand not found')
+          exporter.write_text(text.replace(old, new, 1))
+          PY
+      - name: Commit rebrand and remove helper
+        shell: bash
+        run: |
+          rm -f .github/workflows/apply-hardblock-brand.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "feat: rename app brand to HardBlock"
+          git push origin main
