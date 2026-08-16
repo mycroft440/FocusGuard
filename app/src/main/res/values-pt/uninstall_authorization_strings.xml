@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="uninstall_app_subtitle_free">Sem bloqueios ativos: desinstalação liberada</string>
+    <string name="uninstall_app_subtitle_auth">Use a mesma senha, padrão ou digital do bloqueio ativo</string>
+    <string name="uninstall_app_free_description">Não há nenhum bloqueio ativo. Você pode desinstalar o HardBlock diretamente mesmo com as permissões de proteção ainda concedidas.</string>
+    <string name="uninstall_app_block_auth_description">Existe um bloqueio reversível ativo. Para desinstalar, autorize com a mesma credencial que pode liberar esse bloqueio.</string>
+    <string name="uninstall_app_loading_authorization">Verificando a proteção dos bloqueios ativos…</string>
+    <string name="uninstall_app_pending_authorizations">Autorizações de proteção pendentes: %1$d</string>
+    <string name="uninstall_app_use_biometric">Utilizar digital</string>
+    <string name="uninstall_app_block_password">Senha do bloqueio</string>
+    <string name="uninstall_app_validate_password">Validar</string>
+    <string name="uninstall_app_draw_pattern">Desenhe o padrão usado no bloqueio</string>
+    <string name="uninstall_app_master_fallback_description">Um bloqueio antigo ou somente de site também exige a senha mestre de desativação.</string>
+    <string name="uninstall_app_authorization_complete">Autorização concluída. Você já pode continuar para a desinstalação do Android.</string>
+    <string name="uninstall_app_authorization_required">Um bloqueio ficou ativo antes da remoção. Autorize esse bloqueio antes de desinstalar.</string>
+    <string name="uninstall_app_wrong_block_credential">Essa credencial não corresponde a nenhum bloqueio pendente.</string>
+    <string name="uninstall_app_biometric_prompt_title">Autorizar desinstalação do HardBlock</string>
+    <string name="uninstall_app_biometric_prompt_subtitle">Use a mesma autenticação biométrica aceita pelo bloqueio ativo.</string>
+</resources>

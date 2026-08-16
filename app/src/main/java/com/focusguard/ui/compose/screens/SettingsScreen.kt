@@ -139,9 +139,17 @@ fun SettingsScreen(
             else -> R.string.device_owner_status_inactive
         }
     )
+    val uninstallSubtitle = stringResource(
+        if (isBlockingActive || isUninstallBlockedByTime) {
+            R.string.uninstall_app_subtitle_auth
+        } else {
+            R.string.uninstall_app_subtitle_free
+        }
+    )
 
     if (showUninstallDialog) {
         AuthenticatedUninstallDialog(
+            hasActiveBlock = isBlockingActive,
             hasActiveIrreversibleBlock = isUninstallBlockedByTime,
             onDismiss = { showUninstallDialog = false }
         )
@@ -252,7 +260,7 @@ fun SettingsScreen(
             SettingsItem(
                 Icons.Default.DeleteForever,
                 stringResource(R.string.uninstall_app_title),
-                stringResource(R.string.uninstall_app_subtitle),
+                uninstallSubtitle,
                 iconTint = DangerRed,
                 titleColor = DangerRed,
                 onClick = { showUninstallDialog = true }
@@ -260,7 +268,7 @@ fun SettingsScreen(
 
             Spacer(Modifier.height(32.dp))
             Text(
-                text = "FocusGuard ${BuildConfig.VERSION_NAME}",
+                text = "HardBlock ${BuildConfig.VERSION_NAME}",
                 modifier = Modifier.align(Alignment.CenterHorizontally),
                 fontSize = 12.sp,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
