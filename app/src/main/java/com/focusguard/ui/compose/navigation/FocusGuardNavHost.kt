@@ -2,8 +2,6 @@ package com.focusguard.ui.compose.navigation
 
 import androidx.compose.runtime.*
 import android.content.Intent
-import androidx.compose.ui.res.stringResource
-import com.focusguard.R
 import com.focusguard.data.CreatorInstagramPromptPolicy
 import com.focusguard.data.CreatorInstagramPromptStore
 import com.focusguard.data.UserProfileStore
@@ -41,7 +39,6 @@ import com.focusguard.ui.compose.screens.AuthScreen
 import com.focusguard.ui.compose.screens.BlockCustomizationScreen
 import com.focusguard.ui.compose.screens.BlockTypeDetailScreen
 import com.focusguard.ui.compose.screens.BlockTypeUi
-import com.focusguard.ui.compose.screens.DevelopmentAreaScreen
 import com.focusguard.ui.compose.screens.FocusModeScreen
 import com.focusguard.ui.compose.screens.IntruderLogScreen
 import com.focusguard.ui.compose.screens.LanguageScreen
@@ -75,7 +72,6 @@ private object FocusGuardRoute {
     const val UsageLimits = "USAGE_LIMITS"
     const val Dashboard = "DASHBOARD"
     const val BlockCustomization = "BLOCK_CUSTOMIZATION"
-    const val DevArea = "DEV_AREA"
     const val SessionsList = "SESSIONS_LIST"
     const val BlockTypeDetail = "BLOCK_TYPE_DETAIL"
 }
@@ -163,8 +159,6 @@ fun FocusGuardNavHost(
         if (currentPomodoro?.isActive == true || cycleActive) {
             val intervalStillRunning = (currentPomodoro?.endTime ?: 0L) > System.currentTimeMillis()
             if (!intervalStillRunning) {
-                // Não encerra o plano aqui. O PomodoroManager é o único dono da
-                // transição foco -> pausa -> foco e resolve este intervalo expirado.
                 return@LaunchedEffect
             }
             if (focusModeActive) {
@@ -243,7 +237,7 @@ fun FocusGuardNavHost(
                         PermissionsActivity.createPendingProtectionIntent(activity)
                     )
                 },
-                onBack = { /* Bloqueado enquanto um intervalo está em execução. */ }
+                onBack = { }
             )
         }
         return
@@ -254,7 +248,6 @@ fun FocusGuardNavHost(
             FocusGuardRoute.Limits,
             FocusGuardRoute.Language,
             FocusGuardRoute.Profile,
-            FocusGuardRoute.DevArea,
             FocusGuardRoute.BlockCustomization -> FocusGuardRoute.Settings
             FocusGuardRoute.IntruderLog,
             FocusGuardRoute.UsageLimits -> FocusGuardRoute.BlockTypeDetail
@@ -372,7 +365,6 @@ fun FocusGuardNavHost(
                     onLimitsClick = { currentRoute = FocusGuardRoute.Limits },
                     onLanguageClick = { currentRoute = FocusGuardRoute.Language },
                     onBlockCustomizationClick = { currentRoute = FocusGuardRoute.BlockCustomization },
-                    onDevAreaClick = { currentRoute = FocusGuardRoute.DevArea },
                     showCreatorInstagramEntry = creatorInstagramPresented,
                     onCreatorInstagramClick = { openCreatorInstagram(activity) },
                     onBack = { currentRoute = FocusGuardRoute.Home }
@@ -410,7 +402,7 @@ fun FocusGuardNavHost(
                     onPermissionsRequired = {
                         activity.startActivity(
                             PermissionsActivity.createPendingProtectionIntent(activity)
-                        )
+                    )
                     },
                     onBack = { currentRoute = FocusGuardRoute.BlockTypeDetail }
                 )
@@ -418,9 +410,6 @@ fun FocusGuardNavHost(
                     onBack = { currentRoute = FocusGuardRoute.Home }
                 )
                 FocusGuardRoute.BlockCustomization -> BlockCustomizationScreen(
-                    onBack = { currentRoute = FocusGuardRoute.Settings }
-                )
-                FocusGuardRoute.DevArea -> DevelopmentAreaScreen(
                     onBack = { currentRoute = FocusGuardRoute.Settings }
                 )
                 FocusGuardRoute.SessionsList -> SessionsListScreen(
