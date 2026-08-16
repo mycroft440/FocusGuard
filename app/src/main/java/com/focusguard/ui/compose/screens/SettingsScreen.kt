@@ -15,7 +15,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteForever
-import androidx.compose.material.icons.filled.DeveloperMode
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Palette
@@ -65,7 +64,6 @@ fun SettingsScreen(
     onLimitsClick: () -> Unit,
     onLanguageClick: () -> Unit,
     onBlockCustomizationClick: () -> Unit,
-    onDevAreaClick: () -> Unit,
     showCreatorInstagramEntry: Boolean,
     onCreatorInstagramClick: () -> Unit,
     onBack: () -> Unit
@@ -223,17 +221,6 @@ fun SettingsScreen(
                 stringResource(R.string.limits_and_security),
                 stringResource(R.string.settings_limits_subtitle),
                 onClick = onLimitsClick
-            )
-
-            Spacer(Modifier.height(24.dp))
-            FocusGuardSectionHeader(
-                stringResource(R.string.settings_category_development)
-            )
-            SettingsItem(
-                Icons.Default.DeveloperMode,
-                stringResource(R.string.dev_area_title),
-                stringResource(R.string.dev_area_subtitle),
-                onClick = onDevAreaClick
             )
 
             Spacer(Modifier.height(24.dp))
