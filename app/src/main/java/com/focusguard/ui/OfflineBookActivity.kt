@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
@@ -85,6 +86,7 @@ class OfflineBookActivity : ComponentActivity() {
             displayZoomControls = false
             cacheMode = WebSettings.LOAD_NO_CACHE
         }
+        webView.webChromeClient = WebChromeClient()
 
         if (bookAssetDirectory == OfflineBook.EASYPEASY.assetDirectory) {
             webView.addJavascriptInterface(BookEditorBridge(), BOOK_EDITOR_BRIDGE)
