@@ -9,6 +9,7 @@ import android.os.UserManager
 import com.focusguard.MainActivity
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.admin.FocusGuardDeviceAdminReceiver
+import com.focusguard.domain.port.FocusModeSystemPort
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -31,7 +32,7 @@ import javax.inject.Singleton
 class FocusModeKioskController @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val ownerManager: DeviceOwnerManager
-) {
+) : FocusModeSystemPort {
     companion object {
         const val EXTRA_RESTORE_FOCUS_MODE = "com.focusguard.extra.RESTORE_FOCUS_MODE"
     }
@@ -40,7 +41,7 @@ class FocusModeKioskController @Inject constructor(
      * Reconciles the Focus-Mode-only window restriction against persisted state.
      * This is Direct-Boot safe because [FocusModeStore] uses device-protected storage.
      */
-    fun reconcileSystemRestrictions(): Boolean {
+    override fun reconcileSystemRestrictions(): Boolean {
         if (!ownerManager.isDeviceOwnerActive() || Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
             return true
         }
@@ -76,7 +77,7 @@ class FocusModeKioskController @Inject constructor(
      * the short Home-screen window that would otherwise exist after a reboot or
      * process recreation.
      */
-    fun launchFocusGuardHome(): Boolean {
+    override fun launchFocusGuardHome(): Boolean {
         if (!FocusModeStore.isActive(appContext)) return false
 
         reconcileSystemRestrictions()

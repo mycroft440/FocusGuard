@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
-import android.widget.Toast
 import androidx.room.withTransaction
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
@@ -21,10 +20,13 @@ import com.focusguard.database.SessionAppCrossRef
 import com.focusguard.database.SessionWebsiteCrossRef
 import com.focusguard.database.WebsiteUsageLimit
 import com.focusguard.database.UsageLimitLockMode
+import com.focusguard.domain.port.BlockingEnforcementPort
+import com.focusguard.domain.port.BlockingRuntimePort
+import com.focusguard.domain.port.BlockingSnapshot
+import com.focusguard.domain.port.BlockingUserMessage
 import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.focusmode.FocusModePolicy
-import com.focusguard.receiver.BlockingScheduleCalculator
-import com.focusguard.receiver.BlockingScheduleReceiver
+import com.focusguard.scheduling.BlockingScheduleCalculator
 import com.focusguard.security.AuthManager
 import com.focusguard.security.BiometricAppUnlockPolicy
 import com.focusguard.security.BlockTargetPolicy
@@ -33,8 +35,6 @@ import com.focusguard.security.DopamineStartPolicy
 import com.focusguard.security.MasterCredentialPolicy
 import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.security.SelfProtectionStateStore
-import com.focusguard.service.BlockingAccessibilityService
-import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.UsageLimitForegroundPolicy
 import com.focusguard.utils.WebsiteBlocker
@@ -65,8 +65,9 @@ class BlockingSessionManager @Inject constructor(
     private val deactivationCredentialManager: DeactivationCredentialManager,
     private val database: AppDatabase,
     private val deviceOwnerManager: DeviceOwnerManager,
-    private val protectionPermissionGate: ProtectionPermissionGate
-) {
+    private val protectionPermissionGate: ProtectionPermissionGate,
+    private val blockingRuntime: BlockingRuntimePort
+) : BlockingEnforcementPort {
 
     class BlockingProtectionUnavailableException(
         val reason: Reason
@@ -734,7 +735,7 @@ class BlockingSessionManager @Inject constructor(
                         isRecurring = false,
                         blockedAppsCount = 0,
                         blockedWebsitesCount = pornographySites.size,
-                        sessionType = BlockTargetPolicy.SESSION_TYPE_TIME,
+                        sessionType = BlockSessionType.TIME,
                         isFixed24h = true
                     )
                 ).toInt()
@@ -754,7 +755,7 @@ class BlockingSessionManager @Inject constructor(
                         isRecurring = false,
                         blockedAppsCount = socialApps.size,
                         blockedWebsitesCount = socialSites.size,
-                        sessionType = BlockTargetPolicy.SESSION_TYPE_TIME,
+                        sessionType = BlockSessionType.TIME,
                         isFixed24h = true
                     )
                 ).toInt()
@@ -816,7 +817,7 @@ class BlockingSessionManager @Inject constructor(
         }
     }
 
-    fun startPomodoroSession(durationMs: Long, isBlockingEnabled: Boolean = true) {
+    override fun startPomodoroSession(durationMs: Long, isBlockingEnabled: Boolean) {
         scope.launch {
             runCatching {
                 require(durationMs > 0L) { "A duração do Pomodoro deve ser positiva" }
@@ -841,7 +842,7 @@ class BlockingSessionManager @Inject constructor(
                 if (isBlockingEnabled) armSelfProtectionBeforeFirstExposure()
                 checkAndEnforce()
             }.onSuccess {
-                showToast(R.string.modo_pomodoro_ativado_foco_total, Toast.LENGTH_LONG)
+                blockingRuntime.showUserMessage(BlockingUserMessage.POMODORO_STARTED)
             }.onFailure {
                 FocusGuardLogger.logError(
                     "BlockingSessionManager",
@@ -861,7 +862,7 @@ class BlockingSessionManager @Inject constructor(
             val changed = database.blockSessionDao()
                 .deactivateActiveSessionsByType(BlockSessionType.POMODORO) > 0
             StrictPomodoroLock.clear(context)
-            PomodoroForegroundService.stop(context)
+            blockingRuntime.stopPomodoroForeground()
             checkAndEnforce()
             changed
         }.onFailure {
@@ -932,7 +933,7 @@ class BlockingSessionManager @Inject constructor(
                     .deactivateActiveSessionsByType(BlockSessionType.PASSWORD)
                 checkAndEnforce()
             }.onSuccess {
-                showToast(R.string.bloqueios_por_senha_encerrados, Toast.LENGTH_SHORT)
+                blockingRuntime.showUserMessage(BlockingUserMessage.PASSWORD_SESSIONS_ENDED)
             }.onFailure {
                 FocusGuardLogger.logError(
                     "BlockingSessionManager",
@@ -1194,7 +1195,7 @@ class BlockingSessionManager @Inject constructor(
         }
     }
 
-    internal suspend fun checkAndEnforceStrict() {
+    override suspend fun checkAndEnforceStrict() {
         checkAndEnforceOrThrow()
     }
 
@@ -1212,7 +1213,7 @@ class BlockingSessionManager @Inject constructor(
                 database.blockSessionDao().deactivateExpiredSessions(now)
                 if (expiredPomodoro) {
                     StrictPomodoroLock.clear(context)
-                    PomodoroForegroundService.stop(context)
+                    blockingRuntime.stopPomodoroForeground()
                 }
 
                 val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
@@ -1264,8 +1265,7 @@ class BlockingSessionManager @Inject constructor(
                 ) {
                     now + POLICY_RECONCILIATION_INTERVAL_MILLIS
                 } else null
-                BlockingScheduleReceiver.scheduleNext(
-                    context = context,
+                val nextBoundary = BlockingScheduleCalculator.nextBoundary(
                     sessions = activeSessions,
                     additionalBoundaries = policyExpirations +
                         listOfNotNull(
@@ -1275,6 +1275,7 @@ class BlockingSessionManager @Inject constructor(
                         ),
                     nowMillis = now
                 )
+                blockingRuntime.scheduleReconciliation(nextBoundary)
                 val activeWebsiteDomains = WebsiteBlocker.normalizeRules(
                     activeWebsiteLimits.map { it.domain }
                 )
@@ -1400,11 +1401,10 @@ class BlockingSessionManager @Inject constructor(
                 }
                 deviceOwnerManager.applyNuclearShield()
 
-                context.sendBroadcast(
-                    BlockingAccessibilityService.createRefreshBlockingIntent(
-                        context = context,
-                        blockedApps = accessibilityAppsToBlock,
-                        blockedSites = sitesToBlock,
+                blockingRuntime.publishSnapshot(
+                    BlockingSnapshot(
+                        blockedApps = accessibilityAppsToBlock.toSet(),
+                        blockedSites = sitesToBlock.toSet(),
                         blockingActive = selfProtectionRequired,
                         strictPomodoro = strictPomodoro
                     )
@@ -1616,9 +1616,4 @@ class BlockingSessionManager @Inject constructor(
         }
     }
 
-    private suspend fun showToast(resourceId: Int, duration: Int) {
-        withContext(Dispatchers.Main) {
-            Toast.makeText(context, context.getString(resourceId), duration).show()
-        }
-    }
 }

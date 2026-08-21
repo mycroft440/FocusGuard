@@ -1,11 +1,11 @@
-package com.focusguard.receiver
+package com.focusguard.scheduling
 
 import com.focusguard.database.BlockSession
 import java.util.Calendar
 import java.util.TimeZone
 
-/** Cálculo puro, separado do Android AlarmManager para permitir testes determinísticos. */
-internal object BlockingScheduleCalculator {
+/** Pure boundary calculation, independent from AlarmManager and receivers. */
+object BlockingScheduleCalculator {
 
     fun nextLocalMidnight(
         nowMillis: Long,
@@ -53,7 +53,7 @@ internal object BlockingScheduleCalculator {
                 set(Calendar.MILLISECOND, 0)
             }
 
-            // O dia anterior é necessário para o término de janelas que cruzam meia-noite.
+            // The previous day covers the end of windows that cross midnight.
             for (offset in -1..7) {
                 val logicalDay = (baseDay.clone() as Calendar).apply {
                     add(Calendar.DAY_OF_YEAR, offset)

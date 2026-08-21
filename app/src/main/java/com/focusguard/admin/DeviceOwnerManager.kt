@@ -11,7 +11,6 @@ import android.os.Bundle
 import android.os.UserManager
 import android.provider.Settings
 import android.util.Log
-import android.widget.Toast
 import com.focusguard.R
 import com.focusguard.data.PredefinedWebsites
 import com.focusguard.focusmode.FocusModeStore
@@ -44,6 +43,18 @@ class DeviceOwnerManager @Inject constructor(
     @ApplicationContext private val context: Context,
     private val deactivationCredentialManager: DeactivationCredentialManager
 ) {
+
+    enum class RenounceOutcome {
+        NOT_ACTIVE,
+        MAINTENANCE_REQUIRED,
+        REVOKED,
+        FAILED
+    }
+
+    data class RenounceResult(
+        val outcome: RenounceOutcome,
+        val failureReason: String? = null
+    )
 
     private val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
     private val componentName = FocusGuardDeviceAdminReceiver.getComponentName(context)
@@ -1448,18 +1459,15 @@ class DeviceOwnerManager @Inject constructor(
 
     /** Renounce Device Owner privileges only from an authenticated maintenance window. */
     @Suppress("DEPRECATION")
-    fun renounceDeviceOwner() {
-        if (!isDeviceOwnerActive()) return
+    fun renounceDeviceOwner(): RenounceResult {
+        if (!isDeviceOwnerActive()) {
+            return RenounceResult(RenounceOutcome.NOT_ACTIVE)
+        }
         if (!ArmoredProtectionPolicy.canRenounceDeviceOwner(protectionPhase())) {
-            Toast.makeText(
-                context,
-                context.getString(R.string.device_owner_maintenance_required_to_revoke),
-                Toast.LENGTH_LONG
-            ).show()
-            return
+            return RenounceResult(RenounceOutcome.MAINTENANCE_REQUIRED)
         }
 
-        try {
+        return try {
             clearBlockingPolicies()
             revokeNuclearShield()
             setPornographyCategoryActive(false)
@@ -1468,20 +1476,17 @@ class DeviceOwnerManager @Inject constructor(
             }
             dpm.clearDeviceOwnerApp(context.packageName)
             DeviceOwnerMaintenanceGate.revoke(context)
-            Toast.makeText(
-                context,
-                context.getString(R.string.acesso_device_owner_revogado),
-                Toast.LENGTH_SHORT
-            ).show()
-        } catch (e: Exception) {
-            Toast.makeText(
-                context,
-                context.getString(
-                    R.string.falha_ao_revogar_device_owner_e_message,
-                    e.message ?: e.javaClass.simpleName
-                ),
-                Toast.LENGTH_LONG
-            ).show()
+            RenounceResult(RenounceOutcome.REVOKED)
+        } catch (error: Exception) {
+            FocusGuardLogger.logError(
+                "DeviceOwner",
+                "Falha ao revogar Device Owner",
+                error
+            )
+            RenounceResult(
+                outcome = RenounceOutcome.FAILED,
+                failureReason = error.message ?: error.javaClass.simpleName
+            )
         }
     }
 }

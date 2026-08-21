@@ -6,7 +6,6 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import com.focusguard.database.BlockSession
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.AndroidEntryPoint
@@ -50,11 +49,9 @@ class BlockingScheduleReceiver : BroadcastReceiver() {
             Intent.ACTION_TIMEZONE_CHANGED
         )
 
-        fun scheduleNext(
+        fun scheduleAt(
             context: Context,
-            sessions: Collection<BlockSession>,
-            additionalBoundaries: Collection<Long>,
-            nowMillis: Long = System.currentTimeMillis()
+            nextBoundary: Long?
         ) {
             val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
                 ?: return
@@ -64,11 +61,6 @@ class BlockingScheduleReceiver : BroadcastReceiver() {
                 Intent(context, BlockingScheduleReceiver::class.java)
                     .setAction(ACTION_RECONCILE_BLOCKING),
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-            )
-            val nextBoundary = BlockingScheduleCalculator.nextBoundary(
-                sessions = sessions,
-                additionalBoundaries = additionalBoundaries,
-                nowMillis = nowMillis
             )
             if (nextBoundary == null) {
                 alarmManager.cancel(operation)

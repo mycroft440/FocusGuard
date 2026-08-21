@@ -116,7 +116,36 @@ internal fun DeviceOwnerMaintenanceDialog(
                 TextButton(
                     onClick = {
                         showRevokeConfirmation = false
-                        manager.renounceDeviceOwner()
+                        val result = manager.renounceDeviceOwner()
+                        when (result.outcome) {
+                            DeviceOwnerManager.RenounceOutcome.NOT_ACTIVE -> Unit
+                            DeviceOwnerManager.RenounceOutcome.MAINTENANCE_REQUIRED -> {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(
+                                        R.string.device_owner_maintenance_required_to_revoke
+                                    ),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                            DeviceOwnerManager.RenounceOutcome.REVOKED -> {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.acesso_device_owner_revogado),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                            DeviceOwnerManager.RenounceOutcome.FAILED -> {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(
+                                        R.string.falha_ao_revogar_device_owner_e_message,
+                                        result.failureReason.orEmpty()
+                                    ),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
                         refreshState()
                         onDismiss()
                     }
