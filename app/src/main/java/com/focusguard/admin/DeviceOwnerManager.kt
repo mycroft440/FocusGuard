@@ -1,12 +1,9 @@
 package com.focusguard.admin
 
-import android.app.Activity
 import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
-import android.provider.Settings
 import com.focusguard.R
 import com.focusguard.security.ArmoredProtectionPolicy
 import com.focusguard.security.AuthManager
@@ -124,35 +121,6 @@ class DeviceOwnerManager @Inject constructor(
             )
         }
 
-    fun openDeviceAdminSettings(hostContext: Context): Boolean {
-        val candidates = listOf(
-            Intent(ACTION_DEVICE_ADMIN_SETTINGS),
-            Intent(Settings.ACTION_SECURITY_SETTINGS),
-            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = Uri.parse("package:${context.packageName}")
-            },
-            Intent(Settings.ACTION_SETTINGS)
-        )
-
-        candidates.forEach { candidate ->
-            val launched = runCatching {
-                if (hostContext !is Activity) {
-                    candidate.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                }
-                hostContext.startActivity(candidate)
-                true
-            }.onFailure { error ->
-                FocusGuardLogger.logError(
-                    "DeviceOwner",
-                    "Falha ao abrir ${candidate.action}",
-                    error
-                )
-            }.getOrDefault(false)
-            if (launched) return true
-        }
-        return false
-    }
-
     suspend fun syncSuspendedApps(
         allAppsInSessions: List<String>,
         appsToBlockNow: List<String>,
@@ -256,8 +224,6 @@ class DeviceOwnerManager @Inject constructor(
     }
 
     companion object {
-        private const val ACTION_DEVICE_ADMIN_SETTINGS =
-            "android.settings.DEVICE_ADMIN_SETTINGS"
         internal const val ADULT_DNS_HOST = DeviceOwnerPolicyCatalog.ADULT_DNS_HOST
 
         internal fun activeBlockRestrictionsForSdk(sdkInt: Int): List<String> =

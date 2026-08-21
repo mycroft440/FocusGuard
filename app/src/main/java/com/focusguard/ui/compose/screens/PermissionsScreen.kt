@@ -1,5 +1,6 @@
 package com.focusguard.ui.compose.screens
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -242,7 +243,7 @@ fun PermissionsScreen(
             return false
         }
         markPending(PermissionStepType.DeviceAdmin)
-        val launched = deviceOwnerManager.openDeviceAdminSettings(context)
+        val launched = openDeviceAdminSettings(context)
         if (!launched) {
             DeviceAdminActivationWindow.close(context)
             pendingExternalStepName = null
@@ -882,6 +883,33 @@ private fun openAccessibilitySettings(context: Context) {
     }.recoverCatching {
         context.startActivity(Intent(Settings.ACTION_SETTINGS))
     }
+}
+
+private fun openDeviceAdminSettings(context: Context): Boolean {
+    val candidates = listOf(
+        Intent("android.settings.DEVICE_ADMIN_SETTINGS"),
+        Intent(Settings.ACTION_SECURITY_SETTINGS),
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:${context.packageName}")
+        },
+        Intent(Settings.ACTION_SETTINGS)
+    )
+
+    for (candidate in candidates) {
+        val launched = runCatching {
+            if (context !is Activity) candidate.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(candidate)
+            true
+        }.onFailure { error ->
+            FocusGuardLogger.logError(
+                "Permissions",
+                "Falha ao abrir ${candidate.action}",
+                error
+            )
+        }.getOrDefault(false)
+        if (launched) return true
+    }
+    return false
 }
 
 private fun openUsageAccessSettings(context: Context) {
