@@ -239,4 +239,3 @@ object SettingsInterceptionPolicy {
         return Decision.IGNORE
     }
 }
-

@@ -175,4 +175,3 @@ object ManagedSelfProtectionPolicy {
 
     private val NON_LETTER_REGEX = "[^a-z]+".toRegex()
 }
-

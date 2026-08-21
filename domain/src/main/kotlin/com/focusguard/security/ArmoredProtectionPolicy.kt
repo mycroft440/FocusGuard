@@ -33,4 +33,3 @@ object ArmoredProtectionPolicy {
     /** Device Owner can only be relinquished after a legitimate maintenance transition. */
     fun canRenounceDeviceOwner(phase: Phase): Boolean = phase == Phase.MAINTENANCE
 }
-

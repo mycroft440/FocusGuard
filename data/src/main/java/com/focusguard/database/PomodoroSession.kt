@@ -37,5 +37,3 @@ interface PomodoroSessionDao {
     @Query("DELETE FROM pomodoro_sessions WHERE id = 1")
     suspend fun deleteSession()
 }
-
-

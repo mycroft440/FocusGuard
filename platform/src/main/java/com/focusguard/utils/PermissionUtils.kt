@@ -11,7 +11,6 @@ enum class EssentialPermission {
     ACCESSIBILITY,
     USAGE_ACCESS
 }
-
 /**
  * Utility class for permission checks.
  */
@@ -99,4 +98,3 @@ object PermissionUtils {
         if (!usageAccessEnabled) add(EssentialPermission.USAGE_ACCESS)
     }
 }
-

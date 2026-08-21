@@ -114,4 +114,3 @@ class SecurePrefsManager(context: Context) {
         return prefs.getInt(key, defaultValue)
     }
 }
-

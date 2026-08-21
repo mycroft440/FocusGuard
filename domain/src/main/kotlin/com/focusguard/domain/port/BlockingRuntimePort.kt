@@ -11,7 +11,6 @@ enum class BlockingUserMessage {
     POMODORO_STARTED,
     PASSWORD_SESSIONS_ENDED
 }
-
 /** Android effects emitted by the blocking use cases. */
 interface BlockingRuntimePort {
     suspend fun showUserMessage(message: BlockingUserMessage)
@@ -19,4 +18,3 @@ interface BlockingRuntimePort {
     fun scheduleReconciliation(atMillis: Long?)
     fun publishSnapshot(snapshot: BlockingSnapshot)
 }
-

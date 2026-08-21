@@ -7,4 +7,3 @@ interface FocusModeRuntimePort {
     fun activate(endTimeMillis: Long)
     fun deactivate()
 }
-

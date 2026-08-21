@@ -152,4 +152,3 @@ object AccessibilitySettingsPolicy {
             .lowercase(Locale.ROOT)
     }
 }
-

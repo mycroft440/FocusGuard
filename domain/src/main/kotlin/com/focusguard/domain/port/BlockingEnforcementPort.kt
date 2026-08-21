@@ -5,4 +5,3 @@ interface BlockingEnforcementPort {
     fun startPomodoroSession(durationMs: Long, isBlockingEnabled: Boolean = true)
     suspend fun checkAndEnforceStrict()
 }
-

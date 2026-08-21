@@ -55,4 +55,3 @@ object UsageAccessPausePolicy {
         enabledAppLimitCount: Int
     ): Boolean = !usageAccessGranted && enabledAppLimitCount > 0
 }
-

@@ -49,4 +49,3 @@ object IntruderCapturePolicy {
         photoCaptureEnabled: Boolean
     ): Boolean = photoCaptureEnabled && capturesOn(surface)
 }
-

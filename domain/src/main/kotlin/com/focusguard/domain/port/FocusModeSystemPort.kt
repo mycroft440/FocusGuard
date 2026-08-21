@@ -5,4 +5,3 @@ interface FocusModeSystemPort {
     fun reconcileSystemRestrictions(): Boolean
     fun launchFocusGuardHome(): Boolean
 }
-

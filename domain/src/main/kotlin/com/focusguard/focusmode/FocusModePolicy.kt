@@ -113,7 +113,6 @@ object FocusModePolicy {
 
     fun canPomodoroReleaseKiosk(focusModeActive: Boolean): Boolean = !focusModeActive
 }
-
 data class FocusModeSession(
     val startedAtMillis: Long,
     val endTimeMillis: Long,
@@ -134,4 +133,3 @@ data class FocusModeSelectableApp(
     val packageName: String,
     val appName: String
 )
-

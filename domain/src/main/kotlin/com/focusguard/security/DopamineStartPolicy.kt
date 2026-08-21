@@ -30,4 +30,3 @@ object DopamineStartPolicy {
         else -> ProtectionLevel.SIMPLE
     }
 }
-
