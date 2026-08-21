@@ -48,7 +48,7 @@ import com.focusguard.admin.DeviceOwnerProtectionAuditor
 import com.focusguard.data.UserProfile
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.DeactivationCredentialManager
-import com.focusguard.security.AuthenticatedUninstallCoordinator
+import com.focusguard.uninstall.AuthenticatedUninstallCoordinator
 import com.focusguard.security.PasswordAppUnlockStore
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.focusguard.ui.MasterPasswordActivity

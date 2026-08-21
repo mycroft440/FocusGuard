@@ -9,7 +9,7 @@ import com.focusguard.focusmode.FocusModeKioskController
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.PomodoroManager
-import com.focusguard.manager.StrictPomodoroLock
+import com.focusguard.pomodoro.StrictPomodoroLock
 import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.AccessibilityStateMonitor

@@ -4,7 +4,7 @@ import android.app.Application
 import android.os.UserManager
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeManager
-import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.state.FocusModeStore
 import com.focusguard.utils.AccessibilityStateMonitor
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.UsageAccessStateMonitor

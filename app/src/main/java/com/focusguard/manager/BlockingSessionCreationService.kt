@@ -22,7 +22,7 @@ import com.focusguard.security.BlockTargetPolicy
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.DopamineStartPolicy
 import com.focusguard.security.MasterCredentialPolicy
-import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.permissions.ProtectionPermissionGate
 import com.focusguard.security.SelfProtectionStateStore
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker

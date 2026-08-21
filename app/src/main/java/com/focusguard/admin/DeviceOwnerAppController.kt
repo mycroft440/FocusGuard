@@ -7,7 +7,7 @@ import android.content.pm.PackageManager
 import android.os.Build
 import android.os.UserManager
 import android.util.Log
-import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.state.FocusModeStore
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject

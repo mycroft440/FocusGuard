@@ -13,7 +13,7 @@ import androidx.core.app.NotificationCompat
 import com.focusguard.MainActivity
 import com.focusguard.R
 import com.focusguard.focusmode.FocusModeManager
-import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.state.FocusModeStore
 import com.focusguard.receiver.FocusModeReceiver
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.AndroidEntryPoint

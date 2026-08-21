@@ -20,9 +20,9 @@ import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
-import com.focusguard.security.AuthenticatedUninstallCoordinator
+import com.focusguard.uninstall.AuthenticatedUninstallCoordinator
 import com.focusguard.security.DeactivationCredentialManager
-import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.permissions.ProtectionPermissionGate
 import com.focusguard.security.PasswordAppUnlockStore
 import com.focusguard.pomodoro.PomodoroPlanStore
 import com.focusguard.pomodoro.PomodoroNotificationController

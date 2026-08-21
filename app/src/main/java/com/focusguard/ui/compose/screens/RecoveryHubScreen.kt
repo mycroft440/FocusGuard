@@ -88,7 +88,7 @@ import com.focusguard.data.RecoveryJourney.Status
 import com.focusguard.data.RecoveryProtectionPreset
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.BlockingSessionManager.BlockingProtectionUnavailableException
-import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.permissions.ProtectionPermissionGate
 import com.focusguard.ui.PermissionsActivity
 import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.CancellationException

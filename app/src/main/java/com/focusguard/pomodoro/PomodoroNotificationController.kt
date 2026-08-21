@@ -33,8 +33,8 @@ class PomodoroNotificationController @Inject constructor(
     fun notificationListenerIntent(): Intent = Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
 
-    fun hasNotificationListenerAccess(listenerClass: Class<*>): Boolean {
-        val component = ComponentName(appContext, listenerClass)
+    fun hasNotificationListenerAccess(listenerClassName: String): Boolean {
+        val component = ComponentName(appContext.packageName, listenerClassName)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O_MR1) {
             return manager?.isNotificationListenerAccessGranted(component) == true
         }

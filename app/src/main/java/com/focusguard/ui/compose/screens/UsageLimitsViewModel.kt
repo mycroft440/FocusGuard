@@ -9,7 +9,7 @@ import com.focusguard.repository.WebsiteLimitChange
 import com.focusguard.security.AuthManager
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.MasterCredentialPolicy
-import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.permissions.ProtectionPermissionGate
 import com.focusguard.ui.compose.components.limits.UsageLimitAppUi
 import com.focusguard.ui.compose.components.limits.WebsiteLimitUi
 import com.focusguard.utils.FocusGuardLogger

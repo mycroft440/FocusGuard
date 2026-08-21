@@ -68,7 +68,7 @@ import androidx.lifecycle.LifecycleOwner
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.security.DeviceAdminActivationWindow
-import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.permissions.ProtectionPermissionGate
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
@@ -957,59 +957,5 @@ private fun openAppInfo(context: Context) {
         context.startActivity(intent)
     }.recoverCatching {
         openAccessibilitySettings(context)
-    }
-}
-
-@Composable
-fun PermissionCard(
-    number: Int,
-    title: String,
-    description: String,
-    detail: String,
-    badge: String,
-    badgeColor: Color,
-    isGranted: Boolean,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
-        border = BorderStroke(1.dp, CardBorder)
-    ) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier.size(32.dp).background(color = DarkCardElevated, shape = RoundedCornerShape(10.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = "$number", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = AccentCyan)
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(text = description, fontSize = 12.sp, color = TextSecondary)
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(text = detail, fontSize = 11.sp, color = TextHint)
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Button(
-                onClick = onClick,
-                enabled = !isGranted,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isGranted) SuccessGreen else AccentCyan,
-                    disabledContainerColor = SuccessGreen.copy(alpha = 0.7f)
-                ),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                modifier = Modifier.height(36.dp)
-            ) {
-                if (isGranted) {
-                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                }
-                Text(text = if (isGranted) "Concedida" else "Ativar", fontSize = 12.sp)
-            }
-        }
     }
 }

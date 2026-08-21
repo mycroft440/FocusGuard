@@ -16,7 +16,8 @@ import com.focusguard.domain.model.UsageLimitLockMode
 import com.focusguard.domain.port.BlockingRuntimePort
 import com.focusguard.domain.port.BlockingSnapshot
 import com.focusguard.focusmode.FocusModePolicy
-import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.state.FocusModeStore
+import com.focusguard.pomodoro.StrictPomodoroLock
 import com.focusguard.scheduling.BlockingScheduleCalculator
 import com.focusguard.security.AuthManager
 import com.focusguard.security.MasterCredentialPolicy

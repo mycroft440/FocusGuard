@@ -2,6 +2,7 @@ package com.focusguard.platform
 
 import android.content.Context
 import android.content.Intent
+import com.focusguard.contract.EnforcementUiContract
 import com.focusguard.domain.port.PomodoroRuntimePort
 import com.focusguard.pomodoro.PomodoroNotificationController
 import com.focusguard.service.BlockingAccessibilityService
@@ -21,7 +22,7 @@ class AndroidPomodoroRuntimeAdapter @Inject constructor(
 
     override fun hasNotificationListenerAccess(): Boolean =
         notificationController.hasNotificationListenerAccess(
-            FocusModeNotificationService::class.java
+            EnforcementUiContract.FOCUS_MODE_NOTIFICATION_SERVICE_CLASS_NAME
         )
 
     override fun requestNotificationRefresh() {

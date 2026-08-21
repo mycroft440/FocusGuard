@@ -6,7 +6,8 @@ import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.domain.port.BlockingEnforcementPort
 import com.focusguard.domain.port.FocusModeRuntimePort
 import com.focusguard.domain.port.FocusModeSystemPort
-import com.focusguard.manager.StrictPomodoroLock
+import com.focusguard.pomodoro.StrictPomodoroLock
+import com.focusguard.state.FocusModeStore
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject

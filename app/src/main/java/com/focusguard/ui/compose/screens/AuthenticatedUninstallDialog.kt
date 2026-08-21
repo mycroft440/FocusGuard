@@ -36,7 +36,7 @@ import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AppUnlockBiometricAuthenticator
-import com.focusguard.security.AuthenticatedUninstallCoordinator
+import com.focusguard.uninstall.AuthenticatedUninstallCoordinator
 import com.focusguard.security.BiometricAppUnlockPolicy
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.PasswordAppUnlockMode

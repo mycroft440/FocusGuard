@@ -9,6 +9,7 @@ import android.os.UserManager
 import com.focusguard.MainActivity
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.admin.FocusGuardDeviceAdminReceiver
+import com.focusguard.state.FocusModeStore
 import com.focusguard.domain.port.FocusModeSystemPort
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.qualifiers.ApplicationContext

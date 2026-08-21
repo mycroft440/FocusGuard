@@ -11,7 +11,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.focusguard.MainActivity
 import com.focusguard.admin.DeviceOwnerManager
-import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.permissions.ProtectionPermissionGate
 import com.focusguard.security.SelfProtectionConsent
 import com.focusguard.security.SensitivePermissionsConsent
 import com.focusguard.ui.compose.screens.PermissionFlowMode

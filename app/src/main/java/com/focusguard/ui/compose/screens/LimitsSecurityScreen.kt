@@ -29,9 +29,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
+import com.focusguard.contract.EnforcementUiContract
 import kotlin.OptIn
 import com.focusguard.security.AuthManager
-import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.permissions.ProtectionPermissionGate
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.ui.PermissionsActivity
@@ -272,7 +273,7 @@ fun LimitsSecurityScreen(
                                 }
                                 context.sendBroadcast(
                                     android.content.Intent(
-                                        com.focusguard.service.BlockingAccessibilityService.ACTION_REFRESH_BLOCKING
+                        EnforcementUiContract.ACTION_REFRESH_BLOCKING
                                     ).setPackage(context.packageName)
                                 )
                             },

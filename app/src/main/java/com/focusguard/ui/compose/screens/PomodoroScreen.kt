@@ -77,8 +77,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.contract.EnforcementUiContract
 import com.focusguard.focusmode.FocusModePolicy
-import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.state.FocusModeStore
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.pomodoro.PomodoroAlarmController
 import com.focusguard.pomodoro.PomodoroNotificationController
@@ -88,9 +89,8 @@ import com.focusguard.pomodoro.PomodoroPlanStore
 import com.focusguard.pomodoro.PomodoroProfile
 import com.focusguard.pomodoro.PomodoroUiSignal
 import com.focusguard.security.AuthManager
-import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.permissions.ProtectionPermissionGate
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.focusguard.service.FocusModeNotificationService
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
@@ -176,7 +176,7 @@ fun PomodoroScreen(
     }
     val hasNotificationAccess = remember(permissionRevision) {
         notificationController.hasNotificationListenerAccess(
-            FocusModeNotificationService::class.java
+            EnforcementUiContract.FOCUS_MODE_NOTIFICATION_SERVICE_CLASS_NAME
         )
     }
     val profiles = remember(profileRevision) { planStore.allProfiles() }

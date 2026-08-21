@@ -9,7 +9,7 @@ import android.service.notification.StatusBarNotification
 import android.telecom.TelecomManager
 import androidx.core.content.ContextCompat
 import com.focusguard.focusmode.FocusModePolicy
-import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.state.FocusModeStore
 import com.focusguard.pomodoro.PomodoroPlanStore
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.AndroidEntryPoint

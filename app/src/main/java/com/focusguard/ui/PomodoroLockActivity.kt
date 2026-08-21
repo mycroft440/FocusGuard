@@ -50,9 +50,9 @@ import androidx.lifecycle.lifecycleScope
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModePolicy
-import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.state.FocusModeStore
 import com.focusguard.manager.PomodoroManager
-import com.focusguard.manager.StrictPomodoroLock
+import com.focusguard.pomodoro.StrictPomodoroLock
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DarkBg

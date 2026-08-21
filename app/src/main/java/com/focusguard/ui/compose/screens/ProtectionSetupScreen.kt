@@ -596,15 +596,21 @@ private fun WebsiteRuleSelectionScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    var input by remember { mutableStateOf("") }
-    var rules by remember(initialRules, configuredBlockedRules) {
+    var input by rememberSaveable { mutableStateOf("") }
+    var rules by rememberSaveable(initialRules, stateSaver = StringListSaver) {
         mutableStateOf(
             initialRules.distinct().filterNot {
                 isWebsiteRuleAlreadyBlocked(it, configuredBlockedRules)
             }
         )
     }
-    var invalidInput by remember { mutableStateOf(false) }
+    var invalidInput by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(configuredBlockedRules) {
+        rules = rules.filterNot {
+            isWebsiteRuleAlreadyBlocked(it, configuredBlockedRules)
+        }
+    }
 
     fun addRule(value: String) {
         val normalized = WebsiteBlocker.normalizeRule(value)

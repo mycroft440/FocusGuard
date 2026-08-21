@@ -6,7 +6,7 @@ import com.focusguard.database.PomodoroSession
 import com.focusguard.domain.model.BlockSessionType
 import com.focusguard.domain.port.BlockingEnforcementPort
 import com.focusguard.domain.port.PomodoroRuntimePort
-import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.state.FocusModeStore
 import com.focusguard.pomodoro.PomodoroAlarmController
 import com.focusguard.pomodoro.PomodoroCyclePolicy
 import com.focusguard.pomodoro.PomodoroCycleRuntime
@@ -14,7 +14,8 @@ import com.focusguard.pomodoro.PomodoroNotificationController
 import com.focusguard.pomodoro.PomodoroPhase
 import com.focusguard.pomodoro.PomodoroPlanConfig
 import com.focusguard.pomodoro.PomodoroPlanStore
-import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.pomodoro.StrictPomodoroLock
+import com.focusguard.permissions.ProtectionPermissionGate
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject

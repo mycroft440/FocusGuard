@@ -1,10 +1,11 @@
-package com.focusguard.security
+package com.focusguard.uninstall
 
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.security.AuthenticatedRemovalWindow
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject

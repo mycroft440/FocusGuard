@@ -33,19 +33,15 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -59,7 +55,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.data.PredefinedApps
@@ -67,7 +62,7 @@ import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
 import com.focusguard.security.BlockTargetPolicy
 import com.focusguard.security.DeactivationCredentialManager
-import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.permissions.ProtectionPermissionGate
 import com.focusguard.security.PasswordAppUnlockStore
 import com.focusguard.ui.compose.screens.AppSelectionList
 import com.focusguard.ui.compose.screens.AppSelectionScreen
@@ -79,7 +74,6 @@ import com.focusguard.ui.compose.screens.TimeAwareFinalConfigStep
 import com.focusguard.ui.compose.screens.UnifiedProtectionSetupWizard
 import com.focusguard.ui.compose.screens.WebsiteRulesTab
 import com.focusguard.ui.compose.theme.AccentCyan
-import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
 import com.focusguard.ui.compose.theme.DarkCard
 import com.focusguard.ui.compose.theme.DarkSurface
@@ -243,12 +237,21 @@ fun AppSelectionStep(
     val context = androidx.compose.ui.platform.LocalContext.current
     val pm = context.packageManager
     var apps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
+    var draftSelectedPackages by rememberSaveable(
+        initialSelectedPackages,
+        stateSaver = StringListSaver
+    ) {
+        mutableStateOf(initialSelectedPackages.toList())
+    }
     var configuredBlockedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
     var configuredBlockedRules by remember { mutableStateOf<Set<String>>(emptySet()) }
-    var rules by remember { mutableStateOf(initialRules) }
+    var rules by rememberSaveable(initialRules, stateSaver = StringListSaver) {
+        mutableStateOf(initialRules)
+    }
     var isLoading by remember { mutableStateOf(true) }
 
     LaunchedEffect(initialSelectedPackages) {
+        val selectedPackagesSnapshot = draftSelectedPackages.toSet()
         withContext(Dispatchers.IO) {
             val configured = try {
                 blockingSessionManager.getConfiguredBlockedTargets()
@@ -287,7 +290,7 @@ fun AppSelectionStep(
                     SelectableAppUi(
                         packageName = info.packageName,
                         appName = info.loadLabel(pm).toString(),
-                        isSelected = info.packageName in initialSelectedPackages &&
+                        isSelected = info.packageName in selectedPackagesSnapshot &&
                             info.packageName !in blockedPackages,
                         isInstalled = true
                     )
@@ -305,7 +308,7 @@ fun AppSelectionStep(
                     SelectableAppUi(
                         packageName = it.packageName,
                         appName = it.appName,
-                        isSelected = it.packageName in initialSelectedPackages &&
+                        isSelected = it.packageName in selectedPackagesSnapshot &&
                             it.packageName !in blockedPackages,
                         isInstalled = false,
                         category = it.category,
@@ -316,7 +319,15 @@ fun AppSelectionStep(
             withContext(Dispatchers.Main) {
                 configuredBlockedPackages = blockedPackages
                 configuredBlockedRules = blockedRules
-                apps = predefinedApps + installedApps
+                val loadedApps = predefinedApps + installedApps
+                val availablePackages = loadedApps.mapTo(hashSetOf()) { it.packageName }
+                draftSelectedPackages = draftSelectedPackages.filter {
+                    it in availablePackages && it !in blockedPackages
+                }
+                rules = rules.filterNot { it in blockedRules }
+                apps = loadedApps.map { app ->
+                    app.copy(isSelected = app.packageName in draftSelectedPackages)
+                }
                 isLoading = false
             }
         }
@@ -324,6 +335,7 @@ fun AppSelectionStep(
 
     val toggleApp: (String) -> Unit = { pkg ->
         if (pkg in configuredBlockedPackages) {
+            draftSelectedPackages = draftSelectedPackages.filterNot { it == pkg }
             apps = apps.map {
                 if (it.packageName == pkg) it.copy(isSelected = false) else it
             }
@@ -333,8 +345,17 @@ fun AppSelectionStep(
                 Toast.LENGTH_SHORT
             ).show()
         } else {
+            draftSelectedPackages = if (pkg in draftSelectedPackages) {
+                draftSelectedPackages.filterNot { it == pkg }
+            } else {
+                draftSelectedPackages + pkg
+            }
             apps = apps.map {
-                if (it.packageName == pkg) it.copy(isSelected = !it.isSelected) else it
+                if (it.packageName == pkg) {
+                    it.copy(isSelected = pkg in draftSelectedPackages)
+                } else {
+                    it
+                }
             }
         }
     }
@@ -368,7 +389,7 @@ fun AppSelectionStep(
             if (kinds.keywords) add(BlockTargetTab.KEYWORDS)
         }
     }
-    var selectedTab by remember { mutableStateOf(tabs.first()) }
+    var selectedTab by rememberSaveable(kinds) { mutableStateOf(tabs.first()) }
     val onAlreadyBlocked: () -> Unit = {
         Toast.makeText(
             context,
@@ -467,84 +488,4 @@ private fun ProceedButton(onClick: () -> Unit) {
             fontSize = 16.sp
         )
     }
-}
-
-// Fluxo de criação de sessão unificado.
-
-@Composable
-fun PasswordCreationDialog(
-    onDismiss: () -> Unit,
-    onPasswordCreated: (String) -> Unit,
-    isSaving: Boolean = false
-) {
-    var password by remember { mutableStateOf("") }
-    var confirmPassword by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-
-    // Içadas: stringResource é @Composable e não pode ser chamada dentro do onClick.
-    val emptyPasswordError = stringResource(R.string.create_session_error_empty)
-    val passwordMismatchError = stringResource(R.string.create_session_error_mismatch)
-
-    AlertDialog(
-        onDismissRequest = { if (!isSaving) onDismiss() },
-        title = { Text(stringResource(R.string.final_config_create_password), color = TextPrimary) },
-        text = {
-            Column {
-                Text(stringResource(R.string.create_password_subtitle), color = TextSecondary, fontSize = 14.sp)
-                Spacer(modifier = Modifier.height(16.dp))
-                OutlinedTextField(
-                    value = password,
-                    onValueChange = { password = it; error = null },
-                    label = { Text(stringResource(R.string.new_password)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    visualTransformation = PasswordVisualTransformation(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary,
-                        focusedBorderColor = AccentCyan
-                    )
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                OutlinedTextField(
-                    value = confirmPassword,
-                    onValueChange = { confirmPassword = it; error = null },
-                    label = { Text(stringResource(R.string.confirmar_senha)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    visualTransformation = PasswordVisualTransformation(),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = TextPrimary,
-                        unfocusedTextColor = TextPrimary,
-                        focusedBorderColor = AccentCyan
-                    )
-                )
-                if (error != null) {
-                    Text(error!!, color = DangerRed, fontSize = 12.sp, modifier = Modifier.padding(top = 4.dp))
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    if (password.isBlank()) {
-                        error = emptyPasswordError
-                    } else if (password != confirmPassword) {
-                        error = passwordMismatchError
-                    } else {
-                        onPasswordCreated(password)
-                    }
-                },
-                enabled = !isSaving,
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-            ) {
-                Text(stringResource(R.string.create_password_save), color = DarkBg)
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss, enabled = !isSaving) {
-                Text(stringResource(R.string.create_password_cancel), color = TextSecondary)
-            }
-        },
-        containerColor = DarkSurface,
-        shape = RoundedCornerShape(24.dp)
-    )
 }

@@ -5,7 +5,7 @@ import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.os.Build
 import android.util.Log
-import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.state.FocusModeStore
 import com.focusguard.security.AuthenticatedRemovalWindow
 import com.focusguard.security.DeviceOwnerMaintenanceGate
 import com.focusguard.utils.FocusGuardLogger

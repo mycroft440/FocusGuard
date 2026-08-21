@@ -1,4 +1,4 @@
-package com.focusguard.manager
+package com.focusguard.pomodoro
 
 import android.content.Context
 import android.os.Build

@@ -12,13 +12,12 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
-import com.focusguard.MainActivity
 import com.focusguard.R
+import com.focusguard.contract.EnforcementUiContract
 import com.focusguard.manager.PomodoroManager
-import com.focusguard.manager.StrictPomodoroLock
 import com.focusguard.pomodoro.PomodoroPhase
 import com.focusguard.pomodoro.PomodoroPlanStore
-import com.focusguard.ui.PomodoroLockActivity
+import com.focusguard.pomodoro.StrictPomodoroLock
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
@@ -198,7 +197,7 @@ class PomodoroForegroundService : Service() {
 
     private fun ensureLockActivityOnTop() {
         try {
-            val intent = Intent(applicationContext, PomodoroLockActivity::class.java).apply {
+            val intent = EnforcementUiContract.createPomodoroLockIntent(applicationContext).apply {
                 addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or
                         Intent.FLAG_ACTIVITY_SINGLE_TOP or
@@ -240,11 +239,15 @@ class PomodoroForegroundService : Service() {
             }
         )
 
-        val targetActivity = if (strict) PomodoroLockActivity::class.java else MainActivity::class.java
+        val targetIntent = if (strict) {
+            EnforcementUiContract.createPomodoroLockIntent(applicationContext)
+        } else {
+            EnforcementUiContract.createMainIntent(applicationContext)
+        }
         val contentIntent = PendingIntent.getActivity(
             applicationContext,
             0,
-            Intent(applicationContext, targetActivity).apply {
+            targetIntent.apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE

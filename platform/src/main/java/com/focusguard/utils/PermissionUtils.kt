@@ -25,12 +25,11 @@ object PermissionUtils {
             Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
         ) ?: return false
 
-        val expectedService = ComponentName(context.packageName, "com.focusguard.service.BlockingAccessibilityService")
         val splitter = TextUtils.SimpleStringSplitter(':')
         splitter.setString(enabledServices)
 
         return splitter.any { service ->
-            ComponentName.unflattenFromString(service)?.equals(expectedService) == true
+            ComponentName.unflattenFromString(service)?.packageName == context.packageName
         }
     }
 

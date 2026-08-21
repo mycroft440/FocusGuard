@@ -8,7 +8,7 @@ import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.WebsiteUsageLimit
 import com.focusguard.domain.model.BlockSessionType
 import com.focusguard.focusmode.FocusModePolicy
-import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.state.FocusModeStore
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
 import com.focusguard.security.SelfProtectionStateStore

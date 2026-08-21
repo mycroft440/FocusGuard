@@ -1,10 +1,11 @@
-package com.focusguard.security
+package com.focusguard.permissions
 
 import android.Manifest
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.security.SelfProtectionConsent
 import com.focusguard.utils.PermissionUtils
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject

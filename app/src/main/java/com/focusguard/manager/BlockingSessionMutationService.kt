@@ -9,6 +9,7 @@ import com.focusguard.domain.model.BlockSessionType
 import com.focusguard.domain.model.UsageLimitLockMode
 import com.focusguard.domain.port.BlockingRuntimePort
 import com.focusguard.domain.port.BlockingUserMessage
+import com.focusguard.pomodoro.StrictPomodoroLock
 import com.focusguard.scheduling.BlockingScheduleCalculator
 import com.focusguard.security.BiometricAppUnlockPolicy
 import com.focusguard.security.DeactivationCredentialManager

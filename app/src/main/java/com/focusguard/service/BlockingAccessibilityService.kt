@@ -11,10 +11,11 @@ import android.view.accessibility.AccessibilityEvent
 import android.widget.Toast
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.contract.EnforcementUiContract
 import com.focusguard.focusmode.FocusModePolicy
-import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.state.FocusModeStore
 import com.focusguard.manager.BlockingSessionManager
-import com.focusguard.manager.StrictPomodoroLock
+import com.focusguard.pomodoro.StrictPomodoroLock
 import com.focusguard.security.SettingsInterceptionPolicy
 import com.focusguard.security.SelfProtectionStateStore
 import com.focusguard.utils.FocusGuardLogger
@@ -490,15 +491,18 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal const val BLOCK_NOTICE_RELAUNCH_COOLDOWN_MILLIS = 1_500L
         internal const val INSTANT_CURTAIN_FAILSAFE_MILLIS = 5_000L
         internal const val EVENT_NOTIFICATION_TIMEOUT_MILLIS = 0L
-        internal const val WEBSITE_BLOCK_NOTICE_DURATION_MILLIS = 1_000L
+        internal const val WEBSITE_BLOCK_NOTICE_DURATION_MILLIS =
+            EnforcementUiContract.WEBSITE_BLOCK_NOTICE_DURATION_MILLIS
 
-        const val ACTION_REFRESH_BLOCKING = "com.focusguard.ACTION_REFRESH_BLOCKING"
-        const val ACTION_BLOCK_NOTICE_READY = "com.focusguard.ACTION_BLOCK_NOTICE_READY"
-        const val EXTRA_STRICT_BLOCK = "STRICT_BLOCK"
-        const val EXTRA_BLOCKED_PACKAGE = "BLOCKED_PACKAGE"
-        const val EXTRA_BLOCKED_DOMAIN = "BLOCKED_DOMAIN"
-        const val EXTRA_REDIRECT_BROWSER_PACKAGE = "REDIRECT_BROWSER_PACKAGE"
-        const val EXTRA_BLOCK_DETECTED_ELAPSED_REALTIME = "BLOCK_DETECTED_ELAPSED_REALTIME"
+        const val ACTION_REFRESH_BLOCKING = EnforcementUiContract.ACTION_REFRESH_BLOCKING
+        const val ACTION_BLOCK_NOTICE_READY = EnforcementUiContract.ACTION_BLOCK_NOTICE_READY
+        const val EXTRA_STRICT_BLOCK = EnforcementUiContract.EXTRA_STRICT_BLOCK
+        const val EXTRA_BLOCKED_PACKAGE = EnforcementUiContract.EXTRA_BLOCKED_PACKAGE
+        const val EXTRA_BLOCKED_DOMAIN = EnforcementUiContract.EXTRA_BLOCKED_DOMAIN
+        const val EXTRA_REDIRECT_BROWSER_PACKAGE =
+            EnforcementUiContract.EXTRA_REDIRECT_BROWSER_PACKAGE
+        const val EXTRA_BLOCK_DETECTED_ELAPSED_REALTIME =
+            EnforcementUiContract.EXTRA_BLOCK_DETECTED_ELAPSED_REALTIME
         internal const val EXTRA_BLOCKING_SNAPSHOT_PRESENT = "BLOCKING_SNAPSHOT_PRESENT"
         internal const val EXTRA_BLOCKED_APPS_SNAPSHOT = "BLOCKED_APPS_SNAPSHOT"
         internal const val EXTRA_BLOCKED_SITES_SNAPSHOT = "BLOCKED_SITES_SNAPSHOT"

@@ -14,7 +14,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import com.focusguard.R
-import com.focusguard.ui.PomodoroLockActivity
+import com.focusguard.contract.EnforcementUiContract
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
 import android.content.Context
@@ -88,7 +88,7 @@ class AccessibilityBlockPresenter(
     fun launchPomodoroLockScreen() {
         try {
             service.startActivity(
-                Intent(service, PomodoroLockActivity::class.java).apply {
+                EnforcementUiContract.createPomodoroLockIntent(service).apply {
                     addFlags(
                         Intent.FLAG_ACTIVITY_NEW_TASK or
                             Intent.FLAG_ACTIVITY_SINGLE_TOP or

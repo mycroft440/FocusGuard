@@ -1,4 +1,4 @@
-package com.focusguard.security
+package com.focusguard.permissions
 
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test

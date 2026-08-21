@@ -44,13 +44,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
-import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.contract.EnforcementUiContract
+import com.focusguard.state.FocusModeStore
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.pomodoro.PomodoroNotificationController
 import com.focusguard.pomodoro.PomodoroPlanConfig
 import com.focusguard.pomodoro.PomodoroPlanStore
-import com.focusguard.security.ProtectionPermissionGate
-import com.focusguard.service.FocusModeNotificationService
+import com.focusguard.permissions.ProtectionPermissionGate
 import com.focusguard.ui.PermissionsActivity
 import com.focusguard.ui.compose.screens.PomodoroDurationDial
 import com.focusguard.ui.compose.theme.AccentCyan
@@ -117,7 +117,7 @@ class PomodoroWidgetDialActivity : AppCompatActivity() {
                 }
                 config.hideNotifications &&
                     !pomodoroNotificationController.hasNotificationListenerAccess(
-                        FocusModeNotificationService::class.java
+                        EnforcementUiContract.FOCUS_MODE_NOTIFICATION_SERVICE_CLASS_NAME
                     ) -> {
                     startActivity(pomodoroNotificationController.notificationListenerIntent())
                     error = context.getString(

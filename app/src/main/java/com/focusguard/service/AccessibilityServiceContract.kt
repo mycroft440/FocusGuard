@@ -3,16 +3,12 @@ package com.focusguard.service
 import android.content.Context
 import android.content.Intent
 import android.graphics.Rect
-import android.net.Uri
-import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
-import com.focusguard.ui.BlockNoticeActivity
+import com.focusguard.contract.EnforcementUiContract
 import com.focusguard.utils.WebsiteBlocker
 
 /** Pure event, geometry, and Intent contracts used by Accessibility enforcement. */
 internal object AccessibilityServiceContract {
-    private const val SAFE_REDIRECT_URL = "https://www.google.com"
-
     val settingsInterceptionEventTypes = setOf(
         AccessibilityEvent.TYPE_WINDOWS_CHANGED,
         AccessibilityEvent.TYPE_VIEW_FOCUSED,
@@ -91,37 +87,15 @@ internal object AccessibilityServiceContract {
         blockedDomain: String?,
         redirectBrowserPackage: String?,
         detectedElapsedRealtime: Long = SystemClock.elapsedRealtime()
-    ): Intent = Intent(context, BlockNoticeActivity::class.java).apply {
-        addFlags(
-            Intent.FLAG_ACTIVITY_NEW_TASK or
-                Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS
-        )
-        putExtra(BlockingAccessibilityService.EXTRA_STRICT_BLOCK, strictBlock)
-        putExtra(BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE, blockedPackage)
-        putExtra(BlockingAccessibilityService.EXTRA_BLOCKED_DOMAIN, blockedDomain)
-        putExtra(
-            BlockingAccessibilityService.EXTRA_BLOCK_DETECTED_ELAPSED_REALTIME,
-            detectedElapsedRealtime
-        )
-        redirectBrowserPackage
-            ?.takeIf(String::isNotBlank)
-            ?.let {
-                putExtra(BlockingAccessibilityService.EXTRA_REDIRECT_BROWSER_PACKAGE, it)
-            }
-    }
+    ): Intent = EnforcementUiContract.createBlockNoticeIntent(
+        context = context,
+        strictBlock = strictBlock,
+        blockedPackage = blockedPackage,
+        blockedDomain = blockedDomain,
+        redirectBrowserPackage = redirectBrowserPackage,
+        detectedElapsedRealtime = detectedElapsedRealtime
+    )
 
-    fun createSafeRedirectIntent(browserPackageName: String): Intent {
-        require(browserPackageName.isNotBlank())
-        return Intent(Intent.ACTION_VIEW, Uri.parse(SAFE_REDIRECT_URL)).apply {
-            addCategory(Intent.CATEGORY_BROWSABLE)
-            setPackage(browserPackageName)
-            addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP
-            )
-        }
-    }
+    fun createSafeRedirectIntent(browserPackageName: String): Intent =
+        EnforcementUiContract.createSafeRedirectIntent(browserPackageName)
 }

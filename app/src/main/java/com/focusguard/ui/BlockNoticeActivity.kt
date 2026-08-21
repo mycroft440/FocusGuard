@@ -66,7 +66,7 @@ import com.focusguard.security.CameraManager
 import com.focusguard.security.IntruderCapturePolicy
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.PasswordAppUnlockStore
-import com.focusguard.service.BlockingAccessibilityService
+import com.focusguard.contract.EnforcementUiContract
 import com.focusguard.ui.compose.screens.PasswordProtectedAppUnlockPanel
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
@@ -130,17 +130,17 @@ class BlockNoticeActivity : AppCompatActivity() {
     private fun showBlockNotice(sourceIntent: Intent) {
         val payload = NoticePayload(
             strictBlock = sourceIntent.getBooleanExtra(
-                BlockingAccessibilityService.EXTRA_STRICT_BLOCK,
+                EnforcementUiContract.EXTRA_STRICT_BLOCK,
                 false
             ),
             blockedPackage = sourceIntent.getStringExtra(
-                BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE
+                EnforcementUiContract.EXTRA_BLOCKED_PACKAGE
             ),
             blockedDomain = sourceIntent.getStringExtra(
-                BlockingAccessibilityService.EXTRA_BLOCKED_DOMAIN
+                EnforcementUiContract.EXTRA_BLOCKED_DOMAIN
             ),
             redirectBrowserPackage = sourceIntent.getStringExtra(
-                BlockingAccessibilityService.EXTRA_REDIRECT_BROWSER_PACKAGE
+                EnforcementUiContract.EXTRA_REDIRECT_BROWSER_PACKAGE
             )?.takeIf(String::isNotBlank)
         )
         strictBlock = payload.strictBlock
@@ -178,7 +178,7 @@ class BlockNoticeActivity : AppCompatActivity() {
 
         window.decorView.doOnPreDraw {
             val detectedAt = sourceIntent.getLongExtra(
-                BlockingAccessibilityService.EXTRA_BLOCK_DETECTED_ELAPSED_REALTIME,
+                EnforcementUiContract.EXTRA_BLOCK_DETECTED_ELAPSED_REALTIME,
                 0L
             )
             if (detectedAt > 0L) {
@@ -193,7 +193,7 @@ class BlockNoticeActivity : AppCompatActivity() {
 
     private fun notifyNoticeReady() {
         sendBroadcast(
-            Intent(BlockingAccessibilityService.ACTION_BLOCK_NOTICE_READY)
+            Intent(EnforcementUiContract.ACTION_BLOCK_NOTICE_READY)
                 .setPackage(packageName)
         )
     }
@@ -201,7 +201,7 @@ class BlockNoticeActivity : AppCompatActivity() {
     private fun redirectBlockedWebsite(browserPackageName: String) {
         val redirected = runCatching {
             startActivity(
-                BlockingAccessibilityService.createSafeRedirectIntent(browserPackageName)
+                EnforcementUiContract.createSafeRedirectIntent(browserPackageName)
             )
             true
         }.getOrElse { error ->
@@ -307,11 +307,11 @@ private fun BlockNoticeContent(
             (strictBlock || !showUnlockDialog)
         when {
             shouldRedirectWebsite -> {
-                delay(BlockingAccessibilityService.WEBSITE_BLOCK_NOTICE_DURATION_MILLIS)
+                delay(EnforcementUiContract.WEBSITE_BLOCK_NOTICE_DURATION_MILLIS)
                 onRedirectBlockedWebsite(redirectBrowserPackage)
             }
             strictBlock -> {
-                delay(BlockingAccessibilityService.WEBSITE_BLOCK_NOTICE_DURATION_MILLIS)
+                delay(EnforcementUiContract.WEBSITE_BLOCK_NOTICE_DURATION_MILLIS)
                 onGoToPomodoroLock()
             }
         }

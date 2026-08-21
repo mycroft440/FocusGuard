@@ -33,13 +33,13 @@ import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.admin.DeviceOwnerProtectionAuditor
 import com.focusguard.security.AuthManager
-import com.focusguard.security.AuthenticatedUninstallCoordinator
+import com.focusguard.uninstall.AuthenticatedUninstallCoordinator
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.PasswordAppUnlockStore
 import com.focusguard.pomodoro.PomodoroPlanStore
 import com.focusguard.pomodoro.PomodoroNotificationController
 import com.focusguard.security.ProtectionPermission
-import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.permissions.ProtectionPermissionGate
 import com.focusguard.ui.CreateSessionActivity
 import com.focusguard.ui.OfflineBookActivity
 import com.focusguard.ui.PermissionsActivity

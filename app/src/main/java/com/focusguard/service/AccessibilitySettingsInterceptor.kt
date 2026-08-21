@@ -6,7 +6,7 @@ import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.focusguard.admin.DeviceOwnerManager
-import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.state.FocusModeStore
 import com.focusguard.security.AccessibilitySettingsPolicy
 import com.focusguard.security.AuthenticatedRemovalWindow
 import com.focusguard.security.DeviceAdminActivationWindow
