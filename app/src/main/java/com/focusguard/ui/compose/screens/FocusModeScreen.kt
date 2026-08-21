@@ -84,7 +84,7 @@ import com.focusguard.focusmode.FocusModeAppCatalog
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.focusmode.FocusModePolicy
 import com.focusguard.focusmode.FocusModeSelectableApp
-import com.focusguard.focusmode.FocusModeSession
+import com.focusguard.domain.model.FocusModeSession
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DarkCard

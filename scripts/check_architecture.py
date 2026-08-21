@@ -19,11 +19,27 @@ EXPECTED_MODULE_EDGES = {
 }
 CORE_LAYERS = {
     "admin",
+    "contract",
     "focusmode",
     "manager",
     "permissions",
+    "pomodoro",
     "security",
     "service",
+    "state",
+    "ui",
+    "uninstall",
+}
+REQUIRED_CORE_LAYERS = {
+    "admin",
+    "contract",
+    "focusmode",
+    "manager",
+    "permissions",
+    "pomodoro",
+    "security",
+    "service",
+    "state",
     "ui",
     "uninstall",
 }
@@ -84,6 +100,32 @@ def validate_module_graph(graph: dict[str, set[str]]) -> list[str]:
     cycles = [component for component in strongly_connected_components(graph) if len(component) > 1]
     for cycle in cycles:
         violations.append(f"Gradle module cycle detected: {sorted(cycle)}")
+    return violations
+
+
+def validate_layer_coverage(layers: set[str]) -> list[str]:
+    missing = REQUIRED_CORE_LAYERS - layers
+    if not missing:
+        return []
+    return [f"architecture package matrix omits required layers: {sorted(missing)}"]
+
+
+def validate_package_graph(graph: dict[str, set[str]]) -> list[str]:
+    violations: list[str] = []
+    cycles = [
+        component
+        for component in strongly_connected_components(graph)
+        if len(component) > 1
+    ]
+    for cycle in cycles:
+        edges = [
+            f"{source}->{target}"
+            for source in sorted(cycle)
+            for target in sorted(graph[source] & cycle)
+        ]
+        violations.append(
+            f"app package cycle detected in {sorted(cycle)} via {', '.join(edges)}"
+        )
     return violations
 
 
@@ -192,6 +234,16 @@ def check_reference_boundaries() -> list[str]:
 
 def check_package_cycles() -> list[str]:
     source_root = ROOT / "app/src/main/java/com/focusguard"
+    violations = validate_layer_coverage(CORE_LAYERS)
+    missing_directories = sorted(
+        layer for layer in REQUIRED_CORE_LAYERS if not (source_root / layer).is_dir()
+    )
+    if missing_directories:
+        violations.append(
+            "required architecture package directories are missing: "
+            f"{missing_directories}"
+        )
+
     graph = {layer: set() for layer in CORE_LAYERS}
     for layer in CORE_LAYERS:
         for source_file in kotlin_files(source_root / layer):
@@ -202,17 +254,7 @@ def check_package_cycles() -> list[str]:
                 if target in CORE_LAYERS and target != layer:
                     graph[layer].add(target)
 
-    violations: list[str] = []
-    cycles = [component for component in strongly_connected_components(graph) if len(component) > 1]
-    for cycle in cycles:
-        edges = [
-            f"{source}->{target}"
-            for source in sorted(cycle)
-            for target in sorted(graph[source] & cycle)
-        ]
-        violations.append(
-            f"app package cycle detected in {sorted(cycle)} via {', '.join(edges)}"
-        )
+    violations.extend(validate_package_graph(graph))
     return violations
 
 
@@ -254,6 +296,13 @@ def run_self_tests() -> None:
     }
     reverse_module_fixture["domain"].add("app")
     assert validate_module_graph(reverse_module_fixture)
+    expanded_package_cycle = {layer: set() for layer in CORE_LAYERS}
+    expanded_package_cycle["admin"].add("state")
+    expanded_package_cycle["state"].add("focusmode")
+    expanded_package_cycle["focusmode"].add("admin")
+    assert validate_package_graph(expanded_package_cycle)
+    assert validate_layer_coverage(CORE_LAYERS - {"state"})
+    assert not validate_layer_coverage(CORE_LAYERS)
     code_fixture = strip_kotlin_comments_and_strings(
         'val concrete = com.focusguard.service.Hidden\n'
         'val ignored = "com.focusguard.ui.StringOnly"\n'

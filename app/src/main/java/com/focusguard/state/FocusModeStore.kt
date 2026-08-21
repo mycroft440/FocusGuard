@@ -2,7 +2,7 @@ package com.focusguard.state
 
 import android.content.Context
 import android.os.Build
-import com.focusguard.focusmode.FocusModeSession
+import com.focusguard.domain.model.FocusModeSession
 
 /** Device-protected persistence so Focus Mode survives process death and reboot. */
 object FocusModeStore {
