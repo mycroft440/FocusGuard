@@ -3,6 +3,7 @@ package com.focusguard.service
 import android.content.Context
 import android.content.Intent
 import android.graphics.Rect
+import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
 import com.focusguard.contract.EnforcementUiContract
 import com.focusguard.utils.WebsiteBlocker

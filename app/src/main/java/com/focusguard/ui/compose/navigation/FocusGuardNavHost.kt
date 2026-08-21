@@ -38,7 +38,7 @@ import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.PasswordAppUnlockStore
 import com.focusguard.pomodoro.PomodoroPlanStore
 import com.focusguard.pomodoro.PomodoroNotificationController
-import com.focusguard.security.ProtectionPermission
+import com.focusguard.permissions.ProtectionPermission
 import com.focusguard.permissions.ProtectionPermissionGate
 import com.focusguard.ui.CreateSessionActivity
 import com.focusguard.ui.OfflineBookActivity

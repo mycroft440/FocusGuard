@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.data.UserProfile
-import com.focusguard.security.ProtectionPermission
+import com.focusguard.permissions.ProtectionPermission
 import com.focusguard.ui.compose.theme.*
 import kotlinx.coroutines.delay
 
