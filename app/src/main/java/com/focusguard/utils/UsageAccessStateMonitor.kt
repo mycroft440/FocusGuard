@@ -38,13 +38,14 @@ class UsageAccessStateMonitor @Inject constructor(
     private val database: AppDatabase,
     private val deviceOwnerManager: DeviceOwnerManager
 ) {
+    private companion object {
+        const val TAG = "UsageAccessMonitor"
+        const val POLL_INTERVAL_MS = 30_000L
 
-    private const val TAG = "UsageAccessMonitor"
-    private const val POLL_INTERVAL_MS = 30_000L
-
-    /** Shared with [AccessibilityStateMonitor]: both report protection status. */
-    private const val CHANNEL_ID = "focusguard_permission_status"
-    private const val NOTIFICATION_ID = 9002
+        /** Shared with [AccessibilityStateMonitor]: both report protection status. */
+        const val CHANNEL_ID = "focusguard_permission_status"
+        const val NOTIFICATION_ID = 9002
+    }
 
     private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

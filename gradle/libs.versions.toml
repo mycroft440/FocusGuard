@@ -22,10 +22,6 @@ androidxCore = "1.13.1"
 androidxAppcompat = "1.7.0"
 androidxActivity = "1.9.3"
 androidxLifecycle = "2.8.7"
-androidxConstraintlayout = "2.1.4"
-androidxRecyclerview = "1.3.2"
-androidxPreference = "1.2.1"
-androidxViewpager2 = "1.0.0"
 androidxBiometric = "1.1.0"
 androidxWebkit = "1.14.0"
 
@@ -50,9 +46,6 @@ coil = "2.6.0"
 # ─── Material (View system) ────────────────────────────────────────────────
 googleMaterial = "1.12.0"
 
-# ─── 3rd party (JitPack) ───────────────────────────────────────────────────
-mpAndroidChart = "v3.1.0"
-
 # ─── Testing ───────────────────────────────────────────────────────────────
 junit = "4.13.2"
 androidxTestJunit = "1.2.1"
@@ -68,10 +61,6 @@ truth = "1.4.4"
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "androidxCore" }
 androidx-appcompat = { group = "androidx.appcompat", name = "appcompat", version.ref = "androidxAppcompat" }
 androidx-activity-compose = { group = "androidx.activity", name = "activity-compose", version.ref = "androidxActivity" }
-androidx-constraintlayout = { group = "androidx.constraintlayout", name = "constraintlayout", version.ref = "androidxConstraintlayout" }
-androidx-recyclerview = { group = "androidx.recyclerview", name = "recyclerview", version.ref = "androidxRecyclerview" }
-androidx-preference = { group = "androidx.preference", name = "preference", version.ref = "androidxPreference" }
-androidx-viewpager2 = { group = "androidx.viewpager2", name = "viewpager2", version.ref = "androidxViewpager2" }
 androidx-biometric = { group = "androidx.biometric", name = "biometric", version.ref = "androidxBiometric" }
 androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "androidxWebkit" }
 
@@ -113,9 +102,6 @@ coil-compose = { group = "io.coil-kt", name = "coil-compose", version.ref = "coi
 
 # ─── Material (View system, for legacy XML) ────────────────────────────────
 google-material = { group = "com.google.android.material", name = "material", version.ref = "googleMaterial" }
-
-# ─── 3rd party ─────────────────────────────────────────────────────────────
-mpandroidchart = { group = "com.github.PhilJay", name = "MPAndroidChart", version.ref = "mpAndroidChart" }
 
 # ─── Kotlin stdlib ─────────────────────────────────────────────────────────
 kotlin-stdlib = { group = "org.jetbrains.kotlin", name = "kotlin-stdlib", version.ref = "kotlin" }

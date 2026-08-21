@@ -1,9 +1,8 @@
 package com.focusguard.database
 
-import android.content.Context
 import androidx.room.Database
-import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
@@ -14,7 +13,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         AppUsageLimit::class, WebsiteUsageLimit::class, UsageLimitsLock::class,
         DailyUsageStat::class, AppPassword::class, PomodoroSession::class
     ],
-    version = 10,
+    version = 11,
     // ANTIGO: exportSchema = false — impossível auditar schema em produção.
     // NOVO: true — Room exporta o schema JSON em app/schemas/ a cada build.
     // Esses JSONs podem (e devem) ser commitados no repo para permitir:
@@ -24,6 +23,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
     // O diretório de output é configurado no KSP args do app/build.gradle.kts.
     exportSchema = true
 )
+@TypeConverters(DatabaseConverters::class)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun blockedAppDao(): BlockedAppDao
     abstract fun blockedWebsiteDao(): BlockedWebsiteDao
@@ -38,9 +38,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun pomodoroSessionDao(): PomodoroSessionDao
 
     companion object {
-        @Volatile
-        private var INSTANCE: AppDatabase? = null
-
         val MIGRATION_1_2 = object : Migration(1, 2) {
             override fun migrate(database: SupportSQLiteDatabase) {
                 database.execSQL("ALTER TABLE block_sessions ADD COLUMN isRecurring INTEGER NOT NULL DEFAULT 0")
@@ -109,47 +106,111 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        /**
-         * Singleton accessor legado — DELEGADO ao Hilt para garantir uma única
-         * instância de AppDatabase em todo o app.
-         *
-         * Antes desta correção, existiam DUAS instâncias paralelas:
-         *   1. AppDatabase.INSTANCE (este companion) — usado por callers legados
-         *   2. DatabaseModule.provideAppDatabase() — usado por Hilt (Repositories/ViewModels)
-         *
-         * Isso causava race conditions: dados escritos via uma instância podiam não
-         * ser visíveis imediatamente na outra (caches separados), migrações podiam
-         * rodar em paralelo, e o estado de bloqueio podia divergir entre UI e
-         * Accessibility Service.
-         *
-         * Agora ambos os caminhos apontam para a mesma instância — ou via Hilt
-         * (preferencial) ou via este singleton (legado).
-         */
-        fun getDatabase(context: Context): AppDatabase {
-            return INSTANCE ?: synchronized(this) {
-                val instance = Room.databaseBuilder(
-                    context.applicationContext,
-                    AppDatabase::class.java,
-                    "focusguard_database"
+        val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                // Normalize legacy/corrupted free-form values before Room starts
+                // materializing these columns as closed enum types.
+                database.execSQL(
+                    """
+                    UPDATE `block_sessions`
+                    SET `sessionType` = CASE UPPER(TRIM(`sessionType`))
+                        WHEN 'TIME' THEN 'TIME'
+                        WHEN 'POMODORO' THEN 'POMODORO'
+                        ELSE 'PASSWORD'
+                    END
+                    """.trimIndent()
                 )
-                    .addMigrations(
-                        MIGRATION_1_2,
-                        MIGRATION_2_3,
-                        MIGRATION_3_4,
-                        MIGRATION_4_5,
-                        MIGRATION_5_6,
-                        MIGRATION_6_7,
-                        MIGRATION_7_8,
-                        MIGRATION_8_9,
-                        MIGRATION_9_10
+                database.execSQL(
+                    """
+                    UPDATE `app_usage_limits`
+                    SET `lockMode` = CASE UPPER(TRIM(`lockMode`))
+                        WHEN 'PASSWORD' THEN 'PASSWORD'
+                        WHEN 'TIME' THEN 'TIME'
+                        ELSE 'NONE'
+                    END
+                    """.trimIndent()
+                )
+                database.execSQL(
+                    """
+                    UPDATE `website_usage_limits`
+                    SET `lockMode` = CASE UPPER(TRIM(`lockMode`))
+                        WHEN 'PASSWORD' THEN 'PASSWORD'
+                        WHEN 'TIME' THEN 'TIME'
+                        ELSE 'NONE'
+                    END
+                    """.trimIndent()
+                )
+
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `session_app_cross_ref_new` (
+                        `sessionId` INTEGER NOT NULL,
+                        `packageName` TEXT NOT NULL,
+                        PRIMARY KEY(`sessionId`, `packageName`),
+                        FOREIGN KEY(`sessionId`) REFERENCES `block_sessions`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE
                     )
-                    // fallbackToDestructiveMigration só em debug builds — em produção
-                    // se uma migração faltar, preferimos crashar a perder dados de
-                    // bloqueio do usuário.
-                    .build()
-                INSTANCE = instance
-                instance
+                    """.trimIndent()
+                )
+                database.execSQL(
+                    """
+                    INSERT OR IGNORE INTO `session_app_cross_ref_new` (`sessionId`, `packageName`)
+                    SELECT refs.`sessionId`, refs.`packageName`
+                    FROM `session_app_cross_ref` AS refs
+                    INNER JOIN `block_sessions` AS sessions ON sessions.`id` = refs.`sessionId`
+                    """.trimIndent()
+                )
+                database.execSQL("DROP TABLE `session_app_cross_ref`")
+                database.execSQL(
+                    "ALTER TABLE `session_app_cross_ref_new` RENAME TO `session_app_cross_ref`"
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_session_app_cross_ref_sessionId` " +
+                        "ON `session_app_cross_ref` (`sessionId`)"
+                )
+
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `session_website_cross_ref_new` (
+                        `sessionId` INTEGER NOT NULL,
+                        `domain` TEXT NOT NULL,
+                        PRIMARY KEY(`sessionId`, `domain`),
+                        FOREIGN KEY(`sessionId`) REFERENCES `block_sessions`(`id`)
+                            ON UPDATE NO ACTION ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                database.execSQL(
+                    """
+                    INSERT OR IGNORE INTO `session_website_cross_ref_new` (`sessionId`, `domain`)
+                    SELECT refs.`sessionId`, refs.`domain`
+                    FROM `session_website_cross_ref` AS refs
+                    INNER JOIN `block_sessions` AS sessions ON sessions.`id` = refs.`sessionId`
+                    """.trimIndent()
+                )
+                database.execSQL("DROP TABLE `session_website_cross_ref`")
+                database.execSQL(
+                    "ALTER TABLE `session_website_cross_ref_new` RENAME TO " +
+                        "`session_website_cross_ref`"
+                )
+                database.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_session_website_cross_ref_sessionId` " +
+                        "ON `session_website_cross_ref` (`sessionId`)"
+                )
             }
         }
+
+        val ALL_MIGRATIONS: Array<Migration> = arrayOf(
+            MIGRATION_1_2,
+            MIGRATION_2_3,
+            MIGRATION_3_4,
+            MIGRATION_4_5,
+            MIGRATION_5_6,
+            MIGRATION_6_7,
+            MIGRATION_7_8,
+            MIGRATION_8_9,
+            MIGRATION_9_10,
+            MIGRATION_10_11
+        )
     }
 }

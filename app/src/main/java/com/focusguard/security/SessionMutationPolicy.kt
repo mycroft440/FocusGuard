@@ -1,6 +1,7 @@
 package com.focusguard.security
 
 import com.focusguard.database.BlockSession
+import com.focusguard.database.BlockSessionType
 
 /** Repository-level invariant for destructive changes to protected session content. */
 object SessionMutationPolicy {
@@ -12,8 +13,8 @@ object SessionMutationPolicy {
         if (session == null || !session.isActive) return true
         if (session.endTime != null && session.endTime <= nowMillis) return true
 
-        return when (session.sessionType.uppercase()) {
-            "TIME", "POMODORO" -> false
+        return when (session.sessionType) {
+            BlockSessionType.TIME, BlockSessionType.POMODORO -> false
             else -> true
         }
     }

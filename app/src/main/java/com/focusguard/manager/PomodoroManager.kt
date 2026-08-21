@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.PomodoroSession
+import com.focusguard.database.BlockSessionType
 import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.pomodoro.PomodoroAlarmController
 import com.focusguard.pomodoro.PomodoroCyclePolicy
@@ -39,7 +40,7 @@ import kotlinx.coroutines.sync.withLock
 @Singleton
 class PomodoroManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    database: AppDatabase,
+    private val database: AppDatabase,
     private val sessionManager: BlockingSessionManager,
     private val protectionPermissionGate: ProtectionPermissionGate,
     private val planStore: PomodoroPlanStore,
@@ -246,7 +247,7 @@ class PomodoroManager @Inject constructor(
         val existingStrictSession = database.blockSessionDao()
             .getAllActiveSessionsStatic()
             .any { blockSession ->
-                blockSession.sessionType == "POMODORO" &&
+                blockSession.sessionType == BlockSessionType.POMODORO &&
                     blockSession.isBlockingEnabled &&
                     (blockSession.endTime ?: 0L) > now
             }
@@ -267,7 +268,7 @@ class PomodoroManager @Inject constructor(
      * inteiro e deve sobreviver continuamente às transições foco/pausa.
      */
     private suspend fun clearLegacyPomodoroBlockingLocked() {
-        database.blockSessionDao().deactivateActiveSessionsByType("POMODORO")
+        database.blockSessionDao().deactivateActiveSessionsByType(BlockSessionType.POMODORO)
         StrictPomodoroLock.clear(context)
         sessionManager.checkAndEnforceStrict()
     }
@@ -279,7 +280,7 @@ class PomodoroManager @Inject constructor(
             val armed = database.blockSessionDao()
                 .getAllActiveSessionsStatic()
                 .any { blockSession ->
-                    blockSession.sessionType == "POMODORO" &&
+                    blockSession.sessionType == BlockSessionType.POMODORO &&
                         blockSession.isBlockingEnabled &&
                         (blockSession.endTime ?: 0L) > now
                 }

@@ -95,6 +95,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 @Composable
 fun FocusModeScreen(
@@ -104,7 +105,7 @@ fun FocusModeScreen(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    val activeSession by manager.session.collectAsState()
+    val activeSession by manager.session.collectAsStateWithLifecycle()
     var apps by remember { mutableStateOf<List<FocusModeSelectableApp>>(emptyList()) }
     var isLoadingApps by remember { mutableStateOf(true) }
     var selectedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }

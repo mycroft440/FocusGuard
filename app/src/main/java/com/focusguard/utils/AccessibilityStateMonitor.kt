@@ -40,13 +40,14 @@ class AccessibilityStateMonitor @Inject constructor(
     private val deviceOwnerManager: DeviceOwnerManager,
     private val blockingSessionManager: BlockingSessionManager
 ) {
-
-    private const val TAG = "A11yStateMonitor"
-    private const val POLL_INTERVAL_MS = 30_000L
-    private const val ACTION_STATE_CHANGED =
-        "android.accessibilityservice.ACCESSIBILITY_SERVICE_STATE_CHANGED"
-    private const val CHANNEL_ID = "focusguard_permission_status"
-    private const val NOTIFICATION_ID = 9001
+    private companion object {
+        const val TAG = "A11yStateMonitor"
+        const val POLL_INTERVAL_MS = 30_000L
+        const val ACTION_STATE_CHANGED =
+            "android.accessibilityservice.ACCESSIBILITY_SERVICE_STATE_CHANGED"
+        const val CHANNEL_ID = "focusguard_permission_status"
+        const val NOTIFICATION_ID = 9001
+    }
 
     private val handler = Handler(Looper.getMainLooper())
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)

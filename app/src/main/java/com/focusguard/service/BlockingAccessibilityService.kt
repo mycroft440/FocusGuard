@@ -34,6 +34,7 @@ import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.AppDatabase
+import com.focusguard.database.BlockSessionType
 import com.focusguard.focusmode.FocusModePolicy
 import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.manager.BlockingSessionManager
@@ -638,7 +639,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
                         withContext(Dispatchers.Main) {
                             isPomodoroStrictActive = enforcingSessions.any {
-                                it.sessionType == "POMODORO" && it.isBlockingEnabled
+                                it.sessionType == BlockSessionType.POMODORO && it.isBlockingEnabled
                             }
                             focusModeSessionActive = focusModeSession != null
                             focusModeFallbackActive = focusFallbackActive

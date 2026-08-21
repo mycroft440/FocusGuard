@@ -44,10 +44,7 @@ internal object BlockingScheduleCalculator {
             val endMinutes = session.recurringEndHour * 60 + session.recurringEndMinute
             if (startMinutes == endMinutes) return@forEach
 
-            val allowedDays = session.recurringDaysOfWeek.split(',')
-                .map(String::trim)
-                .filter(String::isNotEmpty)
-                .toSet()
+            val allowedDays = session.recurringDaysOfWeek
             val baseDay = Calendar.getInstance(timeZone).apply {
                 timeInMillis = nowMillis
                 set(Calendar.HOUR_OF_DAY, 0)
@@ -62,7 +59,7 @@ internal object BlockingScheduleCalculator {
                     add(Calendar.DAY_OF_YEAR, offset)
                 }
                 if (allowedDays.isNotEmpty() &&
-                    logicalDay.get(Calendar.DAY_OF_WEEK).toString() !in allowedDays
+                    logicalDay.get(Calendar.DAY_OF_WEEK) !in allowedDays
                 ) continue
 
                 val start = (logicalDay.clone() as Calendar).apply {

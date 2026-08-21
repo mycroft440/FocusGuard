@@ -1,6 +1,7 @@
 package com.focusguard.security
 
 import com.focusguard.database.BlockSession
+import com.focusguard.database.BlockSessionType
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -9,7 +10,7 @@ class SessionMutationPolicyTest {
     @Test
     fun `active time session cannot remove protected content`() {
         val session = BlockSession(
-            sessionType = "TIME",
+            sessionType = BlockSessionType.TIME,
             isActive = true,
             endTime = 20_000L
         )
@@ -20,7 +21,7 @@ class SessionMutationPolicyTest {
     @Test
     fun `expired time session permits cleanup`() {
         val session = BlockSession(
-            sessionType = "TIME",
+            sessionType = BlockSessionType.TIME,
             isActive = true,
             endTime = 10_000L
         )
@@ -30,7 +31,7 @@ class SessionMutationPolicyTest {
 
     @Test
     fun `password session remains editable after its authenticated flow`() {
-        val session = BlockSession(sessionType = "PASSWORD", isActive = true)
+        val session = BlockSession(sessionType = BlockSessionType.PASSWORD, isActive = true)
 
         assertThat(SessionMutationPolicy.canRemoveProtectedContent(session, 10_000L)).isTrue()
     }

@@ -9,6 +9,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.AppPassword
+import com.focusguard.database.UsageLimitLockMode
 import com.focusguard.utils.SecurePrefsManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
@@ -130,14 +131,14 @@ class AuthManager @Inject constructor(
         val hasMasterCredential = deactivationCredentialManager.hasCredential()
         val activeSessionTypes = database.blockSessionDao()
             .getAllActiveSessionsStatic()
-            .map { it.sessionType }
+            .map { it.sessionType.name }
         val hasPasswordProtectedAppLimit = database.appUsageLimitDao()
             .getAllActiveLimitsStatic()
-            .any { it.lockMode.equals("PASSWORD", ignoreCase = true) }
+            .any { it.lockMode == UsageLimitLockMode.PASSWORD }
         val hasPasswordProtectedWebsiteLimit = database.websiteUsageLimitDao()
             .getAllStatic()
             .any {
-                it.isEnabled && it.lockMode.equals("PASSWORD", ignoreCase = true)
+                it.isEnabled && it.lockMode == UsageLimitLockMode.PASSWORD
             }
 
         return AppEntryLockPolicy.requiresPassword(

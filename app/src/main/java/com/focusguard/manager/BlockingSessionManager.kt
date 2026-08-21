@@ -16,9 +16,11 @@ import com.focusguard.data.RecoveryProtectionPreset
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.BlockSession
+import com.focusguard.database.BlockSessionType
 import com.focusguard.database.SessionAppCrossRef
 import com.focusguard.database.SessionWebsiteCrossRef
 import com.focusguard.database.WebsiteUsageLimit
+import com.focusguard.database.UsageLimitLockMode
 import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.focusmode.FocusModePolicy
 import com.focusguard.receiver.BlockingScheduleCalculator
@@ -144,7 +146,7 @@ class BlockingSessionManager @Inject constructor(
             .filter { it.endTime == null || it.endTime > now }
 
         val passwordIds = activeSessions
-            .filter { it.sessionType == "PASSWORD" }
+            .filter { it.sessionType == BlockSessionType.PASSWORD }
             .map { it.id }
 
         // A fast can span several sessions; each target shows the deadline of the
@@ -326,7 +328,7 @@ class BlockingSessionManager @Inject constructor(
         }
 
         internal fun participatesInBlocking(session: BlockSession): Boolean {
-            return session.sessionType != "POMODORO" || session.isBlockingEnabled
+            return session.sessionType != BlockSessionType.POMODORO || session.isBlockingEnabled
         }
 
         internal fun matchesBlockedTarget(
@@ -405,7 +407,7 @@ class BlockingSessionManager @Inject constructor(
         buildString {
             appendLine("=== Sessões Ativas (${sessions.size}) ===")
             sessions.forEachIndexed { index, session ->
-                appendLine("Sessão #${index + 1} (${session.sessionType})")
+                appendLine("Sessão #${index + 1} (${session.sessionType.name})")
                 appendLine(if (session.isFixed24h) "Modo: FIXO 24H" else "Modo: AGENDADO")
                 session.endTime?.let { appendLine("Término: ${formatter.format(it)}") }
                 appendLine("---")
@@ -427,10 +429,10 @@ class BlockingSessionManager @Inject constructor(
                 .getAllActiveSessionsStatic()
                 .filter { session -> session.endTime == null || session.endTime > now }
             val passwordSessionIds = configuredSessions
-                .filter { it.sessionType == "PASSWORD" }
+                .filter { it.sessionType == BlockSessionType.PASSWORD }
                 .map { it.id }
             val exclusiveSessionIds = configuredSessions
-                .filter { it.sessionType != "PASSWORD" }
+                .filter { it.sessionType != BlockSessionType.PASSWORD }
                 .map { it.id }
 
             combineConfiguredBlockedTargets(
@@ -491,9 +493,9 @@ class BlockingSessionManager @Inject constructor(
             appTargets.forEach { app ->
                 val existing = existingAppLimits[app.packageName]
                 val lockMode = if (addPasswordProtection) {
-                    MasterCredentialPolicy.LOCK_MODE_PASSWORD
+                    UsageLimitLockMode.PASSWORD
                 } else {
-                    existing?.lockMode ?: MasterCredentialPolicy.LOCK_MODE_NONE
+                    existing?.lockMode ?: UsageLimitLockMode.NONE
                 }
                 database.appUsageLimitDao().insert(
                     AppUsageLimit(
@@ -504,20 +506,20 @@ class BlockingSessionManager @Inject constructor(
                         lockMode = lockMode,
                         lockPasswordHash = null,
                         lockUntilTimestamp = if (
-                            lockMode == MasterCredentialPolicy.LOCK_MODE_PASSWORD
+                            lockMode == UsageLimitLockMode.PASSWORD
                         ) null else existing?.lockUntilTimestamp,
                         preventOpeningAfterLimit = true,
                         unlockWithPassword =
-                            lockMode == MasterCredentialPolicy.LOCK_MODE_PASSWORD
+                            lockMode == UsageLimitLockMode.PASSWORD
                     )
                 )
             }
             normalizedSites.forEach { rule ->
                 val existing = existingSiteLimits[rule]
                 val lockMode = if (addPasswordProtection) {
-                    MasterCredentialPolicy.LOCK_MODE_PASSWORD
+                    UsageLimitLockMode.PASSWORD
                 } else {
-                    existing?.lockMode ?: MasterCredentialPolicy.LOCK_MODE_NONE
+                    existing?.lockMode ?: UsageLimitLockMode.NONE
                 }
                 database.websiteUsageLimitDao().insert(
                     WebsiteUsageLimit(
@@ -527,7 +529,7 @@ class BlockingSessionManager @Inject constructor(
                         lockMode = lockMode,
                         lockPasswordHash = null,
                         lockUntilTimestamp = if (
-                            lockMode == MasterCredentialPolicy.LOCK_MODE_PASSWORD
+                            lockMode == UsageLimitLockMode.PASSWORD
                         ) null else existing?.lockUntilTimestamp
                     )
                 )
@@ -574,10 +576,10 @@ class BlockingSessionManager @Inject constructor(
                     recurringStartMinute = startMinute,
                     recurringEndHour = endHour,
                     recurringEndMinute = endMinute,
-                    recurringDaysOfWeek = daysOfWeek,
+                    recurringDaysOfWeek = parseRecurringDays(daysOfWeek),
                     blockedAppsCount = apps.distinct().size,
                     blockedWebsitesCount = normalizedSites.size,
-                    sessionType = "PASSWORD",
+                    sessionType = BlockSessionType.PASSWORD,
                     isFixed24h = isFixed24h
                 )
                 val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
@@ -651,10 +653,10 @@ class BlockingSessionManager @Inject constructor(
                     recurringStartMinute = startMinute,
                     recurringEndHour = endHour,
                     recurringEndMinute = endMinute,
-                    recurringDaysOfWeek = daysOfWeek,
+                    recurringDaysOfWeek = parseRecurringDays(daysOfWeek),
                     blockedAppsCount = normalizedApps.size,
                     blockedWebsitesCount = normalizedSites.size,
-                    sessionType = "TIME",
+                    sessionType = BlockSessionType.TIME,
                     isFixed24h = isFixed24h
                 )
                 val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
@@ -820,7 +822,8 @@ class BlockingSessionManager @Inject constructor(
                 require(durationMs > 0L) { "A duração do Pomodoro deve ser positiva" }
                 if (isBlockingEnabled) ensureBlockingPermissionsReady()
                 database.withTransaction {
-                    database.blockSessionDao().deactivateActiveSessionsByType("POMODORO")
+                    database.blockSessionDao()
+                        .deactivateActiveSessionsByType(BlockSessionType.POMODORO)
                     if (isBlockingEnabled) {
                         val startMillis = System.currentTimeMillis()
                         database.blockSessionDao().insertNewSession(
@@ -828,7 +831,7 @@ class BlockingSessionManager @Inject constructor(
                                 startTime = startMillis,
                                 endTime = startMillis + durationMs,
                                 isActive = true,
-                                sessionType = "POMODORO",
+                                sessionType = BlockSessionType.POMODORO,
                                 isFixed24h = true,
                                 isBlockingEnabled = true
                             )
@@ -856,7 +859,7 @@ class BlockingSessionManager @Inject constructor(
     suspend fun endPomodoroSessionAndWait(): Boolean {
         return runCatching {
             val changed = database.blockSessionDao()
-                .deactivateActiveSessionsByType("POMODORO") > 0
+                .deactivateActiveSessionsByType(BlockSessionType.POMODORO) > 0
             StrictPomodoroLock.clear(context)
             PomodoroForegroundService.stop(context)
             checkAndEnforce()
@@ -872,7 +875,7 @@ class BlockingSessionManager @Inject constructor(
 
     suspend fun hasTimeSession(): Boolean {
         return database.blockSessionDao().getAllActiveSessionsStatic()
-            .any { it.sessionType == "TIME" }
+            .any { it.sessionType == BlockSessionType.TIME }
     }
 
     fun appendToTimeSession(
@@ -884,7 +887,7 @@ class BlockingSessionManager @Inject constructor(
         scope.launch {
             runCatching {
                 val session = database.blockSessionDao().getAllActiveSessionsStatic()
-                    .filter { it.sessionType == "TIME" }
+                    .filter { it.sessionType == BlockSessionType.TIME }
                     .maxByOrNull { it.startTime }
                     ?: return@runCatching
                 val addedMillis = TimeUnit.DAYS.toMillis(addedDays.toLong()) +
@@ -925,7 +928,8 @@ class BlockingSessionManager @Inject constructor(
     fun endPasswordSessions() {
         scope.launch {
             runCatching {
-                database.blockSessionDao().deactivateActiveSessionsByType("PASSWORD")
+                database.blockSessionDao()
+                    .deactivateActiveSessionsByType(BlockSessionType.PASSWORD)
                 checkAndEnforce()
             }.onSuccess {
                 showToast(R.string.bloqueios_por_senha_encerrados, Toast.LENGTH_SHORT)
@@ -948,8 +952,9 @@ class BlockingSessionManager @Inject constructor(
             val session = database.blockSessionDao().getActiveSessionById(sessionId)
                 ?: return EndSessionResult.NOT_FOUND
             when {
-                session.sessionType == "POMODORO" -> EndSessionResult.POMODORO_NOT_REVOCABLE
-                session.sessionType == "TIME" && isCurrentlyInBlockingWindow(session) ->
+                session.sessionType == BlockSessionType.POMODORO ->
+                    EndSessionResult.POMODORO_NOT_REVOCABLE
+                session.sessionType == BlockSessionType.TIME && isCurrentlyInBlockingWindow(session) ->
                     EndSessionResult.TIME_NOT_REVOCABLE
                 database.blockSessionDao().deactivateSession(sessionId) == 0 ->
                     EndSessionResult.NOT_FOUND
@@ -973,7 +978,9 @@ class BlockingSessionManager @Inject constructor(
         blockedDomain: String?
     ): Int? {
         val sessions = database.blockSessionDao().getAllActiveSessionsStatic()
-            .filter { it.sessionType == "PASSWORD" && isCurrentlyInBlockingWindow(it) }
+            .filter {
+                it.sessionType == BlockSessionType.PASSWORD && isCurrentlyInBlockingWindow(it)
+            }
             .sortedByDescending { it.startTime }
 
         for (session in sessions) {
@@ -1086,7 +1093,7 @@ class BlockingSessionManager @Inject constructor(
                 ?.let { database.appUsageLimitDao().getLimitForPackage(it) }
                 ?.takeIf { limit ->
                     limit.isEnabled &&
-                        limit.lockMode.equals("PASSWORD", ignoreCase = true) &&
+                        limit.lockMode == UsageLimitLockMode.PASSWORD &&
                         WebsiteUsageLimitPolicy.isBlockingModeActive(
                             limit.lockMode,
                             limit.lockUntilTimestamp,
@@ -1109,7 +1116,7 @@ class BlockingSessionManager @Inject constructor(
             val websiteLimits = database.websiteUsageLimitDao().getAllStatic()
                 .filter { limit ->
                     limit.isEnabled &&
-                        limit.lockMode.equals("PASSWORD", ignoreCase = true) &&
+                        limit.lockMode == UsageLimitLockMode.PASSWORD &&
                         WebsiteUsageLimitPolicy.isBlockingModeActive(
                             limit.lockMode,
                             limit.lockUntilTimestamp,
@@ -1199,7 +1206,8 @@ class BlockingSessionManager @Inject constructor(
                 val focusModeApps = focusModeSession?.blockedPackages.orEmpty()
                 val beforeExpiration = database.blockSessionDao().getAllActiveSessionsStatic()
                 val expiredPomodoro = beforeExpiration.any {
-                    it.sessionType == "POMODORO" && it.endTime != null && it.endTime <= now
+                    it.sessionType == BlockSessionType.POMODORO &&
+                        it.endTime != null && it.endTime <= now
                 }
                 database.blockSessionDao().deactivateExpiredSessions(now)
                 if (expiredPomodoro) {
@@ -1213,7 +1221,7 @@ class BlockingSessionManager @Inject constructor(
                 }
                 val enforcingIds = enforcingSessions.map { it.id }
                 val strictPomodoro = enforcingSessions.any {
-                    it.sessionType == "POMODORO" && it.isBlockingEnabled
+                    it.sessionType == BlockSessionType.POMODORO && it.isBlockingEnabled
                 }
 
                 setDoNotDisturbMode(strictPomodoro)
@@ -1233,11 +1241,11 @@ class BlockingSessionManager @Inject constructor(
                 val adultFilterEnabled = AuthManager.isAdultFilterConfigured(context)
                 val policyExpirations = (
                     activeAppLimits.mapNotNull { limit ->
-                        if (limit.lockMode.equals("TIME", ignoreCase = true)) {
+                        if (limit.lockMode == UsageLimitLockMode.TIME) {
                             limit.lockUntilTimestamp?.takeIf { it > now }
                         } else null
                     } + activeWebsiteLimits.mapNotNull { limit ->
-                        if (limit.lockMode.equals("TIME", ignoreCase = true)) {
+                        if (limit.lockMode == UsageLimitLockMode.TIME) {
                             limit.lockUntilTimestamp?.takeIf { it > now }
                         } else null
                     }
@@ -1418,12 +1426,8 @@ class BlockingSessionManager @Inject constructor(
         val logicalDay = now.clone() as Calendar
         if (afterMidnight) logicalDay.add(Calendar.DAY_OF_YEAR, -1)
 
-        if (session.recurringDaysOfWeek.isNotBlank()) {
-            val allowedDays = session.recurringDaysOfWeek.split(',')
-                .map(String::trim)
-                .filter(String::isNotBlank)
-                .toSet()
-            if (logicalDay.get(Calendar.DAY_OF_WEEK).toString() !in allowedDays) return false
+        if (session.recurringDaysOfWeek.isNotEmpty()) {
+            if (logicalDay.get(Calendar.DAY_OF_WEEK) !in session.recurringDaysOfWeek) return false
         }
 
         return if (startMinutes <= endMinutes) {
@@ -1569,6 +1573,11 @@ class BlockingSessionManager @Inject constructor(
         return if (ids.isEmpty()) emptyList()
         else database.sessionWebsiteCrossRefDao().getWebsitesForSessions(ids)
     }
+
+    private fun parseRecurringDays(value: String): Set<Int> = value
+        .split(',')
+        .mapNotNull { it.trim().toIntOrNull() }
+        .filterTo(linkedSetOf()) { it in Calendar.SUNDAY..Calendar.SATURDAY }
 
     private fun setDoNotDisturbMode(enabled: Boolean) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.M) return

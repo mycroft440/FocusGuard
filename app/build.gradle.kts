@@ -117,10 +117,6 @@ dependencies {
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.appcompat)
-    implementation(libs.androidx.constraintlayout)
-    implementation(libs.androidx.recyclerview)
-    implementation(libs.androidx.preference)
-    implementation(libs.androidx.viewpager2)
     implementation(libs.androidx.biometric)
     implementation(libs.androidx.webkit)
     implementation(libs.google.material)
@@ -159,8 +155,6 @@ dependencies {
     implementation(libs.androidx.camera.lifecycle)
 
     implementation(libs.coil.compose)
-    implementation(libs.mpandroidchart)
-
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
     testImplementation(libs.kotlinx.coroutines.test)

@@ -54,6 +54,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,6 +73,8 @@ import com.focusguard.ui.compose.screens.AppSelectionList
 import com.focusguard.ui.compose.screens.AppSelectionScreen
 import com.focusguard.ui.compose.screens.KeywordRulesTab
 import com.focusguard.ui.compose.screens.SelectableAppUi
+import com.focusguard.ui.compose.screens.SelectableAppUiListSaver
+import com.focusguard.ui.compose.screens.StringListSaver
 import com.focusguard.ui.compose.screens.TimeAwareFinalConfigStep
 import com.focusguard.ui.compose.screens.UnifiedProtectionSetupWizard
 import com.focusguard.ui.compose.screens.WebsiteRulesTab
@@ -162,8 +165,12 @@ fun CreateSessionWizard(
     // O que cada bloqueio aceita como alvo é decidido por tipo, não pela tela:
     // senha protege só aplicativos, jejum aceita apps, sites e palavras.
     val kinds = remember(sessionType) { BlockTargetPolicy.forSessionType(sessionType) }
-    var selectedApps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
-    var selectedRules by remember { mutableStateOf<List<String>>(emptyList()) }
+    var selectedApps by rememberSaveable(stateSaver = SelectableAppUiListSaver) {
+        mutableStateOf(emptyList())
+    }
+    var selectedRules by rememberSaveable(stateSaver = StringListSaver) {
+        mutableStateOf(emptyList())
+    }
 
     HorizontalPager(
         state = pagerState,

@@ -168,6 +168,7 @@ class BlockNoticeActivity : AppCompatActivity() {
                     authManager = authManager,
                     blockingSessionManager = blockingSessionManager,
                     deactivationCredentialManager = deactivationCredentialManager,
+                    passwordAppUnlockStore = passwordAppUnlockStore,
                     onGoHome = ::goHome,
                     onRedirectBlockedWebsite = ::redirectBlockedWebsite,
                     onGoToPomodoroLock = ::goToPomodoroLock
@@ -254,6 +255,7 @@ private fun BlockNoticeContent(
     authManager: AuthManager,
     blockingSessionManager: BlockingSessionManager,
     deactivationCredentialManager: DeactivationCredentialManager,
+    passwordAppUnlockStore: PasswordAppUnlockStore,
     onGoHome: () -> Unit,
     onRedirectBlockedWebsite: (String) -> Unit,
     onGoToPomodoroLock: () -> Unit
@@ -261,9 +263,8 @@ private fun BlockNoticeContent(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val focusRequester = remember { FocusRequester() }
-    val appUnlockStore = passwordAppUnlockStore
     val customUnlockConfig = remember(blockedPackage) {
-        appUnlockStore.get(blockedPackage)
+        passwordAppUnlockStore.get(blockedPackage)
     }
     var showUnlockDialog by remember { mutableStateOf(false) }
     var password by remember { mutableStateOf("") }

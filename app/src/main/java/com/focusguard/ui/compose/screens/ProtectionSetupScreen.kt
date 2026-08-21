@@ -63,6 +63,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -120,9 +121,13 @@ fun UnifiedProtectionSetupWizard(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var page by remember { mutableStateOf(ProtectionSetupPage.LIST) }
-    var selectedApps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
-    var websiteRules by remember { mutableStateOf<List<String>>(emptyList()) }
+    var page by rememberSaveable { mutableStateOf(ProtectionSetupPage.LIST) }
+    var selectedApps by rememberSaveable(stateSaver = SelectableAppUiListSaver) {
+        mutableStateOf(emptyList())
+    }
+    var websiteRules by rememberSaveable(stateSaver = StringListSaver) {
+        mutableStateOf(emptyList())
+    }
     var configuredBlockedTargets by remember {
         mutableStateOf(BlockingSessionManager.ConfiguredBlockedTargets())
     }
@@ -1040,17 +1045,17 @@ private fun BatchDailyLimitConfigScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    var hoursText by remember { mutableStateOf("") }
-    var minutesText by remember { mutableStateOf("") }
+    var hoursText by rememberSaveable { mutableStateOf("") }
+    var minutesText by rememberSaveable { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
-    var hasPassword by remember { mutableStateOf(false) }
+    var hasPassword by rememberSaveable { mutableStateOf(false) }
     val alreadyPasswordProtected = remember(apps, websiteRules, configuredTargets) {
         apps.any { it.packageName in configuredTargets.passwordAppPackageNames } ||
             websiteRules.any {
                 isWebsiteRuleAlreadyBlocked(it, configuredTargets.passwordWebsiteRules)
             }
     }
-    var protectWithPassword by remember(alreadyPasswordProtected) {
+    var protectWithPassword by rememberSaveable(alreadyPasswordProtected) {
         mutableStateOf(alreadyPasswordProtected)
     }
     val masterPasswordLauncher = rememberLauncherForActivityResult(

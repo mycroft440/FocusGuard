@@ -7,6 +7,7 @@ import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.AppUsageLimitDao
 import com.focusguard.database.DailyUsageStatDao
 import com.focusguard.database.WebsiteUsageLimit
+import com.focusguard.database.UsageLimitLockMode
 import com.focusguard.database.WebsiteUsageLimitDao
 import com.focusguard.utils.WebsiteBlocker
 import com.focusguard.utils.WebsiteUsageLimitPolicy
@@ -105,7 +106,7 @@ class UsageLimitsRepository @Inject constructor(
                         usageMillis = usageByRule[
                             WebsiteBlocker.normalizeRule(limit.domain)
                         ] ?: 0L,
-                        lockMode = limit.lockMode,
+                        lockMode = limit.lockMode.name,
                         lockUntilTimestamp = limit.lockUntilTimestamp
                     )
                 }.sortedBy(ConfiguredWebsiteLimit::domain)
@@ -128,11 +129,11 @@ class UsageLimitsRepository @Inject constructor(
                 appName = change.appName,
                 dailyLimitMinutes = minutes,
                 isEnabled = change.isEnabled,
-                lockMode = change.lockMode,
+                lockMode = parseLockMode(change.lockMode),
                 lockPasswordHash = null,
                 lockUntilTimestamp = change.lockUntilTimestamp,
                 preventOpeningAfterLimit = true,
-                unlockWithPassword = change.lockMode.equals("PASSWORD", ignoreCase = true)
+                unlockWithPassword = parseLockMode(change.lockMode) == UsageLimitLockMode.PASSWORD
             )
         )
     }
@@ -158,7 +159,7 @@ class UsageLimitsRepository @Inject constructor(
                 domain = normalized,
                 dailyLimitMinutes = change.dailyLimitMinutes.coerceAtLeast(1),
                 isEnabled = change.isEnabled,
-                lockMode = change.lockMode,
+                lockMode = parseLockMode(change.lockMode),
                 lockPasswordHash = null,
                 lockUntilTimestamp = change.lockUntilTimestamp
             )
@@ -201,7 +202,7 @@ class UsageLimitsRepository @Inject constructor(
                     dailyLimitMinutes = limit?.dailyLimitMinutes,
                     isEnabled = limit?.isEnabled ?: false,
                     usageMillis = usageStats[packageName]?.totalTimeInForeground ?: 0L,
-                    lockMode = limit?.lockMode ?: "NONE",
+                    lockMode = limit?.lockMode?.name ?: UsageLimitLockMode.NONE.name,
                     lockUntilTimestamp = limit?.lockUntilTimestamp
                 )
             }
@@ -213,4 +214,7 @@ class UsageLimitsRepository @Inject constructor(
         "yyyy-MM-dd",
         Locale.US
     ).format(Date())
+
+    private fun parseLockMode(value: String): UsageLimitLockMode =
+        UsageLimitLockMode.valueOf(value.uppercase(Locale.ROOT))
 }

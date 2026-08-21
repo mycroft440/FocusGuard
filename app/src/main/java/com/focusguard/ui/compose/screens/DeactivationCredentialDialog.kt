@@ -34,6 +34,7 @@ internal fun DeactivationCredentialDialog(
     onDismiss: () -> Unit,
     onCredentialChanged: () -> Unit
 ) {
+    val context = LocalContext.current
     var wasConfigured by remember { mutableStateOf(manager.hasCredential()) }
     var currentCredential by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }

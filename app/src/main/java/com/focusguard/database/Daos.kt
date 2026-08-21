@@ -81,7 +81,7 @@ interface BlockSessionDao {
     suspend fun deactivateSession(sessionId: Int): Int
 
     @Query("UPDATE block_sessions SET isActive = 0 WHERE isActive = 1 AND sessionType = :sessionType")
-    suspend fun deactivateActiveSessionsByType(sessionType: String): Int
+    suspend fun deactivateActiveSessionsByType(sessionType: BlockSessionType): Int
 
     @Query("UPDATE block_sessions SET isActive = 0 WHERE isActive = 1")
     suspend fun deactivateAllActiveSessions(): Int
@@ -92,17 +92,9 @@ interface BlockSessionDao {
     @Query("DELETE FROM block_sessions WHERE isActive = 0 AND endTime < :threshold")
     suspend fun deleteOldInactiveSessions(threshold: Long)
 
-    @Query("DELETE FROM session_app_cross_ref WHERE sessionId NOT IN (SELECT id FROM block_sessions)")
-    suspend fun cleanOrphanApps()
-
-    @Query("DELETE FROM session_website_cross_ref WHERE sessionId NOT IN (SELECT id FROM block_sessions)")
-    suspend fun cleanOrphanWebsites()
-
     @Transaction
     suspend fun insertNewSession(session: BlockSession): Long {
         deleteOldInactiveSessions(System.currentTimeMillis() - 30L * 24 * 60 * 60 * 1000)
-        cleanOrphanApps()
-        cleanOrphanWebsites()
         return insertBlockSession(session)
     }
 

@@ -131,7 +131,7 @@ class BlockingScheduleCalculatorTest {
         isRecurring = true,
         recurringStartHour = startHour,
         recurringEndHour = endHour,
-        recurringDaysOfWeek = allowedDay.toString()
+        recurringDaysOfWeek = setOf(allowedDay)
     )
 
     private fun instant(

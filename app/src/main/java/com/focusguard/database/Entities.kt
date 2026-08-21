@@ -1,6 +1,8 @@
 package com.focusguard.database
 
 import androidx.room.Entity
+import androidx.room.ForeignKey
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 @Entity(tableName = "blocked_apps")
@@ -40,20 +42,44 @@ data class BlockSession(
     val recurringStartMinute: Int = 0,
     val recurringEndHour: Int = 0,
     val recurringEndMinute: Int = 0,
-    val recurringDaysOfWeek: String = "", // e.g., "1,2,3,4,5" for Mon-Fri
+    val recurringDaysOfWeek: Set<Int> = emptySet(),
     val recurringDurationMonths: Int = 1,
-    val sessionType: String = "PASSWORD", // "PASSWORD" or "TIME"
+    val sessionType: BlockSessionType = BlockSessionType.PASSWORD,
     val isFixed24h: Boolean = true,
     val isBlockingEnabled: Boolean = true
 )
 
-@Entity(tableName = "session_app_cross_ref", primaryKeys = ["sessionId", "packageName"])
+@Entity(
+    tableName = "session_app_cross_ref",
+    primaryKeys = ["sessionId", "packageName"],
+    foreignKeys = [
+        ForeignKey(
+            entity = BlockSession::class,
+            parentColumns = ["id"],
+            childColumns = ["sessionId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index("sessionId")]
+)
 data class SessionAppCrossRef(
     val sessionId: Int,
     val packageName: String
 )
 
-@Entity(tableName = "session_website_cross_ref", primaryKeys = ["sessionId", "domain"])
+@Entity(
+    tableName = "session_website_cross_ref",
+    primaryKeys = ["sessionId", "domain"],
+    foreignKeys = [
+        ForeignKey(
+            entity = BlockSession::class,
+            parentColumns = ["id"],
+            childColumns = ["sessionId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index("sessionId")]
+)
 data class SessionWebsiteCrossRef(
     val sessionId: Int,
     val domain: String
@@ -66,7 +92,7 @@ data class AppUsageLimit(
     val appName: String,
     val dailyLimitMinutes: Int,
     val isEnabled: Boolean = true,
-    val lockMode: String = "NONE", // "NONE", "PASSWORD", "TIME"
+    val lockMode: UsageLimitLockMode = UsageLimitLockMode.NONE,
     val lockPasswordHash: String? = null,
     val lockUntilTimestamp: Long? = null,
     val createdAt: Long = System.currentTimeMillis(),
@@ -82,7 +108,7 @@ data class WebsiteUsageLimit(
     val domain: String,
     val dailyLimitMinutes: Int,
     val isEnabled: Boolean = true,
-    val lockMode: String = "NONE",
+    val lockMode: UsageLimitLockMode = UsageLimitLockMode.NONE,
     val lockPasswordHash: String? = null,
     val lockUntilTimestamp: Long? = null,
     val createdAt: Long = System.currentTimeMillis()

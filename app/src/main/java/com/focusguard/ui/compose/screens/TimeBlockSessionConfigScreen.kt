@@ -6,6 +6,7 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.ui.Alignment
 import com.focusguard.security.BlockDurationPolicy
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import com.focusguard.R
 import android.widget.Toast
 import androidx.compose.ui.res.stringResource
@@ -84,19 +85,19 @@ fun TimeBlockSessionConfigScreen(
     val availableUnits = remember(apps, sites) {
         BlockDurationPolicy.availableUnits(rules = sites, hasApps = apps.isNotEmpty())
     }
-    var durationUnit by remember { mutableStateOf(BlockDurationPolicy.Unit.DAYS) }
+    var durationUnit by rememberSaveable { mutableStateOf(BlockDurationPolicy.Unit.DAYS) }
     // Se o alvo mudar e a unidade escolhida deixar de existir, cai para dias em
     // vez de continuar armando um prazo que a tela não oferece mais.
     if (durationUnit !in availableUnits) {
         durationUnit = BlockDurationPolicy.Unit.DAYS
     }
-    var amountText by remember { mutableStateOf("") }
-    var termsAccepted by remember { mutableStateOf(false) }
+    var amountText by rememberSaveable { mutableStateOf("") }
+    var termsAccepted by rememberSaveable { mutableStateOf(false) }
     var isSaving by remember { mutableStateOf(false) }
     var pendingProtectionReason by remember {
         mutableStateOf<BlockingProtectionUnavailableException.Reason?>(null)
     }
-    var showMasterCredentialSetup by remember { mutableStateOf(false) }
+    var showMasterCredentialSetup by rememberSaveable { mutableStateOf(false) }
 
     val duration = BlockDurationPolicy.resolve(durationUnit, amountText.toIntOrNull())
     // O aceite e obrigatorio: sem senha mestre, o consentimento informado e a

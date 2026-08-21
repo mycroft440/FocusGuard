@@ -78,7 +78,7 @@ class UsageLimitsViewModel @Inject constructor(
                     currentLimitMinutes = limit.dailyLimitMinutes,
                     isEnabled = limit.isEnabled,
                     usageMs = limit.usageMillis,
-                    lockMode = limit.lockMode,
+                    lockMode = limit.lockMode.name,
                     lockPasswordHash = null,
                     lockUntilTimestamp = limit.lockUntilTimestamp
                 )
@@ -89,7 +89,7 @@ class UsageLimitsViewModel @Inject constructor(
                     dailyLimitMinutes = limit.dailyLimitMinutes,
                     isEnabled = limit.isEnabled,
                     usageMs = limit.usageMillis,
-                    lockMode = limit.lockMode,
+                    lockMode = limit.lockMode.name,
                     lockPasswordHash = null,
                     lockUntilTimestamp = limit.lockUntilTimestamp
                 )
