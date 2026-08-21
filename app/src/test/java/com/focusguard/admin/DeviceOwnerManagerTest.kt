@@ -14,6 +14,7 @@ import com.focusguard.receiver.BootReceiver
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.service.BlockingAccessibilityService
 import com.google.common.truth.Truth.assertThat
+import dagger.Lazy
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -25,9 +26,16 @@ import org.robolectric.annotation.Config
 class DeviceOwnerManagerTest {
 
     private val context: Context = RuntimeEnvironment.getApplication().applicationContext
+    private val access = DeviceOwnerPolicyAccess(context)
+    private val appController = DeviceOwnerAppController(context, access)
+    private val webController = DeviceOwnerWebPolicyController(context, access)
     private val manager = DeviceOwnerManager(
         context,
-        DeactivationCredentialManager(context)
+        Lazy { DeactivationCredentialManager(context) },
+        access,
+        appController,
+        webController,
+        DeviceOwnerShieldController(context, access, appController, webController)
     )
 
     @Test
