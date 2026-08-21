@@ -18,9 +18,13 @@ import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.security.ArmoredProtectionPolicy
 import com.focusguard.security.AuthManager
 import com.focusguard.security.AuthenticatedRemovalWindow
+import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.DeviceOwnerMaintenanceGate
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -35,7 +39,11 @@ import kotlinx.coroutines.withContext
  * Manager for Device Owner Mode functionality.
  * Handles app blocking and device policy enforcement.
  */
-class DeviceOwnerManager private constructor(private val context: Context) {
+@Singleton
+class DeviceOwnerManager @Inject constructor(
+    @ApplicationContext private val context: Context,
+    private val deactivationCredentialManager: DeactivationCredentialManager
+) {
 
     private val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
     private val componentName = FocusGuardDeviceAdminReceiver.getComponentName(context)
@@ -57,15 +65,6 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     private var lastWebsitePolicySignature: String? = null
 
     companion object {
-        @Volatile
-        private var instance: DeviceOwnerManager? = null
-
-        fun getInstance(context: Context): DeviceOwnerManager {
-            return instance ?: synchronized(this) {
-                instance ?: DeviceOwnerManager(context.applicationContext).also { instance = it }
-            }
-        }
-
         private const val MAX_MANAGED_URLS = 1_000
         private const val ACTION_DEVICE_ADMIN_SETTINGS = "android.settings.DEVICE_ADMIN_SETTINGS"
         private const val SUSPENDED_APPS_PREFERENCES = "focusguard_suspended_apps"
@@ -274,6 +273,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
         val result = DeviceOwnerMaintenanceGate.requestWithCredential(
             context = context,
             credential = credential,
+            credentialManager = deactivationCredentialManager,
             protectionArmed = false
         )
         if (result == DeviceOwnerMaintenanceGate.UnlockResult.UNLOCKED) {

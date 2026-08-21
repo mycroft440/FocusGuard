@@ -60,7 +60,10 @@ import kotlinx.coroutines.withContext
 @Singleton
 class BlockingSessionManager @Inject constructor(
     @ApplicationContext private val context: Context,
-    private val deactivationCredentialManager: DeactivationCredentialManager
+    private val deactivationCredentialManager: DeactivationCredentialManager,
+    private val database: AppDatabase,
+    private val deviceOwnerManager: DeviceOwnerManager,
+    private val protectionPermissionGate: ProtectionPermissionGate
 ) {
 
     class BlockingProtectionUnavailableException(
@@ -251,31 +254,6 @@ class BlockingSessionManager @Inject constructor(
         private const val PREVIOUS_DND_FILTER_KEY = "previous_dnd_filter"
         private const val POLICY_RECONCILIATION_INTERVAL_MILLIS = 15L * 60L * 1_000L
 
-        @Volatile
-        private var legacyInstance: BlockingSessionManager? = null
-
-        fun getInstance(context: Context): BlockingSessionManager {
-            return try {
-                val entryPoint = dagger.hilt.android.EntryPointAccessors.fromApplication(
-                    context.applicationContext,
-                    BlockingSessionManagerEntryPoint::class.java
-                )
-                entryPoint.blockingSessionManager()
-            } catch (error: Exception) {
-                FocusGuardLogger.logError(
-                    "BlockingSessionManager",
-                    "Hilt indisponível; usando singleton legado",
-                    error
-                )
-                synchronized(this) {
-                    legacyInstance ?: BlockingSessionManager(
-                        context.applicationContext,
-                        DeactivationCredentialManager(context.applicationContext)
-                    ).also { legacyInstance = it }
-                }
-            }
-        }
-
         internal fun combineConfiguredBlockedTargets(
             passwordSessionAppPackages: Collection<String>,
             passwordSessionWebsiteRules: Collection<String>,
@@ -375,14 +353,6 @@ class BlockingSessionManager @Inject constructor(
             focusModeActive
     }
 
-    @dagger.hilt.EntryPoint
-    @dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
-    interface BlockingSessionManagerEntryPoint {
-        fun blockingSessionManager(): BlockingSessionManager
-    }
-
-    private val database = AppDatabase.getDatabase(context)
-    private val deviceOwnerManager = DeviceOwnerManager.getInstance(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val enforcementMutex = Mutex()
     private val statePreferences = context.getSharedPreferences(
@@ -817,7 +787,7 @@ class BlockingSessionManager @Inject constructor(
     }
 
     private fun ensureBlockingPermissionsReady() {
-        val permissionState = ProtectionPermissionGate.read(context)
+        val permissionState = protectionPermissionGate.read()
         if (!permissionState.isReady) {
             throw BlockingProtectionUnavailableException(
                 BlockingProtectionUnavailableException.Reason.PROTECTION_PERMISSIONS_REQUIRED

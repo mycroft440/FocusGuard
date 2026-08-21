@@ -114,13 +114,14 @@ data class PermissionState(
 @Composable
 fun PermissionsScreen(
     flowMode: PermissionFlowMode = PermissionFlowMode.FullSetup,
+    deviceOwnerManager: DeviceOwnerManager,
+    protectionPermissionGate: ProtectionPermissionGate,
     onFinish: () -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val deviceOwnerManager = remember { DeviceOwnerManager.getInstance(context) }
     val initialPermissionState = remember {
-        readPermissionState(context)
+        readPermissionState(protectionPermissionGate)
     }
     val steps = remember(flowMode, initialPermissionState) {
         permissionStepsForFlow(flowMode, initialPermissionState)
@@ -142,7 +143,7 @@ fun PermissionsScreen(
     var resumeCount by remember { mutableIntStateOf(0) }
 
     fun refreshPermissions(): PermissionState {
-        val updated = readPermissionState(context)
+        val updated = readPermissionState(protectionPermissionGate)
         permissionState = updated
         return updated
     }
@@ -811,8 +812,8 @@ private fun PermissionStep(number: Int, text: String) {
     }
 }
 
-private fun readPermissionState(context: Context): PermissionState {
-    val state = ProtectionPermissionGate.read(context)
+private fun readPermissionState(gate: ProtectionPermissionGate): PermissionState {
+    val state = gate.read()
     return PermissionState(
         notifications = state.notifications,
         batteryOptimization = state.batteryOptimization,

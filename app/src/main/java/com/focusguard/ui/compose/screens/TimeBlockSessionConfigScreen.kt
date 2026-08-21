@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.BlockingSessionManager.BlockingProtectionUnavailableException
+import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.ui.PermissionsActivity
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
@@ -68,6 +69,8 @@ import kotlinx.coroutines.launch
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun TimeBlockSessionConfigScreen(
+    sessionManager: BlockingSessionManager,
+    credentialManager: DeactivationCredentialManager,
     appName: String,
     apps: List<String>,
     sites: List<String>,
@@ -76,7 +79,6 @@ fun TimeBlockSessionConfigScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
     // "Para sempre" só é ofertado quando o alvo é exclusivamente pornografia:
     // é o único bloqueio sem volta que o usuário pede querendo não voltar.
     val availableUnits = remember(apps, sites) {
@@ -107,6 +109,7 @@ fun TimeBlockSessionConfigScreen(
         // Configurar a senha mestre aqui mesmo: o usuário está tentando armar um
         // bloqueio, mandá-lo navegar até Configurações perderia o contexto.
         DeactivationCredentialDialog(
+            manager = credentialManager,
             managementLocked = false,
             onDismiss = { showMasterCredentialSetup = false },
             onCredentialChanged = { showMasterCredentialSetup = false }

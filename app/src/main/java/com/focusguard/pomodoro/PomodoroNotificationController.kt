@@ -7,6 +7,9 @@ import android.content.Intent
 import android.os.Build
 import android.provider.Settings
 import com.focusguard.utils.SecurePrefsManager
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /**
  * Controla o modo Não Perturbe usado pelo Pomodoro.
@@ -14,7 +17,10 @@ import com.focusguard.utils.SecurePrefsManager
  * Usamos INTERRUPTION_FILTER_ALARMS: notificações ficam silenciosas, mas o
  * alarme do próprio Pomodoro continua audível no stream de alarme.
  */
-class PomodoroNotificationController(context: Context) {
+@Singleton
+class PomodoroNotificationController @Inject constructor(
+    @ApplicationContext context: Context
+) {
     private val appContext = context.applicationContext
     private val manager = appContext.getSystemService(NotificationManager::class.java)
     private val prefs = SecurePrefsManager(appContext).prefs

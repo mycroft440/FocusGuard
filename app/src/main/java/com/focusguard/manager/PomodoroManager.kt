@@ -38,48 +38,21 @@ import kotlinx.coroutines.sync.withLock
 
 @Singleton
 class PomodoroManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    database: AppDatabase,
+    private val sessionManager: BlockingSessionManager,
+    private val protectionPermissionGate: ProtectionPermissionGate,
+    private val planStore: PomodoroPlanStore,
+    private val notificationController: PomodoroNotificationController
 ) {
 
     companion object {
         private const val STRICT_ARM_TIMEOUT_MILLIS = 3_000L
         private const val STRICT_ARM_POLL_MILLIS = 25L
 
-        @Volatile
-        private var legacyInstance: PomodoroManager? = null
-
-        fun getInstance(context: Context): PomodoroManager {
-            return try {
-                val entryPoint = dagger.hilt.android.EntryPointAccessors.fromApplication(
-                    context.applicationContext,
-                    PomodoroManagerEntryPoint::class.java
-                )
-                entryPoint.pomodoroManager()
-            } catch (error: Exception) {
-                FocusGuardLogger.logError(
-                    "PomodoroManager",
-                    "Hilt indisponível; usando singleton legado",
-                    error
-                )
-                synchronized(this) {
-                    legacyInstance ?: PomodoroManager(context.applicationContext)
-                        .also { legacyInstance = it }
-                }
-            }
-        }
     }
 
-    @dagger.hilt.EntryPoint
-    @dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
-    interface PomodoroManagerEntryPoint {
-        fun pomodoroManager(): PomodoroManager
-    }
-
-    private val database = AppDatabase.getDatabase(context)
     private val dao = database.pomodoroSessionDao()
-    private val sessionManager = BlockingSessionManager.getInstance(context)
-    private val planStore = PomodoroPlanStore(context)
-    private val notificationController = PomodoroNotificationController(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val finishMutex = Mutex()
 
@@ -376,7 +349,7 @@ class PomodoroManager @Inject constructor(
         check(!normalized.strictBlocking || !FocusModeStore.isActive(context)) {
             "O Pomodoro rigoroso não pode substituir um Modo Foco ativo"
         }
-        check(!normalized.strictBlocking || ProtectionPermissionGate.read(context).isReady) {
+        check(!normalized.strictBlocking || protectionPermissionGate.read().isReady) {
             "Todas as permissões de proteção são necessárias para o Pomodoro com bloqueio"
         }
         check(!normalized.silenceNotifications || notificationController.hasPolicyAccess()) {

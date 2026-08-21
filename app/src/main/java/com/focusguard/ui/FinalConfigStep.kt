@@ -76,6 +76,9 @@ import kotlinx.coroutines.launch
 fun FinalConfigStep(
     sessionType: String,
     authManager: com.focusguard.security.AuthManager,
+    sessionManager: BlockingSessionManager,
+    credentialManager: DeactivationCredentialManager,
+    appUnlockStore: PasswordAppUnlockStore,
     sites: List<String>,
     apps: List<String>,
     onFinish: () -> Unit,
@@ -83,9 +86,6 @@ fun FinalConfigStep(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
-    val credentialManager = remember(context) { DeactivationCredentialManager(context) }
-    val appUnlockStore = remember(context) { PasswordAppUnlockStore(context) }
     val biometricAvailable = remember(context) {
         AppUnlockBiometricAuthenticator.isAvailable(context)
     }

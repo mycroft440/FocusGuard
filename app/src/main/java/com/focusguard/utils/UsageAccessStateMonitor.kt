@@ -14,6 +14,9 @@ import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.database.AppDatabase
 import com.focusguard.security.UsageAccessPausePolicy
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -29,7 +32,12 @@ import kotlinx.coroutines.launch
  * Unlike Accessibility there is no system broadcast for this permission changing,
  * so polling is the only option. The check is a cheap AppOps lookup.
  */
-object UsageAccessStateMonitor {
+@Singleton
+class UsageAccessStateMonitor @Inject constructor(
+    @ApplicationContext private val appContext: Context,
+    private val database: AppDatabase,
+    private val deviceOwnerManager: DeviceOwnerManager
+) {
 
     private const val TAG = "UsageAccessMonitor"
     private const val POLL_INTERVAL_MS = 30_000L
@@ -43,8 +51,7 @@ object UsageAccessStateMonitor {
     private var pollingRunnable: Runnable? = null
     private var lastKnownState: UsageAccessPausePolicy.State? = null
 
-    fun start(context: Context) {
-        val appContext = context.applicationContext
+    fun start() {
         checkAndHandle(appContext)
         if (pollingRunnable != null) return
         val runnable = object : Runnable {
@@ -70,7 +77,7 @@ object UsageAccessStateMonitor {
             // list changes from several screens and a stale count would either
             // warn about nothing or stay silent when it matters.
             val enabledAppLimits = runCatching {
-                AppDatabase.getDatabase(context).appUsageLimitDao().getAllActiveLimitsStatic().size
+                database.appUsageLimitDao().getAllActiveLimitsStatic().size
             }.getOrElse { error ->
                 FocusGuardLogger.logError(TAG, "Falha ao contar limites ativos", error)
                 return@launch
@@ -114,7 +121,7 @@ object UsageAccessStateMonitor {
                 )
             }
 
-            val deviceOwnerActive = DeviceOwnerManager.getInstance(context).isDeviceOwnerActive()
+            val deviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive()
             val settingsIntent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             val pendingIntent = PendingIntent.getActivity(

@@ -18,6 +18,9 @@ import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.service.BlockingAccessibilityService
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -31,7 +34,12 @@ import kotlinx.coroutines.launch
  * blocking is paused. On Device Owner installations, native policies are reconciled
  * immediately and the warning remains visible until Accessibility is restored.
  */
-object AccessibilityStateMonitor {
+@Singleton
+class AccessibilityStateMonitor @Inject constructor(
+    @ApplicationContext private val appContext: Context,
+    private val deviceOwnerManager: DeviceOwnerManager,
+    private val blockingSessionManager: BlockingSessionManager
+) {
 
     private const val TAG = "A11yStateMonitor"
     private const val POLL_INTERVAL_MS = 30_000L
@@ -49,13 +57,12 @@ object AccessibilityStateMonitor {
     private val stateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             if (context != null && intent?.action == ACTION_STATE_CHANGED) {
-                checkAndHandle(context.applicationContext)
+                checkAndHandle(appContext)
             }
         }
     }
 
-    fun start(context: Context) {
-        val appContext = context.applicationContext
+    fun start() {
         if (!receiverRegistered) {
             try {
                 val filter = IntentFilter(ACTION_STATE_CHANGED)
@@ -85,9 +92,9 @@ object AccessibilityStateMonitor {
         startPolling(appContext)
     }
 
-    fun stop(context: Context) {
+    fun stop() {
         if (receiverRegistered) {
-            runCatching { context.applicationContext.unregisterReceiver(stateReceiver) }
+            runCatching { appContext.unregisterReceiver(stateReceiver) }
             receiverRegistered = false
         }
         pollingRunnable?.let(handler::removeCallbacks)
@@ -144,11 +151,11 @@ object AccessibilityStateMonitor {
         val onboardingCompleted = context
             .getSharedPreferences("FocusGuardPrefs", Context.MODE_PRIVATE)
             .getBoolean("hasSeenOnboarding", false)
-        return onboardingCompleted || DeviceOwnerManager.getInstance(context).isDeviceOwnerActive()
+        return onboardingCompleted || deviceOwnerManager.isDeviceOwnerActive()
     }
 
     private fun handlePausedProtection(context: Context) {
-        val deviceOwnerActive = DeviceOwnerManager.getInstance(context).isDeviceOwnerActive()
+        val deviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive()
         sendPausedNotification(context, deviceOwnerActive)
         if (!deviceOwnerActive) return
 
@@ -157,7 +164,7 @@ object AccessibilityStateMonitor {
                 TAG,
                 "Reconciliando políticas nativas após pausa da Acessibilidade"
             )
-            BlockingSessionManager.getInstance(context).checkAndEnforce()
+            blockingSessionManager.checkAndEnforce()
         }
     }
 

@@ -1,6 +1,5 @@
 package com.focusguard.ui.compose.screens
 
-import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.focusguard.manager.BlockingSessionManager
@@ -15,7 +14,6 @@ import com.focusguard.ui.compose.components.limits.UsageLimitAppUi
 import com.focusguard.ui.compose.components.limits.WebsiteLimitUi
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.lifecycle.HiltViewModel
-import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -43,11 +41,11 @@ data class UsageLimitsUiState(
 
 @HiltViewModel
 class UsageLimitsViewModel @Inject constructor(
-    @ApplicationContext private val context: Context,
     private val repository: UsageLimitsRepository,
     private val blockingSessionManager: BlockingSessionManager,
     private val authManager: AuthManager,
-    private val credentialManager: DeactivationCredentialManager
+    private val credentialManager: DeactivationCredentialManager,
+    private val protectionPermissionGate: ProtectionPermissionGate
 ) : ViewModel() {
     private val permissionReadiness = MutableStateFlow(PermissionReadiness.CHECKING)
     private val hasMasterCredential = MutableStateFlow(credentialManager.hasCredential())
@@ -113,7 +111,7 @@ class UsageLimitsViewModel @Inject constructor(
     fun refresh() {
         repository.refreshPlatformSnapshot()
         viewModelScope.launch {
-            permissionReadiness.value = if (ProtectionPermissionGate.read(context).isReady) {
+            permissionReadiness.value = if (protectionPermissionGate.read().isReady) {
                 PermissionReadiness.READY
             } else {
                 PermissionReadiness.MISSING
@@ -132,6 +130,10 @@ class UsageLimitsViewModel @Inject constructor(
         hasMasterCredential = credentialManager.hasCredential(),
         masterCredentialVerified = false
     )
+
+    fun verifyMasterCredential(
+        credential: String
+    ): DeactivationCredentialManager.VerificationResult = credentialManager.verify(credential)
 
     fun saveAppLimit(
         app: UsageLimitAppUi,
@@ -191,7 +193,7 @@ class UsageLimitsViewModel @Inject constructor(
         mutation: suspend () -> Unit
     ) {
         viewModelScope.launch {
-            if (!ProtectionPermissionGate.read(context).isReady) {
+            if (!protectionPermissionGate.read().isReady) {
                 permissionReadiness.value = PermissionReadiness.MISSING
                 return@launch
             }

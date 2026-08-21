@@ -47,12 +47,12 @@ import com.focusguard.security.DeviceOwnerSetupGuide
 
 @Composable
 internal fun DeviceOwnerSetupGuideDialog(
+    manager: DeviceOwnerManager,
     onDismiss: () -> Unit,
     onStateChanged: () -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val manager = remember(context) { DeviceOwnerManager.getInstance(context) }
     var revision by remember { mutableIntStateOf(0) }
     var verifyMessage by remember { mutableStateOf<String?>(null) }
 

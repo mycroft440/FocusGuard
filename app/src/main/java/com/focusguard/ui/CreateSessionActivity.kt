@@ -65,7 +65,9 @@ import com.focusguard.data.PredefinedApps
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
 import com.focusguard.security.BlockTargetPolicy
+import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.security.PasswordAppUnlockStore
 import com.focusguard.ui.compose.screens.AppSelectionList
 import com.focusguard.ui.compose.screens.AppSelectionScreen
 import com.focusguard.ui.compose.screens.KeywordRulesTab
@@ -93,11 +95,11 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class CreateSessionActivity : ComponentActivity() {
 
-    // Injetado via Hilt (AuthModule.provideAuthManager) — usa a MESMA instância
-    // singleton do app inteiro. Antes era `AuthManager(this)` direto, criando
-    // uma instância paralela que burlava o singleton do Hilt e podia disparar
-    // migrações em paralelo (corrigido em P0-2 no PR #20).
     @Inject lateinit var authManager: AuthManager
+    @Inject lateinit var blockingSessionManager: BlockingSessionManager
+    @Inject lateinit var deactivationCredentialManager: DeactivationCredentialManager
+    @Inject lateinit var protectionPermissionGate: ProtectionPermissionGate
+    @Inject lateinit var passwordAppUnlockStore: PasswordAppUnlockStore
     private var redirectedToPermissions = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -110,12 +112,18 @@ class CreateSessionActivity : ComponentActivity() {
                 if (sessionType == "UNIFIED") {
                     UnifiedProtectionSetupWizard(
                         authManager = authManager,
+                        blockingSessionManager = blockingSessionManager,
+                        deactivationCredentialManager = deactivationCredentialManager,
+                        passwordAppUnlockStore = passwordAppUnlockStore,
                         onFinish = { finish() }
                     )
                 } else {
                     CreateSessionWizard(
                         sessionType = sessionType,
                         authManager = authManager,
+                        blockingSessionManager = blockingSessionManager,
+                        deactivationCredentialManager = deactivationCredentialManager,
+                        passwordAppUnlockStore = passwordAppUnlockStore,
                         onFinish = { finish() }
                     )
                 }
@@ -129,7 +137,7 @@ class CreateSessionActivity : ComponentActivity() {
     }
 
     private fun ensureProtectionPermissions(): Boolean {
-        if (ProtectionPermissionGate.read(this).isReady) return true
+        if (protectionPermissionGate.read().isReady) return true
         if (!redirectedToPermissions) {
             redirectedToPermissions = true
             startActivity(PermissionsActivity.createPendingProtectionIntent(this))
@@ -144,6 +152,9 @@ class CreateSessionActivity : ComponentActivity() {
 fun CreateSessionWizard(
     sessionType: String,
     authManager: AuthManager,
+    blockingSessionManager: BlockingSessionManager,
+    deactivationCredentialManager: DeactivationCredentialManager,
+    passwordAppUnlockStore: PasswordAppUnlockStore,
     onFinish: () -> Unit
 ) {
     val pagerState = rememberPagerState(pageCount = { 2 })
@@ -161,6 +172,7 @@ fun CreateSessionWizard(
     ) { page ->
         when (page) {
             0 -> AppSelectionStep(
+                blockingSessionManager = blockingSessionManager,
                 kinds = kinds,
                 // Voltar da segunda página reabre esta com a escolha intacta, em
                 // vez de exigir que tudo seja marcado de novo.
@@ -189,6 +201,9 @@ fun CreateSessionWizard(
                 TimeAwareFinalConfigStep(
                     sessionType = sessionType,
                     authManager = authManager,
+                    blockingSessionManager = blockingSessionManager,
+                    deactivationCredentialManager = deactivationCredentialManager,
+                    passwordAppUnlockStore = passwordAppUnlockStore,
                     sites = selectedRules,
                     apps = appPackages,
                     appName = appNameLabel,
@@ -210,6 +225,7 @@ fun CreateSessionWizard(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AppSelectionStep(
+    blockingSessionManager: BlockingSessionManager,
     onNext: (List<SelectableAppUi>, List<String>) -> Unit,
     onBack: () -> Unit,
     initialSelectedPackages: Set<String> = emptySet(),
@@ -228,7 +244,7 @@ fun AppSelectionStep(
     LaunchedEffect(initialSelectedPackages) {
         withContext(Dispatchers.IO) {
             val configured = try {
-                BlockingSessionManager.getInstance(context).getConfiguredBlockedTargets()
+                blockingSessionManager.getConfiguredBlockedTargets()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {

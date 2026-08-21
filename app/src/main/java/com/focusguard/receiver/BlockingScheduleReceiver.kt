@@ -9,20 +9,24 @@ import android.os.Build
 import com.focusguard.database.BlockSession
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.utils.FocusGuardLogger
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 
 /** Reconcilia políticas nativas exatamente nas mudanças de janela de bloqueio. */
+@AndroidEntryPoint
 class BlockingScheduleReceiver : BroadcastReceiver() {
+    @Inject lateinit var sessionManager: BlockingSessionManager
 
     override fun onReceive(context: Context, intent: Intent?) {
         if (intent?.action !in SUPPORTED_ACTIONS) return
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                BlockingSessionManager.getInstance(context).checkAndEnforce()
+                sessionManager.checkAndEnforce()
             } catch (error: Exception) {
                 FocusGuardLogger.logError(
                     "BlockingSchedule",

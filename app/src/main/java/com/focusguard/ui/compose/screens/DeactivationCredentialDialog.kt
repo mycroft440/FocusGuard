@@ -29,12 +29,11 @@ import com.focusguard.security.DeactivationCredentialManager
 
 @Composable
 internal fun DeactivationCredentialDialog(
+    manager: DeactivationCredentialManager,
     managementLocked: Boolean,
     onDismiss: () -> Unit,
     onCredentialChanged: () -> Unit
 ) {
-    val context = LocalContext.current
-    val manager = remember(context) { DeactivationCredentialManager(context) }
     var wasConfigured by remember { mutableStateOf(manager.hasCredential()) }
     var currentCredential by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }

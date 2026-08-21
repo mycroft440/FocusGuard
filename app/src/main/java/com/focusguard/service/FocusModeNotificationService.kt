@@ -12,6 +12,8 @@ import com.focusguard.focusmode.FocusModePolicy
 import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.pomodoro.PomodoroPlanStore
 import com.focusguard.utils.FocusGuardLogger
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 /**
  * Um único NotificationListenerService atende Modo Foco e Pomodoro.
@@ -21,7 +23,9 @@ import com.focusguard.utils.FocusGuardLogger
  * ocultação. Assim o conteúdo continua pertencendo ao app de origem e volta a
  * aparecer quando o período termina.
  */
+@AndroidEntryPoint
 class FocusModeNotificationService : NotificationListenerService() {
+    @Inject lateinit var pomodoroPlanStore: PomodoroPlanStore
     private val refreshReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             refreshNotificationPolicy()
@@ -118,7 +122,7 @@ class FocusModeNotificationService : NotificationListenerService() {
             suppressUntilMillis = maxOf(suppressUntilMillis, focusSession.endTimeMillis)
         }
 
-        val pomodoroRuntime = PomodoroPlanStore(applicationContext).readRuntime()
+        val pomodoroRuntime = pomodoroPlanStore.readRuntime()
         if (
             pomodoroRuntime?.active == true &&
             pomodoroRuntime.config.hideNotifications &&

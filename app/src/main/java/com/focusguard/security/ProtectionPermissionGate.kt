@@ -6,6 +6,9 @@ import android.content.pm.PackageManager
 import android.os.Build
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.utils.PermissionUtils
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 
 enum class ProtectionPermission {
     SELF_PROTECTION_CONSENT,
@@ -43,24 +46,26 @@ data class ProtectionPermissionState(
  * Every value is read directly from Android so an app update, process restart,
  * or permission change cannot leave a stale cached decision behind.
  */
-object ProtectionPermissionGate {
-    fun read(context: Context): ProtectionPermissionState {
-        val appContext = context.applicationContext
-        val deviceOwnerManager = DeviceOwnerManager.getInstance(appContext)
+@Singleton
+class ProtectionPermissionGate @Inject constructor(
+    @ApplicationContext private val appContext: Context,
+    private val deviceOwnerManager: DeviceOwnerManager
+) {
+    fun read(): ProtectionPermissionState {
         return ProtectionPermissionState(
             selfProtectionConsent = SelfProtectionConsent.hasAccepted(appContext),
             accessibility = PermissionUtils.isAccessibilityServiceEnabled(appContext),
             usageAccess = PermissionUtils.isUsageAccessEnabled(appContext),
-            notifications = isNotificationPermissionGranted(appContext),
+            notifications = isNotificationPermissionGranted(),
             batteryOptimization = PermissionUtils.isBatteryOptimizationIgnored(appContext),
             deviceAdmin = deviceOwnerManager.isDeviceAdminActive() ||
                 deviceOwnerManager.isDeviceOwnerActive()
         )
     }
 
-    private fun isNotificationPermissionGranted(context: Context): Boolean {
+    private fun isNotificationPermissionGranted(): Boolean {
         return Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-            context.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+            appContext.checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
     }
 }

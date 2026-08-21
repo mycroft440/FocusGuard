@@ -4,6 +4,9 @@ import android.content.Context
 import com.focusguard.R
 import com.focusguard.utils.SecurePrefsManager
 import com.focusguard.widget.PomodoroWidgetProvider
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 import java.util.UUID
 import org.json.JSONArray
 import org.json.JSONObject
@@ -60,7 +63,10 @@ data class PomodoroProfile(
     val builtIn: Boolean = false
 )
 
-class PomodoroPlanStore(context: Context) {
+@Singleton
+class PomodoroPlanStore @Inject constructor(
+    @ApplicationContext context: Context
+) {
     private val appContext = context.applicationContext
     private val prefs = SecurePrefsManager(appContext).prefs
 

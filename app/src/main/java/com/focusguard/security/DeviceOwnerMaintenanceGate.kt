@@ -46,6 +46,7 @@ object DeviceOwnerMaintenanceGate {
     fun requestWithCredential(
         context: Context,
         credential: String,
+        credentialManager: DeactivationCredentialManager,
         protectionArmed: Boolean
     ): UnlockResult {
         if (!isAutomaticDateAndTimeEnabled(context)) {
@@ -56,7 +57,7 @@ object DeviceOwnerMaintenanceGate {
             return UnlockResult.ACTIVE_BLOCK_REQUIRES_MONTHLY_WINDOW
         }
 
-        return when (DeactivationCredentialManager(context).verify(credential)) {
+        return when (credentialManager.verify(credential)) {
             DeactivationCredentialManager.VerificationResult.PASSWORD_ACCEPTED,
             DeactivationCredentialManager.VerificationResult.RECOVERY_ACCEPTED -> {
                 openWindow(context, "credential", protectionArmed = false)

@@ -89,6 +89,7 @@ import com.focusguard.pomodoro.PomodoroProfile
 import com.focusguard.pomodoro.PomodoroUiSignal
 import com.focusguard.security.AuthManager
 import com.focusguard.security.ProtectionPermissionGate
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.focusguard.service.FocusModeNotificationService
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
@@ -113,6 +114,10 @@ import kotlin.math.sin
 fun PomodoroScreen(
     pomodoroManager: PomodoroManager,
     authManager: AuthManager,
+    deviceOwnerManager: DeviceOwnerManager,
+    protectionPermissionGate: ProtectionPermissionGate,
+    planStore: PomodoroPlanStore,
+    notificationController: PomodoroNotificationController,
     onPermissionsRequired: () -> Unit,
     onBack: () -> Unit,
     compactLayout: Boolean = false
@@ -121,15 +126,9 @@ fun PomodoroScreen(
     val activity = context as? Activity
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    val planStore = remember(context) { PomodoroPlanStore(context) }
-    val notificationController = remember(context) { PomodoroNotificationController(context) }
-    val deviceOwnerManager = remember(context) {
-        DeviceOwnerManager.getInstance(context.applicationContext)
-    }
-
-    val currentSession by pomodoroManager.currentSession.collectAsState()
-    val cycleState by pomodoroManager.cycleState.collectAsState()
-    val timeLeftMillis by pomodoroManager.timeLeftMillis.collectAsState()
+    val currentSession by pomodoroManager.currentSession.collectAsStateWithLifecycle()
+    val cycleState by pomodoroManager.cycleState.collectAsStateWithLifecycle()
+    val timeLeftMillis by pomodoroManager.timeLeftMillis.collectAsStateWithLifecycle()
     val isRunning = currentSession?.isActive == true && cycleState?.active == true
     val isStrictBlockingActive = currentSession?.isBlockingEnabled == true &&
         currentSession?.endTime?.let { it > System.currentTimeMillis() } == true
@@ -197,7 +196,7 @@ fun PomodoroScreen(
             config.strictBlocking && focusModeActive -> {
                 setMessage(context.getString(R.string.fg_pomodoro_disable_focus_for_strict))
             }
-            config.strictBlocking && !ProtectionPermissionGate.read(context).isReady -> {
+            config.strictBlocking && !protectionPermissionGate.read().isReady -> {
                 onPermissionsRequired()
             }
             config.silenceNotifications && !hasDndAccess -> {

@@ -75,10 +75,9 @@ import kotlinx.coroutines.withContext
 class BlockingAccessibilityService : AccessibilityService() {
 
     @Inject lateinit var authManager: AuthManager
-
-    private lateinit var database: AppDatabase
-    private lateinit var sessionManager: BlockingSessionManager
-    private lateinit var deviceOwnerManager: DeviceOwnerManager
+    @Inject lateinit var database: AppDatabase
+    @Inject lateinit var sessionManager: BlockingSessionManager
+    @Inject lateinit var deviceOwnerManager: DeviceOwnerManager
 
     private val serviceJob = SupervisorJob()
     private val scope = CoroutineScope(serviceJob + Dispatchers.IO)
@@ -252,9 +251,6 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     override fun onCreate() {
         super.onCreate()
-        database = AppDatabase.getDatabase(this)
-        sessionManager = BlockingSessionManager.getInstance(this)
-        deviceOwnerManager = DeviceOwnerManager.getInstance(this)
         refreshSynchronousProtectionState()
         usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
         powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager

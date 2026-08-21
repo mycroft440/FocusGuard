@@ -42,6 +42,7 @@ import com.focusguard.ui.compose.theme.*
 @Composable
 fun AuthScreen(
     authManager: AuthManager,
+    masterCredentialManager: DeactivationCredentialManager,
     activity: FragmentActivity,
     onUnlock: () -> Unit
 ) {
@@ -49,10 +50,6 @@ fun AuthScreen(
     var passwordVisible by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf("") }
     val scope = rememberCoroutineScope()
-    val masterCredentialManager = remember(activity.applicationContext) {
-        DeactivationCredentialManager(activity.applicationContext)
-    }
-
     // [L1] Shake animation state
     var shakeOffset by remember { mutableStateOf(0f) }
     val animatedShakeOffset by animateFloatAsState(

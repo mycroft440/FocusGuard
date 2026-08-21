@@ -91,6 +91,7 @@ class BlockNoticeActivity : AppCompatActivity() {
     @Inject lateinit var authManager: AuthManager
     @Inject lateinit var blockingSessionManager: BlockingSessionManager
     @Inject lateinit var deactivationCredentialManager: DeactivationCredentialManager
+    @Inject lateinit var passwordAppUnlockStore: PasswordAppUnlockStore
 
     private var strictBlock = false
     private var redirectBrowserPackage: String? = null
@@ -260,7 +261,7 @@ private fun BlockNoticeContent(
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
     val focusRequester = remember { FocusRequester() }
-    val appUnlockStore = remember(context) { PasswordAppUnlockStore(context) }
+    val appUnlockStore = passwordAppUnlockStore
     val customUnlockConfig = remember(blockedPackage) {
         appUnlockStore.get(blockedPackage)
     }
@@ -409,6 +410,7 @@ private fun BlockNoticeContent(
                         blockedPackage = blockedPackage,
                         authManager = authManager,
                         sessionManager = blockingSessionManager,
+                        store = passwordAppUnlockStore,
                         onUnlocked = { unlocked = true }
                     )
                 } else {

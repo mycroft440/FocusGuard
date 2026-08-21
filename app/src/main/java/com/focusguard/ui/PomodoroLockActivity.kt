@@ -70,16 +70,13 @@ import kotlinx.coroutines.launch
 @AndroidEntryPoint
 class PomodoroLockActivity : ComponentActivity() {
 
-    private lateinit var deviceOwnerManager: DeviceOwnerManager
-    private lateinit var pomodoroManager: PomodoroManager
+    @javax.inject.Inject lateinit var deviceOwnerManager: DeviceOwnerManager
+    @javax.inject.Inject lateinit var pomodoroManager: PomodoroManager
     private var allowFinish = false
     private var expirationHandled = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        deviceOwnerManager = DeviceOwnerManager.getInstance(applicationContext)
-        pomodoroManager = PomodoroManager.getInstance(applicationContext)
-
         window.addFlags(
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or

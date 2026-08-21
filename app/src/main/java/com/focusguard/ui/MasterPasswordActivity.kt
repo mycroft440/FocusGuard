@@ -9,14 +9,16 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.ui.compose.screens.DeactivationCredentialDialog
 import com.focusguard.ui.compose.theme.FocusGuardTheme
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 /**
  * Destino único para criar ou alterar a senha mestra.
@@ -24,20 +26,18 @@ import com.focusguard.ui.compose.theme.FocusGuardTheme
  * Configurações, Proteger apps e Limites de uso abrem esta mesma Activity, de
  * modo que nunca existam formulários ou credenciais concorrentes.
  */
+@AndroidEntryPoint
 class MasterPasswordActivity : ComponentActivity() {
+    @Inject lateinit var blockingManager: BlockingSessionManager
+    @Inject lateinit var deviceOwnerManager: DeviceOwnerManager
+    @Inject lateinit var credentialManager: DeactivationCredentialManager
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             FocusGuardTheme {
-                val blockingManager = remember {
-                    BlockingSessionManager.getInstance(applicationContext)
-                }
-                val deviceOwnerManager = remember {
-                    DeviceOwnerManager.getInstance(applicationContext)
-                }
-                val blockingActive by blockingManager.isBlockingActiveFlow.collectAsState(
-                    initial = true
+                val blockingActive by blockingManager.isBlockingActiveFlow.collectAsStateWithLifecycle(
+                    initialValue = true
                 )
                 val managementLocked = blockingActive ||
                     deviceOwnerManager.isArmoredProtectionArmed()
@@ -48,6 +48,7 @@ class MasterPasswordActivity : ComponentActivity() {
                         .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
                 ) {
                     DeactivationCredentialDialog(
+                        manager = credentialManager,
                         managementLocked = managementLocked,
                         onDismiss = { finish() },
                         onCredentialChanged = {

@@ -38,12 +38,10 @@ import com.focusguard.ui.compose.theme.TextSecondary
 @Composable
 internal fun ConfirmMasterCredentialDialog(
     promptRes: Int,
+    verifyCredential: (String) -> DeactivationCredentialManager.VerificationResult,
     onDismiss: () -> Unit,
     onConfirmed: () -> Unit
 ) {
-    val context = LocalContext.current
-    val credentialManager = remember(context) { DeactivationCredentialManager(context) }
-
     var credential by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
 
@@ -51,7 +49,7 @@ internal fun ConfirmMasterCredentialDialog(
     val notConfiguredMessage = stringResource(R.string.master_credential_not_configured)
 
     fun confirm() {
-        when (credentialManager.verify(credential)) {
+        when (verifyCredential(credential)) {
             DeactivationCredentialManager.VerificationResult.PASSWORD_ACCEPTED,
             DeactivationCredentialManager.VerificationResult.RECOVERY_ACCEPTED -> {
                 onConfirmed()

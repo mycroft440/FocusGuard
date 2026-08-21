@@ -132,13 +132,13 @@ enum class BlockTypeUi(
 @Composable
 fun BlockTypeDetailScreen(
     type: BlockTypeUi,
+    sessionManager: BlockingSessionManager,
+    authManager: AuthManager,
     onAddClick: () -> Unit,
     onIntruderLogClick: () -> Unit,
     onBack: () -> Unit
 ) {
-    val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
     var entries by remember {
         mutableStateOf<List<BlockingSessionManager.BlockOverview.Entry>?>(null)
     }
@@ -199,6 +199,7 @@ fun BlockTypeDetailScreen(
             if (type == BlockTypeUi.PASSWORD) {
                 Spacer(Modifier.height(16.dp))
                 PasswordProtectionTools(
+                    authManager = authManager,
                     accent = type.accent,
                     onIntruderLogClick = onIntruderLogClick
                 )
@@ -292,12 +293,10 @@ fun BlockTypeDetailScreen(
  */
 @Composable
 private fun PasswordProtectionTools(
+    authManager: AuthManager,
     accent: Color,
     onIntruderLogClick: () -> Unit
 ) {
-    val context = LocalContext.current
-    val authManager = remember(context) { AuthManager(context) }
-
     var selfieEnabled by remember { mutableStateOf(authManager.isPhotoCaptureEnabled()) }
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(

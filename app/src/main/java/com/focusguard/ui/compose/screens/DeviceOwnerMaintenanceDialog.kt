@@ -40,14 +40,13 @@ import kotlin.math.ceil
 
 @Composable
 internal fun DeviceOwnerMaintenanceDialog(
+    manager: DeviceOwnerManager,
+    auditor: DeviceOwnerProtectionAuditor,
+    credentialManager: DeactivationCredentialManager,
     onDismiss: () -> Unit,
     onStateChanged: () -> Unit
 ) {
     val context = LocalContext.current
-    val manager = remember(context) { DeviceOwnerManager.getInstance(context) }
-    val auditor = remember(context) { DeviceOwnerProtectionAuditor(context) }
-    val credentialManager = remember(context) { DeactivationCredentialManager(context) }
-
     var credential by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showRevokeConfirmation by remember { mutableStateOf(false) }

@@ -10,6 +10,7 @@ import androidx.fragment.app.FragmentActivity
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.AppPassword
 import com.focusguard.utils.SecurePrefsManager
+import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -17,6 +18,8 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.withLock
 import java.security.MessageDigest
 import java.security.SecureRandom
+import javax.inject.Inject
+import javax.inject.Singleton
 import javax.crypto.SecretKeyFactory
 import javax.crypto.spec.PBEKeySpec
 
@@ -31,12 +34,16 @@ import javax.crypto.spec.PBEKeySpec
  * de AuthManager forem criadas. Idealmente, todos os callers devem usar Hilt
  * para obter a mesma instância singleton.
  */
-class AuthManager(context: Context) {
+@Singleton
+class AuthManager @Inject constructor(
+    @ApplicationContext context: Context,
+    private val database: AppDatabase,
+    private val deactivationCredentialManager: DeactivationCredentialManager
+) {
     private val appContext = context.applicationContext
 
     private val prefs: SharedPreferences = appContext.getSharedPreferences("FocusGuardAuth", Context.MODE_PRIVATE)
     private val securePrefs = SecurePrefsManager(appContext)
-    private val database = AppDatabase.getDatabase(appContext)
     private val passwordDao = database.appPasswordDao()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
@@ -120,7 +127,7 @@ class AuthManager(context: Context) {
      */
     suspend fun isAppLocked(): Boolean {
         ensureMigrationDone()
-        val hasMasterCredential = DeactivationCredentialManager(appContext).hasCredential()
+        val hasMasterCredential = deactivationCredentialManager.hasCredential()
         val activeSessionTypes = database.blockSessionDao()
             .getAllActiveSessionsStatic()
             .map { it.sessionType }

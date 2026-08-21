@@ -64,8 +64,15 @@ import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class PomodoroWidgetDialActivity : AppCompatActivity() {
+    @Inject lateinit var pomodoroManager: PomodoroManager
+    @Inject lateinit var protectionPermissionGate: ProtectionPermissionGate
+    @Inject lateinit var pomodoroPlanStore: PomodoroPlanStore
+    @Inject lateinit var pomodoroNotificationController: PomodoroNotificationController
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
@@ -79,17 +86,14 @@ class PomodoroWidgetDialActivity : AppCompatActivity() {
     private fun WidgetDialContent(onClose: () -> Unit) {
         val context = this
         val scope = rememberCoroutineScope()
-        val store = remember { PomodoroPlanStore(context) }
-        val manager = remember { PomodoroManager.getInstance(context) }
-        val notificationController = remember { PomodoroNotificationController(context) }
-        var config by remember { mutableStateOf(store.loadConfig()) }
+        var config by remember { mutableStateOf(pomodoroPlanStore.loadConfig()) }
         var focusText by remember(config.focusMinutes) {
             mutableStateOf(config.focusMinutes.toString())
         }
         var error by remember { mutableStateOf<String?>(null) }
 
         fun persist(updated: PomodoroPlanConfig) {
-            config = store.saveConfig(updated.normalized())
+            config = pomodoroPlanStore.saveConfig(updated.normalized())
             focusText = config.focusMinutes.toString()
             PomodoroWidgetProvider.requestUpdate(context)
             error = null
@@ -97,32 +101,32 @@ class PomodoroWidgetDialActivity : AppCompatActivity() {
 
         fun start() {
             when {
-                store.readRuntime()?.active == true -> {
+                pomodoroPlanStore.readRuntime()?.active == true -> {
                     error = context.getString(R.string.fg_pomodoro_already_running)
                     PomodoroWidgetProvider.requestUpdate(context)
                 }
                 config.strictBlocking && FocusModeStore.isActive(context) -> {
                     error = context.getString(R.string.fg_pomodoro_disable_focus_strict)
                 }
-                config.strictBlocking && !ProtectionPermissionGate.read(context).isReady -> {
+                config.strictBlocking && !protectionPermissionGate.read().isReady -> {
                     startActivity(PermissionsActivity.createPendingProtectionIntent(context))
                 }
-                config.silenceNotifications && !notificationController.hasPolicyAccess() -> {
-                    startActivity(notificationController.policyAccessIntent())
+                config.silenceNotifications && !pomodoroNotificationController.hasPolicyAccess() -> {
+                    startActivity(pomodoroNotificationController.policyAccessIntent())
                     error = context.getString(R.string.fg_pomodoro_authorize_dnd_return)
                 }
                 config.hideNotifications &&
-                    !notificationController.hasNotificationListenerAccess(
+                    !pomodoroNotificationController.hasNotificationListenerAccess(
                         FocusModeNotificationService::class.java
                     ) -> {
-                    startActivity(notificationController.notificationListenerIntent())
+                    startActivity(pomodoroNotificationController.notificationListenerIntent())
                     error = context.getString(
                         R.string.fg_pomodoro_authorize_notifications_return
                     )
                 }
                 else -> scope.launch {
                     try {
-                        manager.startPlan(config)
+                        pomodoroManager.startPlan(config)
                         PomodoroWidgetProvider.requestUpdate(context)
                         onClose()
                     } catch (cancelled: CancellationException) {

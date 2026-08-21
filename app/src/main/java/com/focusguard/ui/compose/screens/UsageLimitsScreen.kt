@@ -127,6 +127,7 @@ fun UsageLimitsScreen(
                     isLoading = uiState.isLoading,
                     hasMasterCredential = uiState.hasMasterCredential,
                     evaluateMutation = viewModel::evaluateMutation,
+                    verifyCredential = viewModel::verifyMasterCredential,
                     onSave = viewModel::saveAppLimit,
                     onConfigureMasterPassword = openMasterPassword,
                 )
@@ -136,6 +137,7 @@ fun UsageLimitsScreen(
                     isLoading = uiState.isLoading,
                     hasMasterCredential = uiState.hasMasterCredential,
                     evaluateMutation = viewModel::evaluateMutation,
+                    verifyCredential = viewModel::verifyMasterCredential,
                     onSave = viewModel::saveWebsiteLimit,
                     onDelete = viewModel::deleteWebsiteLimit,
                     onConfigureMasterPassword = openMasterPassword,
@@ -231,6 +233,7 @@ fun AppLimitsTab(
     isLoading: Boolean,
     hasMasterCredential: Boolean,
     evaluateMutation: (String, Long?) -> MasterCredentialPolicy.MutationGate,
+    verifyCredential: (String) -> com.focusguard.security.DeactivationCredentialManager.VerificationResult,
     onSave: (UsageLimitAppUi, Int?, Boolean, String, Long?) -> Unit,
     onConfigureMasterPassword: () -> Unit,
 ) {
@@ -350,6 +353,7 @@ fun AppLimitsTab(
     if (showMasterCredentialConfirm && selectedApp != null) {
         ConfirmMasterCredentialDialog(
             promptRes = R.string.master_credential_required_to_change_limit,
+            verifyCredential = verifyCredential,
             onDismiss = { showMasterCredentialConfirm = false },
             onConfirmed = {
                 showMasterCredentialConfirm = false
@@ -420,6 +424,7 @@ fun WebsiteLimitsTab(
     isLoading: Boolean,
     hasMasterCredential: Boolean,
     evaluateMutation: (String, Long?) -> MasterCredentialPolicy.MutationGate,
+    verifyCredential: (String) -> com.focusguard.security.DeactivationCredentialManager.VerificationResult,
     onSave: (String?, String, Int, Boolean, String, Long?) -> Unit,
     onDelete: (String) -> Unit,
     onConfigureMasterPassword: () -> Unit,
@@ -533,6 +538,7 @@ fun WebsiteLimitsTab(
     if (showMasterCredentialConfirm && selectedSite != null) {
         ConfirmMasterCredentialDialog(
             promptRes = masterCredentialPromptRes,
+            verifyCredential = verifyCredential,
             onDismiss = {
                 showMasterCredentialConfirm = false
                 pendingAction = null

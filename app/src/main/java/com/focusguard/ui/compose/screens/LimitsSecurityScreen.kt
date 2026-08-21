@@ -39,10 +39,14 @@ import com.focusguard.ui.compose.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
+fun LimitsSecurityScreen(
+    authManager: AuthManager,
+    deviceOwnerManager: DeviceOwnerManager,
+    blockingSessionManager: BlockingSessionManager,
+    protectionPermissionGate: ProtectionPermissionGate,
+    onBack: () -> Unit
+) {
     val context = LocalContext.current
-    val deviceOwnerManager = remember { DeviceOwnerManager.getInstance(context) }
-    val blockingSessionManager = remember { BlockingSessionManager.getInstance(context) }
     val policyScope = rememberCoroutineScope()
     var limitText by remember { mutableStateOf(authManager.getMaxPasswordAttempts().toString()) }
     var photoEnabled by remember { mutableStateOf(authManager.isPhotoCaptureEnabled()) }
@@ -235,7 +239,7 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                                 }
 
                                 if (enable) {
-                                    if (!ProtectionPermissionGate.read(context).isReady) {
+                                    if (!protectionPermissionGate.read().isReady) {
                                         context.startActivity(
                                             PermissionsActivity.createPendingProtectionIntent(
                                                 context

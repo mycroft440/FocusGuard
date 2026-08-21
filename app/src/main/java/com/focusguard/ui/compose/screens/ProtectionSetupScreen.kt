@@ -82,6 +82,7 @@ import com.focusguard.data.PredefinedWebsites
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
 import com.focusguard.security.DeactivationCredentialManager
+import com.focusguard.security.PasswordAppUnlockStore
 import com.focusguard.ui.AppSelectionStep
 import com.focusguard.ui.FinalConfigStep
 import com.focusguard.ui.MasterPasswordActivity
@@ -112,13 +113,13 @@ private enum class ProtectionSetupPage {
 @Composable
 fun UnifiedProtectionSetupWizard(
     authManager: AuthManager,
+    blockingSessionManager: BlockingSessionManager,
+    deactivationCredentialManager: DeactivationCredentialManager,
+    passwordAppUnlockStore: PasswordAppUnlockStore,
     onFinish: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val blockingSessionManager = remember(context) {
-        BlockingSessionManager.getInstance(context)
-    }
     var page by remember { mutableStateOf(ProtectionSetupPage.LIST) }
     var selectedApps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
     var websiteRules by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -231,6 +232,7 @@ fun UnifiedProtectionSetupWizard(
             // Este assistente tem uma tela própria de sites (WEBSITE_PICKER),
             // então aqui só escolhe aplicativos e ignora as regras do seletor.
             ProtectionSetupPage.APP_PICKER -> AppSelectionStep(
+                blockingSessionManager = blockingSessionManager,
                 onNext = { apps, _ ->
                     scope.launch {
                         val latest = refreshConfiguredBlockedTargets()
@@ -328,6 +330,8 @@ fun UnifiedProtectionSetupWizard(
                 apps = selectedApps,
                 websiteRules = websiteRules,
                 authManager = authManager,
+                manager = blockingSessionManager,
+                credentialManager = deactivationCredentialManager,
                 configuredTargets = configuredBlockedTargets,
                 onBack = { page = ProtectionSetupPage.MODE },
                 onFinish = onFinish
@@ -336,6 +340,9 @@ fun UnifiedProtectionSetupWizard(
             ProtectionSetupPage.PASSWORD -> FinalConfigStep(
                 sessionType = "PASSWORD",
                 authManager = authManager,
+                sessionManager = blockingSessionManager,
+                credentialManager = deactivationCredentialManager,
+                appUnlockStore = passwordAppUnlockStore,
                 sites = websiteRules,
                 apps = selectedApps.map { it.packageName },
                 onFinish = onFinish,
@@ -343,6 +350,8 @@ fun UnifiedProtectionSetupWizard(
             )
 
             ProtectionSetupPage.DOPAMINE_FAST -> TimeBlockSessionConfigScreen(
+                sessionManager = blockingSessionManager,
+                credentialManager = deactivationCredentialManager,
                 appName = protectionTargetLabel(selectedApps, websiteRules),
                 apps = selectedApps.map { it.packageName },
                 sites = websiteRules,
@@ -1023,13 +1032,13 @@ private fun BatchDailyLimitConfigScreen(
     apps: List<SelectableAppUi>,
     websiteRules: List<String>,
     authManager: AuthManager,
+    manager: BlockingSessionManager,
+    credentialManager: DeactivationCredentialManager,
     configuredTargets: BlockingSessionManager.ConfiguredBlockedTargets,
     onBack: () -> Unit,
     onFinish: () -> Unit
 ) {
     val context = LocalContext.current
-    val manager = remember(context) { BlockingSessionManager.getInstance(context) }
-    val credentialManager = remember(context) { DeactivationCredentialManager(context) }
     val scope = rememberCoroutineScope()
     var hoursText by remember { mutableStateOf("") }
     var minutesText by remember { mutableStateOf("") }

@@ -28,8 +28,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import com.focusguard.manager.PomodoroManager
+import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.focusmode.FocusModeManager
+import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.admin.DeviceOwnerProtectionAuditor
 import com.focusguard.security.AuthManager
+import com.focusguard.security.AuthenticatedUninstallCoordinator
+import com.focusguard.security.DeactivationCredentialManager
+import com.focusguard.security.PasswordAppUnlockStore
+import com.focusguard.pomodoro.PomodoroPlanStore
+import com.focusguard.pomodoro.PomodoroNotificationController
 import com.focusguard.security.ProtectionPermission
 import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.CreateSessionActivity
@@ -55,6 +63,8 @@ import com.focusguard.ui.compose.screens.UsageLimitsScreen
 import com.focusguard.ui.compose.screens.UsageStatsDashboardScreen
 import com.focusguard.ui.compose.theme.DarkBg
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.saveable.rememberSaveable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -79,6 +89,15 @@ fun FocusGuardNavHost(
     authManager: AuthManager,
     pomodoroManager: PomodoroManager,
     focusModeManager: FocusModeManager,
+    deviceOwnerManager: DeviceOwnerManager,
+    blockingSessionManager: BlockingSessionManager,
+    deactivationCredentialManager: DeactivationCredentialManager,
+    protectionPermissionGate: ProtectionPermissionGate,
+    uninstallCoordinator: AuthenticatedUninstallCoordinator,
+    protectionAuditor: DeviceOwnerProtectionAuditor,
+    passwordAppUnlockStore: PasswordAppUnlockStore,
+    pomodoroPlanStore: PomodoroPlanStore,
+    pomodoroNotificationController: PomodoroNotificationController,
     onEnforceFocusModeLockTask: () -> Unit
 ) {
     var isUnlocked by remember { mutableStateOf<Boolean?>(null) }
@@ -111,6 +130,7 @@ fun FocusGuardNavHost(
         false -> {
             AuthScreen(
                 authManager = authManager,
+                masterCredentialManager = deactivationCredentialManager,
                 activity = activity,
                 onUnlock = { isUnlocked = true }
             )
@@ -119,9 +139,9 @@ fun FocusGuardNavHost(
         true -> Unit
     }
 
-    var currentRoute by remember { mutableStateOf(FocusGuardRoute.Home) }
-    var selectedBlockType by remember { mutableStateOf(BlockTypeUi.PASSWORD) }
-    var selectedTab by remember { mutableIntStateOf(1) }
+    var currentRoute by rememberSaveable { mutableStateOf(FocusGuardRoute.Home) }
+    var selectedBlockType by rememberSaveable { mutableStateOf(BlockTypeUi.PASSWORD) }
+    var selectedTab by rememberSaveable { mutableIntStateOf(1) }
     var missingProtectionPermissions by remember {
         mutableStateOf(ProtectionPermission.entries.toList())
     }
@@ -138,9 +158,9 @@ fun FocusGuardNavHost(
     }
     var showCreatorInstagramCard by remember { mutableStateOf(false) }
 
-    val currentPomodoro by pomodoroManager.currentSession.collectAsState()
-    val pomodoroCycle by pomodoroManager.cycleState.collectAsState()
-    val activeFocusMode by focusModeManager.session.collectAsState()
+    val currentPomodoro by pomodoroManager.currentSession.collectAsStateWithLifecycle()
+    val pomodoroCycle by pomodoroManager.cycleState.collectAsStateWithLifecycle()
+    val activeFocusMode by focusModeManager.session.collectAsStateWithLifecycle()
     val focusModeActive = activeFocusMode?.isActive() == true
 
     LaunchedEffect(activeFocusMode?.startedAtMillis) {
@@ -198,7 +218,7 @@ fun FocusGuardNavHost(
 
     suspend fun refreshProtectionPermissions(): List<ProtectionPermission> {
         val missing = withContext(Dispatchers.IO) {
-            ProtectionPermissionGate.read(activity).missingPermissions
+            protectionPermissionGate.read().missingPermissions
         }
         missingProtectionPermissions = missing
         return missing
@@ -228,6 +248,10 @@ fun FocusGuardNavHost(
             PomodoroScreen(
                 pomodoroManager = pomodoroManager,
                 authManager = authManager,
+                deviceOwnerManager = deviceOwnerManager,
+                protectionPermissionGate = protectionPermissionGate,
+                planStore = pomodoroPlanStore,
+                notificationController = pomodoroNotificationController,
                 onPermissionsRequired = {
                     activity.startActivity(
                         PermissionsActivity.createPendingProtectionIntent(activity)
@@ -298,6 +322,10 @@ fun FocusGuardNavHost(
                         PomodoroScreen(
                             pomodoroManager = pomodoroManager,
                             authManager = authManager,
+                            deviceOwnerManager = deviceOwnerManager,
+                            protectionPermissionGate = protectionPermissionGate,
+                            planStore = pomodoroPlanStore,
+                            notificationController = pomodoroNotificationController,
                             onPermissionsRequired = {
                                 activity.startActivity(
                                     PermissionsActivity.createPendingProtectionIntent(activity)
@@ -310,6 +338,8 @@ fun FocusGuardNavHost(
                     recoveryContent = {
                         RecoveryCourseGatewayScreen {
                             RecoveryHubScreen(
+                                sessionManager = blockingSessionManager,
+                                protectionPermissionGate = protectionPermissionGate,
                                 onReadBook = { book ->
                                     val offlineBook = when (book) {
                                         RecoveryBook.CREATOR_INSTRUCTIONS ->
@@ -333,6 +363,8 @@ fun FocusGuardNavHost(
                 )
                 FocusGuardRoute.BlockTypeDetail -> BlockTypeDetailScreen(
                     type = selectedBlockType,
+                    sessionManager = blockingSessionManager,
+                    authManager = authManager,
                     onAddClick = {
                         withProtectionPermissions {
                             when (selectedBlockType) {
@@ -357,6 +389,12 @@ fun FocusGuardNavHost(
                 )
                 FocusGuardRoute.Settings -> SettingsScreen(
                     profile = userProfile,
+                    deactivationCredentialManager = deactivationCredentialManager,
+                    blockingSessionManager = blockingSessionManager,
+                    deviceOwnerManager = deviceOwnerManager,
+                    uninstallCoordinator = uninstallCoordinator,
+                    protectionAuditor = protectionAuditor,
+                    passwordAppUnlockStore = passwordAppUnlockStore,
                     onProfileClick = { currentRoute = FocusGuardRoute.Profile },
                     onLimitsClick = { currentRoute = FocusGuardRoute.Limits },
                     onLanguageClick = { currentRoute = FocusGuardRoute.Language },
@@ -376,6 +414,10 @@ fun FocusGuardNavHost(
                 FocusGuardRoute.Pomodoro -> PomodoroScreen(
                     pomodoroManager = pomodoroManager,
                     authManager = authManager,
+                    deviceOwnerManager = deviceOwnerManager,
+                    protectionPermissionGate = protectionPermissionGate,
+                    planStore = pomodoroPlanStore,
+                    notificationController = pomodoroNotificationController,
                     onPermissionsRequired = {
                         activity.startActivity(
                             PermissionsActivity.createPendingProtectionIntent(activity)
@@ -385,6 +427,9 @@ fun FocusGuardNavHost(
                 )
                 FocusGuardRoute.Limits -> LimitsSecurityScreen(
                     authManager = authManager,
+                    deviceOwnerManager = deviceOwnerManager,
+                    blockingSessionManager = blockingSessionManager,
+                    protectionPermissionGate = protectionPermissionGate,
                     onBack = { currentRoute = FocusGuardRoute.Settings }
                 )
                 FocusGuardRoute.IntruderLog -> IntruderLogScreen(

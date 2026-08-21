@@ -6,6 +6,9 @@ import android.net.Uri
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.utils.FocusGuardLogger
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -19,7 +22,12 @@ import kotlinx.coroutines.withContext
  * before removing administrative protection so a time block cannot be bypassed by a
  * stale Compose snapshot.
  */
-object AuthenticatedUninstallCoordinator {
+@Singleton
+class AuthenticatedUninstallCoordinator @Inject constructor(
+    @ApplicationContext private val appContext: Context,
+    private val sessionManager: BlockingSessionManager,
+    private val deviceOwnerManager: DeviceOwnerManager
+) {
 
     enum class Authorization {
         NONE,
@@ -34,14 +42,7 @@ object AuthenticatedUninstallCoordinator {
         UNINSTALL_UI_FAILED
     }
 
-    suspend fun releaseAndOpen(
-        context: Context,
-        authorization: Authorization
-    ): Outcome {
-        val appContext = context.applicationContext
-        val sessionManager = BlockingSessionManager.getInstance(appContext)
-        val deviceOwnerManager = DeviceOwnerManager.getInstance(appContext)
-
+    suspend fun releaseAndOpen(authorization: Authorization): Outcome {
         val irreversibleBlockActive = sessionManager.isUninstallBlockedByTimeFlow.first()
         val maintenanceActive = deviceOwnerManager.isMaintenanceActive()
         if (irreversibleBlockActive && !maintenanceActive) {

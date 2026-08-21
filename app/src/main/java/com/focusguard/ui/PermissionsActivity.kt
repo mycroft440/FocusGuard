@@ -10,6 +10,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import com.focusguard.MainActivity
+import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.security.SelfProtectionConsent
 import com.focusguard.security.SensitivePermissionsConsent
 import com.focusguard.ui.compose.screens.PermissionFlowMode
@@ -18,9 +20,12 @@ import com.focusguard.ui.compose.screens.SelfProtectionConsentScreen
 import com.focusguard.ui.compose.screens.SensitivePermissionsDisclosureScreen
 import com.focusguard.ui.compose.theme.FocusGuardTheme
 import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
 @AndroidEntryPoint
 class PermissionsActivity : ComponentActivity() {
+    @Inject lateinit var deviceOwnerManager: DeviceOwnerManager
+    @Inject lateinit var protectionPermissionGate: ProtectionPermissionGate
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -59,6 +64,8 @@ class PermissionsActivity : ComponentActivity() {
                     )
                     else -> PermissionsScreen(
                         flowMode = flowMode,
+                        deviceOwnerManager = deviceOwnerManager,
+                        protectionPermissionGate = protectionPermissionGate,
                         onFinish = ::finishPermissionFlow
                     )
                 }
