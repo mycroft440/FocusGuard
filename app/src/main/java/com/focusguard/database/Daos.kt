@@ -193,6 +193,9 @@ interface WebsiteUsageLimitDao {
     @Delete
     suspend fun delete(limit: WebsiteUsageLimit)
 
+    @Query("DELETE FROM website_usage_limits WHERE domain = :domain")
+    suspend fun deleteByDomain(domain: String)
+
     @Query("DELETE FROM website_usage_limits")
     suspend fun deleteAll()
 }

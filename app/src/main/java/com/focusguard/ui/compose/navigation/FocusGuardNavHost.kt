@@ -50,7 +50,6 @@ import com.focusguard.ui.compose.screens.ProfileScreen
 import com.focusguard.ui.compose.screens.RecoveryBook
 import com.focusguard.ui.compose.screens.RecoveryCourseGatewayScreen
 import com.focusguard.ui.compose.screens.RecoveryHubScreen
-import com.focusguard.ui.compose.screens.SessionsListScreen
 import com.focusguard.ui.compose.screens.SettingsScreen
 import com.focusguard.ui.compose.screens.UsageLimitsScreen
 import com.focusguard.ui.compose.screens.UsageStatsDashboardScreen
@@ -70,9 +69,7 @@ private object FocusGuardRoute {
     const val IntruderLog = "INTRUDER_LOG"
     const val Language = "LANGUAGE"
     const val UsageLimits = "USAGE_LIMITS"
-    const val Dashboard = "DASHBOARD"
     const val BlockCustomization = "BLOCK_CUSTOMIZATION"
-    const val SessionsList = "SESSIONS_LIST"
     const val BlockTypeDetail = "BLOCK_TYPE_DETAIL"
 }
 
@@ -125,7 +122,6 @@ fun FocusGuardNavHost(
     var currentRoute by remember { mutableStateOf(FocusGuardRoute.Home) }
     var selectedBlockType by remember { mutableStateOf(BlockTypeUi.PASSWORD) }
     var selectedTab by remember { mutableIntStateOf(1) }
-    var selectedSessionType by remember { mutableStateOf("PASSWORD") }
     var missingProtectionPermissions by remember {
         mutableStateOf(ProtectionPermission.entries.toList())
     }
@@ -398,7 +394,6 @@ fun FocusGuardNavHost(
                     onBack = { currentRoute = FocusGuardRoute.Settings }
                 )
                 FocusGuardRoute.UsageLimits -> UsageLimitsScreen(
-                    authManager = authManager,
                     onPermissionsRequired = {
                         activity.startActivity(
                             PermissionsActivity.createPendingProtectionIntent(activity)
@@ -406,15 +401,8 @@ fun FocusGuardNavHost(
                     },
                     onBack = { currentRoute = FocusGuardRoute.BlockTypeDetail }
                 )
-                FocusGuardRoute.Dashboard -> UsageStatsDashboardScreen(
-                    onBack = { currentRoute = FocusGuardRoute.Home }
-                )
                 FocusGuardRoute.BlockCustomization -> BlockCustomizationScreen(
                     onBack = { currentRoute = FocusGuardRoute.Settings }
-                )
-                FocusGuardRoute.SessionsList -> SessionsListScreen(
-                    sessionType = selectedSessionType,
-                    onBack = { currentRoute = FocusGuardRoute.Home }
                 )
             }
         }

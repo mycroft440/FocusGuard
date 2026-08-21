@@ -900,47 +900,6 @@ class BlockingSessionManager @Inject constructor(
         }.getOrDefault(false)
     }
 
-    /** Permanently removes every local source that can re-arm a block. */
-    internal suspend fun removeAllBlocksForDevelopmentExit(): Boolean {
-        return enforcementMutex.withLock {
-            try {
-                database.withTransaction {
-                    database.blockSessionDao().deactivateAllActiveSessions()
-                    database.pomodoroSessionDao().deleteSession()
-                    database.appUsageLimitDao().deleteAll()
-                    database.websiteUsageLimitDao().deleteAll()
-                    database.usageLimitsLockDao().deleteAll()
-                    database.blockedAppDao().deleteAllBlockedApps()
-                    database.blockedWebsiteDao().deleteAllBlockedWebsites()
-                }
-                check(AuthManager.disableAdultFilterForDevelopmentExit(context)) {
-                    "Não foi possível persistir a desativação do filtro adulto"
-                }
-                StrictPomodoroLock.clear(context)
-                PomodoroForegroundService.stop(context)
-                check(SelfProtectionStateStore.setArmed(context, false)) {
-                    "Não foi possível desarmar o estado síncrono de autoproteção"
-                }
-                BlockingScheduleReceiver.scheduleNext(
-                    context = context,
-                    sessions = emptyList(),
-                    additionalBoundaries = emptyList()
-                )
-                setDoNotDisturbMode(enabled = false)
-                true
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                FocusGuardLogger.logError(
-                    "DevelopmentExit",
-                    "Falha ao remover os bloqueios pela Área Dev",
-                    error
-                )
-                false
-            }
-        }
-    }
-
     suspend fun hasTimeSession(): Boolean {
         return database.blockSessionDao().getAllActiveSessionsStatic()
             .any { it.sessionType == "TIME" }

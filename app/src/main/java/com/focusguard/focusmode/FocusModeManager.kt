@@ -258,18 +258,6 @@ class FocusModeManager @Inject constructor(
         finishSessionLocked()
     }
 
-    suspend fun forceStopForDevelopmentExit() = mutationMutex.withLock {
-        FocusModeStore.clearSession(context)
-        FocusModeKioskController.reconcileSystemRestrictions(context)
-        FocusModeReceiver.cancelExpiration(context)
-        FocusModeForegroundService.stop(context)
-        FocusModeNotificationService.requestRefresh(context)
-        // Keep Lock Task in place until the development coordinator has removed
-        // every block and Device Owner policy. Revoking it here could finish the
-        // calling activity and cancel that critical cleanup halfway through.
-        _session.value = null
-    }
-
     private suspend fun finishSessionLocked() = withContext(NonCancellable) {
         val hadState = FocusModeStore.readSession(context) != null || _session.value != null
         FocusModeStore.clearSession(context)

@@ -64,7 +64,7 @@ object AuthenticatedUninstallCoordinator {
                 // This primitive only removes Android administrative roles/policies.
                 // Reaching it from this coordinator requires the live checks above and,
                 // when needed, a credential/biometric authorization in the UI.
-                deviceOwnerManager.releaseRemovalProtectionForDevelopmentExit()
+                deviceOwnerManager.releaseRemovalProtectionForUninstall()
             }
         } catch (cancelled: CancellationException) {
             AuthenticatedRemovalWindow.close(appContext)

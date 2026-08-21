@@ -17,6 +17,7 @@ import com.focusguard.data.PredefinedWebsites
 import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.security.ArmoredProtectionPolicy
 import com.focusguard.security.AuthManager
+import com.focusguard.security.AuthenticatedRemovalWindow
 import com.focusguard.security.DeviceOwnerMaintenanceGate
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
@@ -952,17 +953,20 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     }
 
     /**
-     * Removes the Android roles that would make ACTION_DELETE fail even after
-     * the user has authenticated. This method is intentionally gated by the
-     * maintenance window when Device Owner is active; callers cannot use it as
-     * a second, unverified route around the shield.
+     * Removes the Android roles that would make ACTION_DELETE fail after the
+     * canonical uninstall coordinator has checked every live block.
+     *
+     * Device Owner release is accepted only inside the short authenticated
+     * removal window or an explicit maintenance window. This keeps the low-level
+     * primitive unusable as an independent bypass.
      */
     @Suppress("DEPRECATION")
     suspend fun releaseRemovalProtectionForUninstall(): Boolean = withContext(Dispatchers.IO) {
         try {
             if (isDeviceOwnerActive()) {
-                if (!isMaintenanceActive()) return@withContext false
-                revokeNuclearShield()
+                val removalAuthorized = AuthenticatedRemovalWindow.isActive(context)
+                if (!removalAuthorized && !isMaintenanceActive()) return@withContext false
+                clearOwnedPoliciesForRemoval()
                 dpm.clearDeviceOwnerApp(context.packageName)
                 DeviceOwnerMaintenanceGate.revoke(context)
             }
@@ -985,34 +989,6 @@ class DeviceOwnerManager private constructor(private val context: Context) {
             false
         }
     }
-
-    /** Technical exit used after the Área Dev password has been verified. */
-    @Suppress("DEPRECATION")
-    internal suspend fun releaseRemovalProtectionForDevelopmentExit(): Boolean =
-        withContext(Dispatchers.IO) {
-            try {
-                if (isDeviceOwnerActive()) {
-                    clearOwnedPoliciesForRemoval()
-                    dpm.clearDeviceOwnerApp(context.packageName)
-                    DeviceOwnerMaintenanceGate.revoke(context)
-                }
-
-                if (isDeviceAdminActive()) {
-                    dpm.removeActiveAdmin(componentName)
-                }
-
-                awaitAdministrativeRolesReleased()
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                FocusGuardLogger.logError(
-                    "DevelopmentExit",
-                    "Falha ao liberar funções administrativas pela Área Dev",
-                    error
-                )
-                false
-            }
-        }
 
     /** Device Admin removal is asynchronous; wait briefly before opening uninstall. */
     private suspend fun awaitAdministrativeRolesReleased(): Boolean {
