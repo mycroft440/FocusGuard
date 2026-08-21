@@ -11,7 +11,8 @@ object SessionMutationPolicy {
         nowMillis: Long = System.currentTimeMillis()
     ): Boolean {
         if (session == null || !session.isActive) return true
-        if (session.endTime != null && session.endTime <= nowMillis) return true
+        val endTime = session.endTime
+        if (endTime != null && endTime <= nowMillis) return true
 
         return when (session.sessionType) {
             BlockSessionType.TIME, BlockSessionType.POMODORO -> false
