@@ -85,6 +85,14 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     override fun onCreate() {
         super.onCreate()
+        initializeEventControllers()
+        initializeRuntimeController()
+        refreshSynchronousProtectionState()
+        powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
+        runtimeController.start()
+    }
+
+    private fun initializeEventControllers() {
         blockPresenter = AccessibilityBlockPresenter(
             service = this,
             scope = scope,
@@ -125,6 +133,9 @@ class BlockingAccessibilityService : AccessibilityService() {
             presenter = blockPresenter,
             websiteTracker = websiteTracker
         )
+    }
+
+    private fun initializeRuntimeController() {
         runtimeController = AccessibilityServiceRuntimeController(
             service = this,
             onPackageChanged = { _, isKnownBrowser ->
@@ -146,9 +157,6 @@ class BlockingAccessibilityService : AccessibilityService() {
                 stopWebsiteTracking()
             }
         )
-        refreshSynchronousProtectionState()
-        powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
-        runtimeController.start()
     }
 
     override fun onServiceConnected() {
@@ -181,89 +189,80 @@ class BlockingAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
         try {
-            val now = System.currentTimeMillis()
-            if (now - lastLoadTime > cacheTimeoutMillis) refreshData()
-
-            // Fast path: settings interception decides on `event.packageName` alone,
-            // before resolveEventPackageName() is allowed to touch the node tree.
-            //
-            // That resolution costs one or two synchronous binder calls into the
-            // inspected app (windows walk plus rootInActiveWindow), on every event.
-            // Those milliseconds are exactly the window in which the user can reach
-            // the switch that disables this service, so nothing that can block runs
-            // ahead of the decision to bounce them out.
-            val directPackage = event.packageName?.toString().orEmpty()
-            val eligibleForInterception =
-                event.eventType in AccessibilityServiceContract.settingsInterceptionEventTypes
-            if (eligibleForInterception &&
-                directPackage in interceptionPackages &&
-                handleSettingsInterception(event, directPackage)
-            ) {
-                return
-            }
-
-            val packageName = runtimeController.resolveEventPackageName(event)
-            // Second chance: `event.packageName` is occasionally blank, and for
-            // TYPE_WINDOWS_CHANGED it can name a different window than the one that
-            // actually changed. Only reached when the fast path could not decide.
-            if (eligibleForInterception &&
-                packageName != directPackage &&
-                packageName in interceptionPackages &&
-                handleSettingsInterception(event, packageName)
-            ) {
-                return
-            }
-
-            val isWindowTransition =
-                event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
-            if (isWindowTransition) {
-                if (FocusModeStore.isActive(applicationContext) != focusModeSessionActive) {
-                    refreshFocusModeFallbackState()
-                }
-                foregroundPackageName = packageName.takeIf(String::isNotBlank)
-                if (packageName !in browserPackages &&
-                    packageName !in limitedWebsiteAppDomains
-                ) {
-                    stopWebsiteTracking(now)
-                }
-            }
-
-            if (isPomodoroStrictActive &&
-                isWindowTransition
-            ) {
-                handleStrictPomodoro(packageName, event.className?.toString().orEmpty())
-                return
-            }
-
-            val focusLauncherMustReturn = focusModeFallbackActive &&
-                packageName == defaultLauncherPackage
-            if (packageName in focusModeAllowedAppsSet && !focusLauncherMustReturn) {
-                stopWebsiteTracking(now)
-                return
-            }
-
-            if (!isBlockingSessionActive && limitedWebsiteDomains.isEmpty()) return
-
-            when (event.eventType) {
-                AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
-                AccessibilityEvent.TYPE_WINDOWS_CHANGED -> {
-                    handleWindowStateChanged(event, packageName)
-                }
-                AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
-                AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
-                AccessibilityEvent.TYPE_VIEW_FOCUSED -> {
-                    val fastEvent = event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-                    if (packageName in browserPackages &&
-                        (fastEvent || now - lastBrowserCheck >= browserDebounceMillis)
-                    ) {
-                        lastBrowserCheck = now
-                        handleBrowserEvent(event)
-                    }
-                }
-            }
+            processAccessibilityEvent(event)
         } catch (error: RuntimeException) {
             FocusGuardLogger.logError("A11y", "Erro no evento de acessibilidade", error)
+        }
+    }
+
+    private fun processAccessibilityEvent(event: AccessibilityEvent) {
+        val now = System.currentTimeMillis()
+        if (now - lastLoadTime > cacheTimeoutMillis) refreshData()
+        val packageName = resolvePackageForRouting(event) ?: return
+        val isWindowTransition =
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        if (isWindowTransition) {
+            if (FocusModeStore.isActive(applicationContext) != focusModeSessionActive) {
+                refreshFocusModeFallbackState()
+            }
+            foregroundPackageName = packageName.takeIf(String::isNotBlank)
+            if (packageName !in browserPackages && packageName !in limitedWebsiteAppDomains) {
+                stopWebsiteTracking(now)
+            }
+        }
+        if (isPomodoroStrictActive && isWindowTransition) {
+            handleStrictPomodoro(packageName, event.className?.toString().orEmpty())
+            return
+        }
+        val focusLauncherMustReturn = focusModeFallbackActive &&
+            packageName == defaultLauncherPackage
+        if (packageName in focusModeAllowedAppsSet && !focusLauncherMustReturn) {
+            stopWebsiteTracking(now)
+            return
+        }
+        if (!isBlockingSessionActive && limitedWebsiteDomains.isEmpty()) return
+        routeBlockingEvent(event, packageName, now)
+    }
+
+    private fun resolvePackageForRouting(event: AccessibilityEvent): String? {
+        // Intercept Settings from event.packageName before any expensive node-tree lookup.
+        val directPackage = event.packageName?.toString().orEmpty()
+        val eligibleForInterception =
+            event.eventType in AccessibilityServiceContract.settingsInterceptionEventTypes
+        if (eligibleForInterception &&
+            directPackage in interceptionPackages &&
+            handleSettingsInterception(event, directPackage)
+        ) {
+            return null
+        }
+        val resolvedPackage = runtimeController.resolveEventPackageName(event)
+        // The resolved window is the fallback for blank or stale event package names.
+        if (eligibleForInterception &&
+            resolvedPackage != directPackage &&
+            resolvedPackage in interceptionPackages &&
+            handleSettingsInterception(event, resolvedPackage)
+        ) {
+            return null
+        }
+        return resolvedPackage
+    }
+
+    private fun routeBlockingEvent(event: AccessibilityEvent, packageName: String, now: Long) {
+        when (event.eventType) {
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED -> handleWindowStateChanged(event, packageName)
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_FOCUSED -> {
+                val fastEvent = event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                if (packageName in browserPackages &&
+                    (fastEvent || now - lastBrowserCheck >= browserDebounceMillis)
+                ) {
+                    lastBrowserCheck = now
+                    handleBrowserEvent(event)
+                }
+            }
         }
     }
 
