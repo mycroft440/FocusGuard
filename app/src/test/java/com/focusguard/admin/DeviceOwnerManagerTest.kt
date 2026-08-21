@@ -11,6 +11,7 @@ import android.content.pm.ResolveInfo
 import android.os.Bundle
 import android.os.UserManager
 import com.focusguard.receiver.BootReceiver
+import com.focusguard.receiver.DirectBootReceiver
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.service.BlockingAccessibilityService
 import com.google.common.truth.Truth.assertThat
@@ -233,12 +234,17 @@ class DeviceOwnerManagerTest {
             ComponentName(context, BootReceiver::class.java),
             0
         )
+        val directBootReceiver = context.packageManager.getReceiverInfo(
+            ComponentName(context, DirectBootReceiver::class.java),
+            0
+        )
         val accessibilityService = context.packageManager.getServiceInfo(
             ComponentName(context, BlockingAccessibilityService::class.java),
             0
         )
 
-        assertThat(bootReceiver.directBootAware).isTrue()
+        assertThat(bootReceiver.directBootAware).isFalse()
+        assertThat(directBootReceiver.directBootAware).isTrue()
         assertThat(accessibilityService.directBootAware).isFalse()
     }
 

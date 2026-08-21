@@ -18,6 +18,7 @@ import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.service.BlockingAccessibilityService
+import dagger.Lazy
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -38,7 +39,7 @@ import kotlinx.coroutines.launch
 class AccessibilityStateMonitor @Inject constructor(
     @ApplicationContext private val appContext: Context,
     private val deviceOwnerManager: DeviceOwnerManager,
-    private val blockingSessionManager: BlockingSessionManager
+    private val blockingSessionManager: Lazy<BlockingSessionManager>
 ) {
     private companion object {
         const val TAG = "A11yStateMonitor"
@@ -165,7 +166,7 @@ class AccessibilityStateMonitor @Inject constructor(
                 TAG,
                 "Reconciliando políticas nativas após pausa da Acessibilidade"
             )
-            blockingSessionManager.checkAndEnforce()
+            blockingSessionManager.get().checkAndEnforce()
         }
     }
 

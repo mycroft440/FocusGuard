@@ -171,9 +171,7 @@ class DeviceOwnerAppController @Inject constructor(
     }
 
     fun prepareFocusModeLockTaskPackages(allowedPackages: Collection<String>): Boolean {
-        if (!access.isDeviceOwnerActive() ||
-            !DeviceOwnerPolicyCatalog.supportsStrictFocusModeLockdown(Build.VERSION.SDK_INT)
-        ) {
+        if (!access.isDeviceOwnerActive() || Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
             return false
         }
         return try {
@@ -234,9 +232,7 @@ class DeviceOwnerAppController @Inject constructor(
         }.getOrDefault(false)
 
     fun isFocusModeSystemLockdownConfirmed(): Boolean {
-        if (!access.isDeviceOwnerActive() ||
-            !DeviceOwnerPolicyCatalog.supportsStrictFocusModeLockdown(Build.VERSION.SDK_INT)
-        ) {
+        if (!access.isDeviceOwnerActive() || Build.VERSION.SDK_INT < Build.VERSION_CODES.P) {
             return false
         }
         return runCatching {

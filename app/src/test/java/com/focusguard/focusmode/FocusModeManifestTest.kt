@@ -51,7 +51,11 @@ class FocusModeManifestTest {
         val bootReceiver = receivers.single {
             it.getAttributeNS(androidNamespace, "name") == ".receiver.BootReceiver"
         }
-        assertThat(bootReceiver.getAttributeNS(androidNamespace, "directBootAware"))
+        assertThat(bootReceiver.hasAttributeNS(androidNamespace, "directBootAware")).isFalse()
+        val directBootReceiver = receivers.single {
+            it.getAttributeNS(androidNamespace, "name") == ".receiver.DirectBootReceiver"
+        }
+        assertThat(directBootReceiver.getAttributeNS(androidNamespace, "directBootAware"))
             .isEqualTo("true")
 
         val actions = document.getElementsByTagName("action").let { nodes ->
