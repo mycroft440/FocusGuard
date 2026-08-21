@@ -11,6 +11,7 @@ import android.os.Build
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.focusguard.R
 import com.focusguard.utils.FocusGuardLogger
 
@@ -162,46 +163,42 @@ class AccessibilityServiceRuntimeController(
             addAction(Intent.ACTION_PACKAGE_CHANGED)
             addDataScheme("package")
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            service.registerReceiver(packageReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("DEPRECATION")
-            service.registerReceiver(packageReceiver, filter)
-        }
+        ContextCompat.registerReceiver(
+            service,
+            packageReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     private fun registerRefreshReceiver() {
         val filter = IntentFilter(BlockingAccessibilityService.ACTION_REFRESH_BLOCKING)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            service.registerReceiver(refreshReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("DEPRECATION")
-            service.registerReceiver(refreshReceiver, filter)
-        }
+        ContextCompat.registerReceiver(
+            service,
+            refreshReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     private fun registerBlockNoticeReadyReceiver() {
         val filter = IntentFilter(BlockingAccessibilityService.ACTION_BLOCK_NOTICE_READY)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            service.registerReceiver(
-                blockNoticeReadyReceiver,
-                filter,
-                Context.RECEIVER_NOT_EXPORTED
-            )
-        } else {
-            @Suppress("DEPRECATION")
-            service.registerReceiver(blockNoticeReadyReceiver, filter)
-        }
+        ContextCompat.registerReceiver(
+            service,
+            blockNoticeReadyReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     private fun registerScreenStateReceiver() {
         val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            service.registerReceiver(screenStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("DEPRECATION")
-            service.registerReceiver(screenStateReceiver, filter)
-        }
+        ContextCompat.registerReceiver(
+            service,
+            screenStateReceiver,
+            filter,
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
     }
 
     private fun createNotificationChannel() {
