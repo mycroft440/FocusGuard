@@ -1,7 +1,7 @@
 package com.focusguard.security
 
 import com.focusguard.database.BlockSession
-import com.focusguard.database.BlockSessionType
+import com.focusguard.domain.model.BlockSessionType
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 

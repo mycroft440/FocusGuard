@@ -3,7 +3,7 @@ package com.focusguard.manager
 import android.content.Context
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.PomodoroSession
-import com.focusguard.database.BlockSessionType
+import com.focusguard.domain.model.BlockSessionType
 import com.focusguard.domain.port.BlockingEnforcementPort
 import com.focusguard.domain.port.PomodoroRuntimePort
 import com.focusguard.focusmode.FocusModeStore

@@ -9,7 +9,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.AppPassword
-import com.focusguard.database.UsageLimitLockMode
+import com.focusguard.domain.model.UsageLimitLockMode
 import com.focusguard.utils.SecurePrefsManager
 import dagger.hilt.android.qualifiers.ApplicationContext
 import kotlinx.coroutines.CoroutineScope

@@ -22,3 +22,6 @@ dependencyResolutionManagement {
 
 rootProject.name = "FocusGuard"
 include(":app")
+include(":domain")
+include(":data")
+include(":platform")

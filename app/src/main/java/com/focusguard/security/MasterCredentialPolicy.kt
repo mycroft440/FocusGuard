@@ -1,8 +1,8 @@
 package com.focusguard.security
 
 import com.focusguard.database.AppUsageLimit
-import com.focusguard.database.BlockSessionType
-import com.focusguard.database.UsageLimitLockMode
+import com.focusguard.domain.model.BlockSessionType
+import com.focusguard.domain.model.UsageLimitLockMode
 
 /**
  * Decides where the master credential (the deactivation password managed by

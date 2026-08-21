@@ -15,11 +15,11 @@ import com.focusguard.data.RecoveryProtectionPreset
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.BlockSession
-import com.focusguard.database.BlockSessionType
+import com.focusguard.domain.model.BlockSessionType
 import com.focusguard.database.SessionAppCrossRef
 import com.focusguard.database.SessionWebsiteCrossRef
 import com.focusguard.database.WebsiteUsageLimit
-import com.focusguard.database.UsageLimitLockMode
+import com.focusguard.domain.model.UsageLimitLockMode
 import com.focusguard.domain.port.BlockingEnforcementPort
 import com.focusguard.domain.port.BlockingRuntimePort
 import com.focusguard.domain.port.BlockingSnapshot

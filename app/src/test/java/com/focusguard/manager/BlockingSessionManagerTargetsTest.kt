@@ -2,7 +2,7 @@ package com.focusguard.manager
 
 import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.BlockSession
-import com.focusguard.database.BlockSessionType
+import com.focusguard.domain.model.BlockSessionType
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 

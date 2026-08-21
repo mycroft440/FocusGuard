@@ -1,7 +1,7 @@
 package com.focusguard.security
 
 import com.focusguard.database.AppUsageLimit
-import com.focusguard.database.UsageLimitLockMode
+import com.focusguard.domain.model.UsageLimitLockMode
 import com.focusguard.security.MasterCredentialPolicy.CreationGate
 import com.focusguard.security.MasterCredentialPolicy.MutationGate
 import com.focusguard.security.MasterCredentialPolicy.UninstallGate

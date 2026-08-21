@@ -1,7 +1,7 @@
 package com.focusguard.security
 
 import com.focusguard.database.BlockSession
-import com.focusguard.database.BlockSessionType
+import com.focusguard.domain.model.BlockSessionType
 
 /** Repository-level invariant for destructive changes to protected session content. */
 object SessionMutationPolicy {

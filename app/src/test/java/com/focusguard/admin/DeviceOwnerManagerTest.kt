@@ -11,6 +11,7 @@ import android.content.pm.ResolveInfo
 import android.os.Bundle
 import android.os.UserManager
 import com.focusguard.receiver.BootReceiver
+import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.service.BlockingAccessibilityService
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
@@ -24,7 +25,10 @@ import org.robolectric.annotation.Config
 class DeviceOwnerManagerTest {
 
     private val context: Context = RuntimeEnvironment.getApplication().applicationContext
-    private val manager = DeviceOwnerManager.getInstance(context)
+    private val manager = DeviceOwnerManager(
+        context,
+        DeactivationCredentialManager(context)
+    )
 
     @Test
     fun `activation intent targets the declared admin without starting a detached task`() {

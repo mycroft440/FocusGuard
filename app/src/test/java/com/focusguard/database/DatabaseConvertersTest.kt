@@ -1,5 +1,7 @@
 package com.focusguard.database
 
+import com.focusguard.domain.model.BlockSessionType
+import com.focusguard.domain.model.UsageLimitLockMode
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 

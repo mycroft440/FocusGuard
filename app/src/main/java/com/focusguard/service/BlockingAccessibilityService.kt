@@ -34,7 +34,7 @@ import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.AppDatabase
-import com.focusguard.database.BlockSessionType
+import com.focusguard.domain.model.BlockSessionType
 import com.focusguard.focusmode.FocusModePolicy
 import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.manager.BlockingSessionManager

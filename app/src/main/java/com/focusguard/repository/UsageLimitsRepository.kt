@@ -7,7 +7,7 @@ import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.AppUsageLimitDao
 import com.focusguard.database.DailyUsageStatDao
 import com.focusguard.database.WebsiteUsageLimit
-import com.focusguard.database.UsageLimitLockMode
+import com.focusguard.domain.model.UsageLimitLockMode
 import com.focusguard.database.WebsiteUsageLimitDao
 import com.focusguard.utils.WebsiteBlocker
 import com.focusguard.utils.WebsiteUsageLimitPolicy

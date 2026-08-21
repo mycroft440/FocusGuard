@@ -1,6 +1,6 @@
 package com.focusguard.utils
 
-import com.focusguard.database.UsageLimitLockMode
+import com.focusguard.domain.model.UsageLimitLockMode
 import java.util.Locale
 
 /** Regra única para decidir quando um limite diário de site vira bloqueio. */
