@@ -103,6 +103,8 @@ fun TimeBlockSessionConfigScreen(
     val canSave = duration != null &&
         termsAccepted &&
         (apps.isNotEmpty() || sites.isNotEmpty())
+    val protectionHealth = timedProtection.healthSnapshot()
+    val masterCredentialReady = credentialManager.hasCredential()
 
     if (showMasterCredentialSetup) {
         DeactivationCredentialDialog(
@@ -232,6 +234,48 @@ fun TimeBlockSessionConfigScreen(
                         color = TextSecondary,
                         fontSize = 13.sp
                     )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = stringResource(R.string.time_block_health_title),
+                        color = TextPrimary,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp
+                    )
+                    Text(
+                        text = stringResource(
+                            if (protectionHealth.deviceOwnerReady) {
+                                R.string.time_block_health_device_owner_ready
+                            } else {
+                                R.string.time_block_health_device_owner_missing
+                            }
+                        ),
+                        color = if (protectionHealth.deviceOwnerReady) AccentCyan else DangerRed,
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = stringResource(
+                            if (masterCredentialReady) {
+                                R.string.time_block_health_master_ready
+                            } else {
+                                R.string.time_block_health_master_missing
+                            }
+                        ),
+                        color = if (masterCredentialReady) AccentCyan else DangerRed,
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = stringResource(
+                            if (protectionHealth.protectedSessionCount > 0 &&
+                                protectionHealth.systemProtectionConfirmed
+                            ) {
+                                R.string.time_block_health_system_active
+                            } else {
+                                R.string.time_block_health_system_standby
+                            }
+                        ),
+                        color = TextSecondary,
+                        fontSize = 12.sp
+                    )
                 }
             }
 
@@ -338,14 +382,13 @@ fun TimeBlockSessionConfigScreen(
 
                     isSaving = true
                     scope.launch {
-                        val createdNotBefore = System.currentTimeMillis()
-                        var sessionCreated = false
+                        var createdSessionId: Int? = null
                         try {
                             val resolved = duration ?: return@launch
                             check(timedProtection.prepareForTimeCreation()) {
                                 "Android não confirmou a proteção de desinstalação"
                             }
-                            sessionManager.startTimeSession(
+                            val sessionId = sessionManager.startTimeSession(
                                 days = 0,
                                 hours = when (resolved) {
                                     is BlockDurationPolicy.Duration.Finite -> resolved.totalHours
@@ -361,8 +404,8 @@ fun TimeBlockSessionConfigScreen(
                                 apps = apps,
                                 sites = sites
                             )
-                            sessionCreated = true
-                            check(timedProtection.commitNewestTimeSession(createdNotBefore)) {
+                            createdSessionId = sessionId
+                            check(timedProtection.commitProtectedTimeSession(sessionId)) {
                                 "Não foi possível vincular a proteção à sessão por tempo"
                             }
                             Toast.makeText(
@@ -372,8 +415,9 @@ fun TimeBlockSessionConfigScreen(
                             ).show()
                             onFinish()
                         } catch (cancelled: CancellationException) {
-                            if (sessionCreated) {
-                                timedProtection.discardNewestTimeSession(createdNotBefore)
+                            val createdId = createdSessionId
+                            if (createdId != null) {
+                                timedProtection.rollbackProtectedTimeSession(createdId)
                                 sessionManager.checkAndEnforce()
                             } else {
                                 timedProtection.cancelPendingCreation()
@@ -382,16 +426,18 @@ fun TimeBlockSessionConfigScreen(
                         } catch (
                             error: BlockingProtectionUnavailableException
                         ) {
-                            if (sessionCreated) {
-                                timedProtection.discardNewestTimeSession(createdNotBefore)
+                            val createdId = createdSessionId
+                            if (createdId != null) {
+                                timedProtection.rollbackProtectedTimeSession(createdId)
                                 sessionManager.checkAndEnforce()
                             } else {
                                 timedProtection.cancelPendingCreation()
                             }
                             pendingProtectionReason = error.reason
                         } catch (error: Exception) {
-                            if (sessionCreated) {
-                                timedProtection.discardNewestTimeSession(createdNotBefore)
+                            val createdId = createdSessionId
+                            if (createdId != null) {
+                                timedProtection.rollbackProtectedTimeSession(createdId)
                                 sessionManager.checkAndEnforce()
                             } else {
                                 timedProtection.cancelPendingCreation()

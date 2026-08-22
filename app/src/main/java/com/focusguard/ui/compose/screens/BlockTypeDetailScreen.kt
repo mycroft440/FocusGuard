@@ -257,6 +257,14 @@ fun BlockTypeDetailScreen(
                                         R.string.time_block_revoke_wrong_password
                                     )
                                 }
+                                TimedBlockRevocationManager.Result.RATE_LIMITED -> {
+                                    val seconds = ((timedRevocation.retryAfterMillis() + 999L) / 1_000L)
+                                        .coerceAtLeast(1L)
+                                    revokeError = context.getString(
+                                        R.string.time_block_revoke_rate_limited,
+                                        seconds
+                                    )
+                                }
                                 TimedBlockRevocationManager.Result.NOT_FOUND,
                                 TimedBlockRevocationManager.Result.FAILED -> {
                                     revokeError = context.getString(R.string.time_block_revoke_failed)

@@ -786,43 +786,13 @@ class DeviceOwnerManager private constructor(private val context: Context) {
     }
 
     private fun enforceAppControlProtection(): Boolean {
+        // Package-scoped uninstall and user-control protection belongs exclusively to
+        // TimedBlockProtectionController. Generic PASSWORD/Pomodoro/other sessions may
+        // still receive the non-package hardening below, but they can never arm those
+        // two package policies.
         val legacyRestrictionsCleared = clearLegacyGlobalAppControlRestrictions()
-        // These policies are package-scoped. They close the first-attempt race
-        // for FocusGuard without affecting uninstall or app controls elsewhere.
-        val uninstallPolicyApplied = applyPolicySafely("uninstall_blocked") {
-            dpm.setUninstallBlocked(componentName, context.packageName, true)
-        }
-        val userControlPolicyApplied = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            applyPolicySafely("user_control_disabled") {
-                dpm.setUserControlDisabledPackages(componentName, listOf(context.packageName))
-            }
-        } else true
         enforceRuntimePermissionProtection()
-        val uninstallPolicyVerified = runCatching {
-            dpm.isUninstallBlocked(componentName, context.packageName)
-        }.onFailure { error ->
-            FocusGuardLogger.logError(
-                "DeviceOwner",
-                "Falha ao verificar a política uninstall_blocked",
-                error
-            )
-        }.getOrDefault(false)
-        val userControlPolicyVerified = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-            runCatching {
-                context.packageName in dpm.getUserControlDisabledPackages(componentName)
-            }.onFailure { error ->
-                FocusGuardLogger.logError(
-                    "DeviceOwner",
-                    "Falha ao verificar a política user_control_disabled",
-                    error
-                )
-            }.getOrDefault(false)
-        } else true
-        return legacyRestrictionsCleared &&
-            uninstallPolicyApplied &&
-            uninstallPolicyVerified &&
-            userControlPolicyApplied &&
-            userControlPolicyVerified
+        return legacyRestrictionsCleared
     }
 
     private fun relaxAppControlProtection() {

@@ -642,9 +642,10 @@ class BlockingSessionManager @Inject constructor(
         daysOfWeek: String = "",
         apps: List<String>,
         sites: List<String>
-    ) = withContext(Dispatchers.IO) {
+    ): Int = withContext(Dispatchers.IO) {
         val protectionWasAlreadyArmed = deviceOwnerManager.isBlockingProtectionArmed()
         var sessionCreated = false
+        var createdSessionId: Int? = null
         try {
             // Sem gate de senha mestre aqui de propósito: o jejum não tem saída por
             // credencial, então exigir uma seria pedir chave que não abre nada. O
@@ -688,6 +689,7 @@ class BlockingSessionManager @Inject constructor(
                     isFixed24h = isFixed24h
                 )
                 val sessionId = database.blockSessionDao().insertNewSession(session).toInt()
+                createdSessionId = sessionId
                 normalizedApps.forEach {
                     database.sessionAppCrossRefDao().insert(SessionAppCrossRef(sessionId, it))
                 }
@@ -699,6 +701,7 @@ class BlockingSessionManager @Inject constructor(
             sessionCreated = true
             armSelfProtectionBeforeFirstExposure()
             checkAndEnforceOrThrow()
+            createdSessionId ?: error("TIME session id was not persisted")
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
