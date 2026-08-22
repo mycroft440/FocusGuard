@@ -2,15 +2,14 @@ package com.focusguard.focusmode
 
 import android.content.Context
 import android.content.Intent
-import androidx.core.app.NotificationManagerCompat
 import com.focusguard.admin.DeviceOwnerManager
-import com.focusguard.manager.BlockingSessionManager
-import com.focusguard.manager.StrictPomodoroLock
-import com.focusguard.receiver.FocusModeReceiver
-import com.focusguard.service.FocusModeForegroundService
-import com.focusguard.service.FocusModeNotificationService
+import com.focusguard.domain.model.FocusModeSession
+import com.focusguard.domain.port.BlockingEnforcementPort
+import com.focusguard.domain.port.FocusModeRuntimePort
+import com.focusguard.domain.port.FocusModeSystemPort
+import com.focusguard.pomodoro.StrictPomodoroLock
+import com.focusguard.state.FocusModeStore
 import com.focusguard.utils.FocusGuardLogger
-import com.focusguard.utils.PermissionUtils
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
 import javax.inject.Singleton
@@ -26,7 +25,11 @@ import kotlinx.coroutines.withContext
 
 @Singleton
 class FocusModeManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val deviceOwnerManager: DeviceOwnerManager,
+    private val blockingEnforcement: BlockingEnforcementPort,
+    private val systemPort: FocusModeSystemPort,
+    private val runtimePort: FocusModeRuntimePort
 ) {
     enum class StartOutcome {
         STARTED,
@@ -42,41 +45,6 @@ class FocusModeManager @Inject constructor(
         val session: FocusModeSession? = null
     )
 
-    companion object {
-        @Volatile
-        private var legacyInstance: FocusModeManager? = null
-
-        fun getInstance(context: Context): FocusModeManager {
-            val appContext = context.applicationContext
-            return try {
-                val entryPoint = dagger.hilt.android.EntryPointAccessors.fromApplication(
-                    appContext,
-                    FocusModeManagerEntryPoint::class.java
-                )
-                entryPoint.focusModeManager()
-            } catch (error: Exception) {
-                FocusGuardLogger.logError(
-                    "FocusMode",
-                    "Hilt indisponível; usando singleton legado",
-                    error
-                )
-                synchronized(this) {
-                    legacyInstance ?: FocusModeManager(appContext).also {
-                        legacyInstance = it
-                    }
-                }
-            }
-        }
-    }
-
-    @dagger.hilt.EntryPoint
-    @dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
-    interface FocusModeManagerEntryPoint {
-        fun focusModeManager(): FocusModeManager
-    }
-
-    private val deviceOwnerManager = DeviceOwnerManager.getInstance(context)
-    private val blockingSessionManager = BlockingSessionManager.getInstance(context)
     private val mutationMutex = Mutex()
     private val _session = MutableStateFlow(
         FocusModeStore.readSession(context)?.takeIf { it.isActive() }
@@ -86,11 +54,10 @@ class FocusModeManager @Inject constructor(
     fun isActive(): Boolean = FocusModeStore.isActive(context)
 
     fun isAccessibilityServiceEnabled(): Boolean =
-        PermissionUtils.isAccessibilityServiceEnabled(context)
+        runtimePort.isAccessibilityEnabled()
 
     fun isNotificationAccessEnabled(): Boolean =
-        NotificationManagerCompat.getEnabledListenerPackages(context)
-            .contains(context.packageName)
+        runtimePort.isNotificationAccessEnabled()
 
     suspend fun loadSelectableApps(): List<FocusModeSelectableApp> =
         withContext(Dispatchers.IO) { FocusModeAppCatalog.loadLaunchableApps(context) }
@@ -166,10 +133,10 @@ class FocusModeManager @Inject constructor(
                     "O Android não confirmou a lista de apps do quiosque"
                 }
             }
-            check(FocusModeKioskController.reconcileSystemRestrictions(context)) {
+            check(systemPort.reconcileSystemRestrictions()) {
                 "O Android não confirmou a proteção de janelas do quiosque"
             }
-            blockingSessionManager.checkAndEnforceStrict()
+            blockingEnforcement.checkAndEnforceStrict()
             if (nativeFocusLockdownActive) {
                 check(deviceOwnerManager.isFocusModeSystemLockdownConfirmed()) {
                     "O Android não confirmou o quiosque e o bloqueio de modo seguro"
@@ -187,9 +154,7 @@ class FocusModeManager @Inject constructor(
                 nonSuspendable
             ) ?: session.copy(nonSuspendablePackages = nonSuspendable)
             saveDraftPackages(selectedInstalled)
-            FocusModeForegroundService.start(context)
-            FocusModeReceiver.scheduleExpiration(context, verifiedSession.endTimeMillis)
-            FocusModeNotificationService.requestRefresh(context)
+            runtimePort.activate(verifiedSession.endTimeMillis)
             _session.value = verifiedSession
             StartResult(StartOutcome.STARTED, verifiedSession)
         } catch (cancelled: CancellationException) {
@@ -210,7 +175,7 @@ class FocusModeManager @Inject constructor(
         val stored = FocusModeStore.readSession(context)
         if (stored == null) {
             _session.value = null
-            FocusModeKioskController.reconcileSystemRestrictions(context)
+            systemPort.reconcileSystemRestrictions()
             return@withLock false
         }
         if (!stored.isActive()) {
@@ -226,14 +191,12 @@ class FocusModeManager @Inject constructor(
             if (nativeFocusLockdownActive) {
                 check(deviceOwnerManager.prepareFocusModeLockTaskPackages(stored.allowedPackages))
             }
-            check(FocusModeKioskController.reconcileSystemRestrictions(context))
-            blockingSessionManager.checkAndEnforceStrict()
+            check(systemPort.reconcileSystemRestrictions())
+            blockingEnforcement.checkAndEnforceStrict()
             if (nativeFocusLockdownActive) {
                 check(deviceOwnerManager.isFocusModeSystemLockdownConfirmed())
             }
-            FocusModeForegroundService.start(context)
-            FocusModeReceiver.scheduleExpiration(context, stored.endTimeMillis)
-            FocusModeNotificationService.requestRefresh(context)
+            runtimePort.activate(stored.endTimeMillis)
             _session.value = stored
             true
         } catch (cancelled: CancellationException) {
@@ -252,30 +215,18 @@ class FocusModeManager @Inject constructor(
         val stored = FocusModeStore.readSession(context)
         if (stored?.isActive() == true) return@withLock
         if (stored == null && _session.value == null) {
-            FocusModeKioskController.reconcileSystemRestrictions(context)
+            systemPort.reconcileSystemRestrictions()
             return@withLock
         }
         finishSessionLocked()
     }
 
-    suspend fun forceStopForDevelopmentExit() = mutationMutex.withLock {
-        FocusModeStore.clearSession(context)
-        FocusModeKioskController.reconcileSystemRestrictions(context)
-        FocusModeReceiver.cancelExpiration(context)
-        FocusModeForegroundService.stop(context)
-        FocusModeNotificationService.requestRefresh(context)
-        // Keep Lock Task in place until the development coordinator has removed
-        // every block and Device Owner policy. Revoking it here could finish the
-        // calling activity and cancel that critical cleanup halfway through.
-        _session.value = null
-    }
-
     private suspend fun finishSessionLocked() = withContext(NonCancellable) {
         val hadState = FocusModeStore.readSession(context) != null || _session.value != null
         FocusModeStore.clearSession(context)
-        FocusModeKioskController.reconcileSystemRestrictions(context)
+        systemPort.reconcileSystemRestrictions()
         if (hadState) {
-            runCatching { blockingSessionManager.checkAndEnforceStrict() }
+            runCatching { blockingEnforcement.checkAndEnforceStrict() }
                 .onFailure { error ->
                     FocusGuardLogger.logError(
                         "FocusMode",
@@ -284,20 +235,16 @@ class FocusModeManager @Inject constructor(
                     )
                 }
         }
-        FocusModeReceiver.cancelExpiration(context)
-        FocusModeForegroundService.stop(context)
-        FocusModeNotificationService.requestRefresh(context)
+        runtimePort.deactivate()
         deviceOwnerManager.clearFocusModeLockTaskPackages()
         _session.value = null
     }
 
     private suspend fun rollbackFailedStart() = withContext(NonCancellable) {
         FocusModeStore.clearSession(context)
-        FocusModeKioskController.reconcileSystemRestrictions(context)
-        runCatching { blockingSessionManager.checkAndEnforceStrict() }
-        FocusModeReceiver.cancelExpiration(context)
-        FocusModeForegroundService.stop(context)
-        FocusModeNotificationService.requestRefresh(context)
+        systemPort.reconcileSystemRestrictions()
+        runCatching { blockingEnforcement.checkAndEnforceStrict() }
+        runtimePort.deactivate()
         deviceOwnerManager.clearFocusModeLockTaskPackages()
         _session.value = null
     }

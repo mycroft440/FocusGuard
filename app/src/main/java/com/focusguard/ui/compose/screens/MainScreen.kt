@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.data.UserProfile
-import com.focusguard.security.ProtectionPermission
+import com.focusguard.permissions.ProtectionPermission
 import com.focusguard.ui.compose.theme.*
 import kotlinx.coroutines.delay
 
@@ -300,48 +300,6 @@ private fun navigationItemColors() = NavigationBarItemDefaults.colors(
     unselectedTextColor = TextHint,
     indicatorColor = AccentCyan.copy(alpha = 0.1f)
 )
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun DrawerMenuButton(
-    icon: ImageVector,
-    label: String,
-    iconTint: Color = AccentCyan,
-    labelColor: Color = TextPrimary,
-    bgColor: Color = DarkCard,
-    onClick: () -> Unit
-) {
-    Card(
-        onClick = onClick,
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp),
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = bgColor),
-        border = BorderStroke(1.dp, CardBorder)
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 14.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(RoundedCornerShape(10.dp))
-                    .background(iconTint.copy(alpha = 0.12f)),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(icon, contentDescription = null, tint = iconTint, modifier = Modifier.size(20.dp))
-            }
-            Spacer(modifier = Modifier.width(14.dp))
-            Text(label, fontSize = 14.sp, fontWeight = FontWeight.Medium, color = labelColor)
-            Spacer(modifier = Modifier.weight(1f))
-            Icon(Icons.Default.ChevronRight, contentDescription = stringResource(R.string.action_open), tint = TextHint, modifier = Modifier.size(18.dp))
-        }
-    }
-}
 
 @Composable
 fun HomeContent(

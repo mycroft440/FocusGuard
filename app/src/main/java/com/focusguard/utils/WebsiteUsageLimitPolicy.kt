@@ -1,5 +1,6 @@
 package com.focusguard.utils
 
+import com.focusguard.domain.model.UsageLimitLockMode
 import java.util.Locale
 
 /** Regra única para decidir quando um limite diário de site vira bloqueio. */
@@ -53,4 +54,24 @@ object WebsiteUsageLimitPolicy {
             else -> true
         }
     }
+
+    fun shouldBlock(
+        usedMillis: Long,
+        dailyLimitMinutes: Int,
+        lockMode: UsageLimitLockMode,
+        lockUntilTimestamp: Long?,
+        nowMillis: Long
+    ): Boolean = shouldBlock(
+        usedMillis,
+        dailyLimitMinutes,
+        lockMode.name,
+        lockUntilTimestamp,
+        nowMillis
+    )
+
+    fun isBlockingModeActive(
+        lockMode: UsageLimitLockMode,
+        lockUntilTimestamp: Long?,
+        nowMillis: Long
+    ): Boolean = isBlockingModeActive(lockMode.name, lockUntilTimestamp, nowMillis)
 }

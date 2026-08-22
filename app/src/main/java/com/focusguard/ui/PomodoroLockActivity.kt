@@ -50,9 +50,9 @@ import androidx.lifecycle.lifecycleScope
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModePolicy
-import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.state.FocusModeStore
 import com.focusguard.manager.PomodoroManager
-import com.focusguard.manager.StrictPomodoroLock
+import com.focusguard.pomodoro.StrictPomodoroLock
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DarkBg
@@ -70,16 +70,13 @@ import kotlinx.coroutines.launch
 @AndroidEntryPoint
 class PomodoroLockActivity : ComponentActivity() {
 
-    private lateinit var deviceOwnerManager: DeviceOwnerManager
-    private lateinit var pomodoroManager: PomodoroManager
+    @javax.inject.Inject lateinit var deviceOwnerManager: DeviceOwnerManager
+    @javax.inject.Inject lateinit var pomodoroManager: PomodoroManager
     private var allowFinish = false
     private var expirationHandled = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        deviceOwnerManager = DeviceOwnerManager.getInstance(applicationContext)
-        pomodoroManager = PomodoroManager.getInstance(applicationContext)
-
         window.addFlags(
             WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON or
                 WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or

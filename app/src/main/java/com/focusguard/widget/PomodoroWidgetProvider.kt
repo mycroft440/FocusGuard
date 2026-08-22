@@ -18,15 +18,20 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 
+@AndroidEntryPoint
 class PomodoroWidgetProvider : AppWidgetProvider() {
+    @Inject lateinit var pomodoroManager: PomodoroManager
+    @Inject lateinit var pomodoroPlanStore: PomodoroPlanStore
     override fun onUpdate(
         context: Context,
         appWidgetManager: AppWidgetManager,
         appWidgetIds: IntArray
     ) {
         appWidgetIds.forEach { appWidgetId ->
-            updateWidget(context, appWidgetManager, appWidgetId)
+            updateWidget(context, appWidgetManager, appWidgetId, pomodoroPlanStore)
         }
     }
 
@@ -37,17 +42,15 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                val store = PomodoroPlanStore(context)
                 // "Iniciar" nunca deve reiniciar silenciosamente um ciclo que já
                 // está rodando. A edição pelo relógio continua valendo para o
                 // próximo plano, mas o runtime atual permanece imutável.
-                if (store.readRuntime()?.active == true) {
+                if (pomodoroPlanStore.readRuntime()?.active == true) {
                     requestUpdate(context)
                     return@launch
                 }
 
-                val manager = PomodoroManager.getInstance(context.applicationContext)
-                manager.startPlan(store.loadConfig())
+                pomodoroManager.startPlan(pomodoroPlanStore.loadConfig())
                 requestUpdate(context)
             } catch (error: Exception) {
                 Handler(Looper.getMainLooper()).post {
@@ -75,17 +78,21 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
             val appContext = context.applicationContext
             val manager = AppWidgetManager.getInstance(appContext)
             val component = ComponentName(appContext, PomodoroWidgetProvider::class.java)
-            manager.getAppWidgetIds(component).forEach { widgetId ->
-                updateWidget(appContext, manager, widgetId)
-            }
+            val widgetIds = manager.getAppWidgetIds(component)
+            appContext.sendBroadcast(
+                Intent(appContext, PomodoroWidgetProvider::class.java).apply {
+                    action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                    putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, widgetIds)
+                }
+            )
         }
 
         private fun updateWidget(
             context: Context,
             manager: AppWidgetManager,
-            appWidgetId: Int
+            appWidgetId: Int,
+            store: PomodoroPlanStore
         ) {
-            val store = PomodoroPlanStore(context)
             val savedConfig = store.loadConfig()
             val runtime = store.readRuntime()?.takeIf { it.active }
             val displayConfig = runtime?.config ?: savedConfig

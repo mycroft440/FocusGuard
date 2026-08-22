@@ -9,9 +9,16 @@ import android.os.UserManager
 import com.focusguard.security.AuthManager
 import com.focusguard.security.DeviceOwnerMaintenanceGate
 import com.focusguard.utils.PermissionUtils
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 
 /** Reads back the policies actually accepted by Android/OEM instead of trusting write calls. */
-class DeviceOwnerProtectionAuditor(context: Context) {
+@Singleton
+class DeviceOwnerProtectionAuditor @Inject constructor(
+    @ApplicationContext context: Context,
+    private val manager: DeviceOwnerManager
+) {
 
     private val appContext = context.applicationContext
     private val dpm = appContext.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
@@ -24,7 +31,6 @@ class DeviceOwnerProtectionAuditor(context: Context) {
             dpm.isDeviceOwnerApp(appContext.packageName)
         }.getOrDefault(false)
         val adultFilterEnabled = AuthManager.isAdultFilterConfigured(appContext)
-        val manager = DeviceOwnerManager.getInstance(appContext)
         val blockingProtectionArmed = manager.isBlockingProtectionArmed()
         val adultContentProtectionArmed = manager.isAdultContentProtectionArmed()
         val protectionArmed = blockingProtectionArmed || adultContentProtectionArmed

@@ -3,19 +3,20 @@ package com.focusguard.receiver
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import android.os.Build
 import com.focusguard.MainActivity
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeKioskController
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.PomodoroManager
-import com.focusguard.manager.StrictPomodoroLock
+import com.focusguard.pomodoro.StrictPomodoroLock
 import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.AccessibilityStateMonitor
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.UsageAccessStateMonitor
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -25,43 +26,26 @@ import kotlinx.coroutines.launch
  * Native policies are restored before unlock; credential-backed sessions and Pomodoro UI
  * are restored only after BOOT_COMPLETED makes their storage available.
  */
+@AndroidEntryPoint
 class BootReceiver : BroadcastReceiver() {
+    @Inject lateinit var deviceOwnerManager: DeviceOwnerManager
+    @Inject lateinit var sessionManager: BlockingSessionManager
+    @Inject lateinit var pomodoroManager: PomodoroManager
+    @Inject lateinit var focusModeManager: FocusModeManager
+    @Inject lateinit var kioskController: FocusModeKioskController
+    @Inject lateinit var accessibilityStateMonitor: AccessibilityStateMonitor
+    @Inject lateinit var usageAccessStateMonitor: UsageAccessStateMonitor
+
     override fun onReceive(context: Context, intent: Intent) {
-        val action = intent.action
-        if (action != Intent.ACTION_BOOT_COMPLETED &&
-            action != Intent.ACTION_LOCKED_BOOT_COMPLETED
-        ) return
-
-        val isDirectBoot = action == Intent.ACTION_LOCKED_BOOT_COMPLETED
-
-        // Use Device Protected Storage for Direct Boot
-        val storageContext = if (isDirectBoot && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
-            runCatching { context.createDeviceProtectedStorageContext() }.getOrDefault(context)
-        } else {
-            context
-        }
+        if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+        val storageContext = context
 
         FocusGuardLogger.init(storageContext)
-        FocusGuardLogger.log("BootReceiver", "Boot detectado (action=$action, directBoot=$isDirectBoot)")
-
-        val deviceOwnerManager = DeviceOwnerManager.getInstance(context)
-        if (isDirectBoot) {
-            // Room, Keystore and normal SharedPreferences are still unavailable here.
-            // Native Device Owner policy restores app-removal protection before unlock.
-            // USB and ADB intentionally remain outside FocusGuard's restriction set.
-            deviceOwnerManager.applyDirectBootShield()
-            deviceOwnerManager.applyFocusModeAtDirectBoot()
-            FocusModeKioskController.reconcileSystemRestrictions(context)
-            FocusGuardLogger.log(
-                "BootReceiver",
-                "Proteção nativa do Modo Foco restaurada antes do primeiro desbloqueio"
-            )
-            return
-        }
+        FocusGuardLogger.log("BootReceiver", "BOOT_COMPLETED detectado")
 
         deviceOwnerManager.applyNuclearShield()
-        AccessibilityStateMonitor.start(context)
-        UsageAccessStateMonitor.start(context)
+        accessibilityStateMonitor.start()
+        usageAccessStateMonitor.start()
 
         // Após BOOT_COMPLETED, os dois armazenamentos estão disponíveis.
         val isPomodoroStrictActive = StrictPomodoroLock.isActive(storageContext)
@@ -95,13 +79,9 @@ class BootReceiver : BroadcastReceiver() {
         val pendingResult = goAsync()
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             try {
-                val sessionManager = BlockingSessionManager.getInstance(context)
-                val pomodoroManager = PomodoroManager.getInstance(context)
-                val focusModeManager = FocusModeManager.getInstance(context)
-
                 sessionManager.checkAndEnforce()
                 val focusModeActive = focusModeManager.ensureEnforced()
-                FocusModeKioskController.reconcileSystemRestrictions(context)
+                kioskController.reconcileSystemRestrictions()
 
                 val hasActiveSessions = sessionManager.activeSessionsFlow.first().isNotEmpty()
                 val isPomodoroActive = pomodoroManager.isPomodoroActive()
@@ -116,7 +96,7 @@ class BootReceiver : BroadcastReceiver() {
                     // Focus Mode takes precedence over the normal home restore. On
                     // Device Owner Android 9+, this launch enters Lock Task in the
                     // same startActivity call, eliminating the launcher escape gap.
-                    val restored = FocusModeKioskController.launchFocusGuardHome(context)
+                    val restored = kioskController.launchFocusGuardHome()
                     if (!restored) {
                         context.startActivity(
                             Intent(context, MainActivity::class.java).apply {

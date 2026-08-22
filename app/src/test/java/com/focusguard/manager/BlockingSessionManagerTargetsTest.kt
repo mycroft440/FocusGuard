@@ -2,6 +2,7 @@ package com.focusguard.manager
 
 import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.BlockSession
+import com.focusguard.domain.model.BlockSessionType
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -142,17 +143,26 @@ class BlockingSessionManagerTargetsTest {
     fun `non-blocking pomodoro does not participate in blocking policies`() {
         assertThat(
             BlockingSessionManager.participatesInBlocking(
-                BlockSession(sessionType = "POMODORO", isBlockingEnabled = false)
+                BlockSession(
+                    sessionType = BlockSessionType.POMODORO,
+                    isBlockingEnabled = false
+                )
             )
         ).isFalse()
         assertThat(
             BlockingSessionManager.participatesInBlocking(
-                BlockSession(sessionType = "POMODORO", isBlockingEnabled = true)
+                BlockSession(
+                    sessionType = BlockSessionType.POMODORO,
+                    isBlockingEnabled = true
+                )
             )
         ).isTrue()
         assertThat(
             BlockingSessionManager.participatesInBlocking(
-                BlockSession(sessionType = "PASSWORD", isBlockingEnabled = false)
+                BlockSession(
+                    sessionType = BlockSessionType.PASSWORD,
+                    isBlockingEnabled = false
+                )
             )
         ).isTrue()
     }

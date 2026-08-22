@@ -19,6 +19,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -32,6 +33,7 @@ import androidx.core.graphics.drawable.toBitmap
 import coil.compose.AsyncImage
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.R
+import org.json.JSONObject
 
 data class SelectableAppUi(
     val packageName: String,
@@ -41,6 +43,43 @@ data class SelectableAppUi(
     val isInstalled: Boolean = true,
     val category: String = "",
     val iconUrl: String? = null
+)
+
+internal val SelectableAppUiListSaver = listSaver<List<SelectableAppUi>, String>(
+    save = { apps ->
+        apps.map { app ->
+            JSONObject()
+                .put("package", app.packageName)
+                .put("name", app.appName)
+                .put("selected", app.isSelected)
+                .put("suggested", app.isSuggested)
+                .put("installed", app.isInstalled)
+                .put("category", app.category)
+                .put("icon", app.iconUrl)
+                .toString()
+        }
+    },
+    restore = { encoded ->
+        encoded.mapNotNull { raw ->
+            runCatching {
+                val value = JSONObject(raw)
+                SelectableAppUi(
+                    packageName = value.getString("package"),
+                    appName = value.getString("name"),
+                    isSelected = value.optBoolean("selected"),
+                    isSuggested = value.optBoolean("suggested"),
+                    isInstalled = value.optBoolean("installed", true),
+                    category = value.optString("category"),
+                    iconUrl = value.optString("icon").takeIf(String::isNotBlank)
+                )
+            }.getOrNull()
+        }
+    }
+)
+
+internal val StringListSaver = listSaver<List<String>, String>(
+    save = { it },
+    restore = { it }
 )
 
 @OptIn(ExperimentalMaterial3Api::class)

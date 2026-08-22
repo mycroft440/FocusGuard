@@ -36,7 +36,7 @@ import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AppUnlockBiometricAuthenticator
-import com.focusguard.security.AuthenticatedUninstallCoordinator
+import com.focusguard.uninstall.AuthenticatedUninstallCoordinator
 import com.focusguard.security.BiometricAppUnlockPolicy
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.PasswordAppUnlockMode
@@ -75,6 +75,11 @@ private data class UninstallSessionPackageConfig(
  */
 @Composable
 internal fun AuthenticatedUninstallDialog(
+    credentialManager: DeactivationCredentialManager,
+    sessionManager: BlockingSessionManager,
+    deviceOwnerManager: DeviceOwnerManager,
+    uninstallCoordinator: AuthenticatedUninstallCoordinator,
+    appUnlockStore: PasswordAppUnlockStore,
     hasActiveBlock: Boolean,
     hasActiveIrreversibleBlock: Boolean,
     onDismiss: () -> Unit
@@ -82,11 +87,6 @@ internal fun AuthenticatedUninstallDialog(
     val context = LocalContext.current
     val activity = context as? FragmentActivity
     val scope = rememberCoroutineScope()
-    val credentialManager = remember(context) { DeactivationCredentialManager(context) }
-    val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
-    val deviceOwnerManager = remember(context) { DeviceOwnerManager.getInstance(context) }
-    val appUnlockStore = remember(context) { PasswordAppUnlockStore(context) }
-
     var remainingSessions by remember {
         mutableStateOf<List<PendingUninstallSessionAuth>>(emptyList())
     }
@@ -345,10 +345,7 @@ internal fun AuthenticatedUninstallDialog(
 
         scope.launch {
             when (
-                AuthenticatedUninstallCoordinator.releaseAndOpen(
-                    context = context,
-                    authorization = authorization
-                )
+                uninstallCoordinator.releaseAndOpen(authorization)
             ) {
                 AuthenticatedUninstallCoordinator.Outcome.STARTED -> onDismiss()
                 AuthenticatedUninstallCoordinator.Outcome.AUTHORIZATION_REQUIRED ->

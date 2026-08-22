@@ -29,9 +29,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
+import com.focusguard.contract.EnforcementUiContract
 import kotlin.OptIn
 import com.focusguard.security.AuthManager
-import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.permissions.ProtectionPermissionGate
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.ui.PermissionsActivity
@@ -39,10 +40,14 @@ import com.focusguard.ui.compose.theme.*
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
+fun LimitsSecurityScreen(
+    authManager: AuthManager,
+    deviceOwnerManager: DeviceOwnerManager,
+    blockingSessionManager: BlockingSessionManager,
+    protectionPermissionGate: ProtectionPermissionGate,
+    onBack: () -> Unit
+) {
     val context = LocalContext.current
-    val deviceOwnerManager = remember { DeviceOwnerManager.getInstance(context) }
-    val blockingSessionManager = remember { BlockingSessionManager.getInstance(context) }
     val policyScope = rememberCoroutineScope()
     var limitText by remember { mutableStateOf(authManager.getMaxPasswordAttempts().toString()) }
     var photoEnabled by remember { mutableStateOf(authManager.isPhotoCaptureEnabled()) }
@@ -235,7 +240,7 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                                 }
 
                                 if (enable) {
-                                    if (!ProtectionPermissionGate.read(context).isReady) {
+                                    if (!protectionPermissionGate.read().isReady) {
                                         context.startActivity(
                                             PermissionsActivity.createPendingProtectionIntent(
                                                 context
@@ -268,7 +273,7 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                                 }
                                 context.sendBroadcast(
                                     android.content.Intent(
-                                        com.focusguard.service.BlockingAccessibilityService.ACTION_REFRESH_BLOCKING
+                        EnforcementUiContract.ACTION_REFRESH_BLOCKING
                                     ).setPackage(context.packageName)
                                 )
                             },

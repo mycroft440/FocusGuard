@@ -13,9 +13,11 @@ import androidx.core.app.NotificationCompat
 import com.focusguard.MainActivity
 import com.focusguard.R
 import com.focusguard.focusmode.FocusModeManager
-import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.state.FocusModeStore
 import com.focusguard.receiver.FocusModeReceiver
 import com.focusguard.utils.FocusGuardLogger
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -25,7 +27,9 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
+@AndroidEntryPoint
 class FocusModeForegroundService : Service() {
+    @Inject lateinit var focusModeManager: FocusModeManager
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var timerJob: Job? = null
 
@@ -37,7 +41,7 @@ class FocusModeForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val session = FocusModeStore.readSession(applicationContext)
         if (session?.isActive() != true) {
-            scope.launch { FocusModeManager.getInstance(applicationContext).finishExpiredSession() }
+            scope.launch { focusModeManager.finishExpiredSession() }
             stopSelf()
             return START_NOT_STICKY
         }
@@ -69,7 +73,7 @@ class FocusModeForegroundService : Service() {
                 val session = FocusModeStore.readSession(applicationContext)
                 val remaining = session?.remainingMillis() ?: 0L
                 if (remaining <= 0L) {
-                    FocusModeManager.getInstance(applicationContext).finishExpiredSession()
+                    focusModeManager.finishExpiredSession()
                     stopSelf()
                     break
                 }

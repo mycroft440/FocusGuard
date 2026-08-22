@@ -11,8 +11,11 @@ import android.content.pm.ResolveInfo
 import android.os.Bundle
 import android.os.UserManager
 import com.focusguard.receiver.BootReceiver
+import com.focusguard.receiver.DirectBootReceiver
+import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.service.BlockingAccessibilityService
 import com.google.common.truth.Truth.assertThat
+import dagger.Lazy
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -24,7 +27,17 @@ import org.robolectric.annotation.Config
 class DeviceOwnerManagerTest {
 
     private val context: Context = RuntimeEnvironment.getApplication().applicationContext
-    private val manager = DeviceOwnerManager.getInstance(context)
+    private val access = DeviceOwnerPolicyAccess(context)
+    private val appController = DeviceOwnerAppController(context, access)
+    private val webController = DeviceOwnerWebPolicyController(context, access)
+    private val manager = DeviceOwnerManager(
+        context,
+        Lazy { DeactivationCredentialManager(context) },
+        access,
+        appController,
+        webController,
+        DeviceOwnerShieldController(context, access, appController, webController)
+    )
 
     @Test
     fun `activation intent targets the declared admin without starting a detached task`() {
@@ -221,12 +234,17 @@ class DeviceOwnerManagerTest {
             ComponentName(context, BootReceiver::class.java),
             0
         )
+        val directBootReceiver = context.packageManager.getReceiverInfo(
+            ComponentName(context, DirectBootReceiver::class.java),
+            0
+        )
         val accessibilityService = context.packageManager.getServiceInfo(
             ComponentName(context, BlockingAccessibilityService::class.java),
             0
         )
 
-        assertThat(bootReceiver.directBootAware).isTrue()
+        assertThat(bootReceiver.directBootAware).isFalse()
+        assertThat(directBootReceiver.directBootAware).isTrue()
         assertThat(accessibilityService.directBootAware).isFalse()
     }
 

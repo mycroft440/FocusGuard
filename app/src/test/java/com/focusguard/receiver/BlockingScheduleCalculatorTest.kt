@@ -1,6 +1,7 @@
 package com.focusguard.receiver
 
 import com.focusguard.database.BlockSession
+import com.focusguard.scheduling.BlockingScheduleCalculator
 import com.google.common.truth.Truth.assertThat
 import java.util.Calendar
 import java.util.TimeZone
@@ -131,7 +132,7 @@ class BlockingScheduleCalculatorTest {
         isRecurring = true,
         recurringStartHour = startHour,
         recurringEndHour = endHour,
-        recurringDaysOfWeek = allowedDay.toString()
+        recurringDaysOfWeek = setOf(allowedDay)
     )
 
     private fun instant(

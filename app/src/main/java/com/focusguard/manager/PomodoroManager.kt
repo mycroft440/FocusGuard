@@ -1,10 +1,12 @@
 package com.focusguard.manager
 
 import android.content.Context
-import android.content.Intent
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.PomodoroSession
-import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.domain.model.BlockSessionType
+import com.focusguard.domain.port.BlockingEnforcementPort
+import com.focusguard.domain.port.PomodoroRuntimePort
+import com.focusguard.state.FocusModeStore
 import com.focusguard.pomodoro.PomodoroAlarmController
 import com.focusguard.pomodoro.PomodoroCyclePolicy
 import com.focusguard.pomodoro.PomodoroCycleRuntime
@@ -12,11 +14,8 @@ import com.focusguard.pomodoro.PomodoroNotificationController
 import com.focusguard.pomodoro.PomodoroPhase
 import com.focusguard.pomodoro.PomodoroPlanConfig
 import com.focusguard.pomodoro.PomodoroPlanStore
-import com.focusguard.security.ProtectionPermissionGate
-import com.focusguard.service.BlockingAccessibilityService
-import com.focusguard.service.FocusModeNotificationService
-import com.focusguard.service.PomodoroForegroundService
-import com.focusguard.ui.PomodoroLockActivity
+import com.focusguard.pomodoro.StrictPomodoroLock
+import com.focusguard.permissions.ProtectionPermissionGate
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.qualifiers.ApplicationContext
 import javax.inject.Inject
@@ -38,48 +37,22 @@ import kotlinx.coroutines.sync.withLock
 
 @Singleton
 class PomodoroManager @Inject constructor(
-    @ApplicationContext private val context: Context
+    @ApplicationContext private val context: Context,
+    private val database: AppDatabase,
+    private val blockingEnforcement: BlockingEnforcementPort,
+    private val protectionPermissionGate: ProtectionPermissionGate,
+    private val planStore: PomodoroPlanStore,
+    private val notificationController: PomodoroNotificationController,
+    private val runtimePort: PomodoroRuntimePort
 ) {
 
     companion object {
         private const val STRICT_ARM_TIMEOUT_MILLIS = 3_000L
         private const val STRICT_ARM_POLL_MILLIS = 25L
 
-        @Volatile
-        private var legacyInstance: PomodoroManager? = null
-
-        fun getInstance(context: Context): PomodoroManager {
-            return try {
-                val entryPoint = dagger.hilt.android.EntryPointAccessors.fromApplication(
-                    context.applicationContext,
-                    PomodoroManagerEntryPoint::class.java
-                )
-                entryPoint.pomodoroManager()
-            } catch (error: Exception) {
-                FocusGuardLogger.logError(
-                    "PomodoroManager",
-                    "Hilt indisponível; usando singleton legado",
-                    error
-                )
-                synchronized(this) {
-                    legacyInstance ?: PomodoroManager(context.applicationContext)
-                        .also { legacyInstance = it }
-                }
-            }
-        }
     }
 
-    @dagger.hilt.EntryPoint
-    @dagger.hilt.InstallIn(dagger.hilt.components.SingletonComponent::class)
-    interface PomodoroManagerEntryPoint {
-        fun pomodoroManager(): PomodoroManager
-    }
-
-    private val database = AppDatabase.getDatabase(context)
     private val dao = database.pomodoroSessionDao()
-    private val sessionManager = BlockingSessionManager.getInstance(context)
-    private val planStore = PomodoroPlanStore(context)
-    private val notificationController = PomodoroNotificationController(context)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val finishMutex = Mutex()
 
@@ -110,7 +83,7 @@ class PomodoroManager @Inject constructor(
     fun hasNotificationPolicyAccess(): Boolean = notificationController.hasPolicyAccess()
 
     fun hasNotificationListenerAccess(): Boolean =
-        notificationController.hasNotificationListenerAccess(FocusModeNotificationService::class.java)
+        runtimePort.hasNotificationListenerAccess()
 
     private fun loadSession() {
         scope.launch {
@@ -125,7 +98,7 @@ class PomodoroManager @Inject constructor(
                         if (runtime.config.silenceNotifications) {
                             notificationController.apply(runtime.config)
                         }
-                        FocusModeNotificationService.requestRefresh(context)
+                        runtimePort.requestNotificationRefresh()
 
                         when {
                             session?.isActive == true && session.endTime > now -> {
@@ -251,14 +224,14 @@ class PomodoroManager @Inject constructor(
         reconcileRestoredBlockingState(session)
         applyNotificationPolicyForInterval(runtime.config)
 
-        PomodoroForegroundService.start(context)
+        runtimePort.startForegroundTimer()
         if (session.isBlockingEnabled) {
             StrictPomodoroLock.save(context, session.endTime, session.durationMillis)
-            PomodoroForegroundService.scheduleWatchdogAlarm(context)
-            launchStrictLockActivity()
+            runtimePort.scheduleWatchdog()
+            runtimePort.launchStrictLock()
         } else {
             StrictPomodoroLock.clear(context)
-            PomodoroForegroundService.cancelWatchdogAlarm(context)
+            runtimePort.cancelWatchdog()
         }
         startTicker()
     }
@@ -273,7 +246,7 @@ class PomodoroManager @Inject constructor(
         val existingStrictSession = database.blockSessionDao()
             .getAllActiveSessionsStatic()
             .any { blockSession ->
-                blockSession.sessionType == "POMODORO" &&
+                blockSession.sessionType == BlockSessionType.POMODORO &&
                     blockSession.isBlockingEnabled &&
                     (blockSession.endTime ?: 0L) > now
             }
@@ -281,22 +254,22 @@ class PomodoroManager @Inject constructor(
         if (!existingStrictSession) {
             clearLegacyPomodoroBlockingLocked()
             val remaining = (session.endTime - now).coerceAtLeast(1L)
-            sessionManager.startPomodoroSession(remaining, true)
+            blockingEnforcement.startPomodoroSession(remaining, true)
             awaitStrictPomodoroEnforcement()
         } else {
-            sessionManager.checkAndEnforceStrict()
+            blockingEnforcement.checkAndEnforceStrict()
         }
     }
 
     /**
      * Remove somente o registro de bloqueio POMODORO do motor legado e reconcilia
-     * as políticas. Não toca no PomodoroForegroundService: ele pertence ao plano
+     * as políticas. Não toca no serviço de primeiro plano: ele pertence ao plano
      * inteiro e deve sobreviver continuamente às transições foco/pausa.
      */
     private suspend fun clearLegacyPomodoroBlockingLocked() {
-        database.blockSessionDao().deactivateActiveSessionsByType("POMODORO")
+        database.blockSessionDao().deactivateActiveSessionsByType(BlockSessionType.POMODORO)
         StrictPomodoroLock.clear(context)
-        sessionManager.checkAndEnforceStrict()
+        blockingEnforcement.checkAndEnforceStrict()
     }
 
     private suspend fun awaitStrictPomodoroEnforcement() {
@@ -306,12 +279,12 @@ class PomodoroManager @Inject constructor(
             val armed = database.blockSessionDao()
                 .getAllActiveSessionsStatic()
                 .any { blockSession ->
-                    blockSession.sessionType == "POMODORO" &&
+                    blockSession.sessionType == BlockSessionType.POMODORO &&
                         blockSession.isBlockingEnabled &&
                         (blockSession.endTime ?: 0L) > now
                 }
             if (armed) {
-                sessionManager.checkAndEnforceStrict()
+                blockingEnforcement.checkAndEnforceStrict()
                 return
             }
             check(android.os.SystemClock.elapsedRealtime() < deadline) {
@@ -376,7 +349,7 @@ class PomodoroManager @Inject constructor(
         check(!normalized.strictBlocking || !FocusModeStore.isActive(context)) {
             "O Pomodoro rigoroso não pode substituir um Modo Foco ativo"
         }
-        check(!normalized.strictBlocking || ProtectionPermissionGate.read(context).isReady) {
+        check(!normalized.strictBlocking || protectionPermissionGate.read().isReady) {
             "Todas as permissões de proteção são necessárias para o Pomodoro com bloqueio"
         }
         check(!normalized.silenceNotifications || notificationController.hasPolicyAccess()) {
@@ -384,8 +357,7 @@ class PomodoroManager @Inject constructor(
         }
         check(
             !normalized.hideNotifications ||
-                notificationController.hasNotificationListenerAccess(
-                    FocusModeNotificationService::class.java)
+                runtimePort.hasNotificationListenerAccess()
         ) {
             "Acesso às notificações é necessário para ocultá-las"
         }
@@ -400,7 +372,7 @@ class PomodoroManager @Inject constructor(
                     "Não foi possível ativar o Não Perturbe do Pomodoro"
                 }
             }
-            FocusModeNotificationService.requestRefresh(context)
+            runtimePort.requestNotificationRefresh()
             try {
                 startIntervalLocked(
                     phase = PomodoroPhase.FOCUS,
@@ -502,27 +474,27 @@ class PomodoroManager @Inject constructor(
 
         clearLegacyPomodoroBlockingLocked()
         if (blocking) {
-            sessionManager.startPomodoroSession(durationMillis, true)
+            blockingEnforcement.startPomodoroSession(durationMillis, true)
             awaitStrictPomodoroEnforcement()
         }
 
         applyNotificationPolicyForInterval(config)
 
         if (ensureForegroundService) {
-            PomodoroForegroundService.start(context)
+            runtimePort.startForegroundTimer()
         }
         if (blocking) {
             StrictPomodoroLock.save(context, endTime, durationMillis)
-            PomodoroForegroundService.scheduleWatchdogAlarm(context)
+            runtimePort.scheduleWatchdog()
         } else {
             StrictPomodoroLock.clear(context)
-            PomodoroForegroundService.cancelWatchdogAlarm(context)
+            runtimePort.cancelWatchdog()
         }
 
-        notifyBlockingChanged()
-        FocusModeNotificationService.requestRefresh(context)
+        runtimePort.publishBlockingChanged()
+        runtimePort.requestNotificationRefresh()
         startTicker()
-        if (blocking) launchStrictLockActivity()
+        if (blocking) runtimePort.launchStrictLock()
     }
 
     private suspend fun finishCurrentIntervalLocked(playAlarm: Boolean) {
@@ -536,11 +508,11 @@ class PomodoroManager @Inject constructor(
         stopTicker()
         dao.deleteSession()
         StrictPomodoroLock.clear(context)
-        PomodoroForegroundService.cancelWatchdogAlarm(context)
+        runtimePort.cancelWatchdog()
         _currentSession.value = null
         _timeLeftMillis.value = 0L
         clearLegacyPomodoroBlockingLocked()
-        notifyBlockingChanged()
+        runtimePort.publishBlockingChanged()
 
         if (playAlarm) {
             alarmJob?.cancel()
@@ -634,10 +606,10 @@ class PomodoroManager @Inject constructor(
         _cycleState.value = null
         planStore.clearRuntime()
         clearLegacyPomodoroBlockingLocked()
-        PomodoroForegroundService.stop(context)
+        runtimePort.stopForegroundTimer()
         notificationController.restore()
-        notifyBlockingChanged()
-        FocusModeNotificationService.requestRefresh(context)
+        runtimePort.publishBlockingChanged()
+        runtimePort.requestNotificationRefresh()
         if (emitFinished) _onSessionFinished.tryEmit(Unit)
     }
 
@@ -649,28 +621,4 @@ class PomodoroManager @Inject constructor(
             StrictPomodoroLock.isActive(context)
     }
 
-    private fun notifyBlockingChanged() {
-        context.sendBroadcast(
-            Intent(BlockingAccessibilityService.ACTION_REFRESH_BLOCKING)
-                .setPackage(context.packageName)
-        )
-    }
-
-    private fun launchStrictLockActivity() {
-        val intent = Intent(context, PomodoroLockActivity::class.java).apply {
-            addFlags(
-                Intent.FLAG_ACTIVITY_NEW_TASK or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                    Intent.FLAG_ACTIVITY_CLEAR_TOP
-            )
-        }
-        runCatching { context.startActivity(intent) }
-            .onFailure {
-                FocusGuardLogger.logError(
-                    "PomodoroManager",
-                    "Falha ao abrir bloqueio rigoroso",
-                    it
-                )
-            }
-    }
 }

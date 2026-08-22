@@ -88,14 +88,18 @@ import com.focusguard.data.RecoveryJourney.Status
 import com.focusguard.data.RecoveryProtectionPreset
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.BlockingSessionManager.BlockingProtectionUnavailableException
-import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.permissions.ProtectionPermissionGate
 import com.focusguard.ui.PermissionsActivity
 import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 @Composable
-fun RecoveryHubScreen(onReadBook: (RecoveryBook) -> Unit) {
+fun RecoveryHubScreen(
+    sessionManager: BlockingSessionManager,
+    protectionPermissionGate: ProtectionPermissionGate,
+    onReadBook: (RecoveryBook) -> Unit
+) {
     var selectedBook by rememberSaveable { mutableStateOf<RecoveryBook?>(null) }
 
     BackHandler(enabled = selectedBook != null) {
@@ -117,21 +121,26 @@ fun RecoveryHubScreen(onReadBook: (RecoveryBook) -> Unit) {
                 onReadBook = { onReadBook(book) }
             )
         } else {
-            RecoveryLanding(onOpenBook = { selectedBook = it })
+            RecoveryLanding(
+                sessionManager = sessionManager,
+                protectionPermissionGate = protectionPermissionGate,
+                onOpenBook = { selectedBook = it }
+            )
         }
     }
 }
 
 @Composable
-private fun RecoveryLanding(onOpenBook: (RecoveryBook) -> Unit) {
+private fun RecoveryLanding(
+    sessionManager: BlockingSessionManager,
+    protectionPermissionGate: ProtectionPermissionGate,
+    onOpenBook: (RecoveryBook) -> Unit
+) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
     val preferences = remember(context) {
         context.getSharedPreferences(RECOVERY_PREFS, Context.MODE_PRIVATE)
-    }
-    val sessionManager = remember(context) {
-        BlockingSessionManager.getInstance(context)
     }
 
     // Relido no ON_RESUME porque a leitura acontece fora daqui, noutra Activity:
@@ -257,7 +266,7 @@ private fun RecoveryLanding(onOpenBook: (RecoveryBook) -> Unit) {
                         Stage.REWIRE -> stage.bookOrNull?.let(onOpenBook)
 
                         Stage.PROTECT -> if (status == Status.CURRENT) {
-                            if (ProtectionPermissionGate.read(context).isReady) {
+                            if (protectionPermissionGate.read().isReady) {
                                 activationErrorRes = null
                                 showProtectionTerms = true
                             } else {

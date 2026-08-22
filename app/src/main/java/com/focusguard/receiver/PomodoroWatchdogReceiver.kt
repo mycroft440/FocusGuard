@@ -3,7 +3,7 @@ package com.focusguard.receiver
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
-import com.focusguard.manager.StrictPomodoroLock
+import com.focusguard.pomodoro.StrictPomodoroLock
 import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.FocusGuardLogger

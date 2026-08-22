@@ -1,6 +1,8 @@
 package com.focusguard.focusmode
 
 import android.content.Context
+import com.focusguard.domain.model.FocusModeSession
+import com.focusguard.state.FocusModeStore
 import com.google.common.truth.Truth.assertThat
 import org.junit.Before
 import org.junit.Test

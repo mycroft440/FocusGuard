@@ -27,7 +27,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -45,9 +44,13 @@ import androidx.compose.ui.unit.sp
 import com.focusguard.BuildConfig
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.admin.DeviceOwnerProtectionAuditor
 import com.focusguard.data.UserProfile
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.DeactivationCredentialManager
+import com.focusguard.uninstall.AuthenticatedUninstallCoordinator
+import com.focusguard.security.PasswordAppUnlockStore
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.focusguard.ui.MasterPasswordActivity
 import com.focusguard.ui.compose.layout.FocusGuardScreenScaffold
 import com.focusguard.ui.compose.layout.FocusGuardScrollableContent
@@ -60,6 +63,12 @@ import kotlin.math.ceil
 @Composable
 fun SettingsScreen(
     profile: UserProfile,
+    deactivationCredentialManager: DeactivationCredentialManager,
+    blockingSessionManager: BlockingSessionManager,
+    deviceOwnerManager: DeviceOwnerManager,
+    uninstallCoordinator: AuthenticatedUninstallCoordinator,
+    protectionAuditor: DeviceOwnerProtectionAuditor,
+    passwordAppUnlockStore: PasswordAppUnlockStore,
     onProfileClick: () -> Unit,
     onLimitsClick: () -> Unit,
     onLanguageClick: () -> Unit,
@@ -69,15 +78,6 @@ fun SettingsScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    val deactivationCredentialManager = remember(context) {
-        DeactivationCredentialManager(context)
-    }
-    val blockingSessionManager = remember(context) {
-        BlockingSessionManager.getInstance(context)
-    }
-    val deviceOwnerManager = remember(context) {
-        DeviceOwnerManager.getInstance(context)
-    }
     var showDeviceOwnerMaintenanceDialog by remember { mutableStateOf(false) }
     var showDeviceOwnerSetupGuideDialog by remember { mutableStateOf(false) }
     var showUninstallDialog by remember { mutableStateOf(false) }
@@ -89,12 +89,12 @@ fun SettingsScreen(
         deactivationCredentialRevision++
     }
 
-    val isBlockingActive by blockingSessionManager.isBlockingActiveFlow.collectAsState(
-        initial = true
+    val isBlockingActive by blockingSessionManager.isBlockingActiveFlow.collectAsStateWithLifecycle(
+        initialValue = true
     )
     val isUninstallBlockedByTime by blockingSessionManager
         .isUninstallBlockedByTimeFlow
-        .collectAsState(initial = true)
+        .collectAsStateWithLifecycle(initialValue = true)
     val deactivationCredentialConfigured = remember(deactivationCredentialRevision) {
         deactivationCredentialManager.hasCredential()
     }
@@ -147,6 +147,11 @@ fun SettingsScreen(
 
     if (showUninstallDialog) {
         AuthenticatedUninstallDialog(
+            credentialManager = deactivationCredentialManager,
+            sessionManager = blockingSessionManager,
+            deviceOwnerManager = deviceOwnerManager,
+            uninstallCoordinator = uninstallCoordinator,
+            appUnlockStore = passwordAppUnlockStore,
             hasActiveBlock = isBlockingActive,
             hasActiveIrreversibleBlock = isUninstallBlockedByTime,
             onDismiss = { showUninstallDialog = false }
@@ -155,6 +160,9 @@ fun SettingsScreen(
 
     if (showDeviceOwnerMaintenanceDialog) {
         DeviceOwnerMaintenanceDialog(
+            manager = deviceOwnerManager,
+            auditor = protectionAuditor,
+            credentialManager = deactivationCredentialManager,
             onDismiss = { showDeviceOwnerMaintenanceDialog = false },
             onStateChanged = { deviceOwnerRevision++ }
         )
@@ -162,6 +170,7 @@ fun SettingsScreen(
 
     if (showDeviceOwnerSetupGuideDialog) {
         DeviceOwnerSetupGuideDialog(
+            manager = deviceOwnerManager,
             onDismiss = { showDeviceOwnerSetupGuideDialog = false },
             onStateChanged = { deviceOwnerRevision++ }
         )

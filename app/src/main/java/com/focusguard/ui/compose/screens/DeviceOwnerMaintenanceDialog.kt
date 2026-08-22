@@ -40,14 +40,13 @@ import kotlin.math.ceil
 
 @Composable
 internal fun DeviceOwnerMaintenanceDialog(
+    manager: DeviceOwnerManager,
+    auditor: DeviceOwnerProtectionAuditor,
+    credentialManager: DeactivationCredentialManager,
     onDismiss: () -> Unit,
     onStateChanged: () -> Unit
 ) {
     val context = LocalContext.current
-    val manager = remember(context) { DeviceOwnerManager.getInstance(context) }
-    val auditor = remember(context) { DeviceOwnerProtectionAuditor(context) }
-    val credentialManager = remember(context) { DeactivationCredentialManager(context) }
-
     var credential by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showRevokeConfirmation by remember { mutableStateOf(false) }
@@ -117,7 +116,36 @@ internal fun DeviceOwnerMaintenanceDialog(
                 TextButton(
                     onClick = {
                         showRevokeConfirmation = false
-                        manager.renounceDeviceOwner()
+                        val result = manager.renounceDeviceOwner()
+                        when (result.outcome) {
+                            DeviceOwnerManager.RenounceOutcome.NOT_ACTIVE -> Unit
+                            DeviceOwnerManager.RenounceOutcome.MAINTENANCE_REQUIRED -> {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(
+                                        R.string.device_owner_maintenance_required_to_revoke
+                                    ),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                            DeviceOwnerManager.RenounceOutcome.REVOKED -> {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(R.string.acesso_device_owner_revogado),
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                            }
+                            DeviceOwnerManager.RenounceOutcome.FAILED -> {
+                                Toast.makeText(
+                                    context,
+                                    context.getString(
+                                        R.string.falha_ao_revogar_device_owner_e_message,
+                                        result.failureReason.orEmpty()
+                                    ),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
                         refreshState()
                         onDismiss()
                     }

@@ -12,14 +12,15 @@ import android.os.Build
 import android.os.IBinder
 import android.os.PowerManager
 import androidx.core.app.NotificationCompat
-import com.focusguard.MainActivity
 import com.focusguard.R
+import com.focusguard.contract.EnforcementUiContract
 import com.focusguard.manager.PomodoroManager
-import com.focusguard.manager.StrictPomodoroLock
 import com.focusguard.pomodoro.PomodoroPhase
 import com.focusguard.pomodoro.PomodoroPlanStore
-import com.focusguard.ui.PomodoroLockActivity
+import com.focusguard.pomodoro.StrictPomodoroLock
 import com.focusguard.utils.FocusGuardLogger
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +37,10 @@ import kotlinx.coroutines.launch
  * mantém também os ciclos normais (foco/pausa/foco) vivos em segundo plano. O
  * watchdog agressivo e a LockActivity continuam exclusivos do modo rigoroso.
  */
+@AndroidEntryPoint
 class PomodoroForegroundService : Service() {
+    @Inject lateinit var pomodoroManager: PomodoroManager
+    @Inject lateinit var pomodoroPlanStore: PomodoroPlanStore
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var watchdogJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -129,7 +133,7 @@ class PomodoroForegroundService : Service() {
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         // Força a restauração do gerente quando o Android recria somente o
         // serviço após matar o processo.
-        PomodoroManager.getInstance(applicationContext)
+        pomodoroManager.currentSession.value
 
         if (!hasActivePlan()) {
             stopSelf()
@@ -161,7 +165,7 @@ class PomodoroForegroundService : Service() {
     }
 
     private fun hasActivePlan(): Boolean {
-        val runtime = PomodoroPlanStore(applicationContext).readRuntime()
+        val runtime = pomodoroPlanStore.readRuntime()
         return runtime?.active == true || StrictPomodoroLock.isActive(applicationContext)
     }
 
@@ -193,7 +197,7 @@ class PomodoroForegroundService : Service() {
 
     private fun ensureLockActivityOnTop() {
         try {
-            val intent = Intent(applicationContext, PomodoroLockActivity::class.java).apply {
+            val intent = EnforcementUiContract.createPomodoroLockIntent(applicationContext).apply {
                 addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or
                         Intent.FLAG_ACTIVITY_SINGLE_TOP or
@@ -217,7 +221,7 @@ class PomodoroForegroundService : Service() {
     }
 
     private fun buildNotification(): Notification {
-        val runtime = PomodoroPlanStore(applicationContext).readRuntime()
+        val runtime = pomodoroPlanStore.readRuntime()
         val remaining = runtime?.intervalEndTime
             ?.minus(System.currentTimeMillis())
             ?.coerceAtLeast(0L)
@@ -235,11 +239,15 @@ class PomodoroForegroundService : Service() {
             }
         )
 
-        val targetActivity = if (strict) PomodoroLockActivity::class.java else MainActivity::class.java
+        val targetIntent = if (strict) {
+            EnforcementUiContract.createPomodoroLockIntent(applicationContext)
+        } else {
+            EnforcementUiContract.createMainIntent(applicationContext)
+        }
         val contentIntent = PendingIntent.getActivity(
             applicationContext,
             0,
-            Intent(applicationContext, targetActivity).apply {
+            targetIntent.apply {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE

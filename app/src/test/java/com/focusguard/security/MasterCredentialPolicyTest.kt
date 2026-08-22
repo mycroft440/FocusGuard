@@ -1,6 +1,7 @@
 package com.focusguard.security
 
 import com.focusguard.database.AppUsageLimit
+import com.focusguard.domain.model.UsageLimitLockMode
 import com.focusguard.security.MasterCredentialPolicy.CreationGate
 import com.focusguard.security.MasterCredentialPolicy.MutationGate
 import com.focusguard.security.MasterCredentialPolicy.UninstallGate
@@ -100,7 +101,7 @@ class MasterCredentialPolicyTest {
     @Test
     fun `future time lock is hardening`() {
         val hardened = MasterCredentialPolicy.isTimeHardened(
-            lockMode = "TIME",
+            lockMode = UsageLimitLockMode.TIME,
             lockUntilTimestamp = 2_000L,
             nowMillis = 1_000L
         )
@@ -285,7 +286,7 @@ class MasterCredentialPolicyTest {
             packageName = "com.example.app",
             appName = "Example",
             dailyLimitMinutes = 30,
-            lockMode = "TIME",
+            lockMode = UsageLimitLockMode.TIME,
             lockUntilTimestamp = 2_000L,
             createdAt = 0L,
             lastResetDate = 0L

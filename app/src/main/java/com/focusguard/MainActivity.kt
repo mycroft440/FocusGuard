@@ -14,10 +14,18 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.admin.DeviceOwnerProtectionAuditor
 import com.focusguard.focusmode.FocusModeKioskController
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.manager.PomodoroManager
+import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
+import com.focusguard.uninstall.AuthenticatedUninstallCoordinator
+import com.focusguard.security.DeactivationCredentialManager
+import com.focusguard.permissions.ProtectionPermissionGate
+import com.focusguard.security.PasswordAppUnlockStore
+import com.focusguard.pomodoro.PomodoroPlanStore
+import com.focusguard.pomodoro.PomodoroNotificationController
 import com.focusguard.ui.PermissionsActivity
 import com.focusguard.ui.compose.navigation.FocusGuardNavHost
 import com.focusguard.ui.compose.theme.FocusGuardTheme
@@ -35,8 +43,17 @@ class MainActivity : AppCompatActivity() {
     // migrações em paralelo (AuthManager) ou multiplas instâncias de manager.
     @Inject lateinit var authManager: AuthManager
     @Inject lateinit var focusModeManager: FocusModeManager
-
-    private lateinit var pomodoroManager: PomodoroManager
+    @Inject lateinit var pomodoroManager: PomodoroManager
+    @Inject lateinit var deviceOwnerManager: DeviceOwnerManager
+    @Inject lateinit var kioskController: FocusModeKioskController
+    @Inject lateinit var blockingSessionManager: BlockingSessionManager
+    @Inject lateinit var deactivationCredentialManager: DeactivationCredentialManager
+    @Inject lateinit var protectionPermissionGate: ProtectionPermissionGate
+    @Inject lateinit var uninstallCoordinator: AuthenticatedUninstallCoordinator
+    @Inject lateinit var protectionAuditor: DeviceOwnerProtectionAuditor
+    @Inject lateinit var passwordAppUnlockStore: PasswordAppUnlockStore
+    @Inject lateinit var pomodoroPlanStore: PomodoroPlanStore
+    @Inject lateinit var pomodoroNotificationController: PomodoroNotificationController
     private var grayscaleApplied: Boolean? = null
 
     /**
@@ -54,7 +71,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             FocusGuardLogger.log("FocusMode", "Voltar interceptado pelo shell do Modo Foco")
-            FocusModeKioskController.reconcileSystemRestrictions(this@MainActivity)
+            kioskController.reconcileSystemRestrictions()
             enforceFocusModeLockTask()
         }
     }
@@ -74,11 +91,9 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        // PomodoroManager ainda usa o singleton legado.
-        pomodoroManager = PomodoroManager.getInstance(applicationContext)
         onBackPressedDispatcher.addCallback(this, focusModeBackGuard)
         updateFocusModeBackGuard()
-        FocusModeKioskController.reconcileSystemRestrictions(this)
+        kioskController.reconcileSystemRestrictions()
 
         FocusGuardLogger.log("MainActivity", "Managers inicializados com sucesso")
 
@@ -89,6 +104,15 @@ class MainActivity : AppCompatActivity() {
                     authManager = authManager,
                     pomodoroManager = pomodoroManager,
                     focusModeManager = focusModeManager,
+                    deviceOwnerManager = deviceOwnerManager,
+                    blockingSessionManager = blockingSessionManager,
+                    deactivationCredentialManager = deactivationCredentialManager,
+                    protectionPermissionGate = protectionPermissionGate,
+                    uninstallCoordinator = uninstallCoordinator,
+                    protectionAuditor = protectionAuditor,
+                    passwordAppUnlockStore = passwordAppUnlockStore,
+                    pomodoroPlanStore = pomodoroPlanStore,
+                    pomodoroNotificationController = pomodoroNotificationController,
                     onEnforceFocusModeLockTask = ::enforceFocusModeLockTask
                 )
             }
@@ -112,7 +136,7 @@ class MainActivity : AppCompatActivity() {
         super.onResume()
         FocusGuardLogger.log("MainActivity", "onResume disparado")
         updateFocusModeBackGuard()
-        FocusModeKioskController.reconcileSystemRestrictions(this)
+        kioskController.reconcileSystemRestrictions()
         enforceFocusModeLockTask()
     }
 
@@ -123,8 +147,7 @@ class MainActivity : AppCompatActivity() {
 
     fun enforceFocusModeLockTask() {
         updateFocusModeBackGuard()
-        FocusModeKioskController.reconcileSystemRestrictions(this)
-        val deviceOwnerManager = DeviceOwnerManager.getInstance(applicationContext)
+        kioskController.reconcileSystemRestrictions()
         // Lock Task allowlisting survives process death. Re-enter it immediately
         // on resume, before the asynchronous full policy reconciliation, so there
         // is no Home-button escape window after Android recreates this activity.
@@ -136,11 +159,11 @@ class MainActivity : AppCompatActivity() {
         lifecycleScope.launch {
             if (!focusModeManager.ensureEnforced()) {
                 updateFocusModeBackGuard()
-                FocusModeKioskController.reconcileSystemRestrictions(this@MainActivity)
+                kioskController.reconcileSystemRestrictions()
                 return@launch
             }
             updateFocusModeBackGuard()
-            FocusModeKioskController.reconcileSystemRestrictions(this@MainActivity)
+            kioskController.reconcileSystemRestrictions()
             if (!deviceOwnerManager.isDeviceOwnerActive()) return@launch
             runCatching { startLockTask() }
                 .onFailure { error ->
@@ -163,10 +186,9 @@ class MainActivity : AppCompatActivity() {
                 focusModeManager.session.collect { session ->
                     val active = session?.isActive() == true
                     focusModeBackGuard.isEnabled = active
-                    FocusModeKioskController.reconcileSystemRestrictions(this@MainActivity)
+                    kioskController.reconcileSystemRestrictions()
                     applyFocusModeGrayscale(active && session?.grayscaleEnabled == true)
                     if (active) {
-                        val deviceOwnerManager = DeviceOwnerManager.getInstance(applicationContext)
                         if (deviceOwnerManager.isFocusModeLockTaskPermitted()) {
                             runCatching { startLockTask() }
                         }

@@ -1,5 +1,6 @@
 package com.focusguard.ui.compose.screens
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -67,7 +68,7 @@ import androidx.lifecycle.LifecycleOwner
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.security.DeviceAdminActivationWindow
-import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.permissions.ProtectionPermissionGate
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
@@ -114,13 +115,14 @@ data class PermissionState(
 @Composable
 fun PermissionsScreen(
     flowMode: PermissionFlowMode = PermissionFlowMode.FullSetup,
+    deviceOwnerManager: DeviceOwnerManager,
+    protectionPermissionGate: ProtectionPermissionGate,
     onFinish: () -> Unit
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    val deviceOwnerManager = remember { DeviceOwnerManager.getInstance(context) }
     val initialPermissionState = remember {
-        readPermissionState(context)
+        readPermissionState(protectionPermissionGate)
     }
     val steps = remember(flowMode, initialPermissionState) {
         permissionStepsForFlow(flowMode, initialPermissionState)
@@ -142,7 +144,7 @@ fun PermissionsScreen(
     var resumeCount by remember { mutableIntStateOf(0) }
 
     fun refreshPermissions(): PermissionState {
-        val updated = readPermissionState(context)
+        val updated = readPermissionState(protectionPermissionGate)
         permissionState = updated
         return updated
     }
@@ -241,7 +243,7 @@ fun PermissionsScreen(
             return false
         }
         markPending(PermissionStepType.DeviceAdmin)
-        val launched = deviceOwnerManager.openDeviceAdminSettings(context)
+        val launched = openDeviceAdminSettings(context)
         if (!launched) {
             DeviceAdminActivationWindow.close(context)
             pendingExternalStepName = null
@@ -811,8 +813,8 @@ private fun PermissionStep(number: Int, text: String) {
     }
 }
 
-private fun readPermissionState(context: Context): PermissionState {
-    val state = ProtectionPermissionGate.read(context)
+private fun readPermissionState(gate: ProtectionPermissionGate): PermissionState {
+    val state = gate.read()
     return PermissionState(
         notifications = state.notifications,
         batteryOptimization = state.batteryOptimization,
@@ -883,6 +885,33 @@ private fun openAccessibilitySettings(context: Context) {
     }
 }
 
+private fun openDeviceAdminSettings(context: Context): Boolean {
+    val candidates = listOf(
+        Intent("android.settings.DEVICE_ADMIN_SETTINGS"),
+        Intent(Settings.ACTION_SECURITY_SETTINGS),
+        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+            data = Uri.parse("package:${context.packageName}")
+        },
+        Intent(Settings.ACTION_SETTINGS)
+    )
+
+    for (candidate in candidates) {
+        val launched = runCatching {
+            if (context !is Activity) candidate.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(candidate)
+            true
+        }.onFailure { error ->
+            FocusGuardLogger.logError(
+                "Permissions",
+                "Falha ao abrir ${candidate.action}",
+                error
+            )
+        }.getOrDefault(false)
+        if (launched) return true
+    }
+    return false
+}
+
 private fun openUsageAccessSettings(context: Context) {
     val appSettingsIntent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).apply {
         data = Uri.parse("package:${context.packageName}")
@@ -928,59 +957,5 @@ private fun openAppInfo(context: Context) {
         context.startActivity(intent)
     }.recoverCatching {
         openAccessibilitySettings(context)
-    }
-}
-
-@Composable
-fun PermissionCard(
-    number: Int,
-    title: String,
-    description: String,
-    detail: String,
-    badge: String,
-    badgeColor: Color,
-    isGranted: Boolean,
-    onClick: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
-        border = BorderStroke(1.dp, CardBorder)
-    ) {
-        Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
-            Box(
-                modifier = Modifier.size(32.dp).background(color = DarkCardElevated, shape = RoundedCornerShape(10.dp)),
-                contentAlignment = Alignment.Center
-            ) {
-                Text(text = "$number", fontSize = 16.sp, fontWeight = FontWeight.Bold, color = AccentCyan)
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(text = title, fontSize = 15.sp, fontWeight = FontWeight.Bold, color = TextPrimary)
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(text = description, fontSize = 12.sp, color = TextSecondary)
-                Spacer(modifier = Modifier.height(3.dp))
-                Text(text = detail, fontSize = 11.sp, color = TextHint)
-            }
-            Spacer(modifier = Modifier.width(12.dp))
-            Button(
-                onClick = onClick,
-                enabled = !isGranted,
-                shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(
-                    containerColor = if (isGranted) SuccessGreen else AccentCyan,
-                    disabledContainerColor = SuccessGreen.copy(alpha = 0.7f)
-                ),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                modifier = Modifier.height(36.dp)
-            ) {
-                if (isGranted) {
-                    Icon(Icons.Default.Check, contentDescription = null, modifier = Modifier.size(16.dp))
-                    Spacer(modifier = Modifier.width(4.dp))
-                }
-                Text(text = if (isGranted) "Concedida" else "Ativar", fontSize = 12.sp)
-            }
-        }
     }
 }

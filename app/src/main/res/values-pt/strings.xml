@@ -225,7 +225,6 @@
     <string name="settings_category_general">Geral</string>
     <string name="settings_category_blocking">Bloqueio</string>
     <string name="settings_category_advanced_security">Segurança avançada</string>
-    <string name="settings_category_development">Desenvolvimento</string>
     <string name="settings_category_danger">Zona de perigo</string>
     <string name="settings_password_subtitle">Configurar senha e biometria</string>
     <string name="settings_language_subtitle">Alterar o idioma do aplicativo</string>
@@ -235,21 +234,6 @@
     <string name="intruder_log">Registro de intrusos</string>
     <string name="settings_intruder_log_subtitle">Ver fotos de tentativas falhas</string>
     <string name="language_settings">Idioma</string>
-    <string name="dev_area_title">Área Dev</string>
-    <string name="dev_area_subtitle">Saída técnica para remover bloqueios e proteções</string>
-    <string name="dev_area_description">Esta área remove sessões, Pomodoro, limites de uso, listas de bloqueio, filtro adulto e as proteções administrativas aplicadas pelo HardBlock. Depois, você decide se deseja desinstalar o app.</string>
-    <string name="dev_area_warning">Ao confirmar a senha, todos os bloqueios do HardBlock serão removidos imediatamente. Se você optar por não desinstalar, eles não serão restaurados automaticamente.</string>
-    <string name="dev_area_password_label">Senha Dev</string>
-    <string name="dev_area_relinquish_action">Remover todos os bloqueios</string>
-    <string name="dev_area_invalid_password">Senha Dev incorreta.</string>
-    <string name="dev_area_unavailable">A Área Dev não está configurada ou a autorização expirou. Digite a senha novamente.</string>
-    <string name="dev_area_release_failed">Não foi possível remover todas as proteções do HardBlock.</string>
-    <string name="dev_area_uninstall_failed">As proteções foram revogadas, mas o desinstalador do Android não pôde ser aberto.</string>
-    <string name="dev_area_blocks_removed_title">Bloqueios removidos</string>
-    <string name="dev_area_uninstall_question">Todos os bloqueios e proteções foram removidos. Deseja desinstalar o app?</string>
-    <string name="dev_area_uninstall_confirm">Desinstalar</string>
-    <string name="dev_area_uninstall_decline">Agora não</string>
-    <string name="dev_area_blocks_removed_kept">Bloqueios removidos. O HardBlock permanece instalado.</string>
 
     <!-- Autenticação -->
     <string name="auth_locked_content_description">App bloqueado</string>
@@ -718,7 +702,7 @@
     <string name="focus_mode_terms_grayscale_on">A escala de cinza será aplicada a toda a interface do HardBlock nesta sessão.</string>
     <string name="focus_mode_terms_grayscale_off">A escala de cinza ficará desativada nesta sessão.</string>
     <string name="focus_mode_terms_power_limits">Desligar e reiniciar normalmente continuam disponíveis. O bloqueio de inicialização em modo seguro só pode ser aplicado quando a proteção nativa opcional já foi configurada nas Configurações.</string>
-    <string name="focus_mode_terms_exit">Não haverá encerramento antecipado pela tela comum. A Área Dev permanece como saída técnica do produto.</string>
+    <string name="focus_mode_terms_exit">Não haverá encerramento antecipado pela tela comum. A desinstalação só fica disponível pelo fluxo autenticado quando todas as proteções ativas permitirem.</string>
     <string name="focus_mode_terms_accept">Eu escolhi este bloqueio voluntariamente, entendi os efeitos e concordo em mantê-lo até o prazo terminar.</string>
     <string name="focus_mode_confirm_start">Concordar e iniciar</string>
     <string name="focus_mode_active_title">Modo Foco ativo</string>

@@ -2,6 +2,9 @@ package com.focusguard.security
 
 import android.content.Context
 import com.focusguard.utils.SecurePrefsManager
+import dagger.hilt.android.qualifiers.ApplicationContext
+import javax.inject.Inject
+import javax.inject.Singleton
 
 enum class PasswordAppUnlockMode {
     PASSWORD,
@@ -27,7 +30,10 @@ data class PasswordAppUnlockConfig(
  * indexada pelo packageName para que grupos diferentes de apps possam usar
  * métodos de desbloqueio diferentes sem alterar o schema Room das sessões.
  */
-class PasswordAppUnlockStore(context: Context) {
+@Singleton
+class PasswordAppUnlockStore @Inject constructor(
+    @ApplicationContext context: Context
+) {
     private val preferences = SecurePrefsManager(context.applicationContext).prefs
 
     fun saveForPackages(

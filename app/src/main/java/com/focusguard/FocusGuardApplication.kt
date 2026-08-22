@@ -4,11 +4,13 @@ import android.app.Application
 import android.os.UserManager
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeManager
-import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.state.FocusModeStore
 import com.focusguard.utils.AccessibilityStateMonitor
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.UsageAccessStateMonitor
 import dagger.hilt.android.HiltAndroidApp
+import dagger.Lazy
+import javax.inject.Inject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -21,6 +23,11 @@ import kotlinx.coroutines.launch
  */
 @HiltAndroidApp
 class FocusGuardApplication : Application() {
+    @Inject lateinit var deviceOwnerManager: DeviceOwnerManager
+    @Inject lateinit var focusModeManager: Lazy<FocusModeManager>
+    @Inject lateinit var accessibilityStateMonitor: Lazy<AccessibilityStateMonitor>
+    @Inject lateinit var usageAccessStateMonitor: Lazy<UsageAccessStateMonitor>
+
     private val applicationScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     override fun onCreate() {
@@ -35,19 +42,18 @@ class FocusGuardApplication : Application() {
         }
         FocusGuardLogger.init(startupContext)
 
-        val deviceOwnerManager = DeviceOwnerManager.getInstance(this)
         if (userUnlocked) {
             // Reaplica as políticas oficiais e inicia dependências que usam Room/Keystore.
             deviceOwnerManager.applyNuclearShield()
-            AccessibilityStateMonitor.start(this)
-            UsageAccessStateMonitor.start(this)
+            accessibilityStateMonitor.get().start()
+            usageAccessStateMonitor.get().start()
             // Instanciar o manager também instancia dependências protegidas pelo
             // AndroidKeyStore. Sem sessão persistida não existe nada a restaurar,
             // então evitamos esse custo no boot normal e em ambientes de teste
             // que corretamente não oferecem o AndroidKeyStore real.
             if (FocusModeStore.readSession(this) != null) {
                 applicationScope.launch {
-                    FocusModeManager.getInstance(this@FocusGuardApplication).ensureEnforced()
+                    focusModeManager.get().ensureEnforced()
                 }
             }
         } else {

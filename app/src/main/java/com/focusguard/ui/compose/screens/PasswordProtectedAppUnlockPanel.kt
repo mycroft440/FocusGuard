@@ -65,12 +65,12 @@ internal fun PasswordProtectedAppUnlockPanel(
     blockedPackage: String,
     authManager: AuthManager,
     sessionManager: BlockingSessionManager,
+    store: PasswordAppUnlockStore,
     onUnlocked: () -> Unit
 ) {
     val context = LocalContext.current
     val activity = context as? FragmentActivity
     val scope = rememberCoroutineScope()
-    val store = remember(context) { PasswordAppUnlockStore(context) }
     var config by remember(blockedPackage) {
         mutableStateOf(store.get(blockedPackage))
     }

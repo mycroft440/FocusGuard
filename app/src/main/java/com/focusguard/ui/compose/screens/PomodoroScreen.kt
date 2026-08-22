@@ -77,8 +77,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.contract.EnforcementUiContract
 import com.focusguard.focusmode.FocusModePolicy
-import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.state.FocusModeStore
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.pomodoro.PomodoroAlarmController
 import com.focusguard.pomodoro.PomodoroNotificationController
@@ -88,8 +89,8 @@ import com.focusguard.pomodoro.PomodoroPlanStore
 import com.focusguard.pomodoro.PomodoroProfile
 import com.focusguard.pomodoro.PomodoroUiSignal
 import com.focusguard.security.AuthManager
-import com.focusguard.security.ProtectionPermissionGate
-import com.focusguard.service.FocusModeNotificationService
+import com.focusguard.permissions.ProtectionPermissionGate
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
@@ -113,6 +114,10 @@ import kotlin.math.sin
 fun PomodoroScreen(
     pomodoroManager: PomodoroManager,
     authManager: AuthManager,
+    deviceOwnerManager: DeviceOwnerManager,
+    protectionPermissionGate: ProtectionPermissionGate,
+    planStore: PomodoroPlanStore,
+    notificationController: PomodoroNotificationController,
     onPermissionsRequired: () -> Unit,
     onBack: () -> Unit,
     compactLayout: Boolean = false
@@ -121,15 +126,9 @@ fun PomodoroScreen(
     val activity = context as? Activity
     val lifecycleOwner = LocalLifecycleOwner.current
     val scope = rememberCoroutineScope()
-    val planStore = remember(context) { PomodoroPlanStore(context) }
-    val notificationController = remember(context) { PomodoroNotificationController(context) }
-    val deviceOwnerManager = remember(context) {
-        DeviceOwnerManager.getInstance(context.applicationContext)
-    }
-
-    val currentSession by pomodoroManager.currentSession.collectAsState()
-    val cycleState by pomodoroManager.cycleState.collectAsState()
-    val timeLeftMillis by pomodoroManager.timeLeftMillis.collectAsState()
+    val currentSession by pomodoroManager.currentSession.collectAsStateWithLifecycle()
+    val cycleState by pomodoroManager.cycleState.collectAsStateWithLifecycle()
+    val timeLeftMillis by pomodoroManager.timeLeftMillis.collectAsStateWithLifecycle()
     val isRunning = currentSession?.isActive == true && cycleState?.active == true
     val isStrictBlockingActive = currentSession?.isBlockingEnabled == true &&
         currentSession?.endTime?.let { it > System.currentTimeMillis() } == true
@@ -177,7 +176,7 @@ fun PomodoroScreen(
     }
     val hasNotificationAccess = remember(permissionRevision) {
         notificationController.hasNotificationListenerAccess(
-            FocusModeNotificationService::class.java
+            EnforcementUiContract.FOCUS_MODE_NOTIFICATION_SERVICE_CLASS_NAME
         )
     }
     val profiles = remember(profileRevision) { planStore.allProfiles() }
@@ -197,7 +196,7 @@ fun PomodoroScreen(
             config.strictBlocking && focusModeActive -> {
                 setMessage(context.getString(R.string.fg_pomodoro_disable_focus_for_strict))
             }
-            config.strictBlocking && !ProtectionPermissionGate.read(context).isReady -> {
+            config.strictBlocking && !protectionPermissionGate.read().isReady -> {
                 onPermissionsRequired()
             }
             config.silenceNotifications && !hasDndAccess -> {

@@ -28,6 +28,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -72,8 +73,8 @@ fun WebsiteRulesTab(
     onAlreadyBlocked: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var input by remember { mutableStateOf("") }
-    var invalidInput by remember { mutableStateOf(false) }
+    var input by rememberSaveable { mutableStateOf("") }
+    var invalidInput by rememberSaveable { mutableStateOf(false) }
 
     fun toggle(rule: String) {
         if (rule.isEmpty()) return
@@ -181,8 +182,8 @@ fun KeywordRulesTab(
     onAlreadyBlocked: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    var input by remember { mutableStateOf("") }
-    var invalidInput by remember { mutableStateOf(false) }
+    var input by rememberSaveable { mutableStateOf("") }
+    var invalidInput by rememberSaveable { mutableStateOf(false) }
     val chosenKeywords = rules.filter(WebsiteBlocker::isKeywordRule)
 
     LazyColumn(

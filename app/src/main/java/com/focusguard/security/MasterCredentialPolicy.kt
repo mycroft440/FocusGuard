@@ -1,6 +1,8 @@
 package com.focusguard.security
 
 import com.focusguard.database.AppUsageLimit
+import com.focusguard.domain.model.BlockSessionType
+import com.focusguard.domain.model.UsageLimitLockMode
 
 /**
  * Decides where the master credential (the deactivation password managed by
@@ -140,7 +142,7 @@ object MasterCredentialPolicy {
         masterCredentialVerified: Boolean,
         nowMillis: Long = System.currentTimeMillis()
     ): MutationGate = evaluateLimitMutation(
-        lockMode = limit.lockMode,
+        lockMode = limit.lockMode.name,
         lockUntilTimestamp = limit.lockUntilTimestamp,
         safetyModeEnabled = safetyModeEnabled,
         hasMasterCredential = hasMasterCredential,
@@ -220,4 +222,16 @@ object MasterCredentialPolicy {
      */
     fun blocksUninstall(sessionType: String): Boolean =
         sessionType.equals(SESSION_TYPE_TIME, ignoreCase = true)
+
+    fun isIrreversibleSessionType(sessionType: BlockSessionType): Boolean =
+        isIrreversibleSessionType(sessionType.name)
+
+    fun blocksUninstall(sessionType: BlockSessionType): Boolean =
+        blocksUninstall(sessionType.name)
+
+    fun isTimeHardened(
+        lockMode: UsageLimitLockMode,
+        lockUntilTimestamp: Long?,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Boolean = isTimeHardened(lockMode.name, lockUntilTimestamp, nowMillis)
 }

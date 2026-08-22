@@ -63,6 +63,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,6 +83,7 @@ import com.focusguard.data.PredefinedWebsites
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
 import com.focusguard.security.DeactivationCredentialManager
+import com.focusguard.security.PasswordAppUnlockStore
 import com.focusguard.ui.AppSelectionStep
 import com.focusguard.ui.FinalConfigStep
 import com.focusguard.ui.MasterPasswordActivity
@@ -112,16 +114,20 @@ private enum class ProtectionSetupPage {
 @Composable
 fun UnifiedProtectionSetupWizard(
     authManager: AuthManager,
+    blockingSessionManager: BlockingSessionManager,
+    deactivationCredentialManager: DeactivationCredentialManager,
+    passwordAppUnlockStore: PasswordAppUnlockStore,
     onFinish: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    val blockingSessionManager = remember(context) {
-        BlockingSessionManager.getInstance(context)
+    var page by rememberSaveable { mutableStateOf(ProtectionSetupPage.LIST) }
+    var selectedApps by rememberSaveable(stateSaver = SelectableAppUiListSaver) {
+        mutableStateOf(emptyList())
     }
-    var page by remember { mutableStateOf(ProtectionSetupPage.LIST) }
-    var selectedApps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
-    var websiteRules by remember { mutableStateOf<List<String>>(emptyList()) }
+    var websiteRules by rememberSaveable(stateSaver = StringListSaver) {
+        mutableStateOf(emptyList())
+    }
     var configuredBlockedTargets by remember {
         mutableStateOf(BlockingSessionManager.ConfiguredBlockedTargets())
     }
@@ -231,6 +237,7 @@ fun UnifiedProtectionSetupWizard(
             // Este assistente tem uma tela própria de sites (WEBSITE_PICKER),
             // então aqui só escolhe aplicativos e ignora as regras do seletor.
             ProtectionSetupPage.APP_PICKER -> AppSelectionStep(
+                blockingSessionManager = blockingSessionManager,
                 onNext = { apps, _ ->
                     scope.launch {
                         val latest = refreshConfiguredBlockedTargets()
@@ -328,6 +335,8 @@ fun UnifiedProtectionSetupWizard(
                 apps = selectedApps,
                 websiteRules = websiteRules,
                 authManager = authManager,
+                manager = blockingSessionManager,
+                credentialManager = deactivationCredentialManager,
                 configuredTargets = configuredBlockedTargets,
                 onBack = { page = ProtectionSetupPage.MODE },
                 onFinish = onFinish
@@ -336,6 +345,9 @@ fun UnifiedProtectionSetupWizard(
             ProtectionSetupPage.PASSWORD -> FinalConfigStep(
                 sessionType = "PASSWORD",
                 authManager = authManager,
+                sessionManager = blockingSessionManager,
+                credentialManager = deactivationCredentialManager,
+                appUnlockStore = passwordAppUnlockStore,
                 sites = websiteRules,
                 apps = selectedApps.map { it.packageName },
                 onFinish = onFinish,
@@ -343,6 +355,8 @@ fun UnifiedProtectionSetupWizard(
             )
 
             ProtectionSetupPage.DOPAMINE_FAST -> TimeBlockSessionConfigScreen(
+                sessionManager = blockingSessionManager,
+                credentialManager = deactivationCredentialManager,
                 appName = protectionTargetLabel(selectedApps, websiteRules),
                 apps = selectedApps.map { it.packageName },
                 sites = websiteRules,
@@ -582,15 +596,21 @@ private fun WebsiteRuleSelectionScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
-    var input by remember { mutableStateOf("") }
-    var rules by remember(initialRules, configuredBlockedRules) {
+    var input by rememberSaveable { mutableStateOf("") }
+    var rules by rememberSaveable(initialRules, stateSaver = StringListSaver) {
         mutableStateOf(
             initialRules.distinct().filterNot {
                 isWebsiteRuleAlreadyBlocked(it, configuredBlockedRules)
             }
         )
     }
-    var invalidInput by remember { mutableStateOf(false) }
+    var invalidInput by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(configuredBlockedRules) {
+        rules = rules.filterNot {
+            isWebsiteRuleAlreadyBlocked(it, configuredBlockedRules)
+        }
+    }
 
     fun addRule(value: String) {
         val normalized = WebsiteBlocker.normalizeRule(value)
@@ -1023,25 +1043,25 @@ private fun BatchDailyLimitConfigScreen(
     apps: List<SelectableAppUi>,
     websiteRules: List<String>,
     authManager: AuthManager,
+    manager: BlockingSessionManager,
+    credentialManager: DeactivationCredentialManager,
     configuredTargets: BlockingSessionManager.ConfiguredBlockedTargets,
     onBack: () -> Unit,
     onFinish: () -> Unit
 ) {
     val context = LocalContext.current
-    val manager = remember(context) { BlockingSessionManager.getInstance(context) }
-    val credentialManager = remember(context) { DeactivationCredentialManager(context) }
     val scope = rememberCoroutineScope()
-    var hoursText by remember { mutableStateOf("") }
-    var minutesText by remember { mutableStateOf("") }
+    var hoursText by rememberSaveable { mutableStateOf("") }
+    var minutesText by rememberSaveable { mutableStateOf("") }
     var isSaving by remember { mutableStateOf(false) }
-    var hasPassword by remember { mutableStateOf(false) }
+    var hasPassword by rememberSaveable { mutableStateOf(false) }
     val alreadyPasswordProtected = remember(apps, websiteRules, configuredTargets) {
         apps.any { it.packageName in configuredTargets.passwordAppPackageNames } ||
             websiteRules.any {
                 isWebsiteRuleAlreadyBlocked(it, configuredTargets.passwordWebsiteRules)
             }
     }
-    var protectWithPassword by remember(alreadyPasswordProtected) {
+    var protectWithPassword by rememberSaveable(alreadyPasswordProtected) {
         mutableStateOf(alreadyPasswordProtected)
     }
     val masterPasswordLauncher = rememberLauncherForActivityResult(

@@ -17,9 +17,11 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("https://jitpack.io") }
     }
 }
 
 rootProject.name = "FocusGuard"
 include(":app")
+include(":domain")
+include(":data")
+include(":platform")

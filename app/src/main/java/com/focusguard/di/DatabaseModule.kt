@@ -1,6 +1,7 @@
 package com.focusguard.di
 
 import android.content.Context
+import androidx.room.Room
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.BlockedAppDao
 import com.focusguard.database.BlockedWebsiteDao
@@ -23,9 +24,7 @@ import javax.inject.Singleton
 /**
  * Módulo Hilt que fornece a instância única do Room database e seus DAOs.
  *
- * Antes da Fase 3, cada tela chamava `AppDatabase.getDatabase(context)` diretamente
- * (15 sites de chamada UI→DB). Agora os DAOs são injetados via construtor de
- * Repository/ViewModel — eliminando o boilerplate e facilitando testes.
+ * Hilt owns the only Room instance; consumers receive the database or a DAO.
  */
 @Module
 @InstallIn(SingletonComponent::class)
@@ -34,12 +33,11 @@ object DatabaseModule {
     @Provides
     @Singleton
     fun provideAppDatabase(@ApplicationContext context: Context): AppDatabase {
-        // CRÍTICO: delega para o singleton do AppDatabase — garante que Hilt e
-        // callers legados (AppDatabase.getDatabase(context)) usem a MESMA
-        // instância Room. Antes desta correção, duas instâncias paralelas eram
-        // criadas (uma aqui, outra no companion do AppDatabase), causando
-        // race conditions e dados divergentes entre UI e Accessibility Service.
-        return AppDatabase.getDatabase(context)
+        return Room.databaseBuilder(
+            context,
+            AppDatabase::class.java,
+            "focusguard_database"
+        ).addMigrations(*AppDatabase.ALL_MIGRATIONS).build()
     }
 
     @Provides fun provideBlockedAppDao(db: AppDatabase): BlockedAppDao = db.blockedAppDao()
