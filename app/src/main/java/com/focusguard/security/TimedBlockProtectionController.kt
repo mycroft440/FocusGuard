@@ -34,11 +34,11 @@ class TimedBlockProtectionController private constructor(private val context: Co
      */
     fun prepareForTimeCreation(): Boolean {
         if (!isDeviceOwnerReady()) return false
-        if (!preferences.edit()
-                .putBoolean(KEY_PENDING_CREATION, true)
-                .putLong(KEY_PENDING_SINCE, System.currentTimeMillis())
-                .commit()
-        ) return false
+        val saved = preferences.edit()
+            .putBoolean(KEY_PENDING_CREATION, true)
+            .putLong(KEY_PENDING_SINCE, System.currentTimeMillis())
+            .commit()
+        if (!saved) return false
         return applyUninstallBlocked(true)
     }
 
@@ -50,18 +50,12 @@ class TimedBlockProtectionController private constructor(private val context: Co
         withContext(Dispatchers.IO) {
             if (!isDeviceOwnerReady()) return@withContext false
             val database = AppDatabase.getDatabase(context)
-            val candidate = database.blockSessionDao().getAllActiveSessionsStatic()
-                .asSequence()
-                .filter { session ->
-                    session.sessionType.equals("TIME", ignoreCase = true) &&
-                        session.isActive &&
-                        session.startTime >= createdNotBeforeMillis
-                }
-                .maxByOrNull { it.startTime }
-                ?: return@withContext false.also {
-                    clearPendingCreation()
-                    reconcileFromDatabase()
-                }
+            val candidate = newestTimeSession(database, createdNotBeforeMillis)
+            if (candidate == null) {
+                clearPendingCreation()
+                reconcileFromDatabase()
+                return@withContext false
+            }
 
             val ids = protectedSessionIds().toMutableSet().apply {
                 add(candidate.id.toString())
@@ -73,6 +67,18 @@ class TimedBlockProtectionController private constructor(private val context: Co
                 .commit()
             if (!saved) return@withContext false
             applyUninstallBlocked(true)
+        }
+
+    /** Roll back a just-created TIME session if its protection could not be committed. */
+    suspend fun discardNewestTimeSession(createdNotBeforeMillis: Long): Boolean =
+        withContext(Dispatchers.IO) {
+            val database = AppDatabase.getDatabase(context)
+            val candidate = newestTimeSession(database, createdNotBeforeMillis)
+            val removed = candidate == null ||
+                database.blockSessionDao().deactivateSession(candidate.id) > 0
+            clearPendingCreation()
+            reconcileFromDatabase()
+            removed
         }
 
     suspend fun cancelPendingCreation() = withContext(Dispatchers.IO) {
@@ -108,14 +114,11 @@ class TimedBlockProtectionController private constructor(private val context: Co
 
         val pending = preferences.getBoolean(KEY_PENDING_CREATION, false) &&
             isPendingCreationFresh(now)
-        val saved = preferences.edit()
+        val editor = preferences.edit()
             .putStringSet(KEY_PROTECTED_SESSION_IDS, validIds)
             .putBoolean(KEY_PENDING_CREATION, pending)
-            .apply {
-                if (!pending) remove(KEY_PENDING_SINCE)
-            }
-            .commit()
-        if (!saved) return@withContext false
+        if (!pending) editor.remove(KEY_PENDING_SINCE)
+        if (!editor.commit()) return@withContext false
 
         applyUninstallBlocked(validIds.isNotEmpty() || pending)
     }
@@ -129,6 +132,18 @@ class TimedBlockProtectionController private constructor(private val context: Co
         val required = protectedSessionIds().isNotEmpty() || pending
         return applyUninstallBlocked(required)
     }
+
+    private suspend fun newestTimeSession(
+        database: AppDatabase,
+        createdNotBeforeMillis: Long
+    ) = database.blockSessionDao().getAllActiveSessionsStatic()
+        .asSequence()
+        .filter { session ->
+            session.sessionType.equals("TIME", ignoreCase = true) &&
+                session.isActive &&
+                session.startTime >= createdNotBeforeMillis
+        }
+        .maxByOrNull { it.startTime }
 
     private fun protectedSessionIds(): Set<String> =
         preferences.getStringSet(KEY_PROTECTED_SESSION_IDS, emptySet()).orEmpty().toSet()
