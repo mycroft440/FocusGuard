@@ -18,7 +18,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      CI_VERSION_CODE: ${{ github.run_number }}
       KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
       KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
       KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
@@ -26,6 +25,19 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set monotonic Android version code
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMMIT_COUNT="$(git rev-list --count HEAD)"
+          VERSION_CODE="$((1000 + COMMIT_COUNT))"
+          echo "CI_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "version_code=$VERSION_CODE" >> "$GITHUB_OUTPUT"
+          echo "Android versionCode: $VERSION_CODE" >> "$GITHUB_STEP_SUMMARY"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -98,15 +110,15 @@ jobs:
           test -n "$AAB" && test -s "$AAB"
 
           mkdir -p release
-          RELEASE_APK="release/FocusGuard-build-${GITHUB_RUN_NUMBER}.apk"
-          RELEASE_AAB="release/FocusGuard-build-${GITHUB_RUN_NUMBER}.aab"
+          RELEASE_APK="release/FocusGuard-vc${CI_VERSION_CODE}.apk"
+          RELEASE_AAB="release/FocusGuard-vc${CI_VERSION_CODE}.aab"
           cp "$APK" "$RELEASE_APK"
           cp "$AAB" "$RELEASE_AAB"
           sha256sum "$RELEASE_APK" "$RELEASE_AAB" > release/SHA256SUMS.txt
 
           echo "apk=$RELEASE_APK" >> "$GITHUB_OUTPUT"
           echo "aab=$RELEASE_AAB" >> "$GITHUB_OUTPUT"
-          echo "tag=build-${GITHUB_RUN_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "tag=build-vc${CI_VERSION_CODE}" >> "$GITHUB_OUTPUT"
 
       - name: Verify APK and AAB signatures
         shell: bash
@@ -120,7 +132,7 @@ jobs:
       - name: Upload signed APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: focusguard-release-apk-${{ github.run_number }}
+          name: focusguard-release-apk-vc${{ steps.version.outputs.version_code }}
           path: ${{ steps.collect.outputs.apk }}
           if-no-files-found: error
           retention-days: 90
@@ -128,7 +140,7 @@ jobs:
       - name: Upload Play AAB artifact
         uses: actions/upload-artifact@v4
         with:
-          name: focusguard-play-aab-${{ github.run_number }}
+          name: focusguard-play-aab-vc${{ steps.version.outputs.version_code }}
           path: ${{ steps.collect.outputs.aab }}
           if-no-files-found: error
           retention-days: 90
@@ -136,7 +148,7 @@ jobs:
       - name: Upload checksums
         uses: actions/upload-artifact@v4
         with:
-          name: focusguard-release-checksums-${{ github.run_number }}
+          name: focusguard-release-checksums-vc${{ steps.version.outputs.version_code }}
           path: release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 90
@@ -148,8 +160,8 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ steps.collect.outputs.tag }}"
-          TITLE="FocusGuard automated build ${GITHUB_RUN_NUMBER}"
-          NOTES="Automated signed FocusGuard release from commit ${GITHUB_SHA}. Includes an installable APK, a Google Play AAB, and SHA-256 checksums."
+          TITLE="FocusGuard automated release vc${CI_VERSION_CODE}"
+          NOTES="Automated signed FocusGuard release from commit ${GITHUB_SHA}. Android versionCode ${CI_VERSION_CODE}. Includes an installable APK, a Google Play AAB, and SHA-256 checksums."
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" \
