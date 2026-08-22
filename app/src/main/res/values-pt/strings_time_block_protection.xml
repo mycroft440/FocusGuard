@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="time_block_protection_title">Bloqueio por tempo protegido</string>
+    <string name="time_block_protection_warning">Enquanto este bloqueio por tempo estiver ativo, o FocusGuard protege a própria desinstalação em aparelhos configurados como Device Owner. Você pode revogar todo o bloqueio antes do prazo digitando a senha mestre.</string>
+    <string name="time_block_device_owner_required_title">Device Owner necessário</string>
+    <string name="time_block_device_owner_required_desc">O bloqueio por tempo protegido precisa do Device Owner para o Android aplicar a proteção de desinstalação somente ao FocusGuard. Configure o Device Owner antes de ativar este bloqueio.</string>
+    <string name="time_block_revoke_action">Revogar com senha mestre</string>
+    <string name="time_block_revoke_title">Revogar bloqueio por tempo?</string>
+    <string name="time_block_revoke_desc">Digite sua senha mestre para encerrar este bloqueio por tempo antes do prazo. A proteção contra desinstalação também será liberada quando não restar outro bloqueio por tempo protegido.</string>
+    <string name="time_block_revoke_success">Bloqueio por tempo revogado.</string>
+    <string name="time_block_revoke_wrong_password">Senha mestre incorreta.</string>
+    <string name="time_block_revoke_failed">Não foi possível revogar o bloqueio por tempo.</string>
+</resources>
