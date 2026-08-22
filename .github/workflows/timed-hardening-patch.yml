@@ -1,5 +1,6 @@
 name: Apply Timed Hardening Patch
 
+# Temporary one-shot transformer for large existing Kotlin files.
 on:
   push:
     branches:
@@ -38,7 +39,6 @@ jobs:
                   raise SystemExit(f'{label}: expected exactly one match, got {count}')
               return updated
 
-          # 1) Generic Device Owner shielding must never ARM package uninstall/user-control.
           path = 'app/src/main/java/com/focusguard/admin/DeviceOwnerManager.kt'
           text = read(path)
           pattern = r'''    private fun enforceAppControlProtection\(\): Boolean \{.*?\n    private fun relaxAppControlProtection\(\) \{'''
@@ -56,7 +56,6 @@ jobs:
           text = sub_once(text, pattern, replacement, 'DeviceOwner scoped policy', flags=re.S)
           write(path, text)
 
-          # 2) Return the exact Room id from startTimeSession instead of rediscovering it later.
           path = 'app/src/main/java/com/focusguard/manager/BlockingSessionManager.kt'
           text = read(path)
           start = text.index('    suspend fun startTimeSession(')
@@ -88,7 +87,6 @@ jobs:
           text = text[:start] + block + text[end:]
           write(path, text)
 
-          # 3) Creation UI binds protection to that exact id and exposes a readiness summary.
           path = 'app/src/main/java/com/focusguard/ui/compose/screens/TimeBlockSessionConfigScreen.kt'
           text = read(path)
           text = text.replace(
@@ -184,7 +182,6 @@ jobs:
           text = text.replace(rollback_old, rollback_new)
           write(path, text)
 
-          # 4) Revocation UI reports progressive lockout instead of generic failure.
           path = 'app/src/main/java/com/focusguard/ui/compose/screens/BlockTypeDetailScreen.kt'
           text = read(path)
           anchor = '''                                TimedBlockRevocationManager.Result.WRONG_PASSWORD -> {
@@ -214,7 +211,6 @@ jobs:
           text = text.replace(anchor, replacement, 1)
           write(path, text)
 
-          # 5) Android 14+ policy callbacks, disabled at resource level on older releases.
           path = 'app/src/main/AndroidManifest.xml'
           text = read(path)
           admin_anchor = '''            <meta-data
@@ -239,7 +235,6 @@ jobs:
           text = text.replace(admin_anchor, receiver, 1)
           write(path, text)
 
-          # 6) Bring old tests in line with the new explicit TIME master-password contract.
           path = 'app/src/test/java/com/focusguard/security/MasterCredentialPolicyTest.kt'
           text = read(path)
           text = sub_once(
