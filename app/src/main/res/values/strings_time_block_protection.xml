@@ -1,14 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="time_block_protection_title">Protected time block</string>
-    <string name="time_block_protection_warning">While this time block is active, FocusGuard protects itself from uninstall on Device Owner devices. You can revoke the entire block early by entering your master password.</string>
+    <string name="time_block_protection_warning">While this time block is active, FocusGuard protects itself from uninstall and user app controls on Device Owner devices. You can revoke the entire block early by entering your master password.</string>
     <string name="time_block_device_owner_required_title">Device Owner required</string>
-    <string name="time_block_device_owner_required_desc">Protected time blocking needs Device Owner so Android can apply the package-scoped uninstall guard. Configure Device Owner before activating this block.</string>
+    <string name="time_block_device_owner_required_desc">Protected time blocking needs Device Owner so Android can apply package-scoped uninstall and user-control protection. Configure Device Owner before activating this block.</string>
     <string name="time_block_revoke_action">Revoke with master password</string>
     <string name="time_block_revoke_title">Revoke time block?</string>
-    <string name="time_block_revoke_desc">Enter your master password to end this time block early. This also releases its uninstall protection when no other protected time block remains.</string>
+    <string name="time_block_revoke_desc">Enter your master password to end this time block early. This also releases its uninstall and user-control protection when no other protected time block remains.</string>
     <string name="time_block_master_password_label">Master password</string>
     <string name="time_block_revoke_success">Time block revoked.</string>
     <string name="time_block_revoke_wrong_password">Incorrect master password.</string>
+    <string name="time_block_revoke_rate_limited">Too many incorrect attempts. Try again in about %1$d seconds.</string>
     <string name="time_block_revoke_failed">The time block could not be revoked.</string>
+    <string name="time_block_health_title">Protection readiness</string>
+    <string name="time_block_health_device_owner_ready">Device Owner: ready</string>
+    <string name="time_block_health_device_owner_missing">Device Owner: required</string>
+    <string name="time_block_health_master_ready">Master password: configured</string>
+    <string name="time_block_health_master_missing">Master password: required</string>
+    <string name="time_block_health_system_active">Android package protection: confirmed</string>
+    <string name="time_block_health_system_standby">Android package protection: verified when the block starts</string>
 </resources>
