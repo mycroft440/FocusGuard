@@ -1,0 +1,302 @@
+name: Apply Timed Hardening Patch
+
+on:
+  push:
+    branches:
+      - feat/time-block-master-revoke
+    paths:
+      - .github/workflows/timed-hardening-patch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/time-block-master-revoke
+          fetch-depth: 0
+
+      - name: Apply focused source transformations
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          import re
+
+          def read(path):
+              return Path(path).read_text(encoding='utf-8')
+
+          def write(path, content):
+              Path(path).write_text(content, encoding='utf-8')
+
+          def sub_once(content, pattern, replacement, label, flags=0):
+              updated, count = re.subn(pattern, replacement, content, count=1, flags=flags)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, got {count}')
+              return updated
+
+          # 1) Generic Device Owner shielding must never ARM package uninstall/user-control.
+          path = 'app/src/main/java/com/focusguard/admin/DeviceOwnerManager.kt'
+          text = read(path)
+          pattern = r'''    private fun enforceAppControlProtection\(\): Boolean \{.*?\n    private fun relaxAppControlProtection\(\) \{'''
+          replacement = '''    private fun enforceAppControlProtection(): Boolean {
+              // Package-scoped uninstall and user-control protection belongs exclusively to
+              // TimedBlockProtectionController. Generic PASSWORD/Pomodoro/other sessions may
+              // still receive the non-package hardening below, but they can never arm those
+              // two package policies.
+              val legacyRestrictionsCleared = clearLegacyGlobalAppControlRestrictions()
+              enforceRuntimePermissionProtection()
+              return legacyRestrictionsCleared
+          }
+
+          private fun relaxAppControlProtection() {'''
+          text = sub_once(text, pattern, replacement, 'DeviceOwner scoped policy', flags=re.S)
+          write(path, text)
+
+          # 2) Return the exact Room id from startTimeSession instead of rediscovering it later.
+          path = 'app/src/main/java/com/focusguard/manager/BlockingSessionManager.kt'
+          text = read(path)
+          start = text.index('    suspend fun startTimeSession(')
+          end = text.index('\n\n\n    /**\n     * Ativa', start)
+          block = text[start:end]
+          if '): Int = withContext(Dispatchers.IO)' not in block:
+              block = block.replace(
+                  '    ) = withContext(Dispatchers.IO) {',
+                  '    ): Int = withContext(Dispatchers.IO) {',
+                  1
+              )
+          block = block.replace(
+              '        var sessionCreated = false\n',
+              '        var sessionCreated = false\n        var createdSessionId: Int? = null\n',
+              1
+          )
+          marker = '                val sessionId = database.blockSessionDao().insertNewSession(session).toInt()\n'
+          if marker not in block:
+              raise SystemExit('startTimeSession: insert session marker not found')
+          block = block.replace(marker, marker + '                createdSessionId = sessionId\n', 1)
+          marker = '            checkAndEnforceOrThrow()\n'
+          if marker not in block:
+              raise SystemExit('startTimeSession: enforcement marker not found')
+          block = block.replace(
+              marker,
+              marker + '            createdSessionId ?: error("TIME session id was not persisted")\n',
+              1
+          )
+          text = text[:start] + block + text[end:]
+          write(path, text)
+
+          # 3) Creation UI binds protection to that exact id and exposes a readiness summary.
+          path = 'app/src/main/java/com/focusguard/ui/compose/screens/TimeBlockSessionConfigScreen.kt'
+          text = read(path)
+          text = text.replace(
+              '    val canSave = duration != null &&\n        termsAccepted &&\n        (apps.isNotEmpty() || sites.isNotEmpty())\n',
+              '    val canSave = duration != null &&\n        termsAccepted &&\n        (apps.isNotEmpty() || sites.isNotEmpty())\n    val protectionHealth = timedProtection.healthSnapshot()\n    val masterCredentialReady = credentialManager.hasCredential()\n',
+              1
+          )
+          health_anchor = '''                    Text(
+                        text = stringResource(R.string.time_block_protection_warning),
+                        color = TextSecondary,
+                        fontSize = 13.sp
+                    )
+'''
+          health_block = health_anchor + '''                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = stringResource(R.string.time_block_health_title),
+                        color = TextPrimary,
+                        fontWeight = FontWeight.SemiBold,
+                        fontSize = 13.sp
+                    )
+                    Text(
+                        text = stringResource(
+                            if (protectionHealth.deviceOwnerReady) {
+                                R.string.time_block_health_device_owner_ready
+                            } else {
+                                R.string.time_block_health_device_owner_missing
+                            }
+                        ),
+                        color = if (protectionHealth.deviceOwnerReady) AccentCyan else DangerRed,
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = stringResource(
+                            if (masterCredentialReady) {
+                                R.string.time_block_health_master_ready
+                            } else {
+                                R.string.time_block_health_master_missing
+                            }
+                        ),
+                        color = if (masterCredentialReady) AccentCyan else DangerRed,
+                        fontSize = 12.sp
+                    )
+                    Text(
+                        text = stringResource(
+                            if (protectionHealth.protectedSessionCount > 0 &&
+                                protectionHealth.systemProtectionConfirmed
+                            ) {
+                                R.string.time_block_health_system_active
+                            } else {
+                                R.string.time_block_health_system_standby
+                            }
+                        ),
+                        color = TextSecondary,
+                        fontSize = 12.sp
+                    )
+'''
+          if health_anchor not in text:
+              raise SystemExit('TimeBlock screen: health anchor not found')
+          text = text.replace(health_anchor, health_block, 1)
+          text = text.replace(
+              '                        val createdNotBefore = System.currentTimeMillis()\n                        var sessionCreated = false\n',
+              '                        var createdSessionId: Int? = null\n',
+              1
+          )
+          text = text.replace(
+              '                            sessionManager.startTimeSession(\n',
+              '                            val sessionId = sessionManager.startTimeSession(\n',
+              1
+          )
+          text = text.replace(
+              '                            )\n                            sessionCreated = true\n                            check(timedProtection.commitNewestTimeSession(createdNotBefore)) {\n',
+              '                            )\n                            createdSessionId = sessionId\n                            check(timedProtection.commitProtectedTimeSession(sessionId)) {\n',
+              1
+          )
+          rollback_old = '''                            if (sessionCreated) {
+                                timedProtection.discardNewestTimeSession(createdNotBefore)
+                                sessionManager.checkAndEnforce()
+                            } else {
+                                timedProtection.cancelPendingCreation()
+                            }
+'''
+          rollback_new = '''                            val createdId = createdSessionId
+                            if (createdId != null) {
+                                timedProtection.rollbackProtectedTimeSession(createdId)
+                                sessionManager.checkAndEnforce()
+                            } else {
+                                timedProtection.cancelPendingCreation()
+                            }
+'''
+          count = text.count(rollback_old)
+          if count != 3:
+              raise SystemExit(f'TimeBlock screen: expected 3 rollback blocks, got {count}')
+          text = text.replace(rollback_old, rollback_new)
+          write(path, text)
+
+          # 4) Revocation UI reports progressive lockout instead of generic failure.
+          path = 'app/src/main/java/com/focusguard/ui/compose/screens/BlockTypeDetailScreen.kt'
+          text = read(path)
+          anchor = '''                                TimedBlockRevocationManager.Result.WRONG_PASSWORD -> {
+                                    revokeError = context.getString(
+                                        R.string.time_block_revoke_wrong_password
+                                    )
+                                }
+                                TimedBlockRevocationManager.Result.NOT_FOUND,
+'''
+          replacement = '''                                TimedBlockRevocationManager.Result.WRONG_PASSWORD -> {
+                                    revokeError = context.getString(
+                                        R.string.time_block_revoke_wrong_password
+                                    )
+                                }
+                                TimedBlockRevocationManager.Result.RATE_LIMITED -> {
+                                    val seconds = ((timedRevocation.retryAfterMillis() + 999L) / 1_000L)
+                                        .coerceAtLeast(1L)
+                                    revokeError = context.getString(
+                                        R.string.time_block_revoke_rate_limited,
+                                        seconds
+                                    )
+                                }
+                                TimedBlockRevocationManager.Result.NOT_FOUND,
+'''
+          if anchor not in text:
+              raise SystemExit('BlockTypeDetail: revocation result anchor not found')
+          text = text.replace(anchor, replacement, 1)
+          write(path, text)
+
+          # 5) Android 14+ policy callbacks, disabled at resource level on older releases.
+          path = 'app/src/main/AndroidManifest.xml'
+          text = read(path)
+          admin_anchor = '''            <meta-data
+                android:name="android.app.device_admin"
+                android:resource="@xml/device_admin_policy" />
+        </receiver>
+'''
+          receiver = admin_anchor + '''
+        <receiver
+            android:name=".admin.FocusGuardPolicyUpdateReceiver"
+            android:enabled="@bool/enable_policy_update_receiver"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <intent-filter>
+                <action android:name="android.app.admin.action.DEVICE_POLICY_SET_RESULT" />
+                <action android:name="android.app.admin.action.DEVICE_POLICY_CHANGED" />
+            </intent-filter>
+        </receiver>
+'''
+          if admin_anchor not in text:
+              raise SystemExit('Manifest: device-admin anchor not found')
+          text = text.replace(admin_anchor, receiver, 1)
+          write(path, text)
+
+          # 6) Bring old tests in line with the new explicit TIME master-password contract.
+          path = 'app/src/test/java/com/focusguard/security/MasterCredentialPolicyTest.kt'
+          text = read(path)
+          text = sub_once(
+              text,
+              r'''    @Test\n    fun `dopamine fast does not demand a master credential`\(\) \{.*?\n    \}\n''',
+              '''    @Test
+    fun `time block requires a master credential before arming`() {
+        val gate = MasterCredentialPolicy.evaluateCreation(
+            sessionType = "TIME",
+            hasMasterCredential = false
+        )
+
+        assertThat(gate).isEqualTo(CreationGate.MASTER_CREDENTIAL_REQUIRED)
+    }
+''',
+              'MasterCredential TIME creation test',
+              flags=re.S
+          )
+          text = sub_once(
+              text,
+              r'''    @Test\n    fun `dopamine fast is still irreversible without a credential`\(\) \{.*?\n    \}\n''',
+              '''    @Test
+    fun `time stays sealed to generic mutation but has explicit master revocation`() {
+        assertThat(MasterCredentialPolicy.requiresMasterCredentialToCreate("TIME")).isTrue()
+        assertThat(MasterCredentialPolicy.isIrreversibleSessionType("TIME")).isTrue()
+        assertThat(MasterCredentialPolicy.allowsExplicitMasterRevocation("TIME")).isTrue()
+        assertThat(MasterCredentialPolicy.allowsExplicitMasterRevocation("POMODORO")).isFalse()
+    }
+''',
+              'MasterCredential TIME revocation test',
+              flags=re.S
+          )
+          text = sub_once(
+              text,
+              r'''    @Test\n    fun `only the password block demands a credential up front`\(\) \{.*?\n    \}\n''',
+              '''    @Test
+    fun `password and explicit time blocks demand a credential up front`() {
+        listOf("PASSWORD", "TIME", "POMODORO", "SOMETHING_ELSE")
+            .filter(MasterCredentialPolicy::requiresMasterCredentialToCreate)
+            .let { assertThat(it).containsExactly("PASSWORD", "TIME") }
+    }
+''',
+              'MasterCredential credential-set test',
+              flags=re.S
+          )
+          write(path, text)
+          PY
+
+      - name: Commit transformed sources
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git config user.name "FocusGuard Executor"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/main app/src/test
+          git commit -m "refactor: scope and harden timed package protection [timed-hardening-patch]"
+          git push origin HEAD:feat/time-block-master-revoke
