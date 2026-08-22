@@ -89,6 +89,11 @@ class TimedBlockProtectionController private constructor(private val context: Co
     fun isProtectedSession(sessionId: Int): Boolean =
         sessionId.toString() in protectedSessionIds()
 
+    fun protectedSessionIdsSnapshot(): Set<Int> =
+        protectedSessionIds().mapNotNullTo(linkedSetOf(), String::toIntOrNull)
+
+    fun hasProtectedSessions(): Boolean = protectedSessionIds().isNotEmpty()
+
     /**
      * Reconciles the persisted commitment with Room after credential storage is
      * available. This call intentionally runs after the generic blocking engine,
