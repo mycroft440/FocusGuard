@@ -28,7 +28,7 @@ jobs:
         with:
           ref: feat/time-block-master-revoke
           fetch-depth: 0
-      - name: Apply transformer from temporary workflow
+      - name: Apply focused source transformer
         shell: bash
         run: |
           set -euo pipefail
@@ -36,18 +36,7 @@ jobs:
             echo "TIME hardening transformer already applied"
             exit 0
           fi
-          python3 <<'PY'
-          from pathlib import Path
-          import textwrap
-
-          workflow = Path('.github/workflows/timed-hardening-patch.yml').read_text(encoding='utf-8')
-          start_marker = "          python3 <<'PY'\n"
-          end_marker = "\n          PY\n\n      - name: Commit transformed sources"
-          start = workflow.index(start_marker) + len(start_marker)
-          end = workflow.index(end_marker, start)
-          script = textwrap.dedent(workflow[start:end])
-          exec(compile(script, 'timed-hardening-transformer', 'exec'), {'__name__': '__main__'})
-          PY
+          python3 .github/scripts/timed_hardening_patch.py
       - name: Commit transformed sources
         shell: bash
         run: |
