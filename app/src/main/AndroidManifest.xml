@@ -163,6 +163,15 @@
         </receiver>
 
         <receiver
+            android:name=".receiver.TimedBlockProtectionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.focusguard.ACTION_REFRESH_BLOCKING" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name=".receiver.DeviceOwnerMaintenanceExpiryReceiver"
             android:exported="false" />
 
