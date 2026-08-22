@@ -8,7 +8,7 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-/** Typed-master-credential escape hatch for explicit protected TIME sessions. */
+/** Typed-master-password escape hatch for explicit protected TIME sessions. */
 class TimedBlockRevocationManager(context: Context) {
 
     private val appContext = context.applicationContext
@@ -41,7 +41,7 @@ class TimedBlockRevocationManager(context: Context) {
                 return@withContext Result.NOT_FOUND
             }
 
-            if (!masterCredentialAccepted(password)) {
+            if (!masterPasswordAccepted(password)) {
                 return@withContext Result.WRONG_PASSWORD
             }
             if (database.blockSessionDao().deactivateSession(sessionId) == 0) {
@@ -68,7 +68,7 @@ class TimedBlockRevocationManager(context: Context) {
             try {
                 val protectedIds = protectionController.protectedSessionIdsSnapshot()
                 if (protectedIds.isEmpty()) return@withContext Result.NOT_FOUND
-                if (!masterCredentialAccepted(password)) return@withContext Result.WRONG_PASSWORD
+                if (!masterPasswordAccepted(password)) return@withContext Result.WRONG_PASSWORD
 
                 val activeProtectedIds = protectedIds.filter { id ->
                     val session = database.blockSessionDao().getActiveSessionById(id)
@@ -108,13 +108,9 @@ class TimedBlockRevocationManager(context: Context) {
         protectionController.reconcileFromDatabase()
     }
 
-    private fun masterCredentialAccepted(password: String): Boolean {
+    private fun masterPasswordAccepted(password: String): Boolean {
         if (password.isBlank()) return false
-        return when (credentialManager.verify(password)) {
-            DeactivationCredentialManager.VerificationResult.PASSWORD_ACCEPTED,
-            DeactivationCredentialManager.VerificationResult.RECOVERY_ACCEPTED -> true
-            DeactivationCredentialManager.VerificationResult.REJECTED,
-            DeactivationCredentialManager.VerificationResult.NOT_CONFIGURED -> false
-        }
+        return credentialManager.verify(password) ==
+            DeactivationCredentialManager.VerificationResult.PASSWORD_ACCEPTED
     }
 }
