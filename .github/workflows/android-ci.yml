@@ -2,7 +2,7 @@ name: Android CI Pro
 
 on:
   push:
-    branches: ["main", "master"]
+    branches: ["main", "master", "feat/time-block-master-revoke"]
   pull_request:
     branches: ["main", "master"]
   workflow_dispatch:
@@ -17,6 +17,50 @@ permissions:
   pull-requests: write
 
 jobs:
+  apply-timed-hardening:
+    name: Apply one-shot TIME hardening
+    if: github.event_name == 'push' && github.ref == 'refs/heads/feat/time-block-master-revoke'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/time-block-master-revoke
+          fetch-depth: 0
+      - name: Apply transformer from temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          if grep -q "Package-scoped uninstall and user-control protection belongs exclusively" app/src/main/java/com/focusguard/admin/DeviceOwnerManager.kt; then
+            echo "TIME hardening transformer already applied"
+            exit 0
+          fi
+          python3 <<'PY'
+          from pathlib import Path
+          import textwrap
+
+          workflow = Path('.github/workflows/timed-hardening-patch.yml').read_text(encoding='utf-8')
+          start_marker = "          python3 <<'PY'\n"
+          end_marker = "\n          PY\n\n      - name: Commit transformed sources"
+          start = workflow.index(start_marker) + len(start_marker)
+          end = workflow.index(end_marker, start)
+          script = textwrap.dedent(workflow[start:end])
+          exec(compile(script, 'timed-hardening-transformer', 'exec'), {'__name__': '__main__'})
+          PY
+      - name: Commit transformed sources
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo "No transformed changes to commit"
+            exit 0
+          fi
+          git config user.name "FocusGuard Executor"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/main app/src/test
+          git commit -m "refactor: scope and harden timed package protection"
+          git push origin HEAD:feat/time-block-master-revoke
+
   static-analysis:
     name: Android Lint
     runs-on: ubuntu-latest
