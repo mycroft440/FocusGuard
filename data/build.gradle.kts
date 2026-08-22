@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "com.focusguard.persistence"
-    compileSdk = 35
+    compileSdk = 36
 
     defaultConfig {
         minSdk = 26
