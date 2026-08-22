@@ -1,10 +1,12 @@
 package com.focusguard.admin
 
+import android.annotation.TargetApi
 import android.app.admin.DevicePolicyIdentifiers
 import android.app.admin.PolicyUpdateReceiver
 import android.app.admin.PolicyUpdateResult
 import android.app.admin.TargetUser
 import android.content.Context
+import android.os.Build
 import android.os.Bundle
 import com.focusguard.security.TimedBlockProtectionController
 import com.focusguard.utils.FocusGuardLogger
@@ -15,6 +17,7 @@ import com.focusguard.utils.FocusGuardLogger
  * Read-back from DevicePolicyManager remains authoritative. These callbacks add a second signal
  * explaining conflicts/failures reported by the policy engine itself.
  */
+@TargetApi(Build.VERSION_CODES.UPSIDE_DOWN_CAKE)
 class FocusGuardPolicyUpdateReceiver : PolicyUpdateReceiver() {
 
     override fun onPolicySetResult(
