@@ -7,6 +7,7 @@
     <string name="time_block_revoke_action">Revogar com senha mestre</string>
     <string name="time_block_revoke_title">Revogar bloqueio por tempo?</string>
     <string name="time_block_revoke_desc">Digite sua senha mestre para encerrar este bloqueio por tempo antes do prazo. A proteção contra desinstalação também será liberada quando não restar outro bloqueio por tempo protegido.</string>
+    <string name="time_block_master_password_label">Senha mestre</string>
     <string name="time_block_revoke_success">Bloqueio por tempo revogado.</string>
     <string name="time_block_revoke_wrong_password">Senha mestre incorreta.</string>
     <string name="time_block_revoke_failed">Não foi possível revogar o bloqueio por tempo.</string>
