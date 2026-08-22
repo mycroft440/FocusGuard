@@ -31,6 +31,7 @@ import com.focusguard.security.DopamineStartPolicy
 import com.focusguard.security.MasterCredentialPolicy
 import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.security.SelfProtectionStateStore
+import com.focusguard.security.TimedBlockProtectionController
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.utils.FocusGuardLogger
@@ -398,32 +399,19 @@ class BlockingSessionManager @Inject constructor(
     }
 
     /**
-     * Desinstalar só pode ser impedido por uma proteção sem saída antecipada por
-     * senha. Sessões PASSWORD e limites PASSWORD ficam deliberadamente fora:
-     * neles a própria senha mestra é a saída autorizada.
+     * Only explicit protected TIME ids are authoritative for uninstall gating.
+     *
+     * Recovery presets, time-hardened usage limits, PASSWORD and Pomodoro can use their own
+     * blocking semantics without silently inheriting the package-removal commitment.
      */
-    val isUninstallBlockedByTimeFlow: Flow<Boolean> = combine(
-        activeSessionsFlow,
-        database.appUsageLimitDao().getAll(),
-        database.websiteUsageLimitDao().getAll()
-    ) { sessions, appLimits, websiteLimits ->
-        val now = System.currentTimeMillis()
+    val isUninstallBlockedByTimeFlow: Flow<Boolean> = activeSessionsFlow.map { sessions ->
+        val protectedIds = TimedBlockProtectionController.getInstance(context)
+            .protectedSessionIdsSnapshot()
         sessions.any { session ->
-            MasterCredentialPolicy.blocksUninstall(session.sessionType) &&
+            session.id in protectedIds &&
+                session.sessionType.equals("TIME", ignoreCase = true) &&
                 participatesInBlocking(session) &&
                 isCurrentlyInBlockingWindow(session)
-        } || appLimits.any { limit ->
-            limit.isEnabled && MasterCredentialPolicy.isTimeHardened(
-                lockMode = limit.lockMode,
-                lockUntilTimestamp = limit.lockUntilTimestamp,
-                nowMillis = now
-            )
-        } || websiteLimits.any { limit ->
-            limit.isEnabled && MasterCredentialPolicy.isTimeHardened(
-                lockMode = limit.lockMode,
-                lockUntilTimestamp = limit.lockUntilTimestamp,
-                nowMillis = now
-            )
         }
     }
 
@@ -647,11 +635,9 @@ class BlockingSessionManager @Inject constructor(
         var sessionCreated = false
         var createdSessionId: Int? = null
         try {
-            // Sem gate de senha mestre aqui de propósito: o jejum não tem saída por
-            // credencial, então exigir uma seria pedir chave que não abre nada. O
-            // que ele exige é consentimento informado, coletado na UI antes de
-            // chegar até aqui — ver MasterCredentialPolicy.
-            //
+            // A regra é validada novamente no manager: a UI não é uma fronteira de
+            // segurança. A senha mestre é a única saída antecipada da sessão TIME
+            // inteira e por isso precisa existir antes de a sessão ser armada.
             // O jejum é o único bloqueio que aceita palavras além de apps e
             // sites: é o mais rígido e o que as pessoas armam contra um hábito
             // inteiro, então leva a rede mais larga.
@@ -671,6 +657,7 @@ class BlockingSessionManager @Inject constructor(
             // regressivamente a partir de um numero arbitrario.
             require(openEnded || duration > 0L) { "A duração da sessão deve ser positiva" }
             ensureBlockingPermissionsReady()
+            ensureMasterCredentialFor("TIME")
             database.withTransaction {
                 val startMillis = System.currentTimeMillis()
                 val session = BlockSession(
