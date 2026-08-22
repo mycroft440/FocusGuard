@@ -1,6 +1,7 @@
 package com.focusguard.ui.compose.screens
 
 import android.Manifest
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -28,6 +29,7 @@ import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.HourglassEmpty
 import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Timelapse
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -36,10 +38,12 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -49,6 +53,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +65,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
@@ -70,6 +76,8 @@ import com.focusguard.data.PredefinedApps
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
 import com.focusguard.security.BlockCountdownPolicy
+import com.focusguard.security.TimedBlockProtectionController
+import com.focusguard.security.TimedBlockRevocationManager
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
@@ -80,6 +88,7 @@ import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.ui.compose.theme.WarningAmber
 import com.focusguard.utils.WebsiteBlocker
+import kotlinx.coroutines.launch
 
 /**
  * The three kinds of protection, as the user chooses between them.
@@ -138,10 +147,20 @@ fun BlockTypeDetailScreen(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val scope = rememberCoroutineScope()
     val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
+    val timedProtection = remember(context) {
+        TimedBlockProtectionController.getInstance(context)
+    }
+    val timedRevocation = remember(context) { TimedBlockRevocationManager(context) }
     var entries by remember {
         mutableStateOf<List<BlockingSessionManager.BlockOverview.Entry>?>(null)
     }
+    var protectedTimeBlockAvailable by remember { mutableStateOf(false) }
+    var showTimeRevokeDialog by remember { mutableStateOf(false) }
+    var masterPassword by remember { mutableStateOf("") }
+    var revokeError by remember { mutableStateOf<String?>(null) }
+    var revoking by remember { mutableStateOf(false) }
 
     // O assistente de criação roda em outra Activity, então esta composição
     // sobrevive à ida e à volta e um LaunchedEffect(type) sozinho nunca
@@ -164,8 +183,113 @@ fun BlockTypeDetailScreen(
     // `entries` não volta a null nas recargas: manter a lista anterior na tela
     // evita um piscar de spinner a cada retorno para uma tela que já tem dados.
     LaunchedEffect(type, reloadTrigger) {
+        if (type == BlockTypeUi.DOPAMINE_FAST) {
+            timedProtection.reconcileFromDatabase()
+            protectedTimeBlockAvailable = timedProtection.hasProtectedSessions()
+        } else {
+            protectedTimeBlockAvailable = false
+        }
         entries = runCatching { type.entriesOf(sessionManager.getBlockOverview()) }
             .getOrDefault(emptyList())
+    }
+
+    if (showTimeRevokeDialog) {
+        AlertDialog(
+            onDismissRequest = {
+                if (!revoking) {
+                    showTimeRevokeDialog = false
+                    masterPassword = ""
+                    revokeError = null
+                }
+            },
+            title = { Text(stringResource(R.string.time_block_revoke_title)) },
+            text = {
+                Column {
+                    Text(stringResource(R.string.time_block_revoke_desc))
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = masterPassword,
+                        onValueChange = {
+                            masterPassword = it
+                            revokeError = null
+                        },
+                        enabled = !revoking,
+                        singleLine = true,
+                        label = { Text(stringResource(R.string.time_block_master_password_label)) },
+                        visualTransformation = PasswordVisualTransformation(),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    revokeError?.let { message ->
+                        Text(
+                            text = message,
+                            color = DangerRed,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 8.dp)
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = masterPassword.isNotBlank() && !revoking,
+                    onClick = {
+                        if (revoking) return@Button
+                        revoking = true
+                        scope.launch {
+                            when (
+                                timedRevocation.revokeAllProtectedTimeSessionsWithMasterCredential(
+                                    masterPassword
+                                )
+                            ) {
+                                TimedBlockRevocationManager.Result.REVOKED -> {
+                                    Toast.makeText(
+                                        context,
+                                        context.getString(R.string.time_block_revoke_success),
+                                        Toast.LENGTH_LONG
+                                    ).show()
+                                    showTimeRevokeDialog = false
+                                    masterPassword = ""
+                                    revokeError = null
+                                    reloadTrigger++
+                                }
+                                TimedBlockRevocationManager.Result.WRONG_PASSWORD -> {
+                                    revokeError = context.getString(
+                                        R.string.time_block_revoke_wrong_password
+                                    )
+                                }
+                                TimedBlockRevocationManager.Result.NOT_FOUND,
+                                TimedBlockRevocationManager.Result.FAILED -> {
+                                    revokeError = context.getString(R.string.time_block_revoke_failed)
+                                    reloadTrigger++
+                                }
+                            }
+                            revoking = false
+                        }
+                    }
+                ) {
+                    if (revoking) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(18.dp),
+                            strokeWidth = 2.dp
+                        )
+                        Spacer(Modifier.width(8.dp))
+                    }
+                    Text(stringResource(R.string.time_block_revoke_action))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !revoking,
+                    onClick = {
+                        showTimeRevokeDialog = false
+                        masterPassword = ""
+                        revokeError = null
+                    }
+                ) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 
     Scaffold(
@@ -202,6 +326,45 @@ fun BlockTypeDetailScreen(
                     accent = type.accent,
                     onIntruderLogClick = onIntruderLogClick
                 )
+            }
+
+            if (type == BlockTypeUi.DOPAMINE_FAST && protectedTimeBlockAvailable) {
+                Spacer(Modifier.height(16.dp))
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = DarkCard),
+                    border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.55f))
+                ) {
+                    Column(Modifier.padding(14.dp)) {
+                        Text(
+                            text = stringResource(R.string.time_block_protection_title),
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(Modifier.height(6.dp))
+                        Text(
+                            text = stringResource(R.string.time_block_protection_warning),
+                            color = TextSecondary,
+                            fontSize = 12.sp
+                        )
+                        Spacer(Modifier.height(10.dp))
+                        TextButton(
+                            onClick = {
+                                masterPassword = ""
+                                revokeError = null
+                                showTimeRevokeDialog = true
+                            },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                stringResource(R.string.time_block_revoke_action),
+                                color = DangerRed,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
             }
 
             Spacer(Modifier.height(20.dp))
