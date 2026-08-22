@@ -8,14 +8,17 @@ plugins {
 
 android {
     namespace = "com.focusguard"
-    compileSdk = 35
+    compileSdk = 36
+
+    val ciVersionCode = System.getenv("CI_VERSION_CODE")?.toIntOrNull()
+    val ciVersionName = System.getenv("CI_VERSION_NAME")?.takeIf { it.isNotBlank() }
 
     defaultConfig {
         applicationId = "com.focusguard.v2"
         minSdk = 26
-        targetSdk = 35
-        versionCode = 10
-        versionName = "2.5.0"
+        targetSdk = 36
+        versionCode = ciVersionCode ?: 10
+        versionName = ciVersionName ?: "2.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         ksp {
             arg("room.schemaLocation", "$projectDir/schemas")
@@ -26,8 +29,8 @@ android {
         resourceConfigurations += setOf("en", "pt", "pt-rBR")
     }
 
-    // AGP 8.7 generates the Android 13+ per-app language configuration from
-    // the actual resource folders. With no manual override selected, AppCompat
+    // AGP generates the Android 13+ per-app language configuration from the
+    // actual resource folders. With no manual override selected, AppCompat
     // follows the phone locale automatically.
     androidResources {
         generateLocaleConfig = true
