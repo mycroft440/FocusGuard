@@ -91,6 +91,9 @@ class PomodoroLockActivity : ComponentActivity() {
         }
         enableImmersiveMode()
 
+        // Back, including Android 16 predictive back, is handled through the
+        // AndroidX dispatcher. KEYCODE_BACK is intentionally not intercepted
+        // in onKeyDown because API 36 no longer dispatches it for back gestures.
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 enforceStrictLock()
@@ -147,7 +150,6 @@ class PomodoroLockActivity : ComponentActivity() {
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
         if (StrictPomodoroLock.isActive(applicationContext)) {
             when (keyCode) {
-                KeyEvent.KEYCODE_BACK,
                 KeyEvent.KEYCODE_HOME,
                 KeyEvent.KEYCODE_APP_SWITCH,
                 KeyEvent.KEYCODE_MENU -> {
