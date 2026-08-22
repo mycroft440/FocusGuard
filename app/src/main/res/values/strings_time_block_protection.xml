@@ -7,6 +7,7 @@
     <string name="time_block_revoke_action">Revoke with master password</string>
     <string name="time_block_revoke_title">Revoke time block?</string>
     <string name="time_block_revoke_desc">Enter your master password to end this time block early. This also releases its uninstall protection when no other protected time block remains.</string>
+    <string name="time_block_master_password_label">Master password</string>
     <string name="time_block_revoke_success">Time block revoked.</string>
     <string name="time_block_revoke_wrong_password">Incorrect master password.</string>
     <string name="time_block_revoke_failed">The time block could not be revoked.</string>
