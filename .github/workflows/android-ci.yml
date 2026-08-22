@@ -2,7 +2,7 @@ name: Android CI Pro
 
 on:
   push:
-    branches: ["main", "master", "feat/time-block-master-revoke"]
+    branches: ["main", "master"]
   pull_request:
     branches: ["main", "master"]
   workflow_dispatch:
@@ -17,40 +17,6 @@ permissions:
   pull-requests: write
 
 jobs:
-  apply-timed-hardening:
-    name: Apply one-shot TIME hardening
-    if: github.event_name == 'pull_request' && github.head_ref == 'feat/time-block-master-revoke'
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: feat/time-block-master-revoke
-          fetch-depth: 0
-      - name: Apply focused source transformers
-        shell: bash
-        run: |
-          set -euo pipefail
-          if ! grep -q "Package-scoped uninstall and user-control protection belongs exclusively" app/src/main/java/com/focusguard/admin/DeviceOwnerManager.kt; then
-            python3 .github/scripts/timed_hardening_patch.py
-          fi
-          if ! grep -q "Only explicit protected TIME ids are authoritative for uninstall gating" app/src/main/java/com/focusguard/manager/BlockingSessionManager.kt; then
-            python3 .github/scripts/timed_hardening_followup.py
-          fi
-      - name: Commit transformed sources
-        shell: bash
-        run: |
-          if git diff --quiet; then
-            echo "No transformed changes to commit"
-            exit 0
-          fi
-          git config user.name "FocusGuard Executor"
-          git config user.email "actions@users.noreply.github.com"
-          git add app/src/main app/src/test
-          git commit -m "refactor: enforce explicit protected TIME scope"
-          git push origin HEAD:feat/time-block-master-revoke
-
   static-analysis:
     name: Android Lint
     runs-on: ubuntu-latest
