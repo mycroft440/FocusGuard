@@ -15,14 +15,18 @@ class TimedBlockRevocationManager(context: Context) {
     private val database = AppDatabase.getDatabase(appContext)
     private val sessionManager = BlockingSessionManager.getInstance(appContext)
     private val credentialManager = DeactivationCredentialManager(appContext)
+    private val attemptLimiter = MasterCredentialAttemptLimiter(appContext)
     private val protectionController = TimedBlockProtectionController.getInstance(appContext)
 
     enum class Result {
         REVOKED,
         WRONG_PASSWORD,
+        RATE_LIMITED,
         NOT_FOUND,
         FAILED
     }
+
+    fun retryAfterMillis(): Long = attemptLimiter.gate().retryAfterMillis
 
     suspend fun revokeSessionWithMasterCredential(
         sessionId: Int,
@@ -41,18 +45,26 @@ class TimedBlockRevocationManager(context: Context) {
                 return@withContext Result.NOT_FOUND
             }
 
+            if (!attemptLimiter.gate().allowed) return@withContext Result.RATE_LIMITED
             if (!masterPasswordAccepted(password)) {
+                attemptLimiter.recordFailure()
                 return@withContext Result.WRONG_PASSWORD
             }
+            attemptLimiter.recordSuccess()
+            protectionController.beginRevocation()
+
             if (database.blockSessionDao().deactivateSession(sessionId) == 0) {
+                protectionController.reconcileFromDatabase()
                 return@withContext Result.NOT_FOUND
             }
 
             reconcileAfterRevocation()
             Result.REVOKED
         } catch (cancelled: CancellationException) {
+            protectionController.reconcileFromDatabase()
             throw cancelled
         } catch (error: Exception) {
+            protectionController.reconcileFromDatabase()
             FocusGuardLogger.logError(
                 "TimedBlockRevocation",
                 "Falha ao revogar bloqueio por tempo $sessionId",
@@ -68,7 +80,12 @@ class TimedBlockRevocationManager(context: Context) {
             try {
                 val protectedIds = protectionController.protectedSessionIdsSnapshot()
                 if (protectedIds.isEmpty()) return@withContext Result.NOT_FOUND
-                if (!masterPasswordAccepted(password)) return@withContext Result.WRONG_PASSWORD
+                if (!attemptLimiter.gate().allowed) return@withContext Result.RATE_LIMITED
+                if (!masterPasswordAccepted(password)) {
+                    attemptLimiter.recordFailure()
+                    return@withContext Result.WRONG_PASSWORD
+                }
+                attemptLimiter.recordSuccess()
 
                 val activeProtectedIds = protectedIds.filter { id ->
                     val session = database.blockSessionDao().getActiveSessionById(id)
@@ -81,17 +98,23 @@ class TimedBlockRevocationManager(context: Context) {
                     return@withContext Result.NOT_FOUND
                 }
 
+                protectionController.beginRevocation()
                 var changed = false
                 activeProtectedIds.forEach { id ->
                     changed = database.blockSessionDao().deactivateSession(id) > 0 || changed
                 }
-                if (!changed) return@withContext Result.NOT_FOUND
+                if (!changed) {
+                    protectionController.reconcileFromDatabase()
+                    return@withContext Result.NOT_FOUND
+                }
 
                 reconcileAfterRevocation()
                 Result.REVOKED
             } catch (cancelled: CancellationException) {
+                protectionController.reconcileFromDatabase()
                 throw cancelled
             } catch (error: Exception) {
+                protectionController.reconcileFromDatabase()
                 FocusGuardLogger.logError(
                     "TimedBlockRevocation",
                     "Falha ao revogar bloqueios por tempo protegidos",
@@ -102,8 +125,8 @@ class TimedBlockRevocationManager(context: Context) {
         }
 
     private suspend fun reconcileAfterRevocation() {
-        // Reconcile the actual blocking engine first; then the package-scoped
-        // uninstall guard is released if this was the final protected TIME block.
+        // Reconcile the actual blocking engine first; then the TIME controller releases package
+        // self-protection only when no explicit protected TIME commitment remains.
         sessionManager.checkAndEnforce()
         protectionController.reconcileFromDatabase()
     }
