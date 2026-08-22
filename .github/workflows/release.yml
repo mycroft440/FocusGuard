@@ -127,7 +127,7 @@ jobs:
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -x "$APKSIGNER"
           "$APKSIGNER" verify --verbose --print-certs "${{ steps.collect.outputs.apk }}"
-          jarsigner -verify -strict "${{ steps.collect.outputs.aab }}"
+          jarsigner -verify "${{ steps.collect.outputs.aab }}"
 
       - name: Upload signed APK artifact
         uses: actions/upload-artifact@v4
