@@ -19,7 +19,7 @@ permissions:
 jobs:
   apply-timed-hardening:
     name: Apply one-shot TIME hardening
-    if: github.event_name == 'push' && github.ref == 'refs/heads/feat/time-block-master-revoke'
+    if: github.event_name == 'pull_request' && github.head_ref == 'feat/time-block-master-revoke'
     runs-on: ubuntu-latest
     permissions:
       contents: write
