@@ -18,6 +18,7 @@
 14. Bloquear o atalho de Apps do administrador do dispositivo exibido pelo System UI após uma tentativa de desinstalação enquanto houver proteção ativa.
 15. Manter “Siga o criador no Instagram” como o último item acionável do menu de Configurações.
 16. Aplicar o efeito de sumir gradualmente e reaparecer instantaneamente somente ao botão “Sugestões de melhorias ou funções” da tela Proteção.
+17. Reduzir ao mínimo a latência da primeira tentativa de remover/desinstalar o HardBlock, priorizando decisão e resposta visual antes de Binder, árvore de acessibilidade, refresh assíncrono e navegação.
 
 ## Estado da solicitação atual
 
@@ -45,7 +46,15 @@
 - CUMPRIDO: bloquear no System UI o clique do atalho de administrador do dispositivo exibido após falha de desinstalação.
 - CUMPRIDO: manter “Siga o criador no Instagram” no fim das Configurações e ocultar seu antigo card temporário da tela Proteção.
 - CUMPRIDO: aplicar exclusivamente ao botão de sugestões um ciclo de fade-out seguido de reaparecimento instantâneo.
-- PRÓXIMO OBJETIVO: revisar o diff com o Crítico, validar testes/compilação disponíveis e integrar na `main` mesmo se o CI ainda estiver em andamento.
+- CUMPRIDO: mover o refresh assíncrono para depois do fast path de autoproteção, eliminando trabalho não crítico antes da decisão.
+- CUMPRIDO: usar primeiro o snapshot `@Volatile` já restaurado e evitar consultas DevicePolicyManager/SharedPreferences no caminho comum quando a proteção já está ativa.
+- CUMPRIDO: consumir eventos de transição cobertos pelo guard sem reler classe, texto, source ou root da árvore de acessibilidade.
+- CUMPRIDO: reduzir as buscas de nós no clique a poucos localizadores e só expandir o contexto quando o próprio nó não contém marcador útil.
+- CUMPRIDO: classificar textos em lote, pré-normalizar dicionários e reutilizar regex para reduzir alocações e CPU por evento.
+- CUMPRIDO: pré-construir a cortina de bloqueio e exibi-la antes de solicitar HOME, cobrindo os frames da transição do sistema.
+- CUMPRIDO: adicionar telemetria assíncrona evento→cortina→HOME para medir a latência real sem atrasar a resposta.
+- CUMPRIDO: adicionar Baseline Profile conservador e ProfileInstaller 1.4.1 para otimizar o hot path também em APKs release instalados por sideload.
+- PRÓXIMO OBJETIVO: revisar o diff com o Crítico e só integrar na `main` após testes, lint, APK/AAB Release e APK Debug concluírem com sucesso.
 
 ## Regras de apresentação
 

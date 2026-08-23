@@ -1,0 +1,9 @@
+# HardBlock self-protection hot path. Keep intentionally small.
+HSPLcom/focusguard/service/BlockingAccessibilityService;->**(**)**
+HPLcom/focusguard/security/SettingsInterceptionPolicy;->**(**)**
+HPLcom/focusguard/security/ManagedSelfProtectionPolicy;->**(**)**
+HPLcom/focusguard/security/AccessibilitySettingsPolicy;->**(**)**
+HPLcom/focusguard/security/SelfProtectionStateStore;->**(**)**
+HPLcom/focusguard/security/AuthenticatedRemovalWindow;->**(**)**
+HPLcom/focusguard/security/DeviceAdminActivationWindow;->**(**)**
+HPLcom/focusguard/admin/DeviceOwnerManager;->**(**)**
