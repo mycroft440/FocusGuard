@@ -1,0 +1,47 @@
+name: Apply device admin click search hardening
+
+on:
+  push:
+    branches:
+      - fix/uninstall-admin-shortcut-and-creator-ui
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/uninstall-admin-shortcut-and-creator-ui
+          fetch-depth: 0
+
+      - name: Patch bounded click marker search
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
+          text = p.read_text(encoding='utf-8')
+          old = '''    private val clickInterceptionSearchTerms =\n        (ManagedSelfProtectionPolicy.focusGuardSearchTerms +\n            AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms).distinct()\n'''
+          new = '''    private val clickInterceptionSearchTerms =\n        (ManagedSelfProtectionPolicy.focusGuardSearchTerms +\n            AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms +\n            ManagedSelfProtectionPolicy.deviceAdminSearchTerms).distinct()\n'''
+          if old not in text:
+              raise SystemExit('clickInterceptionSearchTerms block not found')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          Path('.agents/trigger-device-admin-click-search').unlink(missing_ok=True)
+          Path('.github/workflows/apply-device-admin-click-search.yml').unlink(missing_ok=True)
+          PY
+
+      - name: Commit hardening
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt \
+            .agents/trigger-device-admin-click-search \
+            .github/workflows/apply-device-admin-click-search.yml
+          git commit -m "Harden device admin shortcut click detection"
+          git push origin HEAD:fix/uninstall-admin-shortcut-and-creator-ui
