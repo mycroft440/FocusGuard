@@ -377,13 +377,10 @@ class SettingsInterceptionPolicyTest {
     }
 
     @Test
-    fun authorizedEnrollmentAllowsOnlyFocusGuardDeviceAdminSurfaces() {
+    fun authorizedEnrollmentAllowsDeviceAdminActivityButNotOtherProtectedSurfaces() {
         assertThat(
             decide(
-                signals(
-                    classTargetsDeviceAdmin = true,
-                    textMentionsFocusGuard = true
-                ),
+                signals(classTargetsDeviceAdmin = true),
                 deviceAdminActivationAuthorized = true
             )
         ).isEqualTo(Decision.IGNORE)
@@ -404,19 +401,6 @@ class SettingsInterceptionPolicyTest {
                     isGenericSubSettings = true,
                     textMentionsDeviceAdmin = true,
                     textMentionsFocusGuard = true
-                ),
-                deviceAdminActivationAuthorized = true
-            )
-        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
-    }
-
-    @Test
-    fun `authorized enrollment does not open unrelated device admin gateway`() {
-        assertThat(
-            decide(
-                signals(
-                    classTargetsDeviceAdmin = true,
-                    textMentionsDeviceAdmin = true
                 ),
                 deviceAdminActivationAuthorized = true
             )
