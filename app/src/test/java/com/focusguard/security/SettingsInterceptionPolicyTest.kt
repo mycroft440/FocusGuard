@@ -107,7 +107,7 @@ class SettingsInterceptionPolicyTest {
     }
 
     @Test
-    fun `accessibility list and other service toggles remain available`() {
+    fun `generic accessibility list and other service toggles remain available`() {
         assertThat(decide(signals(classTargetsAccessibilityList = true)))
             .isEqualTo(Decision.IGNORE)
         assertThat(
@@ -118,13 +118,46 @@ class SettingsInterceptionPolicyTest {
                 )
             )
         ).isEqualTo(Decision.IGNORE)
+    }
+
+    @Test
+    fun `installed accessibility apps entry is blocked before navigation`() {
+        val roots = RecordingRoots(accessibility = true)
+        assertThat(
+            decide(
+                signals(
+                    isViewClickedEvent = true,
+                    textMentionsInstalledAccessibilityApps = true
+                ),
+                roots = roots
+            )
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+    }
+
+    @Test
+    fun `installed accessibility list transition is blocked`() {
         assertThat(
             decide(
                 signals(
                     isWindowTransitionEvent = true,
+                    classTargetsAccessibilityList = true,
                     textMentionsAccessibility = true,
                     textMentionsInstalledAccessibilityApps = true
                 )
+            )
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+    }
+
+    @Test
+    fun `generic installed apps label outside accessibility is not blocked`() {
+        val roots = RecordingRoots(accessibility = false)
+        assertThat(
+            decide(
+                signals(
+                    isViewClickedEvent = true,
+                    textMentionsInstalledAccessibilityApps = true
+                ),
+                roots = roots
             )
         ).isEqualTo(Decision.IGNORE)
     }
@@ -200,13 +233,13 @@ class SettingsInterceptionPolicyTest {
     }
 
     @Test
-    fun `clicks for accessibility and device admin without FocusGuard are ignored`() {
+    fun `generic accessibility click is ignored but device admin entry is blocked`() {
         assertThat(
             decide(signals(isViewClickedEvent = true, textMentionsAccessibility = true))
         ).isEqualTo(Decision.IGNORE)
         assertThat(
             decide(signals(isViewClickedEvent = true, textMentionsDeviceAdmin = true))
-        ).isEqualTo(Decision.IGNORE)
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
     }
 
     @Test
@@ -238,9 +271,9 @@ class SettingsInterceptionPolicyTest {
     }
 
     @Test
-    fun `device admin screen requires FocusGuard identity`() {
+    fun `device admin screen is blocked at the gateway`() {
         assertThat(decide(signals(classTargetsDeviceAdmin = true)))
-            .isEqualTo(Decision.IGNORE)
+            .isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
         assertThat(
             decide(
                 signals(
@@ -252,11 +285,11 @@ class SettingsInterceptionPolicyTest {
     }
 
     @Test
-    fun `generic device admin shell requires context and FocusGuard together`() {
+    fun `generic device admin shell is blocked without requiring FocusGuard row`() {
         assertThat(
             decide(signals(isGenericSubSettings = true, textMentionsDeviceAdmin = true))
-        ).isEqualTo(Decision.IGNORE)
-        val roots = RecordingRoots(deviceAdmin = true, focusGuard = true)
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+        val roots = RecordingRoots(deviceAdmin = true)
         assertThat(decide(signals(isGenericSubSettings = true), roots = roots))
             .isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
     }
@@ -344,13 +377,10 @@ class SettingsInterceptionPolicyTest {
     }
 
     @Test
-    fun authorizedEnrollmentAllowsOnlyFocusGuardDeviceAdminSurfaces() {
+    fun authorizedEnrollmentAllowsDeviceAdminActivityButNotOtherProtectedSurfaces() {
         assertThat(
             decide(
-                signals(
-                    classTargetsDeviceAdmin = true,
-                    textMentionsFocusGuard = true
-                ),
+                signals(classTargetsDeviceAdmin = true),
                 deviceAdminActivationAuthorized = true
             )
         ).isEqualTo(Decision.IGNORE)

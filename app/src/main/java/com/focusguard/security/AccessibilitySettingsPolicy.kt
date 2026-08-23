@@ -10,11 +10,11 @@ import java.util.Locale
 object AccessibilitySettingsPolicy {
 
     /**
-     * Telas que apenas listam recursos e serviços de acessibilidade.
+     * Telas que listam recursos e serviços de acessibilidade.
      *
-     * Elas continuam classificadas para diagnóstico, mas a política de
-     * autoproteção não as fecha: somente o item ou o interruptor identificado
-     * como FocusGuard pode ser interceptado.
+     * A política de autoproteção não fecha toda a área de Acessibilidade: ela usa
+     * estes marcadores junto com o rótulo de apps/serviços instalados para fechar
+     * especificamente o caminho capaz de desligar o serviço do FocusGuard.
      */
     private val accessibilityListClassMarkers = setOf(
         "AccessibilitySettings",
@@ -27,8 +27,7 @@ object AccessibilitySettingsPolicy {
 
     /**
      * Screens that expose a single accessibility service's on/off switch. These
-     * are the only accessibility screens worth intercepting, and only when the
-     * service in question is FocusGuard's own.
+     * remain protected only when the service in question is FocusGuard's own.
      */
     private val accessibilityServiceToggleClassMarkers = setOf(
         "AccessibilityServiceSettings",
@@ -56,16 +55,23 @@ object AccessibilitySettingsPolicy {
     /**
      * Rótulos do atalho que lista serviços de acessibilidade instalados.
      * É um sinal separado de "apps instalados" genérico para que a política
-     * possa fechar exatamente a rota mostrada pela One UI.
+     * possa fechar exatamente a rota mostrada por One UI e variantes de OEM.
      */
     internal val installedAccessibilityAppsTerms = listOf(
         "Aplicativos instalados",
         "Apps instalados",
         "Serviços instalados",
+        "Aplicativos de acessibilidade instalados",
+        "Apps de acessibilidade instalados",
+        "Serviços de acessibilidade instalados",
         "Installed apps",
         "Installed services",
+        "Installed accessibility apps",
+        "Installed accessibility services",
         "Aplicaciones instaladas",
-        "Servicios instalados"
+        "Servicios instalados",
+        "Aplicaciones de accesibilidad instaladas",
+        "Servicios de accesibilidad instalados"
     )
 
     /**
@@ -99,13 +105,7 @@ object AccessibilitySettingsPolicy {
         }
     }
 
-    /**
-     * True only for the per-service screen that carries an on/off switch.
-     *
-     * O classificador continua separado da tela de lista para testes e para
-     * registrar qual superfície foi detectada. A política de sessão bloqueia
-     * ambas durante uma proteção ativa.
-     */
+    /** True only for the per-service screen that carries an on/off switch. */
     fun classTargetsAccessibilityServiceToggle(className: String): Boolean {
         return accessibilityServiceToggleClassMarkers.any { marker ->
             className.contains(marker, ignoreCase = true)
