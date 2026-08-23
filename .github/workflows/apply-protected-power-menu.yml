@@ -1,0 +1,705 @@
+name: Apply protected power menu
+
+on:
+  push:
+    branches:
+      - feat/protected-power-menu
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/protected-power-menu
+          fetch-depth: 0
+
+      - name: Apply implementation
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          root = Path('.')
+
+          policy = r'''package com.focusguard.security
+
+import java.text.Normalizer
+import java.util.Locale
+
+/**
+ * Classifies the system power menu and its safe single-press actions.
+ *
+ * This is intentionally conservative: System UI is required, and a generic
+ * notification or dialog is never enough. A known global-actions class needs at
+ * least one power action; otherwise the rendered text must contain a real power
+ * menu signature such as Power off + Restart.
+ */
+object PowerMenuProtectionPolicy {
+    enum class Action {
+        POWER_OFF,
+        RESTART,
+        EMERGENCY,
+        MEDICAL_INFO
+    }
+
+    val systemUiPackages = setOf(
+        "com.android.systemui",
+        "com.samsung.android.systemui"
+    )
+
+    private val classMarkers = setOf(
+        "GlobalActions",
+        "GlobalActionsDialog",
+        "GlobalActionsDialogLite",
+        "ActionsDialog",
+        "PowerOptions",
+        "PowerMenu",
+        "SecGlobalActions"
+    )
+
+    private val termsByAction = mapOf(
+        Action.POWER_OFF to listOf(
+            "Desligar",
+            "Power off",
+            "Turn off",
+            "Apagar"
+        ),
+        Action.RESTART to listOf(
+            "Reiniciar",
+            "Restart",
+            "Reboot"
+        ),
+        Action.EMERGENCY to listOf(
+            "Chamada de emergência",
+            "Emergência",
+            "Emergency call",
+            "Emergency",
+            "Llamada de emergencia",
+            "Emergencia"
+        ),
+        Action.MEDICAL_INFO to listOf(
+            "Informações médicas",
+            "Informacao medica",
+            "Medical info",
+            "Medical information",
+            "Información médica",
+            "Informacion medica"
+        )
+    )
+
+    fun isSystemUiPackage(packageName: String): Boolean =
+        packageName in systemUiPackages
+
+    fun termsFor(action: Action): List<String> = termsByAction.getValue(action)
+
+    fun matchesAction(action: Action, values: Iterable<CharSequence?>): Boolean {
+        val normalizedTerms = termsFor(action).map(::normalize)
+        return values.any { value ->
+            val normalizedValue = normalize(value?.toString().orEmpty())
+            normalizedValue.isNotBlank() && normalizedTerms.any(normalizedValue::contains)
+        }
+    }
+
+    fun isPowerMenu(
+        packageName: String,
+        className: String,
+        values: Iterable<CharSequence?>
+    ): Boolean {
+        if (!isSystemUiPackage(packageName)) return false
+
+        val rendered = values.toList()
+        val hasPowerOff = matchesAction(Action.POWER_OFF, rendered)
+        val hasRestart = matchesAction(Action.RESTART, rendered)
+        val hasEmergency = matchesAction(Action.EMERGENCY, rendered)
+        val knownClass = classMarkers.any { marker ->
+            className.contains(marker, ignoreCase = true)
+        }
+
+        return when {
+            knownClass -> hasPowerOff || hasRestart
+            hasPowerOff && hasRestart -> true
+            hasPowerOff && hasEmergency -> true
+            hasRestart && hasEmergency -> true
+            else -> false
+        }
+    }
+
+    private fun normalize(value: String): String =
+        Normalizer.normalize(value, Normalizer.Form.NFD)
+            .replace("\\p{M}+".toRegex(), "")
+            .lowercase(Locale.ROOT)
+}
+'''
+          (root / 'app/src/main/java/com/focusguard/security/PowerMenuProtectionPolicy.kt').write_text(policy, encoding='utf-8')
+
+          controller = r'''package com.focusguard.service
+
+import android.accessibilityservice.AccessibilityService
+import android.content.Context
+import android.graphics.Color
+import android.graphics.PixelFormat
+import android.os.Handler
+import android.os.Looper
+import android.view.Gravity
+import android.view.View
+import android.view.WindowManager
+import android.view.accessibility.AccessibilityEvent
+import android.view.accessibility.AccessibilityNodeInfo
+import android.widget.Button
+import android.widget.LinearLayout
+import android.widget.TextView
+import com.focusguard.R
+import com.focusguard.security.PowerMenuProtectionPolicy
+import com.focusguard.security.PowerMenuProtectionPolicy.Action
+import com.focusguard.utils.FocusGuardLogger
+
+/**
+ * Visible accessibility overlay that shields the native power menu during an
+ * active HardBlock session.
+ *
+ * The native System UI remains underneath, so shutdown/restart/emergency keep
+ * their OEM implementation. The user never touches those native buttons: this
+ * overlay consumes touch and forwards only ACTION_CLICK, never ACTION_LONG_CLICK.
+ * That removes the long-press gesture used by Android's global actions to request
+ * Safe Mode while keeping normal power and emergency actions available.
+ */
+class ProtectedPowerMenuController(
+    private val service: AccessibilityService
+) {
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val windowManager =
+        service.getSystemService(Context.WINDOW_SERVICE) as WindowManager
+
+    private var overlay: View? = null
+    private var statusText: TextView? = null
+
+    fun handleAccessibilityEvent(
+        event: AccessibilityEvent,
+        protectionActive: Boolean
+    ): Boolean {
+        if (!protectionActive) {
+            dismiss()
+            return false
+        }
+
+        val packageName = event.packageName?.toString().orEmpty()
+        if (overlay != null && packageName == service.packageName) return true
+
+        val relevantEvent = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+
+        if (!relevantEvent) return overlay != null &&
+            PowerMenuProtectionPolicy.isSystemUiPackage(packageName)
+
+        if (PowerMenuProtectionPolicy.isSystemUiPackage(packageName)) {
+            val root = findSystemUiRoot()
+            val values = buildList<CharSequence?> {
+                addAll(event.text)
+                add(event.contentDescription)
+                if (root != null) collectText(root, this, 0)
+            }
+            val isPowerMenu = PowerMenuProtectionPolicy.isPowerMenu(
+                packageName = packageName,
+                className = event.className?.toString().orEmpty(),
+                values = values
+            )
+            recycleSafely(root)
+
+            if (isPowerMenu) {
+                show()
+                return true
+            }
+
+            if (overlay != null && event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+                scheduleRecheck()
+                return true
+            }
+            return overlay != null
+        }
+
+        if (overlay != null &&
+            packageName.isNotBlank() &&
+            packageName != service.packageName &&
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+        ) {
+            dismiss()
+        }
+        return false
+    }
+
+    fun onProtectionStateChanged(active: Boolean) {
+        if (!active) dismiss()
+    }
+
+    fun dismiss() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(::dismiss)
+            return
+        }
+        val current = overlay ?: return
+        overlay = null
+        statusText = null
+        runCatching { windowManager.removeViewImmediate(current) }
+            .onFailure { error ->
+                FocusGuardLogger.logError(
+                    "PowerMenu",
+                    "Falha ao remover menu de energia protegido",
+                    error
+                )
+            }
+    }
+
+    private fun show() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(::show)
+            return
+        }
+        if (overlay != null) return
+
+        val density = service.resources.displayMetrics.density
+        val horizontal = (28 * density).toInt()
+        val vertical = (16 * density).toInt()
+        val gap = (10 * density).toInt()
+
+        val container = LinearLayout(service).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setPadding(horizontal, horizontal, horizontal, horizontal)
+            setBackgroundColor(Color.rgb(16, 17, 23))
+            isClickable = true
+            isFocusable = true
+            contentDescription = service.getString(R.string.protected_power_menu_title)
+        }
+
+        container.addView(TextView(service).apply {
+            text = service.getString(R.string.protected_power_menu_title)
+            setTextColor(Color.WHITE)
+            textSize = 24f
+            gravity = Gravity.CENTER
+        })
+        container.addView(TextView(service).apply {
+            text = service.getString(R.string.protected_power_menu_subtitle)
+            setTextColor(Color.LTGRAY)
+            textSize = 14f
+            gravity = Gravity.CENTER
+            setPadding(0, gap, 0, vertical)
+        })
+
+        addActionButton(container, R.string.protected_power_menu_power_off, Action.POWER_OFF)
+        addActionButton(container, R.string.protected_power_menu_restart, Action.RESTART)
+        addActionButton(container, R.string.protected_power_menu_emergency, Action.EMERGENCY)
+        addActionButton(container, R.string.protected_power_menu_medical_info, Action.MEDICAL_INFO)
+
+        container.addView(Button(service).apply {
+            text = service.getString(R.string.protected_power_menu_cancel)
+            isAllCaps = false
+            setOnClickListener {
+                // BACK closes the real System UI power dialog while the overlay is
+                // still consuming touch. Remove the overlay only after that command.
+                service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+                mainHandler.postDelayed(::dismiss, CANCEL_DISMISS_DELAY_MILLIS)
+            }
+            setOnLongClickListener { true }
+        }, buttonParams(gap))
+
+        container.addView(TextView(service).apply {
+            setTextColor(Color.LTGRAY)
+            textSize = 12f
+            gravity = Gravity.CENTER
+            visibility = View.GONE
+            statusText = this
+        }, LinearLayout.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT
+        ).apply { topMargin = gap })
+
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            PixelFormat.OPAQUE
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            title = "FocusGuardProtectedPowerMenu"
+        }
+
+        runCatching {
+            windowManager.addView(container, params)
+            overlay = container
+        }.onFailure { error ->
+            FocusGuardLogger.logError(
+                "PowerMenu",
+                "Falha ao exibir menu de energia protegido",
+                error
+            )
+        }
+    }
+
+    private fun addActionButton(
+        parent: LinearLayout,
+        labelRes: Int,
+        action: Action
+    ) {
+        parent.addView(Button(service).apply {
+            text = service.getString(labelRes)
+            isAllCaps = false
+            setOnClickListener { performNativeSinglePress(action) }
+            // Explicitly consume long-press on our surface. The native button
+            // underneath never receives touch, so Safe Mode cannot be requested by
+            // holding this button.
+            setOnLongClickListener { true }
+        }, buttonParams((10 * service.resources.displayMetrics.density).toInt()))
+    }
+
+    private fun buttonParams(topMargin: Int) = LinearLayout.LayoutParams(
+        WindowManager.LayoutParams.MATCH_PARENT,
+        WindowManager.LayoutParams.WRAP_CONTENT
+    ).apply { this.topMargin = topMargin }
+
+    private fun performNativeSinglePress(action: Action) {
+        val root = findSystemUiRoot()
+        if (root == null) {
+            showStatus(R.string.protected_power_menu_action_unavailable)
+            return
+        }
+
+        val node = findActionNode(root, action)
+        val clicked = node?.let(::clickNodeOrParent) == true
+        recycleSafely(node)
+        recycleSafely(root)
+
+        if (!clicked) {
+            showStatus(R.string.protected_power_menu_action_unavailable)
+            return
+        }
+
+        showStatus(R.string.protected_power_menu_action_sent)
+        scheduleRecheck()
+    }
+
+    private fun findActionNode(root: AccessibilityNodeInfo, action: Action): AccessibilityNodeInfo? {
+        PowerMenuProtectionPolicy.termsFor(action).forEach { term ->
+            val nodes = runCatching { root.findAccessibilityNodeInfosByText(term) }
+                .getOrDefault(emptyList())
+            var selected: AccessibilityNodeInfo? = null
+            nodes.forEach { node ->
+                if (selected == null && PowerMenuProtectionPolicy.matchesAction(
+                        action,
+                        listOf(node.text, node.contentDescription, node.viewIdResourceName)
+                    )
+                ) {
+                    selected = node
+                } else {
+                    recycleSafely(node)
+                }
+            }
+            if (selected != null) return selected
+        }
+        return null
+    }
+
+    private fun clickNodeOrParent(start: AccessibilityNodeInfo): Boolean {
+        var current: AccessibilityNodeInfo? = start
+        var ownsCurrent = false
+        repeat(MAX_PARENT_DEPTH) {
+            val node = current ?: return false
+            if (node.isClickable &&
+                runCatching { node.performAction(AccessibilityNodeInfo.ACTION_CLICK) }
+                    .getOrDefault(false)
+            ) {
+                if (ownsCurrent) recycleSafely(node)
+                return true
+            }
+            val parent = runCatching { node.parent }.getOrNull()
+            if (ownsCurrent) recycleSafely(node)
+            current = parent
+            ownsCurrent = true
+        }
+        if (ownsCurrent) recycleSafely(current)
+        return false
+    }
+
+    private fun findSystemUiRoot(): AccessibilityNodeInfo? {
+        service.windows.forEach { window ->
+            val root = runCatching { window.root }.getOrNull() ?: return@forEach
+            val packageName = runCatching { root.packageName?.toString().orEmpty() }
+                .getOrDefault("")
+            if (PowerMenuProtectionPolicy.isSystemUiPackage(packageName)) return root
+            recycleSafely(root)
+        }
+        return null
+    }
+
+    private fun collectText(
+        node: AccessibilityNodeInfo,
+        output: MutableList<CharSequence?>,
+        depth: Int
+    ) {
+        if (depth > MAX_TREE_DEPTH || output.size >= MAX_TEXT_VALUES) return
+        output += node.text
+        output += node.contentDescription
+        output += node.viewIdResourceName
+        val count = node.childCount.coerceAtMost(MAX_CHILDREN_PER_NODE)
+        for (index in 0 until count) {
+            if (output.size >= MAX_TEXT_VALUES) break
+            val child = runCatching { node.getChild(index) }.getOrNull() ?: continue
+            try {
+                collectText(child, output, depth + 1)
+            } finally {
+                recycleSafely(child)
+            }
+        }
+    }
+
+    private fun scheduleRecheck() {
+        mainHandler.removeCallbacks(recheckRunnable)
+        mainHandler.postDelayed(recheckRunnable, RECHECK_DELAY_MILLIS)
+    }
+
+    private val recheckRunnable = Runnable {
+        val root = findSystemUiRoot()
+        if (root == null) {
+            dismiss()
+            return@Runnable
+        }
+        val values = mutableListOf<CharSequence?>()
+        collectText(root, values, 0)
+        val stillPowerMenu = PowerMenuProtectionPolicy.isPowerMenu(
+            packageName = root.packageName?.toString().orEmpty(),
+            className = root.className?.toString().orEmpty(),
+            values = values
+        )
+        recycleSafely(root)
+        if (!stillPowerMenu) dismiss()
+    }
+
+    private fun showStatus(resId: Int) {
+        statusText?.apply {
+            setText(resId)
+            visibility = View.VISIBLE
+        }
+    }
+
+    private fun recycleSafely(node: AccessibilityNodeInfo?) {
+        if (node == null) return
+        runCatching { node.recycle() }
+    }
+
+    private companion object {
+        const val MAX_PARENT_DEPTH = 5
+        const val MAX_TREE_DEPTH = 12
+        const val MAX_CHILDREN_PER_NODE = 30
+        const val MAX_TEXT_VALUES = 300
+        const val RECHECK_DELAY_MILLIS = 350L
+        const val CANCEL_DISMISS_DELAY_MILLIS = 120L
+    }
+}
+'''
+          (root / 'app/src/main/java/com/focusguard/service/ProtectedPowerMenuController.kt').write_text(controller, encoding='utf-8')
+
+          test = r'''package com.focusguard.security
+
+import com.focusguard.security.PowerMenuProtectionPolicy.Action
+import com.google.common.truth.Truth.assertThat
+import org.junit.Test
+
+class PowerMenuProtectionPolicyTest {
+    @Test
+    fun `aosp global actions class with power off is recognised`() {
+        assertThat(
+            PowerMenuProtectionPolicy.isPowerMenu(
+                packageName = "com.android.systemui",
+                className = "com.android.systemui.globalactions.GlobalActionsDialogLite",
+                values = listOf("Power off", "Emergency")
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun `text signature recognises samsung style power menu in portuguese`() {
+        assertThat(
+            PowerMenuProtectionPolicy.isPowerMenu(
+                packageName = "com.android.systemui",
+                className = "android.widget.FrameLayout",
+                values = listOf("Desligar", "Reiniciar", "Chamada de emergência")
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun `ordinary system ui notification is not a power menu`() {
+        assertThat(
+            PowerMenuProtectionPolicy.isPowerMenu(
+                packageName = "com.android.systemui",
+                className = "com.android.systemui.statusbar.notification.row.ExpandableNotificationRow",
+                values = listOf("FocusGuard ativo", "12 minutos restantes")
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `same labels outside system ui are ignored`() {
+        assertThat(
+            PowerMenuProtectionPolicy.isPowerMenu(
+                packageName = "com.example.app",
+                className = "GlobalActionsDialog",
+                values = listOf("Desligar", "Reiniciar")
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `safe actions recognise portuguese and english labels`() {
+        assertThat(
+            PowerMenuProtectionPolicy.matchesAction(Action.POWER_OFF, listOf("Desligar"))
+        ).isTrue()
+        assertThat(
+            PowerMenuProtectionPolicy.matchesAction(Action.RESTART, listOf("Restart"))
+        ).isTrue()
+        assertThat(
+            PowerMenuProtectionPolicy.matchesAction(
+                Action.EMERGENCY,
+                listOf("Chamada de emergência")
+            )
+        ).isTrue()
+        assertThat(
+            PowerMenuProtectionPolicy.matchesAction(
+                Action.MEDICAL_INFO,
+                listOf("Medical information")
+            )
+        ).isTrue()
+    }
+}
+'''
+          (root / 'app/src/test/java/com/focusguard/security/PowerMenuProtectionPolicyTest.kt').write_text(test, encoding='utf-8')
+
+          default_strings = r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="protected_power_menu_title">Protected power menu</string>
+    <string name="protected_power_menu_subtitle">Safe Mode long-press is blocked while HardBlock protection is active.</string>
+    <string name="protected_power_menu_power_off">Power off</string>
+    <string name="protected_power_menu_restart">Restart</string>
+    <string name="protected_power_menu_emergency">Emergency call</string>
+    <string name="protected_power_menu_medical_info">Medical information</string>
+    <string name="protected_power_menu_cancel">Cancel</string>
+    <string name="protected_power_menu_action_unavailable">This action is not exposed by your phone\'s power menu.</string>
+    <string name="protected_power_menu_action_sent">Command sent to Android.</string>
+</resources>
+'''
+          pt_strings = r'''<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="protected_power_menu_title">Menu de energia protegido</string>
+    <string name="protected_power_menu_subtitle">O gesto prolongado que ativa o Modo Seguro fica bloqueado enquanto a proteção do HardBlock está ativa.</string>
+    <string name="protected_power_menu_power_off">Desligar</string>
+    <string name="protected_power_menu_restart">Reiniciar</string>
+    <string name="protected_power_menu_emergency">Chamada de emergência</string>
+    <string name="protected_power_menu_medical_info">Informações médicas</string>
+    <string name="protected_power_menu_cancel">Cancelar</string>
+    <string name="protected_power_menu_action_unavailable">Esta ação não foi exposta pelo menu de energia deste aparelho.</string>
+    <string name="protected_power_menu_action_sent">Comando enviado ao Android.</string>
+</resources>
+'''
+          (root / 'app/src/main/res/values/power_menu_strings.xml').write_text(default_strings, encoding='utf-8')
+          (root / 'app/src/main/res/values-en/power_menu_strings.xml').write_text(default_strings, encoding='utf-8')
+          (root / 'app/src/main/res/values-pt/power_menu_strings.xml').write_text(pt_strings, encoding='utf-8')
+
+          service_path = root / 'app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt'
+          service = service_path.read_text(encoding='utf-8')
+
+          replacements = [
+              (
+                  '    private var windowManager: WindowManager? = null\n    @Volatile private var foregroundPackageName: String? = null\n',
+                  '    private var windowManager: WindowManager? = null\n    private var protectedPowerMenuController: ProtectedPowerMenuController? = null\n    @Volatile private var foregroundPackageName: String? = null\n'
+              ),
+              (
+                  '        windowManager = getSystemService(Context.WINDOW_SERVICE) as? WindowManager\n\n        registerPackageReceiver()\n',
+                  '        windowManager = getSystemService(Context.WINDOW_SERVICE) as? WindowManager\n        protectedPowerMenuController = ProtectedPowerMenuController(this)\n\n        registerPackageReceiver()\n'
+              ),
+              (
+                  '            if (intent?.action == Intent.ACTION_SCREEN_OFF) {\n                foregroundPackageName = null\n                stopWebsiteTracking()\n            }\n',
+                  '            if (intent?.action == Intent.ACTION_SCREEN_OFF) {\n                foregroundPackageName = null\n                stopWebsiteTracking()\n                protectedPowerMenuController?.dismiss()\n            }\n'
+              ),
+              (
+                  '            val directPackage = event.packageName?.toString().orEmpty()\n            val eligibleForInterception = event.eventType in settingsInterceptionEventTypes\n',
+                  '            val directPackage = event.packageName?.toString().orEmpty()\n\n            // Before any other System UI handling, cover the native power menu with\n            // a touch-consuming accessibility overlay. The native menu remains\n            // underneath so its OEM shutdown/restart/emergency actions can still be\n            // invoked with ACTION_CLICK, but the long-press path to Safe Mode never\n            // receives the user\'s touch.\n            if (protectedPowerMenuController?.handleAccessibilityEvent(\n                    event = event,\n                    protectionActive = isBlockingSessionActive\n                ) == true\n            ) {\n                return\n            }\n\n            val eligibleForInterception = event.eventType in settingsInterceptionEventTypes\n'
+              ),
+              (
+                  '        isBlockingSessionActive = intent.getBooleanExtra(\n            EXTRA_BLOCKING_ACTIVE_SNAPSHOT,\n            apps.isNotEmpty() || sites.isNotEmpty()\n        )\n        lastLoadTime = System.currentTimeMillis()\n',
+                  '        isBlockingSessionActive = intent.getBooleanExtra(\n            EXTRA_BLOCKING_ACTIVE_SNAPSHOT,\n            apps.isNotEmpty() || sites.isNotEmpty()\n        )\n        protectedPowerMenuController?.onProtectionStateChanged(isBlockingSessionActive)\n        lastLoadTime = System.currentTimeMillis()\n'
+              ),
+              (
+                  '            stopWebsiteTracking()\n            dismissInstantBlockCurtain()\n            stopForeground(STOP_FOREGROUND_REMOVE)\n',
+                  '            stopWebsiteTracking()\n            protectedPowerMenuController?.dismiss()\n            dismissInstantBlockCurtain()\n            stopForeground(STOP_FOREGROUND_REMOVE)\n'
+              ),
+              (
+                  '    override fun onInterrupt() {\n        foregroundPackageName = null\n        stopWebsiteTracking()\n    }\n',
+                  '    override fun onInterrupt() {\n        foregroundPackageName = null\n        stopWebsiteTracking()\n        protectedPowerMenuController?.dismiss()\n    }\n'
+              ),
+              (
+                  '        protectionActionUntilElapsed = 0L\n        dismissInstantBlockCurtain()\n',
+                  '        protectionActionUntilElapsed = 0L\n        protectedPowerMenuController?.dismiss()\n        dismissInstantBlockCurtain()\n'
+              )
+          ]
+
+          for old, new in replacements:
+              count = service.count(old)
+              if count != 1:
+                  raise SystemExit(f'Expected exactly one service replacement, found {count}: {old[:80]!r}')
+              service = service.replace(old, new, 1)
+
+          service_path.write_text(service, encoding='utf-8')
+
+          plan_path = root / '.agents/implementation_plan.md'
+          plan = plan_path.read_text(encoding='utf-8')
+          if '13. Proteger o menu de energia' not in plan:
+              plan = plan.replace(
+                  '12. Bloquear a entrada em Aplicativos/Serviços instalados dentro de Acessibilidade durante uma proteção ativa, impedindo chegar ao interruptor que desativa o serviço do FocusGuard.\n',
+                  '12. Bloquear a entrada em Aplicativos/Serviços instalados dentro de Acessibilidade durante uma proteção ativa, impedindo chegar ao interruptor que desativa o serviço do FocusGuard.\n13. Proteger o menu de energia sem exigir Device Owner, bloqueando o gesto prolongado que aciona Modo Seguro e preservando desligar, reiniciar, emergência e informações médicas por cliques simples encaminhados ao System UI.\n'
+              )
+              marker = '- PRÓXIMO OBJETIVO:'
+              idx = plan.find(marker)
+              if idx >= 0:
+                  end = plan.find('\n', idx)
+                  plan = plan[:idx] + (
+                      '- CUMPRIDO: detectar o menu de energia apenas no System UI e somente durante proteção ativa.\n'
+                      '- CUMPRIDO: cobrir o menu nativo com TYPE_ACCESSIBILITY_OVERLAY opaco e tocável, impedindo toque/long-press nos botões originais.\n'
+                      '- CUMPRIDO: encaminhar Desligar, Reiniciar, Emergência e Informações médicas exclusivamente por ACTION_CLICK nos controles nativos, nunca ACTION_LONG_CLICK.\n'
+                      '- CUMPRIDO: consumir long-press nos botões do menu HardBlock e manter Cancelar para fechar com segurança o menu nativo.\n'
+                      '- CUMPRIDO: manter DISALLOW_SAFE_BOOT como segunda camada quando Device Owner estiver disponível.\n'
+                      '- PRÓXIMO OBJETIVO: revisar com o Crítico, executar os testes disponíveis e integrar na `main` mesmo se o CI ainda estiver em andamento.\n'
+                  ) + plan[end + 1:]
+              validation_marker = '- Conferir que Pomodoro e Modo Foco continuam seguindo seus fluxos próprios.\n'
+              if validation_marker in plan:
+                  plan = plan.replace(
+                      validation_marker,
+                      '- Testar reconhecimento do menu AOSP/One UI em português e inglês e rejeição de notificações comuns do System UI.\n'
+                      '- Testar que as ações protegidas são classificadas como clique simples e que nenhum caminho usa ACTION_LONG_CLICK.\n'
+                      + validation_marker
+                  )
+              plan_path.write_text(plan, encoding='utf-8')
+          PY
+
+      - name: Commit implementation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- \
+            .agents/implementation_plan.md \
+            app/src/main/java/com/focusguard/security/PowerMenuProtectionPolicy.kt \
+            app/src/main/java/com/focusguard/service/ProtectedPowerMenuController.kt \
+            app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt \
+            app/src/test/java/com/focusguard/security/PowerMenuProtectionPolicyTest.kt \
+            app/src/main/res/values/power_menu_strings.xml \
+            app/src/main/res/values-en/power_menu_strings.xml \
+            app/src/main/res/values-pt/power_menu_strings.xml
+          git rm -- .github/workflows/apply-protected-power-menu.yml
+          git commit -m "Protect power menu against Safe Mode long press"
+          git push origin HEAD:feat/protected-power-menu
