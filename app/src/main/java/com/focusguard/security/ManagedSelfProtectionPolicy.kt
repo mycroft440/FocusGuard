@@ -25,7 +25,12 @@ object ManagedSelfProtectionPolicy {
         "InstalledAppDetails",
         "AppInfoDashboardFragment",
         "AppInfoDashboardActivity",
-        "AppInfoActivity"
+        "AppInfoActivity",
+        // Android 14+ pode encaminhar Informações do app para a arquitetura SPA.
+        // A política ainda exige a identidade do FocusGuard, portanto uma SpaActivity
+        // de qualquer outro aplicativo continua livre.
+        "SpaActivity",
+        "SpaAppBridgeActivity"
     )
 
     private val uninstallClassMarkers = setOf(
