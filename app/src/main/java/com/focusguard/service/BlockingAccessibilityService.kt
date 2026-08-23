@@ -170,7 +170,8 @@ class BlockingAccessibilityService : AccessibilityService() {
     private val interceptionPackages = SettingsInterceptionPolicy.interceptionPackages
     private val clickInterceptionSearchTerms =
         (ManagedSelfProtectionPolicy.focusGuardSearchTerms +
-            AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms).distinct()
+            AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms +
+            ManagedSelfProtectionPolicy.deviceAdminSearchTerms).distinct()
 
     private var pendingSettingsProtectionUntilElapsed = 0L
 
