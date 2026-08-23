@@ -15,6 +15,9 @@ object AccessibilitySettingsPolicy {
         val accessibilityDisclosure: Boolean
     )
 
+    // Must be initialized before the pre-normalized dictionaries below.
+    private val COMBINING_MARKS_REGEX = "\\p{M}+".toRegex()
+
     /**
      * Telas que listam recursos e serviços de acessibilidade.
      *
@@ -183,5 +186,4 @@ object AccessibilitySettingsPolicy {
             .replace(COMBINING_MARKS_REGEX, "")
     }
 
-    private val COMBINING_MARKS_REGEX = "\\p{M}+".toRegex()
 }

@@ -19,6 +19,10 @@ object ManagedSelfProtectionPolicy {
         val essentialSpecialAccess: Boolean
     )
 
+    // These helpers must exist before the pre-normalized dictionaries are built.
+    private val COMBINING_MARKS_REGEX = "\\p{M}+".toRegex()
+    private val NON_LETTER_REGEX = "[^a-z]+".toRegex()
+
     private val deviceAdminClassMarkers = setOf(
         "DeviceAdminSettings",
         "DeviceAdminAdd",
@@ -223,6 +227,4 @@ object ManagedSelfProtectionPolicy {
             .replace(COMBINING_MARKS_REGEX, "")
     }
 
-    private val COMBINING_MARKS_REGEX = "\\p{M}+".toRegex()
-    private val NON_LETTER_REGEX = "[^a-z]+".toRegex()
 }
