@@ -71,6 +71,25 @@ class SelfProtectionStateStoreTest {
     }
 
     @Test
+    fun `inactive snapshot never exposes targets even if caller supplies them`() {
+        assertThat(
+            SelfProtectionStateStore.setSnapshot(
+                context = context,
+                armed = false,
+                blockedApps = setOf("com.example.stale"),
+                blockedSites = setOf("stale.example"),
+                strictPomodoro = true
+            )
+        ).isTrue()
+
+        val snapshot = SelfProtectionStateStore.read(context)
+        assertThat(snapshot.armed).isFalse()
+        assertThat(snapshot.blockedApps).isEmpty()
+        assertThat(snapshot.blockedSites).isEmpty()
+        assertThat(snapshot.strictPomodoro).isFalse()
+    }
+
+    @Test
     fun `snapshot is available from device protected storage before unlock`() {
         assertThat(SelfProtectionStateStore.usesDeviceProtectedStorage(context)).isTrue()
     }
