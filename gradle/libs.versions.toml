@@ -28,6 +28,7 @@ androidxPreference = "1.2.1"
 androidxViewpager2 = "1.0.0"
 androidxBiometric = "1.1.0"
 androidxWebkit = "1.14.0"
+profileInstaller = "1.4.1"
 
 # ─── Compose ───────────────────────────────────────────────────────────────
 composeBom = "2024.10.01"
@@ -74,6 +75,7 @@ androidx-preference = { group = "androidx.preference", name = "preference", vers
 androidx-viewpager2 = { group = "androidx.viewpager2", name = "viewpager2", version.ref = "androidxViewpager2" }
 androidx-biometric = { group = "androidx.biometric", name = "biometric", version.ref = "androidxBiometric" }
 androidx-webkit = { group = "androidx.webkit", name = "webkit", version.ref = "androidxWebkit" }
+androidx-profileinstaller = { group = "androidx.profileinstaller", name = "profileinstaller", version.ref = "profileInstaller" }
 
 # ─── Lifecycle ─────────────────────────────────────────────────────────────
 androidx-lifecycle-runtime-ktx = { group = "androidx.lifecycle", name = "lifecycle-runtime-ktx", version.ref = "androidxLifecycle" }

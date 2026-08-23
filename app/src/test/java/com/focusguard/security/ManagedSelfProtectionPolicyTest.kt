@@ -130,6 +130,23 @@ class ManagedSelfProtectionPolicyTest {
     }
 
     @Test
+    fun `batch classifier preserves all self protection signals`() {
+        val signals = ManagedSelfProtectionPolicy.classifyText(
+            listOf(
+                "FocusGuard",
+                "Apps do administr. do aparelho",
+                "Desinstalar",
+                "Uso irrestrito da bateria"
+            )
+        )
+
+        assertThat(signals.focusGuard).isTrue()
+        assertThat(signals.deviceAdmin).isTrue()
+        assertThat(signals.destructiveControl).isTrue()
+        assertThat(signals.essentialSpecialAccess).isTrue()
+    }
+
+    @Test
     fun `administration wording alone does not target device admin`() {
         // Sem palavra de aparelho na frase, "administração" é contexto inocente
         // demais para derrubar o usuário da tela.
