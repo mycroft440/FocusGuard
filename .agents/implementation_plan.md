@@ -14,6 +14,7 @@
 10. Fazer a primeira tentativa de abertura de um app bloqueado ser tão rápida quanto as tentativas seguintes.
 11. Bloquear a entrada em Apps de administrador do dispositivo durante uma proteção ativa, impedindo chegar à remoção da permissão do FocusGuard.
 12. Bloquear a entrada em Aplicativos/Serviços instalados dentro de Acessibilidade durante uma proteção ativa, impedindo chegar ao interruptor que desativa o serviço do FocusGuard.
+13. Proteger o menu de energia sem exigir Device Owner, bloqueando o gesto prolongado que aciona Modo Seguro e preservando desligar, reiniciar, emergência e informações médicas por cliques simples encaminhados ao System UI.
 
 ## Estado da solicitação atual
 
@@ -31,7 +32,12 @@
 - CUMPRIDO: preservar a exceção de ativação inicial do administrador quando ela é aberta e identificada como sendo do próprio FocusGuard.
 - CUMPRIDO: bloquear o clique em Aplicativos/Serviços instalados dentro do contexto de Acessibilidade e a transição identificada para essa lista.
 - CUMPRIDO: manter uma opção genérica de “Apps instalados” fora de Acessibilidade livre para evitar bloqueio excessivo das Configurações.
-- PRÓXIMO OBJETIVO: revisar o diff com o Crítico, executar os testes disponíveis e integrar na `main` mesmo que o CI ainda esteja em andamento, conforme preferência atual do projeto.
+- CUMPRIDO: classificar o menu de energia somente no System UI, usando classe conhecida ou assinatura real de ações para evitar falsos positivos.
+- CUMPRIDO: criar menu de energia protegido com `TYPE_ACCESSIBILITY_OVERLAY` opaco e tocável para impedir que o usuário toque ou segure os botões nativos.
+- CUMPRIDO: encaminhar Desligar, Reiniciar, Emergência e Informações médicas exclusivamente por `ACTION_CLICK` nos controles nativos, nunca `ACTION_LONG_CLICK`.
+- CUMPRIDO: consumir long-press nos botões do menu HardBlock e manter Cancelar para fechar o menu nativo com segurança.
+- CUMPRIDO: manter `DISALLOW_SAFE_BOOT` como segunda camada quando Device Owner estiver disponível.
+- PRÓXIMO OBJETIVO: ligar o controlador ao `BlockingAccessibilityService`, revisar com o Crítico, executar os testes disponíveis e integrar na `main` mesmo se o CI ainda estiver em andamento.
 
 ## Regras de apresentação
 
@@ -63,6 +69,8 @@
 - Testar que Apps de administrador do dispositivo é barrado durante proteção ativa.
 - Testar que a ativação legítima do administrador do FocusGuard continua permitida durante a janela autorizada.
 - Testar que Aplicativos/Serviços instalados de Acessibilidade é barrado, mas “Apps instalados” fora de Acessibilidade não é.
+- Testar reconhecimento do menu AOSP/One UI em português e inglês e rejeição de notificações comuns do System UI.
+- Testar que as ações protegidas são classificadas como clique simples e que nenhum caminho usa `ACTION_LONG_CLICK`.
 - Conferir que Pomodoro e Modo Foco continuam seguindo seus fluxos próprios.
 - Conferir paridade dos recursos em português e inglês.
 - Executar testes unitários, lint e compilação dos APKs.
