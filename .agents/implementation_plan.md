@@ -12,6 +12,8 @@
 8. Fazer o HardBlock retirar imediatamente qualquer app bloqueado do primeiro plano.
 9. Impedir acesso às Informações do app, desinstalação e controles destrutivos do próprio FocusGuard enquanto uma proteção estiver ativa.
 10. Fazer a primeira tentativa de abertura de um app bloqueado ser tão rápida quanto as tentativas seguintes.
+11. Bloquear a entrada em Apps de administrador do dispositivo durante uma proteção ativa, impedindo chegar à remoção da permissão do FocusGuard.
+12. Bloquear a entrada em Aplicativos/Serviços instalados dentro de Acessibilidade durante uma proteção ativa, impedindo chegar ao interruptor que desativa o serviço do FocusGuard.
 
 ## Estado da solicitação atual
 
@@ -25,7 +27,11 @@
 - CUMPRIDO: fazer toda tentativa protegida nas Configurações expulsar imediatamente o app Configurações para a Home; o debounce agora limita apenas aviso visual/toast.
 - CUMPRIDO: reconhecer também as telas modernas de Informações do app baseadas em `SpaActivity`/`SpaAppBridgeActivity`, mantendo a exigência de identidade do FocusGuard.
 - CUMPRIDO: revisar a alteração com o Crítico e remover o fast path que poderia alterar fluxos especiais, preservando apenas a correção da causa da primeira tentativa lenta.
-- PRÓXIMO OBJETIVO: executar testes, lint e compilação de release; revisar o diff final e corrigir qualquer falha antes de integrar na `main`.
+- CUMPRIDO: bloquear o gateway de Apps de administrador do dispositivo sem esperar o usuário chegar ao botão de desativação.
+- CUMPRIDO: preservar a exceção de ativação inicial do administrador quando ela é aberta e identificada como sendo do próprio FocusGuard.
+- CUMPRIDO: bloquear o clique em Aplicativos/Serviços instalados dentro do contexto de Acessibilidade e a transição identificada para essa lista.
+- CUMPRIDO: manter uma opção genérica de “Apps instalados” fora de Acessibilidade livre para evitar bloqueio excessivo das Configurações.
+- PRÓXIMO OBJETIVO: revisar o diff com o Crítico, executar os testes disponíveis e integrar na `main` mesmo que o CI ainda esteja em andamento, conforme preferência atual do projeto.
 
 ## Regras de apresentação
 
@@ -54,6 +60,9 @@
 - Testar que o snapshot persistido restaura os pacotes bloqueados antes da atualização assíncrona do banco.
 - Testar que um snapshot inativo nunca conserva alvos antigos.
 - Testar que Informações do app modernas do FocusGuard são reconhecidas sem afetar outros apps.
+- Testar que Apps de administrador do dispositivo é barrado durante proteção ativa.
+- Testar que a ativação legítima do administrador do FocusGuard continua permitida durante a janela autorizada.
+- Testar que Aplicativos/Serviços instalados de Acessibilidade é barrado, mas “Apps instalados” fora de Acessibilidade não é.
 - Conferir que Pomodoro e Modo Foco continuam seguindo seus fluxos próprios.
 - Conferir paridade dos recursos em português e inglês.
 - Executar testes unitários, lint e compilação dos APKs.
