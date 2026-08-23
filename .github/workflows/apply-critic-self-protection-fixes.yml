@@ -1,0 +1,88 @@
+name: Apply critic self-protection fixes
+
+on:
+  push:
+    branches:
+      - perf/instant-self-protection
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/instant-self-protection
+          fetch-depth: 0
+
+      - name: Apply critic fixes
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text(encoding='utf-8')
+              if old not in text:
+                  raise SystemExit(f'Expected block not found in {path}: {old[:140]!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
+
+          path = 'app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt'
+          replace_once(
+              path,
+              '''    private val clickInterceptionSearchTerms =\n        (listOf("FocusGuard", "Focus Guard", "com.focusguard", "admin") +\n            AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms).distinct()\n''',
+              '''    private val directClickContextSufficientTerms =\n        (listOf("FocusGuard", "Focus Guard", "com.focusguard") +\n            AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms).distinct()\n    private val clickInterceptionSearchTerms =\n        (directClickContextSufficientTerms + "admin").distinct()\n'''
+          )
+          replace_once(
+              path,
+              '''        protectedPowerMenuController = ProtectedPowerMenuController(this)\n        prepareInstantBlockCurtain()\n\n        registerPackageReceiver()\n''',
+              '''        protectedPowerMenuController = ProtectedPowerMenuController(this)\n        prepareInstantBlockCurtain()\n        AuthenticatedRemovalWindow.preload(this)\n\n        registerPackageReceiver()\n'''
+          )
+          replace_once(
+              path,
+              '''            focusModeActive = FocusModeStore.isActive(applicationContext),\n            armoredDeviceOwnerActive = deviceOwnerActiveCached &&\n''',
+              '''            focusModeActive = focusModeSessionActive,\n            armoredDeviceOwnerActive = deviceOwnerActiveCached &&\n'''
+          )
+          replace_once(
+              path,
+              '''            FocusModePolicy.usesNativeFocusLockdown(\n                deviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive(),\n''',
+              '''            FocusModePolicy.usesNativeFocusLockdown(\n                deviceOwnerActive = deviceOwnerActiveCached,\n'''
+          )
+          replace_once(
+              path,
+              '''    private fun shouldExpandClickContext(values: Iterable<CharSequence?>): Boolean =\n        values.none { value ->\n            val text = value?.toString().orEmpty()\n            text.isNotBlank() && clickInterceptionSearchTerms.any { term ->\n                text.contains(term, ignoreCase = true)\n            }\n        }\n''',
+              '''    private fun shouldExpandClickContext(values: Iterable<CharSequence?>): Boolean {\n        // “admin” is deliberately only a locator: by itself it is too weak to prove\n        // that the clicked node already contains the whole Device Admin context.\n        if (ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(values)) return false\n        return values.none { value ->\n            val text = value?.toString().orEmpty()\n            text.isNotBlank() && directClickContextSufficientTerms.any { term ->\n                text.contains(term, ignoreCase = true)\n            }\n        }\n    }\n'''
+          )
+
+          # Cache the authenticated uninstall bridge. A normal blocked-removal attempt
+          # should not read SharedPreferences + Settings.Global on every a11y event.
+          path = 'app/src/main/java/com/focusguard/security/AuthenticatedRemovalWindow.kt'
+          replace_once(
+              path,
+              '''    internal const val DURATION_MILLIS = 60_000L\n\n    fun open(context: Context) {\n        preferences(context).edit()\n            .putLong(DEADLINE_KEY, SystemClock.elapsedRealtime() + DURATION_MILLIS)\n            .putInt(BOOT_COUNT_KEY, readBootCount(context))\n            .commit()\n    }\n\n    fun isActive(context: Context): Boolean {\n        val prefs = preferences(context)\n        val active = evaluate(\n            nowElapsedMillis = SystemClock.elapsedRealtime(),\n            deadlineElapsedMillis = prefs.getLong(DEADLINE_KEY, 0L),\n            storedBootCount = prefs.getInt(BOOT_COUNT_KEY, Int.MIN_VALUE),\n            currentBootCount = readBootCount(context)\n        )\n        if (!active && prefs.contains(DEADLINE_KEY)) prefs.edit().clear().apply()\n        return active\n    }\n\n    fun close(context: Context) {\n        preferences(context).edit().clear().apply()\n    }\n''',
+              '''    internal const val DURATION_MILLIS = 60_000L\n    private const val UNINITIALIZED_DEADLINE = Long.MIN_VALUE\n\n    @Volatile private var cachedDeadlineElapsed = UNINITIALIZED_DEADLINE\n    @Volatile private var cachedStoredBootCount = Int.MIN_VALUE\n    @Volatile private var cachedCurrentBootCount = Int.MIN_VALUE\n\n    /** Loads the common inactive state before the first accessibility event. */\n    fun preload(context: Context) {\n        ensureCacheLoaded(context)\n    }\n\n    fun open(context: Context) {\n        val deadline = SystemClock.elapsedRealtime() + DURATION_MILLIS\n        val bootCount = readBootCount(context)\n        val persisted = preferences(context).edit()\n            .putLong(DEADLINE_KEY, deadline)\n            .putInt(BOOT_COUNT_KEY, bootCount)\n            .commit()\n        if (persisted) {\n            cachedStoredBootCount = bootCount\n            cachedCurrentBootCount = bootCount\n            cachedDeadlineElapsed = deadline\n        }\n    }\n\n    fun isActive(context: Context): Boolean {\n        ensureCacheLoaded(context)\n        val deadline = cachedDeadlineElapsed\n        if (deadline <= 0L) return false\n        val active = evaluate(\n            nowElapsedMillis = SystemClock.elapsedRealtime(),\n            deadlineElapsedMillis = deadline,\n            storedBootCount = cachedStoredBootCount,\n            currentBootCount = cachedCurrentBootCount\n        )\n        if (!active) clearCachedAndPersistedState(context)\n        return active\n    }\n\n    fun close(context: Context) {\n        clearCachedAndPersistedState(context)\n    }\n\n    private fun ensureCacheLoaded(context: Context) {\n        if (cachedDeadlineElapsed != UNINITIALIZED_DEADLINE) return\n        synchronized(this) {\n            if (cachedDeadlineElapsed != UNINITIALIZED_DEADLINE) return\n            val prefs = preferences(context)\n            val deadline = prefs.getLong(DEADLINE_KEY, 0L)\n            if (deadline <= 0L) {\n                cachedDeadlineElapsed = 0L\n                return\n            }\n            cachedStoredBootCount = prefs.getInt(BOOT_COUNT_KEY, Int.MIN_VALUE)\n            cachedCurrentBootCount = readBootCount(context)\n            cachedDeadlineElapsed = deadline\n        }\n    }\n\n    private fun clearCachedAndPersistedState(context: Context) {\n        cachedStoredBootCount = Int.MIN_VALUE\n        cachedCurrentBootCount = Int.MIN_VALUE\n        cachedDeadlineElapsed = 0L\n        val prefs = preferences(context)\n        if (prefs.contains(DEADLINE_KEY) || prefs.contains(BOOT_COUNT_KEY)) {\n            prefs.edit().clear().apply()\n        }\n    }\n'''
+          )
+
+          # Update the implementation notes with the extra critic pass.
+          path = '.agents/implementation_plan.md'
+          replace_once(
+              path,
+              '''- CUMPRIDO: adicionar telemetria assíncrona evento→cortina→HOME para medir a latência real sem atrasar a resposta.\n''',
+              '''- CUMPRIDO: adicionar telemetria assíncrona evento→cortina→HOME para medir a latência real sem atrasar a resposta.\n- CUMPRIDO: pré-carregar e manter em memória a janela de desinstalação autenticada, retirando SharedPreferences/Settings.Global do caminho comum da primeira tentativa bloqueada.\n- CUMPRIDO: revisão do Crítico manteve “admin” apenas como localizador, reutilizou o cache de Modo Foco/Device Owner e evitou falsos negativos por contexto incompleto.\n'''
+          )
+
+          Path('.github/workflows/apply-critic-self-protection-fixes.yml').unlink(missing_ok=True)
+          PY
+
+      - name: Commit critic fixes
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Harden instant self-protection hot path"
+          git push origin HEAD:perf/instant-self-protection
