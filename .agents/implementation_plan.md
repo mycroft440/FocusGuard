@@ -37,7 +37,9 @@
 - CUMPRIDO: encaminhar Desligar, Reiniciar, Emergência e Informações médicas exclusivamente por `ACTION_CLICK` nos controles nativos, nunca `ACTION_LONG_CLICK`.
 - CUMPRIDO: consumir long-press nos botões do menu HardBlock e manter Cancelar para fechar o menu nativo com segurança.
 - CUMPRIDO: manter `DISALLOW_SAFE_BOOT` como segunda camada quando Device Owner estiver disponível.
-- PRÓXIMO OBJETIVO: ligar o controlador ao `BlockingAccessibilityService`, revisar com o Crítico, executar os testes disponíveis e integrar na `main` mesmo se o CI ainda estiver em andamento.
+- CUMPRIDO: ligar o controlador ao `BlockingAccessibilityService` antes das demais decisões do System UI e removê-lo ao desarmar a proteção, desligar a tela, interromper ou destruir o serviço.
+- CUMPRIDO: revisar com o Crítico e corrigir a seleção de janela para priorizar o `windowId` do evento e aceitar apenas janelas do System UI que realmente correspondam ao menu de energia.
+- PRÓXIMO OBJETIVO: conferir o CI disponível e integrar a PR na `main`, mesmo que as validações ainda estejam em andamento, conforme a regra atual do FocusGuard.
 
 ## Regras de apresentação
 
