@@ -21,10 +21,11 @@
 - CUMPRIDO: manter o bloqueio de sites fora dessa mudança.
 - CUMPRIDO: persistir em armazenamento protegido a lista de apps/sites atualmente bloqueados e o estado do Pomodoro rigoroso.
 - CUMPRIDO: restaurar os alvos do HardBlock sincronamente quando o serviço de acessibilidade inicia, sem aguardar o Room.
-- CUMPRIDO: adicionar um caminho rápido para `TYPE_WINDOW_STATE_CHANGED`, bloqueando diretamente o pacote já conhecido antes de leituras mais caras da árvore de acessibilidade.
+- CUMPRIDO: manter o fluxo normal de `TYPE_WINDOW_STATE_CHANGED`, que já usa diretamente o pacote informado pelo evento, evitando um atalho redundante que poderia interferir no Pomodoro ou no Modo Foco.
 - CUMPRIDO: fazer toda tentativa protegida nas Configurações expulsar imediatamente o app Configurações para a Home; o debounce agora limita apenas aviso visual/toast.
 - CUMPRIDO: reconhecer também as telas modernas de Informações do app baseadas em `SpaActivity`/`SpaAppBridgeActivity`, mantendo a exigência de identidade do FocusGuard.
-- PRÓXIMO OBJETIVO: executar testes, lint e compilação de release; revisar o diff com o Crítico e corrigir qualquer regressão antes de integrar na `main`.
+- CUMPRIDO: revisar a alteração com o Crítico e remover o fast path que poderia alterar fluxos especiais, preservando apenas a correção da causa da primeira tentativa lenta.
+- PRÓXIMO OBJETIVO: executar testes, lint e compilação de release; revisar o diff final e corrigir qualquer falha antes de integrar na `main`.
 
 ## Regras de apresentação
 
@@ -51,7 +52,8 @@
 - Testar que o botão de sugestões permanece disponível antes, durante e depois do convite inicial.
 - Testar que a média mensal inclui exatamente 30 dias completos.
 - Testar que o snapshot persistido restaura os pacotes bloqueados antes da atualização assíncrona do banco.
-- Testar que apenas `TYPE_WINDOW_STATE_CHANGED` com pacote conhecido usa o fast path do HardBlock.
+- Testar que um snapshot inativo nunca conserva alvos antigos.
 - Testar que Informações do app modernas do FocusGuard são reconhecidas sem afetar outros apps.
+- Conferir que Pomodoro e Modo Foco continuam seguindo seus fluxos próprios.
 - Conferir paridade dos recursos em português e inglês.
 - Executar testes unitários, lint e compilação dos APKs.
