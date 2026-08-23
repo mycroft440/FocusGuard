@@ -1,22 +1,22 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="time_block_protection_title">Bloqueio por tempo protegido</string>
-    <string name="time_block_protection_warning">Enquanto este bloqueio por tempo estiver ativo, o FocusGuard protege a própria desinstalação e os controles do app em aparelhos configurados como Device Owner. Você pode revogar todo o bloqueio antes do prazo digitando a senha mestre.</string>
-    <string name="time_block_device_owner_required_title">Device Owner necessário</string>
-    <string name="time_block_device_owner_required_desc">O bloqueio por tempo protegido precisa do Device Owner para o Android aplicar proteção de desinstalação e de controles somente ao FocusGuard. Configure o Device Owner antes de ativar este bloqueio.</string>
+    <string name="time_block_protection_title">Bloqueio por tempo</string>
+    <string name="time_block_protection_warning">O bloqueio funciona no modo simples pela Acessibilidade. Se o aparelho estiver configurado como Device Owner, o FocusGuard também reforça a proteção contra desinstalação e controles do app. Você pode revogar todo o bloqueio antes do prazo digitando a senha mestre.</string>
+    <string name="time_block_device_owner_required_title">Device Owner opcional</string>
+    <string name="time_block_device_owner_required_desc">O bloqueio por tempo funciona sem Device Owner pela Acessibilidade. O Device Owner é opcional e adiciona proteção reforçada contra desinstalação, modo seguro e controles do app.</string>
     <string name="time_block_revoke_action">Revogar com senha mestre</string>
     <string name="time_block_revoke_title">Revogar bloqueio por tempo?</string>
-    <string name="time_block_revoke_desc">Digite sua senha mestre para encerrar este bloqueio por tempo antes do prazo. As proteções contra desinstalação e controles do app também serão liberadas quando não restar outro bloqueio por tempo protegido.</string>
+    <string name="time_block_revoke_desc">Digite sua senha mestre para encerrar este bloqueio por tempo antes do prazo. Se a proteção reforçada estiver ativa, ela também será liberada quando não restar outro bloqueio por tempo protegido.</string>
     <string name="time_block_master_password_label">Senha mestre</string>
     <string name="time_block_revoke_success">Bloqueio por tempo revogado.</string>
     <string name="time_block_revoke_wrong_password">Senha mestre incorreta.</string>
     <string name="time_block_revoke_rate_limited">Muitas tentativas incorretas. Tente novamente em cerca de %1$d segundos.</string>
     <string name="time_block_revoke_failed">Não foi possível revogar o bloqueio por tempo.</string>
     <string name="time_block_health_title">Prontidão da proteção</string>
-    <string name="time_block_health_device_owner_ready">Device Owner: pronto</string>
-    <string name="time_block_health_device_owner_missing">Device Owner: necessário</string>
+    <string name="time_block_health_device_owner_ready">Device Owner: proteção reforçada disponível</string>
+    <string name="time_block_health_device_owner_missing">Device Owner: opcional — modo simples disponível</string>
     <string name="time_block_health_master_ready">Senha mestre: configurada</string>
-    <string name="time_block_health_master_missing">Senha mestre: necessária</string>
-    <string name="time_block_health_system_active">Proteção do Android: confirmada</string>
-    <string name="time_block_health_system_standby">Proteção do Android: verificada ao iniciar o bloqueio</string>
+    <string name="time_block_health_master_missing">Senha mestre: necessária para revogação</string>
+    <string name="time_block_health_system_active">Proteção reforçada do Android: confirmada</string>
+    <string name="time_block_health_system_standby">Proteção reforçada do Android: em espera</string>
 </resources>
