@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="protected_power_menu_title">Menu de energia protegido</string>
+    <string name="protected_power_menu_subtitle">O gesto prolongado que ativa o Modo Seguro fica bloqueado enquanto a proteção do HardBlock está ativa.</string>
+    <string name="protected_power_menu_power_off">Desligar</string>
+    <string name="protected_power_menu_restart">Reiniciar</string>
+    <string name="protected_power_menu_emergency">Chamada de emergência</string>
+    <string name="protected_power_menu_medical_info">Informações médicas</string>
+    <string name="protected_power_menu_cancel">Cancelar</string>
+    <string name="protected_power_menu_action_unavailable">Esta ação não foi exposta pelo menu de energia deste aparelho.</string>
+    <string name="protected_power_menu_action_sent">Comando enviado ao Android.</string>
+</resources>
