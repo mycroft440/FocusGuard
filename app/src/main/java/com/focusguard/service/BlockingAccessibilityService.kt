@@ -109,6 +109,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var usageStatsManager: UsageStatsManager? = null
     private var powerManager: PowerManager? = null
     private var windowManager: WindowManager? = null
+    private var protectedPowerMenuController: ProtectedPowerMenuController? = null
     @Volatile private var foregroundPackageName: String? = null
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -249,6 +250,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             if (intent?.action == Intent.ACTION_SCREEN_OFF) {
                 foregroundPackageName = null
                 stopWebsiteTracking()
+                protectedPowerMenuController?.dismiss()
             }
         }
     }
@@ -262,6 +264,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
         powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
         windowManager = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
+        protectedPowerMenuController = ProtectedPowerMenuController(this)
 
         registerPackageReceiver()
         registerRefreshReceiver()
@@ -457,6 +460,19 @@ class BlockingAccessibilityService : AccessibilityService() {
             // the switch that disables this service, so nothing that can block runs
             // ahead of the decision to bounce them out.
             val directPackage = event.packageName?.toString().orEmpty()
+
+            // Shield the native System UI power menu before any other handling.
+            // A touch-consuming TYPE_ACCESSIBILITY_OVERLAY stays on top while the
+            // controller forwards only ACTION_CLICK to native actions; the user
+            // never reaches the long-press path that requests Safe Mode.
+            if (protectedPowerMenuController?.handleAccessibilityEvent(
+                    event = event,
+                    protectionActive = isBlockingSessionActive
+                ) == true
+            ) {
+                return
+            }
+
             val eligibleForInterception = event.eventType in settingsInterceptionEventTypes
             if (eligibleForInterception &&
                 directPackage in interceptionPackages &&
@@ -552,6 +568,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             EXTRA_BLOCKING_ACTIVE_SNAPSHOT,
             apps.isNotEmpty() || sites.isNotEmpty()
         )
+        protectedPowerMenuController?.onProtectionStateChanged(isBlockingSessionActive)
         lastLoadTime = System.currentTimeMillis()
     }
 
@@ -576,6 +593,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             PomodoroForegroundService.stop(applicationContext)
             foregroundPackageName = null
             stopWebsiteTracking()
+            protectedPowerMenuController?.dismiss()
             dismissInstantBlockCurtain()
             stopForeground(STOP_FOREGROUND_REMOVE)
         }.onFailure { error ->
@@ -591,6 +609,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     override fun onInterrupt() {
         foregroundPackageName = null
         stopWebsiteTracking()
+        protectedPowerMenuController?.dismiss()
     }
 
     private fun refreshData() {
@@ -1789,6 +1808,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         stopWebsiteTracking()
         mainHandler.removeCallbacks(protectionCurtainDismiss)
         protectionActionUntilElapsed = 0L
+        protectedPowerMenuController?.dismiss()
         dismissInstantBlockCurtain()
         runCatching { unregisterReceiver(packageReceiver) }
         runCatching { unregisterReceiver(refreshReceiver) }
