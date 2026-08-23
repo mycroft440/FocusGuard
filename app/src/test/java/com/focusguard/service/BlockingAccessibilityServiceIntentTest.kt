@@ -138,7 +138,7 @@ class BlockingAccessibilityServiceIntentTest {
         val snapshot = SelfProtectionStateStore.read(context)
         assertThat(snapshot.armed).isTrue()
         assertThat(snapshot.blockedApps).containsExactly("com.example.blocked")
-        assertThat(snapshot.blockedSites).containsExactly("example.com/path")
+        assertThat(snapshot.blockedSites).containsExactly("example.com")
         assertThat(snapshot.strictPomodoro).isTrue()
     }
 
