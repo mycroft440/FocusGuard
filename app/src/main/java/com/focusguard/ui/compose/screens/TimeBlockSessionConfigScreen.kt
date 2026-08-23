@@ -97,7 +97,6 @@ fun TimeBlockSessionConfigScreen(
         mutableStateOf<BlockingProtectionUnavailableException.Reason?>(null)
     }
     var showMasterCredentialSetup by remember { mutableStateOf(false) }
-    var showDeviceOwnerRequired by remember { mutableStateOf(false) }
 
     val duration = BlockDurationPolicy.resolve(durationUnit, amountText.toIntOrNull())
     val canSave = duration != null &&
@@ -105,25 +104,13 @@ fun TimeBlockSessionConfigScreen(
         (apps.isNotEmpty() || sites.isNotEmpty())
     val protectionHealth = timedProtection.healthSnapshot()
     val masterCredentialReady = credentialManager.hasCredential()
+    val reinforcedProtectionAvailable = deviceOwnerManager.isDeviceOwnerActive()
 
     if (showMasterCredentialSetup) {
         DeactivationCredentialDialog(
             managementLocked = false,
             onDismiss = { showMasterCredentialSetup = false },
             onCredentialChanged = { showMasterCredentialSetup = false }
-        )
-    }
-
-    if (showDeviceOwnerRequired) {
-        AlertDialog(
-            onDismissRequest = { showDeviceOwnerRequired = false },
-            title = { Text(stringResource(R.string.time_block_device_owner_required_title)) },
-            text = { Text(stringResource(R.string.time_block_device_owner_required_desc)) },
-            confirmButton = {
-                TextButton(onClick = { showDeviceOwnerRequired = false }) {
-                    Text(stringResource(R.string.status_close))
-                }
-            }
         )
     }
 
@@ -230,7 +217,11 @@ fun TimeBlockSessionConfigScreen(
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Text(
-                        text = stringResource(R.string.time_block_protection_warning),
+                        text = if (reinforcedProtectionAvailable) {
+                            stringResource(R.string.time_block_protection_warning)
+                        } else {
+                            stringResource(R.string.dopamine_simple_mode_info)
+                        },
                         color = TextSecondary,
                         fontSize = 13.sp
                     )
@@ -249,7 +240,7 @@ fun TimeBlockSessionConfigScreen(
                                 R.string.time_block_health_device_owner_missing
                             }
                         ),
-                        color = if (protectionHealth.deviceOwnerReady) AccentCyan else DangerRed,
+                        color = if (protectionHealth.deviceOwnerReady) AccentCyan else TextSecondary,
                         fontSize = 12.sp
                     )
                     Text(
@@ -375,19 +366,21 @@ fun TimeBlockSessionConfigScreen(
                             BlockingProtectionUnavailableException.Reason.MASTER_CREDENTIAL_REQUIRED
                         return@Button
                     }
-                    if (!deviceOwnerManager.isDeviceOwnerActive()) {
-                        showDeviceOwnerRequired = true
-                        return@Button
-                    }
 
                     isSaving = true
                     scope.launch {
                         var createdSessionId: Int? = null
+                        val useReinforcedProtection = deviceOwnerManager.isDeviceOwnerActive()
+                        var reinforcedProtectionPrepared = false
                         try {
                             val resolved = duration ?: return@launch
-                            check(timedProtection.prepareForTimeCreation()) {
-                                "Android não confirmou a proteção de desinstalação"
+                            if (useReinforcedProtection) {
+                                check(timedProtection.prepareForTimeCreation()) {
+                                    "Android não confirmou a proteção de desinstalação"
+                                }
+                                reinforcedProtectionPrepared = true
                             }
+
                             val sessionId = sessionManager.startTimeSession(
                                 days = 0,
                                 hours = when (resolved) {
@@ -405,9 +398,14 @@ fun TimeBlockSessionConfigScreen(
                                 sites = sites
                             )
                             createdSessionId = sessionId
-                            check(timedProtection.commitProtectedTimeSession(sessionId)) {
-                                "Não foi possível vincular a proteção à sessão por tempo"
+
+                            if (useReinforcedProtection) {
+                                check(timedProtection.commitProtectedTimeSession(sessionId)) {
+                                    "Não foi possível vincular a proteção à sessão por tempo"
+                                }
+                                reinforcedProtectionPrepared = false
                             }
+
                             Toast.makeText(
                                 context,
                                 context.getString(R.string.bloqueio_por_tempo_ativado),
@@ -416,10 +414,10 @@ fun TimeBlockSessionConfigScreen(
                             onFinish()
                         } catch (cancelled: CancellationException) {
                             val createdId = createdSessionId
-                            if (createdId != null) {
+                            if (useReinforcedProtection && createdId != null) {
                                 timedProtection.rollbackProtectedTimeSession(createdId)
                                 sessionManager.checkAndEnforce()
-                            } else {
+                            } else if (reinforcedProtectionPrepared) {
                                 timedProtection.cancelPendingCreation()
                             }
                             throw cancelled
@@ -427,24 +425,28 @@ fun TimeBlockSessionConfigScreen(
                             error: BlockingProtectionUnavailableException
                         ) {
                             val createdId = createdSessionId
-                            if (createdId != null) {
+                            if (useReinforcedProtection && createdId != null) {
                                 timedProtection.rollbackProtectedTimeSession(createdId)
                                 sessionManager.checkAndEnforce()
-                            } else {
+                            } else if (reinforcedProtectionPrepared) {
                                 timedProtection.cancelPendingCreation()
                             }
                             pendingProtectionReason = error.reason
                         } catch (error: Exception) {
                             val createdId = createdSessionId
-                            if (createdId != null) {
+                            if (useReinforcedProtection && createdId != null) {
                                 timedProtection.rollbackProtectedTimeSession(createdId)
                                 sessionManager.checkAndEnforce()
-                            } else {
+                            } else if (reinforcedProtectionPrepared) {
                                 timedProtection.cancelPendingCreation()
                             }
                             FocusGuardLogger.logError(
                                 "TimeBlockConfig",
-                                "Falha ao ativar bloqueio por tempo protegido",
+                                if (useReinforcedProtection) {
+                                    "Falha ao ativar bloqueio por tempo reforçado"
+                                } else {
+                                    "Falha ao ativar bloqueio por tempo simples"
+                                },
                                 error
                             )
                             Toast.makeText(
