@@ -86,7 +86,7 @@ jobs:
           retention-days: 14
 
   release-verification:
-    name: Verify Release APK and AAB
+    name: Verify signed HardBlock APK and AAB
     runs-on: ubuntu-latest
     timeout-minutes: 30
     needs: [static-analysis, unit-tests]
@@ -103,18 +103,48 @@ jobs:
           set -euo pipefail
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
       - run: chmod +x gradlew
-      - name: Compile release outputs without publishing
+
+      - name: Create disposable CI signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          CI_KEYSTORE="$RUNNER_TEMP/focusguard-hardblock-ci.jks"
+          keytool -genkeypair \
+            -keystore "$CI_KEYSTORE" \
+            -storepass focusguard-ci-signing \
+            -keypass focusguard-ci-signing \
+            -alias focusguard-hardblock-ci \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 3650 \
+            -dname "CN=FocusGuard HardBlock CI, OU=CI Validation, O=FocusGuard, L=CI, ST=CI, C=BR" \
+            -noprompt
+          test -s "$CI_KEYSTORE"
+          echo "KEYSTORE_FILE=$CI_KEYSTORE" >> "$GITHUB_ENV"
+          echo "KEYSTORE_PASSWORD=focusguard-ci-signing" >> "$GITHUB_ENV"
+          echo "KEY_ALIAS=focusguard-hardblock-ci" >> "$GITHUB_ENV"
+          echo "KEY_PASSWORD=focusguard-ci-signing" >> "$GITHUB_ENV"
+
+      - name: Compile CI-signed HardBlock release outputs
         shell: bash
         run: |
           set -o pipefail
           ./gradlew assembleRelease bundleRelease --no-daemon --stacktrace 2>&1 | tee release-verification-gradle.log
-      - name: Verify release files exist
+
+      - name: Verify APK and AAB signatures
         shell: bash
         run: |
           set -euo pipefail
-          find app/build/outputs/apk/release -type f -name '*.apk' -size +0c -print -quit | grep -q .
-          find app/build/outputs/bundle/release -type f -name '*.aab' -size +0c -print -quit | grep -q .
-      - name: Collect unsigned PR validation files
+          APK="$(find app/build/outputs/apk/release -type f -name '*.apk' -size +0c -print -quit)"
+          AAB="$(find app/build/outputs/bundle/release -type f -name '*.aab' -size +0c -print -quit)"
+          test -n "$APK" && test -s "$APK"
+          test -n "$AAB" && test -s "$AAB"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          test -x "$APKSIGNER"
+          "$APKSIGNER" verify --verbose --print-certs "$APK" | tee apk-signature.txt
+          jarsigner -verify -certs "$AAB" | tee aab-signature.txt
+
+      - name: Collect signed HardBlock PR files
         if: github.event_name == 'pull_request'
         shell: bash
         run: |
@@ -124,57 +154,78 @@ jobs:
           PR_NUMBER="${{ github.event.pull_request.number }}"
 
           mkdir -p validation-release
-          cp "$APK" "validation-release/FocusGuard-UNSIGNED-PR${PR_NUMBER}.apk"
-          cp "$AAB" "validation-release/FocusGuard-UNSIGNED-PR${PR_NUMBER}.aab"
+          cp "$APK" "validation-release/FocusGuard-HardBlock-CI-SIGNED-PR${PR_NUMBER}.apk"
+          cp "$AAB" "validation-release/FocusGuard-HardBlock-CI-SIGNED-PR${PR_NUMBER}.aab"
+          cp apk-signature.txt validation-release/APK-SIGNATURE.txt
+          cp aab-signature.txt validation-release/AAB-SIGNATURE.txt
           sha256sum \
-            "validation-release/FocusGuard-UNSIGNED-PR${PR_NUMBER}.apk" \
-            "validation-release/FocusGuard-UNSIGNED-PR${PR_NUMBER}.aab" \
+            "validation-release/FocusGuard-HardBlock-CI-SIGNED-PR${PR_NUMBER}.apk" \
+            "validation-release/FocusGuard-HardBlock-CI-SIGNED-PR${PR_NUMBER}.aab" \
             > validation-release/SHA256SUMS.txt
 
           cat > validation-release/README.txt <<EOF
-          FocusGuard pull-request validation artifacts
+          FocusGuard HardBlock pull-request validation artifacts
           PR: #${PR_NUMBER}
           Commit: ${GITHUB_SHA}
 
-          IMPORTANT: These APK/AAB files are CI validation outputs and are NOT the official signed release.
-          Use the signed artifacts produced by the FocusGuard Release workflow on main for distribution or Google Play.
+          The APK and AAB are already cryptographically signed by a disposable CI test certificate.
+          The APK can be installed directly for testing.
+
+          IMPORTANT:
+          - This is NOT the official production signature.
+          - A CI-signed build cannot update an installed production-signed FocusGuard.
+          - Because the CI certificate is disposable, another PR build may require uninstalling this test build first.
+          - Distribution and Google Play must use the production-signed artifacts from FocusGuard Release on main.
           EOF
 
           {
-            echo "### Unsigned release validation artifacts"
-            echo "APK and AAB were compiled successfully for PR #${PR_NUMBER}."
-            echo "They are uploaded below only for validation and are not the official signed release."
+            echo "### CI-signed HardBlock artifacts"
+            echo "HardBlock APK and AAB were compiled and signature-verified for PR #${PR_NUMBER}."
+            echo "The APK is pre-signed and installable for testing; production signing remains isolated to main."
           } >> "$GITHUB_STEP_SUMMARY"
-      - name: Upload unsigned PR Release APK
+
+      - name: Upload CI-signed HardBlock APK
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v7
         with:
-          name: focusguard-pr${{ github.event.pull_request.number }}-release-apk-UNSIGNED
+          name: focusguard-hardblock-pr${{ github.event.pull_request.number }}-apk-CI-SIGNED
           path: |
-            validation-release/FocusGuard-UNSIGNED-PR${{ github.event.pull_request.number }}.apk
+            validation-release/FocusGuard-HardBlock-CI-SIGNED-PR${{ github.event.pull_request.number }}.apk
+            validation-release/APK-SIGNATURE.txt
             validation-release/README.txt
             validation-release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
-      - name: Upload unsigned PR Play AAB
+
+      - name: Upload CI-signed HardBlock Play AAB
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v7
         with:
-          name: focusguard-pr${{ github.event.pull_request.number }}-play-aab-UNSIGNED
+          name: focusguard-hardblock-pr${{ github.event.pull_request.number }}-aab-CI-SIGNED
           path: |
-            validation-release/FocusGuard-UNSIGNED-PR${{ github.event.pull_request.number }}.aab
+            validation-release/FocusGuard-HardBlock-CI-SIGNED-PR${{ github.event.pull_request.number }}.aab
+            validation-release/AAB-SIGNATURE.txt
             validation-release/README.txt
             validation-release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 14
+
       - name: Upload release verification diagnostics
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: release-verification-diagnostics
-          path: release-verification-gradle.log
-          if-no-files-found: error
+          path: |
+            release-verification-gradle.log
+            apk-signature.txt
+            aab-signature.txt
+          if-no-files-found: warn
           retention-days: 14
+
+      - name: Remove disposable CI keystore
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/focusguard-hardblock-ci.jks"
 
   build:
     name: Build Debug APK
