@@ -154,14 +154,23 @@ object SettingsInterceptionPolicy {
         if (strictPomodoroActive) return Decision.POMODORO_LOCK
 
         // ACTION_ADD_DEVICE_ADMIN is authorized only while FocusGuard is not yet
-        // an active administrator. Allow the Device Admin activity during this
-        // short enrollment window so the permission can be granted. The window
-        // becomes invalid automatically as soon as the permission is active.
-        // App details, accessibility and uninstall surfaces remain protected.
+        // an active administrator. Allow only the Device Admin enrollment surface
+        // during this short window. Never let a generic SubSettings shell use that
+        // authorization to bypass app details, uninstall, accessibility or special
+        // access protections. The window becomes invalid automatically as soon as
+        // the permission is active.
         if (deviceAdminActivationAuthorized && signals.classTargetsDeviceAdmin) {
             return Decision.IGNORE
         }
-        if (deviceAdminActivationAuthorized && signals.isGenericSubSettings) {
+        val genericAuthorizedAdminEnrollmentSurface =
+            deviceAdminActivationAuthorized &&
+                signals.isGenericSubSettings &&
+                !signals.classTargetsAppDetails &&
+                !signals.classTargetsUninstall &&
+                !signals.classTargetsAccessibilityServiceToggle &&
+                !signals.classTargetsAccessibilityList &&
+                !signals.classTargetsEssentialSpecialAccess
+        if (genericAuthorizedAdminEnrollmentSurface) {
             val onAuthorizedAdminSurface =
                 (signals.textMentionsDeviceAdmin || rootSignals.mentionsDeviceAdmin()) &&
                     (signals.textMentionsFocusGuard || rootSignals.mentionsFocusGuard())
