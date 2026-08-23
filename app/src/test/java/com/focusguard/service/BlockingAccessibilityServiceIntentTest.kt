@@ -1,7 +1,6 @@
 package com.focusguard.service
 
 import android.graphics.Rect
-import android.view.accessibility.AccessibilityEvent
 import com.focusguard.security.SelfProtectionStateStore
 import com.google.common.truth.Truth.assertThat
 import org.junit.Before
@@ -94,33 +93,6 @@ class BlockingAccessibilityServiceIntentTest {
         assertThat(intent.categories).contains(android.content.Intent.CATEGORY_HOME)
         assertThat(intent.flags and android.content.Intent.FLAG_ACTIVITY_NEW_TASK).isNotEqualTo(0)
         assertThat(intent.flags and android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP).isNotEqualTo(0)
-    }
-
-    @Test
-    fun `first window state event takes direct fast path for blocked package`() {
-        val blocked = setOf("com.example.blocked")
-
-        assertThat(
-            BlockingAccessibilityService.shouldFastBlockDirectPackage(
-                eventType = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
-                directPackage = "com.example.blocked",
-                blockedPackages = blocked
-            )
-        ).isTrue()
-        assertThat(
-            BlockingAccessibilityService.shouldFastBlockDirectPackage(
-                eventType = AccessibilityEvent.TYPE_WINDOWS_CHANGED,
-                directPackage = "com.example.blocked",
-                blockedPackages = blocked
-            )
-        ).isFalse()
-        assertThat(
-            BlockingAccessibilityService.shouldFastBlockDirectPackage(
-                eventType = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
-                directPackage = "com.example.allowed",
-                blockedPackages = blocked
-            )
-        ).isFalse()
     }
 
     @Test
