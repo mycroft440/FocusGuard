@@ -270,7 +270,7 @@ fun FocusGuardNavHost(
                     onTabChange = { selectedTab = it },
                     focusModeActive = focusModeActive,
                     missingProtectionPermissions = missingProtectionPermissions,
-                    showCreatorInstagramCard = showCreatorInstagramCard,
+                    showCreatorInstagramCard = false,
                     showCreatorFeedbackButton =
                         CreatorInstagramPromptPolicy.shouldShowFeedbackButton(
                             homeCardPresented = creatorInstagramPresented,
@@ -365,7 +365,6 @@ fun FocusGuardNavHost(
                     onLimitsClick = { currentRoute = FocusGuardRoute.Limits },
                     onLanguageClick = { currentRoute = FocusGuardRoute.Language },
                     onBlockCustomizationClick = { currentRoute = FocusGuardRoute.BlockCustomization },
-                    showCreatorInstagramEntry = creatorInstagramPresented,
                     onCreatorInstagramClick = { openCreatorInstagram(activity) },
                     onBack = { currentRoute = FocusGuardRoute.Home }
                 )

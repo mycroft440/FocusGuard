@@ -15,6 +15,9 @@
 11. Bloquear a entrada em Apps de administrador do dispositivo durante uma proteção ativa, impedindo chegar à remoção da permissão do FocusGuard.
 12. Bloquear a entrada em Aplicativos/Serviços instalados dentro de Acessibilidade durante uma proteção ativa, impedindo chegar ao interruptor que desativa o serviço do FocusGuard.
 13. Proteger o menu de energia sem exigir Device Owner, bloqueando o gesto prolongado que aciona Modo Seguro e preservando desligar, reiniciar, emergência e informações médicas por cliques simples encaminhados ao System UI.
+14. Bloquear o atalho de Apps do administrador do dispositivo exibido pelo System UI após uma tentativa de desinstalação enquanto houver proteção ativa.
+15. Manter “Siga o criador no Instagram” como o último item acionável do menu de Configurações.
+16. Aplicar o efeito de sumir gradualmente e reaparecer instantaneamente somente ao botão “Sugestões de melhorias ou funções” da tela Proteção.
 
 ## Estado da solicitação atual
 
@@ -39,7 +42,10 @@
 - CUMPRIDO: manter `DISALLOW_SAFE_BOOT` como segunda camada quando Device Owner estiver disponível.
 - CUMPRIDO: ligar o controlador ao `BlockingAccessibilityService` antes das demais decisões do System UI e removê-lo ao desarmar a proteção, desligar a tela, interromper ou destruir o serviço.
 - CUMPRIDO: revisar com o Crítico e corrigir a seleção de janela para priorizar o `windowId` do evento e aceitar apenas janelas do System UI que realmente correspondam ao menu de energia.
-- PRÓXIMO OBJETIVO: conferir o CI disponível e integrar a PR na `main`, mesmo que as validações ainda estejam em andamento, conforme a regra atual do FocusGuard.
+- CUMPRIDO: bloquear no System UI o clique do atalho de administrador do dispositivo exibido após falha de desinstalação.
+- CUMPRIDO: manter “Siga o criador no Instagram” no fim das Configurações e ocultar seu antigo card temporário da tela Proteção.
+- CUMPRIDO: aplicar exclusivamente ao botão de sugestões um ciclo de fade-out seguido de reaparecimento instantâneo.
+- PRÓXIMO OBJETIVO: revisar o diff com o Crítico, validar testes/compilação disponíveis e integrar na `main` mesmo se o CI ainda estiver em andamento.
 
 ## Regras de apresentação
 
