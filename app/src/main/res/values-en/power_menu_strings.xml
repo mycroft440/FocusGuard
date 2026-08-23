@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="protected_power_menu_title">Protected power menu</string>
+    <string name="protected_power_menu_subtitle">Safe Mode long-press is blocked while HardBlock protection is active.</string>
+    <string name="protected_power_menu_power_off">Power off</string>
+    <string name="protected_power_menu_restart">Restart</string>
+    <string name="protected_power_menu_emergency">Emergency call</string>
+    <string name="protected_power_menu_medical_info">Medical information</string>
+    <string name="protected_power_menu_cancel">Cancel</string>
+    <string name="protected_power_menu_action_unavailable">This action is not exposed by your phone\'s power menu.</string>
+    <string name="protected_power_menu_action_sent">Command sent to Android.</string>
+</resources>
