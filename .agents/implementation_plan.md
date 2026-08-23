@@ -9,6 +9,9 @@
 5. Alinhar o aviso de permissões sem sobrepor o cabeçalho da tela.
 6. Exibir permanentemente na tela Proteção um botão discreto de sugestões que leva ao Instagram do criador.
 7. Calcular os horários de maior e menor uso sobre os últimos 30 dias completos.
+8. Fazer o HardBlock retirar imediatamente qualquer app bloqueado do primeiro plano.
+9. Impedir acesso às Informações do app, desinstalação e controles destrutivos do próprio FocusGuard enquanto uma proteção estiver ativa.
+10. Fazer a primeira tentativa de abertura de um app bloqueado ser tão rápida quanto as tentativas seguintes.
 
 ## Estado da solicitação atual
 
@@ -16,7 +19,12 @@
 - CUMPRIDO: identificar que o bloqueio comum apenas abria a tela do HardBlock sobre o app bloqueado.
 - CUMPRIDO: fazer o fluxo de app bloqueado enviar o usuário para a Home antes de abrir a tela de bloqueio, com fallback explícito para o launcher se a ação global falhar.
 - CUMPRIDO: manter o bloqueio de sites fora dessa mudança.
-- PRÓXIMO OBJETIVO: validar testes, lint e compilação e revisar o diff antes de integrar na main.
+- CUMPRIDO: persistir em armazenamento protegido a lista de apps/sites atualmente bloqueados e o estado do Pomodoro rigoroso.
+- CUMPRIDO: restaurar os alvos do HardBlock sincronamente quando o serviço de acessibilidade inicia, sem aguardar o Room.
+- CUMPRIDO: adicionar um caminho rápido para `TYPE_WINDOW_STATE_CHANGED`, bloqueando diretamente o pacote já conhecido antes de leituras mais caras da árvore de acessibilidade.
+- CUMPRIDO: fazer toda tentativa protegida nas Configurações expulsar imediatamente o app Configurações para a Home; o debounce agora limita apenas aviso visual/toast.
+- CUMPRIDO: reconhecer também as telas modernas de Informações do app baseadas em `SpaActivity`/`SpaAppBridgeActivity`, mantendo a exigência de identidade do FocusGuard.
+- PRÓXIMO OBJETIVO: executar testes, lint e compilação de release; revisar o diff com o Crítico e corrigir qualquer regressão antes de integrar na `main`.
 
 ## Regras de apresentação
 
@@ -42,5 +50,8 @@
 - Testar que a apresentação persiste e não pode se repetir.
 - Testar que o botão de sugestões permanece disponível antes, durante e depois do convite inicial.
 - Testar que a média mensal inclui exatamente 30 dias completos.
+- Testar que o snapshot persistido restaura os pacotes bloqueados antes da atualização assíncrona do banco.
+- Testar que apenas `TYPE_WINDOW_STATE_CHANGED` com pacote conhecido usa o fast path do HardBlock.
+- Testar que Informações do app modernas do FocusGuard são reconhecidas sem afetar outros apps.
 - Conferir paridade dos recursos em português e inglês.
 - Executar testes unitários, lint e compilação dos APKs.
