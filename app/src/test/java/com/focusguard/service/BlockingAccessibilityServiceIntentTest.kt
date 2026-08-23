@@ -61,6 +61,31 @@ class BlockingAccessibilityServiceIntentTest {
     }
 
     @Test
+    fun `blocked app notice evicts app while website notice does not`() {
+        assertThat(
+            BlockingAccessibilityService.shouldEvictBlockedAppBeforeNotice(
+                "com.example.blocked"
+            )
+        ).isTrue()
+        assertThat(
+            BlockingAccessibilityService.shouldEvictBlockedAppBeforeNotice(null)
+        ).isFalse()
+        assertThat(
+            BlockingAccessibilityService.shouldEvictBlockedAppBeforeNotice("")
+        ).isFalse()
+    }
+
+    @Test
+    fun `blocked app eviction fallback opens launcher in a new task`() {
+        val intent = BlockingAccessibilityService.createBlockedAppEvictionIntent()
+
+        assertThat(intent.action).isEqualTo(android.content.Intent.ACTION_MAIN)
+        assertThat(intent.categories).contains(android.content.Intent.CATEGORY_HOME)
+        assertThat(intent.flags and android.content.Intent.FLAG_ACTIVITY_NEW_TASK).isNotEqualTo(0)
+        assertThat(intent.flags and android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP).isNotEqualTo(0)
+    }
+
+    @Test
     fun `settings event storm cannot execute the protection animation twice`() {
         assertThat(
             BlockingAccessibilityService.shouldExecuteProtectionAction(

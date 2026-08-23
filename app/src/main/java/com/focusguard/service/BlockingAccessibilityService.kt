@@ -1559,6 +1559,20 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun evictBlockedAppFromForeground() {
+        if (performGlobalAction(GLOBAL_ACTION_HOME)) return
+
+        runCatching {
+            startActivity(createBlockedAppEvictionIntent())
+        }.onFailure { error ->
+            FocusGuardLogger.logError(
+                "A11y",
+                "Falha ao tirar app bloqueado do primeiro plano",
+                error
+            )
+        }
+    }
+
     private fun launchBlockNotice(
         blockedPackage: String?,
         blockedDomain: String?,
@@ -1580,6 +1594,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         ) return true
 
         showInstantBlockCurtain(mode = CurtainMode.BLOCK_NOTICE)
+        if (shouldEvictBlockedAppBeforeNotice(blockedPackage)) {
+            evictBlockedAppFromForeground()
+        }
         return try {
             startActivity(
                 createBlockNoticeIntent(
@@ -1903,6 +1920,15 @@ class BlockingAccessibilityService : AccessibilityService() {
             nowElapsed: Long
         ): Boolean = previousKey != requestedKey ||
             nowElapsed - previousLaunchElapsed >= BLOCK_NOTICE_RELAUNCH_COOLDOWN_MILLIS
+
+        internal fun shouldEvictBlockedAppBeforeNotice(blockedPackage: String?): Boolean =
+            !blockedPackage.isNullOrBlank()
+
+        internal fun createBlockedAppEvictionIntent(): Intent =
+            Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            }
 
         internal fun createRefreshBlockingIntent(
             context: Context,
