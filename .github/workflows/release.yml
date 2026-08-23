@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   release:
-    name: Build and publish signed release
+    name: Build and publish signed HardBlock release
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -99,7 +99,7 @@ jobs:
             --no-daemon \
             --stacktrace
 
-      - name: Collect release files
+      - name: Collect production-signed HardBlock files
         id: collect
         shell: bash
         run: |
@@ -110,8 +110,8 @@ jobs:
           test -n "$AAB" && test -s "$AAB"
 
           mkdir -p release
-          RELEASE_APK="release/FocusGuard-vc${CI_VERSION_CODE}.apk"
-          RELEASE_AAB="release/FocusGuard-vc${CI_VERSION_CODE}.aab"
+          RELEASE_APK="release/FocusGuard-HardBlock-SIGNED-vc${CI_VERSION_CODE}.apk"
+          RELEASE_AAB="release/FocusGuard-HardBlock-SIGNED-vc${CI_VERSION_CODE}.aab"
           cp "$APK" "$RELEASE_APK"
           cp "$AAB" "$RELEASE_AAB"
           sha256sum "$RELEASE_APK" "$RELEASE_AAB" > release/SHA256SUMS.txt
@@ -126,30 +126,33 @@ jobs:
           set -euo pipefail
           APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
           test -x "$APKSIGNER"
-          "$APKSIGNER" verify --verbose --print-certs "${{ steps.collect.outputs.apk }}"
-          jarsigner -verify "${{ steps.collect.outputs.aab }}"
+          "$APKSIGNER" verify --verbose --print-certs "${{ steps.collect.outputs.apk }}" | tee release/APK-SIGNATURE.txt
+          jarsigner -verify -certs "${{ steps.collect.outputs.aab }}" | tee release/AAB-SIGNATURE.txt
+          {
+            echo "### Production-signed HardBlock release"
+            echo "APK and AAB signatures were verified successfully."
+            echo "Android versionCode: ${CI_VERSION_CODE}"
+          } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload signed APK artifact
+      - name: Upload production-signed HardBlock APK
         uses: actions/upload-artifact@v7
         with:
-          name: focusguard-release-apk-vc${{ steps.version.outputs.version_code }}
-          path: ${{ steps.collect.outputs.apk }}
+          name: focusguard-hardblock-apk-SIGNED-vc${{ steps.version.outputs.version_code }}
+          path: |
+            ${{ steps.collect.outputs.apk }}
+            release/APK-SIGNATURE.txt
+            release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 90
 
-      - name: Upload Play AAB artifact
+      - name: Upload production-signed HardBlock Play AAB
         uses: actions/upload-artifact@v7
         with:
-          name: focusguard-play-aab-vc${{ steps.version.outputs.version_code }}
-          path: ${{ steps.collect.outputs.aab }}
-          if-no-files-found: error
-          retention-days: 90
-
-      - name: Upload checksums
-        uses: actions/upload-artifact@v7
-        with:
-          name: focusguard-release-checksums-vc${{ steps.version.outputs.version_code }}
-          path: release/SHA256SUMS.txt
+          name: focusguard-hardblock-aab-SIGNED-vc${{ steps.version.outputs.version_code }}
+          path: |
+            ${{ steps.collect.outputs.aab }}
+            release/AAB-SIGNATURE.txt
+            release/SHA256SUMS.txt
           if-no-files-found: error
           retention-days: 90
 
@@ -160,20 +163,24 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ steps.collect.outputs.tag }}"
-          TITLE="FocusGuard automated release vc${CI_VERSION_CODE}"
-          NOTES="Automated signed FocusGuard release from commit ${GITHUB_SHA}. Android versionCode ${CI_VERSION_CODE}. Includes an installable APK, a Google Play AAB, and SHA-256 checksums."
+          TITLE="FocusGuard HardBlock signed release vc${CI_VERSION_CODE}"
+          NOTES="Automated production-signed FocusGuard HardBlock release from commit ${GITHUB_SHA}. Android versionCode ${CI_VERSION_CODE}. APK and AAB signatures were verified before publication; SHA-256 checksums and certificate reports are included."
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" \
               "${{ steps.collect.outputs.apk }}" \
               "${{ steps.collect.outputs.aab }}" \
               release/SHA256SUMS.txt \
+              release/APK-SIGNATURE.txt \
+              release/AAB-SIGNATURE.txt \
               --clobber
           else
             gh release create "$TAG" \
               "${{ steps.collect.outputs.apk }}" \
               "${{ steps.collect.outputs.aab }}" \
               release/SHA256SUMS.txt \
+              release/APK-SIGNATURE.txt \
+              release/AAB-SIGNATURE.txt \
               --target "$GITHUB_SHA" \
               --title "$TITLE" \
               --notes "$NOTES"
