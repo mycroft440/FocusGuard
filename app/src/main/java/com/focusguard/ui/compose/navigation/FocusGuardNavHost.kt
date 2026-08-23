@@ -181,23 +181,30 @@ fun FocusGuardNavHost(
             selectedTab == 1 &&
             currentPomodoro?.isActive != true
 
-        if (!protectionHomeVisible || creatorInstagramPresented) {
+        if (!protectionHomeVisible) {
             showCreatorInstagramCard = false
             return@LaunchedEffect
         }
 
-        val remainingDelay = creatorInstagramPromptStore.remainingDelayMillis()
-        if (remainingDelay > 0L) delay(remainingDelay)
+        if (!creatorInstagramPresented) {
+            val remainingDelay = creatorInstagramPromptStore.remainingDelayMillis()
+            if (remainingDelay > 0L) delay(remainingDelay)
 
-        if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-            return@LaunchedEffect
+            if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                return@LaunchedEffect
+            }
+
+            creatorInstagramPromptStore.markHomeCardPresented()
+            creatorInstagramPresented = true
         }
 
-        creatorInstagramPromptStore.markHomeCardPresented()
-        creatorInstagramPresented = true
         showCreatorInstagramCard = true
-        delay(CreatorInstagramPromptPolicy.HOME_CARD_VISIBLE_MILLIS)
-        showCreatorInstagramCard = false
+        while (true) {
+            delay(CreatorInstagramPromptPolicy.ATTENTION_VISIBLE_MILLIS)
+            showCreatorInstagramCard = false
+            delay(CreatorInstagramPromptPolicy.ATTENTION_FADE_OUT_MILLIS)
+            showCreatorInstagramCard = true
+        }
     }
 
     suspend fun refreshProtectionPermissions(): List<ProtectionPermission> {
