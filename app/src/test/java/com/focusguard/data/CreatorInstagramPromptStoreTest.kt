@@ -59,26 +59,19 @@ class CreatorInstagramPromptStoreTest {
     }
 
     @Test
-    fun `feedback button appears only after one-time card has finished`() {
-        assertThat(
-            CreatorInstagramPromptPolicy.shouldShowFeedbackButton(
-                homeCardPresented = false,
-                homeCardVisible = false
-            )
-        ).isFalse()
-
-        assertThat(
-            CreatorInstagramPromptPolicy.shouldShowFeedbackButton(
-                homeCardPresented = true,
-                homeCardVisible = true
-            )
-        ).isFalse()
-
-        assertThat(
-            CreatorInstagramPromptPolicy.shouldShowFeedbackButton(
-                homeCardPresented = true,
-                homeCardVisible = false
-            )
-        ).isTrue()
+    fun `feedback button is permanently available on protection home`() {
+        listOf(
+            false to false,
+            false to true,
+            true to false,
+            true to true
+        ).forEach { (homeCardPresented, homeCardVisible) ->
+            assertThat(
+                CreatorInstagramPromptPolicy.shouldShowFeedbackButton(
+                    homeCardPresented = homeCardPresented,
+                    homeCardVisible = homeCardVisible
+                )
+            ).isTrue()
+        }
     }
 }
