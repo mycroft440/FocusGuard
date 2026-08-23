@@ -27,6 +27,16 @@ class ManagedSelfProtectionPolicyTest {
             )
         ).isTrue()
         assertThat(
+            ManagedSelfProtectionPolicy.classTargetsAppDetails(
+                "com.android.settings.spa.SpaActivity"
+            )
+        ).isTrue()
+        assertThat(
+            ManagedSelfProtectionPolicy.classTargetsAppDetails(
+                "com.android.settings.spa.SpaAppBridgeActivity"
+            )
+        ).isTrue()
+        assertThat(
             ManagedSelfProtectionPolicy.classTargetsUninstall(
                 "com.android.packageinstaller.UninstallerActivity"
             )
@@ -99,6 +109,7 @@ class ManagedSelfProtectionPolicyTest {
             )
         ).isFalse()
     }
+
     @Test
     fun `abbreviated device admin labels are recognised`() {
         // A One UI corta o rótulo para caber na barra de título, e nenhum termo
@@ -131,5 +142,4 @@ class ManagedSelfProtectionPolicyTest {
             ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(listOf("Meu aparelho"))
         ).isFalse()
     }
-
 }
