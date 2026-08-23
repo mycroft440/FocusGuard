@@ -30,8 +30,17 @@ object SelfProtectionStateStore {
 
     fun read(context: Context): Snapshot {
         val preferences = preferences(context)
+        val armed = preferences.getBoolean(KEY_ARMED, false)
+        if (!armed) {
+            return Snapshot(
+                armed = false,
+                blockedApps = emptySet(),
+                blockedSites = emptySet(),
+                strictPomodoro = false
+            )
+        }
         return Snapshot(
-            armed = preferences.getBoolean(KEY_ARMED, false),
+            armed = true,
             blockedApps = preferences.getStringSet(KEY_BLOCKED_APPS, emptySet())
                 .orEmpty()
                 .filter(String::isNotBlank)
@@ -51,18 +60,24 @@ object SelfProtectionStateStore {
         blockedApps: Collection<String>,
         blockedSites: Collection<String>,
         strictPomodoro: Boolean
-    ): Boolean = preferences(context).edit()
-        .putBoolean(KEY_ARMED, armed)
-        .putStringSet(
-            KEY_BLOCKED_APPS,
+    ): Boolean {
+        val effectiveApps = if (armed) {
             blockedApps.filter(String::isNotBlank).toSet()
-        )
-        .putStringSet(
-            KEY_BLOCKED_SITES,
+        } else {
+            emptySet()
+        }
+        val effectiveSites = if (armed) {
             blockedSites.filter(String::isNotBlank).toSet()
-        )
-        .putBoolean(KEY_STRICT_POMODORO, strictPomodoro)
-        .commit()
+        } else {
+            emptySet()
+        }
+        return preferences(context).edit()
+            .putBoolean(KEY_ARMED, armed)
+            .putStringSet(KEY_BLOCKED_APPS, effectiveApps)
+            .putStringSet(KEY_BLOCKED_SITES, effectiveSites)
+            .putBoolean(KEY_STRICT_POMODORO, armed && strictPomodoro)
+            .commit()
+    }
 
     /**
      * Compatibility helper for callers that only change the armed state.
