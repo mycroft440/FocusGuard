@@ -32,6 +32,45 @@ class SelfProtectionStateStoreTest {
     }
 
     @Test
+    fun `target snapshot survives service recreation without waiting for room`() {
+        assertThat(
+            SelfProtectionStateStore.setSnapshot(
+                context = context,
+                armed = true,
+                blockedApps = setOf("com.example.one", "com.example.two"),
+                blockedSites = setOf("example.com"),
+                strictPomodoro = true
+            )
+        ).isTrue()
+
+        val snapshot = SelfProtectionStateStore.read(context)
+        assertThat(snapshot.armed).isTrue()
+        assertThat(snapshot.blockedApps)
+            .containsExactly("com.example.one", "com.example.two")
+        assertThat(snapshot.blockedSites).containsExactly("example.com")
+        assertThat(snapshot.strictPomodoro).isTrue()
+    }
+
+    @Test
+    fun `disarming removes stale targets from the synchronous snapshot`() {
+        SelfProtectionStateStore.setSnapshot(
+            context = context,
+            armed = true,
+            blockedApps = setOf("com.example.blocked"),
+            blockedSites = setOf("blocked.example"),
+            strictPomodoro = true
+        )
+
+        assertThat(SelfProtectionStateStore.setArmed(context, false)).isTrue()
+
+        val snapshot = SelfProtectionStateStore.read(context)
+        assertThat(snapshot.armed).isFalse()
+        assertThat(snapshot.blockedApps).isEmpty()
+        assertThat(snapshot.blockedSites).isEmpty()
+        assertThat(snapshot.strictPomodoro).isFalse()
+    }
+
+    @Test
     fun `snapshot is available from device protected storage before unlock`() {
         assertThat(SelfProtectionStateStore.usesDeviceProtectedStorage(context)).isTrue()
     }
