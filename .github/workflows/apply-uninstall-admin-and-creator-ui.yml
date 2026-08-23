@@ -1,6 +1,9 @@
-name: Apply uninstall admin and creator UI fixes
+name: Apply remaining creator UI fixes
 
 on:
+  push:
+    branches:
+      - fix/uninstall-admin-shortcut-and-creator-ui
   pull_request:
     types: [opened, synchronize]
     branches: [main]
@@ -10,7 +13,7 @@ permissions:
 
 jobs:
   apply:
-    if: github.head_ref == 'fix/uninstall-admin-shortcut-and-creator-ui' && github.actor != 'github-actions[bot]'
+    if: github.actor != 'github-actions[bot]' && (github.ref == 'refs/heads/fix/uninstall-admin-shortcut-and-creator-ui' || github.head_ref == 'fix/uninstall-admin-shortcut-and-creator-ui')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,7 +21,7 @@ jobs:
           ref: fix/uninstall-admin-shortcut-and-creator-ui
           fetch-depth: 0
 
-      - name: Apply requested fixes
+      - name: Apply remaining requested UI changes
         shell: bash
         run: |
           python3 <<'PY'
@@ -28,181 +31,57 @@ jobs:
               p = Path(path)
               text = p.read_text(encoding='utf-8')
               if old not in text:
-                  raise SystemExit(f'Expected block not found in {path}: {old[:120]!r}')
-              text = text.replace(old, new, 1)
-              p.write_text(text, encoding='utf-8')
+                  raise SystemExit(f'Expected block not found in {path}: {old[:160]!r}')
+              p.write_text(text.replace(old, new, 1), encoding='utf-8')
 
-          # 1) Block the Device Admin deep-link exposed by System UI after failed uninstall.
-          path = 'app/src/main/java/com/focusguard/security/SettingsInterceptionPolicy.kt'
-          old = '''        if (signals.packageName in systemUiPackages) {
-            return if (signals.isViewClickedEvent &&
-                signals.textMentionsFocusGuard &&
-                signals.textMentionsAccessibilityDisclosure
-            ) {
-                Decision.PROTECT_AND_ARM_GUARD
-            } else {
-                Decision.IGNORE
-            }
-        }
-'''
-          new = '''        if (signals.packageName in systemUiPackages) {
-            if (!signals.isViewClickedEvent) return Decision.IGNORE
-
-            // Package Installer can surface a failed-uninstall notification in
-            // System UI with a direct “Manage device admin apps” action. That
-            // button bypasses the Settings row we normally intercept, so block
-            // the gateway click itself while protection is engaged. This is
-            // intentionally broader than FocusGuard identity: Device Admin is a
-            // protected gateway for the duration of an active block regardless
-            // of which system surface deep-links into it.
-            if (signals.textMentionsDeviceAdmin) {
-                return Decision.PROTECT_AND_ARM_GUARD
-            }
-
-            return if (signals.textMentionsFocusGuard &&
-                signals.textMentionsAccessibilityDisclosure
-            ) {
-                Decision.PROTECT_AND_ARM_GUARD
-            } else {
-                Decision.IGNORE
-            }
-        }
-'''
-          replace_once(path, old, new)
-
-          # 2) Regression tests for System UI Device Admin shortcut.
-          path = 'app/src/test/java/com/focusguard/security/SettingsInterceptionPolicyTest.kt'
-          anchor = '''    @Test
-    fun `System UI requires a click plus FocusGuard plus disclosure`() {
-'''
-          tests = '''    @Test
-    fun `System UI device admin deep link is blocked during active protection`() {
-        assertThat(
-            decide(
-                signals(
-                    packageName = SYSTEM_UI,
-                    isViewClickedEvent = true,
-                    textMentionsDeviceAdmin = true
-                )
-            )
-        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
-    }
-
-    @Test
-    fun `System UI device admin text without a click is ignored`() {
-        assertThat(
-            decide(
-                signals(
-                    packageName = SYSTEM_UI,
-                    textMentionsDeviceAdmin = true
-                )
-            )
-        ).isEqualTo(Decision.IGNORE)
-    }
-
-'''
-          replace_once(path, anchor, tests + anchor)
-
-          # 3) Move “Follow the creator on Instagram” to the final actionable item in Settings.
-          path = 'app/src/main/java/com/focusguard/ui/compose/screens/SettingsScreen.kt'
+          nav = 'app/src/main/java/com/focusguard/ui/compose/navigation/FocusGuardNavHost.kt'
           replace_once(
-              path,
-              '''    onBlockCustomizationClick: () -> Unit,\n    showCreatorInstagramEntry: Boolean,\n    onCreatorInstagramClick: () -> Unit,\n''',
-              '''    onBlockCustomizationClick: () -> Unit,\n    onCreatorInstagramClick: () -> Unit,\n'''
+              nav,
+              '                    showCreatorInstagramCard = showCreatorInstagramCard,\n',
+              '                    showCreatorInstagramCard = false,\n'
           )
           replace_once(
-              path,
-              '''            if (showCreatorInstagramEntry) {\n                SettingsItem(\n                    Icons.Default.CameraAlt,\n                    stringResource(R.string.creator_instagram_title),\n                    stringResource(R.string.settings_creator_instagram_subtitle),\n                    iconTint = Color(0xFFE1306C),\n                    onClick = onCreatorInstagramClick\n                )\n            }\n\n''',
-              ''''''
-          )
-          replace_once(
-              path,
-              '''            SettingsItem(\n                Icons.Default.DeleteForever,\n                stringResource(R.string.uninstall_app_title),\n                uninstallSubtitle,\n                iconTint = DangerRed,\n                titleColor = DangerRed,\n                onClick = { showUninstallDialog = true }\n            )\n\n            Spacer(Modifier.height(32.dp))\n''',
-              '''            SettingsItem(\n                Icons.Default.DeleteForever,\n                stringResource(R.string.uninstall_app_title),\n                uninstallSubtitle,\n                iconTint = DangerRed,\n                titleColor = DangerRed,\n                onClick = { showUninstallDialog = true }\n            )\n\n            Spacer(Modifier.height(24.dp))\n            SettingsItem(\n                Icons.Default.CameraAlt,\n                stringResource(R.string.creator_instagram_title),\n                stringResource(R.string.settings_creator_instagram_subtitle),\n                iconTint = Color(0xFFE1306C),\n                onClick = onCreatorInstagramClick\n            )\n\n            Spacer(Modifier.height(32.dp))\n'''
+              nav,
+              '                    showCreatorInstagramEntry = creatorInstagramPresented,\n',
+              ''
           )
 
-          # 4) Remove the temporary Instagram home card machinery from navigation.
-          path = 'app/src/main/java/com/focusguard/ui/compose/navigation/FocusGuardNavHost.kt'
-          for old in [
-              'import com.focusguard.data.CreatorInstagramPromptPolicy\n',
-              'import com.focusguard.data.CreatorInstagramPromptStore\n',
-              'import androidx.lifecycle.Lifecycle\n',
-              'import kotlinx.coroutines.delay\n',
-          ]:
-              replace_once(path, old, '')
+          main = 'app/src/main/java/com/focusguard/ui/compose/screens/MainScreen.kt'
           replace_once(
-              path,
-              '''    val creatorInstagramPromptStore = remember(activity.applicationContext) {\n        CreatorInstagramPromptStore(activity.applicationContext)\n    }\n    var userProfile by remember { mutableStateOf(userProfileStore.load()) }\n    var creatorInstagramPresented by remember {\n        mutableStateOf(creatorInstagramPromptStore.wasHomeCardPresented())\n    }\n    var showCreatorInstagramCard by remember { mutableStateOf(false) }\n''',
-              '''    var userProfile by remember { mutableStateOf(userProfileStore.load()) }\n'''
-          )
-          replace_once(
-              path,
-              '''    LaunchedEffect(\n        resumeKey,\n        currentRoute,\n        selectedTab,\n        currentPomodoro?.isActive\n    ) {\n        val protectionHomeVisible = currentRoute == FocusGuardRoute.Home &&\n            selectedTab == 1 &&\n            currentPomodoro?.isActive != true\n\n        if (!protectionHomeVisible || creatorInstagramPresented) {\n            showCreatorInstagramCard = false\n            return@LaunchedEffect\n        }\n\n        val remainingDelay = creatorInstagramPromptStore.remainingDelayMillis()\n        if (remainingDelay > 0L) delay(remainingDelay)\n\n        if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {\n            return@LaunchedEffect\n        }\n\n        creatorInstagramPromptStore.markHomeCardPresented()\n        creatorInstagramPresented = true\n        showCreatorInstagramCard = true\n        delay(CreatorInstagramPromptPolicy.HOME_CARD_VISIBLE_MILLIS)\n        showCreatorInstagramCard = false\n    }\n\n''',
-              ''''''
-          )
-          replace_once(
-              path,
-              '''                    showCreatorInstagramCard = showCreatorInstagramCard,\n                    showCreatorFeedbackButton =\n                        CreatorInstagramPromptPolicy.shouldShowFeedbackButton(\n                            homeCardPresented = creatorInstagramPresented,\n                            homeCardVisible = showCreatorInstagramCard\n                        ),\n''',
-              ''''''
-          )
-          replace_once(
-              path,
-              '''                    showCreatorInstagramEntry = creatorInstagramPresented,\n                    onCreatorInstagramClick = { openCreatorInstagram(activity) },\n''',
-              '''                    onCreatorInstagramClick = { openCreatorInstagram(activity) },\n'''
-          )
-          replace_once(
-              path,
-              '''                    onCreatorInstagramClick = {\n                        showCreatorInstagramCard = false\n                        openCreatorInstagram(activity)\n                    },\n''',
-              '''                    onCreatorInstagramClick = { openCreatorInstagram(activity) },\n'''
-          )
-
-          # 5) Keep only the suggestions button on Protection and give it the
-          # requested fade-out -> instant reappearance attention cycle.
-          path = 'app/src/main/java/com/focusguard/ui/compose/screens/MainScreen.kt'
-          replace_once(
-              path,
-              '''    missingProtectionPermissions: List<ProtectionPermission>,\n    showCreatorInstagramCard: Boolean,\n    showCreatorFeedbackButton: Boolean,\n    onPermissionsClick: () -> Unit,\n''',
-              '''    missingProtectionPermissions: List<ProtectionPermission>,\n    onPermissionsClick: () -> Unit,\n'''
-          )
-          replace_once(
-              path,
-              '''                            missingProtectionPermissions = missingProtectionPermissions,\n                            showCreatorInstagramCard = showCreatorInstagramCard,\n                            showCreatorFeedbackButton = showCreatorFeedbackButton,\n                            onPermissionsClick = onPermissionsClick,\n''',
-              '''                            missingProtectionPermissions = missingProtectionPermissions,\n                            onPermissionsClick = onPermissionsClick,\n'''
-          )
-          replace_once(
-              path,
-              '''    missingProtectionPermissions: List<ProtectionPermission>,\n    showCreatorInstagramCard: Boolean,\n    showCreatorFeedbackButton: Boolean,\n    onPermissionsClick: () -> Unit,\n''',
-              '''    missingProtectionPermissions: List<ProtectionPermission>,\n    onPermissionsClick: () -> Unit,\n'''
-          )
-          replace_once(
-              path,
-              '''                    AnimatedVisibility(\n                        visible = showCreatorInstagramCard,\n                        modifier = Modifier.fillMaxWidth(),\n                        enter = fadeIn() + expandVertically(),\n                        exit = fadeOut() + shrinkVertically()\n                    ) {\n                        CreatorInstagramCard(\n                            onClick = onCreatorInstagramClick,\n                            compact = true\n                        )\n                    }\n                    AnimatedVisibility(\n                        visible = showCreatorFeedbackButton,\n                        modifier = Modifier.fillMaxWidth(),\n                        enter = fadeIn() + expandVertically(),\n                        exit = fadeOut() + shrinkVertically()\n                    ) {\n                        CreatorFeedbackButton(\n                            onClick = onCreatorInstagramClick,\n                            compact = true\n                        )\n                    }\n''',
-              '''                    CreatorFeedbackButton(\n                        onClick = onCreatorInstagramClick,\n                        compact = true\n                    )\n'''
-          )
-          replace_once(
-              path,
+              main,
               '''private fun CreatorFeedbackButton(\n    onClick: () -> Unit,\n    compact: Boolean = false\n) {\n    Card(\n        onClick = onClick,\n        modifier = Modifier.fillMaxWidth(),\n''',
               '''private fun CreatorFeedbackButton(\n    onClick: () -> Unit,\n    compact: Boolean = false\n) {\n    val attentionTransition = rememberInfiniteTransition(label = "FeedbackAttention")\n    val attentionAlpha by attentionTransition.animateFloat(\n        initialValue = 1f,\n        targetValue = 0f,\n        animationSpec = infiniteRepeatable(\n            animation = keyframes {\n                durationMillis = 7_000\n                1f at 0\n                1f at 5_500\n                0f at 7_000 using LinearEasing\n            },\n            repeatMode = RepeatMode.Restart\n        ),\n        label = "FeedbackAttentionAlpha"\n    )\n\n    Card(\n        onClick = onClick,\n        modifier = Modifier\n            .fillMaxWidth()\n            .graphicsLayer { alpha = attentionAlpha },\n'''
           )
 
-          # 6) Record the updated objectives.
-          path = '.agents/implementation_plan.md'
-          replace_once(
-              path,
-              '''13. Proteger o menu de energia sem exigir Device Owner, bloqueando o gesto prolongado que aciona Modo Seguro e preservando desligar, reiniciar, emergência e informações médicas por cliques simples encaminhados ao System UI.\n''',
-              '''13. Proteger o menu de energia sem exigir Device Owner, bloqueando o gesto prolongado que aciona Modo Seguro e preservando desligar, reiniciar, emergência e informações médicas por cliques simples encaminhados ao System UI.\n14. Bloquear o atalho de Apps do administrador do dispositivo exibido pelo System UI após uma tentativa de desinstalação enquanto houver proteção ativa.\n15. Manter “Siga o criador no Instagram” somente como o último item acionável do menu de Configurações.\n16. Aplicar o efeito de sumir gradualmente e reaparecer instantaneamente somente ao botão “Sugestões de melhorias ou funções” da tela Proteção.\n'''
-          )
-          replace_once(
-              path,
-              '''- PRÓXIMO OBJETIVO: conferir o CI disponível e integrar a PR na `main`, mesmo que as validações ainda estejam em andamento, conforme a regra atual do FocusGuard.\n''',
-              '''- CUMPRIDO: bloquear no System UI o clique do atalho de administrador do dispositivo que pode aparecer após falha de desinstalação, fechando a superfície pela mesma ação de autoproteção.\n- CUMPRIDO: remover o card temporário “Siga o criador no Instagram” da tela Proteção e deixá-lo como o último item acionável das Configurações.\n- CUMPRIDO: manter o botão de sugestões na tela Proteção e aplicar nele, exclusivamente, um ciclo de fade-out seguido de reaparecimento instantâneo.\n- PRÓXIMO OBJETIVO: revisar o diff com o Crítico, validar testes/compilação disponíveis e integrar na `main` mesmo se o CI ainda estiver em andamento.\n'''
-          )
+          plan = '.agents/implementation_plan.md'
+          p = Path(plan)
+          text = p.read_text(encoding='utf-8')
+          if '14. Bloquear o atalho de Apps do administrador do dispositivo' not in text:
+              text = text.replace(
+                  '13. Proteger o menu de energia sem exigir Device Owner, bloqueando o gesto prolongado que aciona Modo Seguro e preservando desligar, reiniciar, emergência e informações médicas por cliques simples encaminhados ao System UI.\n',
+                  '13. Proteger o menu de energia sem exigir Device Owner, bloqueando o gesto prolongado que aciona Modo Seguro e preservando desligar, reiniciar, emergência e informações médicas por cliques simples encaminhados ao System UI.\n'
+                  '14. Bloquear o atalho de Apps do administrador do dispositivo exibido pelo System UI após uma tentativa de desinstalação enquanto houver proteção ativa.\n'
+                  '15. Manter “Siga o criador no Instagram” como o último item acionável do menu de Configurações.\n'
+                  '16. Aplicar o efeito de sumir gradualmente e reaparecer instantaneamente somente ao botão “Sugestões de melhorias ou funções” da tela Proteção.\n',
+                  1
+              )
+          old_next = '- PRÓXIMO OBJETIVO: conferir o CI disponível e integrar a PR na `main`, mesmo que as validações ainda estejam em andamento, conforme a regra atual do FocusGuard.\n'
+          if old_next in text:
+              text = text.replace(
+                  old_next,
+                  '- CUMPRIDO: bloquear no System UI o clique do atalho de administrador do dispositivo exibido após falha de desinstalação.\n'
+                  '- CUMPRIDO: manter “Siga o criador no Instagram” no fim das Configurações e ocultar seu antigo card temporário da tela Proteção.\n'
+                  '- CUMPRIDO: aplicar exclusivamente ao botão de sugestões um ciclo de fade-out seguido de reaparecimento instantâneo.\n'
+                  '- PRÓXIMO OBJETIVO: revisar o diff com o Crítico, validar testes/compilação disponíveis e integrar na `main` mesmo se o CI ainda estiver em andamento.\n',
+                  1
+              )
+          p.write_text(text, encoding='utf-8')
 
-          # Remove this temporary workflow from the final diff.
+          Path('.agents/trigger-uninstall-admin-creator-ui').unlink(missing_ok=True)
           Path('.github/workflows/apply-uninstall-admin-and-creator-ui.yml').unlink(missing_ok=True)
           PY
 
-      - name: Commit applied fixes
+      - name: Commit remaining fixes
         shell: bash
         run: |
           if git diff --quiet; then
@@ -213,11 +92,9 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -- \
             .agents/implementation_plan.md \
-            app/src/main/java/com/focusguard/security/SettingsInterceptionPolicy.kt \
+            .agents/trigger-uninstall-admin-creator-ui \
+            .github/workflows/apply-uninstall-admin-and-creator-ui.yml \
             app/src/main/java/com/focusguard/ui/compose/navigation/FocusGuardNavHost.kt \
-            app/src/main/java/com/focusguard/ui/compose/screens/MainScreen.kt \
-            app/src/main/java/com/focusguard/ui/compose/screens/SettingsScreen.kt \
-            app/src/test/java/com/focusguard/security/SettingsInterceptionPolicyTest.kt \
-            .github/workflows/apply-uninstall-admin-and-creator-ui.yml
-          git commit -m "Block uninstall admin shortcut and refine creator UI"
+            app/src/main/java/com/focusguard/ui/compose/screens/MainScreen.kt
+          git commit -m "Finish creator UI behavior"
           git push origin HEAD:fix/uninstall-admin-shortcut-and-creator-ui
