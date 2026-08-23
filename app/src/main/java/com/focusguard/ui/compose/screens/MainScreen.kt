@@ -83,7 +83,7 @@ fun MainScreen(
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
                     )
-                } else if (!focusModeActive && selectedTab != 2) {
+                } else if (!focusModeActive && selectedTab != 2 && selectedTab != 3) {
                     Card(
                         onClick = { onTabChange(0) },
                         modifier = Modifier

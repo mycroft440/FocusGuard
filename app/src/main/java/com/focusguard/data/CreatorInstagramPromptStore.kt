@@ -6,12 +6,13 @@ import android.os.Build
 
 object CreatorInstagramPromptPolicy {
     const val MIN_INSTALL_AGE_MILLIS = 60L * 60L * 1_000L
-    const val HOME_CARD_VISIBLE_MILLIS = 15_000L
+    const val ATTENTION_VISIBLE_MILLIS = 12_000L
+    const val ATTENTION_FADE_OUT_MILLIS = 900L
 
     fun shouldShowFeedbackButton(
         homeCardPresented: Boolean,
-        homeCardVisible: Boolean
-    ): Boolean = homeCardPresented && !homeCardVisible
+        @Suppress("UNUSED_PARAMETER") homeCardVisible: Boolean
+    ): Boolean = homeCardPresented
 
     fun remainingDelayMillis(
         firstInstallTimeMillis: Long,

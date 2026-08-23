@@ -128,6 +128,17 @@
         </receiver>
 
         <receiver
+            android:name=".admin.FocusGuardPolicyUpdateReceiver"
+            android:enabled="@bool/enable_policy_update_receiver"
+            android:exported="true"
+            android:permission="android.permission.BIND_DEVICE_ADMIN">
+            <intent-filter>
+                <action android:name="android.app.admin.action.DEVICE_POLICY_SET_RESULT" />
+                <action android:name="android.app.admin.action.DEVICE_POLICY_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
             android:name=".widget.PomodoroWidgetProvider"
             android:exported="false">
             <intent-filter>
@@ -159,6 +170,15 @@
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
                 <action android:name="android.intent.action.TIME_SET" />
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
+            </intent-filter>
+        </receiver>
+
+        <receiver
+            android:name=".receiver.TimedBlockProtectionReceiver"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.focusguard.ACTION_REFRESH_BLOCKING" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
             </intent-filter>
         </receiver>
 

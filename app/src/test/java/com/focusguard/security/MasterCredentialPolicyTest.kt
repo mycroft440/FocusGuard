@@ -22,23 +22,21 @@ class MasterCredentialPolicyTest {
     }
 
     @Test
-    fun `dopamine fast does not demand a master credential`() {
-        // The fast has no credential exit by design — its escape hatch is the
-        // monthly maintenance window, which needs no password. Demanding one
-        // would be asking for a key that opens nothing. Informed consent is what
-        // gates the fast instead.
+    fun `time block requires a master credential before arming`() {
         val gate = MasterCredentialPolicy.evaluateCreation(
             sessionType = "TIME",
             hasMasterCredential = false
         )
 
-        assertThat(gate).isEqualTo(CreationGate.ALLOWED)
+        assertThat(gate).isEqualTo(CreationGate.MASTER_CREDENTIAL_REQUIRED)
     }
 
     @Test
-    fun `dopamine fast is still irreversible without a credential`() {
-        assertThat(MasterCredentialPolicy.requiresMasterCredentialToCreate("TIME")).isFalse()
+    fun `time stays sealed to generic mutation but has explicit master revocation`() {
+        assertThat(MasterCredentialPolicy.requiresMasterCredentialToCreate("TIME")).isTrue()
         assertThat(MasterCredentialPolicy.isIrreversibleSessionType("TIME")).isTrue()
+        assertThat(MasterCredentialPolicy.allowsExplicitMasterRevocation("TIME")).isTrue()
+        assertThat(MasterCredentialPolicy.allowsExplicitMasterRevocation("POMODORO")).isFalse()
     }
 
     @Test
@@ -78,11 +76,10 @@ class MasterCredentialPolicyTest {
     }
 
     @Test
-    fun `only the password block demands a credential up front`() {
-        // Guards against a new session type silently inheriting the requirement.
+    fun `password and explicit time blocks demand a credential up front`() {
         listOf("PASSWORD", "TIME", "POMODORO", "SOMETHING_ELSE")
             .filter(MasterCredentialPolicy::requiresMasterCredentialToCreate)
-            .let { assertThat(it).containsExactly("PASSWORD") }
+            .let { assertThat(it).containsExactly("PASSWORD", "TIME") }
     }
 
     @Test

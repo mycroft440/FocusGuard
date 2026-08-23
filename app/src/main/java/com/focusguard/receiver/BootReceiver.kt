@@ -11,6 +11,7 @@ import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.manager.StrictPomodoroLock
+import com.focusguard.security.TimedBlockProtectionController
 import com.focusguard.service.PomodoroForegroundService
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.AccessibilityStateMonitor
@@ -45,16 +46,18 @@ class BootReceiver : BroadcastReceiver() {
         FocusGuardLogger.log("BootReceiver", "Boot detectado (action=$action, directBoot=$isDirectBoot)")
 
         val deviceOwnerManager = DeviceOwnerManager.getInstance(context)
+        val timedProtection = TimedBlockProtectionController.getInstance(context)
         if (isDirectBoot) {
             // Room, Keystore and normal SharedPreferences are still unavailable here.
-            // Native Device Owner policy restores app-removal protection before unlock.
-            // USB and ADB intentionally remain outside FocusGuard's restriction set.
+            // Restore the existing native shield first, then make uninstall state
+            // authoritative from the explicit protected-TIME Direct-Boot record.
             deviceOwnerManager.applyDirectBootShield()
+            timedProtection.restorePersistedAtDirectBoot()
             deviceOwnerManager.applyFocusModeAtDirectBoot()
             FocusModeKioskController.reconcileSystemRestrictions(context)
             FocusGuardLogger.log(
                 "BootReceiver",
-                "Proteção nativa do Modo Foco restaurada antes do primeiro desbloqueio"
+                "Proteção nativa do Modo Foco e do bloqueio por tempo restaurada antes do primeiro desbloqueio"
             )
             return
         }
@@ -100,6 +103,10 @@ class BootReceiver : BroadcastReceiver() {
                 val focusModeManager = FocusModeManager.getInstance(context)
 
                 sessionManager.checkAndEnforce()
+                // checkAndEnforce may apply the legacy generic self-protection path.
+                // Reconcile immediately so only explicitly protected TIME sessions
+                // keep setUninstallBlocked(true).
+                timedProtection.reconcileFromDatabase()
                 val focusModeActive = focusModeManager.ensureEnforced()
                 FocusModeKioskController.reconcileSystemRestrictions(context)
 

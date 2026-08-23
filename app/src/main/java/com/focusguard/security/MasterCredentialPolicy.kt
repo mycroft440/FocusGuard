@@ -7,18 +7,19 @@ import com.focusguard.database.AppUsageLimit
  * [DeactivationCredentialManager]) is required, and — just as importantly —
  * where it is *not enough*.
  *
- * Two product invariants are load-bearing here and must not be softened:
+ * Product invariants:
  *
- *  1. A Dopamine Fast (`TIME`) and a strict Pomodoro cannot be ended early by
- *     any credential. The app tells the user this in
- *     `R.string.dopamine_warning` and `R.string.create_session_time_warning`.
- *  2. A time-hardened usage limit (`lockMode == "TIME"` with a future
+ *  1. An explicit time block (`TIME`) requires a master credential before it is
+ *     armed. The running block remains sealed against per-target edits,
+ *     biometrics and ordinary mutation paths, but the whole protected TIME
+ *     session may be revoked through the dedicated master-password flow.
+ *  2. A strict Pomodoro cannot be ended early by any credential.
+ *  3. A time-hardened usage limit (`lockMode == "TIME"` with a future
  *     `lockUntilTimestamp`) and Safety Mode cannot be lifted before expiry.
- *     The app promises this in `R.string.limits_security_mode_warning`,
- *     `R.string.limits_add_days_warning` and `R.string.status_safety_mode_warning`.
  *
- * The master credential is therefore a *prerequisite* for arming protection and
- * a *key* for reversible protection — never a master override.
+ * The dedicated TIME revocation path is intentionally separate from app-open
+ * authentication: knowing the master password never turns a blocked app into a
+ * one-tap bypass. It ends the whole commitment after an explicit confirmation.
  */
 object MasterCredentialPolicy {
 
@@ -33,27 +34,13 @@ object MasterCredentialPolicy {
     // ---------------------------------------------------------------- creation
 
     /**
-     * Only a password block requires the master credential up front, because the
-     * credential *is* its exit: arming one without it would create a block with
-     * no way out that the user never agreed to.
-     *
-     * A dopamine fast deliberately does not require it. The fast has no
-     * credential exit by design — its escape hatch is the monthly maintenance
-     * window, which needs no password — so demanding one would be asking for a
-     * key that opens nothing. What the fast requires instead is informed consent:
-     * the user must read how it works and accept the terms before it is armed.
-     *
-     * Pomodoro is excluded for a different reason: it is a short focus timer
-     * started many times a day, not one of the blocks the app presents as
-     * "bloqueio por tempo"/"bloqueio por senha".
-     *
-     * Note that both TIME and POMODORO remain irreversible once running — see
-     * [isIrreversibleSessionType], which answers a different question (can this
-     * be *ended* early?).
+     * PASSWORD and the explicit TIME block both need the master credential up
+     * front because each has a credential-governed exit. Pomodoro remains a
+     * short focus timer and does not require the credential to start.
      */
     fun requiresMasterCredentialToCreate(sessionType: String): Boolean {
         return when (sessionType.uppercase()) {
-            SESSION_TYPE_PASSWORD -> true
+            SESSION_TYPE_PASSWORD, SESSION_TYPE_TIME -> true
             else -> false
         }
     }
@@ -171,16 +158,17 @@ object MasterCredentialPolicy {
         MASTER_CREDENTIAL_REQUIRED,
         MASTER_CREDENTIAL_NOT_CONFIGURED,
 
-        /** An unbreakable block is running: uninstall would be an escape hatch. */
+        /** A sealed block is running: revoke it through its dedicated exit first. */
         BLOCKED_BY_ACTIVE_IRREVERSIBLE_BLOCK
     }
 
     /**
      * Gate for the authenticated uninstall path.
      *
-     * The user is entitled to leave the app — but not to use uninstall as a way
-     * out of a dopamine fast they chose. While an irreversible block runs,
-     * uninstall waits; everything else is unlocked by the master credential.
+     * While a protected TIME session is running, uninstall is not used as a
+     * shortcut around the explicit revocation flow. The user first revokes that
+     * TIME commitment with the master password; once no such block remains, the
+     * normal authenticated uninstall path is available again.
      */
     fun evaluateUninstall(
         hasActiveIrreversibleBlock: Boolean,
@@ -188,8 +176,6 @@ object MasterCredentialPolicy {
         masterCredentialVerified: Boolean,
         maintenanceWindowActive: Boolean = false
     ): UninstallGate {
-        // A janela mensal do dia 15 é a saída de emergência prometida para um
-        // bloqueio por tempo. Ela vem antes da recusa pelo bloqueio ativo.
         if (maintenanceWindowActive) {
             return UninstallGate.ALLOWED
         }
@@ -205,7 +191,11 @@ object MasterCredentialPolicy {
         return UninstallGate.ALLOWED
     }
 
-    /** True for session types that cannot be ended early by any credential. */
+    /**
+     * True for session types that remain sealed against ordinary per-target,
+     * biometric and generic mutation paths. TIME is included because its only
+     * early exit is the dedicated whole-session master-password revocation flow.
+     */
     fun isIrreversibleSessionType(sessionType: String): Boolean {
         return when (sessionType.uppercase()) {
             SESSION_TYPE_TIME, SESSION_TYPE_POMODORO -> true
@@ -213,10 +203,14 @@ object MasterCredentialPolicy {
         }
     }
 
+    /** Only the explicit TIME session has a dedicated whole-block master exit. */
+    fun allowsExplicitMasterRevocation(sessionType: String): Boolean =
+        sessionType.equals(SESSION_TYPE_TIME, ignoreCase = true)
+
     /**
-     * Only the explicit passwordless time block prevents uninstall. A PASSWORD
-     * session is removable with its credential, and Pomodoro is a focus timer,
-     * not the long-term uninstall commitment shown by the Protection screen.
+     * Only the explicit TIME block prevents uninstall while its protected
+     * commitment is active. A PASSWORD session is removable with its credential,
+     * and Pomodoro is a focus timer rather than the long-term uninstall guard.
      */
     fun blocksUninstall(sessionType: String): Boolean =
         sessionType.equals(SESSION_TYPE_TIME, ignoreCase = true)

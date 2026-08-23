@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="time_block_protection_title">Time block</string>
+    <string name="time_block_protection_warning">The block works in simple mode through Accessibility. If the device is configured as Device Owner, FocusGuard also adds reinforced protection against uninstall and app controls. You can revoke the entire block early by entering your master password.</string>
+    <string name="time_block_device_owner_required_title">Device Owner optional</string>
+    <string name="time_block_device_owner_required_desc">Time blocking works without Device Owner through Accessibility. Device Owner is optional and adds reinforced protection against uninstall, Safe Boot and app controls.</string>
+    <string name="time_block_revoke_action">Revoke with master password</string>
+    <string name="time_block_revoke_title">Revoke time block?</string>
+    <string name="time_block_revoke_desc">Enter your master password to end this time block early. If reinforced protection is active, it is also released when no other protected time block remains.</string>
+    <string name="time_block_master_password_label">Master password</string>
+    <string name="time_block_revoke_success">Time block revoked.</string>
+    <string name="time_block_revoke_wrong_password">Incorrect master password.</string>
+    <string name="time_block_revoke_rate_limited">Too many incorrect attempts. Try again in about %1$d seconds.</string>
+    <string name="time_block_revoke_failed">The time block could not be revoked.</string>
+    <string name="time_block_health_title">Protection readiness</string>
+    <string name="time_block_health_device_owner_ready">Device Owner: reinforced protection available</string>
+    <string name="time_block_health_device_owner_missing">Device Owner: optional — simple mode available</string>
+    <string name="time_block_health_master_ready">Master password: configured</string>
+    <string name="time_block_health_master_missing">Master password: required for revocation</string>
+    <string name="time_block_health_system_active">Android reinforced protection: confirmed</string>
+    <string name="time_block_health_system_standby">Android reinforced protection: standby</string>
+</resources>

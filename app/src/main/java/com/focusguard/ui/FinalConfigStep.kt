@@ -3,6 +3,8 @@ package com.focusguard.ui
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -18,11 +20,14 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -104,11 +109,15 @@ fun FinalConfigStep(
     var biometricEnabled by rememberSaveable { mutableStateOf(false) }
     var showPatternDialog by remember { mutableStateOf(false) }
     var configError by remember { mutableStateOf<String?>(null) }
+    var securityOptionsExpanded by rememberSaveable { mutableStateOf(false) }
 
     val masterPasswordLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
         hasPassword = credentialManager.hasCredential()
+        if (hasPassword) {
+            securityOptionsExpanded = true
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -130,6 +139,14 @@ fun FinalConfigStep(
     val passwordValid = PasswordAppUnlockStore.isPasswordValid(unlockPassword) &&
         unlockPassword == unlockPasswordConfirmation
     val patternValid = PasswordAppUnlockStore.isPatternValid(patternCredential)
+    val selectedUnlockLabel = when (unlockMode) {
+        PasswordAppUnlockMode.PASSWORD ->
+            stringResource(R.string.password_app_unlock_mode_password)
+        PasswordAppUnlockMode.PATTERN ->
+            stringResource(R.string.password_app_unlock_mode_pattern)
+        PasswordAppUnlockMode.BIOMETRIC_ONLY ->
+            stringResource(R.string.password_app_unlock_mode_biometric_only)
+    }
 
     Scaffold(
         topBar = {
@@ -205,183 +222,264 @@ fun FinalConfigStep(
             }
 
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .animateContentSize(),
                 colors = CardDefaults.cardColors(containerColor = DarkCard),
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(22.dp)
             ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        stringResource(R.string.password_app_unlock_config_title),
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
-                    )
-
-                    UnlockModeRow(
-                        selected = unlockMode == PasswordAppUnlockMode.PASSWORD,
-                        label = stringResource(R.string.password_app_unlock_mode_password),
-                        onClick = {
-                            unlockModeName = PasswordAppUnlockMode.PASSWORD.name
-                            configError = null
-                        }
-                    )
-                    UnlockModeRow(
-                        selected = unlockMode == PasswordAppUnlockMode.PATTERN,
-                        label = stringResource(R.string.password_app_unlock_mode_pattern),
-                        onClick = {
-                            unlockModeName = PasswordAppUnlockMode.PATTERN.name
-                            configError = null
-                        }
-                    )
-                    UnlockModeRow(
-                        selected = unlockMode == PasswordAppUnlockMode.BIOMETRIC_ONLY,
-                        label = stringResource(R.string.password_app_unlock_mode_biometric_only),
-                        enabled = biometricAvailable,
-                        onClick = {
-                            unlockModeName = PasswordAppUnlockMode.BIOMETRIC_ONLY.name
-                            biometricEnabled = true
-                            configError = null
-                        }
-                    )
-
-                    if (!biometricAvailable) {
-                        Text(
-                            stringResource(R.string.password_app_unlock_biometric_unavailable),
-                            color = TextHint,
-                            fontSize = 12.sp
-                        )
-                    }
-
-                    when (unlockMode) {
-                        PasswordAppUnlockMode.PASSWORD -> {
-                            OutlinedTextField(
-                                value = unlockPassword,
-                                onValueChange = {
-                                    unlockPassword = it
-                                    configError = null
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                label = {
-                                    Text(stringResource(R.string.password_app_unlock_password))
-                                },
-                                singleLine = true,
-                                visualTransformation = PasswordVisualTransformation(),
-                                keyboardOptions = KeyboardOptions(
-                                    keyboardType = KeyboardType.Password
-                                )
-                            )
-                            OutlinedTextField(
-                                value = unlockPasswordConfirmation,
-                                onValueChange = {
-                                    unlockPasswordConfirmation = it
-                                    configError = null
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                label = {
-                                    Text(
-                                        stringResource(
-                                            R.string.password_app_unlock_password_confirm
-                                        )
-                                    )
-                                },
-                                singleLine = true,
-                                visualTransformation = PasswordVisualTransformation(),
-                                keyboardOptions = KeyboardOptions(
-                                    keyboardType = KeyboardType.Password
-                                )
-                            )
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                securityOptionsExpanded = !securityOptionsExpanded
+                            }
+                            .padding(horizontal = 18.dp, vertical = 18.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                stringResource(
-                                    R.string.password_app_unlock_password_requirement,
-                                    PasswordAppUnlockStore.MIN_PASSWORD_LENGTH
-                                ),
-                                color = TextHint,
-                                fontSize = 11.sp
+                                stringResource(R.string.password_app_unlock_config_title),
+                                color = TextPrimary,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 18.sp
                             )
-                        }
-
-                        PasswordAppUnlockMode.PATTERN -> {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    stringResource(R.string.password_app_unlock_hide_pattern),
-                                    modifier = Modifier.weight(1f),
-                                    color = TextPrimary,
-                                    fontSize = 13.sp
-                                )
-                                Switch(
-                                    checked = hidePatternTrace,
-                                    onCheckedChange = { hidePatternTrace = it }
-                                )
-                            }
-                            OutlinedButton(
-                                onClick = { showPatternDialog = true },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    stringResource(
-                                        if (patternValid) {
-                                            R.string.password_app_unlock_change_pattern
-                                        } else {
-                                            R.string.password_app_unlock_create_pattern
-                                        }
-                                    )
-                                )
-                            }
-                            if (patternValid) {
-                                Text(
-                                    stringResource(R.string.password_app_unlock_pattern_ready),
-                                    color = AccentCyan,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-
-                        PasswordAppUnlockMode.BIOMETRIC_ONLY -> {
+                            Spacer(modifier = Modifier.height(5.dp))
                             Text(
-                                stringResource(
-                                    if (biometricAvailable) {
-                                        R.string.password_app_unlock_mode_biometric_only
-                                    } else {
-                                        R.string.password_app_unlock_biometric_required
-                                    }
-                                ),
-                                color = if (biometricAvailable) AccentCyan else DangerRed,
+                                text = if (hasPassword) {
+                                    selectedUnlockLabel
+                                } else {
+                                    stringResource(R.string.final_config_create_password)
+                                },
+                                color = if (hasPassword) AccentCyan else TextHint,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                         }
+                        Icon(
+                            imageVector = if (securityOptionsExpanded) {
+                                Icons.Default.KeyboardArrowUp
+                            } else {
+                                Icons.Default.KeyboardArrowDown
+                            },
+                            contentDescription = null,
+                            tint = TextSecondary
+                        )
                     }
 
-                    if (unlockMode != PasswordAppUnlockMode.BIOMETRIC_ONLY) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically
+                    AnimatedVisibility(visible = securityOptionsExpanded) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(start = 18.dp, end = 18.dp, bottom = 18.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
-                            Text(
-                                stringResource(R.string.password_app_unlock_allow_biometric),
-                                modifier = Modifier.weight(1f),
-                                color = if (biometricAvailable) TextPrimary else TextHint,
-                                fontSize = 13.sp
-                            )
-                            Switch(
-                                checked = biometricEnabled && biometricAvailable,
-                                onCheckedChange = { enabled ->
-                                    biometricEnabled = enabled && biometricAvailable
-                                },
-                                enabled = biometricAvailable
-                            )
-                        }
-                    }
+                            HorizontalDivider(color = TextHint.copy(alpha = 0.32f))
+                            Spacer(modifier = Modifier.height(2.dp))
 
-                    configError?.let { message ->
-                        Text(message, color = DangerRed, fontSize = 12.sp)
+                            if (!hasPassword) {
+                                Text(
+                                    stringResource(R.string.final_config_no_password),
+                                    color = DangerRed,
+                                    fontSize = 13.sp
+                                )
+                            }
+
+                            UnlockModeRow(
+                                selected = hasPassword &&
+                                    unlockMode == PasswordAppUnlockMode.PASSWORD,
+                                label = stringResource(R.string.password_app_unlock_mode_password),
+                                enabled = hasPassword,
+                                onClick = {
+                                    unlockModeName = PasswordAppUnlockMode.PASSWORD.name
+                                    configError = null
+                                }
+                            )
+                            UnlockModeRow(
+                                selected = hasPassword &&
+                                    unlockMode == PasswordAppUnlockMode.PATTERN,
+                                label = stringResource(R.string.password_app_unlock_mode_pattern),
+                                enabled = hasPassword,
+                                onClick = {
+                                    unlockModeName = PasswordAppUnlockMode.PATTERN.name
+                                    configError = null
+                                }
+                            )
+                            UnlockModeRow(
+                                selected = hasPassword &&
+                                    unlockMode == PasswordAppUnlockMode.BIOMETRIC_ONLY,
+                                label = stringResource(
+                                    R.string.password_app_unlock_mode_biometric_only
+                                ),
+                                enabled = hasPassword && biometricAvailable,
+                                onClick = {
+                                    unlockModeName = PasswordAppUnlockMode.BIOMETRIC_ONLY.name
+                                    biometricEnabled = true
+                                    configError = null
+                                }
+                            )
+
+                            if (hasPassword && !biometricAvailable) {
+                                Text(
+                                    stringResource(
+                                        R.string.password_app_unlock_biometric_unavailable
+                                    ),
+                                    color = TextHint,
+                                    fontSize = 12.sp
+                                )
+                            }
+
+                            if (hasPassword) {
+                                when (unlockMode) {
+                                    PasswordAppUnlockMode.PASSWORD -> {
+                                        OutlinedTextField(
+                                            value = unlockPassword,
+                                            onValueChange = {
+                                                unlockPassword = it
+                                                configError = null
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            label = {
+                                                Text(
+                                                    stringResource(
+                                                        R.string.password_app_unlock_password
+                                                    )
+                                                )
+                                            },
+                                            singleLine = true,
+                                            visualTransformation = PasswordVisualTransformation(),
+                                            keyboardOptions = KeyboardOptions(
+                                                keyboardType = KeyboardType.Password
+                                            )
+                                        )
+                                        OutlinedTextField(
+                                            value = unlockPasswordConfirmation,
+                                            onValueChange = {
+                                                unlockPasswordConfirmation = it
+                                                configError = null
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            label = {
+                                                Text(
+                                                    stringResource(
+                                                        R.string.password_app_unlock_password_confirm
+                                                    )
+                                                )
+                                            },
+                                            singleLine = true,
+                                            visualTransformation = PasswordVisualTransformation(),
+                                            keyboardOptions = KeyboardOptions(
+                                                keyboardType = KeyboardType.Password
+                                            )
+                                        )
+                                        Text(
+                                            stringResource(
+                                                R.string.password_app_unlock_password_requirement,
+                                                PasswordAppUnlockStore.MIN_PASSWORD_LENGTH
+                                            ),
+                                            color = TextHint,
+                                            fontSize = 11.sp
+                                        )
+                                    }
+
+                                    PasswordAppUnlockMode.PATTERN -> {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                stringResource(
+                                                    R.string.password_app_unlock_hide_pattern
+                                                ),
+                                                modifier = Modifier.weight(1f),
+                                                color = TextPrimary,
+                                                fontSize = 13.sp
+                                            )
+                                            Switch(
+                                                checked = hidePatternTrace,
+                                                onCheckedChange = { hidePatternTrace = it }
+                                            )
+                                        }
+                                        OutlinedButton(
+                                            onClick = { showPatternDialog = true },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            shape = RoundedCornerShape(16.dp)
+                                        ) {
+                                            Text(
+                                                stringResource(
+                                                    if (patternValid) {
+                                                        R.string.password_app_unlock_change_pattern
+                                                    } else {
+                                                        R.string.password_app_unlock_create_pattern
+                                                    }
+                                                )
+                                            )
+                                        }
+                                        if (patternValid) {
+                                            Text(
+                                                stringResource(
+                                                    R.string.password_app_unlock_pattern_ready
+                                                ),
+                                                color = AccentCyan,
+                                                fontSize = 12.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                    }
+
+                                    PasswordAppUnlockMode.BIOMETRIC_ONLY -> {
+                                        Text(
+                                            stringResource(
+                                                if (biometricAvailable) {
+                                                    R.string.password_app_unlock_mode_biometric_only
+                                                } else {
+                                                    R.string.password_app_unlock_biometric_required
+                                                }
+                                            ),
+                                            color = if (biometricAvailable) {
+                                                AccentCyan
+                                            } else {
+                                                DangerRed
+                                            },
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+
+                                if (unlockMode != PasswordAppUnlockMode.BIOMETRIC_ONLY) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            stringResource(
+                                                R.string.password_app_unlock_allow_biometric
+                                            ),
+                                            modifier = Modifier.weight(1f),
+                                            color = if (biometricAvailable) {
+                                                TextPrimary
+                                            } else {
+                                                TextHint
+                                            },
+                                            fontSize = 13.sp
+                                        )
+                                        Switch(
+                                            checked = biometricEnabled && biometricAvailable,
+                                            onCheckedChange = { enabled ->
+                                                biometricEnabled = enabled && biometricAvailable
+                                            },
+                                            enabled = biometricAvailable
+                                        )
+                                    }
+                                }
+                            }
+
+                            configError?.let { message ->
+                                Text(message, color = DangerRed, fontSize = 12.sp)
+                            }
+                        }
                     }
                 }
             }
@@ -422,6 +520,7 @@ fun FinalConfigStep(
                         }
                         if (validationError != null) {
                             configError = validationError
+                            securityOptionsExpanded = true
                             return@Button
                         }
 

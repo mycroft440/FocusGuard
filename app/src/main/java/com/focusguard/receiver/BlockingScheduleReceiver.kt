@@ -8,6 +8,7 @@ import android.content.Intent
 import android.os.Build
 import com.focusguard.database.BlockSession
 import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.security.TimedBlockProtectionController
 import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,6 +24,10 @@ class BlockingScheduleReceiver : BroadcastReceiver() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 BlockingSessionManager.getInstance(context).checkAndEnforce()
+                // The generic engine updates blocked targets first. TIME then owns the package
+                // uninstall/force-stop policy and releases it as soon as the last protected
+                // deadline has elapsed.
+                TimedBlockProtectionController.getInstance(context).reconcileFromDatabase()
             } catch (error: Exception) {
                 FocusGuardLogger.logError(
                     "BlockingSchedule",
@@ -81,6 +86,8 @@ class BlockingScheduleReceiver : BroadcastReceiver() {
                         operation
                     )
                 } else {
+                    // No restricted USE_EXACT_ALARM dependency: a user who did not grant exact
+                    // alarm access still gets an automatic near-boundary release.
                     alarmManager.setAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
                         nextBoundary,
