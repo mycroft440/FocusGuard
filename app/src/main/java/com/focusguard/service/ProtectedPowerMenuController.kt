@@ -58,29 +58,22 @@ class ProtectedPowerMenuController(
         }
 
         if (PowerMenuProtectionPolicy.isSystemUiPackage(packageName)) {
-            val root = findSystemUiRoot()
-            val values = buildList<CharSequence?> {
-                addAll(event.text)
-                add(event.contentDescription)
-                if (root != null) collectText(root, this, 0)
-            }
-            val isPowerMenu = PowerMenuProtectionPolicy.isPowerMenu(
-                packageName = packageName,
-                className = event.className?.toString().orEmpty(),
-                values = values
-            )
-            recycleSafely(root)
-
-            if (isPowerMenu) {
+            // Prefer the exact window that emitted this event. If an OEM reports a
+            // different/blank window id, scan all System UI windows and require a
+            // real power-menu signature before selecting one. This avoids confusing
+            // notification shade/status-bar windows with global actions.
+            val powerMenuRoot = findPowerMenuRoot(event)
+            if (powerMenuRoot != null) {
+                recycleSafely(powerMenuRoot)
                 show()
                 return true
             }
 
-            if (overlay != null && event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED) {
+            if (overlay != null) {
                 scheduleRecheck()
                 return true
             }
-            return overlay != null
+            return false
         }
 
         if (overlay != null &&
@@ -161,6 +154,8 @@ class ProtectedPowerMenuController(
             text = service.getString(R.string.protected_power_menu_cancel)
             isAllCaps = false
             setOnClickListener {
+                // Close the real System UI dialog while this overlay is still
+                // consuming touch, then remove our own surface.
                 service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
                 mainHandler.postDelayed(::dismiss, CANCEL_DISMISS_DELAY_MILLIS)
             }
@@ -210,6 +205,8 @@ class ProtectedPowerMenuController(
             text = service.getString(labelRes)
             isAllCaps = false
             setOnClickListener { performNativeSinglePress(action) }
+            // Consume every long press on the HardBlock surface. Only a normal
+            // ACTION_CLICK can be forwarded to the native System UI action.
             setOnLongClickListener { true }
         }, buttonParams((10 * service.resources.displayMetrics.density).toInt()))
     }
@@ -220,7 +217,7 @@ class ProtectedPowerMenuController(
     ).apply { this.topMargin = topMargin }
 
     private fun performNativeSinglePress(action: Action) {
-        val root = findSystemUiRoot()
+        val root = findPowerMenuRoot()
         if (root == null) {
             showStatus(R.string.protected_power_menu_action_unavailable)
             return
@@ -282,15 +279,52 @@ class ProtectedPowerMenuController(
         return false
     }
 
-    private fun findSystemUiRoot(): AccessibilityNodeInfo? {
-        service.windows.forEach { window ->
+    /**
+     * Returns only a System UI root that independently matches the power-menu
+     * signature. When an event is available, its window is checked first.
+     */
+    private fun findPowerMenuRoot(event: AccessibilityEvent? = null): AccessibilityNodeInfo? {
+        val windows = service.windows
+        val eventWindowId = event?.windowId
+
+        if (event != null && eventWindowId != null) {
+            val eventWindow = windows.firstOrNull { it.id == eventWindowId }
+            val root = runCatching { eventWindow?.root }.getOrNull()
+            if (root != null) {
+                if (rootMatchesPowerMenu(root, event)) return root
+                recycleSafely(root)
+            }
+        }
+
+        windows.forEach { window ->
+            if (eventWindowId != null && window.id == eventWindowId) return@forEach
             val root = runCatching { window.root }.getOrNull() ?: return@forEach
-            val packageName = runCatching { root.packageName?.toString().orEmpty() }
-                .getOrDefault("")
-            if (PowerMenuProtectionPolicy.isSystemUiPackage(packageName)) return root
+            if (rootMatchesPowerMenu(root, null)) return root
             recycleSafely(root)
         }
         return null
+    }
+
+    private fun rootMatchesPowerMenu(
+        root: AccessibilityNodeInfo,
+        event: AccessibilityEvent?
+    ): Boolean {
+        val packageName = runCatching { root.packageName?.toString().orEmpty() }
+            .getOrDefault("")
+        if (!PowerMenuProtectionPolicy.isSystemUiPackage(packageName)) return false
+
+        val values = mutableListOf<CharSequence?>()
+        event?.let {
+            values.addAll(it.text)
+            values.add(it.contentDescription)
+        }
+        collectText(root, values, 0)
+        return PowerMenuProtectionPolicy.isPowerMenu(
+            packageName = packageName,
+            className = event?.className?.toString()
+                ?: root.className?.toString().orEmpty(),
+            values = values
+        )
     }
 
     private fun collectText(
@@ -320,20 +354,12 @@ class ProtectedPowerMenuController(
     }
 
     private val recheckRunnable = Runnable {
-        val root = findSystemUiRoot()
+        val root = findPowerMenuRoot()
         if (root == null) {
             dismiss()
             return@Runnable
         }
-        val values = mutableListOf<CharSequence?>()
-        collectText(root, values, 0)
-        val stillPowerMenu = PowerMenuProtectionPolicy.isPowerMenu(
-            packageName = root.packageName?.toString().orEmpty(),
-            className = root.className?.toString().orEmpty(),
-            values = values
-        )
         recycleSafely(root)
-        if (!stillPowerMenu) dismiss()
     }
 
     private fun showStatus(resId: Int) {
