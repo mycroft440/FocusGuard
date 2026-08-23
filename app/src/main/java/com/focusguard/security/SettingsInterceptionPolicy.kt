@@ -148,26 +148,19 @@ object SettingsInterceptionPolicy {
 
         if (strictPomodoroActive) return Decision.POMODORO_LOCK
 
-        // The permission wizard deliberately opened Android's enrollment UI.
-        // Allow only the FocusGuard Device Admin surface; app details,
-        // accessibility controls and uninstall surfaces remain protected.
-        if (deviceAdminActivationAuthorized) {
-            val isKnownNonAdminSurface =
-                signals.classTargetsAccessibilityServiceToggle ||
-                    signals.classTargetsAccessibilityList ||
-                    signals.classTargetsAppDetails ||
-                    signals.classTargetsUninstall ||
-                    signals.classTargetsEssentialSpecialAccess
-            val onDeviceAdminSurface = !isKnownNonAdminSurface &&
-                (signals.classTargetsDeviceAdmin ||
-                    (signals.isGenericSubSettings &&
-                        (signals.textMentionsDeviceAdmin ||
-                            rootSignals.mentionsDeviceAdmin())))
-            if (onDeviceAdminSurface &&
-                (signals.textMentionsFocusGuard || rootSignals.mentionsFocusGuard())
-            ) {
-                return Decision.IGNORE
-            }
+        // ACTION_ADD_DEVICE_ADMIN is authorized only while FocusGuard is not yet
+        // an active administrator. Allow the Device Admin activity during this
+        // short enrollment window so the permission can be granted. The window
+        // becomes invalid automatically as soon as the permission is active.
+        // App details, accessibility and uninstall surfaces remain protected.
+        if (deviceAdminActivationAuthorized && signals.classTargetsDeviceAdmin) {
+            return Decision.IGNORE
+        }
+        if (deviceAdminActivationAuthorized && signals.isGenericSubSettings) {
+            val onAuthorizedAdminSurface =
+                (signals.textMentionsDeviceAdmin || rootSignals.mentionsDeviceAdmin()) &&
+                    (signals.textMentionsFocusGuard || rootSignals.mentionsFocusGuard())
+            if (onAuthorizedAdminSurface) return Decision.IGNORE
         }
 
         // The two menus below are revocation gateways. Once a protection is active,
