@@ -189,6 +189,31 @@ class SettingsInterceptionPolicyTest {
     }
 
     @Test
+    fun `System UI device admin deep link is blocked during active protection`() {
+        assertThat(
+            decide(
+                signals(
+                    packageName = SYSTEM_UI,
+                    isViewClickedEvent = true,
+                    textMentionsDeviceAdmin = true
+                )
+            )
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+    }
+
+    @Test
+    fun `System UI device admin text without a click is ignored`() {
+        assertThat(
+            decide(
+                signals(
+                    packageName = SYSTEM_UI,
+                    textMentionsDeviceAdmin = true
+                )
+            )
+        ).isEqualTo(Decision.IGNORE)
+    }
+
+    @Test
     fun `System UI requires a click plus FocusGuard plus disclosure`() {
         assertThat(
             decide(
