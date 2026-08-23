@@ -42,7 +42,7 @@ class CreatorInstagramPromptStoreTest {
     }
 
     @Test
-    fun `presentation is persisted and cannot be repeated`() {
+    fun `presentation eligibility is persisted after first hour`() {
         val store = CreatorInstagramPromptStore(context)
 
         assertThat(store.wasHomeCardPresented()).isFalse()
@@ -53,13 +53,15 @@ class CreatorInstagramPromptStoreTest {
     }
 
     @Test
-    fun `one-time card stays visible long enough to be read`() {
-        assertThat(CreatorInstagramPromptPolicy.HOME_CARD_VISIBLE_MILLIS)
-            .isEqualTo(15_000L)
+    fun `attention animation uses gradual fade and long visible interval`() {
+        assertThat(CreatorInstagramPromptPolicy.ATTENTION_VISIBLE_MILLIS)
+            .isEqualTo(12_000L)
+        assertThat(CreatorInstagramPromptPolicy.ATTENTION_FADE_OUT_MILLIS)
+            .isEqualTo(900L)
     }
 
     @Test
-    fun `feedback button appears only after one-time card has finished`() {
+    fun `feedback button remains available with persistent Instagram card`() {
         assertThat(
             CreatorInstagramPromptPolicy.shouldShowFeedbackButton(
                 homeCardPresented = false,
@@ -72,7 +74,7 @@ class CreatorInstagramPromptStoreTest {
                 homeCardPresented = true,
                 homeCardVisible = true
             )
-        ).isFalse()
+        ).isTrue()
 
         assertThat(
             CreatorInstagramPromptPolicy.shouldShowFeedbackButton(
