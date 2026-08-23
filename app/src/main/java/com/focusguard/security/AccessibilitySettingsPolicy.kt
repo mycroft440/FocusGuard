@@ -9,6 +9,15 @@ import java.util.Locale
  */
 object AccessibilitySettingsPolicy {
 
+    data class TextSignals(
+        val accessibility: Boolean,
+        val installedAccessibilityApps: Boolean,
+        val accessibilityDisclosure: Boolean
+    )
+
+    // Must be initialized before the pre-normalized dictionaries below.
+    private val COMBINING_MARKS_REGEX = "\\p{M}+".toRegex()
+
     /**
      * Telas que listam recursos e serviços de acessibilidade.
      *
@@ -99,6 +108,12 @@ object AccessibilitySettingsPolicy {
         "tap to review"
     )
 
+    private val normalizedSearchTerms = searchTerms.map(::normalize)
+    private val normalizedInstalledAccessibilityAppsTerms =
+        installedAccessibilityAppsTerms.map(::normalize)
+    private val normalizedAccessibilityDisclosureSearchTerms =
+        accessibilityDisclosureSearchTerms.map(::normalize)
+
     fun classTargetsAccessibility(className: String): Boolean {
         return accessibilityClassMarkers.any { marker ->
             className.contains(marker, ignoreCase = true)
@@ -119,36 +134,56 @@ object AccessibilitySettingsPolicy {
         }
     }
 
-    fun textTargetsAccessibility(values: Iterable<CharSequence?>): Boolean {
-        return valuesContainAny(values, searchTerms)
+    fun classifyText(values: Iterable<CharSequence?>): TextSignals {
+        val normalizedValues = normalizeValues(values)
+        return TextSignals(
+            accessibility = valuesContainAnyNormalized(normalizedValues, normalizedSearchTerms),
+            installedAccessibilityApps = valuesContainAnyNormalized(
+                normalizedValues,
+                normalizedInstalledAccessibilityAppsTerms
+            ),
+            accessibilityDisclosure = valuesContainAnyNormalized(
+                normalizedValues,
+                normalizedAccessibilityDisclosureSearchTerms
+            )
+        )
     }
+
+    fun textTargetsAccessibility(values: Iterable<CharSequence?>): Boolean =
+        valuesContainAnyNormalized(normalizeValues(values), normalizedSearchTerms)
 
     fun textTargetsInstalledAccessibilityApps(
         values: Iterable<CharSequence?>
-    ): Boolean {
-        return valuesContainAny(values, installedAccessibilityAppsTerms)
-    }
+    ): Boolean = valuesContainAnyNormalized(
+        normalizeValues(values),
+        normalizedInstalledAccessibilityAppsTerms
+    )
 
     fun textTargetsAccessibilityDisclosure(
         values: Iterable<CharSequence?>
-    ): Boolean {
-        return valuesContainAny(values, accessibilityDisclosureSearchTerms)
-    }
+    ): Boolean = valuesContainAnyNormalized(
+        normalizeValues(values),
+        normalizedAccessibilityDisclosureSearchTerms
+    )
 
-    private fun valuesContainAny(
-        values: Iterable<CharSequence?>,
-        terms: Iterable<String>
-    ): Boolean {
-        val normalizedTerms = terms.map(::normalize)
-        return values.any { value ->
-            val normalized = normalize(value?.toString().orEmpty())
-            normalized.isNotBlank() && normalizedTerms.any(normalized::contains)
+    private fun normalizeValues(values: Iterable<CharSequence?>): List<String> =
+        values.mapNotNull { value ->
+            normalize(value?.toString().orEmpty()).takeIf(String::isNotBlank)
         }
+
+    private fun valuesContainAnyNormalized(
+        normalizedValues: Iterable<String>,
+        normalizedTerms: Iterable<String>
+    ): Boolean = normalizedValues.any { normalized ->
+        normalizedTerms.any(normalized::contains)
     }
 
     private fun normalize(value: String): String {
-        return Normalizer.normalize(value, Normalizer.Form.NFD)
-            .replace("\\p{M}+".toRegex(), "")
-            .lowercase(Locale.ROOT)
+        if (value.isBlank()) return ""
+        val lowercase = value.lowercase(Locale.ROOT)
+        if (lowercase.all { character -> character.code < 128 }) return lowercase
+        return Normalizer.normalize(lowercase, Normalizer.Form.NFD)
+            .replace(COMBINING_MARKS_REGEX, "")
     }
+
 }

@@ -129,6 +129,21 @@ class AccessibilitySettingsPolicyTest {
     }
 
     @Test
+    fun `batch classifier preserves accessibility signals`() {
+        val signals = AccessibilitySettingsPolicy.classifyText(
+            listOf(
+                "Acessibilidade",
+                "Aplicativos instalados",
+                "FocusGuard pode ver o que você está fazendo. Toque para revisar"
+            )
+        )
+
+        assertThat(signals.accessibility).isTrue()
+        assertThat(signals.installedAccessibilityApps).isTrue()
+        assertThat(signals.accessibilityDisclosure).isTrue()
+    }
+
+    @Test
     fun `does not confuse a normal FocusGuard notification with the privacy disclosure`() {
         assertThat(
             AccessibilitySettingsPolicy.textTargetsAccessibilityDisclosure(

@@ -12,6 +12,17 @@ import java.util.Locale
  */
 object ManagedSelfProtectionPolicy {
 
+    data class TextSignals(
+        val deviceAdmin: Boolean,
+        val focusGuard: Boolean,
+        val destructiveControl: Boolean,
+        val essentialSpecialAccess: Boolean
+    )
+
+    // These helpers must exist before the pre-normalized dictionaries are built.
+    private val COMBINING_MARKS_REGEX = "\\p{M}+".toRegex()
+    private val NON_LETTER_REGEX = "[^a-z]+".toRegex()
+
     private val deviceAdminClassMarkers = setOf(
         "DeviceAdminSettings",
         "DeviceAdminAdd",
@@ -121,6 +132,13 @@ object ManagedSelfProtectionPolicy {
         "Unrestricted battery"
     )
 
+    private val normalizedDeviceAdminSearchTerms = deviceAdminSearchTerms.map(::normalize)
+    private val normalizedFocusGuardSearchTerms = focusGuardSearchTerms.map(::normalize)
+    private val normalizedDestructiveControlSearchTerms =
+        destructiveControlSearchTerms.map(::normalize)
+    private val normalizedEssentialSpecialAccessSearchTerms =
+        essentialSpecialAccessSearchTerms.map(::normalize)
+
     fun classTargetsDeviceAdmin(className: String): Boolean =
         containsAny(className, deviceAdminClassMarkers)
 
@@ -133,16 +151,52 @@ object ManagedSelfProtectionPolicy {
     fun classTargetsEssentialSpecialAccess(className: String): Boolean =
         containsAny(className, essentialSpecialAccessClassMarkers)
 
+    fun classifyText(values: Iterable<CharSequence?>): TextSignals {
+        val normalizedValues = normalizeValues(values)
+        return TextSignals(
+            deviceAdmin = matchesDeviceAdmin(normalizedValues),
+            focusGuard = valuesContainAnyNormalized(
+                normalizedValues,
+                normalizedFocusGuardSearchTerms
+            ),
+            destructiveControl = valuesContainAnyNormalized(
+                normalizedValues,
+                normalizedDestructiveControlSearchTerms
+            ),
+            essentialSpecialAccess = valuesContainAnyNormalized(
+                normalizedValues,
+                normalizedEssentialSpecialAccessSearchTerms
+            )
+        )
+    }
+
     fun textTargetsDeviceAdmin(values: Iterable<CharSequence?>): Boolean =
-        valuesContainAny(values, deviceAdminSearchTerms) ||
-            values.any { value -> mentionsAbbreviatedDeviceAdmin(value?.toString().orEmpty()) }
+        matchesDeviceAdmin(normalizeValues(values))
+
+    fun textTargetsFocusGuard(values: Iterable<CharSequence?>): Boolean =
+        valuesContainAnyNormalized(normalizeValues(values), normalizedFocusGuardSearchTerms)
+
+    fun textTargetsDestructiveControl(values: Iterable<CharSequence?>): Boolean =
+        valuesContainAnyNormalized(
+            normalizeValues(values),
+            normalizedDestructiveControlSearchTerms
+        )
+
+    fun textTargetsEssentialSpecialAccess(values: Iterable<CharSequence?>): Boolean =
+        valuesContainAnyNormalized(
+            normalizeValues(values),
+            normalizedEssentialSpecialAccessSearchTerms
+        )
+
+    private fun matchesDeviceAdmin(normalizedValues: List<String>): Boolean =
+        valuesContainAnyNormalized(normalizedValues, normalizedDeviceAdminSearchTerms) ||
+            normalizedValues.any(::mentionsAbbreviatedDeviceAdminNormalized)
 
     /**
      * "administr. do aparelho" e companhia: palavra de administração abreviada
      * mais palavra de aparelho, no mesmo texto.
      */
-    private fun mentionsAbbreviatedDeviceAdmin(value: String): Boolean {
-        val normalized = normalize(value)
+    private fun mentionsAbbreviatedDeviceAdminNormalized(normalized: String): Boolean {
         if (normalized.isBlank()) return false
         if (deviceWordPrefixes.none(normalized::contains)) return false
         return normalized
@@ -150,33 +204,27 @@ object ManagedSelfProtectionPolicy {
             .any { word -> deviceAdminWordPrefixes.any(word::startsWith) }
     }
 
-    fun textTargetsFocusGuard(values: Iterable<CharSequence?>): Boolean =
-        valuesContainAny(values, focusGuardSearchTerms)
-
-    fun textTargetsDestructiveControl(values: Iterable<CharSequence?>): Boolean =
-        valuesContainAny(values, destructiveControlSearchTerms)
-
-    fun textTargetsEssentialSpecialAccess(values: Iterable<CharSequence?>): Boolean =
-        valuesContainAny(values, essentialSpecialAccessSearchTerms)
-
     private fun containsAny(value: String, markers: Iterable<String>): Boolean =
         markers.any { marker -> value.contains(marker, ignoreCase = true) }
 
-    private fun valuesContainAny(
-        values: Iterable<CharSequence?>,
-        terms: Iterable<String>
-    ): Boolean {
-        val normalizedTerms = terms.map(::normalize)
-        return values.any { value ->
-            val normalized = normalize(value?.toString().orEmpty())
-            normalized.isNotBlank() && normalizedTerms.any(normalized::contains)
+    private fun normalizeValues(values: Iterable<CharSequence?>): List<String> =
+        values.mapNotNull { value ->
+            normalize(value?.toString().orEmpty()).takeIf(String::isNotBlank)
         }
+
+    private fun valuesContainAnyNormalized(
+        normalizedValues: Iterable<String>,
+        normalizedTerms: Iterable<String>
+    ): Boolean = normalizedValues.any { normalized ->
+        normalizedTerms.any(normalized::contains)
     }
 
-    private fun normalize(value: String): String =
-        Normalizer.normalize(value, Normalizer.Form.NFD)
-            .replace("\\p{M}+".toRegex(), "")
-            .lowercase(Locale.ROOT)
+    private fun normalize(value: String): String {
+        if (value.isBlank()) return ""
+        val lowercase = value.lowercase(Locale.ROOT)
+        if (lowercase.all { character -> character.code < 128 }) return lowercase
+        return Normalizer.normalize(lowercase, Normalizer.Form.NFD)
+            .replace(COMBINING_MARKS_REGEX, "")
+    }
 
-    private val NON_LETTER_REGEX = "[^a-z]+".toRegex()
 }

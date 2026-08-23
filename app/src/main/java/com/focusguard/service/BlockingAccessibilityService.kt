@@ -111,10 +111,13 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var windowManager: WindowManager? = null
     private var protectedPowerMenuController: ProtectedPowerMenuController? = null
     @Volatile private var foregroundPackageName: String? = null
+    @Volatile private var deviceOwnerActiveCached = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var instantBlockCurtain: View? = null
     private var instantBlockCurtainMessage: TextView? = null
+    private var instantBlockCurtainLayoutParams: WindowManager.LayoutParams? = null
+    private var instantBlockCurtainAttached = false
     private var instantBlockCurtainMode: CurtainMode? = null
     private val instantCurtainFailsafe = Runnable { dismissInstantBlockCurtain() }
     private val protectionCurtainDismiss = Runnable {
@@ -168,10 +171,14 @@ class BlockingAccessibilityService : AccessibilityService() {
     // Fonte única em SettingsInterceptionPolicy — estas listas estavam duplicadas aqui.
     private val settingsPackages = SettingsInterceptionPolicy.settingsPackages
     private val interceptionPackages = SettingsInterceptionPolicy.interceptionPackages
+    // Locator terms only. Full classification still uses the richer policy
+    // dictionaries after a node is found. Keeping this list tiny matters because
+    // every entry can become a synchronous accessibility-tree query on a click.
+    private val directClickContextSufficientTerms =
+        (listOf("FocusGuard", "Focus Guard", "com.focusguard") +
+            AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms).distinct()
     private val clickInterceptionSearchTerms =
-        (ManagedSelfProtectionPolicy.focusGuardSearchTerms +
-            AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms +
-            ManagedSelfProtectionPolicy.deviceAdminSearchTerms).distinct()
+        (directClickContextSufficientTerms + "admin").distinct()
 
     private var pendingSettingsProtectionUntilElapsed = 0L
 
@@ -261,11 +268,14 @@ class BlockingAccessibilityService : AccessibilityService() {
         database = AppDatabase.getDatabase(this)
         sessionManager = BlockingSessionManager.getInstance(this)
         deviceOwnerManager = DeviceOwnerManager.getInstance(this)
+        deviceOwnerActiveCached = deviceOwnerManager.isDeviceOwnerActive()
         refreshSynchronousProtectionState()
         usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
         powerManager = getSystemService(Context.POWER_SERVICE) as? PowerManager
         windowManager = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
         protectedPowerMenuController = ProtectedPowerMenuController(this)
+        prepareInstantBlockCurtain()
+        AuthenticatedRemovalWindow.preload(this)
 
         registerPackageReceiver()
         registerRefreshReceiver()
@@ -362,7 +372,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         // Do this before any node/tree work or asynchronous Room refresh. The
         // persisted snapshot exists specifically to cover the first event after
         // Android binds or recreates the service.
+        deviceOwnerActiveCached = deviceOwnerManager.isDeviceOwnerActive()
         refreshSynchronousProtectionState()
+        prepareInstantBlockCurtain()
         defaultLauncherPackage = calculateDefaultLauncher()
         foregroundPackageName = rootInActiveWindow?.packageName?.toString()
         calculateBrowserPackages()
@@ -448,10 +460,8 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         if (event == null) return
+        val eventDetectedAtNanos = SystemClock.elapsedRealtimeNanos()
         try {
-            val now = System.currentTimeMillis()
-            if (now - lastLoadTime > cacheTimeoutMillis) refreshData()
-
             // Fast path: settings interception decides on `event.packageName` alone,
             // before resolveEventPackageName() is allowed to touch the node tree.
             //
@@ -477,7 +487,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             val eligibleForInterception = event.eventType in settingsInterceptionEventTypes
             if (eligibleForInterception &&
                 directPackage in interceptionPackages &&
-                handleSettingsInterception(event, directPackage)
+                handleSettingsInterception(event, directPackage, eventDetectedAtNanos)
             ) {
                 return
             }
@@ -489,10 +499,17 @@ class BlockingAccessibilityService : AccessibilityService() {
             if (eligibleForInterception &&
                 packageName != directPackage &&
                 packageName in interceptionPackages &&
-                handleSettingsInterception(event, packageName)
+                handleSettingsInterception(event, packageName, eventDetectedAtNanos)
             ) {
                 return
             }
+
+            // Refresh is intentionally below the self-protection fast path. Even
+            // though refreshData() is asynchronous, scheduling it and touching its
+            // atomics before the critical decision is wasted work on the exact event
+            // where every millisecond matters.
+            val now = System.currentTimeMillis()
+            if (now - lastLoadTime > cacheTimeoutMillis) refreshData()
 
             val isWindowTransition =
                 event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
@@ -621,6 +638,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                 do {
                     refreshRequested.set(false)
                     try {
+                        val deviceOwnerActiveNow = deviceOwnerManager.isDeviceOwnerActive()
+                        deviceOwnerActiveCached = deviceOwnerActiveNow
                         val adultFilterEnabled = authManager.isAdultFilterEnabled()
                         val adultRules = if (adultFilterEnabled) {
                             setOf(com.focusguard.data.PredefinedWebsites.PORNOGRAPHY_RULE)
@@ -631,7 +650,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                             ?.takeIf { it.isActive() }
                         val nativeFocusLockdownActive = focusModeSession != null &&
                             FocusModePolicy.usesNativeFocusLockdown(
-                                deviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive(),
+                                deviceOwnerActive = deviceOwnerActiveNow,
                                 systemLockdownSupported =
                                     deviceOwnerManager.isFocusModeSystemLockdownSupported()
                             )
@@ -725,7 +744,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                                     applicationContext
                                 ),
                                 armoredDeviceOwnerActive =
-                                    deviceOwnerManager.isDeviceOwnerActive() &&
+                                    deviceOwnerActiveNow &&
                                         deviceOwnerManager.isArmoredProtectionArmed()
                             )
                             lastEnforcementFingerprint = enforcementFingerprint
@@ -932,7 +951,8 @@ class BlockingAccessibilityService : AccessibilityService() {
      */
     private fun handleSettingsInterception(
         event: AccessibilityEvent,
-        packageName: String
+        packageName: String,
+        eventDetectedAtNanos: Long
     ): Boolean {
         // Cheap guards stay ahead of the signal extraction below: this runs on every
         // accessibility event, and eventTextValues() plus the classifiers are not free.
@@ -959,24 +979,60 @@ class BlockingAccessibilityService : AccessibilityService() {
         // chamadas ao DevicePolicyManager. Assim o primeiro evento após um novo
         // bind falha fechado, sem esperar Room, e o caminho ocioso ainda sai antes
         // das consultas binder mais caras.
-        val armorPersists = deviceOwnerManager.isDeviceOwnerActive() &&
-            deviceOwnerManager.isArmoredProtectionArmed()
-        val protectionEngaged = isSelfProtectionEngaged(
-            cachedActive = isBlockingSessionActive,
-            persistedActive = SelfProtectionStateStore.isArmed(applicationContext),
-            focusModeActive = FocusModeStore.isActive(applicationContext),
-            armoredDeviceOwnerActive = armorPersists
-        )
+        // Kotlin OR short-circuits left-to-right. The common consumer-mode
+        // path therefore exits on the volatile snapshot and performs zero SharedPrefs
+        // reads and zero DevicePolicyManager binder calls. Persistent/Device Owner
+        // state remains as a fail-closed fallback for process recreation.
+        val protectionEngaged =
+            isBlockingSessionActive ||
+                focusModeSessionActive ||
+                SelfProtectionStateStore.isArmed(applicationContext) ||
+                (deviceOwnerActiveCached && deviceOwnerManager.isArmoredProtectionArmed())
         if (!protectionEngaged) return false
 
-        // A janela de manutenção do Device Owner é a saída sancionada e desliga a
-        // defesa. Num aparelho sem Device Owner ela nunca abre, então lá a única
-        // saída é encerrar o bloqueio pelo próprio app — nunca pelas Configurações.
-        if (deviceOwnerManager.isMaintenanceActive()) return false
+        // Only actual Device Owner devices can have this maintenance gate. Avoid a
+        // DevicePolicyManager round-trip on the consumer path.
+        if (deviceOwnerActiveCached && deviceOwnerManager.isMaintenanceActive()) return false
 
         val nowElapsed = SystemClock.elapsedRealtime()
+        val isSystemUi = packageName in SettingsInterceptionPolicy.systemUiPackages
+
+        // Strict Pomodoro keeps ownership of Settings. System UI clicks still need
+        // their dedicated disclosure/admin classifier, matching the policy order.
+        if (!isSystemUi && isPomodoroStrictActive) {
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            launchPomodoroLockScreen()
+            return true
+        }
+
+        // A click already classified as protected arms a short transition guard.
+        // Follow-up window/focus/content events need no class, text, source or root
+        // inspection at all: cover and evict immediately.
+        if (!isSystemUi &&
+            event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED &&
+            nowElapsed <= pendingSettingsProtectionUntilElapsed
+        ) {
+            executeProtectionAction(eventDetectedAtNanos)
+            return true
+        }
+
         val className = event.className?.toString().orEmpty()
+        val classTargetsAccessibilityServiceToggle =
+            AccessibilitySettingsPolicy.classTargetsAccessibilityServiceToggle(className)
+        val classTargetsAccessibilityList =
+            AccessibilitySettingsPolicy.classTargetsAccessibilityList(className)
+        val classTargetsDeviceAdmin =
+            ManagedSelfProtectionPolicy.classTargetsDeviceAdmin(className)
+        val classTargetsAppDetails =
+            ManagedSelfProtectionPolicy.classTargetsAppDetails(className)
+        val classTargetsUninstall =
+            ManagedSelfProtectionPolicy.classTargetsUninstall(className)
+        val classTargetsEssentialSpecialAccess =
+            ManagedSelfProtectionPolicy.classTargetsEssentialSpecialAccess(className)
+        val isGenericSubSettings = className.contains("SubSettings", ignoreCase = true)
         val eventValues = eventTextValues(event)
+        val accessibilityTextSignals = AccessibilitySettingsPolicy.classifyText(eventValues)
+        val managedTextSignals = ManagedSelfProtectionPolicy.classifyText(eventValues)
 
         val signals = SettingsInterceptionPolicy.EventSignals(
             packageName = packageName,
@@ -986,33 +1042,34 @@ class BlockingAccessibilityService : AccessibilityService() {
                     event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED,
             guardArmed = nowElapsed <= pendingSettingsProtectionUntilElapsed,
             classTargetsAccessibilityServiceToggle =
-                AccessibilitySettingsPolicy.classTargetsAccessibilityServiceToggle(className),
-            classTargetsAccessibilityList =
-                AccessibilitySettingsPolicy.classTargetsAccessibilityList(className),
-            classTargetsDeviceAdmin =
-                ManagedSelfProtectionPolicy.classTargetsDeviceAdmin(className),
-            classTargetsAppDetails =
-                ManagedSelfProtectionPolicy.classTargetsAppDetails(className),
-            classTargetsUninstall =
-                ManagedSelfProtectionPolicy.classTargetsUninstall(className),
-            classTargetsEssentialSpecialAccess =
-                ManagedSelfProtectionPolicy.classTargetsEssentialSpecialAccess(className),
-            isGenericSubSettings = className.contains("SubSettings", ignoreCase = true),
-            textMentionsAccessibility =
-                AccessibilitySettingsPolicy.textTargetsAccessibility(eventValues),
+                classTargetsAccessibilityServiceToggle,
+            classTargetsAccessibilityList = classTargetsAccessibilityList,
+            classTargetsDeviceAdmin = classTargetsDeviceAdmin,
+            classTargetsAppDetails = classTargetsAppDetails,
+            classTargetsUninstall = classTargetsUninstall,
+            classTargetsEssentialSpecialAccess = classTargetsEssentialSpecialAccess,
+            isGenericSubSettings = isGenericSubSettings,
+            textMentionsAccessibility = accessibilityTextSignals.accessibility,
             textMentionsInstalledAccessibilityApps =
-                AccessibilitySettingsPolicy.textTargetsInstalledAccessibilityApps(eventValues),
+                accessibilityTextSignals.installedAccessibilityApps,
             textMentionsAccessibilityDisclosure =
-                AccessibilitySettingsPolicy.textTargetsAccessibilityDisclosure(eventValues),
-            textMentionsDeviceAdmin =
-                ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(eventValues),
-            textMentionsFocusGuard =
-                ManagedSelfProtectionPolicy.textTargetsFocusGuard(eventValues),
-            textMentionsDestructiveControl =
-                ManagedSelfProtectionPolicy.textTargetsDestructiveControl(eventValues),
-            textMentionsEssentialSpecialAccess =
-                ManagedSelfProtectionPolicy.textTargetsEssentialSpecialAccess(eventValues)
+                accessibilityTextSignals.accessibilityDisclosure,
+            textMentionsDeviceAdmin = managedTextSignals.deviceAdmin,
+            textMentionsFocusGuard = managedTextSignals.focusGuard,
+            textMentionsDestructiveControl = managedTextSignals.destructiveControl,
+            textMentionsEssentialSpecialAccess = managedTextSignals.essentialSpecialAccess
         )
+
+        val deviceAdminActivationAuthorized = if (
+            classTargetsDeviceAdmin || isGenericSubSettings
+        ) {
+            DeviceAdminActivationWindow.isAuthorized(
+                context = this,
+                deviceAdminActive = deviceOwnerManager.isDeviceAdminActive()
+            )
+        } else {
+            false
+        }
 
         val decision = SettingsInterceptionPolicy.decide(
             signals = signals,
@@ -1020,10 +1077,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             // própria porque é testada isoladamente.
             selfProtectionEngaged = true,
             strictPomodoroActive = isPomodoroStrictActive,
-            deviceAdminActivationAuthorized = DeviceAdminActivationWindow.isAuthorized(
-                context = this,
-                deviceAdminActive = deviceOwnerManager.isDeviceAdminActive()
-            ),
+            deviceAdminActivationAuthorized = deviceAdminActivationAuthorized,
             rootSignals = SettingsInterceptionPolicy.RootSignals(
                 mentionsAccessibility = ::rootMentionsAccessibility,
                 mentionsDeviceAdmin = ::rootMentionsDeviceAdmin,
@@ -1043,14 +1097,14 @@ class BlockingAccessibilityService : AccessibilityService() {
             }
 
             SettingsInterceptionPolicy.Decision.PROTECT -> {
-                executeProtectionAction()
+                executeProtectionAction(eventDetectedAtNanos)
                 true
             }
 
             SettingsInterceptionPolicy.Decision.PROTECT_AND_ARM_GUARD -> {
                 pendingSettingsProtectionUntilElapsed =
                     nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
-                executeProtectionAction()
+                executeProtectionAction(eventDetectedAtNanos)
                 true
             }
         }
@@ -1064,11 +1118,13 @@ class BlockingAccessibilityService : AccessibilityService() {
                 add(source.text)
                 add(source.contentDescription)
                 add(source.viewIdResourceName)
-                if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-                    // OEM rows and notifications are often clickable parents
-                    // while the label/body lives in children. Read only the two
-                    // narrow marker sets from that small subtree so the first
-                    // click can be classified without scanning the whole window.
+                if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED &&
+                    shouldExpandClickContext(this)
+                ) {
+                    // Most buttons already expose enough text directly. Only pay
+                    // for subtree/root queries when the clicked node itself has no
+                    // locator that can identify FocusGuard, Device Admin or the
+                    // accessibility disclosure.
                     clickInterceptionSearchTerms.forEach { term ->
                         val matchingNodes = runCatching {
                             source.findAccessibilityNodeInfosByText(term)
@@ -1101,8 +1157,8 @@ class BlockingAccessibilityService : AccessibilityService() {
         isBlockingSessionActive = isSelfProtectionEngaged(
             cachedActive = isBlockingSessionActive,
             persistedActive = snapshot.armed,
-            focusModeActive = FocusModeStore.isActive(applicationContext),
-            armoredDeviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive() &&
+            focusModeActive = focusModeSessionActive,
+            armoredDeviceOwnerActive = deviceOwnerActiveCached &&
                 deviceOwnerManager.isArmoredProtectionArmed()
         )
     }
@@ -1113,7 +1169,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         focusModeSessionActive = session != null
         val nativeLockdownActive = session != null &&
             FocusModePolicy.usesNativeFocusLockdown(
-                deviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive(),
+                deviceOwnerActive = deviceOwnerActiveCached,
                 systemLockdownSupported =
                     deviceOwnerManager.isFocusModeSystemLockdownSupported()
             )
@@ -1152,6 +1208,18 @@ class BlockingAccessibilityService : AccessibilityService() {
                 "Falha ao retornar ao FocusGuard",
                 error
             )
+        }
+    }
+
+    private fun shouldExpandClickContext(values: Iterable<CharSequence?>): Boolean {
+        // “admin” is deliberately only a locator: by itself it is too weak to prove
+        // that the clicked node already contains the whole Device Admin context.
+        if (ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(values)) return false
+        return values.none { value ->
+            val text = value?.toString().orEmpty()
+            text.isNotBlank() && directClickContextSufficientTerms.any { term ->
+                text.contains(term, ignoreCase = true)
+            }
         }
     }
 
@@ -1252,26 +1320,61 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun executeProtectionAction() {
+    private fun executeProtectionAction(eventDetectedAtNanos: Long) {
         // Segurança nunca sofre debounce: cada tentativa protegida expulsa Settings
-        // imediatamente. O debounce abaixo existe apenas para não recriar animação
-        // e toast durante uma tempestade de eventos de acessibilidade.
-        evictBlockedAppFromForeground()
-
+        // imediatamente. A cortina, porém, é desenhada ANTES de pedir HOME para
+        // cobrir também os frames da animação/transição do sistema.
         val nowElapsed = SystemClock.elapsedRealtime()
-        if (!shouldExecuteProtectionAction(protectionActionUntilElapsed, nowElapsed)) return
-        protectionActionUntilElapsed = nowElapsed + SELF_PROTECTION_ACTION_DEBOUNCE_MILLIS
+        val shouldAnimate = shouldExecuteProtectionAction(
+            protectionActionUntilElapsed,
+            nowElapsed
+        )
 
-        showInstantBlockCurtain(
-            mode = CurtainMode.SELF_PROTECTION,
-            messageRes = R.string.accessibility_protection_blocked_notice
-        )
-        mainHandler.removeCallbacks(protectionCurtainDismiss)
-        mainHandler.postDelayed(
-            protectionCurtainDismiss,
-            SELF_PROTECTION_NOTICE_DURATION_MILLIS
-        )
+        var curtainReadyAtNanos = eventDetectedAtNanos
+        if (shouldAnimate) {
+            protectionActionUntilElapsed = nowElapsed + SELF_PROTECTION_ACTION_DEBOUNCE_MILLIS
+            showInstantBlockCurtain(
+                mode = CurtainMode.SELF_PROTECTION,
+                messageRes = R.string.accessibility_protection_blocked_notice
+            )
+            curtainReadyAtNanos = SystemClock.elapsedRealtimeNanos()
+            mainHandler.removeCallbacks(protectionCurtainDismiss)
+            mainHandler.postDelayed(
+                protectionCurtainDismiss,
+                SELF_PROTECTION_NOTICE_DURATION_MILLIS
+            )
+        }
+
+        evictBlockedAppFromForeground()
+        val homeRequestedAtNanos = SystemClock.elapsedRealtimeNanos()
+
+        if (!shouldAnimate) return
         showToastThrottled(getString(R.string.accessibility_protection_blocked_toast))
+        recordSelfProtectionLatency(
+            eventDetectedAtNanos = eventDetectedAtNanos,
+            curtainReadyAtNanos = curtainReadyAtNanos,
+            homeRequestedAtNanos = homeRequestedAtNanos
+        )
+    }
+
+    private fun recordSelfProtectionLatency(
+        eventDetectedAtNanos: Long,
+        curtainReadyAtNanos: Long,
+        homeRequestedAtNanos: Long
+    ) {
+        val eventToCurtainMicros =
+            (curtainReadyAtNanos - eventDetectedAtNanos).coerceAtLeast(0L) / 1_000L
+        val curtainToHomeMicros =
+            (homeRequestedAtNanos - curtainReadyAtNanos).coerceAtLeast(0L) / 1_000L
+        val totalMicros =
+            (homeRequestedAtNanos - eventDetectedAtNanos).coerceAtLeast(0L) / 1_000L
+        scope.launch {
+            FocusGuardLogger.log(
+                "A11yLatency",
+                "Autoproteção: evento→cortina=${eventToCurtainMicros}µs, " +
+                    "cortina→HOME=${curtainToHomeMicros}µs, total=${totalMicros}µs"
+            )
+        }
     }
 
     private fun handleBrowserEvent(event: AccessibilityEvent) {
@@ -1640,6 +1743,76 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun prepareInstantBlockCurtain() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(::prepareInstantBlockCurtain)
+            return
+        }
+        if (instantBlockCurtain != null) return
+
+        val density = resources.displayMetrics.density
+        val iconSize = (72 * density).toInt()
+        val spacing = (18 * density).toInt()
+        val curtain = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(Color.rgb(16, 17, 23))
+            isClickable = true
+            isFocusable = false
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+            contentDescription = getString(R.string.block_notice_instant_content_description)
+
+            addView(
+                ImageView(this@BlockingAccessibilityService).apply {
+                    setImageResource(R.drawable.ic_shield)
+                    setColorFilter(Color.rgb(38, 198, 218))
+                },
+                LinearLayout.LayoutParams(iconSize, iconSize)
+            )
+            addView(
+                TextView(this@BlockingAccessibilityService).apply {
+                    text = getString(R.string.block_notice_instant_title)
+                    setTextColor(Color.WHITE)
+                    textSize = 20f
+                    gravity = Gravity.CENTER
+                },
+                LinearLayout.LayoutParams(
+                    WindowManager.LayoutParams.WRAP_CONTENT,
+                    WindowManager.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = spacing
+                }
+            )
+            addView(
+                TextView(this@BlockingAccessibilityService).apply {
+                    setTextColor(Color.LTGRAY)
+                    textSize = 14f
+                    gravity = Gravity.CENTER
+                    visibility = View.GONE
+                    instantBlockCurtainMessage = this
+                },
+                LinearLayout.LayoutParams(
+                    (280 * density).toInt(),
+                    WindowManager.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = (10 * density).toInt()
+                }
+            )
+        }
+        instantBlockCurtain = curtain
+        instantBlockCurtainLayoutParams = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
+            PixelFormat.OPAQUE
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            title = "FocusGuardInstantBlock"
+        }
+    }
+
     private fun showInstantBlockCurtain(
         mode: CurtainMode,
         messageRes: Int? = null
@@ -1649,78 +1822,21 @@ class BlockingAccessibilityService : AccessibilityService() {
             return
         }
 
-        if (instantBlockCurtain == null) {
-            val density = resources.displayMetrics.density
-            val iconSize = (72 * density).toInt()
-            val spacing = (18 * density).toInt()
-            val curtain = LinearLayout(this).apply {
-                orientation = LinearLayout.VERTICAL
-                gravity = Gravity.CENTER
-                setBackgroundColor(Color.rgb(16, 17, 23))
-                isClickable = true
-                isFocusable = false
-                importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
-                contentDescription = getString(R.string.block_notice_instant_content_description)
-
-                addView(
-                    ImageView(this@BlockingAccessibilityService).apply {
-                        setImageResource(R.drawable.ic_shield)
-                        setColorFilter(Color.rgb(38, 198, 218))
-                    },
-                    LinearLayout.LayoutParams(iconSize, iconSize)
-                )
-                addView(
-                    TextView(this@BlockingAccessibilityService).apply {
-                        text = getString(R.string.block_notice_instant_title)
-                        setTextColor(Color.WHITE)
-                        textSize = 20f
-                        gravity = Gravity.CENTER
-                    },
-                    LinearLayout.LayoutParams(
-                        WindowManager.LayoutParams.WRAP_CONTENT,
-                        WindowManager.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        topMargin = spacing
-                    }
-                )
-                addView(
-                    TextView(this@BlockingAccessibilityService).apply {
-                        setTextColor(Color.LTGRAY)
-                        textSize = 14f
-                        gravity = Gravity.CENTER
-                        visibility = View.GONE
-                        instantBlockCurtainMessage = this
-                    },
-                    LinearLayout.LayoutParams(
-                        (280 * density).toInt(),
-                        WindowManager.LayoutParams.WRAP_CONTENT
-                    ).apply {
-                        topMargin = (10 * density).toInt()
-                    }
-                )
-            }
-            val params = WindowManager.LayoutParams(
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.MATCH_PARENT,
-                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
-                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
-                PixelFormat.OPAQUE
-            ).apply {
-                gravity = Gravity.TOP or Gravity.START
-                title = "FocusGuardInstantBlock"
-            }
-
+        prepareInstantBlockCurtain()
+        val curtain = instantBlockCurtain ?: return
+        val params = instantBlockCurtainLayoutParams ?: return
+        if (!instantBlockCurtainAttached) {
             try {
                 val manager = windowManager ?: return
                 manager.addView(curtain, params)
-                instantBlockCurtain = curtain
+                instantBlockCurtainAttached = true
             } catch (error: RuntimeException) {
                 FocusGuardLogger.logError(
                     "A11y",
                     "Falha ao exibir cortina instantânea",
                     error
                 )
+                return
             }
         }
 
@@ -1749,18 +1865,18 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
 
         mainHandler.removeCallbacks(instantCurtainFailsafe)
-        val curtain = instantBlockCurtain
-        instantBlockCurtain = null
-        instantBlockCurtainMessage = null
         instantBlockCurtainMode = null
-        if (curtain == null) return
+        val curtain = instantBlockCurtain
+        if (curtain == null || !instantBlockCurtainAttached) return
         runCatching { windowManager?.removeViewImmediate(curtain) }
+            .onSuccess { instantBlockCurtainAttached = false }
             .onFailure { error ->
                 FocusGuardLogger.logError(
                     "A11y",
                     "Falha ao remover cortina instantânea",
                     error
                 )
+                instantBlockCurtainAttached = false
             }
     }
 
