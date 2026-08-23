@@ -174,9 +174,11 @@ class BlockingAccessibilityService : AccessibilityService() {
     // Locator terms only. Full classification still uses the richer policy
     // dictionaries after a node is found. Keeping this list tiny matters because
     // every entry can become a synchronous accessibility-tree query on a click.
-    private val clickInterceptionSearchTerms =
-        (listOf("FocusGuard", "Focus Guard", "com.focusguard", "admin") +
+    private val directClickContextSufficientTerms =
+        (listOf("FocusGuard", "Focus Guard", "com.focusguard") +
             AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms).distinct()
+    private val clickInterceptionSearchTerms =
+        (directClickContextSufficientTerms + "admin").distinct()
 
     private var pendingSettingsProtectionUntilElapsed = 0L
 
@@ -273,6 +275,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         windowManager = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
         protectedPowerMenuController = ProtectedPowerMenuController(this)
         prepareInstantBlockCurtain()
+        AuthenticatedRemovalWindow.preload(this)
 
         registerPackageReceiver()
         registerRefreshReceiver()
@@ -1154,7 +1157,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         isBlockingSessionActive = isSelfProtectionEngaged(
             cachedActive = isBlockingSessionActive,
             persistedActive = snapshot.armed,
-            focusModeActive = FocusModeStore.isActive(applicationContext),
+            focusModeActive = focusModeSessionActive,
             armoredDeviceOwnerActive = deviceOwnerActiveCached &&
                 deviceOwnerManager.isArmoredProtectionArmed()
         )
@@ -1166,7 +1169,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         focusModeSessionActive = session != null
         val nativeLockdownActive = session != null &&
             FocusModePolicy.usesNativeFocusLockdown(
-                deviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive(),
+                deviceOwnerActive = deviceOwnerActiveCached,
                 systemLockdownSupported =
                     deviceOwnerManager.isFocusModeSystemLockdownSupported()
             )
@@ -1208,13 +1211,17 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun shouldExpandClickContext(values: Iterable<CharSequence?>): Boolean =
-        values.none { value ->
+    private fun shouldExpandClickContext(values: Iterable<CharSequence?>): Boolean {
+        // “admin” is deliberately only a locator: by itself it is too weak to prove
+        // that the clicked node already contains the whole Device Admin context.
+        if (ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(values)) return false
+        return values.none { value ->
             val text = value?.toString().orEmpty()
-            text.isNotBlank() && clickInterceptionSearchTerms.any { term ->
+            text.isNotBlank() && directClickContextSufficientTerms.any { term ->
                 text.contains(term, ignoreCase = true)
             }
         }
+    }
 
     private fun sameRowClickTextValues(source: AccessibilityNodeInfo): List<CharSequence?> {
         val sourceBounds = Rect().also(source::getBoundsInScreen)

@@ -53,6 +53,8 @@
 - CUMPRIDO: classificar textos em lote, pré-normalizar dicionários e reutilizar regex para reduzir alocações e CPU por evento.
 - CUMPRIDO: pré-construir a cortina de bloqueio e exibi-la antes de solicitar HOME, cobrindo os frames da transição do sistema.
 - CUMPRIDO: adicionar telemetria assíncrona evento→cortina→HOME para medir a latência real sem atrasar a resposta.
+- CUMPRIDO: pré-carregar e manter em memória a janela de desinstalação autenticada, retirando SharedPreferences/Settings.Global do caminho comum da primeira tentativa bloqueada.
+- CUMPRIDO: revisão do Crítico manteve “admin” apenas como localizador, reutilizou o cache de Modo Foco/Device Owner e evitou falsos negativos por contexto incompleto.
 - CUMPRIDO: adicionar Baseline Profile conservador e ProfileInstaller 1.4.1 para otimizar o hot path também em APKs release instalados por sideload.
 - PRÓXIMO OBJETIVO: revisar o diff com o Crítico e só integrar na `main` após testes, lint, APK/AAB Release e APK Debug concluírem com sucesso.
 
