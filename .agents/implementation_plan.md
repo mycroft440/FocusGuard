@@ -12,10 +12,11 @@
 
 ## Estado da solicitação atual
 
-- CUMPRIDO: localizar o botão discreto de sugestões/Instagram já existente.
-- CUMPRIDO: remover a dependência do estado do convite temporário para exibir o botão.
-- CUMPRIDO: atualizar o teste da política para exigir o botão em todos os estados do convite.
-- PRÓXIMO OBJETIVO: revisar a alteração e validar que somente o comportamento solicitado foi afetado.
+- CUMPRIDO: tornar permanente o botão discreto de sugestões/Instagram.
+- CUMPRIDO: identificar que o bloqueio comum apenas abria a tela do HardBlock sobre o app bloqueado.
+- CUMPRIDO: fazer o fluxo de app bloqueado enviar o usuário para a Home antes de abrir a tela de bloqueio, com fallback explícito para o launcher se a ação global falhar.
+- CUMPRIDO: manter o bloqueio de sites fora dessa mudança.
+- PRÓXIMO OBJETIVO: validar testes, lint e compilação e revisar o diff antes de integrar na main.
 
 ## Regras de apresentação
 
