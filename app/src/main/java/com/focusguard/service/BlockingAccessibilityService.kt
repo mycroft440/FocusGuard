@@ -121,7 +121,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             dismissInstantBlockCurtain()
         }
     }
-    private val protectionGoHome = Runnable { performGlobalAction(GLOBAL_ACTION_HOME) }
     @Volatile private var protectionActionUntilElapsed = 0L
     private var lastBlockNoticeKey: String? = null
     private var lastBlockNoticeLaunchElapsed = 0L
@@ -1074,9 +1073,14 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun refreshSynchronousProtectionState() {
         refreshFocusModeFallbackState()
+        val snapshot = SelfProtectionStateStore.read(applicationContext)
+        blockedAppsSet = snapshot.blockedApps
+        blockedWebsitesDomainSet = WebsiteBlocker.normalizeRules(snapshot.blockedSites)
+        blockedWebsiteAppDomains = WebsiteBlocker.appPackageDomainsFor(blockedWebsitesDomainSet)
+        isPomodoroStrictActive = snapshot.strictPomodoro
         isBlockingSessionActive = isSelfProtectionEngaged(
             cachedActive = isBlockingSessionActive,
-            persistedActive = SelfProtectionStateStore.isArmed(applicationContext),
+            persistedActive = snapshot.armed,
             focusModeActive = FocusModeStore.isActive(applicationContext),
             armoredDeviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive() &&
                 deviceOwnerManager.isArmoredProtectionArmed()
@@ -1229,21 +1233,19 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun executeProtectionAction() {
+        // Segurança nunca sofre debounce: cada tentativa protegida expulsa Settings
+        // imediatamente. O debounce abaixo existe apenas para não recriar animação
+        // e toast durante uma tempestade de eventos de acessibilidade.
+        evictBlockedAppFromForeground()
+
         val nowElapsed = SystemClock.elapsedRealtime()
         if (!shouldExecuteProtectionAction(protectionActionUntilElapsed, nowElapsed)) return
         protectionActionUntilElapsed = nowElapsed + SELF_PROTECTION_ACTION_DEBOUNCE_MILLIS
 
-        // BACK fecha um diálogo de confirmação que já tenha aparecido no limite
-        // da corrida; HOME encerra a superfície sem abrir uma nova instância de
-        // Configurações. A versão anterior iniciava ACTION_SETTINGS com
-        // CLEAR_TASK, criando uma realimentação de eventos e o piscar observado.
         showInstantBlockCurtain(
             mode = CurtainMode.SELF_PROTECTION,
             messageRes = R.string.accessibility_protection_blocked_notice
         )
-        performGlobalAction(GLOBAL_ACTION_BACK)
-        mainHandler.removeCallbacks(protectionGoHome)
-        mainHandler.postDelayed(protectionGoHome, SELF_PROTECTION_HOME_DELAY_MILLIS)
         mainHandler.removeCallbacks(protectionCurtainDismiss)
         mainHandler.postDelayed(
             protectionCurtainDismiss,
@@ -1785,7 +1787,6 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         stopWebsiteTracking()
-        mainHandler.removeCallbacks(protectionGoHome)
         mainHandler.removeCallbacks(protectionCurtainDismiss)
         protectionActionUntilElapsed = 0L
         dismissInstantBlockCurtain()
@@ -1827,7 +1828,6 @@ class BlockingAccessibilityService : AccessibilityService() {
          * seconds after such a click.
          */
         private const val SETTINGS_TRANSITION_GUARD_MILLIS = 2_000L
-        private const val SELF_PROTECTION_HOME_DELAY_MILLIS = 80L
         private const val SELF_PROTECTION_ACTION_DEBOUNCE_MILLIS = 2_500L
         private const val SELF_PROTECTION_NOTICE_DURATION_MILLIS = 1_200L
         internal const val BLOCK_NOTICE_RELAUNCH_COOLDOWN_MILLIS = 1_500L
@@ -1936,19 +1936,31 @@ class BlockingAccessibilityService : AccessibilityService() {
             blockedSites: Collection<String>,
             blockingActive: Boolean,
             strictPomodoro: Boolean
-        ): Intent = Intent(ACTION_REFRESH_BLOCKING).apply {
-            setPackage(context.packageName)
-            putExtra(EXTRA_BLOCKING_SNAPSHOT_PRESENT, true)
-            putStringArrayListExtra(
-                EXTRA_BLOCKED_APPS_SNAPSHOT,
-                ArrayList(blockedApps.filter(String::isNotBlank).distinct())
+        ): Intent {
+            val normalizedApps = blockedApps.filter(String::isNotBlank).distinct()
+            val normalizedSites = WebsiteBlocker.normalizeRules(blockedSites)
+            SelfProtectionStateStore.setSnapshot(
+                context = context,
+                armed = blockingActive,
+                blockedApps = normalizedApps,
+                blockedSites = normalizedSites,
+                strictPomodoro = strictPomodoro
             )
-            putStringArrayListExtra(
-                EXTRA_BLOCKED_SITES_SNAPSHOT,
-                ArrayList(WebsiteBlocker.normalizeRules(blockedSites))
-            )
-            putExtra(EXTRA_BLOCKING_ACTIVE_SNAPSHOT, blockingActive)
-            putExtra(EXTRA_STRICT_POMODORO_SNAPSHOT, strictPomodoro)
+
+            return Intent(ACTION_REFRESH_BLOCKING).apply {
+                setPackage(context.packageName)
+                putExtra(EXTRA_BLOCKING_SNAPSHOT_PRESENT, true)
+                putStringArrayListExtra(
+                    EXTRA_BLOCKED_APPS_SNAPSHOT,
+                    ArrayList(normalizedApps)
+                )
+                putStringArrayListExtra(
+                    EXTRA_BLOCKED_SITES_SNAPSHOT,
+                    ArrayList(normalizedSites)
+                )
+                putExtra(EXTRA_BLOCKING_ACTIVE_SNAPSHOT, blockingActive)
+                putExtra(EXTRA_STRICT_POMODORO_SNAPSHOT, strictPomodoro)
+            }
         }
 
         internal fun createDevelopmentRelinquishIntent(context: Context): Intent =
