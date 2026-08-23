@@ -6,8 +6,10 @@ package com.focusguard.security
  *
  * The individual classifiers ([AccessibilitySettingsPolicy] and
  * [ManagedSelfProtectionPolicy]) already have their own tests; what lives here
- * is the composition of those signals. In particular, it encodes the invariant
- * that an app-control class is never sufficient without FocusGuard identity.
+ * is the composition of those signals. App-specific destructive surfaces still
+ * require FocusGuard identity. Two revocation gateways are intentionally
+ * protected earlier while a consented protection is active: the Device Admin
+ * apps entry and the Installed accessibility apps/services entry.
  *
  * Reading the accessibility node tree is expensive, so the `root*` signals are
  * passed as lambdas and evaluated only on the branches that need them. Keep them
@@ -76,7 +78,7 @@ object SettingsInterceptionPolicy {
         /** Tela individual que contém o interruptor de um serviço. */
         val classTargetsAccessibilityServiceToggle: Boolean,
 
-        /** Uma tela que apenas lista recursos de acessibilidade. */
+        /** Uma tela que lista recursos ou serviços de acessibilidade. */
         val classTargetsAccessibilityList: Boolean,
         val classTargetsDeviceAdmin: Boolean,
         val classTargetsAppDetails: Boolean,
@@ -168,10 +170,37 @@ object SettingsInterceptionPolicy {
             }
         }
 
+        // The two menus below are revocation gateways. Once a protection is active,
+        // letting the user enter them exposes the switches that disable the very
+        // permissions enforcing that protection. Block the gateway itself instead
+        // of waiting for the final FocusGuard switch to be touched.
+        if (signals.isViewClickedEvent && signals.textMentionsDeviceAdmin) {
+            return Decision.PROTECT_AND_ARM_GUARD
+        }
+        if (signals.classTargetsDeviceAdmin) {
+            return Decision.PROTECT_AND_ARM_GUARD
+        }
+        if (signals.isGenericSubSettings &&
+            (signals.textMentionsDeviceAdmin || rootSignals.mentionsDeviceAdmin())
+        ) {
+            return Decision.PROTECT_AND_ARM_GUARD
+        }
+
+        val installedAccessibilityEntry =
+            signals.textMentionsInstalledAccessibilityApps &&
+                (signals.textMentionsAccessibility || rootSignals.mentionsAccessibility())
+        if (signals.isViewClickedEvent && installedAccessibilityEntry) {
+            return Decision.PROTECT_AND_ARM_GUARD
+        }
+        if (signals.classTargetsAccessibilityList &&
+            signals.textMentionsInstalledAccessibilityApps
+        ) {
+            return Decision.PROTECT_AND_ARM_GUARD
+        }
+
         // O primeiro evento útil normalmente é o clique no item "FocusGuard".
         // Interceptá-lo antes da transição fecha a principal corrida do modo
-        // consumidor sem interditar Acessibilidade, Informações do app ou o
-        // desinstalador de qualquer outro aplicativo.
+        // consumidor sem interditar telas de outros aplicativos.
         if (signals.isViewClickedEvent && signals.textMentionsFocusGuard) {
             return Decision.PROTECT_AND_ARM_GUARD
         }
@@ -188,20 +217,6 @@ object SettingsInterceptionPolicy {
         ) {
             return Decision.PROTECT_AND_ARM_GUARD
         }
-
-        // Uma classe de tela informa o tipo de controle, nunca de qual app ele
-        // trata. Exigir o nome do FocusGuard é o limite que evita bloquear os
-        // administradores, detalhes e desinstalações dos demais aplicativos.
-        if (signals.classTargetsDeviceAdmin &&
-            (signals.textMentionsFocusGuard || rootSignals.mentionsFocusGuard())
-        ) {
-            return Decision.PROTECT_AND_ARM_GUARD
-        }
-
-        if (signals.isGenericSubSettings &&
-            (signals.textMentionsDeviceAdmin || rootSignals.mentionsDeviceAdmin()) &&
-            (signals.textMentionsFocusGuard || rootSignals.mentionsFocusGuard())
-        ) return Decision.PROTECT_AND_ARM_GUARD
 
         val onFocusGuardControlSurface =
             signals.classTargetsAppDetails ||
