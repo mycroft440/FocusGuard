@@ -121,7 +121,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             dismissInstantBlockCurtain()
         }
     }
-    private val protectionGoHome = Runnable { performGlobalAction(GLOBAL_ACTION_HOME) }
     @Volatile private var protectionActionUntilElapsed = 0L
     private var lastBlockNoticeKey: String? = null
     private var lastBlockNoticeLaunchElapsed = 0L
@@ -466,6 +465,23 @@ class BlockingAccessibilityService : AccessibilityService() {
                 return
             }
 
+            // TYPE_WINDOW_STATE_CHANGED already carries the newly foregrounded package.
+            // Use the device-protected target snapshot before any window/root binder read,
+            // so a cold/recreated accessibility service blocks the first launch just as
+            // quickly as subsequent launches. TYPE_WINDOWS_CHANGED stays on the resolved
+            // path because its direct package can describe a different window.
+            if (shouldFastBlockDirectPackage(
+                    eventType = event.eventType,
+                    directPackage = directPackage,
+                    blockedPackages = blockedAppsSet
+                )
+            ) {
+                foregroundPackageName = directPackage
+                stopWebsiteTracking(now)
+                blockApp(directPackage)
+                return
+            }
+
             val packageName = resolveEventPackageName(event)
             // Second chance: `event.packageName` is occasionally blank, and for
             // TYPE_WINDOWS_CHANGED it can name a different window than the one that
@@ -493,9 +509,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 }
             }
 
-            if (isPomodoroStrictActive &&
-                isWindowTransition
-            ) {
+            if (isPomodoroStrictActive && isWindowTransition) {
                 handleStrictPomodoro(packageName, event.className?.toString().orEmpty())
                 return
             }
@@ -740,11 +754,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         val manager = usageStatsManager ?: return emptySet()
         if (limits.isEmpty()) return emptySet()
 
-        // Without Usage Access, queryAndAggregateUsageStats returns an empty map and
-        // every limit below reads as "0 minutes used" — indistinguishable from a
-        // limit that is genuinely satisfied. Enforcement stops with nothing in the
-        // logs to say why, so record it explicitly. UsageAccessStateMonitor turns
-        // the same condition into a user-visible warning.
         if (UsageAccessPausePolicy.measurementIsUnavailable(
                 usageAccessGranted = PermissionUtils.isUsageAccessEnabled(this),
                 enabledAppLimitCount = limits.size
@@ -905,41 +914,17 @@ class BlockingAccessibilityService : AccessibilityService() {
         blockApp(packageName)
     }
 
-    /**
-     * @param packageName o app já resolvido pelo chamador. Reler
-     *   `event.packageName` aqui anulava a segunda chance: ela existe justamente
-     *   para os eventos em que esse campo vem vazio ou nomeia outra janela, e o
-     *   guard abaixo então rejeitava todos eles.
-     */
     private fun handleSettingsInterception(
         event: AccessibilityEvent,
         packageName: String
     ): Boolean {
-        // Cheap guards stay ahead of the signal extraction below: this runs on every
-        // accessibility event, and eventTextValues() plus the classifiers are not free.
         if (packageName !in interceptionPackages) return false
         if (packageName in SettingsInterceptionPolicy.systemUiPackages &&
             event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED
         ) return false
 
-        // ACTION_DELETE was opened by FocusGuard itself after the master
-        // credential (or the day-15 window) authorized removal. Do not block
-        // the Android-owned confirmation screen during that short hand-off.
         if (AuthenticatedRemovalWindow.isActive(this)) return false
 
-        // A proteção contra a própria remoção vale em dois casos. O mais forte é
-        // o Device Owner blindado. O outro é o modo consumidor: sem Device Owner,
-        // mas com um bloqueio, limite ou o filtro adulto ativo agora — é o estado
-        // em que desativar o app derruba justamente o que o usuário pediu para
-        // segurar. `isBlockingSessionActive` já é a verdade em tempo real desse
-        // estado, atualizada pelo snapshot no mesmo instante em que um bloqueio é
-        // armado, então a defesa sobe junto com o bloqueio, sem depender de uma
-        // recarga posterior.
-        //
-        // O cache e os dois snapshots em Device Protected Storage vêm antes das
-        // chamadas ao DevicePolicyManager. Assim o primeiro evento após um novo
-        // bind falha fechado, sem esperar Room, e o caminho ocioso ainda sai antes
-        // das consultas binder mais caras.
         val armorPersists = deviceOwnerManager.isDeviceOwnerActive() &&
             deviceOwnerManager.isArmoredProtectionArmed()
         val protectionEngaged = isSelfProtectionEngaged(
@@ -949,10 +934,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             armoredDeviceOwnerActive = armorPersists
         )
         if (!protectionEngaged) return false
-
-        // A janela de manutenção do Device Owner é a saída sancionada e desliga a
-        // defesa. Num aparelho sem Device Owner ela nunca abre, então lá a única
-        // saída é encerrar o bloqueio pelo próprio app — nunca pelas Configurações.
         if (deviceOwnerManager.isMaintenanceActive()) return false
 
         val nowElapsed = SystemClock.elapsedRealtime()
@@ -997,8 +978,6 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         val decision = SettingsInterceptionPolicy.decide(
             signals = signals,
-            // Já confirmado pelas guardas acima; a política revalida por conta
-            // própria porque é testada isoladamente.
             selfProtectionEngaged = true,
             strictPomodoroActive = isPomodoroStrictActive,
             deviceAdminActivationAuthorized = DeviceAdminActivationWindow.isAuthorized(
@@ -1046,10 +1025,6 @@ class BlockingAccessibilityService : AccessibilityService() {
                 add(source.contentDescription)
                 add(source.viewIdResourceName)
                 if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-                    // OEM rows and notifications are often clickable parents
-                    // while the label/body lives in children. Read only the two
-                    // narrow marker sets from that small subtree so the first
-                    // click can be classified without scanning the whole window.
                     clickInterceptionSearchTerms.forEach { term ->
                         val matchingNodes = runCatching {
                             source.findAccessibilityNodeInfosByText(term)
@@ -1061,10 +1036,6 @@ class BlockingAccessibilityService : AccessibilityService() {
                             recycleSafely(node)
                         }
                     }
-                    // A switch is commonly a sibling of the FocusGuard label,
-                    // not its parent. Match only markers sharing the clicked
-                    // control's horizontal row, instead of scanning/classifying
-                    // the whole list and accidentally protecting other services.
                     addAll(sameRowClickTextValues(source))
                 }
                 recycleSafely(source)
@@ -1074,9 +1045,14 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun refreshSynchronousProtectionState() {
         refreshFocusModeFallbackState()
+        val snapshot = SelfProtectionStateStore.read(applicationContext)
+        blockedAppsSet = snapshot.blockedApps
+        blockedWebsitesDomainSet = WebsiteBlocker.normalizeRules(snapshot.blockedSites)
+        blockedWebsiteAppDomains = WebsiteBlocker.appPackageDomainsFor(blockedWebsitesDomainSet)
+        isPomodoroStrictActive = snapshot.strictPomodoro
         isBlockingSessionActive = isSelfProtectionEngaged(
             cachedActive = isBlockingSessionActive,
-            persistedActive = SelfProtectionStateStore.isArmed(applicationContext),
+            persistedActive = snapshot.armed,
             focusModeActive = FocusModeStore.isActive(applicationContext),
             armoredDeviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive() &&
                 deviceOwnerManager.isArmoredProtectionArmed()
@@ -1229,21 +1205,19 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun executeProtectionAction() {
+        // Segurança nunca sofre debounce: cada tentativa protegida expulsa Settings
+        // imediatamente. O debounce abaixo existe apenas para não recriar animação
+        // e toast durante uma tempestade de eventos de acessibilidade.
+        evictBlockedAppFromForeground()
+
         val nowElapsed = SystemClock.elapsedRealtime()
         if (!shouldExecuteProtectionAction(protectionActionUntilElapsed, nowElapsed)) return
         protectionActionUntilElapsed = nowElapsed + SELF_PROTECTION_ACTION_DEBOUNCE_MILLIS
 
-        // BACK fecha um diálogo de confirmação que já tenha aparecido no limite
-        // da corrida; HOME encerra a superfície sem abrir uma nova instância de
-        // Configurações. A versão anterior iniciava ACTION_SETTINGS com
-        // CLEAR_TASK, criando uma realimentação de eventos e o piscar observado.
         showInstantBlockCurtain(
             mode = CurtainMode.SELF_PROTECTION,
             messageRes = R.string.accessibility_protection_blocked_notice
         )
-        performGlobalAction(GLOBAL_ACTION_BACK)
-        mainHandler.removeCallbacks(protectionGoHome)
-        mainHandler.postDelayed(protectionGoHome, SELF_PROTECTION_HOME_DELAY_MILLIS)
         mainHandler.removeCallbacks(protectionCurtainDismiss)
         mainHandler.postDelayed(
             protectionCurtainDismiss,
@@ -1308,8 +1282,6 @@ class BlockingAccessibilityService : AccessibilityService() {
                 return
             }
         } else if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            // Uma nova aba/tela interna sem URL não deve continuar somando o
-            // tempo do site visitado anteriormente.
             stopWebsiteTracking(now)
         }
         recycleSafely(root)
@@ -1785,7 +1757,6 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         stopWebsiteTracking()
-        mainHandler.removeCallbacks(protectionGoHome)
         mainHandler.removeCallbacks(protectionCurtainDismiss)
         protectionActionUntilElapsed = 0L
         dismissInstantBlockCurtain()
@@ -1816,38 +1787,13 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val SAFE_REDIRECT_URL = "https://www.google.com"
-        /**
-         * How long a relevant click keeps intercepting follow-up events.
-         *
-         * This is the main defence against the race the user can win: the click on
-         * the menu entry is seen *before* the destination screen exists, so the
-         * guard bounces the transition itself instead of waiting for the new
-         * window. Sized for a cold Settings start on a slow device — the cost of
-         * being generous is only that Settings stays interceptive for a few
-         * seconds after such a click.
-         */
         private const val SETTINGS_TRANSITION_GUARD_MILLIS = 2_000L
-        private const val SELF_PROTECTION_HOME_DELAY_MILLIS = 80L
         private const val SELF_PROTECTION_ACTION_DEBOUNCE_MILLIS = 2_500L
         private const val SELF_PROTECTION_NOTICE_DURATION_MILLIS = 1_200L
         internal const val BLOCK_NOTICE_RELAUNCH_COOLDOWN_MILLIS = 1_500L
         private const val FOCUS_MODE_REDIRECT_COOLDOWN_MILLIS = 600L
         private const val INSTANT_CURTAIN_FAILSAFE_MILLIS = 5_000L
         internal const val EVENT_NOTIFICATION_TIMEOUT_MILLIS = 0L
-        /**
-         * Event types that can trigger settings interception.
-         *
-         * Ordered by how early they arrive, not by how much they tell us.
-         * TYPE_WINDOWS_CHANGED and TYPE_VIEW_FOCUSED carry almost no class name or
-         * text — on their own they decide nothing — but they are the first signals
-         * that a new window exists, and once the transition guard is armed by a
-         * click that is all it takes to bounce out. Waiting for
-         * TYPE_WINDOW_STATE_CHANGED costs the frames in which the switch is already
-         * on screen and tappable.
-         *
-         * All four are already in [requestedAccessibilityEventTypes], so this
-         * widens nothing about what the service observes.
-         */
         private val settingsInterceptionEventTypes = setOf(
             AccessibilityEvent.TYPE_WINDOWS_CHANGED,
             AccessibilityEvent.TYPE_VIEW_FOCUSED,
@@ -1895,6 +1841,14 @@ class BlockingAccessibilityService : AccessibilityService() {
             focusModeActive ||
             armoredDeviceOwnerActive
 
+        internal fun shouldFastBlockDirectPackage(
+            eventType: Int,
+            directPackage: String,
+            blockedPackages: Set<String>
+        ): Boolean = eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            directPackage.isNotBlank() &&
+            directPackage in blockedPackages
+
         internal fun shouldSearchSameRowMarkers(clicked: Rect, root: Rect): Boolean =
             !clicked.isEmpty &&
                 !root.isEmpty &&
@@ -1936,19 +1890,31 @@ class BlockingAccessibilityService : AccessibilityService() {
             blockedSites: Collection<String>,
             blockingActive: Boolean,
             strictPomodoro: Boolean
-        ): Intent = Intent(ACTION_REFRESH_BLOCKING).apply {
-            setPackage(context.packageName)
-            putExtra(EXTRA_BLOCKING_SNAPSHOT_PRESENT, true)
-            putStringArrayListExtra(
-                EXTRA_BLOCKED_APPS_SNAPSHOT,
-                ArrayList(blockedApps.filter(String::isNotBlank).distinct())
+        ): Intent {
+            val normalizedApps = blockedApps.filter(String::isNotBlank).distinct()
+            val normalizedSites = WebsiteBlocker.normalizeRules(blockedSites)
+            SelfProtectionStateStore.setSnapshot(
+                context = context,
+                armed = blockingActive,
+                blockedApps = normalizedApps,
+                blockedSites = normalizedSites,
+                strictPomodoro = strictPomodoro
             )
-            putStringArrayListExtra(
-                EXTRA_BLOCKED_SITES_SNAPSHOT,
-                ArrayList(WebsiteBlocker.normalizeRules(blockedSites))
-            )
-            putExtra(EXTRA_BLOCKING_ACTIVE_SNAPSHOT, blockingActive)
-            putExtra(EXTRA_STRICT_POMODORO_SNAPSHOT, strictPomodoro)
+
+            return Intent(ACTION_REFRESH_BLOCKING).apply {
+                setPackage(context.packageName)
+                putExtra(EXTRA_BLOCKING_SNAPSHOT_PRESENT, true)
+                putStringArrayListExtra(
+                    EXTRA_BLOCKED_APPS_SNAPSHOT,
+                    ArrayList(normalizedApps)
+                )
+                putStringArrayListExtra(
+                    EXTRA_BLOCKED_SITES_SNAPSHOT,
+                    ArrayList(normalizedSites)
+                )
+                putExtra(EXTRA_BLOCKING_ACTIVE_SNAPSHOT, blockingActive)
+                putExtra(EXTRA_STRICT_POMODORO_SNAPSHOT, strictPomodoro)
+            }
         }
 
         internal fun createDevelopmentRelinquishIntent(context: Context): Intent =
