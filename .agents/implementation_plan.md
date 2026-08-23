@@ -7,8 +7,15 @@
 3. Remover automaticamente o card após 15 segundos ou depois do toque.
 4. Manter o atalho disponível no menu do canto superior após a apresentação.
 5. Alinhar o aviso de permissões sem sobrepor o cabeçalho da tela.
-6. Exibir um botão discreto de sugestões depois que o convite inicial desaparecer.
+6. Exibir permanentemente na tela Proteção um botão discreto de sugestões que leva ao Instagram do criador.
 7. Calcular os horários de maior e menor uso sobre os últimos 30 dias completos.
+
+## Estado da solicitação atual
+
+- CUMPRIDO: localizar o botão discreto de sugestões/Instagram já existente.
+- CUMPRIDO: remover a dependência do estado do convite temporário para exibir o botão.
+- CUMPRIDO: atualizar o teste da política para exigir o botão em todos os estados do convite.
+- PRÓXIMO OBJETIVO: revisar a alteração e validar que somente o comportamento solicitado foi afetado.
 
 ## Regras de apresentação
 
@@ -18,8 +25,10 @@
   foco; ele só é registrado quando Proteção está aberta em primeiro plano.
 - A apresentação concluída é persistida no aparelho para não se repetir.
 - Após a apresentação, o acesso em Configurações permanece disponível.
-- O botão de sugestões substitui o convite inicial e usa aparência neutra, sem
-  gradiente, logotipo ou cores fortes do Instagram.
+- O botão de sugestões permanece disponível na tela Proteção independentemente
+  de o convite inicial já ter sido apresentado ou estar visível.
+- O botão de sugestões usa aparência neutra, sem gradiente, logotipo ou cores
+  fortes do Instagram.
 - O destino tenta abrir o app do Instagram e mantém o fallback para navegador.
 - Cabeçalho, aviso de permissões e cards usam o mesmo fluxo vertical rolável,
   sem deslocamentos absolutos dependentes do tamanho da tela.
@@ -30,7 +39,7 @@
 
 - Testar o limite exato de uma hora e a duração da apresentação.
 - Testar que a apresentação persiste e não pode se repetir.
-- Testar que o botão de sugestões só aparece após o convite inicial desaparecer.
+- Testar que o botão de sugestões permanece disponível antes, durante e depois do convite inicial.
 - Testar que a média mensal inclui exatamente 30 dias completos.
 - Conferir paridade dos recursos em português e inglês.
 - Executar testes unitários, lint e compilação dos APKs.
