@@ -64,7 +64,6 @@ fun SettingsScreen(
     onLimitsClick: () -> Unit,
     onLanguageClick: () -> Unit,
     onBlockCustomizationClick: () -> Unit,
-    showCreatorInstagramEntry: Boolean,
     onCreatorInstagramClick: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -185,15 +184,6 @@ fun SettingsScreen(
                 stringResource(R.string.settings_language_subtitle),
                 onClick = onLanguageClick
             )
-            if (showCreatorInstagramEntry) {
-                SettingsItem(
-                    Icons.Default.CameraAlt,
-                    stringResource(R.string.creator_instagram_title),
-                    stringResource(R.string.settings_creator_instagram_subtitle),
-                    iconTint = Color(0xFFE1306C),
-                    onClick = onCreatorInstagramClick
-                )
-            }
 
             Spacer(Modifier.height(24.dp))
             FocusGuardSectionHeader(stringResource(R.string.settings_category_blocking))
@@ -251,6 +241,15 @@ fun SettingsScreen(
                 iconTint = DangerRed,
                 titleColor = DangerRed,
                 onClick = { showUninstallDialog = true }
+            )
+
+            Spacer(Modifier.height(24.dp))
+            SettingsItem(
+                Icons.Default.CameraAlt,
+                stringResource(R.string.creator_instagram_title),
+                stringResource(R.string.settings_creator_instagram_subtitle),
+                iconTint = Color(0xFFE1306C),
+                onClick = onCreatorInstagramClick
             )
 
             Spacer(Modifier.height(32.dp))

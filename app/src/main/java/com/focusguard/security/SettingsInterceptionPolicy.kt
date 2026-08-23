@@ -37,10 +37,8 @@ object SettingsInterceptionPolicy {
     val protectedSystemPackages = settingsPackages + packageInstallerPackages
 
     /**
-     * System UI is included only so a click on Android's accessibility privacy
-     * disclosure can be classified before it deep-links into Settings. It is
-     * handled by a closed branch in [decide] and never inherits the broader
-     * Settings interception rules.
+     * System UI is included only for narrowly classified deep-links into protected
+     * settings. It never inherits the broader Settings interception rules.
      */
     val interceptionPackages = protectedSystemPackages + systemUiPackages
 
@@ -130,14 +128,21 @@ object SettingsInterceptionPolicy {
         if (signals.packageName !in interceptionPackages) return Decision.IGNORE
         if (!selfProtectionEngaged) return Decision.IGNORE
 
-        // Android owns and keeps showing this privacy disclosure. We only stop
-        // its direct deep-link to FocusGuard's own service switch while a
-        // consented protection is active. Requiring all three signals prevents
-        // normal FocusGuard notifications (timers, status, warnings) and every
-        // other System UI interaction from being swallowed.
+        // Android owns these System UI surfaces. Keep this branch closed to the
+        // two explicit deep-links that can revoke FocusGuard's enforcement:
+        // (1) the accessibility privacy disclosure, and (2) the Package Installer
+        // failed-uninstall action that says "Manage device admin apps".
         if (signals.packageName in systemUiPackages) {
-            return if (signals.isViewClickedEvent &&
-                signals.textMentionsFocusGuard &&
+            if (!signals.isViewClickedEvent) return Decision.IGNORE
+
+            // The Device Admin gateway itself is protected while a block is active,
+            // so no FocusGuard identity is needed here. This also closes the
+            // notification/action shortcut that bypasses the Settings list row.
+            if (signals.textMentionsDeviceAdmin) {
+                return Decision.PROTECT_AND_ARM_GUARD
+            }
+
+            return if (signals.textMentionsFocusGuard &&
                 signals.textMentionsAccessibilityDisclosure
             ) {
                 Decision.PROTECT_AND_ARM_GUARD

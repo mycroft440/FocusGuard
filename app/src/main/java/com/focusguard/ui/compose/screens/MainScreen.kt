@@ -593,9 +593,27 @@ private fun CreatorFeedbackButton(
     onClick: () -> Unit,
     compact: Boolean = false
 ) {
+    val attentionTransition = rememberInfiniteTransition(label = "FeedbackAttention")
+    val attentionAlpha by attentionTransition.animateFloat(
+        initialValue = 1f,
+        targetValue = 0f,
+        animationSpec = infiniteRepeatable(
+            animation = keyframes {
+                durationMillis = 7_000
+                1f at 0
+                1f at 5_500
+                0f at 7_000 using LinearEasing
+            },
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "FeedbackAttentionAlpha"
+    )
+
     Card(
         onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer { alpha = attentionAlpha },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = DarkCard),
         border = BorderStroke(1.dp, CardBorder)
