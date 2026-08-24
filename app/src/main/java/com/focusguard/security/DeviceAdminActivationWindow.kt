@@ -8,11 +8,9 @@ import android.provider.Settings
 /**
  * Short, one-purpose bridge for the system-owned Device Admin enrollment UI.
  *
- * Self-protection normally closes every FocusGuard administration surface while
- * a consented block is active. The permission wizard, however, must be able to
- * launch [android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN] without
- * being mistaken for a removal attempt. This window authorizes only that screen
- * and only while FocusGuard is not an active administrator yet.
+ * The persisted record is preloaded before Accessibility callbacks. The hot-path
+ * methods below use only volatile cache + elapsedRealtime; no Settings.Global,
+ * SharedPreferences or DevicePolicyManager access is required for a decision.
  */
 object DeviceAdminActivationWindow {
     private const val PREFERENCES_NAME = "device_admin_activation_window"
@@ -25,7 +23,6 @@ object DeviceAdminActivationWindow {
     @Volatile private var cachedStoredBootCount = Int.MIN_VALUE
     @Volatile private var cachedCurrentBootCount = Int.MIN_VALUE
 
-    /** Loads the overwhelmingly common inactive state before an accessibility click. */
     fun preload(context: Context) {
         ensureCacheLoaded(context)
     }
@@ -46,29 +43,40 @@ object DeviceAdminActivationWindow {
         return persisted
     }
 
-    /** Cheap pre-check that avoids a DevicePolicyManager call on ordinary clicks. */
+    /** Slow-compatible wrapper for callers outside the Accessibility fast path. */
     fun isPotentiallyAuthorized(context: Context): Boolean {
         ensureCacheLoaded(context)
+        return isPotentiallyAuthorizedCached()
+    }
+
+    /** No I/O and no Binder. Expired cache simply fails closed. */
+    fun isPotentiallyAuthorizedCached(
+        nowElapsedMillis: Long = SystemClock.elapsedRealtime()
+    ): Boolean {
         val deadline = cachedDeadlineElapsed
-        if (deadline <= 0L) return false
-        val active = cachedStoredBootCount == cachedCurrentBootCount &&
-            deadline > SystemClock.elapsedRealtime()
-        if (!active) clearCachedAndPersistedState(context)
-        return active
+        return deadline > 0L &&
+            cachedStoredBootCount == cachedCurrentBootCount &&
+            deadline > nowElapsedMillis
     }
 
     fun isAuthorized(context: Context, deviceAdminActive: Boolean): Boolean {
-        if (!isPotentiallyAuthorized(context)) return false
-        val authorized = evaluate(
-            nowElapsedMillis = SystemClock.elapsedRealtime(),
-            deadlineElapsedMillis = cachedDeadlineElapsed,
-            storedBootCount = cachedStoredBootCount,
-            currentBootCount = cachedCurrentBootCount,
-            deviceAdminActive = deviceAdminActive
-        )
-        if (!authorized) clearCachedAndPersistedState(context)
+        ensureCacheLoaded(context)
+        val authorized = isAuthorizedCached(deviceAdminActive)
+        if (!authorized && cachedDeadlineElapsed > 0L) clearCachedAndPersistedState(context)
         return authorized
     }
+
+    /** No I/O/Binder. Used by the Settings L0 classifier. */
+    fun isAuthorizedCached(
+        deviceAdminActive: Boolean,
+        nowElapsedMillis: Long = SystemClock.elapsedRealtime()
+    ): Boolean = evaluate(
+        nowElapsedMillis = nowElapsedMillis,
+        deadlineElapsedMillis = cachedDeadlineElapsed,
+        storedBootCount = cachedStoredBootCount,
+        currentBootCount = cachedCurrentBootCount,
+        deviceAdminActive = deviceAdminActive
+    )
 
     fun close(context: Context) {
         clearCachedAndPersistedState(context)
@@ -81,6 +89,7 @@ object DeviceAdminActivationWindow {
         currentBootCount: Int,
         deviceAdminActive: Boolean
     ): Boolean = !deviceAdminActive &&
+        deadlineElapsedMillis > 0L &&
         storedBootCount == currentBootCount &&
         deadlineElapsedMillis > nowElapsedMillis
 
