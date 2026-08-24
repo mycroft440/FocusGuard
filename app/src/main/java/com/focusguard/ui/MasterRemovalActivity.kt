@@ -13,6 +13,7 @@ import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.activity.addCallback
 import androidx.lifecycle.lifecycleScope
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
@@ -37,6 +38,7 @@ class MasterRemovalActivity : ComponentActivity() {
     private lateinit var passwordField: EditText
     private lateinit var errorText: TextView
     private var working = false
+    private var dialogShown = false
 
     private val target: Target by lazy {
         runCatching { Target.valueOf(intent.getStringExtra(EXTRA_TARGET).orEmpty()) }
@@ -49,6 +51,48 @@ class MasterRemovalActivity : ComponentActivity() {
         sessionManager = BlockingSessionManager.getInstance(applicationContext)
         deviceOwnerManager = DeviceOwnerManager.getInstance(applicationContext)
         focusModeManager = FocusModeManager.getInstance(applicationContext)
+
+        onBackPressedDispatcher.addCallback(this) {
+            if (!working) cancelRemovalAttempt()
+        }
+
+        if (shouldResetSettingsTaskBeforeCredential(target) &&
+            !intent.getBooleanExtra(EXTRA_SETTINGS_TASK_RESET_DONE, false)
+        ) {
+            resetProtectedSettingsTaskAndReturnToGate()
+        } else {
+            showCredentialDialogOnce()
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        if (intent.getBooleanExtra(EXTRA_SETTINGS_TASK_RESET_DONE, false)) {
+            showCredentialDialogOnce()
+        }
+    }
+
+    /**
+     * Android does not let a normal app force-stop the system Settings process.
+     * The strongest safe equivalent is to clear the Settings task and recreate it
+     * at its root, then immediately bring this private credential task back.
+     * Cancelling the gate goes to HOME, so the protected deep screen is not left
+     * ready in Recents and the next attempt must navigate Settings again.
+     */
+    private fun resetProtectedSettingsTaskAndReturnToGate() {
+        runCatching {
+            startActivity(createSettingsTaskResetIntent())
+            startActivity(createGateReturnIntent(this, target))
+        }.onFailure {
+            // Failing to reset the task must never remove the credential gate.
+            showCredentialDialogOnce()
+        }
+    }
+
+    private fun showCredentialDialogOnce() {
+        if (dialogShown || isFinishing || isDestroyed) return
+        dialogShown = true
         showCredentialDialog()
     }
 
@@ -78,9 +122,9 @@ class MasterRemovalActivity : ComponentActivity() {
             .setTitle(R.string.master_removal_title)
             .setMessage(R.string.master_removal_description)
             .setView(container)
-            .setNegativeButton(R.string.cancel) { _, _ -> finish() }
+            .setNegativeButton(R.string.cancel) { _, _ -> cancelRemovalAttempt() }
             .setPositiveButton(R.string.master_removal_confirm, null)
-            .setOnCancelListener { finish() }
+            .setOnCancelListener { cancelRemovalAttempt() }
             .create()
 
         dialog.setOnShowListener {
@@ -91,6 +135,11 @@ class MasterRemovalActivity : ComponentActivity() {
         }
         dialog.setCanceledOnTouchOutside(false)
         dialog.show()
+    }
+
+    private fun cancelRemovalAttempt() {
+        runCatching { startActivity(createHomeIntent()) }
+        finish()
     }
 
     private fun authorizeAndRelease(dialog: AlertDialog) {
@@ -190,10 +239,46 @@ class MasterRemovalActivity : ComponentActivity() {
 
     companion object {
         private const val EXTRA_TARGET = "MASTER_REMOVAL_TARGET"
+        private const val EXTRA_SETTINGS_TASK_RESET_DONE = "SETTINGS_TASK_RESET_DONE"
 
         fun createIntent(context: Context, target: Target): Intent =
             Intent(context, MasterRemovalActivity::class.java).apply {
                 putExtra(EXTRA_TARGET, target.name)
+            }
+
+        internal fun shouldResetSettingsTaskBeforeCredential(target: Target): Boolean =
+            target == Target.APP_INFO ||
+                target == Target.DEVICE_ADMIN ||
+                target == Target.ACCESSIBILITY
+
+        internal fun createSettingsTaskResetIntent(): Intent =
+            Intent(Settings.ACTION_SETTINGS).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TASK or
+                        Intent.FLAG_ACTIVITY_NO_ANIMATION
+                )
+            }
+
+        internal fun createHomeIntent(): Intent =
+            Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_NO_ANIMATION
+                )
+            }
+
+        private fun createGateReturnIntent(context: Context, target: Target): Intent =
+            createIntent(context, target).apply {
+                putExtra(EXTRA_SETTINGS_TASK_RESET_DONE, true)
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_NO_ANIMATION
+                )
             }
     }
 }
