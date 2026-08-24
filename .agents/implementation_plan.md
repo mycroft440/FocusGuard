@@ -91,6 +91,7 @@
 - CUMPRIDO: concluir que não existe cópia portátil do launcher OEM: a função HOME exige consentimento no modo comum, o intercâmbio de workspace é opcional e UI, gestos, widgets configurados e integrações privadas não são reproduzidos pelas APIs públicas.
 - CUMPRIDO: revisão crítica do supervisor aprovou excluir o launcher deste checkpoint; se solicitado depois, a alternativa correta é um FocusGuard Launcher próprio, opt-in, isolado em outra branch e medido como subsistema separado.
 - CUMPRIDO: o primeiro CI do PR #65 detectou que enums de decisão declarados no `companion object` não eram acessíveis pelos nomes de classe usados nos testes; movê-los para o escopo da classe preserva a lógica e torna o contrato interno testável.
+- CUMPRIDO: o segundo CI do PR #65 executou 613 testes e revelou que o marcador genérico `Widget` rejeitava por engano o `android.widget.TextView` usado pelo Launcher3; priorizar esse nome framework exato restaura o fast path AOSP sem aceitar `FrameLayout`, pastas, widgets ou atalhos.
 - EM ANDAMENTO: publicar a branch existente em PR draft, executar CI completo e integrar na `main` somente após todos os jobs obrigatórios aprovarem; confirmar também o workflow disparado pelo push em `main` antes de encerrar.
 
 ## Regras de apresentação

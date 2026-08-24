@@ -126,13 +126,14 @@ object ImmediateInterceptionPolicy {
     /** Conservative class gate before a launcher label may identify a package. */
     fun isLikelyLauncherAppIconClass(className: String): Boolean {
         if (className.isBlank()) return false
+        // AOSP Launcher3's BubbleTextView reports TextView as its accessibility
+        // class. Check the exact framework class before the generic non-app
+        // markers, because its package name itself contains "widget".
+        if (className == "android.widget.TextView") return true
         if (NON_APP_LAUNCHER_CLASS_MARKERS.any {
                 className.contains(it, ignoreCase = true)
             }
         ) return false
-        // AOSP Launcher3's BubbleTextView reports TextView as its accessibility
-        // class, so the framework name is part of the base-device fast path.
-        if (className == "android.widget.TextView") return true
         return APP_ICON_CLASS_MARKERS.any { className.contains(it, ignoreCase = true) }
     }
 
