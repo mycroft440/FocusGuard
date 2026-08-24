@@ -14,9 +14,9 @@ import kotlin.math.max
 /**
  * Controls a short maintenance window for Device Owner policies.
  *
- * Eligibility uses automatic network date/time. The ten-minute deadline uses
- * [SystemClock.elapsedRealtime], so wall-clock or timezone changes cannot extend it.
- * Reboot invalidates the window through [Settings.Global.BOOT_COUNT].
+ * The persisted record is validated once and then published into volatile fields.
+ * Accessibility hot paths only read elapsedRealtime + these cached values; they do
+ * not synchronously touch SharedPreferences, Settings.Global or DevicePolicyManager.
  */
 object DeviceOwnerMaintenanceGate {
 
@@ -42,6 +42,38 @@ object DeviceOwnerMaintenanceGate {
     private const val UNLOCK_SOURCE_KEY = "unlock_source"
     private const val PROTECTION_ARMED_WHEN_OPENED_KEY = "protection_armed_when_opened"
     private const val EXPIRY_REQUEST_CODE = 7301
+
+    @Volatile private var cacheLoaded = false
+    @Volatile private var cachedDeadlineElapsed = 0L
+    @Volatile private var cachedStoredBootCount = Int.MIN_VALUE
+    @Volatile private var cachedCurrentBootCount = Int.MIN_VALUE
+    @Volatile private var cachedAutomaticDateTimeEnabled = false
+    @Volatile private var cachedProtectionArmedWhenOpened = false
+
+    fun preload(context: Context) {
+        refreshCache(context)
+    }
+
+    /**
+     * Slow validation entry point. Call from lifecycle/refresh work, not from the
+     * Accessibility callback. It republishes a complete coherent-enough cache for
+     * the lock-free hot read below.
+     */
+    fun refreshCache(context: Context) {
+        val prefs = preferences(context)
+        val deadline = prefs.getLong(DEADLINE_ELAPSED_KEY, 0L)
+        val storedBootCount = prefs.getInt(BOOT_COUNT_KEY, Int.MIN_VALUE)
+        val currentBootCount = readBootCount(context)
+        val automaticDateTimeEnabled = isAutomaticDateAndTimeEnabled(context)
+        val protectionArmed = prefs.getBoolean(PROTECTION_ARMED_WHEN_OPENED_KEY, false)
+
+        cachedDeadlineElapsed = deadline
+        cachedStoredBootCount = storedBootCount
+        cachedCurrentBootCount = currentBootCount
+        cachedAutomaticDateTimeEnabled = automaticDateTimeEnabled
+        cachedProtectionArmedWhenOpened = protectionArmed
+        cacheLoaded = true
+    }
 
     fun requestWithCredential(
         context: Context,
@@ -91,36 +123,59 @@ object DeviceOwnerMaintenanceGate {
         return UnlockResult.UNLOCKED
     }
 
-    fun isTemporarilyUnlocked(context: Context): Boolean = remainingMillis(context) > 0L
+    /** Hot-path compatible after preload. First-ever access still fails safe by loading once. */
+    fun isTemporarilyUnlocked(context: Context): Boolean {
+        ensureCacheLoaded(context)
+        return isTemporarilyUnlockedCached()
+    }
+
+    /** No I/O, Settings or Binder. Intended for Accessibility event processing. */
+    fun isTemporarilyUnlockedCached(nowElapsedMillis: Long = SystemClock.elapsedRealtime()): Boolean {
+        if (!cacheLoaded) return false
+        return evaluateRemainingMillis(
+            automaticDateTimeEnabled = cachedAutomaticDateTimeEnabled,
+            nowElapsedMillis = nowElapsedMillis,
+            deadlineElapsedMillis = cachedDeadlineElapsed,
+            storedBootCount = cachedStoredBootCount,
+            currentBootCount = cachedCurrentBootCount
+        ) > 0L
+    }
 
     /**
      * True when a maintenance window was persisted before the current Direct Boot pass.
-     * A reboot always invalidates that window, but the native shield uses this signal to
-     * fail closed before clearing the stale deadline.
+     * This intentionally remains a persisted read: Direct Boot policy setup is not an
+     * Accessibility hot path.
      */
     internal fun hasPersistedWindow(context: Context): Boolean =
         preferences(context).contains(DEADLINE_ELAPSED_KEY)
 
-    /** Preserves whether an interrupted maintenance window belonged to an active commitment. */
     internal fun wasProtectionArmedWhenOpened(context: Context): Boolean =
-        preferences(context).getBoolean(PROTECTION_ARMED_WHEN_OPENED_KEY, false)
+        if (cacheLoaded) cachedProtectionArmedWhenOpened
+        else preferences(context).getBoolean(PROTECTION_ARMED_WHEN_OPENED_KEY, false)
 
     fun remainingMillis(context: Context): Long {
-        val prefs = preferences(context)
-        val remaining = evaluateRemainingMillis(
-            automaticDateTimeEnabled = isAutomaticDateAndTimeEnabled(context),
-            nowElapsedMillis = SystemClock.elapsedRealtime(),
-            deadlineElapsedMillis = prefs.getLong(DEADLINE_ELAPSED_KEY, 0L),
-            storedBootCount = prefs.getInt(BOOT_COUNT_KEY, Int.MIN_VALUE),
-            currentBootCount = readBootCount(context)
+        ensureCacheLoaded(context)
+        return remainingMillisCached()
+    }
+
+    fun remainingMillisCached(nowElapsedMillis: Long = SystemClock.elapsedRealtime()): Long {
+        if (!cacheLoaded) return 0L
+        return evaluateRemainingMillis(
+            automaticDateTimeEnabled = cachedAutomaticDateTimeEnabled,
+            nowElapsedMillis = nowElapsedMillis,
+            deadlineElapsedMillis = cachedDeadlineElapsed,
+            storedBootCount = cachedStoredBootCount,
+            currentBootCount = cachedCurrentBootCount
         )
-        if (remaining == 0L && prefs.contains(DEADLINE_ELAPSED_KEY)) {
-            revoke(context)
-        }
-        return remaining
     }
 
     fun revoke(context: Context) {
+        cachedDeadlineElapsed = 0L
+        cachedStoredBootCount = Int.MIN_VALUE
+        cachedCurrentBootCount = Int.MIN_VALUE
+        cachedAutomaticDateTimeEnabled = false
+        cachedProtectionArmedWhenOpened = false
+        cacheLoaded = true
         preferences(context).edit().clear().commit()
         cancelExpiry(context)
     }
@@ -156,14 +211,26 @@ object DeviceOwnerMaintenanceGate {
 
     private fun openWindow(context: Context, source: String, protectionArmed: Boolean) {
         val deadline = SystemClock.elapsedRealtime() + UNLOCK_DURATION_MILLIS
+        val bootCount = readBootCount(context)
         val saved = preferences(context).edit()
             .putLong(DEADLINE_ELAPSED_KEY, deadline)
-            .putInt(BOOT_COUNT_KEY, readBootCount(context))
+            .putInt(BOOT_COUNT_KEY, bootCount)
             .putString(UNLOCK_SOURCE_KEY, source)
             .putBoolean(PROTECTION_ARMED_WHEN_OPENED_KEY, protectionArmed)
             .commit()
         check(saved) { "Não foi possível abrir a janela de manutenção" }
+
+        cachedDeadlineElapsed = deadline
+        cachedStoredBootCount = bootCount
+        cachedCurrentBootCount = bootCount
+        cachedAutomaticDateTimeEnabled = true
+        cachedProtectionArmedWhenOpened = protectionArmed
+        cacheLoaded = true
         scheduleExpiry(context, deadline)
+    }
+
+    private fun ensureCacheLoaded(context: Context) {
+        if (!cacheLoaded) refreshCache(context)
     }
 
     private fun scheduleExpiry(context: Context, deadlineElapsed: Long) {
