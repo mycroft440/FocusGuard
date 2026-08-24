@@ -61,8 +61,10 @@ object ManagedSelfProtectionPolicy {
     )
 
     internal val deviceAdminSearchTerms = listOf(
-        "Apps do administrador do aparelho",
+        // One UI pt-BR: keep the observed gateway first so the rare broad root
+        // fallback short-circuits on its first query.
         "Apps administradores do sistema",
+        "Apps do administrador do aparelho",
         "Aplicativos administradores do sistema",
         "System admin apps",
         "Administrador do dispositivo",
@@ -84,8 +86,10 @@ object ManagedSelfProtectionPolicy {
      * returned node text with [textTargetsDeviceAdmin] before blocking.
      */
     internal val deviceAdminNodeSearchTerms = listOf(
-        "Apps do administr",
+        // Current One UI pt-BR wording first; these are locators only and the
+        // returned node still passes textTargetsDeviceAdmin before any block.
         "Apps administradores",
+        "Apps do administr",
         "Device admin"
     )
 

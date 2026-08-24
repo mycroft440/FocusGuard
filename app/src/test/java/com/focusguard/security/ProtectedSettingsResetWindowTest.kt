@@ -6,6 +6,16 @@ import org.junit.Test
 class ProtectedSettingsResetWindowTest {
 
     @Test
+    fun `close revokes reset exemption immediately`() {
+        ProtectedSettingsResetWindow.open(91L)
+        assertThat(ProtectedSettingsResetWindow.isActive(91L)).isTrue()
+
+        ProtectedSettingsResetWindow.close(91L)
+
+        assertThat(ProtectedSettingsResetWindow.isActive(91L)).isFalse()
+    }
+
+    @Test
     fun `only the live matching curtain generation suppresses internal reset events`() {
         assertThat(
             ProtectedSettingsResetWindow.evaluate(

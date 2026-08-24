@@ -215,6 +215,12 @@ class BlockingAccessibilityService : AccessibilityService() {
             AccessibilitySettingsPolicy.installedAccessibilityAppsNodeSearchTerms).distinct()
     // One strong app-identity query per ambiguous click; broad localized terms stay in policy fallbacks.
     private val clickInterceptionSearchTerms = listOf("FocusGuard")
+    // Device Admin is a revocation gateway of its own. These short locator prefixes
+    // are intentionally separate from the broad localized dictionaries so an
+    // ambiguous Settings click can be resolved from the clicked row/parent before
+    // falling back to a root-window scan. One UI normally matches the first term.
+    private val deviceAdminClickSearchTerms =
+        ManagedSelfProtectionPolicy.deviceAdminNodeSearchTerms
 
     private var pendingSettingsProtectionUntilElapsed = 0L
 
@@ -1294,7 +1300,12 @@ class BlockingAccessibilityService : AccessibilityService() {
         // MasterRemovalActivity deliberately opens Settings at its root for one
         // frame to clear the protected task. The same curtain generation proves
         // this is our internal reset, not a user attempt; do not HOME-bounce it.
+        // The reset window exists only for the programmatic ACTION_SETTINGS
+        // transition created by MasterRemovalActivity. It must NEVER swallow a real
+        // TYPE_VIEW_CLICKED: returning true from this callback does not cancel the
+        // Android click, so the old code created a short re-entry bypass.
         if (!isSystemUi &&
+            event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED &&
             ProtectedSettingsResetWindow.isActive(
                 curtainGeneration = awaitingSafeSurfaceGeneration,
                 nowElapsed = nowElapsed
@@ -1334,6 +1345,29 @@ class BlockingAccessibilityService : AccessibilityService() {
                 DeviceAdminActivationWindow.isAuthorized(this)
         val className = event.className?.toString().orEmpty()
 
+        // Destination fallback for OEMs whose menu-row click exposes no usable text.
+        // Once Android reports a Device Admin Activity/class, bounce immediately —
+        // before source/root reads — and clear the Settings task through the same
+        // master-gate path used by the faster revocation gateways. Legitimate
+        // enrollment initiated by FocusGuard keeps its short authorization window.
+        if (!isSystemUi &&
+            !deviceAdminActivationAuthorized &&
+            event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED &&
+            ManagedSelfProtectionPolicy.classTargetsDeviceAdmin(className)
+        ) {
+            pendingSettingsProtectionUntilElapsed =
+                nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
+            val generation = executeProtectionAction(
+                eventTimeUptimeMillis = event.eventTime,
+                eventDeliveredAtUptimeMillis = eventDeliveredAtUptimeMillis,
+                eventDetectedAtNanos = eventDetectedAtNanos,
+                holdUntilSafeSurface = true,
+                forceLauncherFallback = true
+            )
+            launchMasterRemovalGate(MasterRemovalActivity.Target.DEVICE_ADMIN, generation)
+            return true
+        }
+
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
             val directValues = directEventTextValues(event)
             val direct = if (isSystemUi) {
@@ -1345,11 +1379,21 @@ class BlockingAccessibilityService : AccessibilityService() {
                     }
                 )
             } else {
-                ImmediateInterceptionPolicy.classifySettingsClick(
+                val directResult = ImmediateInterceptionPolicy.classifySettingsClick(
                     packageName = packageName,
                     className = className,
                     values = directValues
                 )
+                if (directResult.decision == DirectDecision.NEED_TREE &&
+                    fastDeviceAdminClickConfirmed(event)
+                ) {
+                    ImmediateInterceptionPolicy.SettingsClickDecision(
+                        DirectDecision.PROTECT,
+                        SettingsSurface.DEVICE_ADMIN
+                    )
+                } else {
+                    directResult
+                }
             }
             val authorizedAdminNeedsFullPolicy =
                 ImmediateInterceptionPolicy.requiresFullPolicyForAuthorizedAdmin(
@@ -1367,7 +1411,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                     eventTimeUptimeMillis = event.eventTime,
                     eventDeliveredAtUptimeMillis = eventDeliveredAtUptimeMillis,
                     eventDetectedAtNanos = eventDetectedAtNanos,
-                    holdUntilSafeSurface = true
+                    holdUntilSafeSurface = true,
+                    forceLauncherFallback = target == MasterRemovalActivity.Target.DEVICE_ADMIN
                 )
                 launchMasterRemovalGate(target, generation)
                 return true
@@ -1432,8 +1477,13 @@ class BlockingAccessibilityService : AccessibilityService() {
             textMentionsAppInfoGateway = managedTextSignals.appInfoGateway
         )
 
-        val masterRemovalTarget = if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
-            when {
+        val masterRemovalTarget = when {
+            // A destination-class fallback is still a confirmed Device Admin
+            // removal gateway. Treat it exactly like the click path so Settings is
+            // cleared instead of merely receiving HOME and remaining ready behind it.
+            classTargetsDeviceAdmin && !deviceAdminActivationAuthorized ->
+                MasterRemovalActivity.Target.DEVICE_ADMIN
+            event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED -> when {
                 signals.textMentionsDeviceAdmin || classTargetsDeviceAdmin ->
                     MasterRemovalActivity.Target.DEVICE_ADMIN
                 (signals.textMentionsInstalledAccessibilityApps && signals.textMentionsAccessibility) ||
@@ -1449,8 +1499,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 signals.textMentionsFocusGuard -> MasterRemovalActivity.Target.APP_INFO
                 else -> null
             }
-        } else {
-            null
+            else -> null
         }
 
         val decision = SettingsInterceptionPolicy.decide(
@@ -1483,7 +1532,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                     eventTimeUptimeMillis = event.eventTime,
                     eventDeliveredAtUptimeMillis = eventDeliveredAtUptimeMillis,
                     eventDetectedAtNanos = eventDetectedAtNanos,
-                    holdUntilSafeSurface = masterRemovalTarget != null
+                    holdUntilSafeSurface = masterRemovalTarget != null,
+                    forceLauncherFallback =
+                        masterRemovalTarget == MasterRemovalActivity.Target.DEVICE_ADMIN
                 )
                 masterRemovalTarget?.let { launchMasterRemovalGate(it, generation) }
                 true
@@ -1496,7 +1547,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                     eventTimeUptimeMillis = event.eventTime,
                     eventDeliveredAtUptimeMillis = eventDeliveredAtUptimeMillis,
                     eventDetectedAtNanos = eventDetectedAtNanos,
-                    holdUntilSafeSurface = masterRemovalTarget != null
+                    holdUntilSafeSurface = masterRemovalTarget != null,
+                    forceLauncherFallback =
+                        masterRemovalTarget == MasterRemovalActivity.Target.DEVICE_ADMIN
                 )
                 masterRemovalTarget?.let { launchMasterRemovalGate(it, generation) }
                 true
@@ -1540,6 +1593,60 @@ class BlockingAccessibilityService : AccessibilityService() {
         } else {
             event.source
         }
+
+    /**
+     * Bounded Device Admin row probe for textless/generic Settings clicks.
+     *
+     * One UI often reports the clicked row container instead of its visible label.
+     * Search only that subtree and its immediate parent with the short locator
+     * prefixes, stopping at the first confirmed Device Admin match. This avoids the
+     * old broad root scan in the common Samsung path while preserving the general
+     * OEM fallback if neither local probe is enough.
+     */
+    private fun fastDeviceAdminClickConfirmed(event: AccessibilityEvent): Boolean {
+        if (event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED) return false
+        val source = sourceNodeForEvent(event) ?: return false
+        return try {
+            if (nodeTreeMentionsDeviceAdmin(source)) {
+                true
+            } else {
+                val parent = runCatching { source.parent }.getOrNull()
+                try {
+                    parent?.let(::nodeTreeMentionsDeviceAdmin) == true
+                } finally {
+                    recycleSafely(parent)
+                }
+            }
+        } finally {
+            recycleSafely(source)
+        }
+    }
+
+    private fun nodeTreeMentionsDeviceAdmin(node: AccessibilityNodeInfo): Boolean {
+        if (ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(
+                listOf(node.text, node.contentDescription, node.viewIdResourceName)
+            )
+        ) return true
+
+        return deviceAdminClickSearchTerms.any { term ->
+            val nodes = runCatching {
+                node.findAccessibilityNodeInfosByText(term)
+            }.getOrDefault(emptyList())
+            try {
+                nodes.any { candidate ->
+                    ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(
+                        listOf(
+                            candidate.text,
+                            candidate.contentDescription,
+                            candidate.viewIdResourceName
+                        )
+                    )
+                }
+            } finally {
+                nodes.forEach(::recycleSafely)
+            }
+        }
+    }
 
     private fun eventTextValues(
         event: AccessibilityEvent,
@@ -1763,7 +1870,8 @@ class BlockingAccessibilityService : AccessibilityService() {
         eventTimeUptimeMillis: Long,
         eventDeliveredAtUptimeMillis: Long,
         eventDetectedAtNanos: Long,
-        holdUntilSafeSurface: Boolean = false
+        holdUntilSafeSurface: Boolean = false,
+        forceLauncherFallback: Boolean = false
     ): Long {
         // Segurança nunca sofre debounce: cada tentativa protegida expulsa Settings
         // imediatamente. A cortina, porém, é desenhada ANTES de pedir HOME para
@@ -1819,7 +1927,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
 
         if (shouldEvictForProtectionAttempt(alreadyAwaitingSafeSurface)) {
-            evictBlockedAppFromForeground()
+            evictBlockedAppFromForeground(forceLauncherFallback = forceLauncherFallback)
         }
         val homeRequestedAtNanos = SystemClock.elapsedRealtimeNanos()
 
