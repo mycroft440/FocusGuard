@@ -21,6 +21,7 @@
 17. Reduzir ao mínimo a latência da primeira tentativa de remover/desinstalar o HardBlock, priorizando decisão e resposta visual antes de Binder, árvore de acessibilidade, refresh assíncrono e navegação.
 18. Unificar a saída autenticada do HardBlock na senha mestre global, com mínimo de 4 caracteres, removendo todas as fontes de bloqueio e liberando as proteções essenciais antes da desinstalação.
 19. Reduzir ao limite da plataforma a latência ao abrir apps bloqueados, Acessibilidade, Informações do app, Apps administradores do aparelho e o menu de energia, sem introduzir falsos positivos nem janelas sem proteção.
+20. Avaliar se um launcher próprio/default do FocusGuard reduziria ainda mais a latência sem tentar clonar recursos privados do launcher OEM e, depois da decisão técnica e validação, publicar a implementação aprovada na `main`.
 
 ## Estado da solicitação atual
 
@@ -81,8 +82,15 @@
 - CUMPRIDO: concluir a revisão estática em loop com aprovação condicionada do supervisor, incluindo falhas fail-closed, gerações stale, SystemUI parcial/textless, refresh resiliente do launcher, SCREEN_OFF/onInterrupt e o state machine completo do menu de energia.
 - CUMPRIDO: manter o clique de app bloqueado como primeiro classificador do launcher e reutilizar a mesma extração direta de valores antes de qualquer classificação de App info.
 - CUMPRIDO: consolidar a implementação e os testes de regressão na branch local `perf/instant-blocking`, sem publicar alterações externas.
-- PRÓXIMO OBJETIVO: após autorização explícita do usuário, publicar a branch em PR draft e validar Unit Tests, Android Lint, baseline merge, APK/AAB Release e APK Debug no CI; não marcar validação como cumprida antes dos jobs verdes.
+- EM ANDAMENTO: autorização explícita recebida; publicar a branch em PR draft e validar Unit Tests, Android Lint, baseline merge, APK/AAB Release e APK Debug no CI; não marcar validação como cumprida antes dos jobs verdes.
 - PRÓXIMO OBJETIVO: executar matrix física Pixel/AOSP + One UI para launcher/badges, App info/Admin/Acessibilidade/disclosure, split-screen/freeform, screen-off/unlock e power menu; medir p50/p95 de evento→cortina e observar o destino fail-closed de eventos isolados `HardBlock`.
+
+## Iteração atual — decisão sobre launcher e publicação
+
+- CUMPRIDO: confirmar na documentação oficial e na arquitetura local que um launcher próprio poderia negar o `startActivity` antes do lançamento somente para interações originadas nele, sem cobrir Recentes, notificações, links, outros apps, Configurações ou menu de energia.
+- CUMPRIDO: concluir que não existe cópia portátil do launcher OEM: a função HOME exige consentimento no modo comum, o intercâmbio de workspace é opcional e UI, gestos, widgets configurados e integrações privadas não são reproduzidos pelas APIs públicas.
+- CUMPRIDO: revisão crítica do supervisor aprovou excluir o launcher deste checkpoint; se solicitado depois, a alternativa correta é um FocusGuard Launcher próprio, opt-in, isolado em outra branch e medido como subsistema separado.
+- EM ANDAMENTO: publicar a branch existente em PR draft, executar CI completo e integrar na `main` somente após todos os jobs obrigatórios aprovarem; confirmar também o workflow disparado pelo push em `main` antes de encerrar.
 
 ## Regras de apresentação
 
