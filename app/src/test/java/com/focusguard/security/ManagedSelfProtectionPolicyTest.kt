@@ -85,6 +85,15 @@ class ManagedSelfProtectionPolicyTest {
     }
 
     @Test
+    fun `recognizes isolated CI package identity`() {
+        assertThat(
+            ManagedSelfProtectionPolicy.textTargetsFocusGuard(
+                listOf("HardBlock", "com.focusguard.v2.ci")
+            )
+        ).isTrue()
+    }
+
+    @Test
     fun `does not classify the general apps list as FocusGuard details`() {
         assertThat(
             ManagedSelfProtectionPolicy.classTargetsAppDetails(
@@ -215,5 +224,4 @@ class ManagedSelfProtectionPolicyTest {
         assertThat(ManagedSelfProtectionPolicy.textTargetsAppInfoGateway(listOf("App info")))
             .isTrue()
     }
-
 }

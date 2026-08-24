@@ -22,7 +22,7 @@ object ManagedSelfProtectionPolicy {
 
     // These helpers must exist before the pre-normalized dictionaries are built.
     private val COMBINING_MARKS_REGEX = "\\p{M}+".toRegex()
-    private val NON_LETTER_REGEX = "[^a-z]+".toRegex()
+    private val NON_LETTER_REGEX = "[^a-z0-9]+".toRegex()
 
     private val deviceAdminClassMarkers = setOf(
         "DeviceAdminSettings",
@@ -138,7 +138,8 @@ object ManagedSelfProtectionPolicy {
         // Stable package identifiers remain fallbacks when an OEM exposes the
         // package name instead of the user-visible label.
         "com.focusguard.v2",
-        "com.focusguard.v2.debug"
+        "com.focusguard.v2.debug",
+        "com.focusguard.v2.ci"
     )
 
     internal val destructiveControlSearchTerms = listOf(
@@ -179,7 +180,8 @@ object ManagedSelfProtectionPolicy {
     )
     private val normalizedFocusGuardPackageIds = setOf(
         normalize("com.focusguard.v2"),
-        normalize("com.focusguard.v2.debug")
+        normalize("com.focusguard.v2.debug"),
+        normalize("com.focusguard.v2.ci")
     )
     private val normalizedDestructiveControlSearchTerms =
         destructiveControlSearchTerms.map(::normalize)
@@ -225,10 +227,18 @@ object ManagedSelfProtectionPolicy {
         matchesDeviceAdmin(normalizeValues(values))
 
     fun textTargetsAppInfoGateway(values: Iterable<CharSequence?>): Boolean =
-        valuesContainAnyNormalized(normalizeValues(values), normalizedAppInfoGatewaySearchTerms)
+        valuesContainAnyNormalized(
+            normalizeValues(values),
+            normalizedAppInfoGatewaySearchTerms
+        )
 
-    fun textTargetsFocusGuard(values: Iterable<CharSequence?>): Boolean =
-        matchesFocusGuardIdentity(normalizeValues(values))
+    fun textTargetsFocusGuard(values: Iterable<CharSequence?>): Boolean {
+        val normalizedValues = normalizeValues(values)
+        return valuesContainAnyNormalized(
+            normalizedValues,
+            normalizedFocusGuardSearchTerms
+        ) && matchesFocusGuardIdentity(normalizedValues)
+    }
 
     fun textTargetsDestructiveControl(values: Iterable<CharSequence?>): Boolean =
         valuesContainAnyNormalized(
@@ -242,68 +252,50 @@ object ManagedSelfProtectionPolicy {
             normalizedEssentialSpecialAccessSearchTerms
         )
 
-    private fun matchesDeviceAdmin(normalizedValues: List<String>): Boolean =
-        valuesContainAnyNormalized(normalizedValues, normalizedDeviceAdminSearchTerms) ||
-            normalizedValues.any(::mentionsAbbreviatedDeviceAdminNormalized)
-
-    /**
-     * "administr. do aparelho" e companhia: palavra de administração abreviada
-     * mais palavra de aparelho, no mesmo texto.
-     */
-    private fun mentionsAbbreviatedDeviceAdminNormalized(normalized: String): Boolean {
-        if (normalized.isBlank()) return false
-        if (deviceWordPrefixes.none(normalized::contains)) return false
-        return normalized
-            .split(NON_LETTER_REGEX)
-            .any { word -> deviceAdminWordPrefixes.any(word::startsWith) }
+    private fun matchesDeviceAdmin(normalizedValues: List<String>): Boolean {
+        if (valuesContainAnyNormalized(normalizedValues, normalizedDeviceAdminSearchTerms)) {
+            return true
+        }
+        return normalizedValues.any(::looksLikeDeviceAdminLabel)
     }
 
-    private fun containsAny(value: String, markers: Iterable<String>): Boolean =
-        markers.any { marker -> value.contains(marker, ignoreCase = true) }
+    private fun looksLikeDeviceAdminLabel(value: String): Boolean {
+        val words = value.split(' ').filter(String::isNotEmpty)
+        val hasAdmin = words.any { word ->
+            deviceAdminWordPrefixes.any(word::startsWith)
+        }
+        if (!hasAdmin) return false
+        return words.any { word ->
+            deviceWordPrefixes.any(word::startsWith)
+        }
+    }
+
+    private fun matchesFocusGuardIdentity(normalizedValues: List<String>): Boolean =
+        normalizedValues.any { normalizedValue ->
+            normalizedValue in normalizedFocusGuardLabels ||
+                normalizedValue in normalizedFocusGuardPackageIds
+        }
 
     private fun normalizeValues(values: Iterable<CharSequence?>): List<String> =
         values.mapNotNull { value ->
-            normalize(value?.toString().orEmpty()).trim().takeIf(String::isNotBlank)
+            value?.toString()?.takeIf(String::isNotBlank)?.let(::normalize)
         }
 
     private fun valuesContainAnyNormalized(
         normalizedValues: Iterable<String>,
         normalizedTerms: Iterable<String>
-    ): Boolean = normalizedValues.any { normalized ->
-        normalizedTerms.any(normalized::contains)
+    ): Boolean = normalizedValues.any { value ->
+        normalizedTerms.any { term -> value.contains(term) }
     }
 
-    private fun matchesFocusGuardIdentity(normalizedValues: Iterable<String>): Boolean =
-        normalizedValues.any { normalized ->
-            normalized in normalizedFocusGuardLabels ||
-                normalizedFocusGuardPackageIds.any { packageId ->
-                    containsPackageIdentity(normalized, packageId)
-                }
-        }
+    private fun containsAny(value: String, terms: Iterable<String>): Boolean =
+        terms.any { term -> value.contains(term, ignoreCase = true) }
 
-    private fun containsPackageIdentity(value: String, packageId: String): Boolean {
-        var fromIndex = 0
-        while (fromIndex <= value.length - packageId.length) {
-            val index = value.indexOf(packageId, fromIndex)
-            if (index < 0) return false
-            val beforeIsPackageCharacter = index > 0 && value[index - 1].isPackageCharacter()
-            val end = index + packageId.length
-            val afterIsPackageCharacter = end < value.length && value[end].isPackageCharacter()
-            if (!beforeIsPackageCharacter && !afterIsPackageCharacter) return true
-            fromIndex = index + 1
-        }
-        return false
-    }
-
-    private fun Char.isPackageCharacter(): Boolean =
-        isLetterOrDigit() || this == '_' || this == '.'
-
-    private fun normalize(value: String): String {
-        if (value.isBlank()) return ""
-        val lowercase = value.lowercase(Locale.ROOT)
-        if (lowercase.all { character -> character.code < 128 }) return lowercase
-        return Normalizer.normalize(lowercase, Normalizer.Form.NFD)
+    private fun normalize(value: String): String =
+        Normalizer.normalize(value, Normalizer.Form.NFD)
             .replace(COMBINING_MARKS_REGEX, "")
-    }
-
+            .lowercase(Locale.ROOT)
+            .replace(NON_LETTER_REGEX, " ")
+            .trim()
+            .replace(Regex("\\s+"), " ")
 }
