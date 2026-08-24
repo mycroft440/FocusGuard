@@ -14,6 +14,7 @@ Aplicar ao menu de energia protegido a composição visual fornecida como refer�
 - [x] Cartões para Chamada de emergência e Informações médicas.
 - [x] Botão Cancelar discreto no rodapé.
 - [x] Estados pressionados nos cartões sem animações que atrasem a exibição.
+- [x] Safe-area inferior baseada em `WindowInsets`, incluindo Android 15/16 edge-to-edge.
 - [x] Paleta alinhada com `FocusGuardTheme.kt`: fundo #0D0D0D, superfície #161616, cartão #1C1C1E, cartão pressionado #252528, ciano #00BCD4, vermelho #E53935, texto #FAFAFA/#B0B0B0, borda #303035.
 - [x] Mantido `PixelFormat.OPAQUE`, pré-anexação do overlay e forwarding somente de `ACTION_CLICK` para não reintroduzir gesto nativo de Modo Seguro.
 - [x] Strings atualizadas em português e inglês.

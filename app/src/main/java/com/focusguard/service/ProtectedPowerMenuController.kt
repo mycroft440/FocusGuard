@@ -8,11 +8,13 @@ import android.graphics.PixelFormat
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.StateListDrawable
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
+import android.view.WindowInsets
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
@@ -35,7 +37,6 @@ private object HardBlockPowerMenuColors {
     val danger = Color.rgb(229, 57, 53)
     val textPrimary = Color.rgb(250, 250, 250)
     val textSecondary = Color.rgb(176, 176, 176)
-    val textHint = Color.rgb(107, 107, 107)
     val border = Color.rgb(48, 48, 53)
 }
 
@@ -455,6 +456,22 @@ class ProtectedPowerMenuController(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT
         ).apply { gravity = Gravity.BOTTOM })
+
+        // Mirror the reference layout's safe-area behavior. On edge-to-edge
+        // Android versions the navigation/gesture area can overlap a full-screen
+        // accessibility overlay, so keep the bottom controls visually and
+        // physically clear without delaying the pre-attached fast path.
+        root.setOnApplyWindowInsetsListener { _, insets ->
+            val bottomInset = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                insets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars()).bottom
+            } else {
+                @Suppress("DEPRECATION")
+                insets.stableInsetBottom
+            }
+            sheet.setPadding(dp(20), dp(12), dp(20), dp(18) + bottomInset)
+            insets
+        }
+        root.requestApplyInsets()
 
         overlay = root
         overlayParams = WindowManager.LayoutParams(
