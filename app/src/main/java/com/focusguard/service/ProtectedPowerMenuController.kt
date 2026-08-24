@@ -19,6 +19,7 @@ import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.widget.FrameLayout
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.focusguard.R
@@ -362,20 +363,35 @@ class ProtectedPowerMenuController(
             bottomMargin = dp(20)
         })
 
-        sheet.addView(TextView(service).apply {
-            text = service.getString(R.string.protected_power_menu_badge)
-            setTextColor(HardBlockPowerMenuColors.accent)
-            textSize = 10f
-            typeface = Typeface.MONOSPACE
-            letterSpacing = 0.12f
-            gravity = Gravity.CENTER
-            setPadding(dp(10), dp(6), dp(10), dp(6))
+        val protectionBadge = LinearLayout(service).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(8), dp(6), dp(11), dp(6))
             background = roundedBackground(
                 Color.argb(18, 0, 188, 212),
                 radiusDp = 99,
                 strokeColor = Color.argb(76, 0, 188, 212)
             )
+        }
+        protectionBadge.addView(ImageView(service).apply {
+            setImageResource(R.drawable.ic_hardblock_shield_check)
+            setColorFilter(HardBlockPowerMenuColors.accent)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, LinearLayout.LayoutParams(dp(13), dp(13)).apply {
+            marginEnd = dp(7)
+        })
+        protectionBadge.addView(TextView(service).apply {
+            text = service.getString(R.string.protected_power_menu_badge)
+            setTextColor(HardBlockPowerMenuColors.accent)
+            textSize = 10f
+            typeface = Typeface.MONOSPACE
+            letterSpacing = 0.12f
+            gravity = Gravity.CENTER_VERTICAL
         }, LinearLayout.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT
+        ))
+        sheet.addView(protectionBadge, LinearLayout.LayoutParams(
             WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.WRAP_CONTENT
         ).apply { bottomMargin = dp(16) })
@@ -563,11 +579,7 @@ class ProtectedPowerMenuController(
             setOnLongClickListener { true }
         }
 
-        row.addView(TextView(service).apply {
-            text = actionIcon(action)
-            setTextColor(accent)
-            textSize = if (action == Action.POWER_OFF) 22f else 21f
-            gravity = Gravity.CENTER
+        val iconWell = FrameLayout(service).apply {
             background = roundedBackground(
                 if (emergency) {
                     Color.argb(20, 229, 57, 53)
@@ -581,7 +593,13 @@ class ProtectedPowerMenuController(
                     Color.argb(52, 0, 188, 212)
                 }
             )
-        }, LinearLayout.LayoutParams(dp(36), dp(36)).apply {
+        }
+        iconWell.addView(ImageView(service).apply {
+            setImageResource(actionIconRes(action))
+            setColorFilter(accent)
+            importantForAccessibility = View.IMPORTANT_FOR_ACCESSIBILITY_NO
+        }, FrameLayout.LayoutParams(dp(21), dp(21), Gravity.CENTER))
+        row.addView(iconWell, LinearLayout.LayoutParams(dp(36), dp(36)).apply {
             marginEnd = dp(14)
         })
 
@@ -637,11 +655,11 @@ class ProtectedPowerMenuController(
         })
     }
 
-    private fun actionIcon(action: Action): String = when (action) {
-        Action.POWER_OFF -> "⏻"
-        Action.RESTART -> "↻"
-        Action.EMERGENCY -> "☎"
-        Action.MEDICAL_INFO -> "✚"
+    private fun actionIconRes(action: Action): Int = when (action) {
+        Action.POWER_OFF -> R.drawable.ic_hardblock_power
+        Action.RESTART -> R.drawable.ic_hardblock_restart
+        Action.EMERGENCY -> R.drawable.ic_hardblock_emergency
+        Action.MEDICAL_INFO -> R.drawable.ic_hardblock_medical
     }
 
     private fun actionCardBackground(emergency: Boolean): StateListDrawable {

@@ -12,6 +12,7 @@ Aplicar ao menu de energia protegido a composição visual fornecida como refer�
 - [x] Cartões separados para Desligar e Reiniciar.
 - [x] Seção visual de Emergência com vermelho semântico do HardBlock.
 - [x] Cartões para Chamada de emergência e Informações médicas.
+- [x] Ícones vetoriais nativos derivados dos SVGs da referência, evitando variação de glifos entre OEMs.
 - [x] Botão Cancelar discreto no rodapé.
 - [x] Estados pressionados nos cartões sem animações que atrasem a exibição.
 - [x] Safe-area inferior baseada em `WindowInsets`, incluindo Android 15/16 edge-to-edge.
