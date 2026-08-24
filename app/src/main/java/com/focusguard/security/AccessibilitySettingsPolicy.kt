@@ -84,6 +84,21 @@ object AccessibilitySettingsPolicy {
     )
 
     /**
+     * Short labels used only to locate the Installed apps row when One UI
+     * exposes the text on a child node while the clickable parent has no text.
+     * Full classification still uses [installedAccessibilityAppsTerms].
+     */
+    internal val installedAccessibilityAppsNodeSearchTerms = listOf(
+        "Aplicativos instalados",
+        "Apps instalados",
+        "Serviços instalados",
+        "Installed apps",
+        "Installed services",
+        "Aplicaciones instaladas",
+        "Servicios instalados"
+    )
+
+    /**
      * Texto da divulgação de privacidade exibida pelo Android enquanto um
      * serviço de acessibilidade observa a tela. A notificação continua visível;
      * este marcador serve apenas para distinguir o toque que abre diretamente

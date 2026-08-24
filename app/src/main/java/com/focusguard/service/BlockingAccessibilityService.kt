@@ -178,7 +178,8 @@ class BlockingAccessibilityService : AccessibilityService() {
     // every entry can become a synchronous accessibility-tree query on a click.
     private val directClickContextSufficientTerms =
         (listOf("FocusGuard", "Focus Guard", "com.focusguard") +
-            AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms).distinct()
+            AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms +
+            AccessibilitySettingsPolicy.installedAccessibilityAppsNodeSearchTerms).distinct()
     private val clickInterceptionSearchTerms =
         (directClickContextSufficientTerms +
             listOf("admin", "Informações do app", "Informações do aplicativo", "App info"))
@@ -1039,6 +1040,11 @@ class BlockingAccessibilityService : AccessibilityService() {
         val isGenericSubSettings = className.contains("SubSettings", ignoreCase = true)
         val eventValues = eventTextValues(event)
         val accessibilityTextSignals = AccessibilitySettingsPolicy.classifyText(eventValues)
+        val accessibilityContextConfirmed = confirmAccessibilityContextForInstalledEntry(
+            directAccessibility = accessibilityTextSignals.accessibility,
+            installedAccessibilityApps = accessibilityTextSignals.installedAccessibilityApps,
+            rootMentionsAccessibility = ::rootMentionsAccessibility
+        )
         val managedTextSignals = ManagedSelfProtectionPolicy.classifyText(eventValues)
 
         val signals = SettingsInterceptionPolicy.EventSignals(
@@ -1056,7 +1062,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             classTargetsUninstall = classTargetsUninstall,
             classTargetsEssentialSpecialAccess = classTargetsEssentialSpecialAccess,
             isGenericSubSettings = isGenericSubSettings,
-            textMentionsAccessibility = accessibilityTextSignals.accessibility,
+            textMentionsAccessibility = accessibilityContextConfirmed,
             textMentionsInstalledAccessibilityApps =
                 accessibilityTextSignals.installedAccessibilityApps,
             textMentionsAccessibilityDisclosure =
@@ -2063,8 +2069,15 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal const val EXTRA_BLOCKING_ACTIVE_SNAPSHOT = "BLOCKING_ACTIVE_SNAPSHOT"
         internal const val EXTRA_STRICT_POMODORO_SNAPSHOT = "STRICT_POMODORO_SNAPSHOT"
 
-        internal fun settingsInterceptionEventTypesForTest(): Set<Int> =
-            settingsInterceptionEventTypes
+        internal fun confirmAccessibilityContextForInstalledEntry(
+        directAccessibility: Boolean,
+        installedAccessibilityApps: Boolean,
+        rootMentionsAccessibility: () -> Boolean
+    ): Boolean = directAccessibility ||
+        (installedAccessibilityApps && rootMentionsAccessibility())
+
+    internal fun settingsInterceptionEventTypesForTest(): Set<Int> =
+        settingsInterceptionEventTypes
 
         internal fun settingsTransitionGuardMillisForTest(): Long =
             SETTINGS_TRANSITION_GUARD_MILLIS
