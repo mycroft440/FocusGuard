@@ -112,6 +112,19 @@ class AccessibilitySettingsPolicyTest {
     }
 
     @Test
+    fun `HardBlock is a fast locator without becoming accessibility disclosure`() {
+        assertThat(
+            AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms.first()
+        ).isEqualTo("HardBlock")
+        assertThat(
+            AccessibilitySettingsPolicy.textTargetsAccessibilityDisclosure(listOf("HardBlock"))
+        ).isFalse()
+        assertThat(
+            AccessibilitySettingsPolicy.textTargetsAccessibility(listOf("HardBlock"))
+        ).isFalse()
+    }
+
+    @Test
     fun `app details is neither a toggle nor a list screen`() {
         val className = "com.android.settings.applications.InstalledAppDetails"
 
