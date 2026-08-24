@@ -139,6 +139,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var accessibilityServiceConnected = false
     @Volatile private var foregroundPackageName: String? = null
     @Volatile private var deviceOwnerActiveCached = false
+    @Volatile private var deviceAdminActiveCached = false
 
     private val mainHandler = Handler(Looper.getMainLooper())
     private var instantBlockCurtain: View? = null
