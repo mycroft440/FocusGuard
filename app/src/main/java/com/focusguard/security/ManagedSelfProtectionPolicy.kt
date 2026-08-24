@@ -113,8 +113,15 @@ object ManagedSelfProtectionPolicy {
     )
 
     internal val focusGuardSearchTerms = listOf(
+        // Current installed label. Keep it first: One UI's App Info screen exposes
+        // this label immediately, so the accessibility service normally resolves
+        // our identity with a single tree lookup instead of trying legacy labels.
+        "HardBlock",
+        "Hard Block",
         "FocusGuard",
         "Focus Guard",
+        // Stable package identifiers remain fallbacks when an OEM exposes the
+        // package name instead of the user-visible label.
         "com.focusguard.v2",
         "com.focusguard.v2.debug"
     )
