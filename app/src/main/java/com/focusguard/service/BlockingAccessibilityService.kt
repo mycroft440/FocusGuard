@@ -1540,6 +1540,13 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun sourceNodeForEvent(event: AccessibilityEvent): AccessibilityNodeInfo? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            event.getSource(0)
+        } else {
+            event.source
+        }
+
     private fun eventTextValues(
         event: AccessibilityEvent,
         forceExpandClickContext: Boolean = false
