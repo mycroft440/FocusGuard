@@ -62,7 +62,8 @@
 - CUMPRIDO: a opção interna de remoção/desinstalação usa a mesma senha mestre global em vez de senha, padrão ou biometria de bloqueios individuais.
 - CUMPRIDO: a saída mestre remove sessões, limites, Pomodoro, filtro adulto e autoproteção; libera Device Owner/Device Admin; encerra Modo Foco; desativa o serviço de Acessibilidade; e só então abre a superfície Android solicitada.
 - CUMPRIDO: senha incorreta ou cancelamento não liberam nenhuma proteção; ausência de senha configurada é reportada separadamente.
-- PRÓXIMO OBJETIVO: integrar na `main` após os quatro gates do CI final — testes, lint, APK/AAB Release e APK Debug — concluírem com sucesso.
+- CUMPRIDO: código funcional validado por Unit Tests, Android Lint, APK/AAB Release e APK Debug no CI #793; a alteração posterior neste arquivo é somente documentação do resultado.
+- PRÓXIMO OBJETIVO: integrar na `main`.
 
 ## Regras de apresentação
 
@@ -109,4 +110,5 @@
 - CUMPRIDO: mínimo da senha mestre reduzido de 8 para 4 caracteres.
 - CUMPRIDO: desinstalação interna unificada com o gate de senha mestre global.
 - CUMPRIDO: Modo Foco incluído na remoção mestre após a liberação das políticas administrativas.
-- PRÓXIMO OBJETIVO: integrar na `main` após CI final completo.
+- CUMPRIDO: CI funcional #793 completo aprovado; último commit é documentação.
+- PRÓXIMO OBJETIVO: integrar na `main`.
