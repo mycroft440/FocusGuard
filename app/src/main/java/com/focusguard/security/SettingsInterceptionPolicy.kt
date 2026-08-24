@@ -89,7 +89,8 @@ object SettingsInterceptionPolicy {
         val textMentionsDeviceAdmin: Boolean,
         val textMentionsFocusGuard: Boolean,
         val textMentionsDestructiveControl: Boolean,
-        val textMentionsEssentialSpecialAccess: Boolean
+        val textMentionsEssentialSpecialAccess: Boolean,
+        val textMentionsAppInfoGateway: Boolean = false
     )
 
     /**
@@ -151,7 +152,16 @@ object SettingsInterceptionPolicy {
             }
         }
 
-        if (strictPomodoroActive) return Decision.POMODORO_LOCK
+        // Strict Pomodoro remains authoritative for all non-click Settings events
+        // and for the app-initiated first Device Admin enrollment. Existing
+        // destructive clicks are allowed to continue below so they can be bounced
+        // instantly and offered the master-password exit instead of becoming a
+        // second way around the Pomodoro lock.
+        if (strictPomodoroActive &&
+            (!signals.isViewClickedEvent || deviceAdminActivationAuthorized)
+        ) {
+            return Decision.POMODORO_LOCK
+        }
 
         // ACTION_ADD_DEVICE_ADMIN is authorized only while FocusGuard is not yet
         // an active administrator. Allow only the Device Admin enrollment surface
@@ -175,6 +185,12 @@ object SettingsInterceptionPolicy {
                 (signals.textMentionsDeviceAdmin || rootSignals.mentionsDeviceAdmin()) &&
                     (signals.textMentionsFocusGuard || rootSignals.mentionsFocusGuard())
             if (onAuthorizedAdminSurface) return Decision.IGNORE
+        }
+
+        // App Info is a removal gateway on Samsung/One UI. Blocking the row itself
+        // avoids waiting for the destination Activity to become visible.
+        if (signals.isViewClickedEvent && signals.textMentionsAppInfoGateway) {
+            return Decision.PROTECT_AND_ARM_GUARD
         }
 
         // The two menus below are revocation gateways. Once a protection is active,
@@ -211,6 +227,10 @@ object SettingsInterceptionPolicy {
         if (signals.isViewClickedEvent && signals.textMentionsFocusGuard) {
             return Decision.PROTECT_AND_ARM_GUARD
         }
+
+        // Explicit removal/permission clicks must reach the master-password gate
+        // even while strict Pomodoro owns ordinary Settings navigation.
+        if (strictPomodoroActive) return Decision.POMODORO_LOCK
 
         if (signals.guardArmed && !signals.isViewClickedEvent) {
             return Decision.PROTECT

@@ -115,6 +115,44 @@ class BlockingAccessibilityServiceIntentTest {
     }
 
     @Test
+    fun `installed accessibility apps label is confirmed by Accessibility root`() {
+        var rootReads = 0
+        val confirmed = BlockingAccessibilityService.confirmAccessibilityContextForInstalledEntry(
+            directAccessibility = false,
+            installedAccessibilityApps = true,
+            rootMentionsAccessibility = {
+                rootReads += 1
+                true
+            }
+        )
+
+        assertThat(confirmed).isTrue()
+        assertThat(rootReads).isEqualTo(1)
+    }
+
+    @Test
+    fun `generic installed apps outside Accessibility stays unprotected`() {
+        val confirmed = BlockingAccessibilityService.confirmAccessibilityContextForInstalledEntry(
+            directAccessibility = false,
+            installedAccessibilityApps = true,
+            rootMentionsAccessibility = { false }
+        )
+
+        assertThat(confirmed).isFalse()
+    }
+
+    @Test
+    fun `unrelated click never scans Accessibility root`() {
+        val confirmed = BlockingAccessibilityService.confirmAccessibilityContextForInstalledEntry(
+            directAccessibility = false,
+            installedAccessibilityApps = false,
+            rootMentionsAccessibility = { error("root must remain lazy") }
+        )
+
+        assertThat(confirmed).isFalse()
+    }
+
+    @Test
     fun `settings event storm cannot execute the protection animation twice`() {
         assertThat(
             BlockingAccessibilityService.shouldExecuteProtectionAction(

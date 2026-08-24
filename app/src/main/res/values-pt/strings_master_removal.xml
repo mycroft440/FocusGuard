@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="master_removal_title">Senha mestre necessária</string>
+    <string name="master_removal_description">Digite a senha mestre para encerrar os bloqueios ativos, liberar as proteções administrativas e de Acessibilidade e continuar para a revogação ou desinstalação solicitada.</string>
+    <string name="master_removal_password_hint">Senha mestre</string>
+    <string name="master_removal_confirm">Revogar proteções e continuar</string>
+    <string name="master_removal_wrong_password">Senha mestre incorreta.</string>
+    <string name="master_removal_release_failed">O HardBlock não conseguiu liberar todas as proteções com segurança. Nenhuma tela foi aberta.</string>
+    <string name="master_removal_open_failed">As proteções foram liberadas, mas o Android não conseguiu abrir a tela solicitada.</string>
+</resources>

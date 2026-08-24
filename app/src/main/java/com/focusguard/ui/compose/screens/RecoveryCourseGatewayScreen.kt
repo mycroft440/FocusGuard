@@ -12,6 +12,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,16 +21,12 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.School
-import androidx.compose.material.icons.filled.Shield
-import androidx.compose.material.icons.filled.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -42,30 +39,34 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.data.RecoveryJourney
 import com.focusguard.data.RecoveryJourney.Stage
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 
 /**
  * Marketing/education gateway shown before the existing AntiPorn recovery hub.
  *
- * The gateway intentionally starts on the presentation every time it is composed.
- * Course-started state and journey progress are persistent, so returning to AntiPorn
- * shows the same presentation with a Continue CTA and the real progress bar.
+ * The presentation is intentionally fixed to the available AntiPorn viewport: it does not
+ * scroll, so the course message, progress and CTA remain visible together. The actual course
+ * content still opens normally after the CTA.
  */
 @Composable
 fun RecoveryCourseGatewayScreen(
@@ -140,7 +141,7 @@ private fun RecoveryCourseIntroScreen(
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
     val progressPercent = (progress.coerceIn(0f, 1f) * 100f).roundToInt()
 
-    Box(
+    BoxWithConstraints(
         modifier = Modifier
             .fillMaxSize()
             .background(
@@ -153,11 +154,16 @@ private fun RecoveryCourseIntroScreen(
                 )
             )
     ) {
+        val compact = maxHeight < 620.dp
+        val veryCompact = maxHeight < 560.dp
+        val horizontalPadding = if (compact) 14.dp else 18.dp
+        val verticalPadding = if (compact) 9.dp else 13.dp
+        val sectionGap = if (compact) 7.dp else 10.dp
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 18.dp, vertical = 18.dp),
+                .padding(horizontal = horizontalPadding, vertical = verticalPadding),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Surface(
@@ -166,36 +172,45 @@ private fun RecoveryCourseIntroScreen(
                 border = BorderStroke(1.dp, primary.copy(alpha = 0.45f))
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                    modifier = Modifier.padding(
+                        horizontal = if (compact) 11.dp else 14.dp,
+                        vertical = if (compact) 5.dp else 7.dp
+                    ),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    horizontalArrangement = Arrangement.spacedBy(7.dp)
                 ) {
                     Icon(
                         Icons.Default.School,
                         contentDescription = null,
                         tint = primary,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(if (compact) 15.dp else 18.dp)
                     )
                     Text(
                         text = stringResource(R.string.recovery_course_badge),
                         color = primary,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = if (compact) 10.sp else 12.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
                     )
                 }
             }
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(sectionGap))
+            RotatingCourseSlogan(compact = compact)
+            Spacer(Modifier.height(sectionGap))
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(if (compact) 14.dp else 16.dp),
                 colors = CardDefaults.cardColors(containerColor = surfaceVariant),
                 border = BorderStroke(1.dp, primary.copy(alpha = 0.32f))
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 13.dp),
-                    verticalArrangement = Arrangement.spacedBy(9.dp)
+                    modifier = Modifier.padding(
+                        horizontal = if (compact) 12.dp else 15.dp,
+                        vertical = if (compact) 9.dp else 12.dp
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(if (compact) 6.dp else 8.dp)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -205,7 +220,7 @@ private fun RecoveryCourseIntroScreen(
                             text = stringResource(R.string.recovery_course_progress_title),
                             modifier = Modifier.weight(1f),
                             color = onBackground,
-                            fontSize = 13.sp,
+                            fontSize = if (compact) 11.sp else 13.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
@@ -214,7 +229,7 @@ private fun RecoveryCourseIntroScreen(
                                 progressPercent
                             ),
                             color = primary,
-                            fontSize = 12.sp,
+                            fontSize = if (compact) 10.sp else 12.sp,
                             fontWeight = FontWeight.ExtraBold
                         )
                     }
@@ -222,177 +237,116 @@ private fun RecoveryCourseIntroScreen(
                         progress = { progress.coerceIn(0f, 1f) },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(7.dp),
+                            .height(if (compact) 6.dp else 7.dp),
                         color = primary,
                         trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.35f),
                         strokeCap = StrokeCap.Round
                     )
+                    if (!veryCompact) {
+                        Text(
+                            text = stringResource(R.string.recovery_course_progress_encouragement),
+                            modifier = Modifier.fillMaxWidth(),
+                            color = onSurfaceVariant,
+                            fontSize = 10.sp,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1
+                        )
+                    }
                 }
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(sectionGap))
 
             Text(
                 text = stringResource(R.string.recovery_course_title),
                 color = onBackground,
-                fontSize = 27.sp,
-                lineHeight = 31.sp,
+                fontSize = if (compact) 18.sp else 22.sp,
+                lineHeight = if (compact) 21.sp else 25.sp,
                 fontWeight = FontWeight.Black,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis
             )
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(Modifier.height(if (compact) 4.dp else 6.dp))
 
             Text(
                 text = stringResource(R.string.recovery_course_hero),
                 color = primary,
-                fontSize = 17.sp,
-                lineHeight = 23.sp,
+                fontSize = if (compact) 12.sp else 14.sp,
+                lineHeight = if (compact) 16.sp else 19.sp,
                 fontWeight = FontWeight.ExtraBold,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                maxLines = if (compact) 2 else 3,
+                overflow = TextOverflow.Ellipsis
             )
 
-            Spacer(Modifier.height(12.dp))
+            if (!veryCompact) {
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    text = stringResource(R.string.recovery_course_subtitle),
+                    color = onSurfaceVariant,
+                    fontSize = if (compact) 10.sp else 12.sp,
+                    lineHeight = if (compact) 14.sp else 17.sp,
+                    textAlign = TextAlign.Center,
+                    maxLines = if (compact) 2 else 3,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
 
-            Text(
-                text = stringResource(R.string.recovery_course_subtitle),
-                color = onSurfaceVariant,
-                fontSize = 14.sp,
-                lineHeight = 21.sp,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(sectionGap))
 
             Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = true),
+                shape = RoundedCornerShape(if (compact) 16.dp else 20.dp),
                 colors = CardDefaults.cardColors(containerColor = surface),
                 border = BorderStroke(1.dp, primary.copy(alpha = 0.38f))
             ) {
                 Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(14.dp)
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(if (compact) 12.dp else 16.dp),
+                    verticalArrangement = Arrangement.Center
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
                             Icons.Default.Psychology,
                             contentDescription = null,
                             tint = primary,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(if (compact) 19.dp else 23.dp)
                         )
-                        Spacer(Modifier.size(10.dp))
+                        Spacer(Modifier.size(8.dp))
                         Text(
                             text = stringResource(R.string.recovery_course_not_willpower_title),
                             color = onBackground,
-                            fontSize = 17.sp,
-                            fontWeight = FontWeight.Bold
+                            fontSize = if (compact) 12.sp else 15.sp,
+                            lineHeight = if (compact) 15.sp else 19.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
                         )
                     }
-
+                    Spacer(Modifier.height(if (compact) 5.dp else 8.dp))
                     Text(
                         text = stringResource(R.string.recovery_course_not_willpower_body),
                         color = onSurfaceVariant,
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp
-                    )
-
-                    CoursePoint(R.string.recovery_course_point_reward)
-                    CoursePoint(R.string.recovery_course_point_triggers)
-                    CoursePoint(R.string.recovery_course_point_before_after)
-                    CoursePoint(R.string.recovery_course_point_rewire)
-                    CoursePoint(R.string.recovery_course_point_relapse)
-                    CoursePoint(R.string.recovery_course_point_protection)
-                }
-            }
-
-            Spacer(Modifier.height(14.dp))
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = surfaceVariant),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-            ) {
-                Column(Modifier.padding(17.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.WarningAmber,
-                            contentDescription = null,
-                            tint = primary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(Modifier.size(9.dp))
-                        Text(
-                            text = stringResource(R.string.recovery_course_no_cliches_title),
-                            color = onBackground,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = stringResource(R.string.recovery_course_no_cliches_body),
-                        color = onSurfaceVariant,
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp
+                        fontSize = if (compact) 10.sp else 12.sp,
+                        lineHeight = if (compact) 14.sp else 17.sp,
+                        maxLines = if (compact) 4 else 5,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }
 
-            Spacer(Modifier.height(14.dp))
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = primary.copy(alpha = 0.10f)),
-                border = BorderStroke(1.dp, primary.copy(alpha = 0.35f))
-            ) {
-                Column(Modifier.padding(17.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            Icons.Default.Shield,
-                            contentDescription = null,
-                            tint = primary,
-                            modifier = Modifier.size(22.dp)
-                        )
-                        Spacer(Modifier.size(9.dp))
-                        Text(
-                            text = stringResource(R.string.recovery_course_science_title),
-                            color = onBackground,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        text = stringResource(R.string.recovery_course_science_body),
-                        color = onSurfaceVariant,
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp
-                    )
-                }
-            }
-
-            Spacer(Modifier.height(20.dp))
-
-            Text(
-                text = stringResource(R.string.recovery_course_bridge),
-                modifier = Modifier.fillMaxWidth(),
-                color = onBackground,
-                fontSize = 18.sp,
-                lineHeight = 24.sp,
-                fontWeight = FontWeight.Bold,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(sectionGap))
 
             Button(
                 onClick = onStart,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(56.dp),
+                    .height(if (compact) 48.dp else 52.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = primary)
             ) {
@@ -404,52 +358,115 @@ private fun RecoveryCourseIntroScreen(
                             R.string.recovery_course_cta
                         }
                     ),
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.ExtraBold
+                    fontSize = if (compact) 12.sp else 14.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    maxLines = 1
                 )
-                Spacer(Modifier.size(9.dp))
+                Spacer(Modifier.size(7.dp))
                 Icon(
                     Icons.AutoMirrored.Filled.ArrowForward,
                     contentDescription = null,
-                    modifier = Modifier.size(20.dp)
+                    modifier = Modifier.size(if (compact) 17.dp else 19.dp)
                 )
             }
 
-            Spacer(Modifier.height(10.dp))
-            Text(
-                text = stringResource(R.string.recovery_course_footer),
-                color = onSurfaceVariant,
-                fontSize = 11.sp,
-                lineHeight = 16.sp,
-                textAlign = TextAlign.Center
-            )
-            Spacer(Modifier.height(18.dp))
+            if (!compact) {
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    text = stringResource(R.string.recovery_course_footer),
+                    color = onSurfaceVariant,
+                    fontSize = 9.sp,
+                    lineHeight = 12.sp,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun CoursePoint(textRes: Int) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Top
+private fun RotatingCourseSlogan(compact: Boolean) {
+    val primary = MaterialTheme.colorScheme.primary
+    val slogans = listOf(
+        R.string.recovery_course_slogan_instant_easy,
+        R.string.recovery_course_slogan_understand_trap,
+        R.string.recovery_course_slogan_without_only_willpower,
+        R.string.recovery_course_slogan_private_offline
+    )
+    var activeIndex by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(ROTATING_SLOGAN_VISIBLE_MILLIS)
+            activeIndex = (activeIndex + 1) % slogans.size
+        }
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(if (compact) 50.dp else 58.dp),
+        shape = RoundedCornerShape(22.dp),
+        colors = CardDefaults.cardColors(containerColor = primary.copy(alpha = 0.14f)),
+        border = BorderStroke(1.dp, primary.copy(alpha = 0.48f))
     ) {
-        Icon(
-            Icons.Default.CheckCircle,
-            contentDescription = null,
-            tint = MaterialTheme.colorScheme.primary,
+        Column(
             modifier = Modifier
-                .padding(top = 1.dp)
-                .size(18.dp)
-        )
-        Spacer(Modifier.size(10.dp))
-        Text(
-            text = stringResource(textRes),
-            modifier = Modifier.weight(1f),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 13.sp,
-            lineHeight = 19.sp
-        )
+                .fillMaxSize()
+                .padding(horizontal = 13.dp, vertical = if (compact) 6.dp else 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            AnimatedContent(
+                targetState = activeIndex,
+                transitionSpec = {
+                    fadeIn(
+                        animationSpec = tween(
+                            durationMillis = ROTATING_SLOGAN_ENTER_MILLIS,
+                            delayMillis = ROTATING_SLOGAN_ENTER_DELAY_MILLIS
+                        )
+                    ) togetherWith fadeOut(
+                        animationSpec = tween(ROTATING_SLOGAN_EXIT_MILLIS)
+                    )
+                },
+                label = "RecoveryCourseRotatingSlogan"
+            ) { index ->
+                Text(
+                    text = stringResource(slogans[index]),
+                    modifier = Modifier.fillMaxWidth(),
+                    color = primary,
+                    fontSize = if (compact) 11.sp else 13.sp,
+                    lineHeight = if (compact) 14.sp else 16.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+
+            Spacer(Modifier.height(3.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                slogans.indices.forEach { index ->
+                    Box(
+                        modifier = Modifier
+                            .size(if (index == activeIndex) 6.dp else 5.dp)
+                            .clip(CircleShape)
+                            .background(
+                                if (index == activeIndex) {
+                                    primary
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.30f)
+                                }
+                            )
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -464,6 +481,10 @@ private fun SharedPreferences.hasRecoveryCourseStarted(completed: Set<Stage>): B
         getBoolean(CREATOR_INSTRUCTIONS_STARTED, false) ||
         getBoolean(EASYPEASY_STARTED, false)
 
+private const val ROTATING_SLOGAN_VISIBLE_MILLIS = 4_200L
+private const val ROTATING_SLOGAN_EXIT_MILLIS = 650
+private const val ROTATING_SLOGAN_ENTER_MILLIS = 160
+private const val ROTATING_SLOGAN_ENTER_DELAY_MILLIS = 260
 private const val RECOVERY_COURSE_PREFS = "recovery_preferences"
 private const val RECOVERY_COURSE_STARTED = "recovery_course_started"
 private const val CREATOR_INSTRUCTIONS_STARTED = "creator_instructions_started"

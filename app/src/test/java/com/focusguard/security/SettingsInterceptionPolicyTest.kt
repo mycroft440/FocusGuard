@@ -24,7 +24,8 @@ class SettingsInterceptionPolicyTest {
         textMentionsDeviceAdmin: Boolean = false,
         textMentionsFocusGuard: Boolean = false,
         textMentionsDestructiveControl: Boolean = false,
-        textMentionsEssentialSpecialAccess: Boolean = false
+        textMentionsEssentialSpecialAccess: Boolean = false,
+        textMentionsAppInfoGateway: Boolean = false
     ) = SettingsInterceptionPolicy.EventSignals(
         packageName = packageName,
         isViewClickedEvent = isViewClickedEvent,
@@ -43,7 +44,8 @@ class SettingsInterceptionPolicyTest {
         textMentionsDeviceAdmin = textMentionsDeviceAdmin,
         textMentionsFocusGuard = textMentionsFocusGuard,
         textMentionsDestructiveControl = textMentionsDestructiveControl,
-        textMentionsEssentialSpecialAccess = textMentionsEssentialSpecialAccess
+        textMentionsEssentialSpecialAccess = textMentionsEssentialSpecialAccess,
+        textMentionsAppInfoGateway = textMentionsAppInfoGateway
     )
 
     private class RecordingRoots(
@@ -98,6 +100,23 @@ class SettingsInterceptionPolicyTest {
             decide(signals(classTargetsUninstall = true), engaged = false, roots = roots)
         ).isEqualTo(Decision.IGNORE)
         assertThat(roots.reads).isEmpty()
+    }
+
+    @Test
+    fun `app info gateway is blocked before navigation`() {
+        assertThat(
+            decide(signals(isViewClickedEvent = true, textMentionsAppInfoGateway = true))
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+    }
+
+    @Test
+    fun `explicit app info gateway wins over strict pomodoro for master exit`() {
+        assertThat(
+            decide(
+                signals(isViewClickedEvent = true, textMentionsAppInfoGateway = true),
+                strictPomodoro = true
+            )
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
     }
 
     @Test

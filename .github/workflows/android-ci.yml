@@ -43,7 +43,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: lint-diagnostics
+          name: lint-diagnostics-${{ github.run_number }}
           path: |
             lint-gradle.log
             app/build/reports/lint-results-*.html
@@ -77,7 +77,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: unit-test-diagnostics
+          name: unit-test-diagnostics-${{ github.run_number }}
           path: |
             unit-tests-gradle.log
             app/build/reports/tests/
@@ -85,11 +85,13 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
-  release-verification:
-    name: Verify Release APK and AAB
+  build-artifacts:
+    name: Build Release APK + Debug APK + AAB
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: [static-analysis, unit-tests]
+    timeout-minutes: 40
+    # Deliberately independent from lint/tests. The three binaries are built on
+    # every CI run even when a quality gate fails, so Actions never silently
+    # skips APK/AAB generation because another job failed first.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -103,61 +105,76 @@ jobs:
           set -euo pipefail
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
       - run: chmod +x gradlew
-      - name: Compile release outputs without publishing
+
+      - name: Build all Android artifacts in one Gradle invocation
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew assembleRelease bundleRelease --no-daemon --stacktrace 2>&1 | tee release-verification-gradle.log
-      - name: Verify release files exist
+          ./gradlew assembleRelease assembleDebug bundleRelease --no-daemon --stacktrace 2>&1 | tee build-all-gradle.log
+
+      - name: Collect and verify APK/AAB files
         shell: bash
         run: |
           set -euo pipefail
-          find app/build/outputs/apk/release -type f -name '*.apk' -size +0c -print -quit | grep -q .
-          find app/build/outputs/bundle/release -type f -name '*.aab' -size +0c -print -quit | grep -q .
-      - name: Upload release verification diagnostics
-        if: always()
+          RELEASE_APK="$(find app/build/outputs/apk/release -type f -name '*.apk' -size +0c | head -n 1)"
+          DEBUG_APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' -size +0c | head -n 1)"
+          RELEASE_AAB="$(find app/build/outputs/bundle/release -type f -name '*.aab' -size +0c | head -n 1)"
+
+          test -n "$RELEASE_APK" && test -s "$RELEASE_APK"
+          test -n "$DEBUG_APK" && test -s "$DEBUG_APK"
+          test -n "$RELEASE_AAB" && test -s "$RELEASE_AAB"
+
+          mkdir -p ci-artifacts
+          cp "$RELEASE_APK" ci-artifacts/FocusGuard-release.apk
+          cp "$DEBUG_APK" ci-artifacts/FocusGuard-debug.apk
+          cp "$RELEASE_AAB" ci-artifacts/FocusGuard-release.aab
+          sha256sum ci-artifacts/FocusGuard-release.apk \
+                    ci-artifacts/FocusGuard-debug.apk \
+                    ci-artifacts/FocusGuard-release.aab \
+                    > ci-artifacts/SHA256SUMS.txt
+
+          ls -lh ci-artifacts
+
+      - name: Upload Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: release-verification-diagnostics
-          path: release-verification-gradle.log
+          name: focusguard-release-apk-${{ github.run_number }}
+          path: ci-artifacts/FocusGuard-release.apk
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+          compression-level: 0
 
-  build:
-    name: Build Debug APK
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    needs: [static-analysis, unit-tests, release-verification]
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
         with:
-          java-version: "17"
-          distribution: temurin
-      - uses: gradle/actions/setup-gradle@v4
-      - name: Install Android 16 SDK
-        shell: bash
-        run: |
-          set -euo pipefail
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
-      - run: chmod +x gradlew
-      - name: Compile debug APK
-        shell: bash
-        run: |
-          set -o pipefail
-          ./gradlew clean assembleDebug --no-daemon --stacktrace 2>&1 | tee build-gradle.log
+          name: focusguard-debug-apk-${{ github.run_number }}
+          path: ci-artifacts/FocusGuard-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Upload Release AAB
+        uses: actions/upload-artifact@v4
+        with:
+          name: focusguard-release-aab-${{ github.run_number }}
+          path: ci-artifacts/FocusGuard-release.aab
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Upload checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: focusguard-build-checksums-${{ github.run_number }}
+          path: ci-artifacts/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
       - name: Upload build diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: build-diagnostics
-          path: build-gradle.log
+          name: build-diagnostics-${{ github.run_number }}
+          path: build-all-gradle.log
           if-no-files-found: error
           retention-days: 14
-      - name: Upload debug APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: focusguard-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-          retention-days: 14
-          if-no-files-found: error

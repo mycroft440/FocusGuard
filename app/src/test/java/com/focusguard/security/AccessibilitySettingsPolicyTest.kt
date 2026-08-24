@@ -103,6 +103,15 @@ class AccessibilitySettingsPolicyTest {
     }
 
     @Test
+    fun `One UI installed apps child-node locators stay classifiable`() {
+        AccessibilitySettingsPolicy.installedAccessibilityAppsNodeSearchTerms.forEach { term ->
+            assertThat(
+                AccessibilitySettingsPolicy.textTargetsInstalledAccessibilityApps(listOf(term))
+            ).isTrue()
+        }
+    }
+
+    @Test
     fun `app details is neither a toggle nor a list screen`() {
         val className = "com.android.settings.applications.InstalledAppDetails"
 

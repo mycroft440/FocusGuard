@@ -49,6 +49,7 @@ import com.focusguard.data.UserProfile
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.ui.MasterPasswordActivity
+import com.focusguard.ui.MasterRemovalActivity
 import com.focusguard.ui.compose.layout.FocusGuardScreenScaffold
 import com.focusguard.ui.compose.layout.FocusGuardScrollableContent
 import com.focusguard.ui.compose.layout.FocusGuardSectionHeader
@@ -79,7 +80,6 @@ fun SettingsScreen(
     }
     var showDeviceOwnerMaintenanceDialog by remember { mutableStateOf(false) }
     var showDeviceOwnerSetupGuideDialog by remember { mutableStateOf(false) }
-    var showUninstallDialog by remember { mutableStateOf(false) }
     var deactivationCredentialRevision by remember { mutableIntStateOf(0) }
     var deviceOwnerRevision by remember { mutableIntStateOf(0) }
     val masterPasswordLauncher = rememberLauncherForActivityResult(
@@ -91,9 +91,6 @@ fun SettingsScreen(
     val isBlockingActive by blockingSessionManager.isBlockingActiveFlow.collectAsState(
         initial = true
     )
-    val isUninstallBlockedByTime by blockingSessionManager
-        .isUninstallBlockedByTimeFlow
-        .collectAsState(initial = true)
     val deactivationCredentialConfigured = remember(deactivationCredentialRevision) {
         deactivationCredentialManager.hasCredential()
     }
@@ -136,21 +133,7 @@ fun SettingsScreen(
             else -> R.string.device_owner_status_inactive
         }
     )
-    val uninstallSubtitle = stringResource(
-        if (isBlockingActive || isUninstallBlockedByTime) {
-            R.string.uninstall_app_subtitle_auth
-        } else {
-            R.string.uninstall_app_subtitle_free
-        }
-    )
-
-    if (showUninstallDialog) {
-        AuthenticatedUninstallDialog(
-            hasActiveBlock = isBlockingActive,
-            hasActiveIrreversibleBlock = isUninstallBlockedByTime,
-            onDismiss = { showUninstallDialog = false }
-        )
-    }
+    val uninstallSubtitle = stringResource(R.string.uninstall_app_subtitle_auth)
 
     if (showDeviceOwnerMaintenanceDialog) {
         DeviceOwnerMaintenanceDialog(
@@ -240,7 +223,14 @@ fun SettingsScreen(
                 uninstallSubtitle,
                 iconTint = DangerRed,
                 titleColor = DangerRed,
-                onClick = { showUninstallDialog = true }
+                onClick = {
+                    context.startActivity(
+                        MasterRemovalActivity.createIntent(
+                            context,
+                            MasterRemovalActivity.Target.UNINSTALL
+                        )
+                    )
+                }
             )
 
             Spacer(Modifier.height(24.dp))

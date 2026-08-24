@@ -19,6 +19,7 @@
 15. Manter “Siga o criador no Instagram” como o último item acionável do menu de Configurações.
 16. Aplicar o efeito de sumir gradualmente e reaparecer instantaneamente somente ao botão “Sugestões de melhorias ou funções” da tela Proteção.
 17. Reduzir ao mínimo a latência da primeira tentativa de remover/desinstalar o HardBlock, priorizando decisão e resposta visual antes de Binder, árvore de acessibilidade, refresh assíncrono e navegação.
+18. Unificar a saída autenticada do HardBlock na senha mestre global, com mínimo de 4 caracteres, removendo todas as fontes de bloqueio e liberando as proteções essenciais antes da desinstalação.
 
 ## Estado da solicitação atual
 
@@ -57,7 +58,12 @@
 - CUMPRIDO: revisão do Crítico manteve “admin” apenas como localizador, reutilizou o cache de Modo Foco/Device Owner e evitou falsos negativos por contexto incompleto.
 - CUMPRIDO: CI #759 detectou uma dependência de ordem na inicialização estática dos classificadores; os regex reutilizados agora são inicializados antes dos dicionários pré-normalizados, eliminando o `ExceptionInInitializerError` sem mudar as regras de classificação.
 - CUMPRIDO: adicionar Baseline Profile conservador e ProfileInstaller 1.4.1 para otimizar o hot path também em APKs release instalados por sideload.
-- PRÓXIMO OBJETIVO: revisar o diff com o Crítico e só integrar na `main` após testes, lint, APK/AAB Release e APK Debug concluírem com sucesso.
+- CUMPRIDO: senha mestre aceita a partir de 4 caracteres e continua armazenada como verificador PBKDF2 com salt.
+- CUMPRIDO: a opção interna de remoção/desinstalação usa a mesma senha mestre global em vez de senha, padrão ou biometria de bloqueios individuais.
+- CUMPRIDO: a saída mestre remove sessões, limites, Pomodoro, filtro adulto e autoproteção; libera Device Owner/Device Admin; encerra Modo Foco; desativa o serviço de Acessibilidade; e só então abre a superfície Android solicitada.
+- CUMPRIDO: senha incorreta ou cancelamento não liberam nenhuma proteção; ausência de senha configurada é reportada separadamente.
+- CUMPRIDO: código funcional validado por Unit Tests, Android Lint, APK/AAB Release e APK Debug no CI #793; a alteração posterior neste arquivo é somente documentação do resultado.
+- PRÓXIMO OBJETIVO: integrar na `main`.
 
 ## Regras de apresentação
 
@@ -94,3 +100,15 @@
 - Conferir que Pomodoro e Modo Foco continuam seguindo seus fluxos próprios.
 - Conferir paridade dos recursos em português e inglês.
 - Executar testes unitários, lint e compilação dos APKs.
+
+## Correção de regressão — senha mestre e AntiPorn
+- CUMPRIDO: Restaurar exatamente o AntiPorn fixo sem rolagem e com frases rotativas da versão aprovada.
+- CUMPRIDO: reconhecer “Informações do aplicativo” e “Apps administradores do sistema” como gateways protegidos.
+- CUMPRIDO: endurecer “Acessibilidade → Aplicativos instalados” para detectar rótulos em nós filhos do One UI, confirmar o contexto de Acessibilidade e abrir a senha mestre sem bloquear “Aplicativos instalados” genérico fora dessa área.
+- CUMPRIDO: ao tentar remover/desinstalar/perder permissões, bloquear instantaneamente e abrir o gate da senha mestre.
+- CUMPRIDO: senha mestre autorizada remove todas as fontes de bloqueio e libera Device Owner/Device Admin/Acessibilidade antes de devolver o usuário ao Android.
+- CUMPRIDO: mínimo da senha mestre reduzido de 8 para 4 caracteres.
+- CUMPRIDO: desinstalação interna unificada com o gate de senha mestre global.
+- CUMPRIDO: Modo Foco incluído na remoção mestre após a liberação das políticas administrativas.
+- CUMPRIDO: CI funcional #793 completo aprovado; último commit é documentação.
+- PRÓXIMO OBJETIVO: integrar na `main`.

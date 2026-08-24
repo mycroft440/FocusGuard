@@ -108,6 +108,15 @@
             android:theme="@style/Theme.FocusGuard" />
 
         <activity
+            android:name=".ui.MasterRemovalActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:noHistory="true"
+            android:taskAffinity="com.focusguard.masterremoval"
+            android:theme="@style/Theme.FocusGuard" />
+
+        <activity
             android:name=".ui.BlockNoticeActivity"
             android:excludeFromRecents="true"
             android:exported="false"

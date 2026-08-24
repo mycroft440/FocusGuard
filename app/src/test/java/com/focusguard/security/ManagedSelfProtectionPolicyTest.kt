@@ -159,4 +159,25 @@ class ManagedSelfProtectionPolicyTest {
             ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(listOf("Meu aparelho"))
         ).isFalse()
     }
+
+    @Test
+    fun `Samsung system administrator label targets device admin`() {
+        assertThat(
+            ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(
+                listOf("Apps administradores do sistema")
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun `app information gateway labels are recognized`() {
+        assertThat(
+            ManagedSelfProtectionPolicy.textTargetsAppInfoGateway(
+                listOf("Informações do aplicativo")
+            )
+        ).isTrue()
+        assertThat(ManagedSelfProtectionPolicy.textTargetsAppInfoGateway(listOf("App info")))
+            .isTrue()
+    }
+
 }
