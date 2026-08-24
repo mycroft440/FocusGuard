@@ -23,13 +23,14 @@ Reduzir a latência de autoproteção removendo leituras externas do caminho cr�
 - CUMPRIDO: adicionar módulo oficial `:baselineprofile` com `BaselineProfileRule` e Macrobenchmark de cold start.
 - CUMPRIDO: configurar Pixel 6 AOSP/API 35 como Gradle Managed Device reproduzível para geração de Baseline Profile.
 - CUMPRIDO: manter o baseline manual do hard-block e habilitar geração explícita de perfil AndroidX sem tornar toda build dependente de dispositivo.
-- CUMPRIDO: adicionar comparativo cold start sem compilação vs Baseline Profile exigido.
+- CUMPRIDO: adicionar comparativo cold start sem compilação vs Baseline Profile.
 - CUMPRIDO: adicionar compilação obrigatória do harness de performance ao CI normal.
 - CUMPRIDO: adicionar parser p50/p95/p99 para `A11yLatency` e para JSON bruto de Macrobenchmark.
 - CUMPRIDO: documentar matriz Samsung/Pixel/Xiaomi, coleta de 100+ tentativas por superfície e critérios de aceitação.
-- EM VALIDAÇÃO: CI do PR #67 deve passar Unit Tests, Lint, APK/AAB e compilação do novo harness.
-- DEPENDÊNCIA EXTERNA: números absolutos p50/p95/p99 Samsung/Pixel/Xiaomi exigem os aparelhos físicos ou device farm; nenhum provedor/dispositivo físico está conectado nesta sessão, portanto não serão fabricados dados sintéticos.
+- CUMPRIDO: PR #67 validado em Unit Tests, Android Lint, Release APK, Debug APK, Release AAB, compilação das variants do harness e self-tests dos parsers.
+- CUMPRIDO: workflow de performance executou o Pixel 6/API 35 com KVM, gerou Baseline Profile real, verificou arquivo não vazio e publicou perfil/traces como artefato.
+- DEPENDÊNCIA EXTERNA: números absolutos p50/p95/p99 Samsung/Pixel/Xiaomi exigem aparelhos físicos ou device farm; nenhum provedor/dispositivo físico está conectado nesta sessão, portanto não serão fabricados dados sintéticos.
 
 ## Critério de aprovação
 
-A implementação de software está pronta para integração quando o diff estiver revisado e o CI passar Unit Tests, Android Lint, Release APK, Debug APK, Release AAB, compilação do harness e self-tests dos parsers. A matriz física permanece um procedimento operacional executável assim que hardware real estiver disponível.
+APROVADO PARA INTEGRAÇÃO: implementação de software revisada e todos os gates automatizados disponíveis passaram. A matriz física permanece validação operacional adicional assim que hardware real estiver disponível; ela não bloqueia a integração da infraestrutura de medição.
