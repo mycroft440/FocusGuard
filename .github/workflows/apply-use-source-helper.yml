@@ -1,0 +1,38 @@
+name: Apply source helper use
+
+on:
+  push:
+    branches: ["perf/cache-fast-path"]
+    paths:
+      - ".github/workflows/apply-use-source-helper.yml"
+      - "tools/use-source-helper.patch"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: perf/cache-fast-path
+          fetch-depth: 0
+      - name: Apply checked patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git apply --check tools/use-source-helper.patch
+          git apply tools/use-source-helper.patch
+          rm tools/use-source-helper.patch
+          rm .github/workflows/apply-use-source-helper.yml
+      - name: Commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+          git add -u -- tools/use-source-helper.patch .github/workflows/apply-use-source-helper.yml
+          git commit -m "perf: use non-prefetched accessibility event source"
+          git push origin HEAD:perf/cache-fast-path
