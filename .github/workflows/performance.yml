@@ -1,0 +1,75 @@
+name: Android Performance Profile
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: ["main", "master"]
+    paths:
+      - "baselineprofile/**"
+      - "app/build.gradle.kts"
+      - "app/src/main/baseline-prof.txt"
+      - "build.gradle.kts"
+      - "settings.gradle.kts"
+      - ".github/workflows/performance.yml"
+
+concurrency:
+  group: performance-profile-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  baseline-profile-gmd:
+    name: Generate Baseline Profile on GMD
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Enable KVM
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ -e /dev/kvm ]; then sudo chmod 666 /dev/kvm; fi
+      - name: Install Android SDK components
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36" \
+            "build-tools;36.0.0" \
+            "platform-tools" \
+            "emulator"
+      - run: chmod +x gradlew
+      - name: Generate Baseline Profile
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew :app:generateBaselineProfile \
+            -Pandroid.testInstrumentationRunnerArguments.androidx.benchmark.enabledRules=BaselineProfile \
+            --no-daemon --stacktrace 2>&1 | tee baseline-profile-gradle.log
+      - name: Verify generated profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          GENERATED="$(find app/src -path '*/generated/baselineProfiles/baseline-prof.txt' -type f -size +0c | head -n 1)"
+          test -n "$GENERATED"
+          test -s "$GENERATED"
+          echo "Generated profile: $GENERATED"
+          wc -l "$GENERATED"
+      - name: Upload generated profile and traces
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: focusguard-baseline-profile-${{ github.run_number }}
+          path: |
+            baseline-profile-gradle.log
+            app/src/**/generated/baselineProfiles/*.txt
+            baselineprofile/build/outputs/managed_device_android_test_additional_output/**
+          if-no-files-found: warn
+          retention-days: 14
