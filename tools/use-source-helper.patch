@@ -1,8 +1,47 @@
 diff --git a/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt b/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
 --- a/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
 +++ b/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
-@@ -1556,3 +1556,3 @@ class BlockingAccessibilityService : AccessibilityService() {
+@@ -140,5 +140,4 @@ class BlockingAccessibilityService : AccessibilityService() {
+     private var accessibilityServiceConnected = false
+     @Volatile private var foregroundPackageName: String? = null
+     @Volatile private var deviceOwnerActiveCached = false
+-    @Volatile private var deviceAdminActiveCached = false
+ 
+     private val mainHandler = Handler(Looper.getMainLooper())
+@@ -210,8 +209,7 @@ class BlockingAccessibilityService : AccessibilityService() {
+             AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms +
+             AccessibilitySettingsPolicy.installedAccessibilityAppsNodeSearchTerms).distinct()
+-    private val clickInterceptionSearchTerms =
+-        (directClickContextSufficientTerms +
+-            listOf("admin", "Informações do app", "Informações do aplicativo", "App info"))
+-            .distinct()
++    // One strong app-identity query per ambiguous click; broad localized terms stay in policy fallbacks.
++    private val clickInterceptionSearchTerms = listOf("FocusGuard")
+ 
+     private var pendingSettingsProtectionUntilElapsed = 0L
+@@ -1556,3 +1554,3 @@ class BlockingAccessibilityService : AccessibilityService() {
              addAll(event.text.orEmpty())
              add(event.contentDescription)
 -            event.source?.let { source ->
 +            sourceNodeForEvent(event)?.let { source ->
+@@ -1801,3 +1799,20 @@ class BlockingAccessibilityService : AccessibilityService() {
+         if (holdUntilSafeSurface) awaitingSafeSurfaceGeneration = generation
+         val curtainReadyAtNanos = SystemClock.elapsedRealtimeNanos()
++        if (shouldReport) {
++            CurtainFrameCommitTelemetry.register(
++                curtain = instantBlockCurtain,
++                generation = generation,
++                currentGeneration = { instantBlockCurtainGeneration },
++                eventDetectedAtNanos = eventDetectedAtNanos,
++                curtainReadyAtNanos = curtainReadyAtNanos
++            ) { sample ->
++                scope.launch {
++                    FocusGuardLogger.log(
++                        "A11yLatency",
++                        "Cortina frame commit: callback→frame=${sample.eventToFrameMicros}µs, " +
++                            "cortina→frame=${sample.curtainToFrameMicros}µs"
++                    )
++                }
++            }
++        }
+         mainHandler.removeCallbacks(protectionCurtainDismiss)
