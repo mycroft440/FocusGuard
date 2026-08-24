@@ -1,14 +1,14 @@
 diff --git a/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt b/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
 --- a/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
 +++ b/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
-@@ -140,5 +140,4 @@ class BlockingAccessibilityService : AccessibilityService() {
+@@ -140,6 +140,5 @@ class BlockingAccessibilityService : AccessibilityService() {
      private var accessibilityServiceConnected = false
      @Volatile private var foregroundPackageName: String? = null
      @Volatile private var deviceOwnerActiveCached = false
 -    @Volatile private var deviceAdminActiveCached = false
  
      private val mainHandler = Handler(Looper.getMainLooper())
-@@ -210,8 +209,7 @@ class BlockingAccessibilityService : AccessibilityService() {
+@@ -210,8 +209,6 @@ class BlockingAccessibilityService : AccessibilityService() {
              AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms +
              AccessibilitySettingsPolicy.installedAccessibilityAppsNodeSearchTerms).distinct()
 -    private val clickInterceptionSearchTerms =
