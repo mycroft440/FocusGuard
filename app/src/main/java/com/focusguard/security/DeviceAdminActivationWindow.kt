@@ -41,7 +41,9 @@ object DeviceAdminActivationWindow {
     fun open(context: Context): Boolean {
         val adminInactive = runCatching {
             val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-            !dpm.isAdminActive(FocusGuardDeviceAdminReceiver.getComponentName(context))
+            dpm.isAdminActive(
+                FocusGuardDeviceAdminReceiver.getComponentName(context)
+            ).not()
         }.getOrDefault(false)
         if (!adminInactive) {
             invalidateCachedState()
@@ -85,7 +87,7 @@ object DeviceAdminActivationWindow {
             deadlineElapsedMillis = cachedDeadlineElapsed,
             storedBootCount = cachedStoredBootCount,
             currentBootCount = cachedCurrentBootCount,
-            deviceAdminActive = !cachedAdminInactiveWhenOpened
+            deviceAdminActive = cachedAdminInactiveWhenOpened.not()
         )
         if (!authorized) invalidateCachedState()
         return authorized
@@ -103,7 +105,7 @@ object DeviceAdminActivationWindow {
         storedBootCount: Int,
         currentBootCount: Int,
         deviceAdminActive: Boolean
-    ): Boolean = !deviceAdminActive &&
+    ): Boolean = deviceAdminActive.not() &&
         storedBootCount == currentBootCount &&
         deadlineElapsedMillis > nowElapsedMillis
 
@@ -125,7 +127,7 @@ object DeviceAdminActivationWindow {
 
             // Old/stale windows fail closed. No synchronous disk write is performed
             // from an accessibility event merely because a cached deadline expired.
-            if (!cachedAdminInactiveWhenOpened ||
+            if (cachedAdminInactiveWhenOpened.not() ||
                 cachedStoredBootCount != cachedCurrentBootCount ||
                 cachedDeadlineElapsed <= SystemClock.elapsedRealtime()
             ) {
