@@ -1,1 +1,0 @@
-Trigger PR synchronize so the temporary same-repository patch job can apply the BlockingAccessibilityService changes.
