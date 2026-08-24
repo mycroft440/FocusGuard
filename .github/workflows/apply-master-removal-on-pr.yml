@@ -17,22 +17,34 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
-      - name: Execute patch script from temporary push workflow
+      - name: Apply requested restoration and master gate
         shell: bash
         run: |
-          python3 <<'PY'
-          from pathlib import Path
-          source = Path('.github/workflows/apply-master-removal-gate.yml').read_text().splitlines()
-          marker = '        run: |'
-          start = source.index(marker) + 1
-          body = []
-          for line in source[start:]:
-              if line.startswith('          '):
-                  body.append(line[10:])
-              elif not line.strip():
-                  body.append('')
-              else:
-                  break
-          Path('/tmp/apply-master-removal.sh').write_text('\n'.join(body) + '\n')
-          PY
-          bash /tmp/apply-master-removal.sh
+          set -euo pipefail
+          python3 scripts/apply_master_removal_fix.py
+          git diff --check
+          git status --short
+          if git diff --quiet; then
+            echo 'No code changes to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            .agents/implementation_plan.md \
+            app/src/main/AndroidManifest.xml \
+            app/src/main/java/com/focusguard/security/ManagedSelfProtectionPolicy.kt \
+            app/src/main/java/com/focusguard/security/SettingsInterceptionPolicy.kt \
+            app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt \
+            app/src/main/java/com/focusguard/ui/MasterRemovalActivity.kt \
+            app/src/main/java/com/focusguard/ui/compose/screens/RecoveryCourseGatewayScreen.kt \
+            app/src/main/res/values/strings_recovery_course.xml \
+            app/src/main/res/values-en/strings_recovery_course.xml \
+            app/src/main/res/values-pt/strings_recovery_course.xml \
+            app/src/main/res/values/strings_master_removal.xml \
+            app/src/main/res/values-en/strings_master_removal.xml \
+            app/src/main/res/values-pt/strings_master_removal.xml \
+            app/src/test/java/com/focusguard/security/ManagedSelfProtectionPolicyTest.kt \
+            app/src/test/java/com/focusguard/security/SettingsInterceptionPolicyTest.kt
+          git commit -m 'Restore AntiPorn and add master removal gate'
+          git push origin HEAD:${{ github.head_ref }}
