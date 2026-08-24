@@ -126,12 +126,19 @@ jobs:
           retention-days: 14
 
   build-artifacts:
-    name: Build Release APK + Debug APK + AAB
+    name: Build and verify installable Android artifacts
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    # Deliberately independent from lint/tests. The three binaries are built on
-    # every CI run even when a quality gate fails, so Actions never silently
-    # skips APK/AAB generation because another job failed first.
+    env:
+      # This only activates the isolated `.ci` signing fallback when a real
+      # production keystore was not provided through repository secrets.
+      FOCUSGUARD_CI_SIGNING: "true"
+      RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}
+      RELEASE_KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+      RELEASE_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+    # Deliberately independent from lint/tests. Binaries are built on every CI
+    # run, but they are uploaded only after their signatures are verified.
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -139,6 +146,54 @@ jobs:
           java-version: "17"
           distribution: temurin
       - uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore stable CI signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: focusguard-ci-signing-v1
+
+      - name: Ensure stable CI signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.android"
+          if [[ ! -s "$HOME/.android/debug.keystore" ]]; then
+            keytool -genkeypair \
+              -keystore "$HOME/.android/debug.keystore" \
+              -storepass android \
+              -alias androiddebugkey \
+              -keypass android \
+              -keyalg RSA \
+              -keysize 3072 \
+              -validity 36500 \
+              -dname "CN=FocusGuard CI,OU=CI,O=FocusGuard,C=BR"
+          fi
+          keytool -list \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android \
+            -alias androiddebugkey >/dev/null
+
+      - name: Configure production signing when secrets exist
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -n "$RELEASE_KEYSTORE_BASE64" && \
+                -n "$RELEASE_KEYSTORE_PASSWORD" && \
+                -n "$RELEASE_KEY_ALIAS" && \
+                -n "$RELEASE_KEY_PASSWORD" ]]; then
+            KEYSTORE_PATH="$RUNNER_TEMP/focusguard-release.keystore"
+            printf '%s' "$RELEASE_KEYSTORE_BASE64" | base64 --decode > "$KEYSTORE_PATH"
+            test -s "$KEYSTORE_PATH"
+            echo "KEYSTORE_FILE=$KEYSTORE_PATH" >> "$GITHUB_ENV"
+            echo "KEYSTORE_PASSWORD=$RELEASE_KEYSTORE_PASSWORD" >> "$GITHUB_ENV"
+            echo "KEY_ALIAS=$RELEASE_KEY_ALIAS" >> "$GITHUB_ENV"
+            echo "KEY_PASSWORD=$RELEASE_KEY_PASSWORD" >> "$GITHUB_ENV"
+            echo "SIGNING_MODE=production" >> "$GITHUB_ENV"
+          else
+            echo "SIGNING_MODE=ci" >> "$GITHUB_ENV"
+          fi
+
       - name: Install Android 16 SDK
         shell: bash
         run: |
@@ -146,40 +201,78 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
       - run: chmod +x gradlew
 
-      - name: Build all Android artifacts in one Gradle invocation
+      - name: Build APKs and AAB
         shell: bash
         run: |
           set -o pipefail
           ./gradlew assembleRelease assembleDebug bundleRelease --no-daemon --stacktrace 2>&1 | tee build-all-gradle.log
 
-      - name: Collect and verify APK/AAB files
+      - name: Verify signatures and collect artifacts
         shell: bash
         run: |
           set -euo pipefail
           RELEASE_APK="$(find app/build/outputs/apk/release -type f -name '*.apk' -size +0c | head -n 1)"
           DEBUG_APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' -size +0c | head -n 1)"
           RELEASE_AAB="$(find app/build/outputs/bundle/release -type f -name '*.aab' -size +0c | head -n 1)"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
 
           test -n "$RELEASE_APK" && test -s "$RELEASE_APK"
           test -n "$DEBUG_APK" && test -s "$DEBUG_APK"
           test -n "$RELEASE_AAB" && test -s "$RELEASE_AAB"
+          test -x "$APKSIGNER"
+          test -x "$AAPT"
 
           mkdir -p ci-artifacts
-          cp "$RELEASE_APK" ci-artifacts/FocusGuard-release.apk
-          cp "$DEBUG_APK" ci-artifacts/FocusGuard-debug.apk
-          cp "$RELEASE_AAB" ci-artifacts/FocusGuard-release.aab
-          sha256sum ci-artifacts/FocusGuard-release.apk \
-                    ci-artifacts/FocusGuard-debug.apk \
-                    ci-artifacts/FocusGuard-release.aab \
-                    > ci-artifacts/SHA256SUMS.txt
 
+          # A non-zero result here blocks upload. This specifically prevents the
+          # unsigned release APK regression that Android reported as invalid.
+          "$APKSIGNER" verify --verbose --print-certs "$RELEASE_APK" \
+            | tee ci-artifacts/release-apksigner.txt
+          "$APKSIGNER" verify --verbose --print-certs "$DEBUG_APK" \
+            | tee ci-artifacts/debug-apksigner.txt
+
+          "$AAPT" dump badging "$RELEASE_APK" | head -n 1 \
+            | tee ci-artifacts/release-package.txt
+          grep -Eq "package: name='com\.focusguard\.v2(\.ci)?'" \
+            ci-artifacts/release-package.txt
+
+          jarsigner -verify "$RELEASE_AAB" 2>&1 \
+            | tee ci-artifacts/release-aab-signing.txt
+          grep -q "jar verified" ci-artifacts/release-aab-signing.txt
+
+          if [[ "$SIGNING_MODE" == "production" ]]; then
+            cp "$RELEASE_APK" ci-artifacts/FocusGuard-release.apk
+            cp "$RELEASE_AAB" ci-artifacts/FocusGuard-release.aab
+          else
+            grep -q "package: name='com.focusguard.v2.ci'" \
+              ci-artifacts/release-package.txt
+            cp "$RELEASE_APK" ci-artifacts/FocusGuard-ci-release.apk
+            cp "$RELEASE_AAB" ci-artifacts/FocusGuard-ci-release.aab
+          fi
+          cp "$DEBUG_APK" ci-artifacts/FocusGuard-debug.apk
+
+          find ci-artifacts -maxdepth 1 -type f \
+            \( -name '*.apk' -o -name '*.aab' \) \
+            -print0 | sort -z | xargs -0 sha256sum > ci-artifacts/SHA256SUMS.txt
           ls -lh ci-artifacts
 
-      - name: Upload Release APK
+      - name: Upload production Release APK
+        if: env.SIGNING_MODE == 'production'
         uses: actions/upload-artifact@v4
         with:
           name: focusguard-release-apk-${{ github.run_number }}
           path: ci-artifacts/FocusGuard-release.apk
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Upload installable CI Release APK
+        if: env.SIGNING_MODE == 'ci'
+        uses: actions/upload-artifact@v4
+        with:
+          name: focusguard-ci-release-apk-${{ github.run_number }}
+          path: ci-artifacts/FocusGuard-ci-release.apk
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
@@ -193,7 +286,8 @@ jobs:
           retention-days: 30
           compression-level: 0
 
-      - name: Upload Release AAB
+      - name: Upload production Release AAB
+        if: env.SIGNING_MODE == 'production'
         uses: actions/upload-artifact@v4
         with:
           name: focusguard-release-aab-${{ github.run_number }}
@@ -201,11 +295,24 @@ jobs:
           if-no-files-found: error
           retention-days: 30
 
-      - name: Upload checksums
+      - name: Upload CI Release AAB
+        if: env.SIGNING_MODE == 'ci'
         uses: actions/upload-artifact@v4
         with:
-          name: focusguard-build-checksums-${{ github.run_number }}
-          path: ci-artifacts/SHA256SUMS.txt
+          name: focusguard-ci-release-aab-${{ github.run_number }}
+          path: ci-artifacts/FocusGuard-ci-release.aab
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload checksums and signature reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: focusguard-build-verification-${{ github.run_number }}
+          path: |
+            ci-artifacts/SHA256SUMS.txt
+            ci-artifacts/*signing.txt
+            ci-artifacts/*apksigner.txt
+            ci-artifacts/release-package.txt
           if-no-files-found: error
           retention-days: 30
 
