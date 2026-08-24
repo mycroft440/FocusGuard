@@ -5,6 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
+import android.graphics.drawable.StateListDrawable
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -13,7 +16,7 @@ import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
-import android.widget.Button
+import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import com.focusguard.R
@@ -21,6 +24,20 @@ import com.focusguard.security.PowerMenuProtectionPolicy
 import com.focusguard.security.PowerMenuProtectionPolicy.Action
 import com.focusguard.security.PowerMenuProtectionPolicy.DirectDecision
 import com.focusguard.utils.FocusGuardLogger
+
+private object HardBlockPowerMenuColors {
+    val backgroundTop = Color.rgb(13, 13, 13)
+    val backgroundBottom = Color.rgb(8, 9, 11)
+    val surface = Color.rgb(22, 22, 22)
+    val card = Color.rgb(28, 28, 30)
+    val cardPressed = Color.rgb(37, 37, 40)
+    val accent = Color.rgb(0, 188, 212)
+    val danger = Color.rgb(229, 57, 53)
+    val textPrimary = Color.rgb(250, 250, 250)
+    val textSecondary = Color.rgb(176, 176, 176)
+    val textHint = Color.rgb(107, 107, 107)
+    val border = Color.rgb(48, 48, 53)
+}
 
 /**
  * Visible accessibility overlay that shields the native power menu during an
@@ -307,53 +324,105 @@ class ProtectedPowerMenuController(
     private fun prepareOverlay() {
         if (overlay != null) return
 
-        val density = service.resources.displayMetrics.density
-        val horizontal = (28 * density).toInt()
-        val vertical = (16 * density).toInt()
-        val gap = (10 * density).toInt()
-
-        val container = LinearLayout(service).apply {
-            orientation = LinearLayout.VERTICAL
-            gravity = Gravity.CENTER
-            setPadding(horizontal, horizontal, horizontal, horizontal)
-            setBackgroundColor(Color.rgb(16, 17, 23))
+        val root = FrameLayout(service).apply {
+            background = GradientDrawable(
+                GradientDrawable.Orientation.TOP_BOTTOM,
+                intArrayOf(
+                    HardBlockPowerMenuColors.backgroundTop,
+                    HardBlockPowerMenuColors.backgroundBottom
+                )
+            )
             isClickable = true
             isFocusable = true
             contentDescription = service.getString(R.string.protected_power_menu_title)
         }
 
-        container.addView(TextView(service).apply {
+        val sheet = LinearLayout(service).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.START
+            setPadding(dp(20), dp(12), dp(20), dp(18))
+            background = topRoundedGradient(
+                intArrayOf(
+                    HardBlockPowerMenuColors.surface,
+                    HardBlockPowerMenuColors.backgroundTop
+                ),
+                32
+            )
+            elevation = dp(18).toFloat()
+        }
+
+        sheet.addView(View(service).apply {
+            background = roundedBackground(
+                Color.argb(34, 255, 255, 255),
+                radiusDp = 99
+            )
+        }, LinearLayout.LayoutParams(dp(34), dp(4)).apply {
+            gravity = Gravity.CENTER_HORIZONTAL
+            bottomMargin = dp(20)
+        })
+
+        sheet.addView(TextView(service).apply {
+            text = service.getString(R.string.protected_power_menu_badge)
+            setTextColor(HardBlockPowerMenuColors.accent)
+            textSize = 10f
+            typeface = Typeface.MONOSPACE
+            letterSpacing = 0.12f
+            gravity = Gravity.CENTER
+            setPadding(dp(10), dp(6), dp(10), dp(6))
+            background = roundedBackground(
+                Color.argb(18, 0, 188, 212),
+                radiusDp = 99,
+                strokeColor = Color.argb(76, 0, 188, 212)
+            )
+        }, LinearLayout.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(16) })
+
+        sheet.addView(TextView(service).apply {
             text = service.getString(R.string.protected_power_menu_title)
-            setTextColor(Color.WHITE)
-            textSize = 24f
-            gravity = Gravity.CENTER
-        })
-        container.addView(TextView(service).apply {
+            setTextColor(HardBlockPowerMenuColors.textPrimary)
+            textSize = 29f
+            setTypeface(Typeface.DEFAULT, Typeface.BOLD)
+            letterSpacing = -0.02f
+        }, LinearLayout.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT
+        ))
+
+        sheet.addView(TextView(service).apply {
             text = service.getString(R.string.protected_power_menu_subtitle)
-            setTextColor(Color.LTGRAY)
+            setTextColor(HardBlockPowerMenuColors.textSecondary)
             textSize = 14f
-            gravity = Gravity.CENTER
-            setPadding(0, gap, 0, vertical)
+            setLineSpacing(0f, 1.12f)
+        }, LinearLayout.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT
+        ).apply {
+            topMargin = dp(7)
+            bottomMargin = dp(16)
         })
 
-        addActionButton(container, R.string.protected_power_menu_power_off, Action.POWER_OFF)
-        addActionButton(container, R.string.protected_power_menu_restart, Action.RESTART)
-        addActionButton(container, R.string.protected_power_menu_emergency, Action.EMERGENCY)
-        addActionButton(container, R.string.protected_power_menu_medical_info, Action.MEDICAL_INFO)
+        addActionCard(sheet, R.string.protected_power_menu_power_off, Action.POWER_OFF)
+        addActionCard(sheet, R.string.protected_power_menu_restart, Action.RESTART)
 
-        container.addView(Button(service).apply {
-            text = service.getString(R.string.protected_power_menu_cancel)
-            isAllCaps = false
-            setOnClickListener {
-                // Keep shielding System UI until a later recheck proves the
-                // native power window is gone.
-                requestNativeBackClose()
-            }
-            setOnLongClickListener { true }
-        }, buttonParams(gap))
+        addSectionDivider(sheet)
 
-        container.addView(TextView(service).apply {
-            setTextColor(Color.LTGRAY)
+        addActionCard(
+            sheet,
+            R.string.protected_power_menu_emergency,
+            Action.EMERGENCY,
+            emergency = true
+        )
+        addActionCard(
+            sheet,
+            R.string.protected_power_menu_medical_info,
+            Action.MEDICAL_INFO,
+            emergency = true
+        )
+
+        sheet.addView(TextView(service).apply {
+            setTextColor(HardBlockPowerMenuColors.textSecondary)
             textSize = 12f
             gravity = Gravity.CENTER
             visibility = View.GONE
@@ -361,9 +430,33 @@ class ProtectedPowerMenuController(
         }, LinearLayout.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.WRAP_CONTENT
-        ).apply { topMargin = gap })
+        ).apply { topMargin = dp(12) })
 
-        overlay = container
+        sheet.addView(TextView(service).apply {
+            text = service.getString(R.string.protected_power_menu_cancel)
+            setTextColor(HardBlockPowerMenuColors.textSecondary)
+            textSize = 15f
+            gravity = Gravity.CENTER
+            isClickable = true
+            isFocusable = true
+            background = cancelBackground()
+            setOnClickListener {
+                // Keep shielding System UI until a later recheck proves the
+                // native power window is gone.
+                requestNativeBackClose()
+            }
+            setOnLongClickListener { true }
+        }, LinearLayout.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            dp(52)
+        ).apply { topMargin = dp(10) })
+
+        root.addView(sheet, FrameLayout.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT
+        ).apply { gravity = Gravity.BOTTOM })
+
+        overlay = root
         overlayParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -425,25 +518,174 @@ class ProtectedPowerMenuController(
         homeFallbackAttempted = false
     }
 
-    private fun addActionButton(
+    private fun addActionCard(
         parent: LinearLayout,
         labelRes: Int,
-        action: Action
+        action: Action,
+        emergency: Boolean = false
     ) {
-        parent.addView(Button(service).apply {
-            text = service.getString(labelRes)
-            isAllCaps = false
+        val accent = if (emergency) {
+            HardBlockPowerMenuColors.danger
+        } else {
+            HardBlockPowerMenuColors.accent
+        }
+        val label = service.getString(labelRes)
+
+        val row = LinearLayout(service).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(14), 0, dp(16), 0)
+            isClickable = true
+            isFocusable = true
+            contentDescription = label
+            background = actionCardBackground(emergency)
             setOnClickListener { performNativeSinglePress(action) }
-            // Consume every long press on the HardBlock surface. Only a normal
-            // ACTION_CLICK can be forwarded to the native System UI action.
+            // The overlay may visually resemble a power menu, but HardBlock still
+            // forwards only ACTION_CLICK. Never forward the native long-click that
+            // some OEMs use to expose Safe Mode.
             setOnLongClickListener { true }
-        }, buttonParams((10 * service.resources.displayMetrics.density).toInt()))
+        }
+
+        row.addView(TextView(service).apply {
+            text = actionIcon(action)
+            setTextColor(accent)
+            textSize = if (action == Action.POWER_OFF) 22f else 21f
+            gravity = Gravity.CENTER
+            background = roundedBackground(
+                if (emergency) {
+                    Color.argb(20, 229, 57, 53)
+                } else {
+                    Color.argb(18, 0, 188, 212)
+                },
+                radiusDp = 11,
+                strokeColor = if (emergency) {
+                    Color.argb(58, 229, 57, 53)
+                } else {
+                    Color.argb(52, 0, 188, 212)
+                }
+            )
+        }, LinearLayout.LayoutParams(dp(36), dp(36)).apply {
+            marginEnd = dp(14)
+        })
+
+        row.addView(TextView(service).apply {
+            text = label
+            setTextColor(HardBlockPowerMenuColors.textPrimary)
+            textSize = 16f
+            setTypeface(Typeface.DEFAULT, Typeface.NORMAL)
+            gravity = Gravity.CENTER_VERTICAL
+        }, LinearLayout.LayoutParams(0,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            1f
+        ))
+
+        parent.addView(row, LinearLayout.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            dp(62)
+        ).apply { topMargin = dp(9) })
     }
 
-    private fun buttonParams(topMargin: Int) = LinearLayout.LayoutParams(
-        WindowManager.LayoutParams.MATCH_PARENT,
-        WindowManager.LayoutParams.WRAP_CONTENT
-    ).apply { this.topMargin = topMargin }
+    private fun addSectionDivider(parent: LinearLayout) {
+        val divider = LinearLayout(service).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+        }
+
+        divider.addView(TextView(service).apply {
+            text = service.getString(R.string.protected_power_menu_emergency_section)
+            setTextColor(Color.argb(190, 229, 57, 53))
+            textSize = 9.5f
+            typeface = Typeface.MONOSPACE
+            letterSpacing = 0.14f
+        }, LinearLayout.LayoutParams(
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT
+        ))
+
+        divider.addView(View(service).apply {
+            background = GradientDrawable(
+                GradientDrawable.Orientation.LEFT_RIGHT,
+                intArrayOf(Color.argb(64, 229, 57, 53), Color.TRANSPARENT)
+            )
+        }, LinearLayout.LayoutParams(0, dp(1), 1f).apply {
+            marginStart = dp(11)
+        })
+
+        parent.addView(divider, LinearLayout.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.WRAP_CONTENT
+        ).apply {
+            topMargin = dp(22)
+            bottomMargin = dp(2)
+        })
+    }
+
+    private fun actionIcon(action: Action): String = when (action) {
+        Action.POWER_OFF -> "⏻"
+        Action.RESTART -> "↻"
+        Action.EMERGENCY -> "☎"
+        Action.MEDICAL_INFO -> "✚"
+    }
+
+    private fun actionCardBackground(emergency: Boolean): StateListDrawable {
+        val normalFill = if (emergency) {
+            Color.argb(13, 229, 57, 53)
+        } else {
+            HardBlockPowerMenuColors.card
+        }
+        val pressedFill = if (emergency) {
+            Color.argb(26, 229, 57, 53)
+        } else {
+            HardBlockPowerMenuColors.cardPressed
+        }
+        val stroke = if (emergency) {
+            Color.argb(62, 229, 57, 53)
+        } else {
+            HardBlockPowerMenuColors.border
+        }
+        return StateListDrawable().apply {
+            addState(
+                intArrayOf(android.R.attr.state_pressed),
+                roundedBackground(pressedFill, 17, stroke)
+            )
+            addState(intArrayOf(), roundedBackground(normalFill, 17, stroke))
+        }
+    }
+
+    private fun cancelBackground(): StateListDrawable = StateListDrawable().apply {
+        addState(
+            intArrayOf(android.R.attr.state_pressed),
+            roundedBackground(Color.argb(12, 255, 255, 255), 14)
+        )
+        addState(intArrayOf(), roundedBackground(Color.TRANSPARENT, 14))
+    }
+
+    private fun roundedBackground(
+        color: Int,
+        radiusDp: Int,
+        strokeColor: Int? = null
+    ): GradientDrawable = GradientDrawable().apply {
+        shape = GradientDrawable.RECTANGLE
+        setColor(color)
+        cornerRadius = dp(radiusDp).toFloat()
+        strokeColor?.let { setStroke(dp(1), it) }
+    }
+
+    private fun topRoundedGradient(colors: IntArray, radiusDp: Int): GradientDrawable {
+        val radius = dp(radiusDp).toFloat()
+        return GradientDrawable(GradientDrawable.Orientation.TOP_BOTTOM, colors).apply {
+            cornerRadii = floatArrayOf(
+                radius, radius,
+                radius, radius,
+                0f, 0f,
+                0f, 0f
+            )
+            setStroke(dp(1), Color.argb(18, 255, 255, 255))
+        }
+    }
+
+    private fun dp(value: Int): Int =
+        (value * service.resources.displayMetrics.density + 0.5f).toInt()
 
     private fun performNativeSinglePress(action: Action) {
         val root = findPowerMenuRoot()

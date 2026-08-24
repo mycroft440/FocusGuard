@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="protected_power_menu_title">Menu de energia protegido</string>
-    <string name="protected_power_menu_subtitle">O gesto prolongado que ativa o Modo Seguro fica bloqueado enquanto a proteção do HardBlock está ativa.</string>
+    <string name="protected_power_menu_badge">PROTEÇÃO ATIVA</string>
+    <string name="protected_power_menu_title">Menu de energia</string>
+    <string name="protected_power_menu_subtitle">O Modo Seguro fica indisponível enquanto o HardBlock estiver protegendo o aparelho.</string>
+    <string name="protected_power_menu_emergency_section">EMERGÊNCIA</string>
     <string name="protected_power_menu_power_off">Desligar</string>
     <string name="protected_power_menu_restart">Reiniciar</string>
     <string name="protected_power_menu_emergency">Chamada de emergência</string>

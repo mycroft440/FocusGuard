@@ -1,7 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="protected_power_menu_title">Protected power menu</string>
-    <string name="protected_power_menu_subtitle">Safe Mode long-press is blocked while HardBlock protection is active.</string>
+    <string name="protected_power_menu_badge">PROTECTION ACTIVE</string>
+    <string name="protected_power_menu_title">Power menu</string>
+    <string name="protected_power_menu_subtitle">Safe Mode is unavailable while HardBlock is protecting this device.</string>
+    <string name="protected_power_menu_emergency_section">EMERGENCY</string>
     <string name="protected_power_menu_power_off">Power off</string>
     <string name="protected_power_menu_restart">Restart</string>
     <string name="protected_power_menu_emergency">Emergency call</string>
