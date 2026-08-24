@@ -29,7 +29,7 @@ object DeviceAdminActivationWindow {
     @Volatile private var cachedCurrentBootCount = Int.MIN_VALUE
     @Volatile private var cachedAdminInactiveWhenOpened = false
 
-    /** Loads the overwhelmingly common inactive state before an accessibility click. */
+    /** Loads and validates externally-backed state before an accessibility click. */
     fun preload(context: Context) {
         ensureCacheLoaded(context)
     }
@@ -39,12 +39,7 @@ object DeviceAdminActivationWindow {
      * DevicePolicyManager is queried here once; the later interception decision is memory-only.
      */
     fun open(context: Context): Boolean {
-        val adminInactive = runCatching {
-            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
-            dpm.isAdminActive(
-                FocusGuardDeviceAdminReceiver.getComponentName(context)
-            ).not()
-        }.getOrDefault(false)
+        val adminInactive = isDeviceAdminInactive(context)
         if (!adminInactive) {
             invalidateCachedState()
             clearPersistedState(context)
@@ -122,11 +117,12 @@ object DeviceAdminActivationWindow {
             cachedStoredBootCount = prefs.getInt(BOOT_COUNT_KEY, Int.MIN_VALUE)
             cachedCurrentBootCount = readBootCount(context)
             cachedAdminInactiveWhenOpened =
-                prefs.getBoolean(ADMIN_INACTIVE_WHEN_OPENED_KEY, false)
+                prefs.getBoolean(ADMIN_INACTIVE_WHEN_OPENED_KEY, false) &&
+                    isDeviceAdminInactive(context)
             cachedDeadlineElapsed = deadline
 
-            // Old/stale windows fail closed. No synchronous disk write is performed
-            // from an accessibility event merely because a cached deadline expired.
+            // Restored windows are validated once here, before Accessibility's hot path.
+            // Old/stale windows then fail closed without synchronous I/O during an event.
             if (cachedAdminInactiveWhenOpened.not() ||
                 cachedStoredBootCount != cachedCurrentBootCount ||
                 cachedDeadlineElapsed <= SystemClock.elapsedRealtime()
@@ -135,6 +131,11 @@ object DeviceAdminActivationWindow {
             }
         }
     }
+
+    private fun isDeviceAdminInactive(context: Context): Boolean = runCatching {
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        dpm.isAdminActive(FocusGuardDeviceAdminReceiver.getComponentName(context)).not()
+    }.getOrDefault(false)
 
     private fun invalidateCachedState() {
         cachedStoredBootCount = Int.MIN_VALUE
