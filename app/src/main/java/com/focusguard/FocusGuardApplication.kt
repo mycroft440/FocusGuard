@@ -5,6 +5,7 @@ import android.os.UserManager
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.security.BlockedAppTaskResetCoordinator
 import com.focusguard.utils.AccessibilityStateMonitor
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.UsageAccessStateMonitor
@@ -34,6 +35,12 @@ class FocusGuardApplication : Application() {
             runCatching { createDeviceProtectedStorageContext() }.getOrDefault(this)
         }
         FocusGuardLogger.init(startupContext)
+
+        // Every normal app block is already routed through BlockNoticeActivity.
+        // Hooking that lifecycle point lets us discard the blocked app's previous
+        // task behind the instant accessibility curtain without touching the
+        // password-unlock UI or creating a second enforcement path.
+        registerActivityLifecycleCallbacks(BlockedAppTaskResetCoordinator(this))
 
         val deviceOwnerManager = DeviceOwnerManager.getInstance(this)
         if (userUnlocked) {
