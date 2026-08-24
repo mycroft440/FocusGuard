@@ -102,13 +102,20 @@ jobs:
           set -euo pipefail
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
       - run: chmod +x gradlew
-      - name: Compile Macrobenchmark and Baseline Profile harness
+      - name: Compile Macrobenchmark and Baseline Profile variants
         shell: bash
         run: |
           set -o pipefail
-          ./gradlew :baselineprofile:assemble --no-daemon --stacktrace 2>&1 | tee performance-harness-gradle.log
-      - name: Validate latency percentile parser
-        run: python3 scripts/summarize_focusguard_latency.py --self-test
+          ./gradlew \
+            :baselineprofile:compileBenchmarkReleaseKotlin \
+            :baselineprofile:compileNonMinifiedReleaseKotlin \
+            --no-daemon --stacktrace 2>&1 | tee performance-harness-gradle.log
+      - name: Validate percentile parsers
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/summarize_focusguard_latency.py --self-test
+          python3 scripts/summarize_macrobenchmark.py --self-test
       - name: Upload performance-harness diagnostics
         if: always()
         uses: actions/upload-artifact@v4
