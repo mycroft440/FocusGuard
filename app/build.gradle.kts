@@ -55,6 +55,8 @@ android {
         !releaseKeyAlias.isNullOrBlank() &&
         !releaseKeyPassword.isNullOrBlank() &&
         file(releaseKeystorePath).exists()
+    val ciSigningEnabled = System.getenv("FOCUSGUARD_CI_SIGNING")
+        ?.equals("true", ignoreCase = true) == true
 
     signingConfigs {
         if (releaseSigningAvailable) {
@@ -85,8 +87,18 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            if (releaseSigningAvailable) {
-                signingConfig = signingConfigs.getByName("release")
+            when {
+                releaseSigningAvailable -> {
+                    signingConfig = signingConfigs.getByName("release")
+                }
+                ciSigningEnabled -> {
+                    // GitHub Actions must never publish an unsigned APK. When no
+                    // production keystore is available, build a clearly isolated
+                    // CI package with the cached Android debug signing key instead.
+                    applicationIdSuffix = ".ci"
+                    versionNameSuffix = "-ci"
+                    signingConfig = signingConfigs.getByName("debug")
+                }
             }
         }
     }
