@@ -54,6 +54,23 @@ class ManagedSelfProtectionPolicyTest {
     }
 
     @Test
+    fun `recognizes current HardBlock label on One UI app info`() {
+        assertThat(
+            ManagedSelfProtectionPolicy.focusGuardSearchTerms.first()
+        ).isEqualTo("HardBlock")
+        assertThat(
+            ManagedSelfProtectionPolicy.textTargetsFocusGuard(
+                listOf("HardBlock", "Instalado")
+            )
+        ).isTrue()
+        assertThat(
+            ManagedSelfProtectionPolicy.classifyText(
+                listOf("HardBlock", "Informações do aplicativo", "Desinstalar")
+            ).focusGuard
+        ).isTrue()
+    }
+
+    @Test
     fun `does not classify the general apps list as FocusGuard details`() {
         assertThat(
             ManagedSelfProtectionPolicy.classTargetsAppDetails(
