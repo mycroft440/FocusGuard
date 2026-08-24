@@ -20,6 +20,20 @@ class ManagedSelfProtectionPolicyTest {
     }
 
     @Test
+    fun `device admin view ids are recognized before subtree expansion`() {
+        assertThat(
+            ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(
+                listOf("com.android.settings:id/device_admin_settings")
+            )
+        ).isTrue()
+        assertThat(
+            ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(
+                listOf("com.samsung.android.settings:id/deviceadmin_list")
+            )
+        ).isTrue()
+    }
+
+    @Test
     fun `recognizes FocusGuard app details and uninstall surfaces`() {
         assertThat(
             ManagedSelfProtectionPolicy.classTargetsAppDetails(
