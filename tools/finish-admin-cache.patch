@@ -1,0 +1,12 @@
+diff --git a/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt b/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+--- a/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
++++ b/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+@@ -1338,7 +1338,4 @@ class BlockingAccessibilityService : AccessibilityService() {
+         val deviceAdminActivationAuthorized =
+             DeviceAdminActivationWindow.isPotentiallyAuthorized(this) &&
+-                DeviceAdminActivationWindow.isAuthorized(
+-                    context = this,
+-                    deviceAdminActive = deviceOwnerManager.isDeviceAdminActive()
+-                )
++                DeviceAdminActivationWindow.isAuthorized(this)
+         val className = event.className?.toString().orEmpty()
