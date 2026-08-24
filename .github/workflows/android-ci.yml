@@ -85,6 +85,39 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  performance-harness:
+    name: Compile Performance Harness
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install Android 16 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+      - run: chmod +x gradlew
+      - name: Compile Macrobenchmark and Baseline Profile harness
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew :baselineprofile:assemble --no-daemon --stacktrace 2>&1 | tee performance-harness-gradle.log
+      - name: Validate latency percentile parser
+        run: python3 scripts/summarize_focusguard_latency.py --self-test
+      - name: Upload performance-harness diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: performance-harness-diagnostics-${{ github.run_number }}
+          path: performance-harness-gradle.log
+          if-no-files-found: error
+          retention-days: 14
+
   build-artifacts:
     name: Build Release APK + Debug APK + AAB
     runs-on: ubuntu-latest
@@ -160,7 +193,6 @@ jobs:
           path: ci-artifacts/FocusGuard-release.aab
           if-no-files-found: error
           retention-days: 30
-          compression-level: 0
 
       - name: Upload checksums
         uses: actions/upload-artifact@v4
