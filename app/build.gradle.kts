@@ -4,6 +4,7 @@ plugins {
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
     alias(libs.plugins.hilt)
+    id("androidx.baselineprofile")
 }
 
 android {
@@ -115,6 +116,14 @@ android {
     }
 }
 
+// Keep ordinary release builds deterministic and fast. The profile is refreshed
+// explicitly by :app:generateBaselineProfile and committed under src/main/generated.
+baselineProfile {
+    automaticGenerationDuringBuild = false
+    saveInSrc = true
+    mergeIntoMain = true
+}
+
 dependencies {
     implementation(libs.kotlin.stdlib)
 
@@ -163,6 +172,8 @@ dependencies {
 
     implementation(libs.coil.compose)
     implementation(libs.mpandroidchart)
+
+    baselineProfile(project(":baselineprofile"))
 
     testImplementation(libs.junit)
     testImplementation(libs.mockk)
