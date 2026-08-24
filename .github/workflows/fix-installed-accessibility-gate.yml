@@ -1,0 +1,199 @@
+name: Fix installed accessibility gate
+
+on:
+  pull_request:
+    branches: [main]
+    types: [synchronize]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'fix/master-removal-gate-and-antiporn-restore'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Harden Installed apps accessibility gate
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, got {count}: {old!r}")
+              p.write_text(text.replace(old, new, 1))
+
+          # Keep a compact set of labels specifically for accessibility-tree lookup.
+          path = 'app/src/main/java/com/focusguard/security/AccessibilitySettingsPolicy.kt'
+          replace_once(
+              path,
+              '''    /**
+               * Texto da divulgação de privacidade exibida pelo Android enquanto um
+               * serviço de acessibilidade observa a tela. A notificação continua visível;
+               * este marcador serve apenas para distinguir o toque que abre diretamente
+               * o interruptor do FocusGuard de qualquer outra notificação do aplicativo.
+               */''',
+              '''    /**
+               * Short labels used only to locate the Installed apps row when One UI
+               * exposes the text on a child node while the clickable parent has no text.
+               * Full classification still uses [installedAccessibilityAppsTerms].
+               */
+              internal val installedAccessibilityAppsNodeSearchTerms = listOf(
+                  "Aplicativos instalados",
+                  "Apps instalados",
+                  "Serviços instalados",
+                  "Installed apps",
+                  "Installed services",
+                  "Aplicaciones instaladas",
+                  "Servicios instalados"
+              )
+
+              /**
+               * Texto da divulgação de privacidade exibida pelo Android enquanto um
+               * serviço de acessibilidade observa a tela. A notificação continua visível;
+               * este marcador serve apenas para distinguir o toque que abre diretamente
+               * o interruptor do FocusGuard de qualquer outra notificação do aplicativo.
+               */'''
+          )
+
+          # Locate child labels, then confirm they actually live inside Accessibility.
+          path = 'app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt'
+          replace_once(
+              path,
+              '''    private val directClickContextSufficientTerms =
+                  (listOf("FocusGuard", "Focus Guard", "com.focusguard") +
+                      AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms).distinct()''',
+              '''    private val directClickContextSufficientTerms =
+                  (listOf("FocusGuard", "Focus Guard", "com.focusguard") +
+                      AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms +
+                      AccessibilitySettingsPolicy.installedAccessibilityAppsNodeSearchTerms).distinct()'''
+          )
+          replace_once(
+              path,
+              '''        val accessibilityTextSignals = AccessibilitySettingsPolicy.classifyText(eventValues)
+                  val managedTextSignals = ManagedSelfProtectionPolicy.classifyText(eventValues)''',
+              '''        val accessibilityTextSignals = AccessibilitySettingsPolicy.classifyText(eventValues)
+                  val accessibilityContextConfirmed = confirmAccessibilityContextForInstalledEntry(
+                      directAccessibility = accessibilityTextSignals.accessibility,
+                      installedAccessibilityApps = accessibilityTextSignals.installedAccessibilityApps,
+                      rootMentionsAccessibility = ::rootMentionsAccessibility
+                  )
+                  val managedTextSignals = ManagedSelfProtectionPolicy.classifyText(eventValues)'''
+          )
+          replace_once(
+              path,
+              '''            textMentionsAccessibility = accessibilityTextSignals.accessibility,''',
+              '''            textMentionsAccessibility = accessibilityContextConfirmed,'''
+          )
+          replace_once(
+              path,
+              '''        internal fun settingsInterceptionEventTypesForTest(): Set<Int> =
+                  settingsInterceptionEventTypes''',
+              '''        internal fun confirmAccessibilityContextForInstalledEntry(
+                  directAccessibility: Boolean,
+                  installedAccessibilityApps: Boolean,
+                  rootMentionsAccessibility: () -> Boolean
+              ): Boolean = directAccessibility ||
+                  (installedAccessibilityApps && rootMentionsAccessibility())
+
+              internal fun settingsInterceptionEventTypesForTest(): Set<Int> =
+                  settingsInterceptionEventTypes'''
+          )
+
+          # Unit tests for the child-node locator and lazy contextual confirmation.
+          path = 'app/src/test/java/com/focusguard/security/AccessibilitySettingsPolicyTest.kt'
+          replace_once(
+              path,
+              '''    @Test
+                  fun `app details is neither a toggle nor a list screen`() {''',
+              '''    @Test
+                  fun `One UI installed apps child-node locators stay classifiable`() {
+                      AccessibilitySettingsPolicy.installedAccessibilityAppsNodeSearchTerms.forEach { term ->
+                          assertThat(
+                              AccessibilitySettingsPolicy.textTargetsInstalledAccessibilityApps(listOf(term))
+                          ).isTrue()
+                      }
+                  }
+
+                  @Test
+                  fun `app details is neither a toggle nor a list screen`() {'''
+          )
+
+          path = 'app/src/test/java/com/focusguard/service/BlockingAccessibilityServiceIntentTest.kt'
+          replace_once(
+              path,
+              '''    @Test
+                  fun `settings event storm cannot execute the protection animation twice`() {''',
+              '''    @Test
+                  fun `installed accessibility apps label is confirmed by Accessibility root`() {
+                      var rootReads = 0
+                      val confirmed = BlockingAccessibilityService.confirmAccessibilityContextForInstalledEntry(
+                          directAccessibility = false,
+                          installedAccessibilityApps = true,
+                          rootMentionsAccessibility = {
+                              rootReads += 1
+                              true
+                          }
+                      )
+
+                      assertThat(confirmed).isTrue()
+                      assertThat(rootReads).isEqualTo(1)
+                  }
+
+                  @Test
+                  fun `generic installed apps outside Accessibility stays unprotected`() {
+                      val confirmed = BlockingAccessibilityService.confirmAccessibilityContextForInstalledEntry(
+                          directAccessibility = false,
+                          installedAccessibilityApps = true,
+                          rootMentionsAccessibility = { false }
+                      )
+
+                      assertThat(confirmed).isFalse()
+                  }
+
+                  @Test
+                  fun `unrelated click never scans Accessibility root`() {
+                      val confirmed = BlockingAccessibilityService.confirmAccessibilityContextForInstalledEntry(
+                          directAccessibility = false,
+                          installedAccessibilityApps = false,
+                          rootMentionsAccessibility = { error("root must remain lazy") }
+                      )
+
+                      assertThat(confirmed).isFalse()
+                  }
+
+                  @Test
+                  fun `settings event storm cannot execute the protection animation twice`() {'''
+          )
+
+          path = '.agents/implementation_plan.md'
+          p = Path(path)
+          text = p.read_text()
+          marker = '- CUMPRIDO: reconhecer “Informações do aplicativo” e “Apps administradores do sistema” como gateways protegidos.\n'
+          addition = '- CUMPRIDO: endurecer “Acessibilidade → Aplicativos instalados” para detectar rótulos em nós filhos do One UI, confirmar o contexto de Acessibilidade e abrir a senha mestre sem bloquear “Aplicativos instalados” genérico fora dessa área.\n'
+          if addition not in text:
+              if marker not in text:
+                  raise SystemExit('implementation plan marker missing')
+              p.write_text(text.replace(marker, marker + addition, 1))
+          PY
+
+          git diff --check
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- \
+            .agents/implementation_plan.md \
+            app/src/main/java/com/focusguard/security/AccessibilitySettingsPolicy.kt \
+            app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt \
+            app/src/test/java/com/focusguard/security/AccessibilitySettingsPolicyTest.kt \
+            app/src/test/java/com/focusguard/service/BlockingAccessibilityServiceIntentTest.kt
+          git commit -m 'Harden installed accessibility apps gate'
+          git push origin HEAD:${{ github.head_ref }}
