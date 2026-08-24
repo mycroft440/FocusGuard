@@ -1337,10 +1337,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         // binder call happens only while FocusGuard itself opened enrollment.
         val deviceAdminActivationAuthorized =
             DeviceAdminActivationWindow.isPotentiallyAuthorized(this) &&
-                DeviceAdminActivationWindow.isAuthorized(
-                    context = this,
-                    deviceAdminActive = deviceOwnerManager.isDeviceAdminActive()
-                )
+                DeviceAdminActivationWindow.isAuthorized(this)
         val className = event.className?.toString().orEmpty()
 
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
