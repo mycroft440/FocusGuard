@@ -21,6 +21,7 @@ import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthenticatedRemovalWindow
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.service.BlockingAccessibilityService
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -136,6 +137,8 @@ class MasterRemovalActivity : ComponentActivity() {
                 // unsuspend packages and clear kiosk policies. Only then erase the
                 // persisted session, cancel its alarm/service and refresh its UI.
                 focusModeManager.forceStopForDevelopmentExit()
+            } catch (cancelled: CancellationException) {
+                throw cancelled
             } catch (error: Exception) {
                 AuthenticatedRemovalWindow.close(applicationContext)
                 showError(getString(R.string.master_removal_release_failed), dialog)
