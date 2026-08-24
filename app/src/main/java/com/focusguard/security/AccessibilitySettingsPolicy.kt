@@ -115,8 +115,15 @@ object AccessibilitySettingsPolicy {
         "tap to review"
     )
 
-    /** Short partials used only to locate the notification body's child node. */
+    /**
+     * Cheap child-node locators used by the service before it performs broader
+     * tree scans. `HardBlock`/`Hard Block` are locator-only entries: they let a
+     * textless One UI row expose the current app label before App Info opens,
+     * but they are deliberately NOT accessibility-disclosure classifiers.
+     */
     internal val accessibilityDisclosureNodeSearchTerms = listOf(
+        "HardBlock",
+        "Hard Block",
         "pode ver",
         "toque para revisar",
         "can see",
