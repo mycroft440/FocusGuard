@@ -12,77 +12,11 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write
+  contents: read
   checks: write
   pull-requests: write
 
 jobs:
-  apply-fastpath-patch:
-    name: Apply consolidated fast-path patch
-    if: github.event_name == 'pull_request' && github.head_ref == 'perf/cache-fast-path'
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: perf/cache-fast-path
-          fetch-depth: 0
-      - name: Apply exact source transformations and restore CI definition
-        shell: bash
-        run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          path = Path("app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt")
-          text = path.read_text()
-
-          replacements = [
-              (
-                  """    @Volatile private var deviceOwnerActiveCached = false\n    @Volatile private var deviceAdminActiveCached = false\n""",
-                  """    @Volatile private var deviceOwnerActiveCached = false\n""",
-              ),
-              (
-                  """    private val clickInterceptionSearchTerms =\n        (directClickContextSufficientTerms +\n            listOf(\"admin\", \"Informações do app\", \"Informações do aplicativo\", \"App info\"))\n            .distinct()\n""",
-                  """    // One strong app-identity query per ambiguous click; broad localized terms stay in policy fallbacks.\n    private val clickInterceptionSearchTerms = listOf(\"FocusGuard\")\n""",
-              ),
-              (
-                  """    private fun isSelfProtectionEngagedNow(): Boolean =\n        isBlockingSessionActive ||\n            focusModeSessionActive ||\n            SelfProtectionStateStore.isArmed(applicationContext) ||\n            (deviceOwnerActiveCached && deviceOwnerManager.isArmoredProtectionArmed())\n""",
-                  """    private fun isSelfProtectionEngagedNow(): Boolean =\n        isBlockingSessionActive || focusModeSessionActive\n""",
-              ),
-              (
-                  """            addAll(event.text.orEmpty())\n            add(event.contentDescription)\n            event.source?.let { source ->\n""",
-                  """            addAll(event.text.orEmpty())\n            add(event.contentDescription)\n            sourceNodeForEvent(event)?.let { source ->\n""",
-              ),
-              (
-                  """        if (holdUntilSafeSurface) awaitingSafeSurfaceGeneration = generation\n        val curtainReadyAtNanos = SystemClock.elapsedRealtimeNanos()\n        mainHandler.removeCallbacks(protectionCurtainDismiss)\n""",
-                  """        if (holdUntilSafeSurface) awaitingSafeSurfaceGeneration = generation\n        val curtainReadyAtNanos = SystemClock.elapsedRealtimeNanos()\n        if (shouldReport) {\n            CurtainFrameCommitTelemetry.register(\n                curtain = instantBlockCurtain,\n                generation = generation,\n                currentGeneration = { instantBlockCurtainGeneration },\n                eventDetectedAtNanos = eventDetectedAtNanos,\n                curtainReadyAtNanos = curtainReadyAtNanos\n            ) { sample ->\n                scope.launch {\n                    FocusGuardLogger.log(\n                        \"A11yLatency\",\n                        \"Cortina frame commit: callback→frame=${sample.eventToFrameMicros}µs, \" +\n                            \"cortina→frame=${sample.curtainToFrameMicros}µs\"\n                    )\n                }\n            }\n        }\n        mainHandler.removeCallbacks(protectionCurtainDismiss)\n""",
-              ),
-          ]
-
-          for old, new in replacements:
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"expected exactly one match, found {count}: {old[:80]!r}")
-              text = text.replace(old, new, 1)
-
-          path.write_text(text)
-          PY
-          rm -f tools/use-source-helper.patch
-          rm -f .github/workflows/apply-use-source-helper.yml
-          git fetch origin main
-          git checkout origin/main -- .github/workflows/android-ci.yml
-      - name: Commit applied patch
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -- app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
-          git add -u -- tools/use-source-helper.patch .github/workflows/apply-use-source-helper.yml .github/workflows/android-ci.yml
-          git commit -m "perf: reduce accessibility tree work and measure curtain frame"
-          git push origin HEAD:perf/cache-fast-path
-
   static-analysis:
     name: Android Lint
     runs-on: ubuntu-latest
