@@ -17,6 +17,470 @@ permissions:
   pull-requests: write
 
 jobs:
+  apply-settings-self-protection-patch:
+    name: Apply settings self-protection patch
+    if: github.event_name == 'pull_request' && github.head_ref == 'fix/instant-admin-settings-reset'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Patch service and regression test
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          service_path = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
+          text = service_path.read_text()
+
+          def replace_once(old: str, new: str):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'anchor count {count}, expected 1:\n{old[:180]}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              'import android.os.SystemClock\nimport android.view.Gravity',
+              'import android.os.SystemClock\nimport android.provider.Settings\nimport android.view.Gravity'
+          )
+
+          replace_once(
+              '''    private val directClickContextSufficientTerms =
+                  (listOf("FocusGuard", "Focus Guard", "com.focusguard") +
+                      AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms +
+                      AccessibilitySettingsPolicy.installedAccessibilityAppsNodeSearchTerms).distinct()
+              private val clickInterceptionSearchTerms =
+                  (directClickContextSufficientTerms +
+                      listOf("admin", "Informações do app", "Informações do aplicativo", "App info"))
+                      .distinct()
+
+              private var pendingSettingsProtectionUntilElapsed = 0L
+          ''',
+              '''    private val directClickContextSufficientTerms =
+                  (ManagedSelfProtectionPolicy.deviceAdminNodeSearchTerms +
+                      ManagedSelfProtectionPolicy.focusGuardSearchTerms +
+                      ManagedSelfProtectionPolicy.appInfoGatewaySearchTerms +
+                      AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms +
+                      AccessibilitySettingsPolicy.installedAccessibilityAppsNodeSearchTerms)
+                      .distinct()
+              private val clickInterceptionSearchTerms = directClickContextSufficientTerms
+
+              private var pendingSettingsProtectionUntilElapsed = 0L
+              private var pendingSettingsTaskResetUntilElapsed = 0L
+              private var settingsTaskResetActionUntilElapsed = 0L
+          ''')
+
+          replace_once(
+              '''            pendingSettingsProtectionUntilElapsed = 0L
+              StrictPomodoroLock.clear(applicationContext)
+          ''',
+              '''            pendingSettingsProtectionUntilElapsed = 0L
+              pendingSettingsTaskResetUntilElapsed = 0L
+              settingsTaskResetActionUntilElapsed = 0L
+              StrictPomodoroLock.clear(applicationContext)
+          ''')
+
+          replace_once(
+              '''        if (!isSystemUi &&
+              event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED &&
+              nowElapsed <= pendingSettingsProtectionUntilElapsed
+          ) {
+              executeProtectionAction(eventDetectedAtNanos)
+              return true
+          }
+          ''',
+              '''        if (!isSystemUi &&
+              event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED &&
+              nowElapsed <= pendingSettingsProtectionUntilElapsed
+          ) {
+              executeProtectionAction(
+                  eventDetectedAtNanos = eventDetectedAtNanos,
+                  resetSettingsTask = nowElapsed <= pendingSettingsTaskResetUntilElapsed
+              )
+              return true
+          }
+          ''')
+
+          replace_once(
+              '''        val classTargetsEssentialSpecialAccess =
+              ManagedSelfProtectionPolicy.classTargetsEssentialSpecialAccess(className)
+          val isGenericSubSettings = className.contains("SubSettings", ignoreCase = true)
+          val eventValues = eventTextValues(event)
+          ''',
+              '''        val classTargetsEssentialSpecialAccess =
+              ManagedSelfProtectionPolicy.classTargetsEssentialSpecialAccess(className)
+          val isGenericSubSettings = className.contains("SubSettings", ignoreCase = true)
+
+          // Fastest Device Admin path: the Activity class alone identifies the
+          // revocation surface, so do not wait for any accessibility-tree read.
+          // The only exception is the short enrollment window explicitly opened
+          // by FocusGuard itself while Device Admin is not active yet.
+          val directDeviceAdminActivationAuthorized = if (classTargetsDeviceAdmin) {
+              DeviceAdminActivationWindow.isAuthorized(
+                  context = this,
+                  deviceAdminActive = deviceOwnerManager.isDeviceAdminActive()
+              )
+          } else {
+              false
+          }
+          if (classTargetsDeviceAdmin && !directDeviceAdminActivationAuthorized) {
+              pendingSettingsProtectionUntilElapsed =
+                  nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
+              pendingSettingsTaskResetUntilElapsed =
+                  nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
+              executeProtectionAction(
+                  eventDetectedAtNanos = eventDetectedAtNanos,
+                  resetSettingsTask = packageName in settingsPackages
+              )
+              if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+                  launchMasterRemovalGate(MasterRemovalActivity.Target.DEVICE_ADMIN)
+              }
+              return true
+          }
+
+          val eventValues = eventTextValues(event)
+          ''')
+
+          replace_once(
+              '''        val deviceAdminActivationAuthorized = if (
+              classTargetsDeviceAdmin || isGenericSubSettings
+          ) {
+              DeviceAdminActivationWindow.isAuthorized(
+                  context = this,
+                  deviceAdminActive = deviceOwnerManager.isDeviceAdminActive()
+              )
+          } else {
+              false
+          }
+          ''',
+              '''        val deviceAdminActivationAuthorized = when {
+              directDeviceAdminActivationAuthorized -> true
+              isGenericSubSettings -> DeviceAdminActivationWindow.isAuthorized(
+                  context = this,
+                  deviceAdminActive = deviceOwnerManager.isDeviceAdminActive()
+              )
+              else -> false
+          }
+
+          val shouldResetSettingsTask = packageName in settingsPackages &&
+              (classTargetsAppDetails ||
+                  signals.textMentionsAppInfoGateway ||
+                  classTargetsDeviceAdmin ||
+                  signals.textMentionsDeviceAdmin ||
+                  classTargetsAccessibilityServiceToggle ||
+                  classTargetsAccessibilityList ||
+                  signals.textMentionsInstalledAccessibilityApps ||
+                  (signals.textMentionsAccessibility && signals.textMentionsFocusGuard) ||
+                  (isGenericSubSettings &&
+                      (signals.textMentionsDeviceAdmin || signals.textMentionsAccessibility)))
+          ''')
+
+          replace_once(
+              '''        return when (decision) {
+              SettingsInterceptionPolicy.Decision.IGNORE -> false
+
+              SettingsInterceptionPolicy.Decision.POMODORO_LOCK -> {
+                  performGlobalAction(GLOBAL_ACTION_BACK)
+                  launchPomodoroLockScreen()
+                  true
+              }
+
+              SettingsInterceptionPolicy.Decision.PROTECT -> {
+                  executeProtectionAction(eventDetectedAtNanos)
+                  masterRemovalTarget?.let(::launchMasterRemovalGate)
+                  true
+              }
+
+              SettingsInterceptionPolicy.Decision.PROTECT_AND_ARM_GUARD -> {
+                  pendingSettingsProtectionUntilElapsed =
+                      nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
+                  executeProtectionAction(eventDetectedAtNanos)
+                  masterRemovalTarget?.let(::launchMasterRemovalGate)
+                  true
+              }
+          }
+          ''',
+              '''        return when (decision) {
+              SettingsInterceptionPolicy.Decision.IGNORE -> false
+
+              SettingsInterceptionPolicy.Decision.POMODORO_LOCK -> {
+                  performGlobalAction(GLOBAL_ACTION_BACK)
+                  launchPomodoroLockScreen()
+                  true
+              }
+
+              SettingsInterceptionPolicy.Decision.PROTECT -> {
+                  executeProtectionAction(
+                      eventDetectedAtNanos = eventDetectedAtNanos,
+                      resetSettingsTask = shouldResetSettingsTask ||
+                          nowElapsed <= pendingSettingsTaskResetUntilElapsed
+                  )
+                  masterRemovalTarget?.let(::launchMasterRemovalGate)
+                  true
+              }
+
+              SettingsInterceptionPolicy.Decision.PROTECT_AND_ARM_GUARD -> {
+                  pendingSettingsProtectionUntilElapsed =
+                      nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
+                  if (shouldResetSettingsTask) {
+                      pendingSettingsTaskResetUntilElapsed =
+                          nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
+                  }
+                  executeProtectionAction(
+                      eventDetectedAtNanos = eventDetectedAtNanos,
+                      resetSettingsTask = shouldResetSettingsTask
+                  )
+                  masterRemovalTarget?.let(::launchMasterRemovalGate)
+                  true
+              }
+          }
+          ''')
+
+          replace_once(
+              '''                    clickInterceptionSearchTerms.forEach { term ->
+                      val matchingNodes = runCatching {
+                          source.findAccessibilityNodeInfosByText(term)
+                      }.getOrDefault(emptyList())
+                      matchingNodes.forEach { node ->
+                          add(node.text)
+                          add(node.contentDescription)
+                          add(node.viewIdResourceName)
+                          recycleSafely(node)
+                      }
+                  }
+                  // A switch is commonly a sibling of the FocusGuard label,
+                  // not its parent. Match only markers sharing the clicked
+                  // control's horizontal row, instead of scanning/classifying
+                  // the whole list and accidentally protecting other services.
+                  addAll(sameRowClickTextValues(source))
+          ''',
+              '''                    for (term in clickInterceptionSearchTerms) {
+                      val matchingNodes = runCatching {
+                          source.findAccessibilityNodeInfosByText(term)
+                      }.getOrDefault(emptyList())
+                      matchingNodes.forEach { node ->
+                          add(node.text)
+                          add(node.contentDescription)
+                          add(node.viewIdResourceName)
+                          recycleSafely(node)
+                      }
+                      // Stop on the first high-confidence locator. In particular,
+                      // Device Admin is ordered first, so One UI normally needs a
+                      // single binder tree query instead of walking every marker.
+                      if (!shouldExpandClickContext(this)) break
+                  }
+                  // A switch is commonly a sibling of the FocusGuard label,
+                  // not its parent. Match only markers sharing the clicked
+                  // control's horizontal row, instead of scanning/classifying
+                  // the whole list and accidentally protecting other services.
+                  if (shouldExpandClickContext(this)) {
+                      addAll(sameRowClickTextValues(source))
+                  }
+          ''')
+
+          replace_once(
+              '''            buildList {
+                  clickInterceptionSearchTerms.forEach { term ->
+                      val matchingNodes = runCatching {
+                          root.findAccessibilityNodeInfosByText(term)
+                      }.getOrDefault(emptyList())
+                      matchingNodes.forEach { node ->
+                          val nodeBounds = Rect().also(node::getBoundsInScreen)
+                          if (boundsShareHorizontalRow(sourceBounds, nodeBounds)) {
+                              add(node.text)
+                              add(node.contentDescription)
+                              add(node.viewIdResourceName)
+                          }
+                          recycleSafely(node)
+                      }
+                  }
+              }
+          ''',
+              '''            buildList {
+                  for (term in clickInterceptionSearchTerms) {
+                      val matchingNodes = runCatching {
+                          root.findAccessibilityNodeInfosByText(term)
+                      }.getOrDefault(emptyList())
+                      matchingNodes.forEach { node ->
+                          val nodeBounds = Rect().also(node::getBoundsInScreen)
+                          if (boundsShareHorizontalRow(sourceBounds, nodeBounds)) {
+                              add(node.text)
+                              add(node.contentDescription)
+                              add(node.viewIdResourceName)
+                          }
+                          recycleSafely(node)
+                      }
+                      if (!shouldExpandClickContext(this)) break
+                  }
+              }
+          ''')
+
+          replace_once(
+              '''    private fun executeProtectionAction(eventDetectedAtNanos: Long) {
+          ''',
+              '''    private fun executeProtectionAction(
+              eventDetectedAtNanos: Long,
+              resetSettingsTask: Boolean = false
+          ) {
+          ''')
+
+          replace_once(
+              '''        evictBlockedAppFromForeground()
+          val homeRequestedAtNanos = SystemClock.elapsedRealtimeNanos()
+          ''',
+              '''        // HOME is still the first eviction request. Task cleanup happens only
+          // afterwards, under the opaque accessibility curtain, so it cannot make
+          // the initial block slower or expose the protected Settings controls.
+          evictBlockedAppFromForeground()
+          if (resetSettingsTask) {
+              resetSettingsTaskToRoot()
+              // FLAG_ACTIVITY_CLEAR_TASK starts the Settings root while clearing
+              // its old deep stack. Bounce HOME once more so the final foreground
+              // surface is never Settings; a new attempt must reopen it from root.
+              evictBlockedAppFromForeground()
+          }
+          val homeRequestedAtNanos = SystemClock.elapsedRealtimeNanos()
+          ''')
+
+          replace_once(
+              '''    private fun evictBlockedAppFromForeground() {
+          if (performGlobalAction(GLOBAL_ACTION_HOME)) return
+
+          runCatching {
+              startActivity(createBlockedAppEvictionIntent())
+          }.onFailure { error ->
+              FocusGuardLogger.logError(
+                  "A11y",
+                  "Falha ao tirar app bloqueado do primeiro plano",
+                  error
+              )
+          }
+      }
+          ''',
+              '''    private fun evictBlockedAppFromForeground() {
+          if (performGlobalAction(GLOBAL_ACTION_HOME)) return
+
+          runCatching {
+              startActivity(createBlockedAppEvictionIntent())
+          }.onFailure { error ->
+              FocusGuardLogger.logError(
+                  "A11y",
+                  "Falha ao tirar app bloqueado do primeiro plano",
+                  error
+              )
+          }
+      }
+
+      private fun resetSettingsTaskToRoot() {
+          val nowElapsed = SystemClock.elapsedRealtime()
+          if (nowElapsed <= settingsTaskResetActionUntilElapsed) return
+          settingsTaskResetActionUntilElapsed =
+              nowElapsed + SETTINGS_TASK_RESET_COOLDOWN_MILLIS
+
+          runCatching {
+              startActivity(createSettingsTaskResetIntent())
+          }.onFailure { error ->
+              FocusGuardLogger.logError(
+                  "A11y",
+                  "Falha ao limpar a pilha protegida de Configurações",
+                  error
+              )
+          }
+      }
+          ''')
+
+          replace_once(
+              '''        protectionActionUntilElapsed = 0L
+          protectedPowerMenuController?.dismiss()
+          ''',
+              '''        protectionActionUntilElapsed = 0L
+          pendingSettingsProtectionUntilElapsed = 0L
+          pendingSettingsTaskResetUntilElapsed = 0L
+          settingsTaskResetActionUntilElapsed = 0L
+          protectedPowerMenuController?.dismiss()
+          ''')
+
+          replace_once(
+              '''        private const val SETTINGS_TRANSITION_GUARD_MILLIS = 2_000L
+          private const val SELF_PROTECTION_ACTION_DEBOUNCE_MILLIS = 2_500L
+          ''',
+              '''        private const val SETTINGS_TRANSITION_GUARD_MILLIS = 2_000L
+          private const val SETTINGS_TASK_RESET_COOLDOWN_MILLIS = 1_500L
+          private const val SELF_PROTECTION_ACTION_DEBOUNCE_MILLIS = 2_500L
+          ''')
+
+          replace_once(
+              '''        internal fun createBlockedAppEvictionIntent(): Intent =
+              Intent(Intent.ACTION_MAIN).apply {
+                  addCategory(Intent.CATEGORY_HOME)
+                  addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+              }
+
+          internal fun createRefreshBlockingIntent(
+          ''',
+              '''        internal fun createBlockedAppEvictionIntent(): Intent =
+              Intent(Intent.ACTION_MAIN).apply {
+                  addCategory(Intent.CATEGORY_HOME)
+                  addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+              }
+
+          internal fun createSettingsTaskResetIntent(): Intent =
+              Intent(Settings.ACTION_SETTINGS).apply {
+                  addFlags(
+                      Intent.FLAG_ACTIVITY_NEW_TASK or
+                          Intent.FLAG_ACTIVITY_CLEAR_TASK or
+                          Intent.FLAG_ACTIVITY_NO_ANIMATION
+                  )
+              }
+
+          internal fun createRefreshBlockingIntent(
+          ''')
+
+          service_path.write_text(text)
+
+          test_path = Path('app/src/test/java/com/focusguard/service/BlockingAccessibilityServiceIntentTest.kt')
+          test = test_path.read_text()
+          anchor = '''    @Test
+      fun `refresh intent persists targets before accessibility service receives broadcast`() {
+          val context = RuntimeEnvironment.getApplication().applicationContext
+  '''
+          addition = '''    @Test
+      fun `protected Settings reset intent clears the previous Settings task`() {
+          val intent = BlockingAccessibilityService.createSettingsTaskResetIntent()
+
+          assertThat(intent.action).isEqualTo(android.provider.Settings.ACTION_SETTINGS)
+          assertThat(intent.flags and android.content.Intent.FLAG_ACTIVITY_NEW_TASK).isNotEqualTo(0)
+          assertThat(intent.flags and android.content.Intent.FLAG_ACTIVITY_CLEAR_TASK).isNotEqualTo(0)
+          assertThat(intent.flags and android.content.Intent.FLAG_ACTIVITY_NO_ANIMATION).isNotEqualTo(0)
+      }
+
+  '''
+          if addition not in test:
+              if test.count(anchor) != 1:
+                  raise SystemExit('test anchor not unique')
+              test = test.replace(anchor, addition + anchor, 1)
+              test_path.write_text(test)
+          PY
+
+          git diff --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt \
+                  app/src/test/java/com/focusguard/service/BlockingAccessibilityServiceIntentTest.kt
+          if git diff --cached --quiet; then
+            echo "Patch already applied."
+            exit 0
+          fi
+          git commit -m "Harden instant protected Settings eviction"
+          git push origin HEAD:${{ github.head_ref }}
+
   static-analysis:
     name: Android Lint
     runs-on: ubuntu-latest
