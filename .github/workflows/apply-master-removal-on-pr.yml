@@ -1,0 +1,38 @@
+name: Apply master removal patch on PR
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.head_ref == 'fix/master-removal-gate-and-antiporn-restore'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - name: Execute patch script from temporary push workflow
+        shell: bash
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          source = Path('.github/workflows/apply-master-removal-gate.yml').read_text().splitlines()
+          marker = '        run: |'
+          start = source.index(marker) + 1
+          body = []
+          for line in source[start:]:
+              if line.startswith('          '):
+                  body.append(line[10:])
+              elif not line.strip():
+                  body.append('')
+              else:
+                  break
+          Path('/tmp/apply-master-removal.sh').write_text('\n'.join(body) + '\n')
+          PY
+          bash /tmp/apply-master-removal.sh
