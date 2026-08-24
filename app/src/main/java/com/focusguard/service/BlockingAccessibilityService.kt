@@ -1186,7 +1186,8 @@ class BlockingAccessibilityService : AccessibilityService() {
         if (AuthenticatedRemovalWindow.isActive(this) || !isSelfProtectionEngagedNow()) {
             return false
         }
-        if (deviceOwnerActiveCached && deviceOwnerManager.isMaintenanceActive()) return false
+        if (deviceOwnerActiveCached &&
+            com.focusguard.security.DeviceOwnerMaintenanceGate.isTemporarilyUnlocked(this)) return false
 
         val decision = if (directDecision == DirectDecision.NEED_TREE) {
             ImmediateInterceptionPolicy.classifyLauncherAppInfoClick(eventTextValues(event))
@@ -1289,7 +1290,8 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         // Only actual Device Owner devices can have this maintenance gate. Avoid a
         // DevicePolicyManager round-trip on the consumer path.
-        if (deviceOwnerActiveCached && deviceOwnerManager.isMaintenanceActive()) return false
+        if (deviceOwnerActiveCached &&
+            com.focusguard.security.DeviceOwnerMaintenanceGate.isTemporarilyUnlocked(this)) return false
 
         val nowElapsed = SystemClock.elapsedRealtime()
         val isSystemUi = packageName in SettingsInterceptionPolicy.systemUiPackages
