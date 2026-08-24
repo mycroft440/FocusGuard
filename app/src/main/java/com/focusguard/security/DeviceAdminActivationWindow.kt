@@ -1,77 +1,97 @@
 package com.focusguard.security
 
+import android.app.admin.DevicePolicyManager
 import android.content.Context
 import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
+import com.focusguard.admin.FocusGuardDeviceAdminReceiver
 
 /**
  * Short, one-purpose bridge for the system-owned Device Admin enrollment UI.
  *
  * Self-protection normally closes every FocusGuard administration surface while
  * a consented block is active. The permission wizard, however, must be able to
- * launch [android.app.admin.DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN] without
- * being mistaken for a removal attempt. This window authorizes only that screen
- * and only while FocusGuard is not an active administrator yet.
+ * launch [DevicePolicyManager.ACTION_ADD_DEVICE_ADMIN] without being mistaken for
+ * a removal attempt. This window authorizes only that screen and only when the
+ * administrator was confirmed inactive before the system UI was launched.
  */
 object DeviceAdminActivationWindow {
     private const val PREFERENCES_NAME = "device_admin_activation_window"
     private const val DEADLINE_KEY = "deadline_elapsed"
     private const val BOOT_COUNT_KEY = "boot_count"
+    private const val ADMIN_INACTIVE_WHEN_OPENED_KEY = "admin_inactive_when_opened"
     internal const val DURATION_MILLIS = 5 * 60_000L
     private const val UNINITIALIZED_DEADLINE = Long.MIN_VALUE
 
     @Volatile private var cachedDeadlineElapsed = UNINITIALIZED_DEADLINE
     @Volatile private var cachedStoredBootCount = Int.MIN_VALUE
     @Volatile private var cachedCurrentBootCount = Int.MIN_VALUE
+    @Volatile private var cachedAdminInactiveWhenOpened = false
 
-    /** Loads the overwhelmingly common inactive state before an accessibility click. */
+    /** Loads and validates externally-backed state before an accessibility click. */
     fun preload(context: Context) {
         ensureCacheLoaded(context)
     }
 
-    /** Uses commit so Accessibility can observe the authorization immediately. */
+    /**
+     * Opens the authorization outside Accessibility's event callback.
+     * DevicePolicyManager is queried here once; the later interception decision is memory-only.
+     */
     fun open(context: Context): Boolean {
+        val adminInactive = isDeviceAdminInactive(context)
+        if (!adminInactive) {
+            invalidateCachedState()
+            clearPersistedState(context)
+            return false
+        }
+
         val deadline = SystemClock.elapsedRealtime() + DURATION_MILLIS
         val bootCount = readBootCount(context)
         val persisted = preferences(context).edit()
             .putLong(DEADLINE_KEY, deadline)
             .putInt(BOOT_COUNT_KEY, bootCount)
+            .putBoolean(ADMIN_INACTIVE_WHEN_OPENED_KEY, true)
             .commit()
         if (persisted) {
             cachedStoredBootCount = bootCount
             cachedCurrentBootCount = bootCount
+            cachedAdminInactiveWhenOpened = true
             cachedDeadlineElapsed = deadline
         }
         return persisted
     }
 
-    /** Cheap pre-check that avoids a DevicePolicyManager call on ordinary clicks. */
+    /** Cheap pre-check with no DPM/Settings/Preferences read after preload/open. */
     fun isPotentiallyAuthorized(context: Context): Boolean {
         ensureCacheLoaded(context)
         val deadline = cachedDeadlineElapsed
         if (deadline <= 0L) return false
-        val active = cachedStoredBootCount == cachedCurrentBootCount &&
+        val active = cachedAdminInactiveWhenOpened &&
+            cachedStoredBootCount == cachedCurrentBootCount &&
             deadline > SystemClock.elapsedRealtime()
-        if (!active) clearCachedAndPersistedState(context)
+        if (!active) invalidateCachedState()
         return active
     }
 
-    fun isAuthorized(context: Context, deviceAdminActive: Boolean): Boolean {
+    /** Memory-only after [preload] or [open]. */
+    fun isAuthorized(context: Context): Boolean {
         if (!isPotentiallyAuthorized(context)) return false
         val authorized = evaluate(
             nowElapsedMillis = SystemClock.elapsedRealtime(),
             deadlineElapsedMillis = cachedDeadlineElapsed,
             storedBootCount = cachedStoredBootCount,
             currentBootCount = cachedCurrentBootCount,
-            deviceAdminActive = deviceAdminActive
+            deviceAdminActive = cachedAdminInactiveWhenOpened.not()
         )
-        if (!authorized) clearCachedAndPersistedState(context)
+        if (!authorized) invalidateCachedState()
         return authorized
     }
 
+    /** Controlled lifecycle close may clean persisted state because it is not a hot-path read. */
     fun close(context: Context) {
-        clearCachedAndPersistedState(context)
+        invalidateCachedState()
+        clearPersistedState(context)
     }
 
     internal fun evaluate(
@@ -80,7 +100,7 @@ object DeviceAdminActivationWindow {
         storedBootCount: Int,
         currentBootCount: Int,
         deviceAdminActive: Boolean
-    ): Boolean = !deviceAdminActive &&
+    ): Boolean = deviceAdminActive.not() &&
         storedBootCount == currentBootCount &&
         deadlineElapsedMillis > nowElapsedMillis
 
@@ -96,16 +116,40 @@ object DeviceAdminActivationWindow {
             }
             cachedStoredBootCount = prefs.getInt(BOOT_COUNT_KEY, Int.MIN_VALUE)
             cachedCurrentBootCount = readBootCount(context)
+            cachedAdminInactiveWhenOpened =
+                prefs.getBoolean(ADMIN_INACTIVE_WHEN_OPENED_KEY, false) &&
+                    isDeviceAdminInactive(context)
             cachedDeadlineElapsed = deadline
+
+            // Restored windows are validated once here, before Accessibility's hot path.
+            // Old/stale windows then fail closed without synchronous I/O during an event.
+            if (cachedAdminInactiveWhenOpened.not() ||
+                cachedStoredBootCount != cachedCurrentBootCount ||
+                cachedDeadlineElapsed <= SystemClock.elapsedRealtime()
+            ) {
+                invalidateCachedState()
+            }
         }
     }
 
-    private fun clearCachedAndPersistedState(context: Context) {
+    private fun isDeviceAdminInactive(context: Context): Boolean = runCatching {
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        dpm.isAdminActive(FocusGuardDeviceAdminReceiver.getComponentName(context)).not()
+    }.getOrDefault(false)
+
+    private fun invalidateCachedState() {
         cachedStoredBootCount = Int.MIN_VALUE
         cachedCurrentBootCount = Int.MIN_VALUE
+        cachedAdminInactiveWhenOpened = false
         cachedDeadlineElapsed = 0L
+    }
+
+    private fun clearPersistedState(context: Context) {
         val prefs = preferences(context)
-        if (prefs.contains(DEADLINE_KEY) || prefs.contains(BOOT_COUNT_KEY)) {
+        if (prefs.contains(DEADLINE_KEY) ||
+            prefs.contains(BOOT_COUNT_KEY) ||
+            prefs.contains(ADMIN_INACTIVE_WHEN_OPENED_KEY)
+        ) {
             prefs.edit().clear().apply()
         }
     }

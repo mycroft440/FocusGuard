@@ -40,6 +40,7 @@ object AuthenticatedRemovalWindow {
         }
     }
 
+    /** Memory-only after [preload] or [open]. */
     fun isActive(context: Context): Boolean {
         ensureCacheLoaded(context)
         val deadline = cachedDeadlineElapsed
@@ -50,12 +51,13 @@ object AuthenticatedRemovalWindow {
             storedBootCount = cachedStoredBootCount,
             currentBootCount = cachedCurrentBootCount
         )
-        if (!active) clearCachedAndPersistedState(context)
+        if (!active) invalidateCachedState()
         return active
     }
 
     fun close(context: Context) {
-        clearCachedAndPersistedState(context)
+        invalidateCachedState()
+        clearPersistedState(context)
     }
 
     private fun ensureCacheLoaded(context: Context) {
@@ -71,13 +73,27 @@ object AuthenticatedRemovalWindow {
             cachedStoredBootCount = prefs.getInt(BOOT_COUNT_KEY, Int.MIN_VALUE)
             cachedCurrentBootCount = readBootCount(context)
             cachedDeadlineElapsed = deadline
+            if (!evaluate(
+                    nowElapsedMillis = SystemClock.elapsedRealtime(),
+                    deadlineElapsedMillis = deadline,
+                    storedBootCount = cachedStoredBootCount,
+                    currentBootCount = cachedCurrentBootCount
+                )
+            ) {
+                invalidateCachedState()
+                // Startup/preload cleanup is outside Accessibility's event callback.
+                clearPersistedState(context)
+            }
         }
     }
 
-    private fun clearCachedAndPersistedState(context: Context) {
+    private fun invalidateCachedState() {
         cachedStoredBootCount = Int.MIN_VALUE
         cachedCurrentBootCount = Int.MIN_VALUE
         cachedDeadlineElapsed = 0L
+    }
+
+    private fun clearPersistedState(context: Context) {
         val prefs = preferences(context)
         if (prefs.contains(DEADLINE_KEY) || prefs.contains(BOOT_COUNT_KEY)) {
             prefs.edit().clear().apply()

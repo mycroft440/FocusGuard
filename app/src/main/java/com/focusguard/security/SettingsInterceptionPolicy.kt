@@ -94,16 +94,28 @@ object SettingsInterceptionPolicy {
     )
 
     /**
-     * Lazily-evaluated reads of the live accessibility node tree. Each is only
-     * invoked on the branch that needs it.
+     * Lazily-evaluated reads of the live accessibility node tree. Each signal is
+     * memoized for this decision so repeated policy branches never repeat the same
+     * remote tree query within one accessibility event.
      */
     class RootSignals(
-        val mentionsAccessibility: () -> Boolean,
-        val mentionsDeviceAdmin: () -> Boolean,
-        val mentionsFocusGuard: () -> Boolean,
-        val mentionsDestructiveControl: () -> Boolean,
-        val mentionsEssentialSpecialAccess: () -> Boolean
-    )
+        mentionsAccessibility: () -> Boolean,
+        mentionsDeviceAdmin: () -> Boolean,
+        mentionsFocusGuard: () -> Boolean,
+        mentionsDestructiveControl: () -> Boolean,
+        mentionsEssentialSpecialAccess: () -> Boolean
+    ) {
+        val mentionsAccessibility = memoized(mentionsAccessibility)
+        val mentionsDeviceAdmin = memoized(mentionsDeviceAdmin)
+        val mentionsFocusGuard = memoized(mentionsFocusGuard)
+        val mentionsDestructiveControl = memoized(mentionsDestructiveControl)
+        val mentionsEssentialSpecialAccess = memoized(mentionsEssentialSpecialAccess)
+
+        private fun memoized(source: () -> Boolean): () -> Boolean {
+            val cached by lazy(LazyThreadSafetyMode.NONE) { source() }
+            return { cached }
+        }
+    }
 
     /**
      * @param selfProtectionEngaged true when the app should defend its own

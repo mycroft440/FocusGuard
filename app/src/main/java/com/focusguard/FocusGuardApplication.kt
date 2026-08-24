@@ -5,6 +5,8 @@ import android.os.UserManager
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.security.DeviceAdminActivationWindow
+import com.focusguard.security.DeviceOwnerMaintenanceGate
 import com.focusguard.utils.AccessibilityStateMonitor
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.UsageAccessStateMonitor
@@ -34,6 +36,12 @@ class FocusGuardApplication : Application() {
             runCatching { createDeviceProtectedStorageContext() }.getOrDefault(this)
         }
         FocusGuardLogger.init(startupContext)
+
+        // Warm externally-backed authorization state before Accessibility can receive
+        // its first event. Subsequent maintenance/admin decisions are memory-only in
+        // the overwhelmingly common path instead of consulting Settings/Preferences.
+        DeviceOwnerMaintenanceGate.preload(startupContext)
+        DeviceAdminActivationWindow.preload(startupContext)
 
         val deviceOwnerManager = DeviceOwnerManager.getInstance(this)
         if (userUnlocked) {

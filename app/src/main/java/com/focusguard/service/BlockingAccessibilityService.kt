@@ -213,10 +213,8 @@ class BlockingAccessibilityService : AccessibilityService() {
         (listOf("FocusGuard", "Focus Guard", "com.focusguard") +
             AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms +
             AccessibilitySettingsPolicy.installedAccessibilityAppsNodeSearchTerms).distinct()
-    private val clickInterceptionSearchTerms =
-        (directClickContextSufficientTerms +
-            listOf("admin", "Informações do app", "Informações do aplicativo", "App info"))
-            .distinct()
+    // One strong app-identity query per ambiguous click; broad localized terms stay in policy fallbacks.
+    private val clickInterceptionSearchTerms = listOf("FocusGuard")
 
     private var pendingSettingsProtectionUntilElapsed = 0L
 
@@ -1186,7 +1184,8 @@ class BlockingAccessibilityService : AccessibilityService() {
         if (AuthenticatedRemovalWindow.isActive(this) || !isSelfProtectionEngagedNow()) {
             return false
         }
-        if (deviceOwnerActiveCached && deviceOwnerManager.isMaintenanceActive()) return false
+        if (deviceOwnerActiveCached &&
+            com.focusguard.security.DeviceOwnerMaintenanceGate.isTemporarilyUnlocked(this)) return false
 
         val decision = if (directDecision == DirectDecision.NEED_TREE) {
             ImmediateInterceptionPolicy.classifyLauncherAppInfoClick(eventTextValues(event))
@@ -1214,10 +1213,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
 
     private fun isSelfProtectionEngagedNow(): Boolean =
-        isBlockingSessionActive ||
-            focusModeSessionActive ||
-            SelfProtectionStateStore.isArmed(applicationContext) ||
-            (deviceOwnerActiveCached && deviceOwnerManager.isArmoredProtectionArmed())
+        isBlockingSessionActive || focusModeSessionActive
 
     private fun handleStrictPomodoro(packageName: String, className: String) {
         if (packageName.isBlank() || packageName == this.packageName || packageName in phonePackages) {
@@ -1289,7 +1285,8 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         // Only actual Device Owner devices can have this maintenance gate. Avoid a
         // DevicePolicyManager round-trip on the consumer path.
-        if (deviceOwnerActiveCached && deviceOwnerManager.isMaintenanceActive()) return false
+        if (deviceOwnerActiveCached &&
+            com.focusguard.security.DeviceOwnerMaintenanceGate.isTemporarilyUnlocked(this)) return false
 
         val nowElapsed = SystemClock.elapsedRealtime()
         val isSystemUi = packageName in SettingsInterceptionPolicy.systemUiPackages
@@ -1334,10 +1331,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         // binder call happens only while FocusGuard itself opened enrollment.
         val deviceAdminActivationAuthorized =
             DeviceAdminActivationWindow.isPotentiallyAuthorized(this) &&
-                DeviceAdminActivationWindow.isAuthorized(
-                    context = this,
-                    deviceAdminActive = deviceOwnerManager.isDeviceAdminActive()
-                )
+                DeviceAdminActivationWindow.isAuthorized(this)
         val className = event.className?.toString().orEmpty()
 
         if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
@@ -1540,6 +1534,13 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun sourceNodeForEvent(event: AccessibilityEvent): AccessibilityNodeInfo? =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            event.getSource(0)
+        } else {
+            event.source
+        }
+
     private fun eventTextValues(
         event: AccessibilityEvent,
         forceExpandClickContext: Boolean = false
@@ -1547,7 +1548,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         return buildList {
             addAll(event.text.orEmpty())
             add(event.contentDescription)
-            event.source?.let { source ->
+            sourceNodeForEvent(event)?.let { source ->
                 add(source.text)
                 add(source.contentDescription)
                 add(source.viewIdResourceName)
@@ -1792,6 +1793,23 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
         if (holdUntilSafeSurface) awaitingSafeSurfaceGeneration = generation
         val curtainReadyAtNanos = SystemClock.elapsedRealtimeNanos()
+        if (shouldReport) {
+            CurtainFrameCommitTelemetry.register(
+                curtain = instantBlockCurtain,
+                generation = generation,
+                currentGeneration = { instantBlockCurtainGeneration },
+                eventDetectedAtNanos = eventDetectedAtNanos,
+                curtainReadyAtNanos = curtainReadyAtNanos
+            ) { sample ->
+                scope.launch {
+                    FocusGuardLogger.log(
+                        "A11yLatency",
+                        "Cortina frame commit: callback→frame=${sample.eventToFrameMicros}µs, " +
+                            "cortina→frame=${sample.curtainToFrameMicros}µs"
+                    )
+                }
+            }
+        }
         mainHandler.removeCallbacks(protectionCurtainDismiss)
         if (!holdUntilSafeSurface && !alreadyAwaitingSafeSurface) {
             mainHandler.postDelayed(
