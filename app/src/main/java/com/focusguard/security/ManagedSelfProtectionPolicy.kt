@@ -71,7 +71,22 @@ object ManagedSelfProtectionPolicy {
         "Device administrator",
         "Device administrators",
         "Aplicaciones de administración del dispositivo",
-        "Administradores del dispositivo"
+        "Administradores del dispositivo",
+        // Accessibility events also expose viewIdResourceName. OEM Settings
+        // commonly uses these stable fragments even when the clickable row itself
+        // has no visible text, letting us classify without a subtree expansion.
+        "device_admin",
+        "deviceadmin"
+    )
+
+    /**
+     * Locator-only prefixes for OEM rows. The service still validates the full
+     * returned node text with [textTargetsDeviceAdmin] before blocking.
+     */
+    internal val deviceAdminNodeSearchTerms = listOf(
+        "Apps do administr",
+        "Apps administradores",
+        "Device admin"
     )
 
     /**

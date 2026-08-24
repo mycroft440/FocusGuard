@@ -84,19 +84,12 @@ object AccessibilitySettingsPolicy {
     )
 
     /**
-     * Short labels used only to locate the Installed apps row when One UI
-     * exposes the text on a child node while the clickable parent has no text.
-     * Full classification still uses [installedAccessibilityAppsTerms].
+     * Locator-only partial. "instal" matches Portuguese, English and Spanish
+     * variants and replaces seven synchronous subtree queries with one. The node
+     * returned by Accessibility is still passed through the full classifier above,
+     * so a generic Installed apps row outside Accessibility is not enough to block.
      */
-    internal val installedAccessibilityAppsNodeSearchTerms = listOf(
-        "Aplicativos instalados",
-        "Apps instalados",
-        "Serviços instalados",
-        "Installed apps",
-        "Installed services",
-        "Aplicaciones instaladas",
-        "Servicios instalados"
-    )
+    internal val installedAccessibilityAppsNodeSearchTerms = listOf("instal")
 
     /**
      * Texto da divulgação de privacidade exibida pelo Android enquanto um
@@ -116,18 +109,15 @@ object AccessibilitySettingsPolicy {
     )
 
     /**
-     * Cheap child-node locators used by the service before it performs broader
-     * tree scans. `HardBlock`/`Hard Block` are locator-only entries: they let a
-     * textless One UI row expose the current app label before App Info opens,
-     * but they are deliberately NOT accessibility-disclosure classifiers.
+     * Cheap child-node locators only. Keep this list intentionally tiny because
+     * each entry becomes a synchronous accessibility-tree binder query on a
+     * textless click. HardBlock identifies this app; the two disclosure partials
+     * cover the current Portuguese and English Android messages.
      */
     internal val accessibilityDisclosureNodeSearchTerms = listOf(
         "HardBlock",
-        "Hard Block",
         "pode ver",
-        "toque para revisar",
-        "can see",
-        "tap to review"
+        "can see"
     )
 
     private val normalizedSearchTerms = searchTerms.map(::normalize)
