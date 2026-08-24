@@ -84,6 +84,17 @@ import kotlinx.coroutines.withContext
 @AndroidEntryPoint
 class BlockingAccessibilityService : AccessibilityService() {
 
+    internal enum class InstantCurtainFailsafeDecision {
+        NO_ACTION,
+        HIDE,
+        EVACUATE_THEN_HIDE
+    }
+
+    internal enum class CurtainLaunchFailureDecision {
+        NO_ACTION,
+        EVACUATE_THEN_HIDE
+    }
+
     @Inject lateinit var authManager: AuthManager
 
     private lateinit var database: AppDatabase
@@ -2738,17 +2749,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             currentGeneration: Long,
             readyGeneration: Long
         ): Boolean = currentGeneration > 0L && currentGeneration == readyGeneration
-
-        internal enum class InstantCurtainFailsafeDecision {
-            NO_ACTION,
-            HIDE,
-            EVACUATE_THEN_HIDE
-        }
-
-        internal enum class CurtainLaunchFailureDecision {
-            NO_ACTION,
-            EVACUATE_THEN_HIDE
-        }
 
         internal fun curtainLaunchFailureDecision(
             currentGeneration: Long,

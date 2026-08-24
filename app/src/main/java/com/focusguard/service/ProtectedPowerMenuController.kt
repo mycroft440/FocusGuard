@@ -33,6 +33,15 @@ import com.focusguard.utils.FocusGuardLogger
 class ProtectedPowerMenuController(
     private val service: AccessibilityService
 ) {
+    internal enum class PowerMenuPresence { PRESENT, ABSENT_CONFIRMED, UNKNOWN }
+    internal enum class CloseStage { NONE, BACK_REQUESTED, HOME_REQUESTED }
+    internal enum class RecheckDecision { HIDE, KEEP_CHECKING, REQUEST_BACK, REQUEST_HOME }
+    internal enum class PowerMatchOverlayDecision {
+        PASS,
+        SHIELD_AND_CONSUME,
+        REQUEST_HOME_FALLBACK
+    }
+
     private val mainHandler = Handler(Looper.getMainLooper())
     private val windowManager =
         service.getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -678,15 +687,6 @@ class ProtectedPowerMenuController(
     }
 
     companion object {
-        internal enum class PowerMenuPresence { PRESENT, ABSENT_CONFIRMED, UNKNOWN }
-        internal enum class CloseStage { NONE, BACK_REQUESTED, HOME_REQUESTED }
-        internal enum class RecheckDecision { HIDE, KEEP_CHECKING, REQUEST_BACK, REQUEST_HOME }
-        internal enum class PowerMatchOverlayDecision {
-            PASS,
-            SHIELD_AND_CONSUME,
-            REQUEST_HOME_FALLBACK
-        }
-
         internal fun powerMatchOverlayDecision(
             powerMatched: Boolean,
             overlayShown: Boolean
