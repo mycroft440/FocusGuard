@@ -1,0 +1,364 @@
+diff --git a/app/src/main/java/com/focusguard/security/DeviceOwnerMaintenanceGate.kt b/app/src/main/java/com/focusguard/security/DeviceOwnerMaintenanceGate.kt
+index 5ca82f8..0000000 100644
+--- a/app/src/main/java/com/focusguard/security/DeviceOwnerMaintenanceGate.kt
++++ b/app/src/main/java/com/focusguard/security/DeviceOwnerMaintenanceGate.kt
+@@ -39,6 +39,12 @@ object DeviceOwnerMaintenanceGate {
+     private const val UNLOCK_SOURCE_KEY = "unlock_source"
+     private const val PROTECTION_ARMED_WHEN_OPENED_KEY = "protection_armed_when_opened"
+     private const val EXPIRY_REQUEST_CODE = 7301
++    private const val UNINITIALIZED_DEADLINE = Long.MIN_VALUE
++
++    @Volatile private var cachedDeadlineElapsed = UNINITIALIZED_DEADLINE
++    @Volatile private var cachedStoredBootCount = Int.MIN_VALUE
++    @Volatile private var cachedCurrentBootCount = Int.MIN_VALUE
++    @Volatile private var cachedAutomaticDateTimeEnabled = false
++
++    /** Warm every externally-backed value before Accessibility enters its hot path. */
++    fun preload(context: Context) {
++        ensureCacheLoaded(context)
++    }
+@@ -89,7 +95,13 @@ object DeviceOwnerMaintenanceGate {
+-    fun isTemporarilyUnlocked(context: Context): Boolean = remainingMillis(context) > 0L
++    fun isTemporarilyUnlocked(context: Context): Boolean {
++        ensureCacheLoaded(context)
++        return cachedRemainingMillis() > 0L
++    }
+@@ -105,18 +117,9 @@ object DeviceOwnerMaintenanceGate {
+     fun remainingMillis(context: Context): Long {
+-        val prefs = preferences(context)
+-        val remaining = evaluateRemainingMillis(
+-            automaticDateTimeEnabled = isAutomaticDateAndTimeEnabled(context),
+-            nowElapsedMillis = SystemClock.elapsedRealtime(),
+-            deadlineElapsedMillis = prefs.getLong(DEADLINE_ELAPSED_KEY, 0L),
+-            storedBootCount = prefs.getInt(BOOT_COUNT_KEY, Int.MIN_VALUE),
+-            currentBootCount = readBootCount(context)
+-        )
+-        if (remaining == 0L && prefs.contains(DEADLINE_ELAPSED_KEY)) {
+-            revoke(context)
+-        }
+-        return remaining
++        ensureCacheLoaded(context)
++        return cachedRemainingMillis()
+     }
+ 
+     fun revoke(context: Context) {
++        cachedDeadlineElapsed = 0L
++        cachedStoredBootCount = Int.MIN_VALUE
++        cachedCurrentBootCount = Int.MIN_VALUE
++        cachedAutomaticDateTimeEnabled = false
+         preferences(context).edit().clear().commit()
+         cancelExpiry(context)
+     }
+@@ -154,13 +157,20 @@ object DeviceOwnerMaintenanceGate {
+     private fun openWindow(context: Context, source: String, protectionArmed: Boolean) {
+         val deadline = SystemClock.elapsedRealtime() + UNLOCK_DURATION_MILLIS
++        val bootCount = readBootCount(context)
+         val saved = preferences(context).edit()
+             .putLong(DEADLINE_ELAPSED_KEY, deadline)
+-            .putInt(BOOT_COUNT_KEY, readBootCount(context))
++            .putInt(BOOT_COUNT_KEY, bootCount)
+             .putString(UNLOCK_SOURCE_KEY, source)
+             .putBoolean(PROTECTION_ARMED_WHEN_OPENED_KEY, protectionArmed)
+             .commit()
+         check(saved) { "Não foi possível abrir a janela de manutenção" }
++        cachedDeadlineElapsed = deadline
++        cachedStoredBootCount = bootCount
++        cachedCurrentBootCount = bootCount
++        cachedAutomaticDateTimeEnabled = true
+         scheduleExpiry(context, deadline)
+     }
++
++    private fun cachedRemainingMillis(): Long {
++        val remaining = evaluateRemainingMillis(
++            automaticDateTimeEnabled = cachedAutomaticDateTimeEnabled,
++            nowElapsedMillis = SystemClock.elapsedRealtime(),
++            deadlineElapsedMillis = cachedDeadlineElapsed.coerceAtLeast(0L),
++            storedBootCount = cachedStoredBootCount,
++            currentBootCount = cachedCurrentBootCount
++        )
++        if (remaining == 0L && cachedDeadlineElapsed > 0L) cachedDeadlineElapsed = 0L
++        return remaining
++    }
+@@ -202,6 +212,39 @@ object DeviceOwnerMaintenanceGate {
+     private fun storageContext(context: Context): Context {
+         val appContext = context.applicationContext
+         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+             runCatching { appContext.createDeviceProtectedStorageContext() }
+                 .getOrDefault(appContext)
+         } else {
+             appContext
+         }
+     }
++
++    private fun ensureCacheLoaded(context: Context) {
++        if (cachedDeadlineElapsed != UNINITIALIZED_DEADLINE) return
++        synchronized(this) {
++            if (cachedDeadlineElapsed != UNINITIALIZED_DEADLINE) return
++            val prefs = preferences(context)
++            val deadline = prefs.getLong(DEADLINE_ELAPSED_KEY, 0L)
++            val storedBootCount = prefs.getInt(BOOT_COUNT_KEY, Int.MIN_VALUE)
++            val currentBootCount = readBootCount(context)
++            val automaticDateTimeEnabled = isAutomaticDateAndTimeEnabled(context)
++            val remaining = evaluateRemainingMillis(
++                automaticDateTimeEnabled = automaticDateTimeEnabled,
++                nowElapsedMillis = SystemClock.elapsedRealtime(),
++                deadlineElapsedMillis = deadline,
++                storedBootCount = storedBootCount,
++                currentBootCount = currentBootCount
++            )
++            cachedAutomaticDateTimeEnabled = automaticDateTimeEnabled
++            cachedCurrentBootCount = currentBootCount
++            if (remaining > 0L) {
++                cachedDeadlineElapsed = deadline
++                cachedStoredBootCount = storedBootCount
++            } else {
++                cachedDeadlineElapsed = 0L
++                cachedStoredBootCount = Int.MIN_VALUE
++                if (deadline > 0L) {
++                    prefs.edit().clear().apply()
++                }
++            }
++        }
++    }
+ 
+     private fun readBootCount(context: Context): Int {
+         return runCatching {
+             Settings.Global.getInt(context.contentResolver, Settings.Global.BOOT_COUNT, -1)
+diff --git a/app/src/main/java/com/focusguard/admin/DeviceOwnerManager.kt b/app/src/main/java/com/focusguard/admin/DeviceOwnerManager.kt
+index 01d6f74..0000000 100644
+--- a/app/src/main/java/com/focusguard/admin/DeviceOwnerManager.kt
++++ b/app/src/main/java/com/focusguard/admin/DeviceOwnerManager.kt
+@@ -49,6 +49,15 @@ class DeviceOwnerManager private constructor(private val context: Context) {
+         Context.MODE_PRIVATE
+     )
+     private var lastWebsitePolicySignature: String? = null
++    @Volatile private var deviceOwnerActiveSnapshot = false
++    @Volatile private var deviceAdminActiveSnapshot = false
++    @Volatile private var armoredProtectionArmedSnapshot = false
++
++    init {
++        refreshAdministrativeRoleSnapshot()
++        refreshArmoredProtectionSnapshot()
++        DeviceOwnerMaintenanceGate.preload(context)
++    }
+@@ -214,25 +223,55 @@ class DeviceOwnerManager private constructor(private val context: Context) {
+     /** Check if Device Owner Mode is active. */
+     fun isDeviceOwnerActive(): Boolean {
+-        return try {
++        val active = try {
+             dpm.isDeviceOwnerApp(context.packageName)
+         } catch (_: Exception) {
+             false
+         }
++        deviceOwnerActiveSnapshot = active
++        return active
+     }
+ 
+     /** Check if Device Admin is active. */
+     fun isDeviceAdminActive(): Boolean {
+-        return try {
++        val active = try {
+             dpm.isAdminActive(componentName)
+         } catch (_: Exception) {
+             false
+         }
++        deviceAdminActiveSnapshot = active
++        return active
+     }
++
++    /** Refreshes administrative roles outside Accessibility's event callback. */
++    fun refreshAdministrativeRoleSnapshot() {
++        isDeviceOwnerActive()
++        isDeviceAdminActive()
++    }
++
++    internal fun updateDeviceAdminActiveSnapshot(active: Boolean) {
++        deviceAdminActiveSnapshot = active
++    }
++
++    fun isDeviceOwnerActiveCached(): Boolean = deviceOwnerActiveSnapshot
++
++    fun isDeviceAdminActiveCached(): Boolean = deviceAdminActiveSnapshot
++
++    fun isMaintenanceActiveCached(): Boolean =
++        deviceOwnerActiveSnapshot && DeviceOwnerMaintenanceGate.isTemporarilyUnlocked(context)
++
++    fun isArmoredProtectionArmedCached(): Boolean = armoredProtectionArmedSnapshot
+ 
+     fun isMaintenanceActive(): Boolean =
+         isDeviceOwnerActive() && DeviceOwnerMaintenanceGate.isTemporarilyUnlocked(context)
+@@ -246,6 +285,11 @@ class DeviceOwnerManager private constructor(private val context: Context) {
+     fun isArmoredProtectionArmed(): Boolean =
+         isBlockingProtectionArmed() || isAdultContentProtectionArmed()
++
++    private fun refreshArmoredProtectionSnapshot() {
++        armoredProtectionArmedSnapshot =
++            isBlockingProtectionArmed() || isAdultContentProtectionArmed()
++    }
+@@ -1029,6 +1073,9 @@ class DeviceOwnerManager private constructor(private val context: Context) {
+         if (!saved) {
+             FocusGuardLogger.log(
+                 "DeviceOwner",
+                 "Não foi possível persistir o estado da proteção de bloqueio"
+             )
++        } else {
++            refreshArmoredProtectionSnapshot()
+         }
+     }
+@@ -1044,6 +1091,9 @@ class DeviceOwnerManager private constructor(private val context: Context) {
+         if (!saved) {
+             FocusGuardLogger.log(
+                 "DeviceOwner",
+                 "Não foi possível persistir o estado da proteção de conteúdo adulto"
+             )
++        } else {
++            refreshArmoredProtectionSnapshot()
+         }
+     }
+@@ -1091,6 +1141,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
+         if (!saved) {
+             FocusGuardLogger.log(
+                 "DeviceOwner",
+                 "Não foi possível migrar o estado de política para o Direct Boot"
+             )
++        } else {
++            refreshArmoredProtectionSnapshot()
+         }
+     }
+@@ -1455,6 +1507,7 @@ class DeviceOwnerManager private constructor(private val context: Context) {
+             }
+             dpm.clearDeviceOwnerApp(context.packageName)
++            refreshAdministrativeRoleSnapshot()
+             DeviceOwnerMaintenanceGate.revoke(context)
+             Toast.makeText(
+                 context,
+diff --git a/app/src/main/java/com/focusguard/admin/FocusGuardDeviceAdminReceiver.kt b/app/src/main/java/com/focusguard/admin/FocusGuardDeviceAdminReceiver.kt
+index 25ae238..0000000 100644
+--- a/app/src/main/java/com/focusguard/admin/FocusGuardDeviceAdminReceiver.kt
++++ b/app/src/main/java/com/focusguard/admin/FocusGuardDeviceAdminReceiver.kt
+@@ -17,11 +17,13 @@ class FocusGuardDeviceAdminReceiver : DeviceAdminReceiver() {
+     override fun onEnabled(context: Context, intent: Intent) {
+         super.onEnabled(context, intent)
++        DeviceOwnerManager.getInstance(context).updateDeviceAdminActiveSnapshot(true)
+         DeviceAdminActivationWindow.close(context)
+         Toast.makeText(context, context.getString(R.string.focusguard_device_admin_habilitado), Toast.LENGTH_SHORT).show()
+     }
+ 
+     override fun onDisabled(context: Context, intent: Intent) {
+         super.onDisabled(context, intent)
++        DeviceOwnerManager.getInstance(context).updateDeviceAdminActiveSnapshot(false)
+         Toast.makeText(context, context.getString(R.string.focusguard_device_admin_desabilitado), Toast.LENGTH_SHORT).show()
+     }
+diff --git a/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt b/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+index 6e62a65..0000000 100644
+--- a/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
++++ b/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+@@ -1210,7 +1210,7 @@ class BlockingAccessibilityService : AccessibilityService() {
+         if (AuthenticatedRemovalWindow.isActive(this) || !isSelfProtectionEngagedNow()) {
+             return false
+         }
+-        if (deviceOwnerActiveCached && deviceOwnerManager.isMaintenanceActive()) return false
++        if (deviceOwnerActiveCached && deviceOwnerManager.isMaintenanceActiveCached()) return false
+@@ -1246,7 +1246,7 @@ class BlockingAccessibilityService : AccessibilityService() {
+         isBlockingSessionActive ||
+             focusModeSessionActive ||
+             SelfProtectionStateStore.isArmed(applicationContext) ||
+-            (deviceOwnerActiveCached && deviceOwnerManager.isArmoredProtectionArmed())
++            (deviceOwnerActiveCached && deviceOwnerManager.isArmoredProtectionArmedCached())
+@@ -1300,7 +1300,7 @@ class BlockingAccessibilityService : AccessibilityService() {
+         // Only actual Device Owner devices can have this maintenance gate. Avoid a
+         // DevicePolicyManager round-trip on the consumer path.
+-        if (deviceOwnerActiveCached && deviceOwnerManager.isMaintenanceActive()) return false
++        if (deviceOwnerActiveCached && deviceOwnerManager.isMaintenanceActiveCached()) return false
+@@ -1343,7 +1343,7 @@ class BlockingAccessibilityService : AccessibilityService() {
+             DeviceAdminActivationWindow.isPotentiallyAuthorized(this) &&
+                 DeviceAdminActivationWindow.isAuthorized(
+                     context = this,
+-                    deviceAdminActive = deviceOwnerManager.isDeviceAdminActive()
++                    deviceAdminActive = deviceOwnerManager.isDeviceAdminActiveCached()
+                 )
+@@ -1544,6 +1544,13 @@ class BlockingAccessibilityService : AccessibilityService() {
+         }
+     }
++
++    private fun eventSourceWithoutPrefetch(event: AccessibilityEvent): AccessibilityNodeInfo? =
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
++            event.getSource(0)
++        } else {
++            @Suppress("DEPRECATION")
++            event.source
++        }
+ 
+     private fun eventTextValues(
+         event: AccessibilityEvent,
+@@ -1554,7 +1561,7 @@ class BlockingAccessibilityService : AccessibilityService() {
+         return buildList {
+             addAll(event.text.orEmpty())
+             add(event.contentDescription)
+-            event.source?.let { source ->
++            eventSourceWithoutPrefetch(event)?.let { source ->
+                 add(source.text)
+                 add(source.contentDescription)
+                 add(source.viewIdResourceName)
+@@ -1732,6 +1739,22 @@ class BlockingAccessibilityService : AccessibilityService() {
+         }
+     }
++
++    private fun registerSelfProtectionFrameCommit(
++        eventDetectedAtNanos: Long,
++        generation: Long
++    ) {
++        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
++        val curtain = instantBlockCurtain ?: return
++        val observer = curtain.viewTreeObserver
++        if (!observer.isAlive) return
++        observer.registerFrameCommitCallback {
++            val frameCommittedAtNanos = SystemClock.elapsedRealtimeNanos()
++            val eventToFrameMicros =
++                (frameCommittedAtNanos - eventDetectedAtNanos).coerceAtLeast(0L) / 1_000L
++            scope.launch {
++                FocusGuardLogger.log(
++                    "A11yLatency",
++                    "Autoproteção: geração=$generation, callback→frame=${eventToFrameMicros}µs"
++                )
++            }
++        }
++    }
+ 
+     private fun executeProtectionAction(
+         eventTimeUptimeMillis: Long,
+@@ -1758,13 +1781,18 @@ class BlockingAccessibilityService : AccessibilityService() {
+             renewInstantCurtainFailsafe()
+             awaitingSafeSurfaceGeneration
+         } else {
+-            showInstantBlockCurtain(
++            val shownGeneration = showInstantBlockCurtain(
+                 mode = CurtainMode.SELF_PROTECTION,
+                 messageRes = R.string.accessibility_protection_blocked_notice
+             )
++            registerSelfProtectionFrameCommit(
++                eventDetectedAtNanos = eventDetectedAtNanos,
++                generation = shownGeneration
++            )
++            shownGeneration
+         }
+         if (holdUntilSafeSurface) awaitingSafeSurfaceGeneration = generation
+diff --git a/.agents/implementation_plan.md b/.agents/implementation_plan.md
+index 0000000..0000000 100644
+--- a/.agents/implementation_plan.md
++++ b/.agents/implementation_plan.md
+@@ -102,6 +102,16 @@
+ - CUMPRIDO: o segundo CI do PR #65 executou 613 testes e revelou que o marcador genérico `Widget` rejeitava por engano o `android.widget.TextView` usado pelo Launcher3; priorizar esse nome framework exato restaura o fast path AOSP sem aceitar `FrameLayout`, pastas, widgets ou atalhos.
+ - EM ANDAMENTO: publicar a branch existente em PR draft, executar CI completo e integrar na `main` somente após todos os jobs obrigatórios aprovarem; confirmar também o workflow disparado pelo push em `main` antes de encerrar.
++
++## Iteração atual — cache externo e frame real
++
++- EM ANDAMENTO: retirar `DevicePolicyManager`, `Settings.Global` e `SharedPreferences` do fast path Device Owner/Device Admin usando snapshots pré-aquecidos e atualizados por eventos conhecidos.
++- EM ANDAMENTO: fazer a janela de manutenção Device Owner decidir exclusivamente por memória depois do preload, preservando reboot, expiração monotônica e data/hora automáticas como invariantes de abertura.
++- EM ANDAMENTO: usar `AccessibilityEvent.getSource(0)` no Android 13+ para evitar prefetch desnecessário quando a árvore for realmente necessária.
++- EM ANDAMENTO: medir `AccessibilityEvent → frameCommit` da cortina em API 29+ além do marcador antigo de retorno do WindowManager.
++- PRÓXIMO OBJETIVO: validar compilação, testes unitários e Lint; revisar o diff em loop e corrigir qualquer regressão antes de publicar PR.
++- PRÓXIMO OBJETIVO: limitar de forma comprovadamente segura as pesquisas `findAccessibilityNodeInfosByText()` sem reduzir cobertura em One UI/HyperOS/AOSP.
++- PRÓXIMO OBJETIVO: adicionar Macrobenchmark/Baseline Profile Generator e matriz física Pixel/One UI/Xiaomi para p50/p95/p99.
+ 
+ ## Regras de apresentação
