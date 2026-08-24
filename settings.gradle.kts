@@ -23,3 +23,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "FocusGuard"
 include(":app")
+include(":baselineprofile")

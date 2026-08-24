@@ -9,6 +9,8 @@ plugins {
     alias(libs.plugins.ksp) apply false
     alias(libs.plugins.hilt) apply false
     alias(libs.plugins.detekt)
+    id("com.android.test") version "8.11.1" apply false
+    id("androidx.baselineprofile") version "1.4.1" apply false
 }
 
 tasks.register<Delete>("clean") {

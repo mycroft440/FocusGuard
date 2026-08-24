@@ -19,10 +19,18 @@ Reduzir a latência de autoproteção removendo leituras externas do caminho cr�
 - CUMPRIDO: adicionar teste unitário específico garantindo uma única avaliação por sinal memoizado.
 - CUMPRIDO: adicionar telemetria best-effort de evento → frame commit da cortina, separando o pedido de exibição do frame efetivamente submetido.
 - CUMPRIDO: adicionar testes unitários para o cálculo da latência de frame commit.
-- CUMPRIDO: CI do commit funcional anterior (`c09493c`) passou em Unit Tests, Android Lint e build Release APK + Debug APK + AAB.
-- EM VALIDAÇÃO: CI final do head atual, incluindo o teste de memoização e esta atualização de planejamento.
-- PRÓXIMO OBJETIVO: adicionar Macrobenchmark/Baseline Profile Generator e matriz física Samsung/Pixel/Xiaomi para medir p50/p95/p99 e decidir se vale reduzir ainda mais o fallback OEM raro.
+- CUMPRIDO: PR #66 validado em Unit Tests, Android Lint e build Release APK + Debug APK + AAB e integrado na `main`.
+- CUMPRIDO: adicionar módulo oficial `:baselineprofile` com `BaselineProfileRule` e Macrobenchmark de cold start.
+- CUMPRIDO: configurar Pixel 6 AOSP/API 35 como Gradle Managed Device reproduzível para geração de Baseline Profile.
+- CUMPRIDO: manter o baseline manual do hard-block e habilitar geração explícita de perfil AndroidX sem tornar toda build dependente de dispositivo.
+- CUMPRIDO: adicionar comparativo cold start sem compilação vs Baseline Profile.
+- CUMPRIDO: adicionar compilação obrigatória do harness de performance ao CI normal.
+- CUMPRIDO: adicionar parser p50/p95/p99 para `A11yLatency` e para JSON bruto de Macrobenchmark.
+- CUMPRIDO: documentar matriz Samsung/Pixel/Xiaomi, coleta de 100+ tentativas por superfície e critérios de aceitação.
+- CUMPRIDO: PR #67 validado em Unit Tests, Android Lint, Release APK, Debug APK, Release AAB, compilação das variants do harness e self-tests dos parsers.
+- CUMPRIDO: workflow de performance executou o Pixel 6/API 35 com KVM, gerou Baseline Profile real, verificou arquivo não vazio e publicou perfil/traces como artefato.
+- DEPENDÊNCIA EXTERNA: números absolutos p50/p95/p99 Samsung/Pixel/Xiaomi exigem aparelhos físicos ou device farm; nenhum provedor/dispositivo físico está conectado nesta sessão, portanto não serão fabricados dados sintéticos.
 
 ## Critério de aprovação
 
-A mudança só está pronta para integração quando o diff estiver revisado, os testes e Lint estiverem verdes e o build final da branch gerar APK/AAB sem regressões.
+APROVADO PARA INTEGRAÇÃO: implementação de software revisada e todos os gates automatizados disponíveis passaram. A matriz física permanece validação operacional adicional assim que hardware real estiver disponível; ela não bloqueia a integração da infraestrutura de medição.
