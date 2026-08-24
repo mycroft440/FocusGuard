@@ -56,22 +56,22 @@ class BlockedAppTaskResetCoordinator(
         }
 
         val resetIntent = prepareResetIntent(launchIntent)
-        val restoreIntent = prepareRestoreIntent(noticeIntent, activity)
+        val restoreIntent = prepareRestoreIntent(noticeIntent, appContext)
 
         runCatching {
             activity.startActivity(resetIntent)
-            // Give ActivityTaskManager one main-loop turn to apply CLEAR_TASK,
-            // then put the already-running notice back on top. The accessibility
-            // curtain remains the visual barrier during this hand-off.
+            // BlockNoticeActivity is noHistory and may be destroyed as soon as
+            // the reset activity comes forward. Restore through the application
+            // context so this hand-off remains valid even if that Activity dies.
             mainHandler.post {
-                runCatching { activity.startActivity(restoreIntent) }
+                runCatching { appContext.startActivity(restoreIntent) }
                     .onFailure { error ->
                         FocusGuardLogger.logError(
                             "BlockedTaskReset",
                             "Falha ao restaurar tela de bloqueio após limpar $blockedPackage",
                             error
                         )
-                        activity.startActivity(createHomeIntent())
+                        appContext.startActivity(createHomeIntent())
                     }
             }
         }.onFailure { error ->
@@ -110,9 +110,9 @@ class BlockedAppTaskResetCoordinator(
             )
         }
 
-        internal fun prepareRestoreIntent(source: Intent, activity: Activity): Intent =
+        internal fun prepareRestoreIntent(source: Intent, context: Context): Intent =
             Intent(source).apply {
-                setClass(activity, BlockNoticeActivity::class.java)
+                setClass(context, BlockNoticeActivity::class.java)
                 putExtra(EXTRA_BLOCKED_TASK_RESET_DONE, true)
                 addFlags(
                     Intent.FLAG_ACTIVITY_NEW_TASK or
