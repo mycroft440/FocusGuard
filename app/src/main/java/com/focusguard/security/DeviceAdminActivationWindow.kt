@@ -53,7 +53,7 @@ object DeviceAdminActivationWindow {
         if (deadline <= 0L) return false
         val active = cachedStoredBootCount == cachedCurrentBootCount &&
             deadline > SystemClock.elapsedRealtime()
-        if (!active) clearCachedAndPersistedState(context)
+        if (!active) invalidateCachedState()
         return active
     }
 
@@ -66,12 +66,14 @@ object DeviceAdminActivationWindow {
             currentBootCount = cachedCurrentBootCount,
             deviceAdminActive = deviceAdminActive
         )
-        if (!authorized) clearCachedAndPersistedState(context)
+        if (!authorized) invalidateCachedState()
         return authorized
     }
 
+    /** Controlled lifecycle close may clean persisted state because it is not a hot-path read. */
     fun close(context: Context) {
-        clearCachedAndPersistedState(context)
+        invalidateCachedState()
+        clearPersistedState(context)
     }
 
     internal fun evaluate(
@@ -97,13 +99,25 @@ object DeviceAdminActivationWindow {
             cachedStoredBootCount = prefs.getInt(BOOT_COUNT_KEY, Int.MIN_VALUE)
             cachedCurrentBootCount = readBootCount(context)
             cachedDeadlineElapsed = deadline
+
+            // Stale windows are invalidated in memory immediately. Disk cleanup is
+            // deliberately deferred to lifecycle operations so a blocked click never
+            // performs SharedPreferences I/O merely because an old deadline expired.
+            if (cachedStoredBootCount != cachedCurrentBootCount ||
+                cachedDeadlineElapsed <= SystemClock.elapsedRealtime()
+            ) {
+                invalidateCachedState()
+            }
         }
     }
 
-    private fun clearCachedAndPersistedState(context: Context) {
+    private fun invalidateCachedState() {
         cachedStoredBootCount = Int.MIN_VALUE
         cachedCurrentBootCount = Int.MIN_VALUE
         cachedDeadlineElapsed = 0L
+    }
+
+    private fun clearPersistedState(context: Context) {
         val prefs = preferences(context)
         if (prefs.contains(DEADLINE_KEY) || prefs.contains(BOOT_COUNT_KEY)) {
             prefs.edit().clear().apply()
