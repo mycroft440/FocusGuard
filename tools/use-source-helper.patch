@@ -19,12 +19,19 @@ diff --git a/app/src/main/java/com/focusguard/service/BlockingAccessibilityServi
 +    private val clickInterceptionSearchTerms = listOf("FocusGuard")
  
      private var pendingSettingsProtectionUntilElapsed = 0L
-@@ -1556,3 +1554,3 @@ class BlockingAccessibilityService : AccessibilityService() {
+@@ -1218,5 +1216,2 @@ class BlockingAccessibilityService : AccessibilityService() {
+     private fun isSelfProtectionEngagedNow(): Boolean =
+-        isBlockingSessionActive ||
+-            focusModeSessionActive ||
+-            SelfProtectionStateStore.isArmed(applicationContext) ||
+-            (deviceOwnerActiveCached && deviceOwnerManager.isArmoredProtectionArmed())
++        isBlockingSessionActive || focusModeSessionActive
+@@ -1556,3 +1551,3 @@ class BlockingAccessibilityService : AccessibilityService() {
              addAll(event.text.orEmpty())
              add(event.contentDescription)
 -            event.source?.let { source ->
 +            sourceNodeForEvent(event)?.let { source ->
-@@ -1801,3 +1799,20 @@ class BlockingAccessibilityService : AccessibilityService() {
+@@ -1801,3 +1796,20 @@ class BlockingAccessibilityService : AccessibilityService() {
          if (holdUntilSafeSurface) awaitingSafeSurfaceGeneration = generation
          val curtainReadyAtNanos = SystemClock.elapsedRealtimeNanos()
 +        if (shouldReport) {
