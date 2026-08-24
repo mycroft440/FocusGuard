@@ -103,12 +103,26 @@ class AccessibilitySettingsPolicyTest {
     }
 
     @Test
-    fun `One UI installed apps child-node locators stay classifiable`() {
-        AccessibilitySettingsPolicy.installedAccessibilityAppsNodeSearchTerms.forEach { term ->
-            assertThat(
-                AccessibilitySettingsPolicy.textTargetsInstalledAccessibilityApps(listOf(term))
-            ).isTrue()
-        }
+    fun `installed apps child-node locator is broad but classification stays strict`() {
+        assertThat(AccessibilitySettingsPolicy.installedAccessibilityAppsNodeSearchTerms)
+            .containsExactly("instal")
+        assertThat(
+            AccessibilitySettingsPolicy.textTargetsInstalledAccessibilityApps(
+                listOf("Aplicativos instalados")
+            )
+        ).isTrue()
+        assertThat(
+            AccessibilitySettingsPolicy.textTargetsInstalledAccessibilityApps(listOf("instal"))
+        ).isFalse()
+    }
+
+    @Test
+    fun `fast child-node lookup budget stays compact`() {
+        val locatorCount =
+            AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms.size +
+                AccessibilitySettingsPolicy.installedAccessibilityAppsNodeSearchTerms.size
+
+        assertThat(locatorCount).isAtMost(4)
     }
 
     @Test
