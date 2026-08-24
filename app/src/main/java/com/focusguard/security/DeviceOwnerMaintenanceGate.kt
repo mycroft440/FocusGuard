@@ -17,6 +17,9 @@ import kotlin.math.max
  * Eligibility uses automatic network date/time. The ten-minute deadline uses
  * [SystemClock.elapsedRealtime], so wall-clock or timezone changes cannot extend it.
  * Reboot invalidates the window through [Settings.Global.BOOT_COUNT].
+ *
+ * The accessibility hot path must never re-read SharedPreferences or Settings.Global.
+ * Those externally-backed values are loaded once and published through volatile fields.
  */
 object DeviceOwnerMaintenanceGate {
 
@@ -42,6 +45,17 @@ object DeviceOwnerMaintenanceGate {
     private const val UNLOCK_SOURCE_KEY = "unlock_source"
     private const val PROTECTION_ARMED_WHEN_OPENED_KEY = "protection_armed_when_opened"
     private const val EXPIRY_REQUEST_CODE = 7301
+    private const val UNINITIALIZED_DEADLINE = Long.MIN_VALUE
+
+    @Volatile private var cachedDeadlineElapsed = UNINITIALIZED_DEADLINE
+    @Volatile private var cachedStoredBootCount = Int.MIN_VALUE
+    @Volatile private var cachedCurrentBootCount = Int.MIN_VALUE
+    @Volatile private var cachedAutomaticDateTimeEnabled = false
+
+    /** Loads all externally-backed state before Accessibility needs a decision. */
+    fun preload(context: Context) {
+        ensureCacheLoaded(context)
+    }
 
     fun requestWithCredential(
         context: Context,
@@ -91,7 +105,11 @@ object DeviceOwnerMaintenanceGate {
         return UnlockResult.UNLOCKED
     }
 
-    fun isTemporarilyUnlocked(context: Context): Boolean = remainingMillis(context) > 0L
+    /** Memory-only after [preload] or the first controlled maintenance operation. */
+    fun isTemporarilyUnlocked(context: Context): Boolean {
+        ensureCacheLoaded(context)
+        return cachedRemainingMillis() > 0L
+    }
 
     /**
      * True when a maintenance window was persisted before the current Direct Boot pass.
@@ -105,22 +123,14 @@ object DeviceOwnerMaintenanceGate {
     internal fun wasProtectionArmedWhenOpened(context: Context): Boolean =
         preferences(context).getBoolean(PROTECTION_ARMED_WHEN_OPENED_KEY, false)
 
+    /** Memory-only after preload; suitable for latency-sensitive callers. */
     fun remainingMillis(context: Context): Long {
-        val prefs = preferences(context)
-        val remaining = evaluateRemainingMillis(
-            automaticDateTimeEnabled = isAutomaticDateAndTimeEnabled(context),
-            nowElapsedMillis = SystemClock.elapsedRealtime(),
-            deadlineElapsedMillis = prefs.getLong(DEADLINE_ELAPSED_KEY, 0L),
-            storedBootCount = prefs.getInt(BOOT_COUNT_KEY, Int.MIN_VALUE),
-            currentBootCount = readBootCount(context)
-        )
-        if (remaining == 0L && prefs.contains(DEADLINE_ELAPSED_KEY)) {
-            revoke(context)
-        }
-        return remaining
+        ensureCacheLoaded(context)
+        return cachedRemainingMillis()
     }
 
     fun revoke(context: Context) {
+        publishInactiveCache()
         preferences(context).edit().clear().commit()
         cancelExpiry(context)
     }
@@ -156,14 +166,34 @@ object DeviceOwnerMaintenanceGate {
 
     private fun openWindow(context: Context, source: String, protectionArmed: Boolean) {
         val deadline = SystemClock.elapsedRealtime() + UNLOCK_DURATION_MILLIS
+        val bootCount = readBootCount(context)
         val saved = preferences(context).edit()
             .putLong(DEADLINE_ELAPSED_KEY, deadline)
-            .putInt(BOOT_COUNT_KEY, readBootCount(context))
+            .putInt(BOOT_COUNT_KEY, bootCount)
             .putString(UNLOCK_SOURCE_KEY, source)
             .putBoolean(PROTECTION_ARMED_WHEN_OPENED_KEY, protectionArmed)
             .commit()
         check(saved) { "Não foi possível abrir a janela de manutenção" }
+
+        cachedDeadlineElapsed = deadline
+        cachedStoredBootCount = bootCount
+        cachedCurrentBootCount = bootCount
+        cachedAutomaticDateTimeEnabled = true
         scheduleExpiry(context, deadline)
+    }
+
+    private fun cachedRemainingMillis(): Long {
+        val remaining = evaluateRemainingMillis(
+            automaticDateTimeEnabled = cachedAutomaticDateTimeEnabled,
+            nowElapsedMillis = SystemClock.elapsedRealtime(),
+            deadlineElapsedMillis = cachedDeadlineElapsed.coerceAtLeast(0L),
+            storedBootCount = cachedStoredBootCount,
+            currentBootCount = cachedCurrentBootCount
+        )
+        if (remaining == 0L && cachedDeadlineElapsed > 0L) {
+            cachedDeadlineElapsed = 0L
+        }
+        return remaining
     }
 
     private fun scheduleExpiry(context: Context, deadlineElapsed: Long) {
@@ -211,6 +241,47 @@ object DeviceOwnerMaintenanceGate {
         } else {
             appContext
         }
+    }
+
+    private fun ensureCacheLoaded(context: Context) {
+        if (cachedDeadlineElapsed != UNINITIALIZED_DEADLINE) return
+        synchronized(this) {
+            if (cachedDeadlineElapsed != UNINITIALIZED_DEADLINE) return
+
+            val prefs = preferences(context)
+            val deadline = prefs.getLong(DEADLINE_ELAPSED_KEY, 0L)
+            val storedBootCount = prefs.getInt(BOOT_COUNT_KEY, Int.MIN_VALUE)
+            val currentBootCount = readBootCount(context)
+            val automaticDateTimeEnabled = isAutomaticDateAndTimeEnabled(context)
+            val remaining = evaluateRemainingMillis(
+                automaticDateTimeEnabled = automaticDateTimeEnabled,
+                nowElapsedMillis = SystemClock.elapsedRealtime(),
+                deadlineElapsedMillis = deadline,
+                storedBootCount = storedBootCount,
+                currentBootCount = currentBootCount
+            )
+
+            cachedAutomaticDateTimeEnabled = automaticDateTimeEnabled
+            cachedCurrentBootCount = currentBootCount
+            if (remaining > 0L) {
+                cachedDeadlineElapsed = deadline
+                cachedStoredBootCount = storedBootCount
+            } else {
+                cachedDeadlineElapsed = 0L
+                cachedStoredBootCount = Int.MIN_VALUE
+                if (deadline > 0L) {
+                    // Startup cleanup is intentionally outside the accessibility hot path.
+                    prefs.edit().clear().apply()
+                }
+            }
+        }
+    }
+
+    private fun publishInactiveCache() {
+        cachedDeadlineElapsed = 0L
+        cachedStoredBootCount = Int.MIN_VALUE
+        cachedCurrentBootCount = Int.MIN_VALUE
+        cachedAutomaticDateTimeEnabled = false
     }
 
     private fun readBootCount(context: Context): Int {
