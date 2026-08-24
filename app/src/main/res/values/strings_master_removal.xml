@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="master_removal_title">Master password required</string>
-    <string name="master_removal_description">This Android screen can remove HardBlock or a permission that keeps active protections working. Enter the master password to remove all blocks and release the protections before continuing.</string>
+    <string name="master_removal_description">Enter the master password to end active blocks, release administrative and Accessibility protections, and continue to the requested revocation or uninstall action.</string>
     <string name="master_removal_password_hint">Master password</string>
-    <string name="master_removal_confirm">Unlock and continue</string>
+    <string name="master_removal_confirm">Revoke protections and continue</string>
     <string name="master_removal_wrong_password">Incorrect master password.</string>
     <string name="master_removal_release_failed">HardBlock could not safely release every protection. Nothing was opened.</string>
     <string name="master_removal_open_failed">Protections were released, but Android could not open the requested screen.</string>
