@@ -8,22 +8,3 @@ diff --git a/app/src/main/java/com/focusguard/service/BlockingAccessibilityServi
 +    @Volatile private var deviceAdminActiveCached = false
  
      private val mainHandler = Handler(Looper.getMainLooper())
-@@ -333,6 +334,7 @@ class BlockingAccessibilityService : AccessibilityService() {
-         sessionManager = BlockingSessionManager.getInstance(this)
-         deviceOwnerManager = DeviceOwnerManager.getInstance(this)
-         deviceOwnerActiveCached = deviceOwnerManager.isDeviceOwnerActive()
-+        deviceAdminActiveCached = deviceOwnerManager.isDeviceAdminActive()
-         refreshSynchronousProtectionState()
-@@ -438,6 +440,7 @@ class BlockingAccessibilityService : AccessibilityService() {
-         // persisted snapshot exists specifically to cover the first event after
-         // Android binds or recreates the service.
-         deviceOwnerActiveCached = deviceOwnerManager.isDeviceOwnerActive()
-+        deviceAdminActiveCached = deviceOwnerManager.isDeviceAdminActive()
-         refreshSynchronousProtectionState()
-@@ -1344,7 +1347,7 @@ class BlockingAccessibilityService : AccessibilityService() {
-             DeviceAdminActivationWindow.isPotentiallyAuthorized(this) &&
-                 DeviceAdminActivationWindow.isAuthorized(
-                     context = this,
--                    deviceAdminActive = deviceOwnerManager.isDeviceAdminActive()
-+                    deviceAdminActive = deviceAdminActiveCached
-                 )
