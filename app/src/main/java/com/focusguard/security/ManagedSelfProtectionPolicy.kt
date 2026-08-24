@@ -75,6 +75,24 @@ object ManagedSelfProtectionPolicy {
     )
 
     /**
+     * Locator-only prefixes ordered for the first Samsung/One UI lookup.
+     *
+     * The clickable Preference row is frequently textless while the visible label
+     * lives in a child node. Searching these prefixes first avoids several binder
+     * tree queries before we can classify the row. They are deliberately broader
+     * than [deviceAdminSearchTerms]; the returned node text still goes through the
+     * full classifier before any blocking decision is made.
+     */
+    internal val deviceAdminNodeSearchTerms = listOf(
+        "Apps do administr",
+        "Apps administradores",
+        "Aplicativos administradores",
+        "Administrador do dispositivo",
+        "Device admin",
+        "Device administrator"
+    )
+
+    /**
      * Prefixos de "administrador" que aparecem abreviados nas telas.
      *
      * A One UI corta o rótulo para caber — "Apps do administr. do aparelho" — e
