@@ -1,0 +1,210 @@
+diff --git a/app/src/main/java/com/focusguard/admin/DeviceOwnerManager.kt b/app/src/main/java/com/focusguard/admin/DeviceOwnerManager.kt
+index 01d6f74..0000000 100644
+--- a/app/src/main/java/com/focusguard/admin/DeviceOwnerManager.kt
++++ b/app/src/main/java/com/focusguard/admin/DeviceOwnerManager.kt
+@@ -49,6 +49,13 @@ class DeviceOwnerManager private constructor(private val context: Context) {
+         Context.MODE_PRIVATE
+     )
+     private var lastWebsitePolicySignature: String? = null
++    @Volatile private var deviceAdminActiveSnapshot = false
++    @Volatile private var armoredProtectionArmedSnapshot = false
++
++    init {
++        isDeviceAdminActive()
++        refreshArmoredProtectionSnapshot()
++    }
+ 
+     companion object {
+@@ -224,12 +231,15 @@ class DeviceOwnerManager private constructor(private val context: Context) {
+ 
+     /** Check if Device Admin is active. */
+     fun isDeviceAdminActive(): Boolean {
+-        return try {
++        val active = try {
+             dpm.isAdminActive(componentName)
+         } catch (_: Exception) {
+             false
+         }
++        deviceAdminActiveSnapshot = active
++        return active
+     }
++
++    fun isDeviceAdminActiveCached(): Boolean = deviceAdminActiveSnapshot
++
++    internal fun updateDeviceAdminActiveSnapshot(active: Boolean) {
++        deviceAdminActiveSnapshot = active
++    }
+ 
+     fun isMaintenanceActive(): Boolean =
+         isDeviceOwnerActive() && DeviceOwnerMaintenanceGate.isTemporarilyUnlocked(context)
+@@ -246,6 +256,13 @@ class DeviceOwnerManager private constructor(private val context: Context) {
+     fun isArmoredProtectionArmed(): Boolean =
+         isBlockingProtectionArmed() || isAdultContentProtectionArmed()
++
++    fun isArmoredProtectionArmedCached(): Boolean = armoredProtectionArmedSnapshot
++
++    private fun refreshArmoredProtectionSnapshot() {
++        armoredProtectionArmedSnapshot =
++            isBlockingProtectionArmed() || isAdultContentProtectionArmed()
++    }
+ 
+     fun protectionPhase(): ArmoredProtectionPolicy.Phase = ArmoredProtectionPolicy.phase(
+         deviceOwnerActive = isDeviceOwnerActive(),
+@@ -1029,6 +1046,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
+                 "DeviceOwner",
+                 "Não foi possível persistir o estado da proteção de bloqueio"
+             )
++        } else {
++            refreshArmoredProtectionSnapshot()
+         }
+     }
+ 
+@@ -1044,6 +1063,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
+                 "DeviceOwner",
+                 "Não foi possível persistir o estado da proteção de conteúdo adulto"
+             )
++        } else {
++            refreshArmoredProtectionSnapshot()
+         }
+     }
+@@ -1091,6 +1112,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
+                 "DeviceOwner",
+                 "Não foi possível migrar o estado de política para o Direct Boot"
+             )
++        } else {
++            refreshArmoredProtectionSnapshot()
+         }
+     }
+diff --git a/app/src/main/java/com/focusguard/admin/FocusGuardDeviceAdminReceiver.kt b/app/src/main/java/com/focusguard/admin/FocusGuardDeviceAdminReceiver.kt
+index 25ae238..0000000 100644
+--- a/app/src/main/java/com/focusguard/admin/FocusGuardDeviceAdminReceiver.kt
++++ b/app/src/main/java/com/focusguard/admin/FocusGuardDeviceAdminReceiver.kt
+@@ -17,11 +17,13 @@ class FocusGuardDeviceAdminReceiver : DeviceAdminReceiver() {
+     override fun onEnabled(context: Context, intent: Intent) {
+         super.onEnabled(context, intent)
++        DeviceOwnerManager.getInstance(context).updateDeviceAdminActiveSnapshot(true)
+         DeviceAdminActivationWindow.close(context)
+         Toast.makeText(context, context.getString(R.string.focusguard_device_admin_habilitado), Toast.LENGTH_SHORT).show()
+     }
+ 
+     override fun onDisabled(context: Context, intent: Intent) {
+         super.onDisabled(context, intent)
++        DeviceOwnerManager.getInstance(context).updateDeviceAdminActiveSnapshot(false)
+         Toast.makeText(context, context.getString(R.string.focusguard_device_admin_desabilitado), Toast.LENGTH_SHORT).show()
+     }
+diff --git a/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt b/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+index 7856696..0000000 100644
+--- a/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
++++ b/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+@@ -1246,7 +1246,7 @@ class BlockingAccessibilityService : AccessibilityService() {
+         isBlockingSessionActive ||
+             focusModeSessionActive ||
+             SelfProtectionStateStore.isArmed(applicationContext) ||
+-            (deviceOwnerActiveCached && deviceOwnerManager.isArmoredProtectionArmed())
++            (deviceOwnerActiveCached && deviceOwnerManager.isArmoredProtectionArmedCached())
+@@ -1344,7 +1344,7 @@ class BlockingAccessibilityService : AccessibilityService() {
+             DeviceAdminActivationWindow.isPotentiallyAuthorized(this) &&
+                 DeviceAdminActivationWindow.isAuthorized(
+                     context = this,
+-                    deviceAdminActive = deviceOwnerManager.isDeviceAdminActive()
++                    deviceAdminActive = deviceOwnerManager.isDeviceAdminActiveCached()
+                 )
+@@ -1544,6 +1544,13 @@ class BlockingAccessibilityService : AccessibilityService() {
+         }
+     }
++
++    private fun eventSourceWithoutPrefetch(event: AccessibilityEvent): AccessibilityNodeInfo? =
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
++            event.getSource(0)
++        } else {
++            event.source
++        }
+ 
+     private fun eventTextValues(
+         event: AccessibilityEvent,
+@@ -1554,7 +1561,7 @@ class BlockingAccessibilityService : AccessibilityService() {
+         return buildList {
+             addAll(event.text.orEmpty())
+             add(event.contentDescription)
+-            event.source?.let { source ->
++            eventSourceWithoutPrefetch(event)?.let { source ->
+                 add(source.text)
+                 add(source.contentDescription)
+                 add(source.viewIdResourceName)
+@@ -2258,22 +2265,47 @@ class BlockingAccessibilityService : AccessibilityService() {
+     private fun showInstantBlockCurtain(
+         mode: CurtainMode,
+-        messageRes: Int? = null
++        messageRes: Int? = null,
++        frameEventDetectedAtNanos: Long = 0L
+     ): Long {
+         val generation = instantBlockCurtainGenerationCounter.incrementAndGet()
+         if (Looper.myLooper() != Looper.getMainLooper()) {
+-            mainHandler.post { showInstantBlockCurtain(mode, messageRes, generation) }
++            mainHandler.post {
++                showInstantBlockCurtain(
++                    mode,
++                    messageRes,
++                    generation,
++                    frameEventDetectedAtNanos
++                )
++            }
+             return generation
+         }
+-        showInstantBlockCurtain(mode, messageRes, generation)
++        showInstantBlockCurtain(mode, messageRes, generation, frameEventDetectedAtNanos)
+         return generation
+     }
+ 
+     private fun showInstantBlockCurtain(
+         mode: CurtainMode,
+         messageRes: Int?,
+-        generation: Long
++        generation: Long,
++        frameEventDetectedAtNanos: Long
+     ) {
+@@ -2306,6 +2338,25 @@ class BlockingAccessibilityService : AccessibilityService() {
+         val curtain = instantBlockCurtain ?: return
+         val manager = windowManager ?: return
++        registerCurtainFrameCommit(
++            curtain = curtain,
++            generation = generation,
++            eventDetectedAtNanos = frameEventDetectedAtNanos
++        )
+         runCatching {
+             manager.updateViewLayout(curtain, params)
+             instantBlockCurtainVisible = true
+@@ -2318,6 +2369,26 @@ class BlockingAccessibilityService : AccessibilityService() {
+ 
+         renewInstantCurtainFailsafe()
+     }
++
++    private fun registerCurtainFrameCommit(
++        curtain: View,
++        generation: Long,
++        eventDetectedAtNanos: Long
++    ) {
++        if (eventDetectedAtNanos <= 0L || Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return
++        val observer = curtain.viewTreeObserver
++        if (!observer.isAlive) return
++        observer.registerFrameCommitCallback {
++            val frameCommittedAtNanos = SystemClock.elapsedRealtimeNanos()
++            val eventToFrameMicros =
++                (frameCommittedAtNanos - eventDetectedAtNanos).coerceAtLeast(0L) / 1_000L
++            scope.launch {
++                FocusGuardLogger.log(
++                    "A11yLatency",
++                    "Autoproteção: geração=$generation, evento→frameCommit=${eventToFrameMicros}µs"
++                )
++            }
++        }
++    }
+@@ -1770,7 +1841,8 @@ class BlockingAccessibilityService : AccessibilityService() {
+         } else {
+             showInstantBlockCurtain(
+                 mode = CurtainMode.SELF_PROTECTION,
+-                messageRes = R.string.accessibility_protection_blocked_notice
++                messageRes = R.string.accessibility_protection_blocked_notice,
++                frameEventDetectedAtNanos = eventDetectedAtNanos
+             )
+         }
