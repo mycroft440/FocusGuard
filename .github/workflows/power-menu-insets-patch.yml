@@ -1,0 +1,67 @@
+name: Apply Power Menu Insets Refinement
+
+on:
+  push:
+    branches:
+      - ui/power-menu-hardblock-style
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: ${{ !contains(github.event.head_commit.message, '[power-menu-insets]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ui/power-menu-hardblock-style
+          fetch-depth: 0
+      - name: Apply inset refinement
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/focusguard/service/ProtectedPowerMenuController.kt')
+          text = p.read_text()
+          def rep(old, new):
+              global text
+              if text.count(old) != 1:
+                  raise SystemExit(f'expected one match, got {text.count(old)}: {old[:100]!r}')
+              text = text.replace(old, new, 1)
+
+          rep(
+              'import android.os.Handler\nimport android.os.Looper\nimport android.os.SystemClock\n',
+              'import android.os.Build\nimport android.os.Handler\nimport android.os.Looper\nimport android.os.SystemClock\n'
+          )
+          rep(
+              'import android.view.View\nimport android.view.WindowManager\n',
+              'import android.view.View\nimport android.view.WindowInsets\nimport android.view.WindowManager\n'
+          )
+          rep(
+              '    val textSecondary = Color.rgb(176, 176, 176)\n    val textHint = Color.rgb(107, 107, 107)\n    val border = Color.rgb(48, 48, 53)\n',
+              '    val textSecondary = Color.rgb(176, 176, 176)\n    val border = Color.rgb(48, 48, 53)\n'
+          )
+          rep(
+              '''        root.addView(sheet, FrameLayout.LayoutParams(\n            WindowManager.LayoutParams.MATCH_PARENT,\n            WindowManager.LayoutParams.WRAP_CONTENT\n        ).apply { gravity = Gravity.BOTTOM })\n\n        overlay = root\n''',
+              '''        root.addView(sheet, FrameLayout.LayoutParams(\n            WindowManager.LayoutParams.MATCH_PARENT,\n            WindowManager.LayoutParams.WRAP_CONTENT\n        ).apply { gravity = Gravity.BOTTOM })\n\n        // Mirror the reference layout's safe-area behavior. On edge-to-edge\n        // Android versions the navigation/gesture area can overlap a full-screen\n        // accessibility overlay, so keep the bottom controls visually and\n        // physically clear without delaying the pre-attached fast path.\n        root.setOnApplyWindowInsetsListener { _, insets ->\n            val bottomInset = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {\n                insets.getInsetsIgnoringVisibility(WindowInsets.Type.systemBars()).bottom\n            } else {\n                @Suppress("DEPRECATION")\n                insets.stableInsetBottom\n            }\n            sheet.setPadding(dp(20), dp(12), dp(20), dp(18) + bottomInset)\n            insets\n        }\n        root.requestApplyInsets()\n\n        overlay = root\n'''
+          )
+          p.write_text(text)
+
+          plan = Path('.agents/power_menu_visual_plan.md')
+          plan_text = plan.read_text()
+          marker = '- [x] Estados pressionados nos cartões sem animações que atrasem a exibição.\n'
+          replacement = marker + '- [x] Safe-area inferior baseada em `WindowInsets`, incluindo Android 15/16 edge-to-edge.\n'
+          if plan_text.count(marker) != 1:
+              raise SystemExit('plan marker not found exactly once')
+          plan.write_text(plan_text.replace(marker, replacement, 1))
+          PY
+      - name: Commit refinement
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -- app/src/main/java/com/focusguard/service/ProtectedPowerMenuController.kt .agents/power_menu_visual_plan.md
+          git commit -m "[power-menu-insets] ui: respect power menu safe area"
+          git push origin HEAD:ui/power-menu-hardblock-style
