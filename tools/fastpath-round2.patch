@@ -1,83 +1,59 @@
-diff --git a/app/src/main/java/com/focusguard/admin/DeviceOwnerManager.kt b/app/src/main/java/com/focusguard/admin/DeviceOwnerManager.kt
---- a/app/src/main/java/com/focusguard/admin/DeviceOwnerManager.kt
-+++ b/app/src/main/java/com/focusguard/admin/DeviceOwnerManager.kt
-@@ -49,6 +49,13 @@ class DeviceOwnerManager private constructor(private val context: Context) {
-         Context.MODE_PRIVATE
-     )
-     private var lastWebsitePolicySignature: String? = null
-+    @Volatile private var deviceAdminActiveSnapshot = false
-+    @Volatile private var armoredProtectionArmedSnapshot = false
-+
-+    init {
-+        isDeviceAdminActive()
-+        refreshArmoredProtectionSnapshot()
-+    }
+diff --git a/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt b/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+--- a/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
++++ b/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+@@ -137,6 +137,7 @@ class BlockingAccessibilityService : AccessibilityService() {
+     private var accessibilityServiceConnected = false
+     @Volatile private var foregroundPackageName: String? = null
+     @Volatile private var deviceOwnerActiveCached = false
++    @Volatile private var deviceAdminActiveCached = false
  
-     companion object {
-@@ -224,12 +231,20 @@ class DeviceOwnerManager private constructor(private val context: Context) {
- 
-     /** Check if Device Admin is active. */
-     fun isDeviceAdminActive(): Boolean {
--        return try {
-+        val active = try {
-             dpm.isAdminActive(componentName)
-         } catch (_: Exception) {
-             false
+     private val mainHandler = Handler(Looper.getMainLooper())
+@@ -333,6 +334,7 @@ class BlockingAccessibilityService : AccessibilityService() {
+         sessionManager = BlockingSessionManager.getInstance(this)
+         deviceOwnerManager = DeviceOwnerManager.getInstance(this)
+         deviceOwnerActiveCached = deviceOwnerManager.isDeviceOwnerActive()
++        deviceAdminActiveCached = deviceOwnerManager.isDeviceAdminActive()
+         refreshSynchronousProtectionState()
+@@ -438,6 +440,7 @@ class BlockingAccessibilityService : AccessibilityService() {
+         // persisted snapshot exists specifically to cover the first event after
+         // Android binds or recreates the service.
+         deviceOwnerActiveCached = deviceOwnerManager.isDeviceOwnerActive()
++        deviceAdminActiveCached = deviceOwnerManager.isDeviceAdminActive()
+         refreshSynchronousProtectionState()
+@@ -850,6 +853,8 @@ class BlockingAccessibilityService : AccessibilityService() {
+                     refreshRequested.set(false)
+                     try {
+                         val deviceOwnerActiveNow = deviceOwnerManager.isDeviceOwnerActive()
++                        val deviceAdminActiveNow = deviceOwnerManager.isDeviceAdminActive()
+                         deviceOwnerActiveCached = deviceOwnerActiveNow
++                        deviceAdminActiveCached = deviceAdminActiveNow
+                         val adultFilterEnabled = authManager.isAdultFilterEnabled()
+@@ -1344,7 +1349,7 @@ class BlockingAccessibilityService : AccessibilityService() {
+             DeviceAdminActivationWindow.isPotentiallyAuthorized(this) &&
+                 DeviceAdminActivationWindow.isAuthorized(
+                     context = this,
+-                    deviceAdminActive = deviceOwnerManager.isDeviceAdminActive()
++                    deviceAdminActive = deviceAdminActiveCached
+                 )
+@@ -1544,6 +1549,13 @@ class BlockingAccessibilityService : AccessibilityService() {
          }
-+        deviceAdminActiveSnapshot = active
-+        return active
      }
 +
-+    fun isDeviceAdminActiveCached(): Boolean = deviceAdminActiveSnapshot
-+
-+    internal fun updateDeviceAdminActiveSnapshot(active: Boolean) {
-+        deviceAdminActiveSnapshot = active
-+    }
- 
-     fun isMaintenanceActive(): Boolean =
-         isDeviceOwnerActive() && DeviceOwnerMaintenanceGate.isTemporarilyUnlocked(context)
-@@ -246,6 +261,13 @@ class DeviceOwnerManager private constructor(private val context: Context) {
-     fun isArmoredProtectionArmed(): Boolean =
-         isBlockingProtectionArmed() || isAdultContentProtectionArmed()
-+
-+    fun isArmoredProtectionArmedCached(): Boolean = armoredProtectionArmedSnapshot
-+
-+    private fun refreshArmoredProtectionSnapshot() {
-+        armoredProtectionArmedSnapshot =
-+            isBlockingProtectionArmed() || isAdultContentProtectionArmed()
-+    }
- 
-     fun protectionPhase(): ArmoredProtectionPolicy.Phase = ArmoredProtectionPolicy.phase(
-         deviceOwnerActive = isDeviceOwnerActive(),
-@@ -1029,6 +1051,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
-                 "DeviceOwner",
-                 "Não foi possível persistir o estado da proteção de bloqueio"
-             )
++    private fun eventSourceWithoutPrefetch(event: AccessibilityEvent): AccessibilityNodeInfo? =
++        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
++            event.getSource(0)
 +        } else {
-+            refreshArmoredProtectionSnapshot()
-         }
-     }
-@@ -1044,6 +1068,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
-                 "DeviceOwner",
-                 "Não foi possível persistir o estado da proteção de conteúdo adulto"
-             )
-+        } else {
-+            refreshArmoredProtectionSnapshot()
-         }
-     }
-diff --git a/app/src/main/java/com/focusguard/admin/FocusGuardDeviceAdminReceiver.kt b/app/src/main/java/com/focusguard/admin/FocusGuardDeviceAdminReceiver.kt
---- a/app/src/main/java/com/focusguard/admin/FocusGuardDeviceAdminReceiver.kt
-+++ b/app/src/main/java/com/focusguard/admin/FocusGuardDeviceAdminReceiver.kt
-@@ -17,11 +17,13 @@ class FocusGuardDeviceAdminReceiver : DeviceAdminReceiver() {
-     override fun onEnabled(context: Context, intent: Intent) {
-         super.onEnabled(context, intent)
-+        DeviceOwnerManager.getInstance(context).updateDeviceAdminActiveSnapshot(true)
-         DeviceAdminActivationWindow.close(context)
-         Toast.makeText(context, context.getString(R.string.focusguard_device_admin_habilitado), Toast.LENGTH_SHORT).show()
-     }
++            event.source
++        }
  
-     override fun onDisabled(context: Context, intent: Intent) {
-         super.onDisabled(context, intent)
-+        DeviceOwnerManager.getInstance(context).updateDeviceAdminActiveSnapshot(false)
-         Toast.makeText(context, context.getString(R.string.focusguard_device_admin_desabilitado), Toast.LENGTH_SHORT).show()
-     }
+     private fun eventTextValues(
+         event: AccessibilityEvent,
+@@ -1554,7 +1566,7 @@ class BlockingAccessibilityService : AccessibilityService() {
+         return buildList {
+             addAll(event.text.orEmpty())
+             add(event.contentDescription)
+-            event.source?.let { source ->
++            eventSourceWithoutPrefetch(event)?.let { source ->
+                 add(source.text)
+                 add(source.contentDescription)
+                 add(source.viewIdResourceName)
