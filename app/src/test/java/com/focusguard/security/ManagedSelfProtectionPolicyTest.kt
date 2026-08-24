@@ -116,6 +116,11 @@ class ManagedSelfProtectionPolicyTest {
             )
         ).isFalse()
         assertThat(
+            ManagedSelfProtectionPolicy.textTargetsFocusGuard(
+                listOf("HardBlocker", "HardBlock VPN", "com.focusguard.v20")
+            )
+        ).isFalse()
+        assertThat(
             ManagedSelfProtectionPolicy.textTargetsDestructiveControl(
                 listOf("Bateria", "Notificações")
             )

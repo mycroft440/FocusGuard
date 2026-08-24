@@ -10,6 +10,7 @@ import android.view.View
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.view.doOnPreDraw
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
@@ -18,6 +19,9 @@ import com.focusguard.focusmode.FocusModeKioskController
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.security.AuthManager
+import com.focusguard.security.CurtainDestinationReadyCoordinator
+import com.focusguard.security.SafeSurfaceReadinessPolicy
+import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.ui.PermissionsActivity
 import com.focusguard.ui.compose.navigation.FocusGuardNavHost
 import com.focusguard.ui.compose.theme.FocusGuardTheme
@@ -38,6 +42,11 @@ class MainActivity : AppCompatActivity() {
 
     private lateinit var pomodoroManager: PomodoroManager
     private var grayscaleApplied: Boolean? = null
+    private var contentDrawn = false
+    private var activityResumed = false
+    private var windowFocused = false
+    private var pendingCurtainGeneration = 0L
+    private var freshFrameGeneration = 0L
 
     /**
      * Last-resort Back guard for every FocusGuard screen. Compose screens keep
@@ -93,6 +102,7 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
+        notifyCurtainWhenDrawn(intent)
         applyFocusModeGrayscale(
             focusModeManager.session.value?.let {
                 it.isActive() && it.grayscaleEnabled
@@ -106,10 +116,13 @@ class MainActivity : AppCompatActivity() {
         setIntent(intent)
         updateFocusModeBackGuard()
         enforceFocusModeLockTask()
+        notifyCurtainWhenDrawn(intent)
     }
 
     override fun onResume() {
         super.onResume()
+        activityResumed = true
+        acknowledgePendingCurtainIfPresented()
         FocusGuardLogger.log("MainActivity", "onResume disparado")
         updateFocusModeBackGuard()
         FocusModeKioskController.reconcileSystemRestrictions(this)
@@ -117,8 +130,15 @@ class MainActivity : AppCompatActivity() {
     }
 
     override fun onPause() {
-        super.onPause()
+        activityResumed = false
         FocusGuardLogger.log("MainActivity", "onPause disparado")
+        super.onPause()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        windowFocused = hasFocus
+        if (hasFocus) acknowledgePendingCurtainIfPresented()
     }
 
     fun enforceFocusModeLockTask() {
@@ -155,6 +175,49 @@ class MainActivity : AppCompatActivity() {
 
     private fun updateFocusModeBackGuard() {
         focusModeBackGuard.isEnabled = focusModeManager.isActive()
+    }
+
+    private fun notifyCurtainWhenDrawn(sourceIntent: Intent) {
+        val generation = sourceIntent.getLongExtra(
+            BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION,
+            0L
+        )
+        if (generation <= 0L) return
+        pendingCurtainGeneration = generation
+        freshFrameGeneration = 0L
+        if (acknowledgePendingCurtainIfPresented()) return
+        window.decorView.doOnPreDraw {
+            contentDrawn = true
+            if (pendingCurtainGeneration == generation &&
+                activityResumed && window.decorView.isShown
+            ) {
+                freshFrameGeneration = generation
+            }
+            acknowledgePendingCurtainIfPresented()
+        }
+        window.decorView.invalidate()
+    }
+
+    private fun acknowledgePendingCurtainIfPresented(): Boolean {
+        val generation = pendingCurtainGeneration
+        if (generation <= 0L) return false
+        val decor = window.decorView
+        val ready = SafeSurfaceReadinessPolicy.decide(
+            alreadyDrawn = contentDrawn,
+            freshFrameAfterRequest = freshFrameGeneration == generation,
+            lifecycleResumed = activityResumed,
+            decorShown = decor.isShown,
+            windowFocused = windowFocused
+        ) == SafeSurfaceReadinessPolicy.Decision.ACK_NOW
+        if (!ready) return false
+        pendingCurtainGeneration = 0L
+        freshFrameGeneration = 0L
+        notifyCurtainReady(generation)
+        return true
+    }
+
+    private fun notifyCurtainReady(generation: Long) {
+        CurtainDestinationReadyCoordinator.notifyReady(generation)
     }
 
     private fun observeFocusModeVisualState() {

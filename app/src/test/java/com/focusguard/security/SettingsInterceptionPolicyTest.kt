@@ -103,17 +103,30 @@ class SettingsInterceptionPolicyTest {
     }
 
     @Test
-    fun `app info gateway is blocked before navigation`() {
+    fun `FocusGuard app info gateway is blocked before navigation`() {
+        assertThat(
+            decide(
+                signals(
+                    isViewClickedEvent = true,
+                    textMentionsAppInfoGateway = true,
+                    textMentionsFocusGuard = true
+                )
+            )
+        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
         assertThat(
             decide(signals(isViewClickedEvent = true, textMentionsAppInfoGateway = true))
-        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+        ).isEqualTo(Decision.IGNORE)
     }
 
     @Test
     fun `explicit app info gateway wins over strict pomodoro for master exit`() {
         assertThat(
             decide(
-                signals(isViewClickedEvent = true, textMentionsAppInfoGateway = true),
+                signals(
+                    isViewClickedEvent = true,
+                    textMentionsAppInfoGateway = true,
+                    textMentionsFocusGuard = true
+                ),
                 strictPomodoro = true
             )
         ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)

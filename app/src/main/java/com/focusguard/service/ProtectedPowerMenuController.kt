@@ -2,10 +2,12 @@ package com.focusguard.service
 
 import android.accessibilityservice.AccessibilityService
 import android.content.Context
+import android.content.Intent
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.Gravity
 import android.view.View
 import android.view.WindowManager
@@ -17,6 +19,7 @@ import android.widget.TextView
 import com.focusguard.R
 import com.focusguard.security.PowerMenuProtectionPolicy
 import com.focusguard.security.PowerMenuProtectionPolicy.Action
+import com.focusguard.security.PowerMenuProtectionPolicy.DirectDecision
 import com.focusguard.utils.FocusGuardLogger
 
 /**
@@ -30,64 +33,150 @@ import com.focusguard.utils.FocusGuardLogger
 class ProtectedPowerMenuController(
     private val service: AccessibilityService
 ) {
+    internal enum class PowerMenuPresence { PRESENT, ABSENT_CONFIRMED, UNKNOWN }
+    internal enum class CloseStage { NONE, BACK_REQUESTED, HOME_REQUESTED }
+    internal enum class RecheckDecision { HIDE, KEEP_CHECKING, REQUEST_BACK, REQUEST_HOME }
+    internal enum class PowerMatchOverlayDecision {
+        PASS,
+        SHIELD_AND_CONSUME,
+        REQUEST_HOME_FALLBACK
+    }
+
     private val mainHandler = Handler(Looper.getMainLooper())
     private val windowManager =
         service.getSystemService(Context.WINDOW_SERVICE) as WindowManager
 
     private var overlay: View? = null
+    private var overlayParams: WindowManager.LayoutParams? = null
+    private var overlayAttached = false
+    private var overlayVisible = false
+    private var overlayShownAtElapsed = 0L
+    private var directSignalActive = false
+    private var directMatchedWindowId = -1
+    private var directSignalAtElapsed = 0L
+    private var reliableWindowObserved = false
+    private var closeStage = CloseStage.NONE
+    private var closeStageAtElapsed = 0L
+    private var homeFallbackAttempted = false
+    private var recheckScheduled = false
+    private var protectionActive = false
     private var statusText: TextView? = null
 
     fun handleAccessibilityEvent(
         event: AccessibilityEvent,
         protectionActive: Boolean
     ): Boolean {
+        if (this.protectionActive != protectionActive) {
+            onProtectionStateChanged(protectionActive)
+        }
         if (!protectionActive) {
-            dismiss()
             return false
         }
 
         val packageName = event.packageName?.toString().orEmpty()
-        if (overlay != null && packageName == service.packageName) return true
+        if (overlayVisible && packageName == service.packageName) return true
 
         val relevantEvent = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
             event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED ||
             event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
 
         if (!relevantEvent) {
-            return overlay != null && PowerMenuProtectionPolicy.isSystemUiPackage(packageName)
+            return overlayVisible && PowerMenuProtectionPolicy.isSystemUiPackage(packageName)
+        }
+
+        // Some OEMs omit the package on the first global-actions event. Check
+        // only that event's exact window before the broader package-specific
+        // path; rootMatchesPowerMenu still requires a real System UI signature.
+        if (shouldInspectExactPowerWindow(packageName, relevantEvent)) {
+            val powerMenuRoot = findPowerMenuRoot(event, scanAllWindows = false)
+            if (powerMenuRoot != null) {
+                reliableWindowObserved = true
+                recycleSafely(powerMenuRoot)
+                return protectMatchedPowerMenu()
+            }
+            if (overlayVisible) scheduleRecheck()
+            return false
         }
 
         if (PowerMenuProtectionPolicy.isSystemUiPackage(packageName)) {
+            when (PowerMenuProtectionPolicy.classifyDirect(
+                packageName = packageName,
+                className = event.className?.toString().orEmpty(),
+                values = buildList {
+                    addAll(event.text.orEmpty())
+                    add(event.contentDescription)
+                }
+            )) {
+                DirectDecision.MATCH -> {
+                    if (!overlayVisible) reliableWindowObserved = false
+                    directSignalActive = true
+                    directMatchedWindowId = event.windowId
+                    directSignalAtElapsed = SystemClock.elapsedRealtime()
+                    if (event.windowId >= 0) reliableWindowObserved = true
+                    return protectMatchedPowerMenu()
+                }
+                DirectDecision.NOT_MATCH -> {
+                    if (overlayVisible &&
+                        directSignalActive &&
+                        directMatchedWindowId >= 0 &&
+                        event.windowId == directMatchedWindowId &&
+                        event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
+                    ) {
+                        dismiss()
+                        return false
+                    }
+                    return overlayVisible
+                }
+                DirectDecision.UNKNOWN -> Unit
+            }
+
             // Prefer the exact window that emitted this event. If an OEM reports a
             // different/blank window id, scan all System UI windows and require a
             // real power-menu signature before selecting one. This avoids confusing
             // notification shade/status-bar windows with global actions.
             val powerMenuRoot = findPowerMenuRoot(event)
             if (powerMenuRoot != null) {
+                reliableWindowObserved = true
                 recycleSafely(powerMenuRoot)
-                show()
-                return true
+                return protectMatchedPowerMenu()
             }
 
-            if (overlay != null) {
+            if (overlayVisible) {
                 scheduleRecheck()
                 return true
             }
             return false
         }
 
-        if (overlay != null &&
+        if (overlayVisible &&
             packageName.isNotBlank() &&
             packageName != service.packageName &&
             event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
         ) {
-            dismiss()
+            // Another app/window can report a delayed transition while the
+            // native power menu is still present (including split screen).
+            // Never uncover System UI on that unrelated signal; the scheduled
+            // recheck hides only after the tracked window/root is absent.
+            scheduleRecheck()
+            // Do not consume it: the accessibility service still needs the same
+            // event to block that app/Settings target underneath this shield.
+            return shouldConsumeExternalWindowEvent()
         }
         return false
     }
 
     fun onProtectionStateChanged(active: Boolean) {
-        if (!active) dismiss()
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post { onProtectionStateChanged(active) }
+            return
+        }
+        protectionActive = active
+        if (active) {
+            prepareOverlay()
+            attachOverlayHidden()
+        } else {
+            release()
+        }
     }
 
     fun dismiss() {
@@ -96,24 +185,126 @@ class ProtectedPowerMenuController(
             return
         }
         mainHandler.removeCallbacks(recheckRunnable)
-        val current = overlay ?: return
-        overlay = null
-        statusText = null
-        runCatching { windowManager.removeViewImmediate(current) }
-            .onFailure { error ->
-                FocusGuardLogger.logError(
-                    "PowerMenu",
-                    "Falha ao remover menu de energia protegido",
-                    error
-                )
+        recheckScheduled = false
+        if (overlayAttached && overlayVisible) {
+            val current = overlay
+            val params = overlayParams
+            if (current != null && params != null) {
+                params.alpha = 0f
+                params.flags = hiddenFlags(params.flags)
+                runCatching { windowManager.updateViewLayout(current, params) }
+                    .onFailure { error ->
+                        FocusGuardLogger.logError(
+                            "PowerMenu",
+                            "Falha ao ocultar menu de energia protegido",
+                            error
+                        )
+                        release()
+                    }
             }
+        }
+        overlayVisible = false
+        overlayShownAtElapsed = 0L
+        resetDetectionState()
     }
 
-    private fun show() {
+    /** Accessibility feedback interruption says nothing about native window state. */
+    fun onFeedbackInterrupted() {
         if (Looper.myLooper() != Looper.getMainLooper()) {
-            mainHandler.post(::show)
+            mainHandler.post(::onFeedbackInterrupted)
             return
         }
+        if (shouldRecheckAfterFeedbackInterrupt(overlayVisible)) scheduleRecheck()
+    }
+
+    /** Screen-off is not proof that an OEM global-actions window disappeared. */
+    fun onScreenOff() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(::onScreenOff)
+            return
+        }
+        if (shouldRequestCloseOnScreenOff(overlayVisible)) {
+            requestNativeHomeClose()
+        }
+    }
+
+    fun destroy() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(::destroy)
+            return
+        }
+        protectionActive = false
+        release()
+    }
+
+    private fun show(): Boolean {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            return false
+        }
+        prepareOverlay()
+        attachOverlayHidden()
+        if (!overlayAttached) return false
+        if (overlayVisible) return true
+        val current = overlay ?: return false
+        val params = overlayParams ?: return false
+        statusText?.visibility = View.GONE
+        params.alpha = 1f
+        params.flags = visibleFlags(params.flags)
+        return runCatching {
+            windowManager.updateViewLayout(current, params)
+            overlayVisible = true
+            overlayShownAtElapsed = SystemClock.elapsedRealtime()
+            closeStage = CloseStage.NONE
+            closeStageAtElapsed = 0L
+            homeFallbackAttempted = false
+            true
+        }.onFailure { error ->
+            FocusGuardLogger.logError(
+                "PowerMenu",
+                "Falha ao exibir menu de energia protegido",
+                error
+            )
+            release()
+        }.getOrDefault(false)
+    }
+
+    private fun protectMatchedPowerMenu(): Boolean = when (
+        powerMatchOverlayDecision(
+            powerMatched = true,
+            overlayShown = show()
+        )
+    ) {
+        PowerMatchOverlayDecision.SHIELD_AND_CONSUME -> {
+            scheduleRecheck()
+            true
+        }
+        PowerMatchOverlayDecision.REQUEST_HOME_FALLBACK -> {
+            requestUnshieldedHomeFallback()
+            false
+        }
+        PowerMatchOverlayDecision.PASS -> false
+    }
+
+    private fun requestUnshieldedHomeFallback() {
+        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+        runCatching {
+            service.startActivity(
+                Intent(Intent.ACTION_MAIN).apply {
+                    addCategory(Intent.CATEGORY_HOME)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                }
+            )
+        }.onFailure { error ->
+            FocusGuardLogger.logError(
+                "PowerMenu",
+                "Falha no fechamento HOME sem overlay do menu de energia",
+                error
+            )
+            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        }
+    }
+
+    private fun prepareOverlay() {
         if (overlay != null) return
 
         val density = service.resources.displayMetrics.density
@@ -154,10 +345,9 @@ class ProtectedPowerMenuController(
             text = service.getString(R.string.protected_power_menu_cancel)
             isAllCaps = false
             setOnClickListener {
-                // Close the real System UI dialog while this overlay is still
-                // consuming touch, then remove our own surface.
-                service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-                mainHandler.postDelayed(::dismiss, CANCEL_DISMISS_DELAY_MILLIS)
+                // Keep shielding System UI until a later recheck proves the
+                // native power window is gone.
+                requestNativeBackClose()
             }
             setOnLongClickListener { true }
         }, buttonParams(gap))
@@ -173,27 +363,66 @@ class ProtectedPowerMenuController(
             WindowManager.LayoutParams.WRAP_CONTENT
         ).apply { topMargin = gap })
 
-        val params = WindowManager.LayoutParams(
+        overlay = container
+        overlayParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.MATCH_PARENT,
             WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE,
             PixelFormat.OPAQUE
         ).apply {
             gravity = Gravity.TOP or Gravity.START
             title = "FocusGuardProtectedPowerMenu"
+            alpha = 0f
         }
+    }
 
+    private fun attachOverlayHidden() {
+        if (overlayAttached) return
+        val current = overlay ?: return
+        val params = overlayParams ?: return
+        params.alpha = 0f
+        params.flags = hiddenFlags(params.flags)
         runCatching {
-            windowManager.addView(container, params)
-            overlay = container
+            windowManager.addView(current, params)
+            overlayAttached = true
+            overlayVisible = false
+            overlayShownAtElapsed = 0L
         }.onFailure { error ->
             FocusGuardLogger.logError(
                 "PowerMenu",
-                "Falha ao exibir menu de energia protegido",
+                "Falha ao pré-anexar menu de energia protegido",
                 error
             )
         }
+    }
+
+    private fun release() {
+        mainHandler.removeCallbacks(recheckRunnable)
+        recheckScheduled = false
+        val current = overlay
+        if (current != null && overlayAttached) {
+            runCatching { windowManager.removeViewImmediate(current) }
+                .onFailure { error ->
+                    FocusGuardLogger.logError(
+                        "PowerMenu",
+                        "Falha ao liberar menu de energia protegido",
+                        error
+                    )
+                }
+        }
+        overlayAttached = false
+        overlayVisible = false
+        overlayShownAtElapsed = 0L
+        directSignalActive = false
+        directMatchedWindowId = -1
+        directSignalAtElapsed = 0L
+        reliableWindowObserved = false
+        closeStage = CloseStage.NONE
+        closeStageAtElapsed = 0L
+        homeFallbackAttempted = false
     }
 
     private fun addActionButton(
@@ -283,7 +512,10 @@ class ProtectedPowerMenuController(
      * Returns only a System UI root that independently matches the power-menu
      * signature. When an event is available, its window is checked first.
      */
-    private fun findPowerMenuRoot(event: AccessibilityEvent? = null): AccessibilityNodeInfo? {
+    private fun findPowerMenuRoot(
+        event: AccessibilityEvent? = null,
+        scanAllWindows: Boolean = true
+    ): AccessibilityNodeInfo? {
         val windows = service.windows
         val eventWindowId = event?.windowId
 
@@ -295,6 +527,8 @@ class ProtectedPowerMenuController(
                 recycleSafely(root)
             }
         }
+
+        if (!scanAllWindows) return null
 
         windows.forEach { window ->
             if (eventWindowId != null && window.id == eventWindowId) return@forEach
@@ -319,12 +553,12 @@ class ProtectedPowerMenuController(
             values.add(it.contentDescription)
         }
         collectText(root, values, 0)
-        return PowerMenuProtectionPolicy.isPowerMenu(
+        return PowerMenuProtectionPolicy.classifyDirect(
             packageName = packageName,
             className = event?.className?.toString()
                 ?: root.className?.toString().orEmpty(),
             values = values
-        )
+        ) == DirectDecision.MATCH
     }
 
     private fun collectText(
@@ -349,17 +583,95 @@ class ProtectedPowerMenuController(
     }
 
     private fun scheduleRecheck() {
-        mainHandler.removeCallbacks(recheckRunnable)
+        if (!shouldScheduleRecheck(recheckScheduled)) return
+        recheckScheduled = true
         mainHandler.postDelayed(recheckRunnable, RECHECK_DELAY_MILLIS)
     }
 
     private val recheckRunnable = Runnable {
+        recheckScheduled = false
         val root = findPowerMenuRoot()
-        if (root == null) {
-            dismiss()
-            return@Runnable
+        val nowElapsed = SystemClock.elapsedRealtime()
+        if (root != null) reliableWindowObserved = true
+        val directWindowStillPresent = directSignalActive &&
+            directMatchedWindowId >= 0 &&
+            service.windows.any { it.id == directMatchedWindowId }
+        val undefinedWindowGraceActive = directSignalActive &&
+            directMatchedWindowId < 0 &&
+            nowElapsed - directSignalAtElapsed <= UNDEFINED_WINDOW_GRACE_MILLIS
+        val presence = when {
+            root != null || directWindowStillPresent -> PowerMenuPresence.PRESENT
+            reliableWindowObserved -> PowerMenuPresence.ABSENT_CONFIRMED
+            else -> PowerMenuPresence.UNKNOWN
+        }
+        when (recheckDecision(
+            overlayVisible = overlayVisible,
+            presence = presence,
+            visibleForMillis = (nowElapsed - overlayShownAtElapsed).coerceAtLeast(0L),
+            closeStage = closeStage,
+            closeStageForMillis = (nowElapsed - closeStageAtElapsed).coerceAtLeast(0L),
+            homeFallbackAttempted = homeFallbackAttempted,
+            unconfirmedSignalGraceExpired = directSignalActive &&
+                directMatchedWindowId < 0 &&
+                !undefinedWindowGraceActive
+        )) {
+            RecheckDecision.HIDE -> dismiss()
+            RecheckDecision.KEEP_CHECKING -> scheduleRecheck()
+            RecheckDecision.REQUEST_BACK -> requestNativeBackClose()
+            RecheckDecision.REQUEST_HOME -> requestNativeHomeClose()
         }
         recycleSafely(root)
+    }
+
+    private fun requestNativeBackClose() {
+        if (!overlayVisible || closeStage != CloseStage.NONE) return
+        closeStage = CloseStage.BACK_REQUESTED
+        closeStageAtElapsed = SystemClock.elapsedRealtime()
+        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        scheduleRecheck()
+    }
+
+    private fun requestNativeHomeClose() {
+        if (!overlayVisible) return
+        val retryingPersistentWindow = closeStage == CloseStage.HOME_REQUESTED
+        closeStage = CloseStage.HOME_REQUESTED
+        closeStageAtElapsed = SystemClock.elapsedRealtime()
+        val globalHomeAccepted =
+            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
+        if (shouldLaunchHomeIntentFallback(
+                globalHomeAccepted = globalHomeAccepted,
+                retryingPersistentWindow = retryingPersistentWindow
+            )
+        ) {
+            val fallbackResult = runCatching {
+                service.startActivity(
+                    Intent(Intent.ACTION_MAIN).apply {
+                        addCategory(Intent.CATEGORY_HOME)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                    }
+                )
+            }.onFailure { error ->
+                FocusGuardLogger.logError(
+                    "PowerMenu",
+                    "Falha no fallback HOME ao fechar menu nativo",
+                    error
+                )
+            }
+            homeFallbackAttempted = shouldMarkHomeFallbackAttempted(
+                fallbackIntentSucceeded = fallbackResult.isSuccess
+            )
+        }
+        scheduleRecheck()
+    }
+
+    private fun resetDetectionState() {
+        directSignalActive = false
+        directMatchedWindowId = -1
+        directSignalAtElapsed = 0L
+        reliableWindowObserved = false
+        closeStage = CloseStage.NONE
+        closeStageAtElapsed = 0L
+        homeFallbackAttempted = false
     }
 
     private fun showStatus(resId: Int) {
@@ -374,12 +686,86 @@ class ProtectedPowerMenuController(
         runCatching { node.recycle() }
     }
 
-    private companion object {
+    companion object {
+        internal fun powerMatchOverlayDecision(
+            powerMatched: Boolean,
+            overlayShown: Boolean
+        ): PowerMatchOverlayDecision = when {
+            !powerMatched -> PowerMatchOverlayDecision.PASS
+            overlayShown -> PowerMatchOverlayDecision.SHIELD_AND_CONSUME
+            else -> PowerMatchOverlayDecision.REQUEST_HOME_FALLBACK
+        }
+
+        internal fun recheckDecision(
+            overlayVisible: Boolean,
+            presence: PowerMenuPresence,
+            visibleForMillis: Long,
+            closeStage: CloseStage,
+            closeStageForMillis: Long,
+            homeFallbackAttempted: Boolean = false,
+            unconfirmedSignalGraceExpired: Boolean
+        ): RecheckDecision = when {
+            !overlayVisible -> RecheckDecision.HIDE
+            presence == PowerMenuPresence.ABSENT_CONFIRMED -> RecheckDecision.HIDE
+            closeStage == CloseStage.HOME_REQUESTED &&
+                closeStageForMillis >= HOME_CLOSE_HARD_CAP_MILLIS &&
+                presence == PowerMenuPresence.PRESENT -> RecheckDecision.REQUEST_HOME
+            closeStage == CloseStage.HOME_REQUESTED &&
+                closeStageForMillis >= HOME_CLOSE_HARD_CAP_MILLIS &&
+                !homeFallbackAttempted -> RecheckDecision.REQUEST_HOME
+            closeStage == CloseStage.HOME_REQUESTED &&
+                closeStageForMillis >= HOME_CLOSE_HARD_CAP_MILLIS -> RecheckDecision.HIDE
+            closeStage == CloseStage.BACK_REQUESTED &&
+                closeStageForMillis >= BACK_TO_HOME_MILLIS -> RecheckDecision.REQUEST_HOME
+            closeStage != CloseStage.NONE -> RecheckDecision.KEEP_CHECKING
+            unconfirmedSignalGraceExpired -> RecheckDecision.REQUEST_BACK
+            visibleForMillis >= MAX_OVERLAY_VISIBLE_MILLIS -> RecheckDecision.REQUEST_BACK
+            else -> RecheckDecision.KEEP_CHECKING
+        }
+
+        internal fun hiddenFlags(flags: Int): Int =
+            flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+
+        internal fun visibleFlags(flags: Int): Int =
+            flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv() and
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+
+        internal fun shouldScheduleRecheck(alreadyScheduled: Boolean): Boolean =
+            !alreadyScheduled
+
+        internal fun shouldLaunchHomeIntentFallback(
+            globalHomeAccepted: Boolean,
+            retryingPersistentWindow: Boolean
+        ): Boolean = !globalHomeAccepted || retryingPersistentWindow
+
+        internal fun shouldMarkHomeFallbackAttempted(
+            fallbackIntentSucceeded: Boolean
+        ): Boolean = fallbackIntentSucceeded
+
+        internal fun shouldConsumeExternalWindowEvent(): Boolean = false
+
+        internal fun shouldRecheckAfterFeedbackInterrupt(
+            overlayVisible: Boolean
+        ): Boolean = overlayVisible
+
+        internal fun shouldRequestCloseOnScreenOff(
+            overlayVisible: Boolean
+        ): Boolean = overlayVisible
+
+        internal fun shouldInspectExactPowerWindow(
+            packageName: String,
+            relevantEvent: Boolean
+        ): Boolean = relevantEvent && packageName.isBlank()
+
         const val MAX_PARENT_DEPTH = 5
         const val MAX_TREE_DEPTH = 12
         const val MAX_CHILDREN_PER_NODE = 30
         const val MAX_TEXT_VALUES = 300
         const val RECHECK_DELAY_MILLIS = 350L
-        const val CANCEL_DISMISS_DELAY_MILLIS = 120L
+        const val UNDEFINED_WINDOW_GRACE_MILLIS = 1_050L
+        const val BACK_TO_HOME_MILLIS = 1_050L
+        const val HOME_CLOSE_HARD_CAP_MILLIS = 1_050L
+        const val MAX_OVERLAY_VISIBLE_MILLIS = 30_000L
     }
 }

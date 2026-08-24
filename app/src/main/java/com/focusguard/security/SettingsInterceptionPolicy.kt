@@ -189,7 +189,10 @@ object SettingsInterceptionPolicy {
 
         // App Info is a removal gateway on Samsung/One UI. Blocking the row itself
         // avoids waiting for the destination Activity to become visible.
-        if (signals.isViewClickedEvent && signals.textMentionsAppInfoGateway) {
+        if (signals.isViewClickedEvent &&
+            signals.textMentionsAppInfoGateway &&
+            signals.textMentionsFocusGuard
+        ) {
             return Decision.PROTECT_AND_ARM_GUARD
         }
 
