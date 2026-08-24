@@ -16,6 +16,7 @@ import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthenticatedRemovalWindow
 import com.focusguard.security.DeactivationCredentialManager
@@ -31,6 +32,7 @@ class MasterRemovalActivity : ComponentActivity() {
     private lateinit var credentialManager: DeactivationCredentialManager
     private lateinit var sessionManager: BlockingSessionManager
     private lateinit var deviceOwnerManager: DeviceOwnerManager
+    private lateinit var focusModeManager: FocusModeManager
     private lateinit var passwordField: EditText
     private lateinit var errorText: TextView
     private var working = false
@@ -45,6 +47,7 @@ class MasterRemovalActivity : ComponentActivity() {
         credentialManager = DeactivationCredentialManager(applicationContext)
         sessionManager = BlockingSessionManager.getInstance(applicationContext)
         deviceOwnerManager = DeviceOwnerManager.getInstance(applicationContext)
+        focusModeManager = FocusModeManager.getInstance(applicationContext)
         showCredentialDialog()
     }
 
@@ -123,6 +126,17 @@ class MasterRemovalActivity : ComponentActivity() {
 
             AuthenticatedRemovalWindow.open(applicationContext)
             if (!deviceOwnerManager.releaseRemovalProtectionForDevelopmentExit()) {
+                AuthenticatedRemovalWindow.close(applicationContext)
+                showError(getString(R.string.master_removal_release_failed), dialog)
+                return@launch
+            }
+
+            try {
+                // Keep Focus Mode state available until Device Owner has used it to
+                // unsuspend packages and clear kiosk policies. Only then erase the
+                // persisted session, cancel its alarm/service and refresh its UI.
+                focusModeManager.forceStopForDevelopmentExit()
+            } catch (error: Exception) {
                 AuthenticatedRemovalWindow.close(applicationContext)
                 showError(getString(R.string.master_removal_release_failed), dialog)
                 return@launch
