@@ -1,7 +1,7 @@
 diff --git a/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt b/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
 --- a/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
 +++ b/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
-@@ -137,6 +137,7 @@ class BlockingAccessibilityService : AccessibilityService() {
+@@ -137,5 +137,6 @@ class BlockingAccessibilityService : AccessibilityService() {
      private var accessibilityServiceConnected = false
      @Volatile private var foregroundPackageName: String? = null
      @Volatile private var deviceOwnerActiveCached = false
