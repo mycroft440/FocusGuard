@@ -15,7 +15,7 @@ index 01d6f74..0000000 100644
 +    }
  
      companion object {
-@@ -224,12 +231,15 @@ class DeviceOwnerManager private constructor(private val context: Context) {
+@@ -224,12 +231,20 @@ class DeviceOwnerManager private constructor(private val context: Context) {
  
      /** Check if Device Admin is active. */
      fun isDeviceAdminActive(): Boolean {
@@ -37,7 +37,7 @@ index 01d6f74..0000000 100644
  
      fun isMaintenanceActive(): Boolean =
          isDeviceOwnerActive() && DeviceOwnerMaintenanceGate.isTemporarilyUnlocked(context)
-@@ -246,6 +256,13 @@ class DeviceOwnerManager private constructor(private val context: Context) {
+@@ -246,6 +261,13 @@ class DeviceOwnerManager private constructor(private val context: Context) {
      fun isArmoredProtectionArmed(): Boolean =
          isBlockingProtectionArmed() || isAdultContentProtectionArmed()
 +
@@ -50,7 +50,7 @@ index 01d6f74..0000000 100644
  
      fun protectionPhase(): ArmoredProtectionPolicy.Phase = ArmoredProtectionPolicy.phase(
          deviceOwnerActive = isDeviceOwnerActive(),
-@@ -1029,6 +1046,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
+@@ -1029,6 +1051,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
                  "DeviceOwner",
                  "Não foi possível persistir o estado da proteção de bloqueio"
              )
@@ -59,7 +59,7 @@ index 01d6f74..0000000 100644
          }
      }
  
-@@ -1044,6 +1063,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
+@@ -1044,6 +1068,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
                  "DeviceOwner",
                  "Não foi possível persistir o estado da proteção de conteúdo adulto"
              )
@@ -67,7 +67,7 @@ index 01d6f74..0000000 100644
 +            refreshArmoredProtectionSnapshot()
          }
      }
-@@ -1091,6 +1112,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
+@@ -1091,6 +1117,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
                  "DeviceOwner",
                  "Não foi possível migrar o estado de política para o Direct Boot"
              )
@@ -131,7 +131,16 @@ index 7856696..0000000 100644
                  add(source.text)
                  add(source.contentDescription)
                  add(source.viewIdResourceName)
-@@ -2258,22 +2265,47 @@ class BlockingAccessibilityService : AccessibilityService() {
+@@ -1770,7 +1777,8 @@ class BlockingAccessibilityService : AccessibilityService() {
+         } else {
+             showInstantBlockCurtain(
+                 mode = CurtainMode.SELF_PROTECTION,
+-                messageRes = R.string.accessibility_protection_blocked_notice
++                messageRes = R.string.accessibility_protection_blocked_notice,
++                frameEventDetectedAtNanos = eventDetectedAtNanos
+             )
+         }
+@@ -2258,22 +2266,47 @@ class BlockingAccessibilityService : AccessibilityService() {
      private fun showInstantBlockCurtain(
          mode: CurtainMode,
 -        messageRes: Int? = null
@@ -163,7 +172,7 @@ index 7856696..0000000 100644
 +        generation: Long,
 +        frameEventDetectedAtNanos: Long
      ) {
-@@ -2306,6 +2338,25 @@ class BlockingAccessibilityService : AccessibilityService() {
+@@ -2306,6 +2339,11 @@ class BlockingAccessibilityService : AccessibilityService() {
          val curtain = instantBlockCurtain ?: return
          val manager = windowManager ?: return
 +        registerCurtainFrameCommit(
@@ -174,7 +183,7 @@ index 7856696..0000000 100644
          runCatching {
              manager.updateViewLayout(curtain, params)
              instantBlockCurtainVisible = true
-@@ -2318,6 +2369,26 @@ class BlockingAccessibilityService : AccessibilityService() {
+@@ -2318,6 +2356,26 @@ class BlockingAccessibilityService : AccessibilityService() {
  
          renewInstantCurtainFailsafe()
      }
@@ -199,12 +208,3 @@ index 7856696..0000000 100644
 +            }
 +        }
 +    }
-@@ -1770,7 +1841,8 @@ class BlockingAccessibilityService : AccessibilityService() {
-         } else {
-             showInstantBlockCurtain(
-                 mode = CurtainMode.SELF_PROTECTION,
--                messageRes = R.string.accessibility_protection_blocked_notice
-+                messageRes = R.string.accessibility_protection_blocked_notice,
-+                frameEventDetectedAtNanos = eventDetectedAtNanos
-             )
-         }
