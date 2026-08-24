@@ -84,7 +84,7 @@ class DeactivationCredentialManager @Inject constructor(
     }
 
     companion object {
-        const val MIN_PASSWORD_LENGTH = 8
+        const val MIN_PASSWORD_LENGTH = 4
 
         private const val PASSWORD_VERIFIER_KEY = "deactivation_password_verifier"
         private const val RECOVERY_VERIFIER_KEY = "deactivation_recovery_verifier"
