@@ -103,9 +103,13 @@ class MasterRemovalActivity : ComponentActivity() {
                 when (credentialManager.verify(credential)) {
                     DeactivationCredentialManager.VerificationResult.PASSWORD_ACCEPTED,
                     DeactivationCredentialManager.VerificationResult.RECOVERY_ACCEPTED -> true
-                    DeactivationCredentialManager.VerificationResult.REJECTED,
-                    DeactivationCredentialManager.VerificationResult.NOT_CONFIGURED -> false
+                    DeactivationCredentialManager.VerificationResult.REJECTED -> false
+                    DeactivationCredentialManager.VerificationResult.NOT_CONFIGURED -> null
                 }
+            }
+            if (verified == null) {
+                showError(getString(R.string.master_credential_not_configured), dialog)
+                return@launch
             }
             if (!verified) {
                 showError(getString(R.string.master_removal_wrong_password), dialog)
