@@ -1,0 +1,8 @@
+diff --git a/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt b/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+--- a/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
++++ b/app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+@@ -1556,3 +1556,3 @@ class BlockingAccessibilityService : AccessibilityService() {
+             addAll(event.text.orEmpty())
+             add(event.contentDescription)
+-            event.source?.let { source ->
++            sourceNodeForEvent(event)?.let { source ->
