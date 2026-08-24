@@ -152,6 +152,17 @@ object SettingsInterceptionPolicy {
             }
         }
 
+        // Strict Pomodoro remains authoritative for all non-click Settings events
+        // and for the app-initiated first Device Admin enrollment. Existing
+        // destructive clicks are allowed to continue below so they can be bounced
+        // instantly and offered the master-password exit instead of becoming a
+        // second way around the Pomodoro lock.
+        if (strictPomodoroActive &&
+            (!signals.isViewClickedEvent || deviceAdminActivationAuthorized)
+        ) {
+            return Decision.POMODORO_LOCK
+        }
+
         // ACTION_ADD_DEVICE_ADMIN is authorized only while FocusGuard is not yet
         // an active administrator. Allow only the Device Admin enrollment surface
         // during this short window. Never let a generic SubSettings shell use that
