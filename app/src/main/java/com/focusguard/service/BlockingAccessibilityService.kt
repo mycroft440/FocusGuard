@@ -47,6 +47,7 @@ import com.focusguard.security.SettingsInterceptionPolicy
 import com.focusguard.security.SelfProtectionStateStore
 import com.focusguard.security.UsageAccessPausePolicy
 import com.focusguard.ui.BlockNoticeActivity
+import com.focusguard.ui.MasterRemovalActivity
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
@@ -128,6 +129,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     @Volatile private var protectionActionUntilElapsed = 0L
     private var lastBlockNoticeKey: String? = null
     private var lastBlockNoticeLaunchElapsed = 0L
+    private var lastMasterRemovalGateLaunchElapsed = 0L
 
     private val websiteTrackingLock = Any()
     @Volatile private var trackedDomain: String? = null
@@ -178,7 +180,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         (listOf("FocusGuard", "Focus Guard", "com.focusguard") +
             AccessibilitySettingsPolicy.accessibilityDisclosureNodeSearchTerms).distinct()
     private val clickInterceptionSearchTerms =
-        (directClickContextSufficientTerms + "admin").distinct()
+        (directClickContextSufficientTerms +
+            listOf("admin", "Informações do app", "Informações do aplicativo", "App info"))
+            .distinct()
 
     private var pendingSettingsProtectionUntilElapsed = 0L
 
@@ -999,7 +1003,10 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         // Strict Pomodoro keeps ownership of Settings. System UI clicks still need
         // their dedicated disclosure/admin classifier, matching the policy order.
-        if (!isSystemUi && isPomodoroStrictActive) {
+        if (!isSystemUi &&
+            isPomodoroStrictActive &&
+            event.eventType != AccessibilityEvent.TYPE_VIEW_CLICKED
+        ) {
             performGlobalAction(GLOBAL_ACTION_BACK)
             launchPomodoroLockScreen()
             return true
@@ -1057,7 +1064,8 @@ class BlockingAccessibilityService : AccessibilityService() {
             textMentionsDeviceAdmin = managedTextSignals.deviceAdmin,
             textMentionsFocusGuard = managedTextSignals.focusGuard,
             textMentionsDestructiveControl = managedTextSignals.destructiveControl,
-            textMentionsEssentialSpecialAccess = managedTextSignals.essentialSpecialAccess
+            textMentionsEssentialSpecialAccess = managedTextSignals.essentialSpecialAccess,
+            textMentionsAppInfoGateway = managedTextSignals.appInfoGateway
         )
 
         val deviceAdminActivationAuthorized = if (
@@ -1069,6 +1077,27 @@ class BlockingAccessibilityService : AccessibilityService() {
             )
         } else {
             false
+        }
+
+        val masterRemovalTarget = if (event.eventType == AccessibilityEvent.TYPE_VIEW_CLICKED) {
+            when {
+                signals.textMentionsDeviceAdmin || classTargetsDeviceAdmin ->
+                    MasterRemovalActivity.Target.DEVICE_ADMIN
+                (signals.textMentionsInstalledAccessibilityApps && signals.textMentionsAccessibility) ||
+                    classTargetsAccessibilityServiceToggle ||
+                    (signals.textMentionsAccessibilityDisclosure && signals.textMentionsFocusGuard) ->
+                    MasterRemovalActivity.Target.ACCESSIBILITY
+                signals.textMentionsAppInfoGateway || classTargetsAppDetails ->
+                    MasterRemovalActivity.Target.APP_INFO
+                classTargetsUninstall ||
+                    packageName in SettingsInterceptionPolicy.packageInstallerPackages ||
+                    (signals.textMentionsDestructiveControl && signals.textMentionsFocusGuard) ->
+                    MasterRemovalActivity.Target.UNINSTALL
+                signals.textMentionsFocusGuard -> MasterRemovalActivity.Target.APP_INFO
+                else -> null
+            }
+        } else {
+            null
         }
 
         val decision = SettingsInterceptionPolicy.decide(
@@ -1098,6 +1127,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
             SettingsInterceptionPolicy.Decision.PROTECT -> {
                 executeProtectionAction(eventDetectedAtNanos)
+                masterRemovalTarget?.let(::launchMasterRemovalGate)
                 true
             }
 
@@ -1105,8 +1135,32 @@ class BlockingAccessibilityService : AccessibilityService() {
                 pendingSettingsProtectionUntilElapsed =
                     nowElapsed + SETTINGS_TRANSITION_GUARD_MILLIS
                 executeProtectionAction(eventDetectedAtNanos)
+                masterRemovalTarget?.let(::launchMasterRemovalGate)
                 true
             }
+        }
+    }
+
+    private fun launchMasterRemovalGate(target: MasterRemovalActivity.Target) {
+        val nowElapsed = SystemClock.elapsedRealtime()
+        if (nowElapsed - lastMasterRemovalGateLaunchElapsed < MASTER_REMOVAL_GATE_COOLDOWN_MILLIS) return
+        lastMasterRemovalGateLaunchElapsed = nowElapsed
+
+        val intent = MasterRemovalActivity.createIntent(this, target).apply {
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_NO_ANIMATION
+            )
+        }
+        runCatching {
+            startActivity(intent)
+            // Keep the system screen covered until our own private credential UI
+            // is requested, then remove the overlay so it cannot eat password input.
+            dismissInstantBlockCurtain()
+        }.onFailure { error ->
+            FocusGuardLogger.logError("MasterRemoval", "Falha ao abrir senha mestre", error)
         }
     }
 
@@ -1969,6 +2023,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         private const val SELF_PROTECTION_NOTICE_DURATION_MILLIS = 1_200L
         internal const val BLOCK_NOTICE_RELAUNCH_COOLDOWN_MILLIS = 1_500L
         private const val FOCUS_MODE_REDIRECT_COOLDOWN_MILLIS = 600L
+        private const val MASTER_REMOVAL_GATE_COOLDOWN_MILLIS = 1_200L
         private const val INSTANT_CURTAIN_FAILSAFE_MILLIS = 5_000L
         internal const val EVENT_NOTIFICATION_TIMEOUT_MILLIS = 0L
         /**

@@ -14,6 +14,7 @@ object ManagedSelfProtectionPolicy {
 
     data class TextSignals(
         val deviceAdmin: Boolean,
+        val appInfoGateway: Boolean,
         val focusGuard: Boolean,
         val destructiveControl: Boolean,
         val essentialSpecialAccess: Boolean
@@ -61,6 +62,9 @@ object ManagedSelfProtectionPolicy {
 
     internal val deviceAdminSearchTerms = listOf(
         "Apps do administrador do aparelho",
+        "Apps administradores do sistema",
+        "Aplicativos administradores do sistema",
+        "System admin apps",
         "Administrador do dispositivo",
         "Administradores do dispositivo",
         "Device admin apps",
@@ -99,6 +103,15 @@ object ManagedSelfProtectionPolicy {
         "celular"
     )
 
+    internal val appInfoGatewaySearchTerms = listOf(
+        "Informações do aplicativo",
+        "Informações do app",
+        "App info",
+        "Application info",
+        "Información de la aplicación",
+        "Información de app"
+    )
+
     internal val focusGuardSearchTerms = listOf(
         "FocusGuard",
         "Focus Guard",
@@ -133,6 +146,8 @@ object ManagedSelfProtectionPolicy {
     )
 
     private val normalizedDeviceAdminSearchTerms = deviceAdminSearchTerms.map(::normalize)
+    private val normalizedAppInfoGatewaySearchTerms =
+        appInfoGatewaySearchTerms.map(::normalize)
     private val normalizedFocusGuardSearchTerms = focusGuardSearchTerms.map(::normalize)
     private val normalizedDestructiveControlSearchTerms =
         destructiveControlSearchTerms.map(::normalize)
@@ -155,6 +170,10 @@ object ManagedSelfProtectionPolicy {
         val normalizedValues = normalizeValues(values)
         return TextSignals(
             deviceAdmin = matchesDeviceAdmin(normalizedValues),
+            appInfoGateway = valuesContainAnyNormalized(
+                normalizedValues,
+                normalizedAppInfoGatewaySearchTerms
+            ),
             focusGuard = valuesContainAnyNormalized(
                 normalizedValues,
                 normalizedFocusGuardSearchTerms
@@ -172,6 +191,9 @@ object ManagedSelfProtectionPolicy {
 
     fun textTargetsDeviceAdmin(values: Iterable<CharSequence?>): Boolean =
         matchesDeviceAdmin(normalizeValues(values))
+
+    fun textTargetsAppInfoGateway(values: Iterable<CharSequence?>): Boolean =
+        valuesContainAnyNormalized(normalizeValues(values), normalizedAppInfoGatewaySearchTerms)
 
     fun textTargetsFocusGuard(values: Iterable<CharSequence?>): Boolean =
         valuesContainAnyNormalized(normalizeValues(values), normalizedFocusGuardSearchTerms)

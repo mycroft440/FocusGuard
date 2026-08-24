@@ -3,6 +3,11 @@
     <string name="recovery_course_badge">CURSO GRATUITO • PRIVADO • OFFLINE</string>
     <string name="recovery_course_progress_title">Seu progresso</string>
     <string name="recovery_course_progress_value">%1$d%% concluído</string>
+    <string name="recovery_course_progress_encouragement">Continue firme. Cada passo conta.</string>
+    <string name="recovery_course_slogan_instant_easy">MÉTODO INSTANTÂNEO E FÁCIL</string>
+    <string name="recovery_course_slogan_understand_trap">ENTENDA A ARMADILHA E FECHE AS PORTAS</string>
+    <string name="recovery_course_slogan_without_only_willpower">SEM DEPENDER SÓ DE FORÇA DE VONTADE</string>
+    <string name="recovery_course_slogan_private_offline">CURSO GRATUITO, PRIVADO E OFFLINE</string>
     <string name="recovery_course_title">CURSO GRATUITO PARA SAIR DO CICLO DA PORNOGRAFIA</string>
     <string name="recovery_course_hero">ABSOLUTAMENTE TUDO PARA ENTENDER E ROMPER A ARMADILHA — feito por quem já caiu nela.</string>
     <string name="recovery_course_subtitle">Muito mais do que usar força de vontade. Entenda o que pode acontecer antes, durante e depois da pornografia, por que o ciclo se torna automático e como construir uma saída prática.</string>

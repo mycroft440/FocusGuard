@@ -94,3 +94,11 @@
 - Conferir que Pomodoro e Modo Foco continuam seguindo seus fluxos próprios.
 - Conferir paridade dos recursos em português e inglês.
 - Executar testes unitários, lint e compilação dos APKs.
+
+
+## Correção de regressão — senha mestre e AntiPorn
+- CUMPRIDO: Restaurar exatamente o AntiPorn fixo sem rolagem e com frases rotativas da versão aprovada.
+- CUMPRIDO: reconhecer “Informações do aplicativo” e “Apps administradores do sistema” como gateways protegidos.
+- CUMPRIDO: ao tentar remover/desinstalar/perder permissões, bloquear instantaneamente e abrir o gate da senha mestre.
+- CUMPRIDO: senha mestre autorizada remove todas as fontes de bloqueio e libera Device Owner/Device Admin/Acessibilidade antes de devolver o usuário ao Android.
+- PRÓXIMO OBJETIVO: validar testes, lint, APK/AAB Release e APK Debug antes da integração.
