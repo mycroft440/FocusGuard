@@ -20,40 +20,10 @@ diff --git a/app/src/main/java/com/focusguard/service/BlockingAccessibilityServi
          deviceOwnerActiveCached = deviceOwnerManager.isDeviceOwnerActive()
 +        deviceAdminActiveCached = deviceOwnerManager.isDeviceAdminActive()
          refreshSynchronousProtectionState()
-@@ -850,6 +853,8 @@ class BlockingAccessibilityService : AccessibilityService() {
-                     refreshRequested.set(false)
-                     try {
-                         val deviceOwnerActiveNow = deviceOwnerManager.isDeviceOwnerActive()
-+                        val deviceAdminActiveNow = deviceOwnerManager.isDeviceAdminActive()
-                         deviceOwnerActiveCached = deviceOwnerActiveNow
-+                        deviceAdminActiveCached = deviceAdminActiveNow
-                         val adultFilterEnabled = authManager.isAdultFilterEnabled()
-@@ -1344,7 +1349,7 @@ class BlockingAccessibilityService : AccessibilityService() {
+@@ -1344,7 +1347,7 @@ class BlockingAccessibilityService : AccessibilityService() {
              DeviceAdminActivationWindow.isPotentiallyAuthorized(this) &&
                  DeviceAdminActivationWindow.isAuthorized(
                      context = this,
 -                    deviceAdminActive = deviceOwnerManager.isDeviceAdminActive()
 +                    deviceAdminActive = deviceAdminActiveCached
                  )
-@@ -1544,6 +1549,13 @@ class BlockingAccessibilityService : AccessibilityService() {
-         }
-     }
-+
-+    private fun eventSourceWithoutPrefetch(event: AccessibilityEvent): AccessibilityNodeInfo? =
-+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-+            event.getSource(0)
-+        } else {
-+            event.source
-+        }
- 
-     private fun eventTextValues(
-         event: AccessibilityEvent,
-@@ -1554,7 +1566,7 @@ class BlockingAccessibilityService : AccessibilityService() {
-         return buildList {
-             addAll(event.text.orEmpty())
-             add(event.contentDescription)
--            event.source?.let { source ->
-+            eventSourceWithoutPrefetch(event)?.let { source ->
-                 add(source.text)
-                 add(source.contentDescription)
-                 add(source.viewIdResourceName)
