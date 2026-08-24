@@ -23,20 +23,22 @@ internal object CurtainFrameCommitTelemetry {
         val observer = curtain.viewTreeObserver
         if (!observer.isAlive) return false
 
-        observer.registerFrameCommitCallback {
-            if (generation == currentGeneration()) {
-                onCommitted(
-                    sample(
-                        eventDetectedAtNanos = eventDetectedAtNanos,
-                        curtainReadyAtNanos = curtainReadyAtNanos,
-                        frameCommittedAtNanos = SystemClock.elapsedRealtimeNanos()
+        return runCatching {
+            observer.registerFrameCommitCallback {
+                if (generation == currentGeneration()) {
+                    onCommitted(
+                        sample(
+                            eventDetectedAtNanos = eventDetectedAtNanos,
+                            curtainReadyAtNanos = curtainReadyAtNanos,
+                            frameCommittedAtNanos = SystemClock.elapsedRealtimeNanos()
+                        )
                     )
-                )
+                }
             }
-        }
-        // Guarantee a rendering pass for the measurement without changing layout/state.
-        curtain.postInvalidateOnAnimation()
-        return true
+            // Force only a rendering pass; telemetry must never alter layout or blocking state.
+            curtain.postInvalidateOnAnimation()
+            true
+        }.getOrDefault(false)
     }
 
     internal fun sample(
