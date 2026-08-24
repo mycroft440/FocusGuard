@@ -226,10 +226,17 @@ class MasterRemovalActivity : ComponentActivity() {
 
     private fun notifyCredentialReady(curtainGeneration: Long) {
         if (curtainGeneration <= 0L) return
+        // The internal Settings reset is finished as soon as this safe credential
+        // surface is really on screen. Keeping the reset exemption alive for its
+        // old 3-second timeout let a second real Settings click pass through.
+        ProtectedSettingsResetWindow.close(curtainGeneration)
         CurtainDestinationReadyCoordinator.notifyReady(curtainGeneration)
     }
 
     private fun cancelRemovalAttempt() {
+        // If cancellation races the first drawn credential frame, revoke the reset
+        // exemption before HOME so no user click can inherit it.
+        ProtectedSettingsResetWindow.close(pendingCurtainGeneration)
         runCatching { startActivity(createHomeIntent()) }
         finish()
     }

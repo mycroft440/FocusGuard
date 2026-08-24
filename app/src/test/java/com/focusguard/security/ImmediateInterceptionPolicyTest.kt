@@ -319,6 +319,13 @@ class ImmediateInterceptionPolicyTest {
 
         assertThat(admin.decision).isEqualTo(DirectDecision.PROTECT)
         assertThat(admin.surface).isEqualTo(SettingsSurface.DEVICE_ADMIN)
+        val samsungAdmin = ImmediateInterceptionPolicy.classifySettingsClick(
+            "com.android.settings",
+            "android.widget.TextView",
+            listOf("Apps administradores do sistema")
+        )
+        assertThat(samsungAdmin.decision).isEqualTo(DirectDecision.PROTECT)
+        assertThat(samsungAdmin.surface).isEqualTo(SettingsSurface.DEVICE_ADMIN)
         assertThat(accessibility.decision).isEqualTo(DirectDecision.PROTECT)
         assertThat(accessibility.surface).isEqualTo(SettingsSurface.ACCESSIBILITY)
         assertThat(appInfo.decision).isEqualTo(DirectDecision.PROTECT)
