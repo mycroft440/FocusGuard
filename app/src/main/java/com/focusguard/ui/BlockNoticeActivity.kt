@@ -63,9 +63,11 @@ import androidx.fragment.app.FragmentActivity
 import com.focusguard.security.AuthManager
 import com.focusguard.security.BiometricAppUnlockPolicy
 import com.focusguard.security.CameraManager
+import com.focusguard.security.CurtainDestinationReadyCoordinator
 import com.focusguard.security.IntruderCapturePolicy
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.PasswordAppUnlockStore
+import com.focusguard.security.SafeSurfaceReadinessPolicy
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.ui.compose.screens.PasswordProtectedAppUnlockPanel
 import com.focusguard.ui.compose.theme.AccentCyan
@@ -95,6 +97,11 @@ class BlockNoticeActivity : AppCompatActivity() {
     private var strictBlock = false
     private var redirectBrowserPackage: String? = null
     private var renderedNotice: NoticePayload? = null
+    private var noticeDrawn = false
+    private var activityResumed = false
+    private var windowFocused = false
+    private var pendingCurtainGeneration = 0L
+    private var freshFrameGeneration = 0L
 
     private data class NoticePayload(
         val strictBlock: Boolean,
@@ -126,7 +133,28 @@ class BlockNoticeActivity : AppCompatActivity() {
         showBlockNotice(intent)
     }
 
+    override fun onResume() {
+        super.onResume()
+        activityResumed = true
+        acknowledgePendingNoticeIfPresented()
+    }
+
+    override fun onPause() {
+        activityResumed = false
+        super.onPause()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        windowFocused = hasFocus
+        if (hasFocus) acknowledgePendingNoticeIfPresented()
+    }
+
     private fun showBlockNotice(sourceIntent: Intent) {
+        val curtainGeneration = sourceIntent.getLongExtra(
+            BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION,
+            0L
+        )
         val payload = NoticePayload(
             strictBlock = sourceIntent.getBooleanExtra(
                 BlockingAccessibilityService.EXTRA_STRICT_BLOCK,
@@ -144,15 +172,19 @@ class BlockNoticeActivity : AppCompatActivity() {
         )
         strictBlock = payload.strictBlock
         redirectBrowserPackage = payload.redirectBrowserPackage
+        pendingCurtainGeneration = curtainGeneration
+        freshFrameGeneration = 0L
 
         // singleTop can receive several copies of the same accessibility event.
         // Keep the existing composition (including an open password dialog) and
-        // only acknowledge readiness instead of rebuilding the whole screen.
+        // only acknowledge readiness after the next actual draw. The generation
+        // prevents an older Activity callback from hiding a newer curtain.
         if (renderedNotice == payload) {
-            notifyNoticeReady()
+            acknowledgeNotice(curtainGeneration)
             return
         }
         renderedNotice = payload
+        noticeDrawn = false
         val blockedPackage = payload.blockedPackage
         val blockedDomain = payload.blockedDomain
         val browserPackageForRedirect = redirectBrowserPackage
@@ -175,25 +207,63 @@ class BlockNoticeActivity : AppCompatActivity() {
         }
 
         window.decorView.doOnPreDraw {
+            noticeDrawn = true
+            if (pendingCurtainGeneration == curtainGeneration &&
+                activityResumed && window.decorView.isShown
+            ) {
+                freshFrameGeneration = curtainGeneration
+            }
             val detectedAt = sourceIntent.getLongExtra(
-                BlockingAccessibilityService.EXTRA_BLOCK_DETECTED_ELAPSED_REALTIME,
+                BlockingAccessibilityService.EXTRA_BLOCK_EVENT_UPTIME_MILLIS,
                 0L
             )
             if (detectedAt > 0L) {
                 FocusGuardLogger.log(
                     "BlockNotice",
-                    "Tela pronta em ${SystemClock.elapsedRealtime() - detectedAt}ms"
+                    "Evento→primeiro desenho=${SystemClock.uptimeMillis() - detectedAt}ms"
                 )
             }
-            notifyNoticeReady()
+            acknowledgePendingNoticeIfPresented()
         }
+        window.decorView.invalidate()
     }
 
-    private fun notifyNoticeReady() {
-        sendBroadcast(
-            Intent(BlockingAccessibilityService.ACTION_BLOCK_NOTICE_READY)
-                .setPackage(packageName)
-        )
+    private fun acknowledgeNotice(curtainGeneration: Long) {
+        pendingCurtainGeneration = curtainGeneration
+        freshFrameGeneration = 0L
+        if (acknowledgePendingNoticeIfPresented()) return
+        window.decorView.doOnPreDraw {
+            noticeDrawn = true
+            if (pendingCurtainGeneration == curtainGeneration &&
+                activityResumed && window.decorView.isShown
+            ) {
+                freshFrameGeneration = curtainGeneration
+            }
+            acknowledgePendingNoticeIfPresented()
+        }
+        window.decorView.invalidate()
+    }
+
+    private fun acknowledgePendingNoticeIfPresented(): Boolean {
+        val generation = pendingCurtainGeneration
+        if (generation <= 0L) return false
+        val decor = window.decorView
+        val ready = SafeSurfaceReadinessPolicy.decide(
+            alreadyDrawn = noticeDrawn,
+            freshFrameAfterRequest = freshFrameGeneration == generation,
+            lifecycleResumed = activityResumed,
+            decorShown = decor.isShown,
+            windowFocused = windowFocused
+        ) == SafeSurfaceReadinessPolicy.Decision.ACK_NOW
+        if (!ready) return false
+        pendingCurtainGeneration = 0L
+        freshFrameGeneration = 0L
+        notifyNoticeReady(generation)
+        return true
+    }
+
+    private fun notifyNoticeReady(curtainGeneration: Long) {
+        CurtainDestinationReadyCoordinator.notifyReady(curtainGeneration)
     }
 
     private fun redirectBlockedWebsite(browserPackageName: String) {

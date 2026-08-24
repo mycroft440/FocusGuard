@@ -8,20 +8,37 @@ import java.util.Locale
  */
 object PowerMenuProtectionPolicy {
     enum class Action { POWER_OFF, RESTART, EMERGENCY, MEDICAL_INFO }
+    enum class DirectDecision { MATCH, UNKNOWN, NOT_MATCH }
+
+    private val COMBINING_MARKS_REGEX = "\\p{M}+".toRegex()
 
     val systemUiPackages = setOf(
         "com.android.systemui",
         "com.samsung.android.systemui"
     )
 
-    private val classMarkers = setOf(
+    private val specificClassMarkers = setOf(
         "GlobalActions",
         "GlobalActionsDialog",
         "GlobalActionsDialogLite",
-        "ActionsDialog",
         "PowerOptions",
         "PowerMenu",
         "SecGlobalActions"
+    )
+    private val ambiguousClassMarkers = setOf("ActionsDialog")
+    private val classMarkers = specificClassMarkers + ambiguousClassMarkers
+
+    private val knownNonPowerClassMarkers = setOf(
+        "Notification",
+        "StatusBar",
+        "QuickSettings",
+        "QSTile",
+        "HeadsUp",
+        "NavigationBar",
+        "VolumeDialog",
+        "Screenshot",
+        "Biometric",
+        "Keyguard"
     )
 
     private val termsByAction = mapOf(
@@ -36,16 +53,45 @@ object PowerMenuProtectionPolicy {
             "Medical information", "Información médica", "Informacion medica"
         )
     )
+    private val normalizedTermsByAction = termsByAction.mapValues { (_, terms) ->
+        terms.map(::normalize)
+    }
 
     fun isSystemUiPackage(packageName: String): Boolean = packageName in systemUiPackages
 
     fun termsFor(action: Action): List<String> = termsByAction.getValue(action)
 
     fun matchesAction(action: Action, values: Iterable<CharSequence?>): Boolean {
-        val normalizedTerms = termsFor(action).map(::normalize)
+        val normalizedTerms = normalizedTermsByAction.getValue(action)
         return values.any { value ->
             val normalizedValue = normalize(value?.toString().orEmpty())
             normalizedValue.isNotBlank() && normalizedTerms.any(normalizedValue::contains)
+        }
+    }
+
+    /**
+     * Uses only event fields. A known global-actions class is sufficient because
+     * waiting for its node tree costs the first visible menu frames.
+     */
+    fun classifyDirect(
+        packageName: String,
+        className: String,
+        values: Iterable<CharSequence?>
+    ): DirectDecision {
+        if (!isSystemUiPackage(packageName)) return DirectDecision.NOT_MATCH
+        if (specificClassMarkers.any { className.contains(it, ignoreCase = true) }) {
+            return DirectDecision.MATCH
+        }
+        if (knownNonPowerClassMarkers.any { className.contains(it, ignoreCase = true) }) {
+            return DirectDecision.NOT_MATCH
+        }
+        if (ambiguousClassMarkers.any { className.contains(it, ignoreCase = true) }) {
+            return DirectDecision.MATCH
+        }
+        return if (isPowerMenu(packageName, className, values)) {
+            DirectDecision.MATCH
+        } else {
+            DirectDecision.UNKNOWN
         }
     }
 
@@ -71,6 +117,7 @@ object PowerMenuProtectionPolicy {
 
     private fun normalize(value: String): String =
         Normalizer.normalize(value, Normalizer.Form.NFD)
-            .replace("\\p{M}+".toRegex(), "")
+            .replace(COMBINING_MARKS_REGEX, "")
             .lowercase(Locale.ROOT)
+
 }

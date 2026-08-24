@@ -2,10 +2,12 @@ package com.focusguard.ui
 
 import android.content.Intent
 import android.provider.Settings
+import com.focusguard.service.BlockingAccessibilityService
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.RuntimeEnvironment
 import org.robolectric.annotation.Config
 
 @RunWith(RobolectricTestRunner::class)
@@ -54,5 +56,19 @@ class MasterRemovalActivityIntentTest {
         assertThat(intent.categories).contains(Intent.CATEGORY_HOME)
         assertThat(intent.flags and Intent.FLAG_ACTIVITY_NEW_TASK).isNotEqualTo(0)
         assertThat(intent.flags and Intent.FLAG_ACTIVITY_CLEAR_TOP).isNotEqualTo(0)
+    }
+
+    @Test
+    fun `master gate intent carries the curtain generation handshake`() {
+        val context = RuntimeEnvironment.getApplication().applicationContext
+        val intent = MasterRemovalActivity.createIntent(
+            context,
+            MasterRemovalActivity.Target.ACCESSIBILITY,
+            curtainGeneration = 73L
+        )
+
+        assertThat(
+            intent.getLongExtra(BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION, 0L)
+        ).isEqualTo(73L)
     }
 }

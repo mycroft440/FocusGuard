@@ -1,5 +1,9 @@
 # HardBlock self-protection hot path. Keep intentionally small.
 HSPLcom/focusguard/service/BlockingAccessibilityService;->**(**)**
+HSPLcom/focusguard/service/ProtectedPowerMenuController;->**(**)**
+HPLcom/focusguard/security/ImmediateInterceptionPolicy;->**(**)**
+HPLcom/focusguard/security/ImmediateInterceptionPolicy$LauncherLabelIndex;->**(**)**
+HPLcom/focusguard/security/PowerMenuProtectionPolicy;->**(**)**
 HPLcom/focusguard/security/SettingsInterceptionPolicy;->**(**)**
 HPLcom/focusguard/security/ManagedSelfProtectionPolicy;->**(**)**
 HPLcom/focusguard/security/AccessibilitySettingsPolicy;->**(**)**

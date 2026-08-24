@@ -171,6 +171,16 @@ object ManagedSelfProtectionPolicy {
     private val normalizedAppInfoGatewaySearchTerms =
         appInfoGatewaySearchTerms.map(::normalize)
     private val normalizedFocusGuardSearchTerms = focusGuardSearchTerms.map(::normalize)
+    private val normalizedFocusGuardLabels = setOf(
+        normalize("HardBlock"),
+        normalize("Hard Block"),
+        normalize("FocusGuard"),
+        normalize("Focus Guard")
+    )
+    private val normalizedFocusGuardPackageIds = setOf(
+        normalize("com.focusguard.v2"),
+        normalize("com.focusguard.v2.debug")
+    )
     private val normalizedDestructiveControlSearchTerms =
         destructiveControlSearchTerms.map(::normalize)
     private val normalizedEssentialSpecialAccessSearchTerms =
@@ -199,7 +209,7 @@ object ManagedSelfProtectionPolicy {
             focusGuard = valuesContainAnyNormalized(
                 normalizedValues,
                 normalizedFocusGuardSearchTerms
-            ),
+            ) && matchesFocusGuardIdentity(normalizedValues),
             destructiveControl = valuesContainAnyNormalized(
                 normalizedValues,
                 normalizedDestructiveControlSearchTerms
@@ -218,7 +228,7 @@ object ManagedSelfProtectionPolicy {
         valuesContainAnyNormalized(normalizeValues(values), normalizedAppInfoGatewaySearchTerms)
 
     fun textTargetsFocusGuard(values: Iterable<CharSequence?>): Boolean =
-        valuesContainAnyNormalized(normalizeValues(values), normalizedFocusGuardSearchTerms)
+        matchesFocusGuardIdentity(normalizeValues(values))
 
     fun textTargetsDestructiveControl(values: Iterable<CharSequence?>): Boolean =
         valuesContainAnyNormalized(
@@ -253,7 +263,7 @@ object ManagedSelfProtectionPolicy {
 
     private fun normalizeValues(values: Iterable<CharSequence?>): List<String> =
         values.mapNotNull { value ->
-            normalize(value?.toString().orEmpty()).takeIf(String::isNotBlank)
+            normalize(value?.toString().orEmpty()).trim().takeIf(String::isNotBlank)
         }
 
     private fun valuesContainAnyNormalized(
@@ -262,6 +272,31 @@ object ManagedSelfProtectionPolicy {
     ): Boolean = normalizedValues.any { normalized ->
         normalizedTerms.any(normalized::contains)
     }
+
+    private fun matchesFocusGuardIdentity(normalizedValues: Iterable<String>): Boolean =
+        normalizedValues.any { normalized ->
+            normalized in normalizedFocusGuardLabels ||
+                normalizedFocusGuardPackageIds.any { packageId ->
+                    containsPackageIdentity(normalized, packageId)
+                }
+        }
+
+    private fun containsPackageIdentity(value: String, packageId: String): Boolean {
+        var fromIndex = 0
+        while (fromIndex <= value.length - packageId.length) {
+            val index = value.indexOf(packageId, fromIndex)
+            if (index < 0) return false
+            val beforeIsPackageCharacter = index > 0 && value[index - 1].isPackageCharacter()
+            val end = index + packageId.length
+            val afterIsPackageCharacter = end < value.length && value[end].isPackageCharacter()
+            if (!beforeIsPackageCharacter && !afterIsPackageCharacter) return true
+            fromIndex = index + 1
+        }
+        return false
+    }
+
+    private fun Char.isPackageCharacter(): Boolean =
+        isLetterOrDigit() || this == '_' || this == '.'
 
     private fun normalize(value: String): String {
         if (value.isBlank()) return ""

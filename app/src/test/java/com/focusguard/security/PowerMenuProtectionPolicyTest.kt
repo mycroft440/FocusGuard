@@ -1,10 +1,29 @@
 package com.focusguard.security
 
 import com.focusguard.security.PowerMenuProtectionPolicy.Action
+import com.focusguard.security.PowerMenuProtectionPolicy.DirectDecision
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
 class PowerMenuProtectionPolicyTest {
+    @Test
+    fun `known global actions class matches before its text tree exists`() {
+        assertThat(
+            PowerMenuProtectionPolicy.classifyDirect(
+                packageName = "com.android.systemui",
+                className = "com.android.systemui.globalactions.GlobalActionsDialogLite",
+                values = emptyList()
+            )
+        ).isEqualTo(DirectDecision.MATCH)
+        assertThat(
+            PowerMenuProtectionPolicy.classifyDirect(
+                packageName = "com.android.systemui",
+                className = "com.oem.keyguard.KeyguardGlobalActionsDialog",
+                values = emptyList()
+            )
+        ).isEqualTo(DirectDecision.MATCH)
+    }
+
     @Test
     fun `aosp global actions class with power off is recognised`() {
         assertThat(
@@ -25,6 +44,13 @@ class PowerMenuProtectionPolicyTest {
                 values = listOf("Desligar", "Reiniciar", "Chamada de emergência")
             )
         ).isTrue()
+        assertThat(
+            PowerMenuProtectionPolicy.classifyDirect(
+                packageName = "com.samsung.android.systemui",
+                className = "android.widget.FrameLayout",
+                values = listOf("Desligar", "Reiniciar", "Chamada de emergência")
+            )
+        ).isEqualTo(DirectDecision.MATCH)
     }
 
     @Test
@@ -36,6 +62,31 @@ class PowerMenuProtectionPolicyTest {
                 values = listOf("FocusGuard ativo", "12 minutos restantes")
             )
         ).isFalse()
+        assertThat(
+            PowerMenuProtectionPolicy.classifyDirect(
+                packageName = "com.android.systemui",
+                className = "ExpandableNotificationRow",
+                values = listOf("Reiniciar o download")
+            )
+        ).isEqualTo(DirectDecision.NOT_MATCH)
+        assertThat(
+            PowerMenuProtectionPolicy.classifyDirect(
+                packageName = "com.android.systemui",
+                className = "com.android.systemui.NotificationActionsDialog",
+                values = listOf("Reiniciar")
+            )
+        ).isEqualTo(DirectDecision.NOT_MATCH)
+    }
+
+    @Test
+    fun `generic system ui window falls back to its tree`() {
+        assertThat(
+            PowerMenuProtectionPolicy.classifyDirect(
+                packageName = "com.android.systemui",
+                className = "android.widget.FrameLayout",
+                values = emptyList()
+            )
+        ).isEqualTo(DirectDecision.UNKNOWN)
     }
 
     @Test

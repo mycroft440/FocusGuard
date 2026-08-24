@@ -20,6 +20,7 @@
 16. Aplicar o efeito de sumir gradualmente e reaparecer instantaneamente somente ao botão “Sugestões de melhorias ou funções” da tela Proteção.
 17. Reduzir ao mínimo a latência da primeira tentativa de remover/desinstalar o HardBlock, priorizando decisão e resposta visual antes de Binder, árvore de acessibilidade, refresh assíncrono e navegação.
 18. Unificar a saída autenticada do HardBlock na senha mestre global, com mínimo de 4 caracteres, removendo todas as fontes de bloqueio e liberando as proteções essenciais antes da desinstalação.
+19. Reduzir ao limite da plataforma a latência ao abrir apps bloqueados, Acessibilidade, Informações do app, Apps administradores do aparelho e o menu de energia, sem introduzir falsos positivos nem janelas sem proteção.
 
 ## Estado da solicitação atual
 
@@ -63,7 +64,25 @@
 - CUMPRIDO: a saída mestre remove sessões, limites, Pomodoro, filtro adulto e autoproteção; libera Device Owner/Device Admin; encerra Modo Foco; desativa o serviço de Acessibilidade; e só então abre a superfície Android solicitada.
 - CUMPRIDO: senha incorreta ou cancelamento não liberam nenhuma proteção; ausência de senha configurada é reportada separadamente.
 - CUMPRIDO: código funcional validado por Unit Tests, Android Lint, APK/AAB Release e APK Debug no CI #793; a alteração posterior neste arquivo é somente documentação do resultado.
-- PRÓXIMO OBJETIVO: integrar na `main`.
+- CUMPRIDO: encerrar o ciclo anterior validado no CI #793; integração em `main` não faz parte desta iteração.
+
+## Iteração atual — bloqueio no primeiro sinal disponível
+
+- CUMPRIDO: confirmar na documentação oficial que somente a suspensão por Device Owner impede nativamente o início da Activity; no modo consumidor, Acessibilidade permanece best effort a partir do primeiro evento entregue.
+- CUMPRIDO: criar índice pré-calculado de labels de Activities do launcher, com unicidade global, invalidação por pacote/locale/launcher e refresh periódico separado do cache de Room.
+- CUMPRIDO: limitar o fast path a classes prováveis de ícone, rejeitar Folder/Widget/Shortcut, impedir colapso de labels permitidos/ambíguos e aceitar sufixo apenas quando há contador numérico.
+- CUMPRIDO: pré-anexar a cortina de bloqueio inerte e torná-la tocável por `updateViewLayout` antes de HOME/navegação, sem cooldown que deixe uma tentativa repetida descoberta.
+- CUMPRIDO: manter tokens de geração e confirmação de frame/tela segura estritamente dentro do processo; callbacks antigos ou externos não podem ocultar uma cortina nova.
+- CUMPRIDO: validar janelas visíveis após o ACK para manter a cortina quando app bloqueado ou Settings protegido ainda estiver visível em split-screen/freeform ou surgir atrasado.
+- CUMPRIDO: antecipar Acessibilidade, Informações do app e Apps administradores por campos diretos do evento, usando árvore somente nos casos ambíguos e preservando identidade exata do HardBlock.
+- CUMPRIDO: remover o fluxo que reabria deliberadamente o app bloqueado para limpar sua task, pois contradizia o requisito de impedir sua abertura.
+- CUMPRIDO: pré-anexar o overlay do menu de energia, reconhecer classes confiáveis antes da árvore e fechar com estado BACK→HOME→hard cap sem ocultar no mesmo tick nem permitir storm adiar rechecks.
+- CUMPRIDO: atualizar o Baseline Profile com o índice imediato e o controlador/política do menu de energia.
+- CUMPRIDO: concluir a revisão estática em loop com aprovação condicionada do supervisor, incluindo falhas fail-closed, gerações stale, SystemUI parcial/textless, refresh resiliente do launcher, SCREEN_OFF/onInterrupt e o state machine completo do menu de energia.
+- CUMPRIDO: manter o clique de app bloqueado como primeiro classificador do launcher e reutilizar a mesma extração direta de valores antes de qualquer classificação de App info.
+- CUMPRIDO: consolidar a implementação e os testes de regressão na branch local `perf/instant-blocking`, sem publicar alterações externas.
+- PRÓXIMO OBJETIVO: após autorização explícita do usuário, publicar a branch em PR draft e validar Unit Tests, Android Lint, baseline merge, APK/AAB Release e APK Debug no CI; não marcar validação como cumprida antes dos jobs verdes.
+- PRÓXIMO OBJETIVO: executar matrix física Pixel/AOSP + One UI para launcher/badges, App info/Admin/Acessibilidade/disclosure, split-screen/freeform, screen-off/unlock e power menu; medir p50/p95 de evento→cortina e observar o destino fail-closed de eventos isolados `HardBlock`.
 
 ## Regras de apresentação
 
@@ -111,4 +130,4 @@
 - CUMPRIDO: desinstalação interna unificada com o gate de senha mestre global.
 - CUMPRIDO: Modo Foco incluído na remoção mestre após a liberação das políticas administrativas.
 - CUMPRIDO: CI funcional #793 completo aprovado; último commit é documentação.
-- PRÓXIMO OBJETIVO: integrar na `main`.
+- PRÓXIMO OBJETIVO: concluir a iteração atual de bloqueio imediato e seu CI antes de qualquer decisão separada sobre integração em `main`.

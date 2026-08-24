@@ -34,40 +34,145 @@ class BlockingAccessibilityServiceIntentTest {
     }
 
     @Test
-    fun `duplicate block notice is coalesced during cooldown`() {
-        val shouldLaunch = BlockingAccessibilityService.shouldLaunchBlockNotice(
-            previousKey = "app|example",
-            previousLaunchElapsed = 1_000L,
-            requestedKey = "app|example",
-            nowElapsed = 1_100L
-        )
-
-        assertThat(shouldLaunch).isFalse()
+    fun `delayed readiness callback cannot hide a newer curtain`() {
+        assertThat(
+            BlockingAccessibilityService.shouldDismissCurtain(
+                currentGeneration = 9L,
+                readyGeneration = 8L
+            )
+        ).isFalse()
     }
 
     @Test
-    fun `same notice can be shown again after cooldown`() {
-        val shouldLaunch = BlockingAccessibilityService.shouldLaunchBlockNotice(
-            previousKey = "app|example",
-            previousLaunchElapsed = 1_000L,
-            requestedKey = "app|example",
-            nowElapsed = 1_000L +
-                BlockingAccessibilityService.BLOCK_NOTICE_RELAUNCH_COOLDOWN_MILLIS
-        )
-
-        assertThat(shouldLaunch).isTrue()
+    fun `only the currently drawn safe surface can hide its curtain`() {
+        assertThat(
+            BlockingAccessibilityService.shouldDismissCurtain(
+                currentGeneration = 9L,
+                readyGeneration = 9L
+            )
+        ).isTrue()
     }
 
     @Test
-    fun `a different blocked target is never swallowed by cooldown`() {
-        val shouldLaunch = BlockingAccessibilityService.shouldLaunchBlockNotice(
-            previousKey = "app|one",
-            previousLaunchElapsed = 1_000L,
-            requestedKey = "app|two",
-            nowElapsed = 1_001L
-        )
+    fun `missing generation never dismisses a curtain`() {
+        assertThat(
+            BlockingAccessibilityService.shouldDismissCurtain(
+                currentGeneration = 9L,
+                readyGeneration = 0L
+            )
+        ).isFalse()
+    }
 
-        assertThat(shouldLaunch).isTrue()
+    @Test
+    fun `awaited safe surface failsafe evacuates before it can hide`() {
+        assertThat(
+            BlockingAccessibilityService.instantCurtainFailsafeDecision(
+                curtainVisible = true,
+                awaitingSafeSurfaceGeneration = 12L,
+                unsafeWindowVisible = false
+            )
+        ).isEqualTo(
+            BlockingAccessibilityService.InstantCurtainFailsafeDecision.EVACUATE_THEN_HIDE
+        )
+        assertThat(
+            BlockingAccessibilityService.instantCurtainFailsafeDecision(
+                curtainVisible = true,
+                awaitingSafeSurfaceGeneration = 0L,
+                unsafeWindowVisible = false
+            )
+        ).isEqualTo(BlockingAccessibilityService.InstantCurtainFailsafeDecision.HIDE)
+        assertThat(
+            BlockingAccessibilityService.instantCurtainFailsafeDecision(
+                curtainVisible = true,
+                awaitingSafeSurfaceGeneration = 0L,
+                unsafeWindowVisible = true
+            )
+        ).isEqualTo(
+            BlockingAccessibilityService.InstantCurtainFailsafeDecision.EVACUATE_THEN_HIDE
+        )
+        assertThat(BlockingAccessibilityService.FAILSAFE_EVACUATION_HOLD_MILLIS)
+            .isAtLeast(BlockingAccessibilityService.EVENT_NOTIFICATION_TIMEOUT_MILLIS + 1L)
+    }
+
+    @Test
+    fun `screen off evacuates an awaited or unsafe surface before release`() {
+        assertThat(
+            BlockingAccessibilityService.screenOffCurtainDecision(
+                curtainVisible = true,
+                awaitingSafeSurfaceGeneration = 21L,
+                unsafeWindowVisible = false
+            )
+        ).isEqualTo(
+            BlockingAccessibilityService.InstantCurtainFailsafeDecision.EVACUATE_THEN_HIDE
+        )
+        assertThat(
+            BlockingAccessibilityService.screenOffCurtainDecision(
+                curtainVisible = true,
+                awaitingSafeSurfaceGeneration = 0L,
+                unsafeWindowVisible = true
+            )
+        ).isEqualTo(
+            BlockingAccessibilityService.InstantCurtainFailsafeDecision.EVACUATE_THEN_HIDE
+        )
+        assertThat(
+            BlockingAccessibilityService.screenOffCurtainDecision(
+                curtainVisible = true,
+                awaitingSafeSurfaceGeneration = 0L,
+                unsafeWindowVisible = false
+            )
+        ).isEqualTo(BlockingAccessibilityService.InstantCurtainFailsafeDecision.HIDE)
+    }
+
+    @Test
+    fun `activity launch failure evacuates only its current curtain generation`() {
+        assertThat(
+            BlockingAccessibilityService.curtainLaunchFailureDecision(
+                currentGeneration = 31L,
+                failedGeneration = 31L
+            )
+        ).isEqualTo(
+            BlockingAccessibilityService.CurtainLaunchFailureDecision.EVACUATE_THEN_HIDE
+        )
+        assertThat(
+            BlockingAccessibilityService.curtainLaunchFailureDecision(
+                currentGeneration = 32L,
+                failedGeneration = 31L
+            )
+        ).isEqualTo(BlockingAccessibilityService.CurtainLaunchFailureDecision.NO_ACTION)
+        assertThat(
+            BlockingAccessibilityService.curtainLaunchFailureDecision(
+                currentGeneration = 0L,
+                failedGeneration = 0L
+            )
+        ).isEqualTo(BlockingAccessibilityService.CurtainLaunchFailureDecision.NO_ACTION)
+    }
+
+    @Test
+    fun `follow-up event keeps the curtain awaiting the safe surface`() {
+        assertThat(
+            BlockingAccessibilityService.shouldReuseAwaitedCurtain(
+                holdUntilSafeSurface = false,
+                awaitingGeneration = 17L,
+                curtainVisible = true
+            )
+        ).isTrue()
+        assertThat(
+            BlockingAccessibilityService.shouldReuseAwaitedCurtain(
+                holdUntilSafeSurface = true,
+                awaitingGeneration = 17L,
+                curtainVisible = true
+            )
+        ).isFalse()
+        assertThat(
+            BlockingAccessibilityService.shouldEvictForProtectionAttempt(
+                alreadyAwaitingSafeSurface = true
+            )
+        ).isFalse()
+        assertThat(
+            BlockingAccessibilityService.shouldEvictForProtectionAttempt(
+                alreadyAwaitingSafeSurface = false
+            )
+        ).isTrue()
     }
 
     @Test
@@ -93,6 +198,35 @@ class BlockingAccessibilityServiceIntentTest {
         assertThat(intent.categories).contains(android.content.Intent.CATEGORY_HOME)
         assertThat(intent.flags and android.content.Intent.FLAG_ACTIVITY_NEW_TASK).isNotEqualTo(0)
         assertThat(intent.flags and android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP).isNotEqualTo(0)
+        assertThat(
+            BlockingAccessibilityService.shouldLaunchBlockedAppEvictionFallback(
+                globalHomeAccepted = true,
+                forceLauncherFallback = true
+            )
+        ).isTrue()
+        assertThat(
+            BlockingAccessibilityService.shouldLaunchBlockedAppEvictionFallback(
+                globalHomeAccepted = true,
+                forceLauncherFallback = false
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `block notice intent carries the curtain generation handshake`() {
+        val context = RuntimeEnvironment.getApplication().applicationContext
+        val intent = BlockingAccessibilityService.createBlockNoticeIntent(
+            context = context,
+            strictBlock = false,
+            blockedPackage = "com.example.blocked",
+            blockedDomain = null,
+            redirectBrowserPackage = null,
+            curtainGeneration = 42L
+        )
+
+        assertThat(
+            intent.getLongExtra(BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION, 0L)
+        ).isEqualTo(42L)
     }
 
     @Test
