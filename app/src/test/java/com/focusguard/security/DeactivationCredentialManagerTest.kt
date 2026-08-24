@@ -70,8 +70,8 @@ class DeactivationCredentialManagerTest {
     }
 
     @Test
-    fun `deactivation password requires eight characters`() {
-        assertThat(DeactivationCredentialManager.isPasswordValid("1234567")).isFalse()
-        assertThat(DeactivationCredentialManager.isPasswordValid("12345678")).isTrue()
+    fun `master password requires four characters`() {
+        assertThat(DeactivationCredentialManager.isPasswordValid("123")).isFalse()
+        assertThat(DeactivationCredentialManager.isPasswordValid("1234")).isTrue()
     }
 }
