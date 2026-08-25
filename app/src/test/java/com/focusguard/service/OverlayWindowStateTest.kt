@@ -19,7 +19,7 @@ class OverlayWindowStateTest {
     }
 
     @Test
-    fun `hidden power overlay is inert and visible power overlay is interactive`() {
+    fun `hidden power overlay is inert and visible power overlay stays touchable without key focus`() {
         val base = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
         val hidden = ProtectedPowerMenuController.hiddenFlags(base)
         val visible = ProtectedPowerMenuController.visibleFlags(hidden)
@@ -27,7 +27,7 @@ class OverlayWindowStateTest {
         assertThat(hidden and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE).isNotEqualTo(0)
         assertThat(hidden and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE).isNotEqualTo(0)
         assertThat(visible and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE).isEqualTo(0)
-        assertThat(visible and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE).isEqualTo(0)
+        assertThat(visible and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE).isNotEqualTo(0)
     }
 
     @Test
