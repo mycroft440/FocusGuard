@@ -1,0 +1,34 @@
+name: Apply Focus Mode Navigation Patch
+
+on:
+  push:
+    branches:
+      - feat/focus-mode-home-back-restore
+
+permissions:
+  contents: write
+
+jobs:
+  patch-navigation:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: feat/focus-mode-home-back-restore
+          fetch-depth: 0
+      - name: Apply exact navigation patch
+        run: python3 .github/scripts/apply_focus_mode_navigation.py
+      - name: Commit patch when needed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "Navigation patch already applied."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+          git commit -m "fix(focus-mode): intercept home and back navigation"
+          git push origin HEAD:feat/focus-mode-home-back-restore
