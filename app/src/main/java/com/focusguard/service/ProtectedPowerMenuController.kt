@@ -723,7 +723,11 @@ class ProtectedPowerMenuController(
         (value * service.resources.displayMetrics.density + 0.5f).toInt()
 
     private fun performNativeSinglePress(action: Action) {
-        val root = findPowerMenuRoot()
+        val root = if (action == Action.POWER_OFF || action == Action.RESTART) {
+            findTrackedPowerMenuRootForPrimaryAction() ?: findPowerMenuRoot()
+        } else {
+            findPowerMenuRoot()
+        }
         if (root == null) {
             showStatus(R.string.protected_power_menu_action_unavailable)
             return
@@ -741,6 +745,27 @@ class ProtectedPowerMenuController(
 
         showStatus(R.string.protected_power_menu_action_sent)
         scheduleRecheck()
+    }
+
+    /**
+     * The first System UI global-actions event can identify the native window
+     * more reliably than a later tree rescan after our overlay becomes touchable.
+     * Reuse that already-trusted window only for the two primary power actions.
+     */
+    private fun findTrackedPowerMenuRootForPrimaryAction(): AccessibilityNodeInfo? {
+        if (!overlayVisible || !directSignalActive || directMatchedWindowId < 0) return null
+        val trackedWindow = service.windows.firstOrNull { it.id == directMatchedWindowId }
+            ?: return null
+        val root = runCatching { trackedWindow.root }.getOrNull() ?: return null
+        val packageName = runCatching { root.packageName?.toString().orEmpty() }
+            .getOrDefault("")
+        if (packageName.isNotBlank() &&
+            !PowerMenuProtectionPolicy.isSystemUiPackage(packageName)
+        ) {
+            recycleSafely(root)
+            return null
+        }
+        return root
     }
 
     private fun findActionNode(root: AccessibilityNodeInfo, action: Action): AccessibilityNodeInfo? {
