@@ -27,7 +27,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.awaitPointerEventScope
+import androidx.compose.ui.input.pointer.pointerInput
 import com.focusguard.manager.PomodoroManager
+import com.focusguard.focusmode.FocusModeIdleReturnPolicy
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.security.AuthManager
 import com.focusguard.security.ProtectionPermission
@@ -132,6 +136,8 @@ fun FocusGuardNavHost(
     var missingProtectionPermissions by remember {
         mutableStateOf(ProtectionPermission.entries.toList())
     }
+    var focusModeInteractionNonce by remember { mutableStateOf(0L) }
+    var focusModeCourseActive by remember { mutableStateOf(false) }
     val navigationScope = rememberCoroutineScope()
     val userProfileStore = remember(activity.applicationContext) {
         UserProfileStore(activity.applicationContext)
@@ -153,8 +159,44 @@ fun FocusGuardNavHost(
     LaunchedEffect(activeFocusMode?.startedAtMillis, focusModeReturnNonce) {
         if (activeFocusMode?.isActive() == true) {
             currentRoute = FocusGuardRoute.Home
-            selectedTab = 4
+            selectedTab = FocusModeIdleReturnPolicy.FOCUS_MODE_TAB
+            focusModeCourseActive = false
         }
+    }
+
+    LaunchedEffect(focusModeActive, currentRoute, selectedTab) {
+        val courseCanBeVisible = focusModeActive &&
+            currentRoute == FocusGuardRoute.Home &&
+            selectedTab == FocusModeIdleReturnPolicy.RECOVERY_TAB
+        if (!courseCanBeVisible) {
+            focusModeCourseActive = false
+        }
+    }
+
+    LaunchedEffect(
+        focusModeActive,
+        currentRoute,
+        selectedTab,
+        focusModeInteractionNonce,
+        focusModeCourseActive,
+        activeFocusMode?.startedAtMillis
+    ) {
+        val onFocusModeHome = currentRoute == FocusGuardRoute.Home &&
+            selectedTab == FocusModeIdleReturnPolicy.FOCUS_MODE_TAB
+        if (!FocusModeIdleReturnPolicy.shouldArm(
+                focusModeActive = focusModeActive,
+                onFocusModeHome = onFocusModeHome,
+                antiPornCourseActive = focusModeCourseActive
+            )
+        ) {
+            return@LaunchedEffect
+        }
+
+        delay(FocusModeIdleReturnPolicy.IDLE_TIMEOUT_MILLIS)
+
+        currentRoute = FocusGuardRoute.Home
+        selectedTab = FocusModeIdleReturnPolicy.FOCUS_MODE_TAB
+        focusModeCourseActive = false
     }
 
     LaunchedEffect(currentPomodoro, pomodoroCycle, focusModeActive) {
@@ -258,7 +300,20 @@ fun FocusGuardNavHost(
         }
     }
 
-    Surface(color = MaterialTheme.colorScheme.background) {
+    Surface(
+        color = MaterialTheme.colorScheme.background,
+        modifier = Modifier.pointerInput(focusModeActive) {
+            if (!focusModeActive) return@pointerInput
+            awaitPointerEventScope {
+                while (true) {
+                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                    if (event.changes.any { it.pressed }) {
+                        focusModeInteractionNonce++
+                    }
+                }
+            }
+        }
+    ) {
         AnimatedContent(
             targetState = currentRoute,
             transitionSpec = {
@@ -316,6 +371,12 @@ fun FocusGuardNavHost(
                     },
                     recoveryContent = {
                         RecoveryCourseGatewayScreen {
+                            DisposableEffect(focusModeActive) {
+                                focusModeCourseActive = focusModeActive
+                                onDispose {
+                                    focusModeCourseActive = false
+                                }
+                            }
                             RecoveryHubScreen(
                                 onReadBook = { book ->
                                     val offlineBook = when (book) {
