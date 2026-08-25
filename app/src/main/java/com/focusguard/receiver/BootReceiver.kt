@@ -6,7 +6,6 @@ import android.content.Intent
 import android.os.Build
 import com.focusguard.MainActivity
 import com.focusguard.admin.DeviceOwnerManager
-import com.focusguard.focusmode.FocusModeHomeController
 import com.focusguard.focusmode.FocusModeKioskController
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.manager.BlockingSessionManager
@@ -48,15 +47,16 @@ class BootReceiver : BroadcastReceiver() {
         val deviceOwnerManager = DeviceOwnerManager.getInstance(context)
         if (isDirectBoot) {
             // Room, Keystore and normal SharedPreferences are still unavailable here.
-            // Native Device Owner policy restores app-removal protection before unlock.
+            // Restore only native Device Owner policies before unlock. MainActivity
+            // is intentionally not Direct-Boot-aware, so the temporary Home surface
+            // is restored later by ensureEnforced() after BOOT_COMPLETED.
             // USB and ADB intentionally remain outside FocusGuard's restriction set.
             deviceOwnerManager.applyDirectBootShield()
             deviceOwnerManager.applyFocusModeAtDirectBoot()
-            FocusModeHomeController.reconcile(context)
             FocusModeKioskController.reconcileSystemRestrictions(context)
             FocusGuardLogger.log(
                 "BootReceiver",
-                "Proteção nativa e Home do Modo Foco restauradas antes do primeiro desbloqueio"
+                "Proteção nativa do Modo Foco restaurada antes do primeiro desbloqueio"
             )
             return
         }
