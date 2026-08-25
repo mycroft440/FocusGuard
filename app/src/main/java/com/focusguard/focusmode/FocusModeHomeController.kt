@@ -63,7 +63,9 @@ object FocusModeHomeController {
         }
         val admin = FocusGuardDeviceAdminReceiver.getComponentName(appContext)
         val features = runCatching { dpm.getLockTaskFeatures(admin) }.getOrNull() ?: return false
-        return lockTaskFeaturesKeepHomeAndPower(features) && isHomeAliasEnabled(appContext)
+        return lockTaskFeaturesKeepHomeAndPower(features) &&
+            isHomeAliasEnabled(appContext) &&
+            isHomeResolvedToFocusGuard(appContext)
     }
 
     fun clear(context: Context) {
@@ -119,6 +121,19 @@ object FocusModeHomeController {
     private fun isHomeAliasEnabled(context: Context): Boolean =
         context.packageManager.getComponentEnabledSetting(homeComponent(context)) ==
             PackageManager.COMPONENT_ENABLED_STATE_ENABLED
+
+    private fun isHomeResolvedToFocusGuard(context: Context): Boolean {
+        val homeIntent = Intent(Intent.ACTION_MAIN).apply {
+            addCategory(Intent.CATEGORY_HOME)
+            addCategory(Intent.CATEGORY_DEFAULT)
+        }
+        return runCatching {
+            context.packageManager.resolveActivity(
+                homeIntent,
+                PackageManager.MATCH_DEFAULT_ONLY
+            )?.activityInfo?.packageName == context.packageName
+        }.getOrDefault(false)
+    }
 
     private fun disableHomeAlias(context: Context) {
         setHomeAliasEnabled(context, false)
