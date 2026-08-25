@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Build
 import com.focusguard.MainActivity
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.focusmode.FocusModeHomeController
 import com.focusguard.focusmode.FocusModeKioskController
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.manager.BlockingSessionManager
@@ -51,10 +52,11 @@ class BootReceiver : BroadcastReceiver() {
             // USB and ADB intentionally remain outside FocusGuard's restriction set.
             deviceOwnerManager.applyDirectBootShield()
             deviceOwnerManager.applyFocusModeAtDirectBoot()
+            FocusModeHomeController.reconcile(context)
             FocusModeKioskController.reconcileSystemRestrictions(context)
             FocusGuardLogger.log(
                 "BootReceiver",
-                "Proteção nativa do Modo Foco restaurada antes do primeiro desbloqueio"
+                "Proteção nativa e Home do Modo Foco restauradas antes do primeiro desbloqueio"
             )
             return
         }
@@ -124,6 +126,10 @@ class BootReceiver : BroadcastReceiver() {
                                     Intent.FLAG_ACTIVITY_NEW_TASK or
                                         Intent.FLAG_ACTIVITY_CLEAR_TOP or
                                         Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                )
+                                putExtra(
+                                    FocusModeKioskController.EXTRA_RESTORE_FOCUS_MODE,
+                                    true
                                 )
                             }
                         )
