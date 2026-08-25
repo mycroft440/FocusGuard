@@ -112,12 +112,12 @@ object FocusModePolicy {
 
     fun focusNavigationKeyDecision(
         focusModeActive: Boolean,
-        systemUiForeground: Boolean,
+        powerMenuVisible: Boolean,
         isBackOrHomeKey: Boolean,
         actionDown: Boolean,
         repeatCount: Int
     ): NavigationKeyDecision = when {
-        !focusModeActive || !isBackOrHomeKey || systemUiForeground -> NavigationKeyDecision.PASS
+        !focusModeActive || !isBackOrHomeKey || powerMenuVisible -> NavigationKeyDecision.PASS
         actionDown && repeatCount == 0 -> NavigationKeyDecision.RETURN_TO_FOCUS_GUARD
         else -> NavigationKeyDecision.CONSUME
     }
