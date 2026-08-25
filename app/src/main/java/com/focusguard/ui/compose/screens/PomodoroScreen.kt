@@ -11,6 +11,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -704,69 +705,73 @@ private fun ProfileStrip(
     Column(modifier = Modifier.fillMaxWidth()) {
         SectionLabel(stringResource(R.string.fg_pomodoro_profiles))
         Spacer(Modifier.height(2.dp))
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            profiles.forEach { profile ->
-                val selected = profile.config.normalized() == currentConfig.normalized()
-                Card(
-                    modifier = Modifier
-                        .width(150.dp)
-                        .clickable { onUse(profile) },
-                    shape = RoundedCornerShape(12.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (selected) PomodoroAccentTint else PomodoroSurfaceMuted
-                    ),
-                    border = BorderStroke(
-                        1.dp,
-                        if (selected) PomodoroAccentLine else PomodoroStroke
-                    )
-                ) {
-                    Column(Modifier.padding(horizontal = 13.dp, vertical = 10.dp)) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                profile.name,
-                                modifier = Modifier.weight(1f),
-                                color = if (selected) PomodoroAccent else PomodoroText,
-                                fontWeight = FontWeight.SemiBold,
-                                fontSize = 13.sp,
-                                maxLines = 1
-                            )
-                            if (!profile.builtIn) {
-                                IconButton(
-                                    onClick = { onDelete(profile) },
-                                    modifier = Modifier.size(26.dp)
-                                ) {
-                                    Icon(
-                                        Icons.Default.Delete,
-                                        contentDescription = stringResource(
-                                            R.string.fg_pomodoro_delete_profile_cd
-                                        ),
-                                        tint = PomodoroTextFaint,
-                                        modifier = Modifier.size(16.dp)
-                                    )
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val profileGap = 8.dp
+            val profileWidth = (maxWidth - profileGap * 2f) / 3f
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(profileGap)
+            ) {
+                profiles.forEach { profile ->
+                    val selected = profile.config.normalized() == currentConfig.normalized()
+                    Card(
+                        modifier = Modifier
+                            .width(profileWidth)
+                            .clickable { onUse(profile) },
+                        shape = RoundedCornerShape(12.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = if (selected) PomodoroAccentTint else PomodoroSurfaceMuted
+                        ),
+                        border = BorderStroke(
+                            1.dp,
+                            if (selected) PomodoroAccentLine else PomodoroStroke
+                        )
+                    ) {
+                        Column(Modifier.padding(horizontal = 9.dp, vertical = 9.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    profile.name,
+                                    modifier = Modifier.weight(1f),
+                                    color = if (selected) PomodoroAccent else PomodoroText,
+                                    fontWeight = FontWeight.SemiBold,
+                                    fontSize = 11.5.sp,
+                                    maxLines = 2
+                                )
+                                if (!profile.builtIn) {
+                                    IconButton(
+                                        onClick = { onDelete(profile) },
+                                        modifier = Modifier.size(22.dp)
+                                    ) {
+                                        Icon(
+                                            Icons.Default.Delete,
+                                            contentDescription = stringResource(
+                                                R.string.fg_pomodoro_delete_profile_cd
+                                            ),
+                                            tint = PomodoroTextFaint,
+                                            modifier = Modifier.size(14.dp)
+                                        )
+                                    }
                                 }
                             }
+                            Spacer(Modifier.height(2.dp))
+                            Text(
+                                stringResource(
+                                    R.string.fg_pomodoro_profile_summary,
+                                    profile.config.focusMinutes,
+                                    profile.config.shortBreakMinutes,
+                                    profile.config.longBreakMinutes
+                                ),
+                                color = if (selected) {
+                                    PomodoroAccent.copy(alpha = 0.72f)
+                                } else {
+                                    PomodoroTextFaint
+                                },
+                                fontSize = 9.5.sp,
+                                maxLines = 1
+                            )
                         }
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            stringResource(
-                                R.string.fg_pomodoro_profile_summary,
-                                profile.config.focusMinutes,
-                                profile.config.shortBreakMinutes,
-                                profile.config.longBreakMinutes
-                            ),
-                            color = if (selected) {
-                                PomodoroAccent.copy(alpha = 0.72f)
-                            } else {
-                                PomodoroTextFaint
-                            },
-                            fontSize = 10.5.sp,
-                            maxLines = 1
-                        )
                     }
                 }
             }
