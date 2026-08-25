@@ -68,6 +68,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.focusguard.R
 import com.focusguard.data.PredefinedApps
 import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.security.AppUnlockBiometricAuthenticator
 import com.focusguard.security.AuthManager
 import com.focusguard.security.BlockCountdownPolicy
 import com.focusguard.ui.compose.theme.AccentCyan
@@ -287,8 +288,9 @@ fun BlockTypeDetailScreen(
 /**
  * Ferramentas relacionadas a tentativas de abertura de apps protegidos.
  *
- * A selfie precisa da permissão de câmera; o estado só é ativado depois que
- * o Android concede a permissão.
+ * O desbloqueio biométrico usa a mesma preferência e o mesmo autenticador do
+ * fluxo real de abertura. A selfie precisa da permissão de câmera e só é
+ * ativada depois que o Android concede a permissão.
  */
 @Composable
 private fun PasswordProtectionTools(
@@ -297,7 +299,13 @@ private fun PasswordProtectionTools(
 ) {
     val context = LocalContext.current
     val authManager = remember(context) { AuthManager(context) }
+    val biometricAvailable = remember(context) {
+        AppUnlockBiometricAuthenticator.isAvailable(context)
+    }
 
+    var biometricEnabled by remember {
+        mutableStateOf(authManager.isBiometricAppUnlockEnabled())
+    }
     var selfieEnabled by remember { mutableStateOf(authManager.isPhotoCaptureEnabled()) }
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
@@ -308,6 +316,33 @@ private fun PasswordProtectionTools(
     }
 
     Column {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkCard),
+            border = BorderStroke(1.dp, CardBorder)
+        ) {
+            ToggleRow(
+                title = stringResource(R.string.password_app_unlock_quick_biometric_title),
+                subtitle = stringResource(
+                    if (biometricAvailable) {
+                        R.string.password_app_unlock_quick_biometric_desc
+                    } else {
+                        R.string.password_app_unlock_biometric_unavailable
+                    }
+                ),
+                checked = biometricEnabled && biometricAvailable,
+                enabled = biometricAvailable,
+                accent = accent,
+                onCheckedChange = { enable ->
+                    biometricEnabled = enable
+                    authManager.setBiometricAppUnlockEnabled(enable)
+                }
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),

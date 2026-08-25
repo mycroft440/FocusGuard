@@ -59,6 +59,7 @@ fun MainScreen(
     } else {
         stringResource(R.string.nav_settings)
     }
+    val usesFullHeightContent = selectedTab == 2 || selectedTab == 3
 
     BackHandler(enabled = focusModeActive) {
         if (selectedTab != 4) onTabChange(4)
@@ -66,75 +67,77 @@ fun MainScreen(
 
     Scaffold(
         topBar = {
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.background)
-                    .statusBarsPadding()
-                    .height(64.dp)
-            ) {
-                if (selectedTab == 4) {
-                    Text(
-                        stringResource(R.string.nav_focus_mode),
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(start = 16.dp),
-                        color = TextPrimary,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                } else if (!focusModeActive && selectedTab != 2) {
-                    Surface(
-                        onClick = { onTabChange(0) },
-                        modifier = Modifier
-                            .align(Alignment.CenterStart)
-                            .padding(start = 16.dp),
-                        shape = RoundedCornerShape(14.dp),
-                        color = DarkCard,
-                        tonalElevation = 0.dp,
-                        shadowElevation = 0.dp
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically
+            if (!usesFullHeightContent) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.background)
+                        .statusBarsPadding()
+                        .height(64.dp)
+                ) {
+                    if (selectedTab == 4) {
+                        Text(
+                            stringResource(R.string.nav_focus_mode),
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .padding(start = 16.dp),
+                            color = TextPrimary,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else if (!focusModeActive) {
+                        Surface(
+                            onClick = { onTabChange(0) },
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .padding(start = 16.dp),
+                            shape = RoundedCornerShape(14.dp),
+                            color = DarkCard,
+                            tonalElevation = 0.dp,
+                            shadowElevation = 0.dp
                         ) {
-                            Icon(
-                                Icons.Default.Public,
-                                contentDescription = null,
-                                tint = AccentCyan,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                stringResource(R.string.nav_metrics),
-                                color = TextPrimary,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Row(
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    Icons.Default.Public,
+                                    contentDescription = null,
+                                    tint = AccentCyan,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    stringResource(R.string.nav_metrics),
+                                    color = TextPrimary,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
-                }
 
-                IconButton(
-                    onClick = onSettingsClick,
-                    modifier = Modifier
-                        .align(Alignment.CenterEnd)
-                        .padding(end = 12.dp)
-                        .semantics {
-                            contentDescription = settingsContentDescription
+                    IconButton(
+                        onClick = onSettingsClick,
+                        modifier = Modifier
+                            .align(Alignment.CenterEnd)
+                            .padding(end = 12.dp)
+                            .semantics {
+                                contentDescription = settingsContentDescription
+                            }
+                    ) {
+                        if (profile.isConfigured) {
+                            ProfileAvatar(
+                                avatarId = profile.avatarId,
+                                modifier = Modifier.size(38.dp)
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Menu,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onBackground
+                            )
                         }
-                ) {
-                    if (profile.isConfigured) {
-                        ProfileAvatar(
-                            avatarId = profile.avatarId,
-                            modifier = Modifier.size(38.dp)
-                        )
-                    } else {
-                        Icon(
-                            Icons.Default.Menu,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onBackground
-                        )
                     }
                 }
             }
@@ -158,6 +161,7 @@ fun MainScreen(
                 .fillMaxSize()
                 .background(contentBackground)
                 .padding(paddingValues)
+                .then(if (usesFullHeightContent) Modifier.statusBarsPadding() else Modifier)
         ) {
             if (focusModeActive) {
                 FocusModeNavigationRail(
@@ -193,6 +197,31 @@ fun MainScreen(
                         2 -> pomodoroContent()
                         3 -> recoveryContent()
                         4 -> focusModeContent()
+                    }
+                }
+
+                if (usesFullHeightContent) {
+                    IconButton(
+                        onClick = onSettingsClick,
+                        modifier = Modifier
+                            .align(Alignment.TopEnd)
+                            .padding(top = 4.dp, end = 12.dp)
+                            .semantics {
+                                contentDescription = settingsContentDescription
+                            }
+                    ) {
+                        if (profile.isConfigured) {
+                            ProfileAvatar(
+                                avatarId = profile.avatarId,
+                                modifier = Modifier.size(38.dp)
+                            )
+                        } else {
+                            Icon(
+                                Icons.Default.Menu,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onBackground
+                            )
+                        }
                     }
                 }
             }
