@@ -3,6 +3,10 @@ from pathlib import Path
 path = Path("app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt")
 text = path.read_text(encoding="utf-8")
 
+if "override fun onKeyEvent(event: KeyEvent): Boolean" in text:
+    print("Focus Mode navigation patch already applied.")
+    raise SystemExit(0)
+
 replacements = [
     (
         "import android.view.Gravity\nimport android.view.View\n",
