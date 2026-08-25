@@ -166,13 +166,16 @@ class FocusModeManager @Inject constructor(
                     "O Android não confirmou a lista de apps do quiosque"
                 }
             }
+            check(FocusModeHomeController.reconcile(context)) {
+                "O Android não confirmou o retorno do botão Home ao HardBlock"
+            }
             check(FocusModeKioskController.reconcileSystemRestrictions(context)) {
                 "O Android não confirmou a proteção de janelas do quiosque"
             }
             blockingSessionManager.checkAndEnforceStrict()
             if (nativeFocusLockdownActive) {
-                check(deviceOwnerManager.isFocusModeSystemLockdownConfirmed()) {
-                    "O Android não confirmou o quiosque e o bloqueio de modo seguro"
+                check(FocusModeHomeController.isNativeHomeConfigured(context)) {
+                    "O Android não confirmou Home + menu de energia no quiosque"
                 }
             }
             val nonSuspendable = if (nativeFocusLockdownActive) {
@@ -209,6 +212,7 @@ class FocusModeManager @Inject constructor(
     suspend fun ensureEnforced(): Boolean = mutationMutex.withLock {
         val stored = FocusModeStore.readSession(context)
         if (stored == null) {
+            FocusModeHomeController.clear(context)
             _session.value = null
             FocusModeKioskController.reconcileSystemRestrictions(context)
             return@withLock false
@@ -226,10 +230,11 @@ class FocusModeManager @Inject constructor(
             if (nativeFocusLockdownActive) {
                 check(deviceOwnerManager.prepareFocusModeLockTaskPackages(stored.allowedPackages))
             }
+            check(FocusModeHomeController.reconcile(context))
             check(FocusModeKioskController.reconcileSystemRestrictions(context))
             blockingSessionManager.checkAndEnforceStrict()
             if (nativeFocusLockdownActive) {
-                check(deviceOwnerManager.isFocusModeSystemLockdownConfirmed())
+                check(FocusModeHomeController.isNativeHomeConfigured(context))
             }
             FocusModeForegroundService.start(context)
             FocusModeReceiver.scheduleExpiration(context, stored.endTimeMillis)
@@ -252,6 +257,7 @@ class FocusModeManager @Inject constructor(
         val stored = FocusModeStore.readSession(context)
         if (stored?.isActive() == true) return@withLock
         if (stored == null && _session.value == null) {
+            FocusModeHomeController.clear(context)
             FocusModeKioskController.reconcileSystemRestrictions(context)
             return@withLock
         }
@@ -260,19 +266,21 @@ class FocusModeManager @Inject constructor(
 
     suspend fun forceStopForDevelopmentExit() = mutationMutex.withLock {
         FocusModeStore.clearSession(context)
+        FocusModeHomeController.clear(context)
         FocusModeKioskController.reconcileSystemRestrictions(context)
         FocusModeReceiver.cancelExpiration(context)
         FocusModeForegroundService.stop(context)
         FocusModeNotificationService.requestRefresh(context)
-        // Keep Lock Task in place until the development coordinator has removed
-        // every block and Device Owner policy. Revoking it here could finish the
-        // calling activity and cancel that critical cleanup halfway through.
+        // Keep Lock Task package allowlisting in place until the development
+        // coordinator has removed every block and Device Owner policy. The Home
+        // override itself is already safe to restore here.
         _session.value = null
     }
 
     private suspend fun finishSessionLocked() = withContext(NonCancellable) {
         val hadState = FocusModeStore.readSession(context) != null || _session.value != null
         FocusModeStore.clearSession(context)
+        FocusModeHomeController.clear(context)
         FocusModeKioskController.reconcileSystemRestrictions(context)
         if (hadState) {
             runCatching { blockingSessionManager.checkAndEnforceStrict() }
@@ -293,6 +301,7 @@ class FocusModeManager @Inject constructor(
 
     private suspend fun rollbackFailedStart() = withContext(NonCancellable) {
         FocusModeStore.clearSession(context)
+        FocusModeHomeController.clear(context)
         FocusModeKioskController.reconcileSystemRestrictions(context)
         runCatching { blockingSessionManager.checkAndEnforceStrict() }
         FocusModeReceiver.cancelExpiration(context)
