@@ -47,6 +47,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -95,6 +97,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 
 @Composable
 fun FocusModeScreen(
@@ -109,7 +112,7 @@ fun FocusModeScreen(
     var isLoadingApps by remember { mutableStateOf(true) }
     var selectedPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectionInitialized by remember { mutableStateOf(false) }
-    var durationText by rememberSaveable { mutableStateOf("45") }
+    var durationText by rememberSaveable { mutableStateOf("40") }
     var durationUnit by rememberSaveable {
         mutableStateOf(FocusModePolicy.DurationUnit.MINUTES)
     }
@@ -346,25 +349,28 @@ private fun FocusModeSetupContent(
             it.packageName in selectedPackages && it.packageName !in mandatoryPackages
         }
     }
-    val fixed45Selected = durationUnit == FocusModePolicy.DurationUnit.MINUTES &&
-        durationText == "45"
-    val fixed2hSelected = durationUnit == FocusModePolicy.DurationUnit.HOURS &&
-        durationText == "2"
-    val fixed5hSelected = durationUnit == FocusModePolicy.DurationUnit.HOURS &&
-        durationText == "5"
-    var customDurationOpen by rememberSaveable {
-        mutableStateOf(!(fixed45Selected || fixed2hSelected || fixed5hSelected))
-    }
-    val initialCustomTotalMinutes = when (durationUnit) {
-        FocusModePolicy.DurationUnit.MINUTES -> durationText.toLongOrNull() ?: 60L
+    val initialTotalMinutes = when (durationUnit) {
+        FocusModePolicy.DurationUnit.MINUTES -> durationText.toLongOrNull() ?: 40L
         FocusModePolicy.DurationUnit.HOURS -> (durationText.toLongOrNull() ?: 1L) * 60L
         FocusModePolicy.DurationUnit.DAYS -> (durationText.toLongOrNull() ?: 0L) * 24L * 60L
     }.coerceAtLeast(0L)
+    var sliderMinutes by rememberSaveable {
+        mutableIntStateOf(
+            ((initialTotalMinutes.toFloat() / FOCUS_DURATION_STEP_MINUTES).roundToInt() *
+                FOCUS_DURATION_STEP_MINUTES).coerceIn(0, FOCUS_DURATION_MAX_MINUTES)
+        )
+    }
+    var customDurationOpen by rememberSaveable {
+        mutableStateOf(
+            initialTotalMinutes > FOCUS_DURATION_MAX_MINUTES ||
+                initialTotalMinutes % FOCUS_DURATION_STEP_MINUTES != 0L
+        )
+    }
     var customHoursText by rememberSaveable {
-        mutableStateOf((initialCustomTotalMinutes / 60L).toString())
+        mutableStateOf((initialTotalMinutes / 60L).toString())
     }
     var customMinutesText by rememberSaveable {
-        mutableStateOf((initialCustomTotalMinutes % 60L).toString())
+        mutableStateOf((initialTotalMinutes % 60L).toString())
     }
 
     fun applyCustomDuration(hoursText: String, minutesText: String) {
@@ -376,18 +382,18 @@ private fun FocusModeSetupContent(
         onDurationTextChange(totalMinutes.toString())
     }
 
+    val hoursUnit = stringResource(R.string.focus_mode_static_hours_short)
+    val minutesUnit = stringResource(R.string.focus_mode_static_minutes_short)
+    val displayedMinutes = if (customDurationOpen) {
+        (customHoursText.toLongOrNull() ?: 0L) * 60L +
+            (customMinutesText.toLongOrNull() ?: 0L)
+    } else {
+        sliderMinutes.toLong()
+    }
     val durationLabel = when {
-        fixed45Selected && !customDurationOpen ->
-            stringResource(R.string.focus_mode_static_duration_45)
-        fixed2hSelected && !customDurationOpen ->
-            stringResource(R.string.focus_mode_static_duration_2h)
-        fixed5hSelected && !customDurationOpen ->
-            stringResource(R.string.focus_mode_static_duration_5h)
-        else -> stringResource(
-            R.string.focus_mode_static_custom_duration_hours_minutes,
-            customHoursText.toIntOrNull() ?: 0,
-            customMinutesText.toIntOrNull() ?: 0
-        )
+        displayedMinutes < 60L -> "$displayedMinutes $minutesUnit"
+        displayedMinutes % 60L == 0L -> "${displayedMinutes / 60L} $hoursUnit"
+        else -> "${displayedMinutes / 60L} $hoursUnit ${displayedMinutes % 60L} $minutesUnit"
     }
 
     val allowedSummary = when (selectedApps.size) {
@@ -432,53 +438,67 @@ private fun FocusModeSetupContent(
             }
         }
 
-        Text(
-            text = stringResource(R.string.focus_mode_static_duration_section),
-            color = TextHint,
-            fontSize = 12.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = 1.sp,
-            modifier = Modifier.padding(top = 2.dp)
-        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                text = stringResource(R.string.focus_mode_static_duration_section),
+                color = TextHint,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 1.sp
+            )
+            Text(
+                text = durationLabel,
+                color = AccentCyan,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            )
+        }
 
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(7.dp)
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(9.dp)
         ) {
-            FocusDurationChip(
-                label = stringResource(R.string.focus_mode_static_duration_45),
-                selected = fixed45Selected && !customDurationOpen,
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    customDurationOpen = false
-                    onDurationUnitChange(FocusModePolicy.DurationUnit.MINUTES)
-                    onDurationTextChange("45")
+            Column(modifier = Modifier.weight(1f)) {
+                Slider(
+                    value = sliderMinutes.toFloat(),
+                    onValueChange = { rawValue ->
+                        val stepped = ((rawValue / FOCUS_DURATION_STEP_MINUTES).roundToInt() *
+                            FOCUS_DURATION_STEP_MINUTES).coerceIn(
+                            0,
+                            FOCUS_DURATION_MAX_MINUTES
+                        )
+                        sliderMinutes = stepped
+                        customDurationOpen = false
+                        onDurationUnitChange(FocusModePolicy.DurationUnit.MINUTES)
+                        onDurationTextChange(stepped.toString())
+                    },
+                    valueRange = 0f..FOCUS_DURATION_MAX_MINUTES.toFloat(),
+                    steps = FOCUS_DURATION_SLIDER_STEPS,
+                    colors = SliderDefaults.colors(
+                        thumbColor = AccentCyan,
+                        activeTrackColor = AccentCyan,
+                        inactiveTrackColor = CardBorder,
+                        activeTickColor = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.5f),
+                        inactiveTickColor = TextHint.copy(alpha = 0.45f)
+                    )
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text("0", color = TextHint, fontSize = 10.sp)
+                    Text("8 $hoursUnit", color = TextHint, fontSize = 10.sp)
                 }
-            )
-            FocusDurationChip(
-                label = stringResource(R.string.focus_mode_static_duration_2h),
-                selected = fixed2hSelected && !customDurationOpen,
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    customDurationOpen = false
-                    onDurationUnitChange(FocusModePolicy.DurationUnit.HOURS)
-                    onDurationTextChange("2")
-                }
-            )
-            FocusDurationChip(
-                label = stringResource(R.string.focus_mode_static_duration_5h),
-                selected = fixed5hSelected && !customDurationOpen,
-                modifier = Modifier.weight(1f),
-                onClick = {
-                    customDurationOpen = false
-                    onDurationUnitChange(FocusModePolicy.DurationUnit.HOURS)
-                    onDurationTextChange("5")
-                }
-            )
+            }
             FocusDurationChip(
                 label = stringResource(R.string.focus_mode_static_other),
                 selected = customDurationOpen,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.width(84.dp),
                 onClick = {
                     customDurationOpen = true
                     applyCustomDuration(customHoursText, customMinutesText)
@@ -1407,3 +1427,8 @@ private fun launchFocusIntent(context: Context, intent: Intent) {
     // The app list can change after the session starts; stale entries stay harmless.
     runCatching { context.startActivity(intent) }
 }
+
+private const val FOCUS_DURATION_STEP_MINUTES = 20
+private const val FOCUS_DURATION_MAX_MINUTES = 8 * 60
+private const val FOCUS_DURATION_SLIDER_STEPS = FOCUS_DURATION_MAX_MINUTES /
+    FOCUS_DURATION_STEP_MINUTES - 1
