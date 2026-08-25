@@ -37,7 +37,10 @@ class FocusGuardApplication : Application() {
             runCatching { createDeviceProtectedStorageContext() }.getOrDefault(this)
         }
         FocusGuardLogger.init(startupContext)
-        UsageLimitPauseStateStore.initialize(startupContext)
+        val usageLimitStateContext = runCatching {
+            createDeviceProtectedStorageContext()
+        }.getOrDefault(startupContext)
+        UsageLimitPauseStateStore.initialize(usageLimitStateContext)
 
         // Warm externally-backed authorization state before Accessibility can receive
         // its first event. Subsequent maintenance/admin decisions are memory-only in
