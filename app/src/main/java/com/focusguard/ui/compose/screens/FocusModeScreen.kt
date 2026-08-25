@@ -44,9 +44,10 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -78,9 +79,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
-import androidx.core.graphics.drawable.toBitmap
 import com.focusguard.R
 import com.focusguard.focusmode.FocusModeAppCatalog
 import com.focusguard.focusmode.FocusModeManager
@@ -235,21 +236,29 @@ fun FocusModeScreen(
         )
     }
 
-    if (showAppPicker && activeSession == null) {
+    if (showAppPicker) {
+        val sessionForPicker = activeSession
         AccessibleAppPickerDialog(
             apps = apps,
             mandatoryPackages = mandatoryPackages,
-            selectedPackages = selectedPackages,
+            selectedPackages = sessionForPicker?.allowedPackages ?: selectedPackages,
             searchQuery = searchQuery,
+            addOnly = sessionForPicker != null,
             onSearchQueryChange = { searchQuery = it },
             onTogglePackage = { packageName ->
-                val updatedSelection = if (packageName in selectedPackages) {
-                    selectedPackages - packageName
-                } else {
-                    selectedPackages + packageName
+                if (sessionForPicker == null) {
+                    val updatedSelection = if (packageName in selectedPackages) {
+                        selectedPackages - packageName
+                    } else {
+                        selectedPackages + packageName
+                    }
+                    selectedPackages = updatedSelection
+                    manager.saveDraftPackages(updatedSelection)
+                } else if (packageName !in sessionForPicker.allowedPackages) {
+                    scope.launch {
+                        manager.addAllowedPackages(setOf(packageName))
+                    }
                 }
-                selectedPackages = updatedSelection
-                manager.saveDraftPackages(updatedSelection)
             },
             onDismiss = {
                 searchQuery = ""
@@ -283,7 +292,11 @@ fun FocusModeScreen(
             session = session,
             apps = apps,
             mandatoryPackages = mandatoryPackages,
-            manager = manager
+            manager = manager,
+            onAddApps = {
+                searchQuery = ""
+                showAppPicker = true
+            }
         )
     } else {
         FocusModeSetupContent(
@@ -826,7 +839,8 @@ private fun FocusModeActiveContent(
     session: FocusModeSession,
     apps: List<FocusModeSelectableApp>,
     mandatoryPackages: Set<String>,
-    manager: FocusModeManager
+    manager: FocusModeManager,
+    onAddApps: () -> Unit
 ) {
     val context = LocalContext.current
     var nowMillis by remember(session.endTimeMillis) {
@@ -922,12 +936,6 @@ private fun FocusModeActiveContent(
                 fontWeight = FontWeight.Bold,
                 fontSize = 17.sp
             )
-            Text(
-                stringResource(R.string.focus_mode_active_apps_locked),
-                color = TextHint,
-                fontSize = 12.sp,
-                modifier = Modifier.padding(top = 3.dp)
-            )
         }
 
         item {
@@ -954,6 +962,26 @@ private fun FocusModeActiveContent(
                     fontSize = 12.sp,
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     textAlign = TextAlign.Center
+                )
+            }
+
+            OutlinedButton(
+                onClick = onAddApps,
+                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.55f)),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(
+                    Icons.Default.Add,
+                    contentDescription = null,
+                    tint = AccentCyan,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(Modifier.width(7.dp))
+                Text(
+                    stringResource(R.string.focus_mode_add_apps),
+                    color = AccentCyan,
+                    fontWeight = FontWeight.Bold
                 )
             }
         }
@@ -1049,12 +1077,20 @@ private fun AccessibleAppPickerDialog(
     mandatoryPackages: Set<String>,
     selectedPackages: Set<String>,
     searchQuery: String,
+    addOnly: Boolean = false,
     onSearchQueryChange: (String) -> Unit,
     onTogglePackage: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val selectableApps = remember(apps, mandatoryPackages, searchQuery) {
+    val selectableApps = remember(
+        apps,
+        mandatoryPackages,
+        selectedPackages,
+        searchQuery,
+        addOnly
+    ) {
         apps.filterNot { it.packageName in mandatoryPackages }
+            .filterNot { addOnly && it.packageName in selectedPackages }
             .filter {
                 searchQuery.isBlank() ||
                     it.appName.contains(searchQuery, ignoreCase = true) ||
@@ -1067,11 +1103,13 @@ private fun AccessibleAppPickerDialog(
         title = { Text(stringResource(R.string.focus_mode_picker_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                Text(
-                    stringResource(R.string.focus_mode_picker_description),
-                    color = TextHint,
-                    fontSize = 13.sp
-                )
+                if (!addOnly) {
+                    Text(
+                        stringResource(R.string.focus_mode_picker_description),
+                        color = TextHint,
+                        fontSize = 13.sp
+                    )
+                }
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = onSearchQueryChange,
