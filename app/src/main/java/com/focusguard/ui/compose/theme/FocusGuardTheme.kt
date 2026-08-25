@@ -1,12 +1,19 @@
 package com.focusguard.ui.compose.theme
 
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.*
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
+import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.dynamicDarkColorScheme
+import androidx.compose.material3.dynamicLightColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 // Dark Theme Base — unified with the Pomodoro visual language.
@@ -24,6 +31,25 @@ val AccentCyanInk = Color(0xFF04222A)
 val AccentCyanTint = Color(0x1F5CCFE6)
 val AccentCyanLine = Color(0x475CCFE6)
 
+// Ciano estendido — tons derivados do azul ciano principal, usados nos
+// degradês, brilhos e realces. Nenhum deles troca a cor de identidade do app:
+// todos nascem de AccentCyan, só variam em claridade e profundidade.
+val AccentCyanBright = Color(0xFF8FE3F5)
+val AccentCyanDeep = Color(0xFF2C93AE)
+val AccentBlue = Color(0xFF4C93E8)
+val AccentCyanGlow = Color(0x385CCFE6)
+val AccentCyanWash = Color(0x125CCFE6)
+val AccentCyanEdge = Color(0x2E5CCFE6)
+
+// Superfícies com leve profundidade: o topo do card recebe um pouco mais de
+// luz que a base, o que dá volume sem precisar de sombra pesada. O topo é
+// medido, não escolhido no olho: cada passo de luz aqui derruba o contraste do
+// texto que fica em cima dele, e #171F29 é o ponto onde o volume ainda se vê
+// sem empurrar TextSecondary para baixo de 6:1.
+val SurfaceRaisedTop = Color(0xFF171F29)
+val SurfaceRaisedBottom = Color(0xFF10171F)
+val SurfaceSunken = Color(0xFF0B1117)
+
 // Semantic Colors
 val SuccessGreen = Color(0xFF4CAF50)
 val WarningAmber = Color(0xFFFFC107)
@@ -34,7 +60,10 @@ val InfoBlue = Color(0xFF2196F3)
 // Text Colors
 val TextPrimary = Color(0xFFEDF2F7)
 val TextSecondary = Color(0xFF93A1AD)
-val TextHint = Color(0xFF64717D)
+// Clareado de #64717D: no card com o topo iluminado o tom antigo caía para
+// 3.2:1, abaixo do mínimo de leitura; agora fica em 4.2:1 no card e 5.2:1 no
+// fundo do app, e continua visivelmente mais apagado que TextSecondary.
+val TextHint = Color(0xFF78848F)
 val TextDisabled = Color(0xFF46515A)
 
 // Borders & Dividers
@@ -103,34 +132,94 @@ private val FocusGuardLightColorScheme = lightColorScheme(
     onError = Color.White,
 )
 
+/**
+ * Cantos arredondados em escala única.
+ *
+ * Antes cada tela escolhia o próprio raio (12, 14, 16, 18, 20 dp espalhados
+ * pelo código) e componentes vizinhos terminavam com curvas diferentes. Com a
+ * escala no tema, os componentes do Material 3 já nascem alinhados entre si.
+ */
+val FocusGuardShapes = Shapes(
+    extraSmall = RoundedCornerShape(10.dp),
+    small = RoundedCornerShape(14.dp),
+    medium = RoundedCornerShape(18.dp),
+    large = RoundedCornerShape(22.dp),
+    extraLarge = RoundedCornerShape(28.dp),
+)
+
+/**
+ * Tipografia com ritmo de leitura definido.
+ *
+ * Os tamanhos permanecem os mesmos de antes para não deslocar nenhuma tela; o
+ * que muda é o acabamento — títulos com espaçamento entre letras levemente
+ * negativo (mais compactos e firmes), textos de corpo com entrelinha explícita
+ * e os estilos que faltavam preenchidos, para os componentes do Material 3
+ * pararem de cair no padrão da biblioteca no meio de uma tela nossa.
+ */
 val FocusGuardTypography = Typography(
     headlineLarge = TextStyle(
         fontWeight = FontWeight.Bold,
-        fontSize = 32.sp
+        fontSize = 32.sp,
+        lineHeight = 38.sp,
+        letterSpacing = (-0.6).sp
     ),
     headlineMedium = TextStyle(
         fontWeight = FontWeight.Bold,
-        fontSize = 26.sp
+        fontSize = 26.sp,
+        lineHeight = 32.sp,
+        letterSpacing = (-0.4).sp
+    ),
+    headlineSmall = TextStyle(
+        fontWeight = FontWeight.Bold,
+        fontSize = 22.sp,
+        lineHeight = 28.sp,
+        letterSpacing = (-0.3).sp
     ),
     titleLarge = TextStyle(
         fontWeight = FontWeight.Bold,
-        fontSize = 20.sp
+        fontSize = 20.sp,
+        lineHeight = 26.sp,
+        letterSpacing = (-0.2).sp
     ),
     titleMedium = TextStyle(
         fontWeight = FontWeight.Bold,
-        fontSize = 17.sp
+        fontSize = 17.sp,
+        lineHeight = 23.sp,
+        letterSpacing = (-0.1).sp
+    ),
+    titleSmall = TextStyle(
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 15.sp,
+        lineHeight = 20.sp
     ),
     bodyLarge = TextStyle(
-        fontSize = 16.sp
+        fontSize = 16.sp,
+        lineHeight = 23.sp
     ),
     bodyMedium = TextStyle(
-        fontSize = 14.sp
+        fontSize = 14.sp,
+        lineHeight = 20.sp
     ),
     bodySmall = TextStyle(
-        fontSize = 13.sp
+        fontSize = 13.sp,
+        lineHeight = 18.sp
+    ),
+    labelLarge = TextStyle(
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 14.sp,
+        lineHeight = 18.sp,
+        letterSpacing = 0.2.sp
     ),
     labelMedium = TextStyle(
-        fontSize = 12.sp
+        fontSize = 12.sp,
+        lineHeight = 16.sp,
+        letterSpacing = 0.3.sp
+    ),
+    labelSmall = TextStyle(
+        fontWeight = FontWeight.SemiBold,
+        fontSize = 11.sp,
+        lineHeight = 15.sp,
+        letterSpacing = 0.6.sp
     ),
 )
 
@@ -152,6 +241,7 @@ fun FocusGuardTheme(
     MaterialTheme(
         colorScheme = colorScheme,
         typography = FocusGuardTypography,
+        shapes = FocusGuardShapes,
         content = content
     )
 }

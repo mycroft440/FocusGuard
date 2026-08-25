@@ -9,6 +9,7 @@ import android.net.Uri
 import android.provider.Settings
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
@@ -23,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
@@ -134,86 +136,114 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
         isLoading = false
     }
 
-    Scaffold(
-        topBar = {
-            if (showTopBar) {
-                TopAppBar(
-                    title = { Text(stringResource(R.string.dashboard_title), color = TextPrimary, fontWeight = FontWeight.Bold) },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = TextPrimary)
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
-                )
-            }
-        },
-        containerColor = MaterialTheme.colorScheme.background
-    ) { padding ->
-        when {
-            isLoading -> {
-                Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = AccentCyan)
+    FocusGuardAmbientBackground(
+        modifier = Modifier.fillMaxSize(),
+        baseColor = MaterialTheme.colorScheme.background
+    ) {
+        Scaffold(
+            topBar = {
+                if (showTopBar) {
+                    TopAppBar(
+                        title = {
+                            Text(
+                                stringResource(R.string.dashboard_title),
+                                color = TextPrimary,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = (-0.2).sp
+                            )
+                        },
+                        navigationIcon = {
+                            IconButton(onClick = onBack) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(36.dp)
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .background(SurfaceRaisedTop)
+                                        .border(1.dp, CardBorder, RoundedCornerShape(12.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        Icons.AutoMirrored.Filled.ArrowBack,
+                                        contentDescription = stringResource(R.string.action_back),
+                                        tint = TextPrimary,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                }
+                            }
+                        },
+                        colors = TopAppBarDefaults.topAppBarColors(
+                            containerColor = Color.Transparent
+                        )
+                    )
                 }
-            }
-
-            !hasUsageAccess -> {
-                InsightsFallback(
-                    modifier = Modifier.padding(padding),
-                    title = stringResource(R.string.dashboard_permission_title),
-                    message = stringResource(R.string.dashboard_permission_desc),
-                    actionLabel = stringResource(R.string.dashboard_open_settings),
-                    onAction = { openUsageAccessSettings(context) }
-                )
-            }
-
-            loadFailed -> {
-                InsightsFallback(
-                    modifier = Modifier.padding(padding),
-                    title = stringResource(R.string.dashboard_load_failed_title),
-                    message = stringResource(R.string.dashboard_load_failed_desc),
-                    actionLabel = stringResource(R.string.dashboard_try_again),
-                    onAction = { reloadTrigger++ }
-                )
-            }
-
-            else -> {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(24.dp)
-                ) {
-                    item(key = "header_spacer") { Spacer(Modifier.height(8.dp)) }
-
-                    item(key = "phone_usage_chart") {
-                        PhoneUsageChartSection(phoneUsage)
+            },
+            containerColor = Color.Transparent
+        ) { padding ->
+            when {
+                isLoading -> {
+                    Box(modifier = Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = AccentCyan)
                     }
+                }
 
-                    item(key = "most_used_apps") {
-                        MostUsedAppsSection(
-                            apps = mostUsedApps,
-                            pm = pm,
-                            showAverage = showAverageForMostUsed,
-                            onToggleAverage = { showAverageForMostUsed = it }
-                        )
+                !hasUsageAccess -> {
+                    InsightsFallback(
+                        modifier = Modifier.padding(padding),
+                        title = stringResource(R.string.dashboard_permission_title),
+                        message = stringResource(R.string.dashboard_permission_desc),
+                        actionLabel = stringResource(R.string.dashboard_open_settings),
+                        onAction = { openUsageAccessSettings(context) }
+                    )
+                }
+
+                loadFailed -> {
+                    InsightsFallback(
+                        modifier = Modifier.padding(padding),
+                        title = stringResource(R.string.dashboard_load_failed_title),
+                        message = stringResource(R.string.dashboard_load_failed_desc),
+                        actionLabel = stringResource(R.string.dashboard_try_again),
+                        onAction = { reloadTrigger++ }
+                    )
+                }
+
+                else -> {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
+                        verticalArrangement = Arrangement.spacedBy(24.dp)
+                    ) {
+                        item(key = "header_spacer") { Spacer(Modifier.height(8.dp)) }
+
+                        item(key = "phone_usage_chart") {
+                            PhoneUsageChartSection(phoneUsage)
+                        }
+
+                        item(key = "most_used_apps") {
+                            MostUsedAppsSection(
+                                apps = mostUsedApps,
+                                pm = pm,
+                                showAverage = showAverageForMostUsed,
+                                onToggleAverage = { showAverageForMostUsed = it }
+                            )
+                        }
+
+                        item(key = "most_opened_apps") {
+                            MostOpenedAppsSection(
+                                apps = mostOpenedApps,
+                                pm = pm
+                            )
+                        }
+
+                        item(key = "never_used_apps") {
+                            NeverUsedAppsSection(
+                                apps = neverUsedApps,
+                                pm = pm,
+                                expanded = expandNeverUsed,
+                                onToggleExpand = { expandNeverUsed = it }
+                            )
+                        }
+
+                        item(key = "footer_spacer") { Spacer(Modifier.height(32.dp)) }
                     }
-
-                    item(key = "most_opened_apps") {
-                        MostOpenedAppsSection(
-                            apps = mostOpenedApps,
-                            pm = pm
-                        )
-                    }
-
-                    item(key = "never_used_apps") {
-                        NeverUsedAppsSection(
-                            apps = neverUsedApps,
-                            pm = pm,
-                            expanded = expandNeverUsed,
-                            onToggleExpand = { expandNeverUsed = it }
-                        )
-                    }
-
-                    item(key = "footer_spacer") { Spacer(Modifier.height(32.dp)) }
                 }
             }
         }
@@ -235,11 +265,10 @@ private fun InsightsFallback(
             .padding(24.dp),
         contentAlignment = Alignment.Center
     ) {
-        Card(
+        FocusCard(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-            border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+            border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
         ) {
             Column(
                 modifier = Modifier.padding(24.dp),
@@ -264,11 +293,10 @@ fun PhoneUsageChartSection(insights: PhoneUsageInsights) {
     val currentWeek = insights.dailyHistory.takeLast(7)
     val currentAvg = insights.completeDaysAverageMs
 
-    Card(
+    FocusCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
     ) {
         Column(modifier = Modifier.padding(20.dp)) {
             Text(
@@ -708,11 +736,10 @@ fun MostUsedAppsSection(
     showAverage: Boolean,
     onToggleAverage: (Boolean) -> Unit
 ) {
-    Card(
+    FocusCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
@@ -745,10 +772,10 @@ fun MostOpenedAppsSection(
     apps: List<AppAccessStat>,
     pm: PackageManager
 ) {
-    Card(
+    FocusCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(stringResource(R.string.dashboard_most_opened_title), color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold)
@@ -788,10 +815,10 @@ fun NeverUsedAppsSection(
     expanded: Boolean,
     onToggleExpand: (Boolean) -> Unit
 ) {
-    Card(
+    FocusCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant)
+        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Text(stringResource(R.string.dashboard_never_used), color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold)

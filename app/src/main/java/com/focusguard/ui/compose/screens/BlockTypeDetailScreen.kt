@@ -5,6 +5,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -30,8 +32,6 @@ import androidx.compose.material.icons.outlined.Lock
 import androidx.compose.material.icons.outlined.Timelapse
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -53,6 +53,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -72,10 +73,15 @@ import com.focusguard.security.AppUnlockBiometricAuthenticator
 import com.focusguard.security.AuthManager
 import com.focusguard.security.BlockCountdownPolicy
 import com.focusguard.ui.compose.theme.AccentCyan
+import com.focusguard.ui.compose.theme.AccentIconBadge
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
-import com.focusguard.ui.compose.theme.DarkCard
+import com.focusguard.ui.compose.theme.FocusCard
+import com.focusguard.ui.compose.theme.FocusGuardAmbientBackground
+import com.focusguard.ui.compose.theme.FocusSectionLabel
+import com.focusguard.ui.compose.theme.StatusPill
+import com.focusguard.ui.compose.theme.SurfaceRaisedTop
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
@@ -169,113 +175,163 @@ fun BlockTypeDetailScreen(
             .getOrDefault(emptyList())
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(stringResource(type.titleRes), color = TextPrimary) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = stringResource(R.string.action_back),
-                            tint = TextPrimary
+    // O halo do topo usa a cor do próprio tipo de bloqueio: entrar na tela da
+    // senha, do limite ou do jejum já dá o sinal de qual proteção é, antes da
+    // primeira linha de texto.
+    FocusGuardAmbientBackground(
+        modifier = Modifier.fillMaxSize(),
+        baseColor = DarkBg,
+        glowColor = type.accent.copy(alpha = 0.09f)
+    ) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            stringResource(type.titleRes),
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = (-0.2).sp
                         )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBg)
-            )
-        },
-        containerColor = DarkBg
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 20.dp)
-        ) {
-            BlockTypeHeader(type)
-
-            // Ferramentas que pertencem ao bloqueio por senha ficam junto
-            // da própria proteção, em vez de escondidas em Configurações.
-            if (type == BlockTypeUi.PASSWORD) {
-                Spacer(Modifier.height(16.dp))
-                PasswordProtectionTools(
-                    accent = type.accent,
-                    onIntruderLogClick = onIntruderLogClick
-                )
-            }
-
-            Spacer(Modifier.height(20.dp))
-
-            Button(
-                onClick = onAddClick,
-                modifier = Modifier.fillMaxWidth().height(52.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = type.accent)
-            ) {
-                Icon(Icons.Default.Add, contentDescription = null, tint = DarkBg)
-                Spacer(Modifier.width(8.dp))
-                Text(
-                    stringResource(type.actionRes),
-                    color = DarkBg,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Spacer(Modifier.height(24.dp))
-
-            val current = entries
-            when {
-                current == null -> Box(Modifier.fillMaxSize(), Alignment.Center) {
-                    CircularProgressIndicator(color = type.accent)
-                }
-
-                current.isEmpty() -> EmptyBlockList(type)
-
-                else -> {
-                    Text(
-                        text = stringResource(R.string.block_type_already_blocked, current.size),
-                        color = TextSecondary,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(bottom = 10.dp)
-                    )
-                    // Aplicativos e sites em seções próprias: são coisas
-                    // diferentes de gerenciar — um se reconhece pelo ícone, o
-                    // outro pelo endereço — e misturados numa lista só a pessoa
-                    // precisa ler item a item para achar o que procura.
-                    val apps = current.filterNot { it.isWebsite }
-                    val sites = current.filter { it.isWebsite }
-                    LazyColumn(
-                        contentPadding = PaddingValues(bottom = 24.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (apps.isNotEmpty()) {
-                            item(key = "header_apps") {
-                                BlockedSectionHeader(
-                                    text = stringResource(
-                                        R.string.block_type_section_apps,
-                                        apps.size
-                                    ),
-                                    accent = type.accent
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = onBack) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(RoundedCornerShape(12.dp))
+                                    .background(SurfaceRaisedTop)
+                                    .border(1.dp, CardBorder, RoundedCornerShape(12.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowBack,
+                                    contentDescription = stringResource(R.string.action_back),
+                                    tint = TextPrimary,
+                                    modifier = Modifier.size(19.dp)
                                 )
-                            }
-                            items(apps, key = { "app_${it.identifier}" }) { entry ->
-                                BlockedEntryRow(entry = entry, accent = type.accent)
                             }
                         }
-                        if (sites.isNotEmpty()) {
-                            item(key = "header_sites") {
-                                BlockedSectionHeader(
-                                    text = stringResource(
-                                        R.string.block_type_section_sites,
-                                        sites.size
-                                    ),
-                                    accent = type.accent
-                                )
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent
+                    )
+                )
+            },
+            containerColor = Color.Transparent
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 20.dp)
+            ) {
+                BlockTypeHeader(type)
+
+                // Ferramentas que pertencem ao bloqueio por senha ficam junto
+                // da própria proteção, em vez de escondidas em Configurações.
+                if (type == BlockTypeUi.PASSWORD) {
+                    Spacer(Modifier.height(16.dp))
+                    PasswordProtectionTools(
+                        accent = type.accent,
+                        onIntruderLogClick = onIntruderLogClick
+                    )
+                }
+
+                Spacer(Modifier.height(20.dp))
+
+                // Botão principal em degradê da cor do tipo: fica o elemento mais
+                // luminoso da tela, que é o que se espera da ação que a tela existe
+                // para oferecer.
+                Button(
+                    onClick = onAddClick,
+                    modifier = Modifier.fillMaxWidth().height(54.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    contentPadding = PaddingValues(0.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.Transparent
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 54.dp)
+                            .background(
+                                Brush.horizontalGradient(
+                                    listOf(type.accent, type.accent.copy(alpha = 0.78f))
+                                ),
+                                RoundedCornerShape(16.dp)
+                            ),
+                        horizontalArrangement = Arrangement.Center,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(Icons.Default.Add, contentDescription = null, tint = DarkBg)
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            stringResource(type.actionRes),
+                            color = DarkBg,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
+                Spacer(Modifier.height(24.dp))
+
+                val current = entries
+                when {
+                    current == null -> Box(Modifier.fillMaxSize(), Alignment.Center) {
+                        CircularProgressIndicator(color = type.accent)
+                    }
+
+                    current.isEmpty() -> EmptyBlockList(type)
+
+                    else -> {
+                        StatusPill(
+                            text = stringResource(
+                                R.string.block_type_already_blocked,
+                                current.size
+                            ),
+                            accent = type.accent,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+                        // Aplicativos e sites em seções próprias: são coisas
+                        // diferentes de gerenciar — um se reconhece pelo ícone, o
+                        // outro pelo endereço — e misturados numa lista só a pessoa
+                        // precisa ler item a item para achar o que procura.
+                        val apps = current.filterNot { it.isWebsite }
+                        val sites = current.filter { it.isWebsite }
+                        LazyColumn(
+                            contentPadding = PaddingValues(bottom = 24.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (apps.isNotEmpty()) {
+                                item(key = "header_apps") {
+                                    BlockedSectionHeader(
+                                        text = stringResource(
+                                            R.string.block_type_section_apps,
+                                            apps.size
+                                        ),
+                                        accent = type.accent
+                                    )
+                                }
+                                items(apps, key = { "app_${it.identifier}" }) { entry ->
+                                    BlockedEntryRow(entry = entry, accent = type.accent)
+                                }
                             }
-                            items(sites, key = { "site_${it.identifier}" }) { entry ->
-                                BlockedEntryRow(entry = entry, accent = type.accent)
+                            if (sites.isNotEmpty()) {
+                                item(key = "header_sites") {
+                                    BlockedSectionHeader(
+                                        text = stringResource(
+                                            R.string.block_type_section_sites,
+                                            sites.size
+                                        ),
+                                        accent = type.accent
+                                    )
+                                }
+                                items(sites, key = { "site_${it.identifier}" }) { entry ->
+                                    BlockedEntryRow(entry = entry, accent = type.accent)
+                                }
                             }
                         }
                     }
@@ -316,10 +372,9 @@ private fun PasswordProtectionTools(
     }
 
     Column {
-        Card(
+        FocusCard(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = DarkCard),
             border = BorderStroke(1.dp, CardBorder)
         ) {
             ToggleRow(
@@ -343,10 +398,9 @@ private fun PasswordProtectionTools(
 
         Spacer(Modifier.height(8.dp))
 
-        Card(
+        FocusCard(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
-            colors = CardDefaults.cardColors(containerColor = DarkCard),
             border = BorderStroke(1.dp, CardBorder)
         ) {
             ToggleRow(
@@ -414,44 +468,71 @@ private fun ToggleRow(
 
 @Composable
 private fun BlockTypeHeader(type: BlockTypeUi) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Box(
-            modifier = Modifier
-                .size(44.dp)
-                .clip(CircleShape)
-                .background(type.accent.copy(alpha = 0.14f)),
-            contentAlignment = Alignment.Center
+    FocusCard(
+        modifier = Modifier.fillMaxWidth(),
+        border = BorderStroke(1.dp, type.accent.copy(alpha = 0.22f))
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(type.icon, contentDescription = null, tint = type.accent)
+            AccentIconBadge(
+                icon = type.icon,
+                accent = type.accent,
+                shape = RoundedCornerShape(14.dp)
+            )
+            Spacer(Modifier.width(14.dp))
+            Text(
+                text = stringResource(type.subtitleRes),
+                color = TextSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp,
+                modifier = Modifier.weight(1f)
+            )
         }
-        Spacer(Modifier.width(14.dp))
-        Text(
-            text = stringResource(type.subtitleRes),
-            color = TextSecondary,
-            fontSize = 13.sp,
-            modifier = Modifier.weight(1f)
-        )
     }
 }
 
 @Composable
 private fun EmptyBlockList(type: BlockTypeUi) {
     Box(Modifier.fillMaxSize(), Alignment.TopCenter) {
+        // A lista vazia deixa de ser um ícone cinza solto no vazio: vira um
+        // painel tracejado, que se lê como um espaço à espera de conteúdo em
+        // vez de uma tela que não carregou.
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(top = 32.dp)
+            modifier = Modifier
+                .padding(top = 24.dp)
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(20.dp))
+                .background(type.accent.copy(alpha = 0.03f))
+                .border(
+                    1.dp,
+                    type.accent.copy(alpha = 0.16f),
+                    RoundedCornerShape(20.dp)
+                )
+                .padding(vertical = 34.dp, horizontal = 20.dp)
         ) {
-            Icon(
-                type.icon,
-                contentDescription = null,
-                tint = TextHint,
-                modifier = Modifier.size(40.dp)
-            )
-            Spacer(Modifier.height(12.dp))
+            Box(
+                modifier = Modifier
+                    .size(58.dp)
+                    .clip(CircleShape)
+                    .background(type.accent.copy(alpha = 0.08f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    type.icon,
+                    contentDescription = null,
+                    tint = type.accent.copy(alpha = 0.7f),
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+            Spacer(Modifier.height(14.dp))
             Text(
                 text = stringResource(type.emptyRes),
-                color = TextHint,
-                fontSize = 14.sp
+                color = TextSecondary,
+                fontSize = 14.sp,
+                lineHeight = 19.sp
             )
         }
     }
@@ -486,12 +567,10 @@ internal fun blockedEntryLabel(
 
 @Composable
 private fun BlockedSectionHeader(text: String, accent: Color) {
-    Text(
-        text = text.uppercase(),
-        color = accent,
-        fontSize = 12.sp,
-        fontWeight = FontWeight.Bold,
-        modifier = Modifier.padding(top = 6.dp, bottom = 2.dp)
+    FocusSectionLabel(
+        text = text,
+        accent = accent,
+        modifier = Modifier.padding(top = 8.dp)
     )
 }
 
@@ -527,10 +606,9 @@ private fun BlockedEntryRow(
         }
     }
 
-    Card(
+    FocusCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
         border = BorderStroke(1.dp, CardBorder)
     ) {
         Row(
@@ -541,14 +619,19 @@ private fun BlockedEntryRow(
                 androidx.compose.foundation.Image(
                     bitmap = iconBitmap,
                     contentDescription = null,
-                    modifier = Modifier.size(34.dp).clip(RoundedCornerShape(8.dp))
+                    modifier = Modifier.size(34.dp).clip(RoundedCornerShape(10.dp))
                 )
             } else {
                 Box(
                     modifier = Modifier
                         .size(34.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(accent.copy(alpha = 0.14f)),
+                        .clip(RoundedCornerShape(10.dp))
+                        .background(accent.copy(alpha = 0.14f))
+                        .border(
+                            1.dp,
+                            accent.copy(alpha = 0.24f),
+                            RoundedCornerShape(10.dp)
+                        ),
                     contentAlignment = Alignment.Center
                 ) {
                     Text(

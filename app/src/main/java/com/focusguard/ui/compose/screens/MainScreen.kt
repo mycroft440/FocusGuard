@@ -10,6 +10,7 @@ import androidx.compose.animation.*
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -65,167 +66,179 @@ fun MainScreen(
         if (selectedTab != 4) onTabChange(4)
     }
 
-    Scaffold(
-        topBar = {
-            if (!usesFullHeightContent) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.background)
-                        .statusBarsPadding()
-                        .height(64.dp)
-                ) {
-                    if (selectedTab == 4) {
-                        Text(
-                            stringResource(R.string.nav_focus_mode),
-                            modifier = Modifier
-                                .align(Alignment.CenterStart)
-                                .padding(start = 16.dp),
-                            color = TextPrimary,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    } else if (!focusModeActive) {
-                        Surface(
-                            onClick = { onTabChange(0) },
-                            modifier = Modifier
-                                .align(Alignment.CenterStart)
-                                .padding(start = 16.dp),
-                            shape = RoundedCornerShape(14.dp),
-                            color = DarkCard,
-                            tonalElevation = 0.dp,
-                            shadowElevation = 0.dp
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                verticalAlignment = Alignment.CenterVertically
+    // O halo ciano cobre barra de título, conteúdo e barra de navegação de uma
+    // vez só; por isso o Scaffold e o topo ficam transparentes, senão cada um
+    // pintaria o próprio retângulo por cima do degradê.
+    FocusGuardAmbientBackground(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            containerColor = Color.Transparent,
+            topBar = {
+                if (!usesFullHeightContent) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .statusBarsPadding()
+                            .height(64.dp)
+                    ) {
+                        if (selectedTab == 4) {
+                            Text(
+                                stringResource(R.string.nav_focus_mode),
+                                modifier = Modifier
+                                    .align(Alignment.CenterStart)
+                                    .padding(start = 16.dp),
+                                color = TextPrimary,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                letterSpacing = (-0.2).sp
+                            )
+                        } else if (!focusModeActive) {
+                            FocusCard(
+                                modifier = Modifier
+                                    .align(Alignment.CenterStart)
+                                    .padding(start = 16.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, AccentCyanEdge),
+                                onClick = { onTabChange(0) }
                             ) {
-                                Icon(
-                                    Icons.Default.Public,
-                                    contentDescription = null,
-                                    tint = AccentCyan,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    stringResource(R.string.nav_metrics),
-                                    color = TextPrimary,
-                                    fontSize = 15.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        Icons.Default.Public,
+                                        contentDescription = null,
+                                        tint = AccentCyan,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        stringResource(R.string.nav_metrics),
+                                        color = TextPrimary,
+                                        fontSize = 15.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
-                    }
 
-                    IconButton(
-                        onClick = onSettingsClick,
-                        modifier = Modifier
-                            .align(Alignment.CenterEnd)
-                            .padding(end = 12.dp)
-                            .semantics {
-                                contentDescription = settingsContentDescription
-                            }
-                    ) {
-                        if (profile.isConfigured) {
-                            ProfileAvatar(
-                                avatarId = profile.avatarId,
-                                modifier = Modifier.size(38.dp)
-                            )
-                        } else {
-                            Icon(
-                                Icons.Default.Menu,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onBackground
-                            )
+                        IconButton(
+                            onClick = onSettingsClick,
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .padding(end = 12.dp)
+                                .semantics {
+                                    contentDescription = settingsContentDescription
+                                }
+                        ) {
+                            TopBarProfileGlyph(profile = profile)
                         }
                     }
                 }
+            },
+            bottomBar = {
+                if (!focusModeActive) {
+                    FocusGuardBottomNavigation(
+                        selectedTab = selectedTab,
+                        onTabChange = onTabChange
+                    )
+                }
             }
-        },
-        bottomBar = {
-            if (!focusModeActive) {
-                FocusGuardBottomNavigation(
-                    selectedTab = selectedTab,
-                    onTabChange = onTabChange
-                )
-            }
-        }
-    ) { paddingValues ->
-        val contentBackground = if (selectedTab == 2) {
-            DarkBg
-        } else {
-            MaterialTheme.colorScheme.background
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(contentBackground)
-                .padding(paddingValues)
-                .then(if (usesFullHeightContent) Modifier.statusBarsPadding() else Modifier)
-        ) {
-            if (focusModeActive) {
-                FocusModeNavigationRail(
-                    selectedTab = selectedTab,
-                    onTabChange = onTabChange
-                )
-            }
-            Box(
+        ) { paddingValues ->
+            // A aba do Pomodoro mantém o próprio fundo sólido — a tela dela já é
+            // fechada em si; as outras deixam o halo aparecer por trás.
+            val contentBackground = if (selectedTab == 2) DarkBg else Color.Transparent
+            Row(
                 modifier = Modifier
-                    .weight(1f)
                     .fillMaxSize()
                     .background(contentBackground)
+                    .padding(paddingValues)
+                    .then(if (usesFullHeightContent) Modifier.statusBarsPadding() else Modifier)
             ) {
-                AnimatedContent(
-                    targetState = selectedTab,
-                    transitionSpec = {
-                        fadeIn(animationSpec = tween(180)) togetherWith
-                            fadeOut(animationSpec = tween(180))
-                    },
-                    label = "MainContent"
-                ) { targetTab ->
-                    when (targetTab) {
-                        0 -> usageStatsContent()
-                        1 -> HomeContent(
-                            missingProtectionPermissions = missingProtectionPermissions,
-                            showCreatorInstagramCard = showCreatorInstagramCard,
-                            showCreatorFeedbackButton = showCreatorFeedbackButton,
-                            onPermissionsClick = onPermissionsClick,
-                            onCreatorInstagramClick = onCreatorInstagramClick,
-                            onBlockTypeClick = onBlockTypeClick,
-                            pagerHint = false
-                        )
-                        2 -> pomodoroContent()
-                        3 -> recoveryContent()
-                        4 -> focusModeContent()
-                    }
+                if (focusModeActive) {
+                    FocusModeNavigationRail(
+                        selectedTab = selectedTab,
+                        onTabChange = onTabChange
+                    )
                 }
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxSize()
+                        .background(contentBackground)
+                ) {
+                    AnimatedContent(
+                        targetState = selectedTab,
+                        transitionSpec = {
+                            fadeIn(animationSpec = tween(180)) togetherWith
+                                fadeOut(animationSpec = tween(180))
+                        },
+                        label = "MainContent"
+                    ) { targetTab ->
+                        when (targetTab) {
+                            0 -> usageStatsContent()
+                            1 -> HomeContent(
+                                missingProtectionPermissions = missingProtectionPermissions,
+                                showCreatorInstagramCard = showCreatorInstagramCard,
+                                showCreatorFeedbackButton = showCreatorFeedbackButton,
+                                onPermissionsClick = onPermissionsClick,
+                                onCreatorInstagramClick = onCreatorInstagramClick,
+                                onBlockTypeClick = onBlockTypeClick,
+                                pagerHint = false
+                            )
+                            2 -> pomodoroContent()
+                            3 -> recoveryContent()
+                            4 -> focusModeContent()
+                        }
+                    }
 
-                if (usesFullHeightContent) {
-                    IconButton(
-                        onClick = onSettingsClick,
-                        modifier = Modifier
-                            .align(Alignment.TopEnd)
-                            .padding(top = 4.dp, end = 12.dp)
-                            .semantics {
-                                contentDescription = settingsContentDescription
-                            }
-                    ) {
-                        if (profile.isConfigured) {
-                            ProfileAvatar(
-                                avatarId = profile.avatarId,
-                                modifier = Modifier.size(38.dp)
-                            )
-                        } else {
-                            Icon(
-                                Icons.Default.Menu,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onBackground
-                            )
+                    if (usesFullHeightContent) {
+                        IconButton(
+                            onClick = onSettingsClick,
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(top = 4.dp, end = 12.dp)
+                                .semantics {
+                                    contentDescription = settingsContentDescription
+                                }
+                        ) {
+                            TopBarProfileGlyph(profile = profile)
                         }
                     }
                 }
             }
         }
+    }
+}
+
+/**
+ * O botão da direita na barra de título.
+ *
+ * Com perfil configurado mostra o avatar dentro de um anel ciano — o mesmo
+ * anel em todas as abas, para o atalho de configurações ficar reconhecível de
+ * relance; sem perfil, continua sendo o ícone de menu de antes.
+ */
+@Composable
+private fun TopBarProfileGlyph(profile: UserProfile) {
+    if (profile.isConfigured) {
+        Box(
+            modifier = Modifier
+                .size(40.dp)
+                .clip(CircleShape)
+                .background(AccentCyanWash)
+                .border(1.dp, AccentCyanEdge, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            ProfileAvatar(
+                avatarId = profile.avatarId,
+                modifier = Modifier.size(34.dp)
+            )
+        }
+    } else {
+        Icon(
+            Icons.Default.Menu,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onBackground
+        )
     }
 }
 
@@ -237,11 +250,24 @@ private fun FocusGuardBottomNavigation(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(DarkSurface)
+            .background(
+                Brush.verticalGradient(listOf(DarkSurface, DarkBg))
+            )
     ) {
-        HorizontalDivider(color = CardBorder, thickness = 1.dp)
+        // Um fio de luz ciano no lugar do traço cinza: marca onde a barra
+        // começa e amarra a navegação à cor da casa.
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(1.dp)
+                .background(
+                    Brush.horizontalGradient(
+                        listOf(CardBorder, AccentCyanEdge, CardBorder)
+                    )
+                )
+        )
         NavigationBar(
-            containerColor = DarkSurface,
+            containerColor = Color.Transparent,
             tonalElevation = 0.dp
         ) {
             focusGuardNavigationItems().forEach { item ->
@@ -343,8 +369,10 @@ private fun navigationItemColors() = NavigationBarItemDefaults.colors(
     selectedIconColor = AccentCyan,
     selectedTextColor = AccentCyan,
     unselectedIconColor = TextHint,
-    unselectedTextColor = TextHint,
-    indicatorColor = AccentCyan.copy(alpha = 0.12f)
+    unselectedTextColor = TextSecondary.copy(alpha = 0.75f),
+    // A pílula da aba selecionada fica mais presente: com 12% de opacidade ela
+    // quase sumia no fundo e a aba atual só se distinguia pela cor do ícone.
+    indicatorColor = AccentCyan.copy(alpha = 0.18f)
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -357,14 +385,14 @@ fun DrawerMenuButton(
     bgColor: Color = DarkCard,
     onClick: () -> Unit
 ) {
-    Card(
-        onClick = onClick,
+    FocusCard(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 4.dp),
         shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = bgColor),
-        border = BorderStroke(1.dp, CardBorder)
+        brush = focusCardBrush(bgColor, bgColor),
+        border = BorderStroke(1.dp, CardBorder),
+        onClick = onClick
     ) {
         Row(
             modifier = Modifier
@@ -430,24 +458,42 @@ fun HomeContent(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_shield),
-                        contentDescription = stringResource(R.string.content_focusguard_logo),
-                        modifier = Modifier.size(38.dp),
-                        tint = AccentCyan
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    // O escudo passa a ser o ponto de luz da tela: um disco de
+                    // ciano difuso atrás dele dá o brilho que um ícone chapado
+                    // sobre fundo preto não consegue sozinho.
+                    Box(
+                        modifier = Modifier
+                            .size(66.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Brush.radialGradient(
+                                    listOf(AccentCyanGlow, Color.Transparent)
+                                )
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_shield),
+                            contentDescription = stringResource(
+                                R.string.content_focusguard_logo
+                            ),
+                            modifier = Modifier.size(38.dp),
+                            tint = AccentCyan
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(2.dp))
                     Text(
                         stringResource(id = R.string.app_name),
                         fontSize = 26.sp,
                         fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.4).sp,
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
                         stringResource(id = R.string.focus_subtitle),
                         fontSize = 13.sp,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 1.dp, bottom = 18.dp)
+                        modifier = Modifier.padding(top = 3.dp, bottom = 20.dp)
                     )
                 }
             }
@@ -458,19 +504,19 @@ fun HomeContent(
                 enter = fadeIn() + expandVertically(),
                 exit = fadeOut() + shrinkVertically()
             ) {
-                Card(
-                    onClick = onPermissionsClick,
+                FocusCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(bottom = 8.dp),
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = DangerRed.copy(alpha = 0.1f)),
-                    border = BorderStroke(1.dp, DangerRed)
+                    brush = accentWashBrush(DangerRed),
+                    border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.55f)),
+                    onClick = onPermissionsClick
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 9.dp),
+                            .padding(horizontal = 12.dp, vertical = 11.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Icon(
@@ -575,12 +621,11 @@ private fun CreatorInstagramCard(
         )
     )
 
-    Card(
-        onClick = onClick,
+    FocusCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
-        border = BorderStroke(1.dp, instagramGradient)
+        border = BorderStroke(1.dp, instagramGradient),
+        onClick = onClick
     ) {
         Row(
             modifier = Modifier.padding(if (compact) 10.dp else 16.dp),
@@ -655,14 +700,13 @@ private fun CreatorFeedbackButton(
         label = "FeedbackAttentionAlpha"
     )
 
-    Card(
-        onClick = onClick,
+    FocusCard(
         modifier = Modifier
             .fillMaxWidth()
             .graphicsLayer { alpha = attentionAlpha },
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
-        border = BorderStroke(1.dp, CardBorder)
+        border = BorderStroke(1.dp, CardBorder),
+        onClick = onClick
     ) {
         Row(
             modifier = Modifier.padding(
@@ -712,7 +756,13 @@ private fun CreatorFeedbackButton(
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+/**
+ * O cartão de cada tipo de bloqueio na tela inicial.
+ *
+ * O acento recebido (ciano, âmbar ou vermelho, conforme o tipo) agora aparece
+ * três vezes no mesmo cartão — no selo do ícone, numa faixa fina à esquerda e
+ * na seta — para dar identidade a cada linha sem precisar de mais texto.
+ */
 @Composable
 fun SessionCard(
     icon: ImageVector,
@@ -722,80 +772,81 @@ fun SessionCard(
     accent: Color = AccentCyan,
     compact: Boolean = false
 ) {
-    var isPressed by remember { mutableStateOf(false) }
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.96f else 1f,
-        animationSpec = spring(dampingRatio = Spring.DampingRatioLowBouncy, stiffness = Spring.StiffnessLow),
-        label = "ScaleAnimation"
-    )
-
-    Card(
-        onClick = {
-            isPressed = true
-            onClick()
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            },
+    FocusCard(
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
-        border = BorderStroke(1.dp, CardBorder)
+        border = BorderStroke(1.dp, CardBorder),
+        onClick = onClick
     ) {
         Row(
-            modifier = Modifier.padding(
-                horizontal = if (compact) 13.dp else 16.dp,
-                vertical = if (compact) 12.dp else 16.dp
-            ),
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(if (compact) 44.dp else 48.dp)
-                    .clip(RoundedCornerShape(if (compact) 13.dp else 16.dp))
+                    .width(3.dp)
+                    .fillMaxHeight()
                     .background(
-                        Brush.linearGradient(
-                            colors = listOf(
-                                accent.copy(alpha = 0.18f),
-                                accent.copy(alpha = 0.06f)
+                        Brush.verticalGradient(
+                            listOf(
+                                accent.copy(alpha = 0.0f),
+                                accent.copy(alpha = 0.85f),
+                                accent.copy(alpha = 0.0f)
                             )
                         )
-                    ),
-                contentAlignment = Alignment.Center
+                    )
+            )
+            Row(
+                modifier = Modifier.padding(
+                    start = if (compact) 12.dp else 15.dp,
+                    end = if (compact) 13.dp else 16.dp,
+                    top = if (compact) 12.dp else 16.dp,
+                    bottom = if (compact) 12.dp else 16.dp
+                ),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Icon(
-                    icon,
-                    contentDescription = null,
-                    modifier = Modifier.size(if (compact) 24.dp else 26.dp),
-                    tint = accent
+                AccentIconBadge(
+                    icon = icon,
+                    accent = accent,
+                    size = if (compact) 44.dp else 48.dp,
+                    iconSize = if (compact) 24.dp else 26.dp,
+                    shape = RoundedCornerShape(if (compact) 13.dp else 16.dp)
                 )
+                Spacer(modifier = Modifier.width(if (compact) 12.dp else 16.dp))
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        title,
+                        fontSize = if (compact) 15.sp else 16.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = (-0.1).sp,
+                        color = TextPrimary
+                    )
+                    Spacer(modifier = Modifier.height(if (compact) 3.dp else 4.dp))
+                    Text(
+                        subtitle,
+                        fontSize = if (compact) 12.sp else 13.sp,
+                        lineHeight = if (compact) 16.sp else 18.sp,
+                        color = TextSecondary
+                    )
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                Box(
+                    modifier = Modifier
+                        .size(26.dp)
+                        .clip(CircleShape)
+                        .background(accent.copy(alpha = 0.10f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        Icons.Filled.ChevronRight,
+                        contentDescription = stringResource(R.string.action_open),
+                        modifier = Modifier.size(17.dp),
+                        tint = accent.copy(alpha = 0.85f)
+                    )
+                }
             }
-            Spacer(modifier = Modifier.width(if (compact) 12.dp else 16.dp))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    title,
-                    fontSize = if (compact) 15.sp else 16.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = TextPrimary
-                )
-                Spacer(modifier = Modifier.height(if (compact) 2.dp else 3.dp))
-                Text(
-                    subtitle,
-                    fontSize = if (compact) 12.sp else 13.sp,
-                    lineHeight = if (compact) 15.sp else 17.sp,
-                    color = TextSecondary
-                )
-            }
-            Icon(Icons.Filled.ChevronRight, contentDescription = stringResource(R.string.action_open), modifier = Modifier.size(20.dp), tint = TextHint)
-        }
-    }
-
-    LaunchedEffect(isPressed) {
-        if (isPressed) {
-            kotlinx.coroutines.delay(100)
-            isPressed = false
         }
     }
 }
