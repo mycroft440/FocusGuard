@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="limits_daily_max_title">Maximum use per day</string>
+    <string name="limits_daily_max_minutes_label">Minutes per day</string>
+    <string name="limits_after_reaching_title">When the daily limit is reached</string>
+    <string name="limits_pause_30_option">Take a 30-minute break</string>
+    <string name="limits_pause_30_desc">Show a warning and block the app for 30 minutes. After the break, it works normally again for the rest of the day.</string>
+    <string name="limits_block_tomorrow_option">Block until tomorrow</string>
+    <string name="limits_block_tomorrow_desc">Keep the app blocked until the daily usage counter resets the next day.</string>
+    <string name="limits_rule_duration_title">Rule duration</string>
+    <string name="limits_duration_amount_label">Duration</string>
+    <string name="limits_duration_days">Days</string>
+    <string name="limits_duration_weeks">Weeks</string>
+    <string name="limits_duration_months">Months</string>
+    <string name="limits_rule_summary">%1$d min/day • %2$s • %3$d %4$s</string>
+    <string name="limits_rule_current_until">Current rule ends %1$s</string>
+    <string name="limits_pause_notice">Daily usage limit reached. Take a 30-minute break before using this app again.</string>
+    <string name="limits_daily_lock_notice">Daily usage limit reached. This app will be available again tomorrow.</string>
+</resources>
