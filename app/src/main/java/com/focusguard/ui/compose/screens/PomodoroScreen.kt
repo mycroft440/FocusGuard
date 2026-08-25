@@ -677,7 +677,7 @@ private fun ActivePomodoroPanel(
             .padding(horizontal = 13.dp, vertical = 7.dp)
     )
 
-    Spacer(Modifier.weight(1f))
+    Spacer(Modifier.height(12.dp))
 
     if (isStrict) {
         Card(
