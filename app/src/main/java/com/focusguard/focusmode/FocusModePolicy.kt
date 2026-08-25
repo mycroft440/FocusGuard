@@ -13,6 +13,12 @@ object FocusModePolicy {
         DAYS
     }
 
+    enum class NavigationKeyDecision {
+        PASS,
+        CONSUME,
+        RETURN_TO_FOCUS_GUARD
+    }
+
     fun resolveDurationMillis(unit: DurationUnit, amount: Int?): Long? {
         val value = amount ?: return null
         if (value <= 0 || value > maxAmountFor(unit)) return null
@@ -90,15 +96,31 @@ object FocusModePolicy {
     ): Boolean = deviceOwnerActive && systemLockdownSupported
 
     fun shouldRedirectToFocusGuard(
+        focusModeActive: Boolean,
         focusModeFallbackActive: Boolean,
         foregroundPackage: String,
         focusGuardPackage: String,
         launcherPackage: String?,
         focusModeBlockedPackages: Collection<String>
-    ): Boolean = focusModeFallbackActive &&
+    ): Boolean = focusModeActive &&
         foregroundPackage.isNotBlank() &&
         foregroundPackage != focusGuardPackage &&
-        (foregroundPackage == launcherPackage || foregroundPackage in focusModeBlockedPackages)
+        (
+            foregroundPackage == launcherPackage ||
+                (focusModeFallbackActive && foregroundPackage in focusModeBlockedPackages)
+            )
+
+    fun focusNavigationKeyDecision(
+        focusModeActive: Boolean,
+        systemUiForeground: Boolean,
+        isBackOrHomeKey: Boolean,
+        actionDown: Boolean,
+        repeatCount: Int
+    ): NavigationKeyDecision = when {
+        !focusModeActive || !isBackOrHomeKey || systemUiForeground -> NavigationKeyDecision.PASS
+        actionDown && repeatCount == 0 -> NavigationKeyDecision.RETURN_TO_FOCUS_GUARD
+        else -> NavigationKeyDecision.CONSUME
+    }
 
     fun shouldSuppressNotification(
         focusModeActive: Boolean,
