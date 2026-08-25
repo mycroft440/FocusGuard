@@ -32,9 +32,10 @@ data class PomodoroPlanConfig(
         shortBreakMinutes = shortBreakMinutes.coerceIn(1, 120),
         longBreakMinutes = longBreakMinutes.coerceIn(1, 12 * 60),
         longBreakEvery = longBreakEvery.coerceIn(1, 100),
-        targetSessions = targetSessions.coerceIn(0, 100),
+        targetSessions = targetSessions.coerceIn(0, 5),
         alarmDurationSeconds = alarmDurationSeconds.coerceIn(1, 60),
-        soundIndex = soundIndex.coerceIn(0, 9)
+        soundIndex = soundIndex.coerceIn(0, 9),
+        strictBlocking = false
     )
 }
 
