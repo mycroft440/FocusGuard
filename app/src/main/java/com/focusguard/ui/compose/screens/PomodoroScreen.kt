@@ -6,6 +6,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -113,6 +114,7 @@ private val PomodoroTextFaint = Color(0xFF64717D)
 private val PomodoroAccent = Color(0xFF5CCFE6)
 private val PomodoroAccentInk = Color(0xFF04222A)
 private val PomodoroAccentTint = Color(0x1F5CCFE6)
+private val PomodoroAccentLine = Color(0x475CCFE6)
 private val PomodoroFocus = Color(0xFFE9BA5C)
 private val PomodoroFocusTint = Color(0x1FE9BA5C)
 private val PomodoroFocusLine = Color(0x42E9BA5C)
@@ -374,6 +376,7 @@ private fun ReadyPomodoroHeader(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             modifier = Modifier
                 .background(PomodoroAccentTint, CircleShape)
+                .border(1.dp, PomodoroAccentLine, CircleShape)
                 .padding(
                     horizontal = if (compact) 11.dp else 13.dp,
                     vertical = if (compact) 5.dp else 7.dp
@@ -428,24 +431,28 @@ private fun PomodoroPrimaryActions(
                 fontSize = if (compact) 12.sp else 14.sp
             )
         }
-        Button(
+        OutlinedButton(
             onClick = onStart,
             modifier = Modifier
                 .weight(1.25f)
                 .height(if (compact) 46.dp else 50.dp),
             shape = CircleShape,
-            colors = ButtonDefaults.buttonColors(containerColor = PomodoroAccent)
+            border = BorderStroke(1.5.dp, PomodoroAccent),
+            colors = ButtonDefaults.outlinedButtonColors(
+                containerColor = PomodoroAccentTint,
+                contentColor = PomodoroAccent
+            )
         ) {
             Icon(
                 Icons.Default.PlayArrow,
                 contentDescription = null,
-                tint = PomodoroAccentInk,
+                tint = PomodoroAccent,
                 modifier = Modifier.size(18.dp)
             )
             Spacer(Modifier.width(6.dp))
             Text(
                 stringResource(R.string.fg_pomodoro_start),
-                color = PomodoroAccentInk,
+                color = PomodoroAccent,
                 fontWeight = FontWeight.Bold,
                 fontSize = if (compact) 12.sp else 14.sp
             )
@@ -524,7 +531,15 @@ private fun EditableDurationSummaryRow(
                 enabled = minutes > range.first,
                 modifier = Modifier.size(if (compact) 32.dp else 36.dp)
             ) {
-                Text("−", fontSize = 18.sp, color = PomodoroTextDim)
+                Text(
+                    "−",
+                    fontSize = 18.sp,
+                    color = if (minutes > range.first) {
+                        PomodoroAccent
+                    } else {
+                        PomodoroAccent.copy(alpha = 0.28f)
+                    }
+                )
             }
             Text(
                 text = formatMinutes(minutes),
@@ -539,7 +554,15 @@ private fun EditableDurationSummaryRow(
                 enabled = minutes < range.last,
                 modifier = Modifier.size(if (compact) 32.dp else 36.dp)
             ) {
-                Text("+", fontSize = 17.sp, color = PomodoroAccent)
+                Text(
+                    "+",
+                    fontSize = 17.sp,
+                    color = if (minutes < range.last) {
+                        PomodoroAccent
+                    } else {
+                        PomodoroAccent.copy(alpha = 0.28f)
+                    }
+                )
             }
         }
         SummaryDivider()
@@ -576,7 +599,15 @@ private fun EditableSessionSummaryRow(
             enabled = safeSessions > 0,
             modifier = Modifier.size(if (compact) 32.dp else 36.dp)
         ) {
-            Text("−", fontSize = 18.sp, color = PomodoroTextDim)
+            Text(
+                "−",
+                fontSize = 18.sp,
+                color = if (safeSessions > 0) {
+                    PomodoroAccent
+                } else {
+                    PomodoroAccent.copy(alpha = 0.28f)
+                }
+            )
         }
         Text(
             text = value,
@@ -592,7 +623,15 @@ private fun EditableSessionSummaryRow(
             enabled = safeSessions < 5,
             modifier = Modifier.size(if (compact) 32.dp else 36.dp)
         ) {
-            Text("+", fontSize = 17.sp, color = PomodoroAccent)
+            Text(
+                "+",
+                fontSize = 17.sp,
+                color = if (safeSessions < 5) {
+                    PomodoroAccent
+                } else {
+                    PomodoroAccent.copy(alpha = 0.28f)
+                }
+            )
         }
     }
 }
@@ -634,7 +673,7 @@ private fun SummaryDivider() {
         Modifier
             .fillMaxWidth()
             .height(1.dp)
-            .background(Color.White.copy(alpha = 0.045f))
+            .background(PomodoroStroke.copy(alpha = 0.78f))
     )
 }
 
