@@ -36,21 +36,49 @@ object WebsiteUsageLimitPolicy {
     }
 
     /**
-     * Um bloqueio por tempo sem data final é inválido e falha de forma segura.
-     * Isso evita que registros legados ou incompletos prendam o usuário para sempre.
+     * A mesma entrada continua atendendo os modos legados de sites, mas reconhece os dois modos
+     * novos dos limites de apps. Esses modos carregam o packageName depois de ':' para que o
+     * estado persistente da pausa seja isolado por aplicativo sem exigir migração do banco.
      */
     fun isBlockingModeActive(
         lockMode: String,
         lockUntilTimestamp: Long?,
         nowMillis: Long
     ): Boolean {
-        return when (lockMode.uppercase(Locale.ROOT)) {
-            "WARNING" -> false
-            "TIME" -> lockUntilTimestamp?.let { it > nowMillis } == true
-            // Em PASSWORD, o timestamp representa uma liberação temporária
-            // concedida após autenticação e válida até a próxima meia-noite.
-            "PASSWORD" -> lockUntilTimestamp?.let { nowMillis >= it } ?: true
-            else -> true
+        return when {
+            UsageLimitBehaviorPolicy.isPauseMode(lockMode) -> {
+                if (!UsageLimitBehaviorPolicy.isRuleActive(lockUntilTimestamp, nowMillis)) {
+                    false
+                } else {
+                    UsageLimitPauseStateStore.shouldBlockForPause(
+                        lockMode = lockMode,
+                        ruleEndMillis = lockUntilTimestamp,
+                        nowMillis = nowMillis
+                    )
+                }
+            }
+            UsageLimitBehaviorPolicy.isBlockUntilTomorrowMode(lockMode) -> {
+                val active = UsageLimitBehaviorPolicy.isRuleActive(
+                    lockUntilTimestamp,
+                    nowMillis
+                )
+                if (active) {
+                    UsageLimitPauseStateStore.notifyDailyBlockOnce(
+                        lockMode = lockMode,
+                        ruleEndMillis = lockUntilTimestamp,
+                        nowMillis = nowMillis
+                    )
+                }
+                active
+            }
+            else -> when (lockMode.uppercase(Locale.ROOT)) {
+                "WARNING" -> false
+                "TIME" -> lockUntilTimestamp?.let { it > nowMillis } == true
+                // Em PASSWORD, o timestamp representa uma liberação temporária
+                // concedida após autenticação e válida até a próxima meia-noite.
+                "PASSWORD" -> lockUntilTimestamp?.let { nowMillis >= it } ?: true
+                else -> true
+            }
         }
     }
 }

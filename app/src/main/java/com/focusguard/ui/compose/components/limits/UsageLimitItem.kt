@@ -1,7 +1,5 @@
 package com.focusguard.ui.compose.components.limits
 
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
 import android.graphics.drawable.Drawable
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -30,6 +28,10 @@ import androidx.compose.ui.unit.sp
 import androidx.core.graphics.drawable.toBitmap
 import com.focusguard.R
 import com.focusguard.ui.compose.theme.*
+import com.focusguard.utils.UsageLimitBehaviorPolicy
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -52,7 +54,7 @@ fun UsageLimitItem(
 ) {
     val context = LocalContext.current
     var iconDrawable by remember(app.packageName) { mutableStateOf<Drawable?>(null) }
-    
+
     LaunchedEffect(app.packageName) {
         withContext(Dispatchers.IO) {
             try {
@@ -61,17 +63,41 @@ fun UsageLimitItem(
         }
     }
 
+    val now = System.currentTimeMillis()
+    val dailyBehavior = UsageLimitBehaviorPolicy.isDailyBehaviorMode(app.lockMode)
+    val ruleExpired = dailyBehavior &&
+        app.lockUntilTimestamp?.let { it <= now } == true
+    val effectiveActive = isActive && !ruleExpired
+    val behaviorLabel = when {
+        UsageLimitBehaviorPolicy.isPauseMode(app.lockMode) ->
+            stringResource(R.string.limits_pause_30_option)
+        UsageLimitBehaviorPolicy.isBlockUntilTomorrowMode(app.lockMode) ->
+            stringResource(R.string.limits_block_tomorrow_option)
+        else -> null
+    }
+    val behaviorStatus = when {
+        ruleExpired -> stringResource(R.string.limits_rule_expired)
+        behaviorLabel != null && app.lockUntilTimestamp != null -> {
+            val date = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+                .format(Date(app.lockUntilTimestamp))
+            stringResource(R.string.limits_rule_status_until, behaviorLabel, date)
+        }
+        else -> behaviorLabel
+    }
+
     val usageMin = app.usageMs / 60000L
-    val targetProgress = if ((app.currentLimitMinutes ?: 0) > 0) (usageMin.toFloat() / app.currentLimitMinutes!!).coerceIn(0f, 1f) else 0f
-    
-    // Animação fluida da barra de progresso
+    val targetProgress = if ((app.currentLimitMinutes ?: 0) > 0) {
+        (usageMin.toFloat() / app.currentLimitMinutes!!).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+
     val progress by animateFloatAsState(
         targetValue = targetProgress,
         animationSpec = tween(durationMillis = 800),
         label = "progress_anim"
     )
 
-    // Cores dinâmicas para estado de alerta
     val progressColor by animateColorAsState(
         targetValue = if (progress >= 0.9f) DangerRed else AccentCyan,
         animationSpec = tween(durationMillis = 500),
@@ -85,9 +111,20 @@ fun UsageLimitItem(
             .clickable { onClick() },
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isActive) AccentCyan.copy(alpha = 0.05f) else MaterialTheme.colorScheme.surfaceVariant
+            containerColor = if (effectiveActive) {
+                AccentCyan.copy(alpha = 0.05f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant
+            }
         ),
-        border = BorderStroke(1.dp, if (isActive) AccentCyan.copy(alpha = 0.2f) else MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+        border = BorderStroke(
+            1.dp,
+            if (effectiveActive) {
+                AccentCyan.copy(alpha = 0.2f)
+            } else {
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)
+            }
+        )
     ) {
         Row(
             modifier = Modifier.padding(12.dp),
@@ -112,29 +149,64 @@ fun UsageLimitItem(
                         .background(AccentCyan.copy(alpha = 0.2f)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(app.appName.take(1).uppercase(), color = AccentCyan, fontWeight = FontWeight.Bold)
+                    Text(
+                        app.appName.take(1).uppercase(),
+                        color = AccentCyan,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
 
             Spacer(modifier = Modifier.width(12.dp))
 
             Column(modifier = Modifier.weight(1f)) {
-                Text(app.appName, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.Bold, fontSize = 15.sp)
-                
+                Text(
+                    app.appName,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(
-                        stringResource(R.string.minutes_ratio, usageMin, app.currentLimitMinutes ?: 0),
-                        color = if (isActive) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
+                        stringResource(
+                            R.string.minutes_ratio,
+                            usageMin,
+                            app.currentLimitMinutes ?: 0
+                        ),
+                        color = if (effectiveActive) {
+                            MaterialTheme.colorScheme.onSurface
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
                         fontSize = 12.sp
                     )
                     Spacer(Modifier.weight(1f))
-                    if (progress >= 0.9f) {
-                        Text(stringResource(R.string.limits_usage_alert), color = DangerRed, fontSize = 10.sp, fontWeight = FontWeight.Bold)
-                    } else if (isActive) {
-                        Text(stringResource(R.string.limits_status_monitoring), color = AccentCyan, fontSize = 10.sp)
+                    if (progress >= 0.9f && effectiveActive) {
+                        Text(
+                            stringResource(R.string.limits_usage_alert),
+                            color = DangerRed,
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    } else if (effectiveActive) {
+                        Text(
+                            stringResource(R.string.limits_status_monitoring),
+                            color = AccentCyan,
+                            fontSize = 10.sp
+                        )
                     }
                 }
-                
+
+                behaviorStatus?.let { status ->
+                    Spacer(Modifier.height(2.dp))
+                    Text(
+                        text = status,
+                        color = if (ruleExpired) DangerRed else MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp
+                    )
+                }
+
                 if (app.currentLimitMinutes != null) {
                     Spacer(Modifier.height(4.dp))
                     LinearProgressIndicator(
@@ -149,10 +221,18 @@ fun UsageLimitItem(
             if (app.currentLimitMinutes != null && app.lockMode != "NONE") {
                 Spacer(Modifier.width(8.dp))
                 Icon(
-                    imageVector = if (app.lockMode == "PASSWORD") Icons.Default.Lock else Icons.Default.Security,
+                    imageVector = if (app.lockMode == "PASSWORD") {
+                        Icons.Default.Lock
+                    } else {
+                        Icons.Default.Security
+                    },
                     contentDescription = null,
                     modifier = Modifier.size(14.dp),
-                    tint = if (isActive) AccentCyan else MaterialTheme.colorScheme.onSurfaceVariant
+                    tint = if (effectiveActive) {
+                        AccentCyan
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    }
                 )
             }
         }
