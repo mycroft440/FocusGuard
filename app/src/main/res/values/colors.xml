@@ -5,6 +5,10 @@
   Os dois arquivos precisam bater: a barra de status e a barra de navegação do
   sistema saem daqui, e quando o valor divergia do fundo desenhado pelo Compose
   aparecia uma faixa mais clara colada no topo e no rodapé de toda tela.
+
+  Só três recursos daqui têm uso real hoje — dark_bg (styles.xml e o layout do
+  livro offline), text_primary e text_secondary (drawables). O resto existe para
+  quem precisar de um tom da paleta fora do Compose.
 -->
 <resources>
     <!-- Dark Theme Base -->
@@ -12,11 +16,6 @@
     <color name="dark_surface">#FF0E141B</color>
     <color name="dark_card">#FF141B23</color>
     <color name="dark_card_elevated">#FF10161D</color>
-
-    <!-- Gradient Colors -->
-    <color name="gradient_start">#FF8FE3F5</color>
-    <color name="gradient_mid">#FF5CCFE6</color>
-    <color name="gradient_end">#FF2C93AE</color>
 
     <!-- Accent Colors -->
     <color name="accent_cyan">#FF5CCFE6</color>

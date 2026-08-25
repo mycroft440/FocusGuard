@@ -136,20 +136,13 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
         isLoading = false
     }
 
-    // Como aba, esta tela vive dentro do halo que a MainScreen já pinta, e um
-    // halo próprio por cima dele criaria justamente o defeito que ele evita:
-    // uma base opaca apagaria o degradê de fora e um brilho novo recomeçaria em
-    // intensidade máxima logo abaixo da barra, com corte visível. Sozinha (com
-    // barra de título própria) ela é a dona do fundo e pinta o seu.
-    val ownsBackground = showTopBar
+    // Só pinta fundo quando é dona da tela — o que se reconhece por ela trazer a
+    // própria barra de título. Como aba, ela vive dentro do halo que a
+    // MainScreen já pinta e não deve pintar outro por cima.
     FocusGuardAmbientBackground(
         modifier = Modifier.fillMaxSize(),
-        baseColor = if (ownsBackground) {
-            MaterialTheme.colorScheme.background
-        } else {
-            Color.Transparent
-        },
-        glowColor = if (ownsBackground) AccentCyanWash else Color.Transparent
+        enabled = showTopBar,
+        baseColor = MaterialTheme.colorScheme.background
     ) {
         Scaffold(
             topBar = {

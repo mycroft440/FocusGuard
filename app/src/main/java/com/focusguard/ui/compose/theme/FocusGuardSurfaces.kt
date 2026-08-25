@@ -95,6 +95,7 @@ fun accentWashBrush(accent: Color): Brush = remember(accent) {
 @Composable
 fun FocusGuardAmbientBackground(
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     baseColor: Color = DarkBg,
     glowColor: Color = AccentCyanWash,
     content: @Composable BoxScope.() -> Unit
@@ -102,14 +103,20 @@ fun FocusGuardAmbientBackground(
     val glow = remember(glowColor) {
         Brush.verticalGradient(listOf(glowColor, Color.Transparent))
     }
-    Box(modifier = modifier.background(baseColor)) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(GlowHeight)
-                .align(Alignment.TopCenter)
-                .background(glow)
-        )
+    // [enabled] desligado é para a tela que aparece embutida em outra que já
+    // pinta o halo. Dois halos empilhados não somam brilho: o de dentro traz a
+    // própria base opaca, que apaga o de fora e recomeça no ponto mais claro,
+    // deixando um corte horizontal no meio da tela.
+    Box(modifier = if (enabled) modifier.background(baseColor) else modifier) {
+        if (enabled) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(GlowHeight)
+                    .align(Alignment.TopCenter)
+                    .background(glow)
+            )
+        }
         content()
     }
 }
@@ -164,11 +171,11 @@ fun FocusCard(
             .clip(shape)
             .background(brush)
             .border(border, shape)
-            // O clickable vem depois do fundo de propósito: aplicado antes, o
-            // brilho do toque seria desenhado por baixo e o cartão pareceria
-            // não responder. `role = Role.Button` é o que o Card clicável do
-            // Material 3 colocava sozinho — sem ele o TalkBack anuncia o cartão
-            // como texto e não avisa que dá para tocar.
+            // O clickable fica depois do fundo, e precisa continuar assim:
+            // aplicado antes, o brilho do toque seria desenhado por baixo e o
+            // cartão pareceria não responder. `role = Role.Button` é o que o
+            // Card clicável do Material 3 colocava sozinho — sem ele o TalkBack
+            // anuncia o cartão como texto e não avisa que dá para tocar.
             .clickable(
                 interactionSource = interactionSource,
                 indication = LocalIndication.current,

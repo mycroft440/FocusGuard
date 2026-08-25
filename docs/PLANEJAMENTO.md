@@ -12,12 +12,12 @@ executados depois do objetivo em andamento.
 | # | Objetivo | Status |
 |---|----------|--------|
 | 1 | Manter a cor principal do app azul ciano | cumprido |
-| 2 | Melhorar a aparência do app | em andamento |
+| 2 | Melhorar a aparência do app | cumprido |
 | 3 | Manter o relógio do pomodoro (sem alterações) | cumprido |
 | 4 | Manter a organização e os nomes dos bloqueios | cumprido |
 | 5 | Manter todas as funções (nada de lógica alterada) | cumprido |
-| 6 | Mexer apenas e exclusivamente na aparência | em andamento |
-| 7 | Revisão do agente supervisor até ele aprovar | em andamento (rodada 2) |
+| 6 | Mexer apenas e exclusivamente na aparência | cumprido |
+| 7 | Revisão do agente supervisor até ele aprovar | cumprido (aprovado na rodada 2) |
 
 ## Regras de trabalho definidas pelo usuário
 
@@ -66,3 +66,40 @@ Demais correções aplicadas a partir do parecer:
 - Tokens mortos removidos, entre eles `AccentBlue` — era azul, não ciano, e
   diluiria a identidade se entrasse em uso.
 - `dark_card_elevated` no XML estava espelhando o token errado.
+
+### Rodada 2 do supervisor — APROVADO
+
+Sem bloqueadores. Ele reconferiu, item a item: `bodyLarge` voltou ao
+comportamento antigo e o relógio do Pomodoro está intacto; os demais estilos com
+entrelinha não vazam porque nenhum é o estilo ambiente; o halo de Métricas está
+correto nos dois caminhos (como aba e como rota própria); a pílula vermelha
+subiu de 3.7:1 para 13.9:1 e ciano, âmbar e verde não regrediram; a ordem dos
+modificadores do `FocusCard` está certa; os 18 pontos de chamada dele não
+alternam entre clicável e não clicável, então os dois caminhos são estáveis.
+
+Ajustes finais dele, aplicados:
+- `gradient_start`/`gradient_end` no XML tinham ficado órfãos (eram o espelho
+  dos tokens removidos). Trio removido e o comentário do arquivo passou a dizer
+  quais recursos realmente têm uso.
+- `FocusGuardAmbientBackground` ganhou `enabled` — desligar o halo é mais
+  honesto que pintá-lo com cores invisíveis.
+- Comentário do `FocusCard` dizia "vem depois de propósito" quando o correto é
+  "precisa continuar depois".
+
+### Pendente de verificação em aparelho
+
+`headlineSmall` e `titleSmall` são estilos novos e alcançam telas que não foram
+revisadas visualmente: `headlineSmall` é o título de todo `AlertDialog` do
+Material 3 (~20 arquivos) e `titleSmall` é o rótulo das abas. Nenhum quebra
+layout pela medição, mas vale abrir um diálogo no aparelho antes de fechar.
+
+### Sugestões oferecidas ao usuário, não aplicadas
+
+1. Faixa preta da barra de status em Android 14 e anteriores. A correção
+   (`enableEdgeToEdge()`) muda o contrato de margens de todas as telas e há
+   caminhos sensíveis dependendo disso — é mudança de comportamento de janela
+   disfarçada de aparência.
+2. Repaginar Permissões, Lista de Sessões, Recuperação e Detalhe da Sessão.
+   Troca mecânica de `Card` por `FocusCard`, sem tocar em lógica.
+   Não repaginar: Modo de Foco, Configuração de Proteção e a cortina de
+   bloqueio — muito estado de permissão e segurança acoplado.
