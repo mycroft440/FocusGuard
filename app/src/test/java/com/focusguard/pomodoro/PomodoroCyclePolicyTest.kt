@@ -35,9 +35,9 @@ class PomodoroCyclePolicyTest {
     }
 
     @Test
-    fun `long break occurs on configured cadence`() {
+    fun `long break occurs on configured cadence within five session cap`() {
         val config = PomodoroPlanConfig(
-            targetSessions = 10,
+            targetSessions = 5,
             longBreakEvery = 3
         )
 
@@ -45,8 +45,7 @@ class PomodoroCyclePolicyTest {
             .isEqualTo(PomodoroPhase.SHORT_BREAK)
         assertThat(PomodoroCyclePolicy.nextBreakAfterFocus(config, 3))
             .isEqualTo(PomodoroPhase.LONG_BREAK)
-        assertThat(PomodoroCyclePolicy.nextBreakAfterFocus(config, 6))
-            .isEqualTo(PomodoroPhase.LONG_BREAK)
+        assertThat(PomodoroCyclePolicy.nextBreakAfterFocus(config, 5)).isNull()
     }
 
     @Test
@@ -81,7 +80,7 @@ class PomodoroCyclePolicyTest {
         assertThat(normalized.shortBreakMinutes).isEqualTo(120)
         assertThat(normalized.longBreakMinutes).isEqualTo(720)
         assertThat(normalized.longBreakEvery).isEqualTo(1)
-        assertThat(normalized.targetSessions).isEqualTo(100)
+        assertThat(normalized.targetSessions).isEqualTo(5)
         assertThat(normalized.alarmDurationSeconds).isEqualTo(1)
         assertThat(normalized.soundIndex).isEqualTo(9)
     }
