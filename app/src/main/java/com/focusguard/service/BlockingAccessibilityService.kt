@@ -21,6 +21,7 @@ import android.os.Looper
 import android.os.PowerManager
 import android.os.SystemClock
 import android.view.Gravity
+import android.view.KeyEvent
 import android.view.View
 import android.view.WindowManager
 import android.view.accessibility.AccessibilityEvent
@@ -35,6 +36,7 @@ import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.AppDatabase
+import com.focusguard.focusmode.FocusModeKioskController
 import com.focusguard.focusmode.FocusModePolicy
 import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.manager.BlockingSessionManager
@@ -466,7 +468,8 @@ class BlockingAccessibilityService : AccessibilityService() {
             feedbackType = AccessibilityServiceInfo.FEEDBACK_GENERIC
             flags = flags or AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or
                 AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS or
-                AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS
+                AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
+                AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
             notificationTimeout = EVENT_NOTIFICATION_TIMEOUT_MILLIS
         }
         syncWarmOverlays()
@@ -747,7 +750,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 return
             }
 
-            val focusLauncherMustReturn = focusModeFallbackActive &&
+            val focusLauncherMustReturn = focusModeSessionActive &&
                 packageName == defaultLauncherPackage
             if (packageName in focusModeAllowedAppsSet && !focusLauncherMustReturn) {
                 stopWebsiteTracking(now)
@@ -845,6 +848,39 @@ class BlockingAccessibilityService : AccessibilityService() {
         // Android-owned power window disappeared. Keep shielding until the
         // controller confirms absence through its normal window recheck.
         protectedPowerMenuController?.onFeedbackInterrupted()
+    }
+
+    override fun onKeyEvent(event: KeyEvent): Boolean {
+        val isBackOrHomeKey = event.keyCode == KeyEvent.KEYCODE_BACK ||
+            event.keyCode == KeyEvent.KEYCODE_HOME
+        if (!isBackOrHomeKey) return false
+
+        // The device-protected store is the fail-closed source during process
+        // recreation and immediately after boot; the volatile flag is the fast path.
+        val focusModeActiveNow = focusModeSessionActive ||
+            FocusModeStore.isActive(applicationContext)
+        if (focusModeActiveNow && !focusModeSessionActive) {
+            refreshFocusModeFallbackState()
+        }
+
+        return when (FocusModePolicy.focusNavigationKeyDecision(
+            focusModeActive = focusModeActiveNow,
+            focusGuardForeground = foregroundPackageName == packageName,
+            powerMenuVisible = protectedPowerMenuController?.isVisible() == true,
+            isBackOrHomeKey = true,
+            actionDown = event.action == KeyEvent.ACTION_DOWN,
+            repeatCount = event.repeatCount
+        )) {
+            FocusModePolicy.NavigationKeyDecision.PASS -> false
+            FocusModePolicy.NavigationKeyDecision.CONSUME -> true
+            FocusModePolicy.NavigationKeyDecision.RETURN_TO_FOCUS_GUARD -> {
+                val generation = showInstantBlockCurtain(mode = CurtainMode.BLOCK_NOTICE)
+                awaitingSafeSurfaceGeneration = generation
+                val restored = FocusModeKioskController.launchFocusGuardHome(this)
+                if (!restored) beginCurtainEvacuationBeforeHide(generation)
+                true
+            }
+        }
     }
 
     private fun refreshData() {
@@ -1111,7 +1147,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                 foregroundPackage = packageName,
                 focusGuardPackage = this.packageName,
                 launcherPackage = defaultLauncherPackage,
-                focusModeBlockedPackages = focusModeBlockedAppsSet
+                focusModeBlockedPackages = focusModeBlockedAppsSet,
+                focusModeActive = focusModeSessionActive
             )
         ) {
             redirectToFocusGuard(packageName, event.eventTime)
@@ -1732,7 +1769,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         evictBlockedAppFromForeground()
         FocusGuardLogger.log(
             "FocusMode",
-            "Modo consumidor redirecionou $blockedPackage para o FocusGuard"
+            "Modo Foco redirecionou $blockedPackage para o HardBlock"
         )
         runCatching {
             startActivity(
@@ -1745,6 +1782,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                     )
                     putExtra(EXTRA_CURTAIN_GENERATION, generation)
                     putExtra(EXTRA_BLOCK_EVENT_UPTIME_MILLIS, eventUptimeMillis)
+                    putExtra(FocusModeKioskController.EXTRA_RESTORE_FOCUS_MODE, true)
                 }
             )
         }.onFailure { error ->
