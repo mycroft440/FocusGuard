@@ -99,7 +99,6 @@ import com.focusguard.ui.compose.theme.SuccessGreen
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
-import java.util.Locale
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 import kotlin.math.PI
@@ -306,19 +305,13 @@ fun PomodoroScreen(
                     fontWeight = FontWeight.SemiBold
                 )
 
-                PomodoroDurationDial(
+                PomodoroReferenceClock(
                     minutes = config.focusMinutes.coerceIn(1, 180),
                     maxMinutes = 180,
                     activeProgress = null,
+                    remainingMillis = config.focusMinutes.coerceAtLeast(1) * 60_000L,
                     onMinutesChange = { saveConfig(config.copy(focusMinutes = it)) },
                     modifier = Modifier.size(if (compactLayout) 180.dp else 205.dp)
-                )
-
-                Text(
-                    formatMinutes(config.focusMinutes),
-                    color = TextPrimary,
-                    fontSize = 30.sp,
-                    fontWeight = FontWeight.Bold
                 )
 
                 CurrentPlanSummary(config)
@@ -419,7 +412,6 @@ private fun ActivePomodoroPanel(
 ) {
     val totalSeconds = (timeLeftMillis / 1_000L).coerceAtLeast(0L)
     val minutes = totalSeconds / 60L
-    val seconds = totalSeconds % 60L
     val progress = if (durationMillis > 0L) {
         (timeLeftMillis.toFloat() / durationMillis.toFloat()).coerceIn(0f, 1f)
     } else {
@@ -434,18 +426,13 @@ private fun ActivePomodoroPanel(
     )
 
     Text(phaseLabel, color = AccentCyan, fontSize = 20.sp, fontWeight = FontWeight.Bold)
-    PomodoroDurationDial(
+    PomodoroReferenceClock(
         minutes = minutes.toInt().coerceAtLeast(1),
         maxMinutes = 60,
         activeProgress = progress,
+        remainingMillis = timeLeftMillis,
         onMinutesChange = {},
         modifier = Modifier.size(205.dp)
-    )
-    Text(
-        String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds),
-        color = TextPrimary,
-        fontSize = 34.sp,
-        fontWeight = FontWeight.Bold
     )
     Text(
         if (targetSessions == 0) {
