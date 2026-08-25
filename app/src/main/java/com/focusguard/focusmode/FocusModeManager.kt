@@ -209,6 +209,90 @@ class FocusModeManager @Inject constructor(
         }
     }
 
+    suspend fun addAllowedPackages(packageNames: Set<String>): Boolean = mutationMutex.withLock {
+        val stored = FocusModeStore.readSession(context) ?: return@withLock false
+        if (!stored.isActive()) return@withLock false
+
+        val launchableApps = withContext(Dispatchers.IO) {
+            FocusModeAppCatalog.loadLaunchableApps(context)
+        }
+        val launchablePackages = launchableApps.mapTo(mutableSetOf()) { it.packageName }
+        val additions = packageNames
+            .intersect(launchablePackages)
+            .filterNotTo(mutableSetOf(), stored.allowedPackages::contains)
+        if (additions.isEmpty()) return@withLock true
+
+        val updatedAllowedPackages = stored.allowedPackages + additions
+        val updatedBlockedPackages = FocusModePolicy.packagesToBlock(
+            launchablePackages = launchablePackages,
+            allowedPackages = updatedAllowedPackages
+        )
+        val updated = stored.copy(
+            allowedPackages = updatedAllowedPackages,
+            blockedPackages = updatedBlockedPackages,
+            nonSuspendablePackages = stored.nonSuspendablePackages - additions
+        )
+        if (!FocusModeStore.saveSession(context, updated)) return@withLock false
+
+        try {
+            val nativeFocusLockdownActive = FocusModePolicy.usesNativeFocusLockdown(
+                deviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive(),
+                systemLockdownSupported =
+                    deviceOwnerManager.isFocusModeSystemLockdownSupported()
+            )
+            if (nativeFocusLockdownActive) {
+                check(deviceOwnerManager.prepareFocusModeLockTaskPackages(updatedAllowedPackages))
+            }
+            blockingSessionManager.checkAndEnforceStrict()
+            val nonSuspendable = if (nativeFocusLockdownActive) {
+                updatedBlockedPackages.filterNotTo(mutableSetOf()) {
+                    deviceOwnerManager.isPackageSuspendedByFocusMode(it)
+                }
+            } else {
+                emptySet()
+            }
+            val verifiedSession = FocusModeStore.updateNonSuspendablePackages(
+                context,
+                nonSuspendable
+            ) ?: updated.copy(nonSuspendablePackages = nonSuspendable)
+            val mandatoryPackages = FocusModeAppCatalog.mandatoryPackages(context)
+            saveDraftPackages(
+                FocusModePolicy.visibleAllowedPackages(
+                    launchablePackages = launchablePackages,
+                    allowedPackages = verifiedSession.allowedPackages,
+                    mandatoryPackages = mandatoryPackages
+                )
+            )
+            FocusModeNotificationService.requestRefresh(context)
+            _session.value = verifiedSession
+            true
+        } catch (cancelled: CancellationException) {
+            FocusModeStore.saveSession(context, stored)
+            _session.value = stored
+            throw cancelled
+        } catch (error: Exception) {
+            FocusGuardLogger.logError(
+                "FocusMode",
+                "Falha ao adicionar apps durante o Modo Foco; restaurando sessão anterior",
+                error
+            )
+            FocusModeStore.saveSession(context, stored)
+            runCatching {
+                val nativeFocusLockdownActive = FocusModePolicy.usesNativeFocusLockdown(
+                    deviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive(),
+                    systemLockdownSupported =
+                        deviceOwnerManager.isFocusModeSystemLockdownSupported()
+                )
+                if (nativeFocusLockdownActive) {
+                    check(deviceOwnerManager.prepareFocusModeLockTaskPackages(stored.allowedPackages))
+                }
+                blockingSessionManager.checkAndEnforceStrict()
+            }
+            _session.value = stored
+            false
+        }
+    }
+
     suspend fun ensureEnforced(): Boolean = mutationMutex.withLock {
         val stored = FocusModeStore.readSession(context)
         if (stored == null) {
