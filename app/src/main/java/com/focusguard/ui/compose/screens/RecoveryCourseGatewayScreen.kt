@@ -39,6 +39,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -126,16 +127,20 @@ private fun RecoveryCourseIntroScreen(
     totalSteps: Int,
     onStart: () -> Unit
 ) {
-    val primary = MaterialTheme.colorScheme.primary
     val background = MaterialTheme.colorScheme.background
     val onBackground = MaterialTheme.colorScheme.onBackground
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val lavender = Color(0xFFB9BEF8)
-    val lavenderDim = Color(0xFF8E95D8)
     val cyanSoft = Color(0xFF93D6EA)
     val cyan = Color(0xFF4FC9DE)
     val coral = Color(0xFFF08A6E)
     val ink = Color(0xFF1B2140)
+
+    val punchPrefix = stringResource(R.string.recovery_course_punch_prefix)
+    val punchResist = stringResource(R.string.recovery_course_punch_resist)
+    val punchBridge = stringResource(R.string.recovery_course_punch_bridge)
+    val punchGoal = stringResource(R.string.recovery_course_punch_goal)
+    val punchEnd = stringResource(R.string.recovery_course_punch_end)
 
     var noteExpanded by remember { mutableStateOf(false) }
 
@@ -204,16 +209,16 @@ private fun RecoveryCourseIntroScreen(
 
             Text(
                 text = buildAnnotatedString {
-                    append(stringResource(R.string.recovery_course_punch_prefix))
+                    append(punchPrefix)
                     pushStyle(
                         SpanStyle(
                             color = coral,
                             textDecoration = TextDecoration.LineThrough
                         )
                     )
-                    append(stringResource(R.string.recovery_course_punch_resist))
+                    append(punchResist)
                     pop()
-                    append(stringResource(R.string.recovery_course_punch_bridge))
+                    append(punchBridge)
                     pushStyle(
                         SpanStyle(
                             color = cyanSoft,
@@ -221,9 +226,9 @@ private fun RecoveryCourseIntroScreen(
                             fontWeight = FontWeight.ExtraBold
                         )
                     )
-                    append(stringResource(R.string.recovery_course_punch_goal))
+                    append(punchGoal)
                     pop()
-                    append(stringResource(R.string.recovery_course_punch_end))
+                    append(punchEnd)
                 },
                 color = onBackground.copy(alpha = 0.94f),
                 fontSize = if (compact) 16.sp else 19.sp,
