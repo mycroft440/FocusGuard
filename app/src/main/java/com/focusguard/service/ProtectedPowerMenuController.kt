@@ -458,9 +458,7 @@ class ProtectedPowerMenuController(
             isFocusable = true
             background = cancelBackground()
             setOnClickListener {
-                // Keep shielding System UI until a later recheck proves the
-                // native power window is gone.
-                requestNativeBackClose()
+                requestExplicitCancelClose()
             }
             setOnLongClickListener { true }
         }, LinearLayout.LayoutParams(
@@ -925,11 +923,29 @@ class ProtectedPowerMenuController(
         recycleSafely(root)
     }
 
+    private fun requestExplicitCancelClose() {
+        if (!overlayVisible) return
+        closeStage = CloseStage.BACK_REQUESTED
+        closeStageAtElapsed = SystemClock.elapsedRealtime()
+        val globalBackAccepted =
+            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        if (!globalBackAccepted) {
+            requestNativeHomeClose()
+            return
+        }
+        scheduleRecheck()
+    }
+
     private fun requestNativeBackClose() {
         if (!overlayVisible || closeStage != CloseStage.NONE) return
         closeStage = CloseStage.BACK_REQUESTED
         closeStageAtElapsed = SystemClock.elapsedRealtime()
-        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        val globalBackAccepted =
+            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
+        if (!globalBackAccepted) {
+            requestNativeHomeClose()
+            return
+        }
         scheduleRecheck()
     }
 
@@ -1030,8 +1046,8 @@ class ProtectedPowerMenuController(
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
 
         internal fun visibleFlags(flags: Int): Int =
-            flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv() and
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+            (flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()) or
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
 
         internal fun shouldScheduleRecheck(alreadyScheduled: Boolean): Boolean =
             !alreadyScheduled
