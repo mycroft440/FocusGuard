@@ -5,6 +5,7 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
 import com.focusguard.database.BlockSession
 import com.focusguard.manager.BlockingSessionManager
@@ -38,9 +39,13 @@ class BlockingScheduleReceiver : BroadcastReceiver() {
     companion object {
         private const val ACTION_RECONCILE_BLOCKING =
             "com.focusguard.ACTION_RECONCILE_BLOCKING"
+        private const val ACTION_USAGE_LIMIT_PAUSE_END =
+            "com.focusguard.ACTION_USAGE_LIMIT_PAUSE_END"
         private const val REQUEST_CODE = 4102
+        private const val USAGE_LIMIT_PAUSE_REQUEST_CODE = 4103
         private val SUPPORTED_ACTIONS = setOf(
             ACTION_RECONCILE_BLOCKING,
+            ACTION_USAGE_LIMIT_PAUSE_END,
             Intent.ACTION_MY_PACKAGE_REPLACED,
             Intent.ACTION_TIME_CHANGED,
             Intent.ACTION_TIMEZONE_CHANGED
@@ -71,38 +76,85 @@ class BlockingScheduleReceiver : BroadcastReceiver() {
                 return
             }
 
+            scheduleExactOrFallback(
+                alarmManager = alarmManager,
+                atMillis = nextBoundary,
+                operation = operation,
+                fallbackLogLabel = "mudança de janela"
+            )
+        }
+
+        /**
+         * A pausa de limite de uso tem um alarme independente por aplicativo. O URI faz cada
+         * PendingIntent ser único, então duas pausas simultâneas não substituem uma à outra.
+         */
+        fun scheduleUsageLimitPauseEnd(
+            context: Context,
+            identifier: String,
+            atMillis: Long
+        ) {
+            if (identifier.isBlank() || atMillis <= System.currentTimeMillis()) return
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+                ?: return
+            val operation = PendingIntent.getBroadcast(
+                context,
+                USAGE_LIMIT_PAUSE_REQUEST_CODE,
+                Intent(context, BlockingScheduleReceiver::class.java).apply {
+                    action = ACTION_USAGE_LIMIT_PAUSE_END
+                    data = Uri.Builder()
+                        .scheme("focusguard")
+                        .authority("usage-limit-pause")
+                        .appendPath(identifier)
+                        .build()
+                },
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            scheduleExactOrFallback(
+                alarmManager = alarmManager,
+                atMillis = atMillis,
+                operation = operation,
+                fallbackLogLabel = "fim da pausa de limite de uso"
+            )
+        }
+
+        private fun scheduleExactOrFallback(
+            alarmManager: AlarmManager,
+            atMillis: Long,
+            operation: PendingIntent,
+            fallbackLogLabel: String
+        ) {
             try {
                 val exactAllowed = Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
                     alarmManager.canScheduleExactAlarms()
                 if (exactAllowed) {
                     alarmManager.setExactAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
-                        nextBoundary,
+                        atMillis,
                         operation
                     )
                 } else {
                     alarmManager.setAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
-                        nextBoundary,
+                        atMillis,
                         operation
                     )
                 }
             } catch (error: SecurityException) {
                 FocusGuardLogger.logError(
                     "BlockingSchedule",
-                    "Alarme exato indisponível; usando reconciliação inexata",
+                    "Alarme exato indisponível para $fallbackLogLabel; usando reconciliação inexata",
                     error
                 )
                 runCatching {
                     alarmManager.setAndAllowWhileIdle(
                         AlarmManager.RTC_WAKEUP,
-                        nextBoundary,
+                        atMillis,
                         operation
                     )
                 }.onFailure {
                     FocusGuardLogger.logError(
                         "BlockingSchedule",
-                        "Falha ao agendar reconciliação inexata",
+                        "Falha ao agendar $fallbackLogLabel",
                         it
                     )
                 }
