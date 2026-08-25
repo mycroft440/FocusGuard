@@ -390,7 +390,7 @@ fun AppLimitsTab(
     }
 
     if (showDialog && selectedApp != null) {
-        AppLimitDialog(
+        AppLimitRedesignedSheet(
             app = selectedApp!!,
             permissionsMissing = permissionsMissing,
             hasMasterCredential = hasMasterCredential,
