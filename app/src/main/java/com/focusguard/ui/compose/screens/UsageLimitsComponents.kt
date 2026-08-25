@@ -52,6 +52,7 @@ import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
+import com.focusguard.utils.UsageLimitBehaviorPolicy
 import com.focusguard.utils.WebsiteBlocker
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -265,6 +266,7 @@ private fun limitFieldColors() = OutlinedTextFieldDefaults.colors(
     focusedTextColor = MaterialTheme.colorScheme.onSurface
 )
 
+@Suppress("UNUSED_PARAMETER")
 @Composable
 fun AppLimitDialog(
     app: UsageLimitAppUi,
@@ -275,11 +277,58 @@ fun AppLimitDialog(
     onSave: (Int?, Boolean, String, String?, Long?) -> Unit
 ) {
     val editMode = app.currentLimitMinutes != null
-    var hours by remember { mutableStateOf(if (editMode) "" else "") }
-    var lockMode by remember { mutableStateOf(if (editMode) app.lockMode else "NONE") }
-    var days by remember { mutableStateOf("") }
-    var confirmed by remember { mutableStateOf(lockMode == "NONE") }
-    var extensionDays by remember { mutableStateOf("") }
+    val now = System.currentTimeMillis()
+    val remainingDays = app.lockUntilTimestamp
+        ?.takeIf { it > now }
+        ?.let { ((it - now + TimeUnit.DAYS.toMillis(1) - 1L) / TimeUnit.DAYS.toMillis(1)).toInt() }
+        ?.coerceAtLeast(1)
+        ?: 1
+
+    var dailyMinutes by remember(app.packageName, app.currentLimitMinutes) {
+        mutableStateOf(app.currentLimitMinutes?.toString().orEmpty())
+    }
+    var behavior by remember(app.packageName, app.lockMode) {
+        mutableStateOf(
+            if (UsageLimitBehaviorPolicy.isPauseMode(app.lockMode)) {
+                UsageLimitBehaviorPolicy.PAUSE_30_PREFIX
+            } else {
+                UsageLimitBehaviorPolicy.BLOCK_UNTIL_TOMORROW_PREFIX
+            }
+        )
+    }
+    var durationAmount by remember(app.packageName, app.lockUntilTimestamp) {
+        mutableStateOf(if (editMode) remainingDays.toString() else "1")
+    }
+    var durationUnit by remember(app.packageName, app.lockUntilTimestamp) {
+        mutableStateOf(
+            if (editMode) UsageLimitBehaviorPolicy.RuleDurationUnit.DAYS
+            else UsageLimitBehaviorPolicy.RuleDurationUnit.MONTHS
+        )
+    }
+
+    val enteredMinutes = dailyMinutes.toIntOrNull() ?: 0
+    val enteredDuration = durationAmount.toIntOrNull() ?: 0
+    val ruleEnd = UsageLimitBehaviorPolicy.calculateRuleEndMillis(
+        nowMillis = now,
+        amount = enteredDuration,
+        unit = durationUnit
+    )
+    val canSave = enteredMinutes > 0 && enteredDuration > 0 && ruleEnd != null
+    val pauseLabel = stringResource(R.string.limits_pause_30_option)
+    val dailyBlockLabel = stringResource(R.string.limits_block_tomorrow_option)
+    val daysLabel = stringResource(R.string.limits_duration_days)
+    val weeksLabel = stringResource(R.string.limits_duration_weeks)
+    val monthsLabel = stringResource(R.string.limits_duration_months)
+    val selectedBehaviorLabel = if (behavior == UsageLimitBehaviorPolicy.PAUSE_30_PREFIX) {
+        pauseLabel
+    } else {
+        dailyBlockLabel
+    }
+    val durationUnitLabel = when (durationUnit) {
+        UsageLimitBehaviorPolicy.RuleDurationUnit.DAYS -> daysLabel
+        UsageLimitBehaviorPolicy.RuleDurationUnit.WEEKS -> weeksLabel
+        UsageLimitBehaviorPolicy.RuleDurationUnit.MONTHS -> monthsLabel
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -295,84 +344,160 @@ fun AppLimitDialog(
         text = {
             Column(Modifier.verticalScroll(rememberScrollState())) {
                 PermissionWarning(permissionsMissing)
-                if (editMode) {
-                    LimitSummary(
-                        label = stringResource(R.string.limits_daily_time_label),
-                        minutes = app.currentLimitMinutes ?: 0,
-                        lockUntil = app.lockUntilTimestamp
+
+                Text(
+                    stringResource(R.string.limits_daily_max_title),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = dailyMinutes,
+                    onValueChange = { raw -> dailyMinutes = raw.filter(Char::isDigit).take(4) },
+                    label = { Text(stringResource(R.string.limits_daily_max_minutes_label)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = dailyMinutes.isNotEmpty() && enteredMinutes <= 0,
+                    colors = limitFieldColors()
+                )
+
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    stringResource(R.string.limits_after_reaching_title),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                SecurityChoice(
+                    selected = behavior == UsageLimitBehaviorPolicy.PAUSE_30_PREFIX,
+                    label = pauseLabel,
+                    description = stringResource(R.string.limits_pause_30_desc),
+                    onClick = { behavior = UsageLimitBehaviorPolicy.PAUSE_30_PREFIX }
+                )
+                Spacer(Modifier.height(8.dp))
+                SecurityChoice(
+                    selected = behavior == UsageLimitBehaviorPolicy.BLOCK_UNTIL_TOMORROW_PREFIX,
+                    label = dailyBlockLabel,
+                    description = stringResource(R.string.limits_block_tomorrow_desc),
+                    onClick = { behavior = UsageLimitBehaviorPolicy.BLOCK_UNTIL_TOMORROW_PREFIX }
+                )
+
+                Spacer(Modifier.height(20.dp))
+                Text(
+                    stringResource(R.string.limits_rule_duration_title),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
+                )
+                Spacer(Modifier.height(8.dp))
+                OutlinedTextField(
+                    value = durationAmount,
+                    onValueChange = { raw -> durationAmount = raw.filter(Char::isDigit).take(3) },
+                    label = { Text(stringResource(R.string.limits_duration_amount_label)) },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                    isError = durationAmount.isNotEmpty() && enteredDuration <= 0,
+                    colors = limitFieldColors()
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = durationUnit == UsageLimitBehaviorPolicy.RuleDurationUnit.DAYS,
+                        onClick = { durationUnit = UsageLimitBehaviorPolicy.RuleDurationUnit.DAYS },
+                        label = { Text(daysLabel) },
+                        modifier = Modifier.weight(1f),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = AccentCyan.copy(alpha = 0.20f),
+                            selectedLabelColor = AccentCyan
+                        )
                     )
-                    OutlinedTextField(
-                        value = extensionDays,
-                        onValueChange = { if (it.all(Char::isDigit)) extensionDays = it },
-                        label = { Text(stringResource(R.string.limits_add_more_days)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    FilterChip(
+                        selected = durationUnit == UsageLimitBehaviorPolicy.RuleDurationUnit.WEEKS,
+                        onClick = { durationUnit = UsageLimitBehaviorPolicy.RuleDurationUnit.WEEKS },
+                        label = { Text(weeksLabel) },
+                        modifier = Modifier.weight(1f),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = AccentCyan.copy(alpha = 0.20f),
+                            selectedLabelColor = AccentCyan
+                        )
+                    )
+                    FilterChip(
+                        selected = durationUnit == UsageLimitBehaviorPolicy.RuleDurationUnit.MONTHS,
+                        onClick = { durationUnit = UsageLimitBehaviorPolicy.RuleDurationUnit.MONTHS },
+                        label = { Text(monthsLabel) },
+                        modifier = Modifier.weight(1f),
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = AccentCyan.copy(alpha = 0.20f),
+                            selectedLabelColor = AccentCyan
+                        )
+                    )
+                }
+
+                if (editMode && app.lockUntilTimestamp?.let { it > now } == true) {
+                    Spacer(Modifier.height(12.dp))
+                    val formatted = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+                        .format(Date(requireNotNull(app.lockUntilTimestamp)))
+                    Text(
+                        stringResource(R.string.limits_rule_current_until, formatted),
+                        color = TextHint,
+                        fontSize = 11.sp
+                    )
+                }
+
+                if (canSave) {
+                    Spacer(Modifier.height(14.dp))
+                    Card(
                         modifier = Modifier.fillMaxWidth(),
-                        colors = limitFieldColors()
-                    )
-                } else {
-                    OutlinedTextField(
-                        value = hours,
-                        onValueChange = { value ->
-                            if (value.isEmpty() || value.replace(',', '.').toDoubleOrNull() != null) {
-                                hours = value
-                            }
-                        },
-                        label = { Text(stringResource(R.string.limits_daily_hours_label)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                        modifier = Modifier.fillMaxWidth(),
-                        colors = limitFieldColors()
-                    )
-                    Spacer(Modifier.height(20.dp))
-                    LimitSecuritySection(
-                        lockMode = lockMode,
-                        onLockModeChange = { lockMode = it },
-                        days = days,
-                        onDaysChange = { days = it },
-                        hasMasterCredential = hasMasterCredential,
-                        onConfigureMasterPassword = onConfigureMasterPassword,
-                        onConfirmed = { confirmed = it }
-                    )
+                        colors = CardDefaults.cardColors(
+                            containerColor = AccentCyan.copy(alpha = 0.08f)
+                        ),
+                        border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.22f)),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text(
+                            text = stringResource(
+                                R.string.limits_rule_summary,
+                                enteredMinutes,
+                                selectedBehaviorLabel,
+                                enteredDuration,
+                                durationUnitLabel
+                            ),
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(12.dp)
+                        )
+                    }
                 }
             }
         },
         confirmButton = {
-            val enteredMinutes = (hours.replace(',', '.').toDoubleOrNull()?.times(60))?.toInt() ?: 0
-            val canSave = if (editMode) extensionDays.toLongOrNull()?.let { it > 0 } == true
-            else enteredMinutes > 0 && (lockMode == "NONE" || confirmed)
             TextButton(
                 enabled = canSave,
                 onClick = {
-                    if (editMode) {
-                        val extraDays = extensionDays.toLongOrNull() ?: return@TextButton
-                        val base = maxOf(app.lockUntilTimestamp ?: 0L, System.currentTimeMillis())
-                        onSave(
-                            app.currentLimitMinutes,
-                            app.isEnabled,
-                            "TIME",
-                            app.lockPasswordHash,
-                            base + TimeUnit.DAYS.toMillis(extraDays)
-                        )
+                    val persistedMode = if (behavior == UsageLimitBehaviorPolicy.PAUSE_30_PREFIX) {
+                        UsageLimitBehaviorPolicy.pauseModeFor(app.packageName)
                     } else {
-                        val until = days.toLongOrNull()
-                            ?.takeIf { lockMode == "TIME" && it > 0L }
-                            ?.let { System.currentTimeMillis() + TimeUnit.DAYS.toMillis(it) }
-                        onSave(enteredMinutes, true, lockMode, null, until)
+                        UsageLimitBehaviorPolicy.blockUntilTomorrowModeFor(app.packageName)
                     }
+                    onSave(enteredMinutes, true, persistedMode, null, ruleEnd)
                 }
             ) {
-                Text(
-                    if (editMode) stringResource(R.string.limits_extend_btn)
-                    else stringResource(R.string.save),
-                    color = if (canSave) AccentCyan else TextHint
-                )
+                Text(stringResource(R.string.save), color = if (canSave) AccentCyan else TextHint)
             }
         },
         dismissButton = {
-            if (editMode && (app.lockUntilTimestamp == null || app.lockUntilTimestamp <= System.currentTimeMillis())) {
-                TextButton(onClick = { onSave(null, false, "NONE", null, null) }) {
-                    Text(stringResource(R.string.sessions_remove_item), color = DangerRed)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (editMode) {
+                    TextButton(onClick = { onSave(null, false, "NONE", null, null) }) {
+                        Text(stringResource(R.string.sessions_remove_item), color = DangerRed)
+                    }
                 }
-            } else {
                 TextButton(onClick = onDismiss) {
                     Text(stringResource(R.string.pomodoro_cancel_btn), color = TextHint)
                 }
