@@ -47,7 +47,9 @@ class BootReceiver : BroadcastReceiver() {
         val deviceOwnerManager = DeviceOwnerManager.getInstance(context)
         if (isDirectBoot) {
             // Room, Keystore and normal SharedPreferences are still unavailable here.
-            // Native Device Owner policy restores app-removal protection before unlock.
+            // Restore only native Device Owner policies before unlock. MainActivity
+            // is intentionally not Direct-Boot-aware, so the temporary Home surface
+            // is restored later by ensureEnforced() after BOOT_COMPLETED.
             // USB and ADB intentionally remain outside FocusGuard's restriction set.
             deviceOwnerManager.applyDirectBootShield()
             deviceOwnerManager.applyFocusModeAtDirectBoot()
@@ -124,6 +126,10 @@ class BootReceiver : BroadcastReceiver() {
                                     Intent.FLAG_ACTIVITY_NEW_TASK or
                                         Intent.FLAG_ACTIVITY_CLEAR_TOP or
                                         Intent.FLAG_ACTIVITY_SINGLE_TOP
+                                )
+                                putExtra(
+                                    FocusModeKioskController.EXTRA_RESTORE_FOCUS_MODE,
+                                    true
                                 )
                             }
                         )

@@ -70,6 +70,19 @@
             </intent-filter>
         </activity>
 
+        <!-- Enabled only during an active Device Owner Focus Mode session. -->
+        <activity-alias
+            android:name=".focusmode.FocusModeHomeActivity"
+            android:enabled="false"
+            android:exported="true"
+            android:targetActivity=".MainActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity-alias>
+
         <activity
             android:name=".ui.PomodoroLockActivity"
             android:excludeFromRecents="true"

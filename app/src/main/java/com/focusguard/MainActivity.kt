@@ -10,6 +10,7 @@ import android.view.View
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.core.view.doOnPreDraw
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
@@ -47,6 +48,7 @@ class MainActivity : AppCompatActivity() {
     private var windowFocused = false
     private var pendingCurtainGeneration = 0L
     private var freshFrameGeneration = 0L
+    private val focusModeReturnNonce = mutableLongStateOf(0L)
 
     /**
      * Last-resort Back guard for every FocusGuard screen. Compose screens keep
@@ -63,6 +65,7 @@ class MainActivity : AppCompatActivity() {
             }
 
             FocusGuardLogger.log("FocusMode", "Voltar interceptado pelo shell do Modo Foco")
+            requestFocusModeHomeSurface()
             FocusModeKioskController.reconcileSystemRestrictions(this@MainActivity)
             enforceFocusModeLockTask()
         }
@@ -87,6 +90,7 @@ class MainActivity : AppCompatActivity() {
         pomodoroManager = PomodoroManager.getInstance(applicationContext)
         onBackPressedDispatcher.addCallback(this, focusModeBackGuard)
         updateFocusModeBackGuard()
+        consumeFocusModeReturnIntent(intent)
         FocusModeKioskController.reconcileSystemRestrictions(this)
 
         FocusGuardLogger.log("MainActivity", "Managers inicializados com sucesso")
@@ -98,6 +102,7 @@ class MainActivity : AppCompatActivity() {
                     authManager = authManager,
                     pomodoroManager = pomodoroManager,
                     focusModeManager = focusModeManager,
+                    focusModeReturnNonce = focusModeReturnNonce.longValue,
                     onEnforceFocusModeLockTask = ::enforceFocusModeLockTask
                 )
             }
@@ -114,6 +119,7 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        consumeFocusModeReturnIntent(intent)
         updateFocusModeBackGuard()
         enforceFocusModeLockTask()
         notifyCurtainWhenDrawn(intent)
@@ -171,6 +177,21 @@ class MainActivity : AppCompatActivity() {
                     )
                 }
         }
+    }
+
+    private fun requestFocusModeHomeSurface() {
+        focusModeReturnNonce.longValue = focusModeReturnNonce.longValue + 1L
+    }
+
+    private fun consumeFocusModeReturnIntent(sourceIntent: Intent) {
+        if (!focusModeManager.isActive()) return
+        val explicitRestore = sourceIntent.getBooleanExtra(
+            FocusModeKioskController.EXTRA_RESTORE_FOCUS_MODE,
+            false
+        )
+        val homeIntent = sourceIntent.action == Intent.ACTION_MAIN &&
+            sourceIntent.categories?.contains(Intent.CATEGORY_HOME) == true
+        if (explicitRestore || homeIntent) requestFocusModeHomeSurface()
     }
 
     private fun updateFocusModeBackGuard() {

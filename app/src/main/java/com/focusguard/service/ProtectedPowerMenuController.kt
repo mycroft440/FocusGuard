@@ -68,7 +68,7 @@ class ProtectedPowerMenuController(
     private var overlay: View? = null
     private var overlayParams: WindowManager.LayoutParams? = null
     private var overlayAttached = false
-    private var overlayVisible = false
+    @Volatile private var overlayVisible = false
     private var overlayShownAtElapsed = 0L
     private var directSignalActive = false
     private var directMatchedWindowId = -1
@@ -80,6 +80,8 @@ class ProtectedPowerMenuController(
     private var recheckScheduled = false
     private var protectionActive = false
     private var statusText: TextView? = null
+
+    fun isVisible(): Boolean = overlayVisible
 
     fun handleAccessibilityEvent(
         event: AccessibilityEvent,

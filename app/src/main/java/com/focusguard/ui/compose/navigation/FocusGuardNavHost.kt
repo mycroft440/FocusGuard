@@ -82,6 +82,7 @@ fun FocusGuardNavHost(
     authManager: AuthManager,
     pomodoroManager: PomodoroManager,
     focusModeManager: FocusModeManager,
+    focusModeReturnNonce: Long = 0L,
     onEnforceFocusModeLockTask: () -> Unit
 ) {
     var isUnlocked by remember { mutableStateOf<Boolean?>(null) }
@@ -124,7 +125,9 @@ fun FocusGuardNavHost(
 
     var currentRoute by remember { mutableStateOf(FocusGuardRoute.Home) }
     var selectedBlockType by remember { mutableStateOf(BlockTypeUi.PASSWORD) }
-    var selectedTab by remember { mutableIntStateOf(1) }
+    var selectedTab by remember {
+        mutableIntStateOf(if (focusModeManager.isActive()) 4 else 1)
+    }
     var selectedSessionType by remember { mutableStateOf("PASSWORD") }
     var missingProtectionPermissions by remember {
         mutableStateOf(ProtectionPermission.entries.toList())
@@ -147,7 +150,7 @@ fun FocusGuardNavHost(
     val activeFocusMode by focusModeManager.session.collectAsState()
     val focusModeActive = activeFocusMode?.isActive() == true
 
-    LaunchedEffect(activeFocusMode?.startedAtMillis) {
+    LaunchedEffect(activeFocusMode?.startedAtMillis, focusModeReturnNonce) {
         if (activeFocusMode?.isActive() == true) {
             currentRoute = FocusGuardRoute.Home
             selectedTab = 4
