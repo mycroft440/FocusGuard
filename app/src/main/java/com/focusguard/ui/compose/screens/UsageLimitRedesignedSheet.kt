@@ -1,3 +1,5 @@
+@file:OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
+
 package com.focusguard.ui.compose.screens
 
 import android.graphics.drawable.Drawable
