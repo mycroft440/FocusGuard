@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="fg_pomodoro_clock_minutes">MINUTES</string>
+    <string name="fg_pomodoro_clock_end_at">ends %1$s</string>
+</resources>
