@@ -3,6 +3,7 @@ package com.focusguard.ui.compose.screens
 import android.app.Activity
 import android.content.Intent
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -21,6 +22,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
@@ -62,6 +64,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
@@ -91,7 +94,6 @@ import com.focusguard.security.AuthManager
 import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.service.FocusModeNotificationService
 import com.focusguard.ui.compose.theme.AccentCyan
-import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
 import com.focusguard.ui.compose.theme.DarkCard
@@ -106,6 +108,21 @@ import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToInt
 import kotlin.math.sin
+
+private val PomodoroPageBg = Color(0xFF05080B)
+private val PomodoroSurface = Color(0xFF141B23)
+private val PomodoroSurfaceMuted = Color(0xFF10161D)
+private val PomodoroStroke = Color(0xFF222C36)
+private val PomodoroText = Color(0xFFEDF2F7)
+private val PomodoroTextDim = Color(0xFF93A1AD)
+private val PomodoroTextFaint = Color(0xFF64717D)
+private val PomodoroAccent = Color(0xFF5CCFE6)
+private val PomodoroAccentInk = Color(0xFF04222A)
+private val PomodoroAccentTint = Color(0x1F5CCFE6)
+private val PomodoroAccentLine = Color(0x475CCFE6)
+private val PomodoroFocus = Color(0xFFE9BA5C)
+private val PomodoroFocusTint = Color(0x1FE9BA5C)
+private val PomodoroFocusLine = Color(0x42E9BA5C)
 
 @Suppress("UNUSED_PARAMETER")
 @Composable
@@ -269,15 +286,18 @@ fun PomodoroScreen(
         )
     }
 
-    Scaffold(containerColor = DarkBg) { padding ->
+    Scaffold(containerColor = PomodoroPageBg) { padding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .verticalScroll(rememberScrollState(), enabled = showConfig)
-                .padding(horizontal = if (compactLayout) 10.dp else 16.dp, vertical = 6.dp),
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    horizontal = if (compactLayout) 10.dp else 16.dp,
+                    vertical = if (compactLayout) 8.dp else 14.dp
+                ),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             if (isRunning) {
                 ActivePomodoroPanel(
@@ -298,12 +318,7 @@ fun PomodoroScreen(
                     }
                 )
             } else {
-                Text(
-                    stringResource(R.string.fg_pomodoro_ready),
-                    color = AccentCyan,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
+                ReadyPomodoroHeader(strictBlocking = config.strictBlocking)
 
                 PomodoroReferenceClock(
                     minutes = config.focusMinutes.coerceIn(1, 180),
@@ -318,46 +333,18 @@ fun PomodoroScreen(
 
                 ProfileStrip(
                     profiles = profiles,
+                    currentConfig = config,
                     onUse = { profile -> saveConfig(profile.config) },
                     onDelete = { profile ->
                         if (planStore.deleteProfile(profile.id)) profileRevision++
                     }
                 )
 
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    OutlinedButton(
-                        onClick = { showConfig = !showConfig },
-                        modifier = Modifier.weight(1f)
-                    ) {
-                        Icon(Icons.Default.Settings, contentDescription = null)
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            stringResource(
-                                if (showConfig) {
-                                    R.string.fg_pomodoro_hide_config
-                                } else {
-                                    R.string.fg_pomodoro_configure
-                                }
-                            )
-                        )
-                    }
-                    Button(
-                        onClick = ::startConfiguredPlan,
-                        modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-                    ) {
-                        Icon(Icons.Default.PlayArrow, contentDescription = null, tint = DarkBg)
-                        Spacer(Modifier.width(6.dp))
-                        Text(
-                            stringResource(R.string.fg_pomodoro_start),
-                            color = DarkBg,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
+                PomodoroPrimaryActions(
+                    showConfig = showConfig,
+                    onToggleConfig = { showConfig = !showConfig },
+                    onStart = ::startConfiguredPlan
+                )
 
                 if (showConfig) {
                     PomodoroConfigurationPanel(
@@ -400,6 +387,101 @@ fun PomodoroScreen(
 }
 
 @Composable
+private fun ReadyPomodoroHeader(strictBlocking: Boolean) {
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(7.dp),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier
+                .background(PomodoroAccentTint, CircleShape)
+                .padding(horizontal = 13.dp, vertical = 7.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(7.dp)
+                    .background(PomodoroAccent, CircleShape)
+            )
+            Text(
+                text = stringResource(R.string.fg_pomodoro_ready),
+                color = PomodoroAccent,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 1.1.sp
+            )
+        }
+        Text(
+            text = stringResource(
+                if (strictBlocking) {
+                    R.string.pomodoro_enable_block_subtitle
+                } else {
+                    R.string.focus_subtitle
+                }
+            ),
+            color = PomodoroTextDim,
+            fontSize = 13.sp,
+            textAlign = TextAlign.Center
+        )
+    }
+}
+
+@Composable
+private fun PomodoroPrimaryActions(
+    showConfig: Boolean,
+    onToggleConfig: () -> Unit,
+    onStart: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp, bottom = 2.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        OutlinedButton(
+            onClick = onToggleConfig,
+            modifier = Modifier
+                .weight(1f)
+                .height(52.dp),
+            shape = CircleShape,
+            border = BorderStroke(1.dp, PomodoroStroke),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = PomodoroTextDim)
+        ) {
+            Icon(Icons.Default.Settings, contentDescription = null)
+            Spacer(Modifier.width(7.dp))
+            Text(
+                text = stringResource(
+                    if (showConfig) {
+                        R.string.fg_pomodoro_hide_config
+                    } else {
+                        R.string.fg_pomodoro_configure
+                    }
+                ),
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        Button(
+            onClick = onStart,
+            modifier = Modifier
+                .weight(1.25f)
+                .height(52.dp),
+            shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(containerColor = PomodoroAccent)
+        ) {
+            Icon(Icons.Default.PlayArrow, contentDescription = null, tint = PomodoroAccentInk)
+            Spacer(Modifier.width(7.dp))
+            Text(
+                stringResource(R.string.fg_pomodoro_start),
+                color = PomodoroAccentInk,
+                fontWeight = FontWeight.Bold
+            )
+        }
+    }
+}
+
+@Composable
 private fun ActivePomodoroPanel(
     phase: PomodoroPhase,
     completedSessions: Int,
@@ -424,8 +506,27 @@ private fun ActivePomodoroPanel(
             PomodoroPhase.LONG_BREAK -> R.string.fg_pomodoro_phase_long_break
         }
     )
+    val phaseColor = if (phase == PomodoroPhase.FOCUS) PomodoroFocus else PomodoroAccent
+    val phaseTint = if (phase == PomodoroPhase.FOCUS) PomodoroFocusTint else PomodoroAccentTint
+    val phaseLine = if (phase == PomodoroPhase.FOCUS) PomodoroFocusLine else PomodoroAccentLine
 
-    Text(phaseLabel, color = AccentCyan, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        modifier = Modifier
+            .background(phaseTint, CircleShape)
+            .padding(horizontal = 14.dp, vertical = 7.dp)
+    ) {
+        Box(Modifier.size(7.dp).background(phaseColor, CircleShape))
+        Text(
+            phaseLabel,
+            color = phaseColor,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 1.sp
+        )
+    }
+
     PomodoroReferenceClock(
         minutes = minutes.toInt().coerceAtLeast(1),
         maxMinutes = 60,
@@ -434,141 +535,223 @@ private fun ActivePomodoroPanel(
         onMinutesChange = {},
         modifier = Modifier.size(205.dp)
     )
+
+    val sessionText = if (targetSessions == 0) {
+        stringResource(
+            R.string.fg_pomodoro_sessions_completed_unlimited,
+            completedSessions
+        )
+    } else {
+        stringResource(
+            R.string.fg_pomodoro_sessions_completed_target,
+            completedSessions,
+            targetSessions
+        )
+    }
     Text(
-        if (targetSessions == 0) {
-            stringResource(
-                R.string.fg_pomodoro_sessions_completed_unlimited,
-                completedSessions
-            )
-        } else {
-            stringResource(
-                R.string.fg_pomodoro_sessions_completed_target,
-                completedSessions,
-                targetSessions
-            )
-        },
-        color = TextSecondary,
-        fontSize = 13.sp
+        text = sessionText,
+        color = PomodoroTextDim,
+        fontSize = 13.sp,
+        modifier = Modifier
+            .background(PomodoroSurfaceMuted, CircleShape)
+            .padding(horizontal = 13.dp, vertical = 7.dp)
     )
 
     if (isStrict) {
-        Text(
-            stringResource(R.string.fg_pomodoro_strict_active_hint),
-            color = TextHint,
-            fontSize = 12.sp,
-            textAlign = TextAlign.Center
-        )
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            colors = CardDefaults.cardColors(containerColor = PomodoroFocusTint),
+            border = BorderStroke(1.dp, phaseLine)
+        ) {
+            Text(
+                stringResource(R.string.fg_pomodoro_strict_active_hint),
+                color = PomodoroFocus,
+                fontSize = 12.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+            )
+        }
         Button(
             onClick = onPhone,
-            colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+            modifier = Modifier.height(50.dp),
+            shape = CircleShape,
+            colors = ButtonDefaults.buttonColors(containerColor = PomodoroAccent)
         ) {
-            Icon(Icons.Default.Phone, contentDescription = null, tint = DarkBg)
+            Icon(Icons.Default.Phone, contentDescription = null, tint = PomodoroAccentInk)
             Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.fg_phone), color = DarkBg)
+            Text(
+                stringResource(R.string.fg_phone),
+                color = PomodoroAccentInk,
+                fontWeight = FontWeight.SemiBold
+            )
         }
     } else {
         Button(
             onClick = onStop,
+            modifier = Modifier.height(50.dp),
+            shape = CircleShape,
             colors = ButtonDefaults.buttonColors(containerColor = DangerRed.copy(alpha = 0.8f))
         ) {
-            Text(stringResource(R.string.fg_pomodoro_stop))
+            Text(stringResource(R.string.fg_pomodoro_stop), fontWeight = FontWeight.SemiBold)
         }
     }
 }
 
 @Composable
 private fun CurrentPlanSummary(config: PomodoroPlanConfig) {
+    SectionLabel(stringResource(R.string.fg_pomodoro_current_cycle))
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
-        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = PomodoroSurface),
+        border = BorderStroke(1.dp, PomodoroStroke)
     ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-            Text(
-                stringResource(R.string.fg_pomodoro_current_cycle),
-                color = TextPrimary,
-                fontWeight = FontWeight.Bold
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 3.dp)) {
+            PomodoroSummaryRow(
+                label = stringResource(R.string.fg_pomodoro_focus_time),
+                value = formatMinutes(config.focusMinutes)
             )
-            Text(
-                stringResource(
-                    R.string.fg_pomodoro_focus_break_summary,
-                    formatMinutes(config.focusMinutes),
-                    formatMinutes(config.shortBreakMinutes)
-                ),
-                color = TextSecondary,
-                fontSize = 13.sp
+            PomodoroSummaryRow(
+                label = stringResource(R.string.fg_pomodoro_break_time),
+                value = formatMinutes(config.shortBreakMinutes)
             )
-            Text(
-                stringResource(
-                    R.string.fg_pomodoro_long_break_summary,
-                    formatMinutes(config.longBreakMinutes),
+            PomodoroSummaryRow(
+                label = stringResource(R.string.fg_pomodoro_longer_break),
+                value = formatMinutes(config.longBreakMinutes)
+            )
+            PomodoroSummaryRow(
+                label = stringResource(R.string.fg_pomodoro_long_break_every),
+                value = stringResource(
+                    R.string.fg_pomodoro_sessions_value,
                     config.longBreakEvery
-                ),
-                color = TextSecondary,
-                fontSize = 13.sp
+                )
             )
             val target = if (config.targetSessions == 0) {
                 stringResource(R.string.fg_pomodoro_until_i_stop)
             } else {
                 config.targetSessions.toString()
             }
-            Text(
-                stringResource(R.string.fg_pomodoro_sessions_label, target),
-                color = TextSecondary,
-                fontSize = 13.sp
+            PomodoroSummaryRow(
+                label = stringResource(R.string.fg_pomodoro_session_count),
+                value = target,
+                showDivider = false
             )
         }
     }
 }
 
 @Composable
+private fun PomodoroSummaryRow(
+    label: String,
+    value: String,
+    showDivider: Boolean = true
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 11.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                color = PomodoroTextDim,
+                fontSize = 13.sp,
+                modifier = Modifier.weight(1f)
+            )
+            Text(
+                text = value,
+                color = PomodoroText,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+        if (showDivider) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .height(1.dp)
+                    .background(Color.White.copy(alpha = 0.045f))
+            )
+        }
+    }
+}
+
+@Composable
+private fun SectionLabel(text: String) {
+    Text(
+        text = text.uppercase(),
+        color = PomodoroTextFaint,
+        fontSize = 11.sp,
+        fontWeight = FontWeight.SemiBold,
+        letterSpacing = 1.25.sp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(start = 2.dp, top = 7.dp, bottom = 1.dp)
+    )
+}
+
+@Composable
 private fun ProfileStrip(
     profiles: List<PomodoroProfile>,
+    currentConfig: PomodoroPlanConfig,
     onUse: (PomodoroProfile) -> Unit,
     onDelete: (PomodoroProfile) -> Unit
 ) {
     Column(modifier = Modifier.fillMaxWidth()) {
-        Text(
-            stringResource(R.string.fg_pomodoro_profiles),
-            color = TextPrimary,
-            fontWeight = FontWeight.Bold
-        )
-        Spacer(Modifier.height(4.dp))
+        SectionLabel(stringResource(R.string.fg_pomodoro_profiles))
+        Spacer(Modifier.height(2.dp))
         Row(
-            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(6.dp)
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
         ) {
             profiles.forEach { profile ->
+                val selected = profile.config.normalized() == currentConfig.normalized()
                 Card(
-                    modifier = Modifier.width(160.dp).clickable { onUse(profile) },
-                    colors = CardDefaults.cardColors(containerColor = DarkCard),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+                    modifier = Modifier
+                        .width(150.dp)
+                        .clickable { onUse(profile) },
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (selected) PomodoroAccentTint else PomodoroSurfaceMuted
+                    ),
+                    border = BorderStroke(
+                        1.dp,
+                        if (selected) PomodoroAccentLine else PomodoroStroke
+                    )
                 ) {
-                    Column(Modifier.padding(horizontal = 10.dp, vertical = 8.dp)) {
+                    Column(Modifier.padding(horizontal = 13.dp, vertical = 10.dp)) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
                                 profile.name,
                                 modifier = Modifier.weight(1f),
-                                color = TextPrimary,
+                                color = if (selected) PomodoroAccent else PomodoroText,
                                 fontWeight = FontWeight.SemiBold,
-                                fontSize = 12.sp
+                                fontSize = 13.sp,
+                                maxLines = 1
                             )
                             if (!profile.builtIn) {
                                 IconButton(
                                     onClick = { onDelete(profile) },
-                                    modifier = Modifier.size(28.dp)
+                                    modifier = Modifier.size(26.dp)
                                 ) {
                                     Icon(
                                         Icons.Default.Delete,
                                         contentDescription = stringResource(
                                             R.string.fg_pomodoro_delete_profile_cd
                                         ),
-                                        tint = TextHint,
-                                        modifier = Modifier.size(17.dp)
+                                        tint = PomodoroTextFaint,
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
                         }
+                        Spacer(Modifier.height(2.dp))
                         Text(
                             stringResource(
                                 R.string.fg_pomodoro_profile_summary,
@@ -576,8 +759,13 @@ private fun ProfileStrip(
                                 profile.config.shortBreakMinutes,
                                 profile.config.longBreakMinutes
                             ),
-                            color = TextHint,
-                            fontSize = 10.sp
+                            color = if (selected) {
+                                PomodoroAccent.copy(alpha = 0.72f)
+                            } else {
+                                PomodoroTextFaint
+                            },
+                            fontSize = 10.5.sp,
+                            maxLines = 1
                         )
                     }
                 }
@@ -599,8 +787,9 @@ private fun PomodoroConfigurationPanel(
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
-        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = PomodoroSurface),
+        border = BorderStroke(1.dp, PomodoroStroke)
     ) {
         Column(
             modifier = Modifier.padding(14.dp),
@@ -608,7 +797,7 @@ private fun PomodoroConfigurationPanel(
         ) {
             Text(
                 stringResource(R.string.fg_pomodoro_config_title),
-                color = TextPrimary,
+                color = PomodoroText,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
@@ -664,7 +853,7 @@ private fun PomodoroConfigurationPanel(
 
             Text(
                 stringResource(R.string.fg_alarm),
-                color = AccentCyan,
+                color = PomodoroAccent,
                 fontWeight = FontWeight.Bold
             )
             ToggleRow(
@@ -692,7 +881,7 @@ private fun PomodoroConfigurationPanel(
 
             Text(
                 stringResource(R.string.fg_notifications),
-                color = AccentCyan,
+                color = PomodoroAccent,
                 fontWeight = FontWeight.Bold
             )
             ToggleRow(
@@ -701,7 +890,7 @@ private fun PomodoroConfigurationPanel(
                     Icon(
                         Icons.Default.NotificationsOff,
                         contentDescription = null,
-                        tint = AccentCyan
+                        tint = PomodoroAccent
                     )
                 },
                 checked = config.silenceNotifications,
@@ -722,7 +911,7 @@ private fun PomodoroConfigurationPanel(
                     Icon(
                         Icons.Default.VisibilityOff,
                         contentDescription = null,
-                        tint = AccentCyan
+                        tint = PomodoroAccent
                     )
                 },
                 checked = config.hideNotifications,
@@ -738,7 +927,13 @@ private fun PomodoroConfigurationPanel(
                 )
             }
 
-            OutlinedButton(onClick = onSaveProfile, modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(
+                onClick = onSaveProfile,
+                modifier = Modifier.fillMaxWidth(),
+                shape = CircleShape,
+                border = BorderStroke(1.dp, PomodoroStroke),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = PomodoroTextDim)
+            ) {
                 Icon(Icons.Default.Save, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text(stringResource(R.string.fg_pomodoro_save_as_profile))
@@ -773,7 +968,7 @@ private fun ToggleRow(
     ) {
         icon?.invoke()
         if (icon != null) Spacer(Modifier.width(8.dp))
-        Text(label, modifier = Modifier.weight(1f), color = TextPrimary, fontSize = 13.sp)
+        Text(label, modifier = Modifier.weight(1f), color = PomodoroText, fontSize = 13.sp)
         Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }
@@ -820,7 +1015,7 @@ private fun SoundSelector(
             Icon(
                 Icons.Default.VolumeUp,
                 contentDescription = stringResource(R.string.fg_pomodoro_preview_sound_cd),
-                tint = AccentCyan
+                tint = PomodoroAccent
             )
         }
     }
@@ -839,7 +1034,7 @@ private fun NumberSelector(
         modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(label, modifier = Modifier.weight(1f), color = TextPrimary, fontSize = 13.sp)
+        Text(label, modifier = Modifier.weight(1f), color = PomodoroText, fontSize = 13.sp)
         Box {
             OutlinedButton(onClick = { expanded = true }) {
                 Text(valueLabel(value))
@@ -899,7 +1094,7 @@ private fun MiniDurationControl(
             modifier = Modifier.size(86.dp)
         )
         Column(modifier = Modifier.weight(1f)) {
-            Text(label, color = TextPrimary, fontWeight = FontWeight.SemiBold)
+            Text(label, color = PomodoroText, fontWeight = FontWeight.SemiBold)
             Spacer(Modifier.height(5.dp))
             if (hoursMode) {
                 Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -956,7 +1151,7 @@ private fun CompactNumberField(
         },
         modifier = modifier,
         singleLine = true,
-        trailingIcon = { Text(suffix, color = TextHint, fontSize = 11.sp) },
+        trailingIcon = { Text(suffix, color = PomodoroTextFaint, fontSize = 11.sp) },
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
     )
 }
