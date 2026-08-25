@@ -68,6 +68,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import com.focusguard.R
 import com.focusguard.data.PredefinedApps
 import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.security.AppUnlockBiometricAuthenticator
 import com.focusguard.security.AuthManager
 import com.focusguard.security.BlockCountdownPolicy
 import com.focusguard.ui.compose.theme.AccentCyan
@@ -143,12 +144,6 @@ fun BlockTypeDetailScreen(
         mutableStateOf<List<BlockingSessionManager.BlockOverview.Entry>?>(null)
     }
 
-    // O assistente de criação roda em outra Activity, então esta composição
-    // sobrevive à ida e à volta e um LaunchedEffect(type) sozinho nunca
-    // dispararia de novo: a tela reapareceria mostrando a lista de antes do
-    // bloqueio ser criado, como se o app ou site adicionado tivesse sumido.
-    // Recarregar a cada ON_RESUME faz a lista refletir o banco toda vez que a
-    // tela volta a ficar visível.
     var reloadTrigger by remember { mutableIntStateOf(0) }
 
     DisposableEffect(lifecycleOwner) {
@@ -161,8 +156,6 @@ fun BlockTypeDetailScreen(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    // `entries` não volta a null nas recargas: manter a lista anterior na tela
-    // evita um piscar de spinner a cada retorno para uma tela que já tem dados.
     LaunchedEffect(type, reloadTrigger) {
         entries = runCatching { type.entriesOf(sessionManager.getBlockOverview()) }
             .getOrDefault(emptyList())
@@ -194,8 +187,6 @@ fun BlockTypeDetailScreen(
         ) {
             BlockTypeHeader(type)
 
-            // Ferramentas que pertencem ao bloqueio por senha ficam junto
-            // da própria proteção, em vez de escondidas em Configurações.
             if (type == BlockTypeUi.PASSWORD) {
                 Spacer(Modifier.height(16.dp))
                 PasswordProtectionTools(
@@ -239,10 +230,6 @@ fun BlockTypeDetailScreen(
                         fontWeight = FontWeight.SemiBold,
                         modifier = Modifier.padding(bottom = 10.dp)
                     )
-                    // Aplicativos e sites em seções próprias: são coisas
-                    // diferentes de gerenciar — um se reconhece pelo ícone, o
-                    // outro pelo endereço — e misturados numa lista só a pessoa
-                    // precisa ler item a item para achar o que procura.
                     val apps = current.filterNot { it.isWebsite }
                     val sites = current.filter { it.isWebsite }
                     LazyColumn(
@@ -287,8 +274,9 @@ fun BlockTypeDetailScreen(
 /**
  * Ferramentas relacionadas a tentativas de abertura de apps protegidos.
  *
- * A selfie precisa da permissão de câmera; o estado só é ativado depois que
- * o Android concede a permissão.
+ * O desbloqueio biométrico usa a mesma preferência e o mesmo autenticador do
+ * fluxo real de abertura. A selfie precisa da permissão de câmera e só é
+ * ativada depois que o Android concede a permissão.
  */
 @Composable
 private fun PasswordProtectionTools(
@@ -297,7 +285,13 @@ private fun PasswordProtectionTools(
 ) {
     val context = LocalContext.current
     val authManager = remember(context) { AuthManager(context) }
+    val biometricAvailable = remember(context) {
+        AppUnlockBiometricAuthenticator.isAvailable(context)
+    }
 
+    var biometricEnabled by remember {
+        mutableStateOf(authManager.isBiometricAppUnlockEnabled())
+    }
     var selfieEnabled by remember { mutableStateOf(authManager.isPhotoCaptureEnabled()) }
 
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
@@ -308,6 +302,33 @@ private fun PasswordProtectionTools(
     }
 
     Column {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkCard),
+            border = BorderStroke(1.dp, CardBorder)
+        ) {
+            ToggleRow(
+                title = stringResource(R.string.password_app_unlock_quick_biometric_title),
+                subtitle = stringResource(
+                    if (biometricAvailable) {
+                        R.string.password_app_unlock_quick_biometric_desc
+                    } else {
+                        R.string.password_app_unlock_biometric_unavailable
+                    }
+                ),
+                checked = biometricEnabled && biometricAvailable,
+                enabled = biometricAvailable,
+                accent = accent,
+                onCheckedChange = { enable ->
+                    biometricEnabled = enable
+                    authManager.setBiometricAppUnlockEnabled(enable)
+                }
+            )
+        }
+
+        Spacer(Modifier.height(8.dp))
+
         Card(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(16.dp),
@@ -422,25 +443,11 @@ private fun EmptyBlockList(type: BlockTypeUi) {
     }
 }
 
-/**
- * The name shown for a blocked entry.
- *
- * A preventive target is, by definition, an app that is not installed, so the
- * PackageManager has no label for it and [installedLabel] comes back null. The
- * catalogue answers for those before the package name does, so the row reads
- * "Instagram" instead of "com.instagram.android" — a raw package id looks like a
- * wrong entry to whoever just added the block.
- *
- * @param installedLabel what the PackageManager resolved, or null when the app
- *   is not installed (or the entry is a website).
- */
 internal fun blockedEntryLabel(
     identifier: String,
     isWebsite: Boolean,
     installedLabel: String?
 ): String {
-    // displayRule desfaz os prefixos de persistência: "keyword:aposta" vira
-    // "*aposta*" e a categoria adulta vira "Pornografia".
     if (isWebsite) return WebsiteBlocker.displayRule(identifier)
     installedLabel?.takeIf { it.isNotBlank() }?.let { return it }
     return PredefinedApps.PREVENTIVE_APPS
@@ -541,13 +548,6 @@ private fun BlockedEntryRow(
     }
 }
 
-/**
- * The "how long is left" line.
- *
- * Every type gets an honest answer rather than a blank: a daily limit has an
- * allowance instead of a deadline, and a password block lasts until the user ends
- * it. Leaving those empty would read as "no idea", which is worse than the truth.
- */
 @Composable
 private fun entryStatusText(
     entry: BlockingSessionManager.BlockOverview.Entry
