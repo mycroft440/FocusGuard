@@ -489,16 +489,10 @@ private fun EditableCurrentPlanSummary(
                 compact = compact,
                 onChange = { onConfigChange(config.copy(longBreakMinutes = it)) }
             )
-            val target = if (config.targetSessions == 0) {
-                stringResource(R.string.fg_pomodoro_until_i_stop)
-            } else {
-                config.targetSessions.toString()
-            }
-            PomodoroSummaryRow(
-                label = stringResource(R.string.fg_pomodoro_session_count),
-                value = target,
+            EditableSessionSummaryRow(
+                sessions = config.targetSessions,
                 compact = compact,
-                showDivider = false
+                onChange = { onConfigChange(config.copy(targetSessions = it)) }
             )
         }
     }
@@ -549,6 +543,57 @@ private fun EditableDurationSummaryRow(
             }
         }
         SummaryDivider()
+    }
+}
+
+@Composable
+private fun EditableSessionSummaryRow(
+    sessions: Int,
+    compact: Boolean,
+    onChange: (Int) -> Unit
+) {
+    val safeSessions = sessions.coerceIn(0, 5)
+    val value = if (safeSessions == 0) {
+        stringResource(R.string.fg_pomodoro_until_i_stop)
+    } else {
+        safeSessions.toString()
+    }
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(if (compact) 35.dp else 39.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(
+            text = stringResource(R.string.fg_pomodoro_session_count),
+            color = PomodoroTextDim,
+            fontSize = if (compact) 11.5.sp else 13.sp,
+            modifier = Modifier.weight(1f)
+        )
+        TextButton(
+            onClick = { onChange((safeSessions - 1).coerceAtLeast(0)) },
+            enabled = safeSessions > 0,
+            modifier = Modifier.size(if (compact) 32.dp else 36.dp)
+        ) {
+            Text("−", fontSize = 18.sp, color = PomodoroTextDim)
+        }
+        Text(
+            text = value,
+            color = PomodoroText,
+            fontSize = if (compact) 10.5.sp else 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            modifier = Modifier.width(if (compact) 78.dp else 90.dp)
+        )
+        TextButton(
+            onClick = { onChange((safeSessions + 1).coerceAtMost(5)) },
+            enabled = safeSessions < 5,
+            modifier = Modifier.size(if (compact) 32.dp else 36.dp)
+        ) {
+            Text("+", fontSize = 17.sp, color = PomodoroAccent)
+        }
     }
 }
 
@@ -730,49 +775,12 @@ private fun PomodoroConfigurationContent(
     onRequestNotificationAccess: () -> Unit,
     onPreviewSound: () -> Unit
 ) {
-    MiniDurationControl(
-        label = stringResource(R.string.fg_pomodoro_focus_time),
-        minutes = config.focusMinutes,
-        maxMinutes = 180,
-        hoursMode = false,
-        onChange = { onConfigChange(config.copy(focusMinutes = it)) }
-    )
-    MiniDurationControl(
-        label = stringResource(R.string.fg_pomodoro_break_time),
-        minutes = config.shortBreakMinutes,
-        maxMinutes = 120,
-        hoursMode = false,
-        onChange = { onConfigChange(config.copy(shortBreakMinutes = it)) }
-    )
-    MiniDurationControl(
-        label = stringResource(R.string.fg_pomodoro_longer_break),
-        minutes = config.longBreakMinutes,
-        maxMinutes = 720,
-        hoursMode = true,
-        onChange = { onConfigChange(config.copy(longBreakMinutes = it)) }
-    )
-
     NumberSelector(
         label = stringResource(R.string.fg_pomodoro_long_break_every),
         value = config.longBreakEvery,
         values = (1..20).toList(),
         valueLabel = { stringResource(R.string.fg_pomodoro_sessions_value, it) },
         onChange = { onConfigChange(config.copy(longBreakEvery = it)) }
-    )
-    NumberSelector(
-        label = stringResource(R.string.fg_pomodoro_session_count),
-        value = config.targetSessions,
-        values = (0..100).toList(),
-        valueLabel = {
-            if (it == 0) stringResource(R.string.fg_pomodoro_until_i_stop) else it.toString()
-        },
-        onChange = { onConfigChange(config.copy(targetSessions = it)) }
-    )
-
-    ToggleRow(
-        label = stringResource(R.string.fg_pomodoro_strict_focus),
-        checked = config.strictBlocking,
-        onCheckedChange = { onConfigChange(config.copy(strictBlocking = it)) }
     )
 
     Text(stringResource(R.string.fg_alarm), color = PomodoroAccent, fontWeight = FontWeight.Bold)
