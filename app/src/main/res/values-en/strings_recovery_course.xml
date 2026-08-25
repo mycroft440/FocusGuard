@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="recovery_course_badge">FREE COURSE • PRIVATE • OFFLINE</string>
+    <string name="recovery_course_badge">Private · Offline</string>
     <string name="recovery_course_progress_title">Your progress</string>
     <string name="recovery_course_progress_value">%1$d%% complete</string>
     <string name="recovery_course_progress_encouragement">Keep going. Every step counts.</string>
@@ -8,11 +8,20 @@
     <string name="recovery_course_slogan_understand_trap">UNDERSTAND THE TRAP AND CLOSE THE DOORS</string>
     <string name="recovery_course_slogan_without_only_willpower">DO NOT RELY ON WILLPOWER ALONE</string>
     <string name="recovery_course_slogan_private_offline">FREE, PRIVATE AND OFFLINE COURSE</string>
-    <string name="recovery_course_title">A FREE COURSE TO HELP YOU BREAK THE PORNOGRAPHY CYCLE</string>
-    <string name="recovery_course_hero">EVERYTHING YOU NEED TO UNDERSTAND THE TRAP — built by someone who has already fallen into it.</string>
-    <string name="recovery_course_subtitle">More than willpower. Learn what can happen before, during and after pornography use, why the cycle becomes automatic, and how to build a practical way out.</string>
+    <string name="recovery_course_title">Break the pornography cycle</string>
+    <string name="recovery_course_hero">It is not about resisting. It is about losing the urge.</string>
+    <string name="recovery_course_punch_prefix">It is not about </string>
+    <string name="recovery_course_punch_resist">resisting</string>
+    <string name="recovery_course_punch_bridge">.\nIt is about </string>
+    <string name="recovery_course_punch_goal">losing the urge</string>
+    <string name="recovery_course_punch_end">.</string>
+    <string name="recovery_course_subtitle">Built by someone who has been caught in the same loop. Understand what happens before, during and after, why the cycle becomes automatic, and how to build a practical way out — without counting days.</string>
     <string name="recovery_course_not_willpower_title">This is not a willpower contest</string>
-    <string name="recovery_course_not_willpower_body">The goal is not to spend every day fighting yourself. The course organizes the problem around learning, reward, automatic responses, environment and practical ways to handle boredom, stress, loneliness and anxiety — so you can act on the mechanism instead of only resisting the urge.</string>
+    <string name="recovery_course_not_willpower_body">The goal is not to spend every day fighting yourself. The course organizes the problem around learning, reward, automatic responses, environment and practical ways to handle boredom, stress, loneliness and anxiety — so you can act on the mechanism instead of fighting the symptom.</string>
+    <string name="recovery_course_read_more">Read more</string>
+    <string name="recovery_course_read_less">Read less</string>
+    <string name="recovery_course_steps_progress">%1$d of %2$d steps completed</string>
+    <string name="recovery_course_no_account">no account</string>
     <string name="recovery_course_point_reward">Understand how anticipation, reward and repetition can strengthen an automatic habit loop.</string>
     <string name="recovery_course_point_triggers">Learn what to do with feelings such as boredom, stress, loneliness and anxiety — without turning every uncomfortable moment into a fight against yourself.</string>
     <string name="recovery_course_point_before_after">Map what happens before the urge, during the behavior and after it — without moralism or shame as the strategy.</string>
@@ -24,7 +33,7 @@
     <string name="recovery_course_science_title">BUILT AROUND BEHAVIOR AND NEUROSCIENCE</string>
     <string name="recovery_course_science_body">The material uses concepts from reward learning, habit formation, inhibitory control, emotional regulation and behavior change. It is educational support, not a medical treatment or a promise of cure.</string>
     <string name="recovery_course_bridge">Stop fighting in the dark. First understand the cycle. Then close the doors that keep restarting it.</string>
-    <string name="recovery_course_cta">START THE FREE COURSE</string>
-    <string name="recovery_course_cta_continue">CONTINUE THE COURSE</string>
-    <string name="recovery_course_footer">Educational content. It can complement professional care when needed, but does not replace psychological or psychiatric treatment.</string>
+    <string name="recovery_course_cta">Start the free course</string>
+    <string name="recovery_course_cta_continue">Continue the course</string>
+    <string name="recovery_course_footer">Educational content. It can complement professional care, but does not replace psychological or psychiatric treatment.</string>
 </resources>
