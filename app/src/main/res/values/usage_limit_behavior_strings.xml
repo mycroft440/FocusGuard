@@ -14,6 +14,8 @@
     <string name="limits_duration_months">Months</string>
     <string name="limits_rule_summary">%1$d min/day • %2$s • %3$d %4$s</string>
     <string name="limits_rule_current_until">Current rule ends %1$s</string>
+    <string name="limits_rule_status_until">%1$s • until %2$s</string>
+    <string name="limits_rule_expired">Rule period ended</string>
     <string name="limits_pause_notice">Daily usage limit reached. Take a 30-minute break before using this app again.</string>
     <string name="limits_daily_lock_notice">Daily usage limit reached. This app will be available again tomorrow.</string>
 </resources>
