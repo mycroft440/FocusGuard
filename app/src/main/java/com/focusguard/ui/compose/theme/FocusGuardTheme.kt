@@ -192,9 +192,15 @@ val FocusGuardTypography = Typography(
         fontSize = 15.sp,
         lineHeight = 20.sp
     ),
+    // bodyLarge fica SEM lineHeight de propósito. Ele é o estilo ambiente do
+    // MaterialTheme, herdado por todo `Text` que não declara estilo próprio —
+    // e este app escreve `Text(..., fontSize = 11.sp)` em centenas de lugares.
+    // Um lineHeight fixo aqui seria herdado por esses textos junto com o
+    // tamanho que eles trocaram, e um texto de 11sp passaria a ocupar a altura
+    // de um de 16sp: telas apertadas como a do Pomodoro estourariam. Sem valor,
+    // cada texto continua usando a entrelinha natural da própria fonte.
     bodyLarge = TextStyle(
-        fontSize = 16.sp,
-        lineHeight = 23.sp
+        fontSize = 16.sp
     ),
     bodyMedium = TextStyle(
         fontSize = 14.sp,
