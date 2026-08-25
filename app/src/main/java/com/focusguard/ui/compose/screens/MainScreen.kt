@@ -234,23 +234,39 @@ private fun FocusGuardBottomNavigation(
     selectedTab: Int,
     onTabChange: (Int) -> Unit
 ) {
-    NavigationBar(
-        containerColor = MaterialTheme.colorScheme.surface,
-        tonalElevation = 8.dp
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(DarkSurface)
     ) {
-        focusGuardNavigationItems().forEach { item ->
-            NavigationBarItem(
-                selected = selectedTab == item.tab,
-                onClick = { onTabChange(item.tab) },
-                icon = {
-                    Icon(
-                        item.icon,
-                        contentDescription = stringResource(item.labelRes)
-                    )
-                },
-                label = { Text(stringResource(item.labelRes)) },
-                colors = navigationItemColors()
-            )
+        HorizontalDivider(color = CardBorder, thickness = 1.dp)
+        NavigationBar(
+            containerColor = DarkSurface,
+            tonalElevation = 0.dp
+        ) {
+            focusGuardNavigationItems().forEach { item ->
+                val selected = selectedTab == item.tab
+                NavigationBarItem(
+                    selected = selected,
+                    onClick = { onTabChange(item.tab) },
+                    icon = {
+                        Icon(
+                            item.icon,
+                            contentDescription = stringResource(item.labelRes),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    },
+                    label = {
+                        Text(
+                            stringResource(item.labelRes),
+                            fontSize = 11.sp,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+                        )
+                    },
+                    alwaysShowLabel = true,
+                    colors = navigationItemColors()
+                )
+            }
         }
     }
 }
@@ -261,7 +277,7 @@ private fun FocusModeNavigationRail(
     onTabChange: (Int) -> Unit
 ) {
     NavigationRail(
-        containerColor = MaterialTheme.colorScheme.surface,
+        containerColor = DarkSurface,
         header = {
             Icon(
                 Icons.Default.LockClock,
@@ -288,7 +304,7 @@ private fun FocusModeNavigationRail(
                     selectedTextColor = AccentCyan,
                     unselectedIconColor = TextHint,
                     unselectedTextColor = TextHint,
-                    indicatorColor = AccentCyan.copy(alpha = 0.1f)
+                    indicatorColor = AccentCyan.copy(alpha = 0.12f)
                 )
             )
         }
@@ -328,7 +344,7 @@ private fun navigationItemColors() = NavigationBarItemDefaults.colors(
     selectedTextColor = AccentCyan,
     unselectedIconColor = TextHint,
     unselectedTextColor = TextHint,
-    indicatorColor = AccentCyan.copy(alpha = 0.1f)
+    indicatorColor = AccentCyan.copy(alpha = 0.12f)
 )
 
 @OptIn(ExperimentalMaterial3Api::class)

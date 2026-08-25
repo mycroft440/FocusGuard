@@ -9,17 +9,20 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-// Dark Theme Base
-val DarkBg = Color(0xFF0D0D0D)
-val DarkSurface = Color(0xFF161616)
-val DarkCard = Color(0xFF1C1C1E)
-val DarkCardElevated = Color(0xFF252528)
+// Dark Theme Base — unified with the Pomodoro visual language.
+val DarkBg = Color(0xFF05080B)
+val DarkSurface = Color(0xFF0E141B)
+val DarkCard = Color(0xFF141B23)
+val DarkCardElevated = Color(0xFF10161D)
 
 // Accent Colors
-val AccentCyan = Color(0xFF00BCD4)
-val AccentCyanDark = Color(0xFF0097A7)
+val AccentCyan = Color(0xFF5CCFE6)
+val AccentCyanDark = Color(0xFF3AAFC5)
 val AccentPurple = Color(0xFF7C4DFF)
 val AccentPurpleDark = Color(0xFF5E35B1)
+val AccentCyanInk = Color(0xFF04222A)
+val AccentCyanTint = Color(0x1F5CCFE6)
+val AccentCyanLine = Color(0x475CCFE6)
 
 // Semantic Colors
 val SuccessGreen = Color(0xFF4CAF50)
@@ -29,16 +32,16 @@ val DangerRedDark = Color(0xFFC62828)
 val InfoBlue = Color(0xFF2196F3)
 
 // Text Colors
-val TextPrimary = Color(0xFFFAFAFA)
-val TextSecondary = Color(0xFFB0B0B0)
-val TextHint = Color(0xFF6B6B6B)
-val TextDisabled = Color(0xFF4A4A4A)
+val TextPrimary = Color(0xFFEDF2F7)
+val TextSecondary = Color(0xFF93A1AD)
+val TextHint = Color(0xFF64717D)
+val TextDisabled = Color(0xFF46515A)
 
 // Borders & Dividers
-val Border = Color(0xFF2A2A2E)
-val BorderSubtle = Color(0xFF1F1F23)
-val Divider = Color(0xFF2A2A2E)
-val CardBorder = Color(0xFF303035)
+val Border = Color(0xFF222C36)
+val BorderSubtle = Color(0xFF18212A)
+val Divider = Color(0xFF222C36)
+val CardBorder = Color(0xFF222C36)
 
 // Light Theme Base
 val LightBg = Color(0xFFF8F9FA)
@@ -58,13 +61,13 @@ val LightCardBorder = Color(0xFFE0E0E0)
 
 private val FocusGuardDarkColorScheme = darkColorScheme(
     primary = AccentCyan,
-    onPrimary = Color.White,
-    primaryContainer = AccentCyanDark,
-    onPrimaryContainer = Color.White,
-    secondary = AccentPurple,
-    onSecondary = Color.White,
-    secondaryContainer = AccentPurpleDark,
-    onSecondaryContainer = Color.White,
+    onPrimary = AccentCyanInk,
+    primaryContainer = Color(0xFF16343C),
+    onPrimaryContainer = AccentCyan,
+    secondary = AccentCyan,
+    onSecondary = AccentCyanInk,
+    secondaryContainer = Color(0xFF16343C),
+    onSecondaryContainer = AccentCyan,
     tertiary = AccentCyan,
     background = DarkBg,
     onBackground = TextPrimary,
@@ -82,11 +85,11 @@ private val FocusGuardLightColorScheme = lightColorScheme(
     primary = AccentCyanDark,
     onPrimary = Color.White,
     primaryContainer = AccentCyan,
-    onPrimaryContainer = Color.White,
-    secondary = AccentPurpleDark,
+    onPrimaryContainer = AccentCyanInk,
+    secondary = AccentCyanDark,
     onSecondary = Color.White,
-    secondaryContainer = AccentPurple,
-    onSecondaryContainer = Color.White,
+    secondaryContainer = AccentCyan,
+    onSecondaryContainer = AccentCyanInk,
     tertiary = AccentCyanDark,
     background = LightBg,
     onBackground = LightTextPrimary,
@@ -134,7 +137,7 @@ val FocusGuardTypography = Typography(
 @Composable
 fun FocusGuardTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {
