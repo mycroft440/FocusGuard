@@ -10,6 +10,7 @@ import com.focusguard.security.DeviceOwnerMaintenanceGate
 import com.focusguard.utils.AccessibilityStateMonitor
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.UsageAccessStateMonitor
+import com.focusguard.utils.UsageLimitPauseStateStore
 import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +37,10 @@ class FocusGuardApplication : Application() {
             runCatching { createDeviceProtectedStorageContext() }.getOrDefault(this)
         }
         FocusGuardLogger.init(startupContext)
+        val usageLimitStateContext = runCatching {
+            createDeviceProtectedStorageContext()
+        }.getOrDefault(startupContext)
+        UsageLimitPauseStateStore.initialize(usageLimitStateContext)
 
         // Warm externally-backed authorization state before Accessibility can receive
         // its first event. Subsequent maintenance/admin decisions are memory-only in
