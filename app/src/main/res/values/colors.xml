@@ -11,7 +11,7 @@
     <color name="dark_bg">#FF05080B</color>
     <color name="dark_surface">#FF0E141B</color>
     <color name="dark_card">#FF141B23</color>
-    <color name="dark_card_elevated">#FF171F29</color>
+    <color name="dark_card_elevated">#FF10161D</color>
 
     <!-- Gradient Colors -->
     <color name="gradient_start">#FF8FE3F5</color>

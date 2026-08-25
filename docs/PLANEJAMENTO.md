@@ -17,7 +17,7 @@ executados depois do objetivo em andamento.
 | 4 | Manter a organização e os nomes dos bloqueios | cumprido |
 | 5 | Manter todas as funções (nada de lógica alterada) | cumprido |
 | 6 | Mexer apenas e exclusivamente na aparência | em andamento |
-| 7 | Revisão do agente supervisor até ele aprovar | pendente |
+| 7 | Revisão do agente supervisor até ele aprovar | em andamento (rodada 2) |
 
 ## Regras de trabalho definidas pelo usuário
 
@@ -44,3 +44,25 @@ executados depois do objetivo em andamento.
 - `colors.xml` alinhado ao tema do Compose (barra de status e de navegação
   deixam de destoar do fundo do app).
 - Pomodoro (relógio, ciclo, plano) e nomes/ordem dos bloqueios: intocados.
+
+### Rodada 1 do supervisor — REPROVADO
+
+Bloqueador: `lineHeight` no `bodyLarge`. Ele é o estilo herdado por todo `Text`
+sem estilo próprio, e o app troca `fontSize` inline em centenas de lugares sem
+trocar a entrelinha — inclusive na tela do Pomodoro, que o usuário pediu para
+não mexer. Corrigido antes do parecer chegar (mesmo achado, encontrado nas duas
+pontas).
+
+Demais correções aplicadas a partir do parecer:
+- Métricas pintava um halo próprio por cima do halo da tela principal quando
+  aparecia como aba, criando um corte horizontal. Agora só pinta fundo quando é
+  tela própria.
+- `StatusPill` com acento escuro (o vermelho do jejum) tinha texto a 3.7:1.
+  Texto passa a branco quando a luminância do acento é baixa.
+- `ProfileScreen` tinha casca nova e cartão antigo lado a lado. Unificado.
+- `FocusCard` só monta a máquina de toque quando é clicável; o `clickable` foi
+  reposicionado depois do fundo, senão o brilho do toque ficava escondido.
+- Faixa de acento do cartão de bloqueio deixou de cobrir a borda.
+- Tokens mortos removidos, entre eles `AccentBlue` — era azul, não ciano, e
+  diluiria a identidade se entrasse em uso.
+- `dark_card_elevated` no XML estava espelhando o token errado.

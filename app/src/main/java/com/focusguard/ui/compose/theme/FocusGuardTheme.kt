@@ -31,12 +31,9 @@ val AccentCyanInk = Color(0xFF04222A)
 val AccentCyanTint = Color(0x1F5CCFE6)
 val AccentCyanLine = Color(0x475CCFE6)
 
-// Ciano estendido — tons derivados do azul ciano principal, usados nos
-// degradês, brilhos e realces. Nenhum deles troca a cor de identidade do app:
-// todos nascem de AccentCyan, só variam em claridade e profundidade.
-val AccentCyanBright = Color(0xFF8FE3F5)
-val AccentCyanDeep = Color(0xFF2C93AE)
-val AccentBlue = Color(0xFF4C93E8)
+// Ciano estendido — o mesmo #5CCFE6 em opacidades diferentes, para os halos,
+// realces e bordas. Nenhum troca a cor de identidade do app: são o próprio
+// AccentCyan com mais ou menos presença.
 val AccentCyanGlow = Color(0x385CCFE6)
 val AccentCyanWash = Color(0x125CCFE6)
 val AccentCyanEdge = Color(0x2E5CCFE6)
@@ -48,7 +45,6 @@ val AccentCyanEdge = Color(0x2E5CCFE6)
 // sem empurrar TextSecondary para baixo de 6:1.
 val SurfaceRaisedTop = Color(0xFF171F29)
 val SurfaceRaisedBottom = Color(0xFF10171F)
-val SurfaceSunken = Color(0xFF0B1117)
 
 // Semantic Colors
 val SuccessGreen = Color(0xFF4CAF50)
@@ -152,9 +148,13 @@ val FocusGuardShapes = Shapes(
  *
  * Os tamanhos permanecem os mesmos de antes para não deslocar nenhuma tela; o
  * que muda é o acabamento — títulos com espaçamento entre letras levemente
- * negativo (mais compactos e firmes), textos de corpo com entrelinha explícita
- * e os estilos que faltavam preenchidos, para os componentes do Material 3
- * pararem de cair no padrão da biblioteca no meio de uma tela nossa.
+ * negativo (mais compactos e firmes) e os estilos que faltavam preenchidos,
+ * para os componentes do Material 3 pararem de cair no padrão da biblioteca no
+ * meio de uma tela nossa.
+ *
+ * A entrelinha só entra nos estilos que são pedidos pelo nome, junto com o
+ * tamanho que vem com eles. O `bodyLarge` fica de fora — o porquê está anotado
+ * nele.
  */
 val FocusGuardTypography = Typography(
     headlineLarge = TextStyle(

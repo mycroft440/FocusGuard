@@ -31,6 +31,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
@@ -52,6 +53,13 @@ val FocusCardShape = RoundedCornerShape(18.dp)
 
 private val GlowHeight = 300.dp
 private const val PRESSED_SCALE = 0.975f
+
+/**
+ * Abaixo desta luminância um acento não serve como cor de texto sobre si mesmo.
+ * Fica entre o vermelho de perigo (0.198) e o verde de sucesso (0.328), que são
+ * os dois acentos mais escuros em uso.
+ */
+private const val DIM_ACCENT_LUMINANCE = 0.30f
 
 /**
  * Degradê de superfície de cartão: o topo recebe um pouco mais de luz que a
@@ -122,17 +130,30 @@ fun FocusCard(
     onClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
+    // Painel sem clique não paga por animação de toque: numa lista longa seriam
+    // dezenas de InteractionSource e camadas de gráfico criados à toa. Por isso
+    // os dois casos são caminhos separados, e não um Modifier condicional.
+    if (onClick == null) {
+        Box(
+            modifier = modifier
+                .clip(shape)
+                .background(brush)
+                .border(border, shape),
+            content = content
+        )
+        return
+    }
+
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (onClick != null && pressed) PRESSED_SCALE else 1f,
+        targetValue = if (pressed) PRESSED_SCALE else 1f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioNoBouncy,
             stiffness = Spring.StiffnessMediumLow
         ),
         label = "FocusCardPress"
     )
-    val indication = LocalIndication.current
 
     Box(
         modifier = modifier
@@ -143,20 +164,16 @@ fun FocusCard(
             .clip(shape)
             .background(brush)
             .border(border, shape)
-            .then(
-                if (onClick != null) {
-                    // `role = Role.Button` é o que o Card clicável do Material 3
-                    // colocava sozinho: sem ele o TalkBack anuncia o cartão como
-                    // texto e não avisa que dá para tocar.
-                    Modifier.clickable(
-                        interactionSource = interactionSource,
-                        indication = indication,
-                        role = Role.Button,
-                        onClick = onClick
-                    )
-                } else {
-                    Modifier
-                }
+            // O clickable vem depois do fundo de propósito: aplicado antes, o
+            // brilho do toque seria desenhado por baixo e o cartão pareceria
+            // não responder. `role = Role.Button` é o que o Card clicável do
+            // Material 3 colocava sozinho — sem ele o TalkBack anuncia o cartão
+            // como texto e não avisa que dá para tocar.
+            .clickable(
+                interactionSource = interactionSource,
+                indication = LocalIndication.current,
+                role = Role.Button,
+                onClick = onClick
             ),
         content = content
     )
@@ -229,6 +246,12 @@ fun FocusSectionLabel(
 
 /**
  * Etiqueta arredondada de status (o "pronto", "ativo", a contagem de itens).
+ *
+ * O texto nem sempre pode ser o próprio acento. Acento claro (o ciano, o âmbar)
+ * lido sobre ele mesmo a 12% dá contraste de sobra; acento escuro, como o
+ * vermelho do jejum de dopamina, cai para 3.7:1 — abaixo do mínimo de leitura.
+ * Nesses casos o texto vira branco e o acento fica onde continua legível: na
+ * borda e no ponto.
  */
 @Composable
 fun StatusPill(
@@ -237,6 +260,7 @@ fun StatusPill(
     accent: Color = AccentCyan,
     leadingDot: Boolean = false
 ) {
+    val label = if (accent.luminance() < DIM_ACCENT_LUMINANCE) TextPrimary else accent
     Row(
         modifier = modifier
             .clip(CircleShape)
@@ -256,7 +280,7 @@ fun StatusPill(
         }
         Text(
             text = text,
-            color = accent,
+            color = label,
             fontSize = 12.sp,
             fontWeight = FontWeight.SemiBold,
             letterSpacing = 0.5.sp

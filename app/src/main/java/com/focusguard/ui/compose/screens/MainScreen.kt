@@ -784,8 +784,11 @@ fun SessionCard(
                 .height(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically
         ) {
+            // A faixa é desenhada como conteúdo, ou seja, por cima da borda do
+            // cartão. O padding de 1dp a encosta na borda em vez de cobri-la.
             Box(
                 modifier = Modifier
+                    .padding(vertical = 1.dp, horizontal = 1.dp)
                     .width(3.dp)
                     .fillMaxHeight()
                     .background(
