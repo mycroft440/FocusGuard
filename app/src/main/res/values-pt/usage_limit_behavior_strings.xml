@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="limits_daily_max_title">Tempo máximo por dia</string>
+    <string name="limits_daily_max_minutes_label">Minutos por dia</string>
+    <string name="limits_after_reaching_title">Ao atingir o limite diário</string>
+    <string name="limits_pause_30_option">Pausa de 30 minutos</string>
+    <string name="limits_pause_30_desc">Mostra um aviso e bloqueia o app por 30 minutos. Depois da pausa, ele volta a funcionar normalmente pelo restante do dia.</string>
+    <string name="limits_block_tomorrow_option">Bloquear até amanhã</string>
+    <string name="limits_block_tomorrow_desc">Mantém o app bloqueado até o contador de uso diário reiniciar no dia seguinte.</string>
+    <string name="limits_rule_duration_title">Duração da regra</string>
+    <string name="limits_duration_amount_label">Duração</string>
+    <string name="limits_duration_days">Dias</string>
+    <string name="limits_duration_weeks">Semanas</string>
+    <string name="limits_duration_months">Meses</string>
+    <string name="limits_rule_summary">%1$d min/dia • %2$s • %3$d %4$s</string>
+    <string name="limits_rule_current_until">Regra atual até %1$s</string>
+    <string name="limits_pause_notice">Você atingiu o limite diário. Faça uma pausa de 30 minutos antes de usar este app novamente.</string>
+    <string name="limits_daily_lock_notice">Você atingiu o limite diário. Este app ficará disponível novamente amanhã.</string>
+</resources>
