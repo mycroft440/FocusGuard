@@ -96,12 +96,12 @@ object FocusModePolicy {
     ): Boolean = deviceOwnerActive && systemLockdownSupported
 
     fun shouldRedirectToFocusGuard(
-        focusModeActive: Boolean,
         focusModeFallbackActive: Boolean,
         foregroundPackage: String,
         focusGuardPackage: String,
         launcherPackage: String?,
-        focusModeBlockedPackages: Collection<String>
+        focusModeBlockedPackages: Collection<String>,
+        focusModeActive: Boolean = focusModeFallbackActive
     ): Boolean = focusModeActive &&
         foregroundPackage.isNotBlank() &&
         foregroundPackage != focusGuardPackage &&
