@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="recovery_course_badge">CURSO GRATUITO • PRIVADO • OFFLINE</string>
+    <string name="recovery_course_badge">Privado · Offline</string>
     <string name="recovery_course_progress_title">Seu progresso</string>
     <string name="recovery_course_progress_value">%1$d%% concluído</string>
     <string name="recovery_course_progress_encouragement">Continue firme. Cada passo conta.</string>
@@ -8,11 +8,20 @@
     <string name="recovery_course_slogan_understand_trap">ENTENDA A ARMADILHA E FECHE AS PORTAS</string>
     <string name="recovery_course_slogan_without_only_willpower">SEM DEPENDER SÓ DE FORÇA DE VONTADE</string>
     <string name="recovery_course_slogan_private_offline">CURSO GRATUITO, PRIVADO E OFFLINE</string>
-    <string name="recovery_course_title">CURSO GRATUITO PARA SAIR DO CICLO DA PORNOGRAFIA</string>
-    <string name="recovery_course_hero">ABSOLUTAMENTE TUDO PARA ENTENDER E ROMPER A ARMADILHA — feito por quem já caiu nela.</string>
-    <string name="recovery_course_subtitle">Muito mais do que usar força de vontade. Entenda o que pode acontecer antes, durante e depois da pornografia, por que o ciclo se torna automático e como construir uma saída prática.</string>
+    <string name="recovery_course_title">Sair do ciclo da pornografia</string>
+    <string name="recovery_course_hero">Não é sobre resistir. É perder a vontade.</string>
+    <string name="recovery_course_punch_prefix">Não é sobre </string>
+    <string name="recovery_course_punch_resist">resistir</string>
+    <string name="recovery_course_punch_bridge">.\nÉ </string>
+    <string name="recovery_course_punch_goal">perder a vontade</string>
+    <string name="recovery_course_punch_end">.</string>
+    <string name="recovery_course_subtitle">Feito por quem já caiu nela. Entenda o que acontece antes, durante e depois, por que o ciclo vira automático e como montar uma saída prática — sem contar dias.</string>
     <string name="recovery_course_not_willpower_title">Isso não é uma competição de força de vontade</string>
-    <string name="recovery_course_not_willpower_body">A proposta não é passar o dia inteiro lutando contra si mesmo. O curso organiza o problema em torno de aprendizagem, recompensa, respostas automáticas, ambiente e maneiras práticas de lidar com tédio, estresse, solidão e ansiedade — para agir sobre o mecanismo em vez de apenas aguentar a vontade.</string>
+    <string name="recovery_course_not_willpower_body">A proposta não é passar o dia inteiro lutando contra si mesmo. O curso organiza o problema em torno de aprendizagem, recompensa, respostas automáticas, ambiente e maneiras práticas de lidar com tédio, estresse, solidão e ansiedade — para agir sobre o mecanismo em vez de brigar com o sintoma.</string>
+    <string name="recovery_course_read_more">Ler mais</string>
+    <string name="recovery_course_read_less">Ler menos</string>
+    <string name="recovery_course_steps_progress">%1$d de %2$d etapas concluídas</string>
+    <string name="recovery_course_no_account">sem conta</string>
     <string name="recovery_course_point_reward">Entenda como expectativa, recompensa e repetição podem fortalecer um ciclo automático de hábito.</string>
     <string name="recovery_course_point_triggers">O que fazer com sentimentos como tédio, estresse, solidão e ansiedade — sem transformar cada desconforto em uma batalha contra si mesmo.</string>
     <string name="recovery_course_point_before_after">Mapeie o que acontece antes da vontade, durante o comportamento e depois dele — sem usar moralismo ou vergonha como estratégia.</string>
@@ -24,7 +33,7 @@
     <string name="recovery_course_science_title">CONSTRUÍDO EM CIMA DE COMPORTAMENTO E NEUROCIÊNCIA</string>
     <string name="recovery_course_science_body">O material trabalha conceitos de aprendizagem por recompensa, formação de hábitos, controle inibitório, regulação emocional e mudança de comportamento. É apoio educativo, não tratamento médico nem promessa de cura.</string>
     <string name="recovery_course_bridge">Pare de lutar no escuro. Primeiro entenda o ciclo. Depois feche as portas que fazem ele recomeçar.</string>
-    <string name="recovery_course_cta">COMEÇAR O CURSO GRATUITO</string>
-    <string name="recovery_course_cta_continue">CONTINUAR O CURSO</string>
-    <string name="recovery_course_footer">Conteúdo educativo. Pode complementar acompanhamento profissional quando necessário, mas não substitui tratamento psicológico ou psiquiátrico.</string>
+    <string name="recovery_course_cta">Começar o curso gratuito</string>
+    <string name="recovery_course_cta_continue">Continuar o curso</string>
+    <string name="recovery_course_footer">Conteúdo educativo. Complementa acompanhamento profissional, mas não substitui tratamento psicológico ou psiquiátrico.</string>
 </resources>
