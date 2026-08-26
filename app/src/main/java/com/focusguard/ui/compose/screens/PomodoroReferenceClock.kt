@@ -2,6 +2,7 @@ package com.focusguard.ui.compose.screens
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -70,14 +71,24 @@ internal fun PomodoroReferenceClock(
         formatter.format(Date(System.currentTimeMillis() + safeRemainingMillis))
     }
 
-    val amber = Color(0xFFF6BC58)
-    val amberLight = Color(0xFFFFD181)
-    val amberDeep = Color(0xFFF2A632)
-    val track = Color(0xFF262525)
-    val tick = Color(0xFF8C8884)
-    val centerSurface = Color(0xFF171717)
-    val primaryText = Color(0xFFF4F5F8)
-    val secondaryText = Color(0xFF8D8B98)
+    // Cores amostradas do print de referência, pixel a pixel, e não escolhidas
+    // no olho: o arco, a pílula "pronto para focar" e os controles + / - de lá
+    // são todos o mesmo #75CCD6.
+    val arcColor = Color(0xFF75CCD6)
+    val arcLight = Color(0xFF8AD9E1)
+    val arcDeep = Color(0xFF63BDC9)
+    val track = Color(0xFF1D2025)
+    // O traço do marcador é desenhado com alfa (0.72 no maior, 0.38 no menor);
+    // este tom é o que, depois do alfa, cai no #515A5F medido no print.
+    val tick = Color(0xFF6C777C)
+    val centerSurface = Color(0xFF0C0F14)
+    val primaryText = Color(0xFFE8EDF3)
+    val secondaryText = Color(0xFF8E97A6)
+    // O cadeado continua âmbar: no print ele é a única coisa que não é ciano,
+    // e é isso que faz "volta às 19:02" se ler como um aviso, e não como mais
+    // um número do relógio.
+    val lockAmber = Color(0xFFEBB064)
+    val lockSurface = Color(0xFF1D1C18)
 
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Canvas(
@@ -118,11 +129,11 @@ internal fun PomodoroReferenceClock(
             val arcTopLeft = Offset(center.x - radius, center.y - radius)
             val arcSize = Size(radius * 2f, radius * 2f)
 
-            // Soft warm center and outer halo from the supplied reference.
+            // Halo central e brilho externo, na cor do arco.
             drawCircle(
                 brush = Brush.radialGradient(
                     colors = listOf(
-                        amber.copy(alpha = 0.11f),
+                        arcColor.copy(alpha = 0.11f),
                         centerSurface.copy(alpha = 0.96f),
                         Color.Transparent
                     ),
@@ -168,10 +179,10 @@ internal fun PomodoroReferenceClock(
                 )
             }
 
-            // Multi-pass glow behind the active amber arc.
+            // Brilho em várias passadas atrás do arco ativo.
             if (sweep > 0f) {
                 drawArc(
-                    color = amber.copy(alpha = 0.08f),
+                    color = arcColor.copy(alpha = 0.08f),
                     startAngle = -90f,
                     sweepAngle = sweep,
                     useCenter = false,
@@ -180,7 +191,7 @@ internal fun PomodoroReferenceClock(
                     style = Stroke(width = 34.dp.toPx(), cap = StrokeCap.Round)
                 )
                 drawArc(
-                    color = amber.copy(alpha = 0.16f),
+                    color = arcColor.copy(alpha = 0.16f),
                     startAngle = -90f,
                     sweepAngle = sweep,
                     useCenter = false,
@@ -190,7 +201,7 @@ internal fun PomodoroReferenceClock(
                 )
                 drawArc(
                     brush = Brush.linearGradient(
-                        colors = listOf(amberLight, amber, amberDeep),
+                        colors = listOf(arcLight, arcColor, arcDeep),
                         start = Offset(center.x - radius, center.y - radius),
                         end = Offset(center.x + radius, center.y + radius)
                     ),
@@ -202,14 +213,16 @@ internal fun PomodoroReferenceClock(
                     style = Stroke(width = trackWidth, cap = StrokeCap.Round)
                 )
 
+                // A ponta do arco só ganha um adensamento do próprio brilho.
+                // O ponto branco que ficava aqui não existe no print: lá o arco
+                // termina na própria tampa arredondada.
                 val endAngle = (sweep - 90f) * PI / 180f
                 val knobCenter = Offset(
                     center.x + cos(endAngle).toFloat() * radius,
                     center.y + sin(endAngle).toFloat() * radius
                 )
-                drawCircle(amber.copy(alpha = 0.13f), 17.dp.toPx(), knobCenter)
-                drawCircle(amber.copy(alpha = 0.28f), 11.dp.toPx(), knobCenter)
-                drawCircle(Color(0xFFFFF3D8), 6.5.dp.toPx(), knobCenter)
+                drawCircle(arcColor.copy(alpha = 0.13f), 17.dp.toPx(), knobCenter)
+                drawCircle(arcColor.copy(alpha = 0.20f), 11.dp.toPx(), knobCenter)
             }
         }
 
@@ -236,7 +249,12 @@ internal fun PomodoroReferenceClock(
             Row(
                 modifier = Modifier
                     .clip(RoundedCornerShape(50))
-                    .background(Color(0xFF4A341F).copy(alpha = 0.86f))
+                    .background(lockSurface)
+                    .border(
+                        width = 1.dp,
+                        color = lockAmber.copy(alpha = 0.45f),
+                        shape = RoundedCornerShape(50)
+                    )
                     .padding(horizontal = 10.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(5.dp)
@@ -244,12 +262,12 @@ internal fun PomodoroReferenceClock(
                 Icon(
                     imageVector = Icons.Outlined.Lock,
                     contentDescription = null,
-                    tint = amber,
+                    tint = lockAmber,
                     modifier = Modifier.size(13.dp)
                 )
                 Text(
                     text = stringResource(R.string.fg_pomodoro_clock_end_at, endAt),
-                    color = amberLight,
+                    color = lockAmber,
                     fontSize = 10.5.sp,
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Medium
