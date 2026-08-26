@@ -1,19 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Espelho em XML da paleta do Compose (FocusGuardTheme.kt).
+
+  Os dois arquivos precisam bater: a barra de status e a barra de navegação do
+  sistema saem daqui, e quando o valor divergia do fundo desenhado pelo Compose
+  aparecia uma faixa mais clara colada no topo e no rodapé de toda tela.
+
+  Só três recursos daqui têm uso real hoje — dark_bg (styles.xml e o layout do
+  livro offline), text_primary e text_secondary (drawables). O resto existe para
+  quem precisar de um tom da paleta fora do Compose.
+-->
 <resources>
     <!-- Dark Theme Base -->
-    <color name="dark_bg">#FF0D0D0D</color>
-    <color name="dark_surface">#FF161616</color>
-    <color name="dark_card">#FF1C1C1E</color>
-    <color name="dark_card_elevated">#FF252528</color>
-
-    <!-- Gradient Colors -->
-    <color name="gradient_start">#FF00BCD4</color>
-    <color name="gradient_mid">#FF6C63FF</color>
-    <color name="gradient_end">#FF7C4DFF</color>
+    <color name="dark_bg">#FF05080B</color>
+    <color name="dark_surface">#FF0E141B</color>
+    <color name="dark_card">#FF141B23</color>
+    <color name="dark_card_elevated">#FF10161D</color>
 
     <!-- Accent Colors -->
-    <color name="accent_cyan">#FF00BCD4</color>
-    <color name="accent_cyan_dark">#FF0097A7</color>
+    <color name="accent_cyan">#FF5CCFE6</color>
+    <color name="accent_cyan_dark">#FF3AAFC5</color>
     <color name="accent_purple">#FF7C4DFF</color>
     <color name="accent_purple_dark">#FF5E35B1</color>
 
@@ -25,16 +31,16 @@
     <color name="info_blue">#FF2196F3</color>
 
     <!-- Text Colors -->
-    <color name="text_primary">#FFFAFAFA</color>
-    <color name="text_secondary">#FFB0B0B0</color>
-    <color name="text_hint">#FF6B6B6B</color>
-    <color name="text_disabled">#FF4A4A4A</color>
+    <color name="text_primary">#FFEDF2F7</color>
+    <color name="text_secondary">#FF93A1AD</color>
+    <color name="text_hint">#FF78848F</color>
+    <color name="text_disabled">#FF46515A</color>
 
     <!-- Borders & Dividers -->
-    <color name="border">#FF2A2A2E</color>
-    <color name="border_subtle">#FF1F1F23</color>
-    <color name="divider">#FF2A2A2E</color>
-    <color name="card_border">#FF303035</color>
+    <color name="border">#FF222C36</color>
+    <color name="border_subtle">#FF18212A</color>
+    <color name="divider">#FF222C36</color>
+    <color name="card_border">#FF222C36</color>
 
     <!-- Overlay -->
     <color name="overlay_dark">#CC000000</color>

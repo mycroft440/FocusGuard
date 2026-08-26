@@ -2,6 +2,7 @@ package com.focusguard.ui.compose.screens
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -20,8 +21,6 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -54,7 +53,11 @@ import com.focusguard.ui.compose.layout.FocusGuardScreenScaffold
 import com.focusguard.ui.compose.layout.FocusGuardScrollableContent
 import com.focusguard.ui.compose.layout.FocusGuardSectionHeader
 import com.focusguard.ui.compose.theme.AccentCyan
+import com.focusguard.ui.compose.theme.AccentCyanEdge
+import com.focusguard.ui.compose.theme.AccentIconBadge
+import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
+import com.focusguard.ui.compose.theme.FocusCard
 import com.focusguard.ui.compose.theme.TextHint
 import kotlin.math.ceil
 
@@ -259,13 +262,13 @@ private fun ProfileSettingsCard(
     profile: UserProfile,
     onClick: () -> Unit
 ) {
-    Card(
-        onClick = onClick,
+    // O cartão do perfil abre a tela, então ganha a borda ciano: é o único
+    // item aqui que fala de quem usa o app, e não do que o app faz.
+    FocusCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.72f)
-        ),
-        shape = RoundedCornerShape(18.dp)
+        shape = RoundedCornerShape(18.dp),
+        border = BorderStroke(1.dp, AccentCyanEdge),
+        onClick = onClick
     ) {
         Row(
             modifier = Modifier
@@ -314,25 +317,27 @@ fun SettingsItem(
     titleColor: Color = Color.Unspecified,
     onClick: () -> Unit
 ) {
-    Card(
-        onClick = onClick,
+    // Cada linha ganha o selo de ícone padrão do app no lugar do ícone solto:
+    // com quinze itens empilhados, o selo é o que dá ritmo à lista e faz a
+    // vista pular de um item para o outro sem reler tudo.
+    FocusCard(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        ),
-        shape = RoundedCornerShape(12.dp)
+        shape = RoundedCornerShape(14.dp),
+        border = BorderStroke(1.dp, CardBorder),
+        onClick = onClick
     ) {
         Row(
-            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp).fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = iconTint,
-                modifier = Modifier.size(24.dp)
+            AccentIconBadge(
+                icon = icon,
+                accent = iconTint,
+                size = 40.dp,
+                iconSize = 20.dp,
+                shape = RoundedCornerShape(12.dp)
             )
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(14.dp))
             Column(Modifier.weight(1f)) {
                 Text(
                     text = title,
