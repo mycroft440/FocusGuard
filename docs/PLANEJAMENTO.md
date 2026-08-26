@@ -20,7 +20,7 @@ executados depois do objetivo em andamento.
 | 7 | Revisão do agente supervisor até ele aprovar | cumprido (aprovado na rodada 2) |
 | 8 | Repaginar Permissões, Lista de Sessões, Recuperação e Detalhe da Sessão | cumprido |
 | 9 | Resolver a emenda no topo da tela (sem mexer em insets) | cumprido |
-| 10 | Nova rodada do supervisor sobre os itens 8 e 9 | parcial — agente caiu por limite de sessão; revisão feita por conta própria |
+| 10 | Nova rodada do supervisor sobre os itens 8 e 9 | cumprido — APROVADO, sem bloqueadores |
 | 11 | Ao terminar tudo, commitar tudo na main | cumprido |
 | 12 | Não alterar os bloqueios nem como funcionam — só aparência | cumprido e verificado |
 
@@ -168,3 +168,21 @@ Pendências conhecidas, não corrigidas de propósito:
 - `DrawerMenuButton` em `MainScreen.kt` é código morto — já era antes desta série.
 - `headlineSmall` e `titleSmall` alcançam diálogos e abas não revisados em
   aparelho.
+
+
+## Rodada final do supervisor — APROVADO, sem bloqueadores
+
+Ele conferiu os 27 pontos de chamada do `FocusCard` um a um contra o original e
+não achou mudança de comportamento em bloqueio nenhum. Chegou de forma
+independente ao mesmo defeito do degradê chapado que eu tinha achado e já
+corrigido, e refez a matemática de contraste batendo com a do commit.
+
+Uma imprecisão dele valeu correção: o comentário do `colors.xml` listava três
+recursos com uso fora do Compose, mas eram cinco — faltavam `danger_red`
+(ic_warning.xml) e `ic_launcher_background` (ícone do app). A lista agora está
+completa e traz o comando que a mantém honesta.
+
+A outra observação dele — `FocusCard` alocando mesmo sem clique — foi recusada
+de propósito: é exatamente a otimização que virou armadilha na rodada anterior,
+quando o `StageCard` passou a alternar `onClick` entre nulo e não-nulo. O
+motivo está anotado no próprio componente.

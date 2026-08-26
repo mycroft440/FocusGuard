@@ -6,9 +6,18 @@
   sistema saem daqui, e quando o valor divergia do fundo desenhado pelo Compose
   aparecia uma faixa mais clara colada no topo e no rodapé de toda tela.
 
-  Só três recursos daqui têm uso real hoje — dark_bg (styles.xml e o layout do
-  livro offline), text_primary e text_secondary (drawables). O resto existe para
-  quem precisar de um tom da paleta fora do Compose.
+  Cinco recursos daqui têm uso real hoje, e são os únicos que precisam bater com
+  o tema de verdade:
+
+    dark_bg                 styles.xml, layout/activity_offline_book.xml
+    danger_red              drawable/ic_warning.xml
+    text_primary            drawable/ic_sessions.xml
+    text_secondary          drawable/ic_info.xml
+    ic_launcher_background  mipmap-anydpi-v26/ic_launcher.xml
+
+  O resto existe para quem precisar de um tom da paleta fora do Compose. Quem
+  mexer aqui: `grep -rl "@color/<nome>" app/src/main/res` diz quem depende de
+  quê antes de a lista acima envelhecer de novo.
 -->
 <resources>
     <!-- Dark Theme Base -->
