@@ -80,9 +80,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.focusguard.R
 import com.focusguard.ui.compose.theme.CardBorder
-import com.focusguard.ui.compose.theme.DarkCardElevated
 import com.focusguard.ui.compose.theme.FocusCard
-import com.focusguard.ui.compose.theme.SurfaceRaisedBottom
+import com.focusguard.ui.compose.theme.SurfaceSunkenBottom
+import com.focusguard.ui.compose.theme.SurfaceSunkenTop
 import com.focusguard.ui.compose.theme.focusCardBrush
 import com.focusguard.data.RecoveryJourney
 import com.focusguard.data.RecoveryJourney.Stage
@@ -513,17 +513,17 @@ private fun StageCard(
     // de ativada, vira apenas um registro concluído e não pode ser duplicada.
     val canOpen = !locked && (current || content.confirmationRes != null)
 
-    // A etapa em curso vem com a superfície cheia e a borda no acento; as
-    // demais recuam para a superfície rebaixada, que é o mesmo degradê visto
-    // mais fundo. A hierarquia entre "é agora" e "é depois" fica na luz, sem
-    // precisar de mais texto.
+    // A etapa em curso vem com a superfície elevada e a borda no acento; as
+    // demais recuam um degrau, para a superfície rebaixada. A hierarquia entre
+    // "é agora" e "é depois" fica na luz, sem precisar de mais texto — e as duas
+    // mantêm o próprio degradê, para a etapa futura recuar sem virar uma chapa.
     FocusCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
         brush = if (current) {
             focusCardBrush()
         } else {
-            focusCardBrush(SurfaceRaisedBottom, DarkCardElevated)
+            focusCardBrush(SurfaceSunkenTop, SurfaceSunkenBottom)
         },
         border = BorderStroke(
             if (current) 1.5.dp else 1.dp,

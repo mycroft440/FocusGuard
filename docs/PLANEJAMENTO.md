@@ -21,7 +21,7 @@ executados depois do objetivo em andamento.
 | 8 | Repaginar Permissões, Lista de Sessões, Recuperação e Detalhe da Sessão | cumprido |
 | 9 | Resolver a emenda no topo da tela (sem mexer em insets) | cumprido |
 | 10 | Nova rodada do supervisor sobre os itens 8 e 9 | parcial — agente caiu por limite de sessão; revisão feita por conta própria |
-| 11 | Ao terminar tudo, commitar tudo na main | em andamento |
+| 11 | Ao terminar tudo, commitar tudo na main | cumprido |
 | 12 | Não alterar os bloqueios nem como funcionam — só aparência | cumprido e verificado |
 
 ## Regras de trabalho definidas pelo usuário
@@ -143,3 +143,28 @@ O usuário pediu cuidado redobrado com os bloqueios. Provas levantadas contra
 - A separação das listas em aplicativos e sites (`filterNot { it.isWebsite }` /
   `filter { it.isWebsite }`) e a ordem das seções continuam as mesmas; as linhas
   só mudaram de indentação.
+
+
+## Revisão pedida pelo usuário depois do merge
+
+Achado próprio, medido e corrigido: o cartão da etapa futura na jornada de
+recuperação tinha virado uma chapa. Os dois tons escolhidos (`SurfaceRaisedBottom`
+e `DarkCardElevated`) diferem em 1.008:1 — imperceptível — enquanto o comentário
+no código afirmava ser "o mesmo degradê visto mais fundo". O comentário
+documentava algo que o código não fazia.
+
+Entraram `SurfaceSunkenTop`/`SurfaceSunkenBottom`, escolhidos por três medidas
+que precisavam fechar juntas: degradê visível (1.07:1), separação suficiente da
+etapa em curso (1.09:1) e destaque contra o fundo do app (1.11:1).
+
+Verificado e OK nesta revisão: nenhum vazamento de fundo (a raiz do NavHost é
+`Surface` opaca e PermissionsScreen pinta o próprio `DarkBg`); nenhum FocusCard
+com clique duplo; chaves e ordem das listas de bloqueio idênticas; nenhum
+`ProvideTextStyle` no app além do `bodyLarge` do MaterialTheme, que está sem
+`lineHeight`; sem imports órfãos introduzidos.
+
+Pendências conhecidas, não corrigidas de propósito:
+- `Brush` é import morto em `SessionDetailScreen.kt` — já era antes desta série.
+- `DrawerMenuButton` em `MainScreen.kt` é código morto — já era antes desta série.
+- `headlineSmall` e `titleSmall` alcançam diálogos e abas não revisados em
+  aparelho.
