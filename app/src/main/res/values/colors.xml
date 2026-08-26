@@ -22,9 +22,9 @@
 <resources>
     <!-- Dark Theme Base -->
     <color name="dark_bg">#FF05080B</color>
-    <color name="dark_surface">#FF0E141B</color>
-    <color name="dark_card">#FF141B23</color>
-    <color name="dark_card_elevated">#FF10161D</color>
+    <color name="dark_surface">#FF080C11</color>
+    <color name="dark_card">#FF0A0F16</color>
+    <color name="dark_card_elevated">#FF080C11</color>
 
     <!-- Accent Colors -->
     <color name="accent_cyan">#FF5CCFE6</color>

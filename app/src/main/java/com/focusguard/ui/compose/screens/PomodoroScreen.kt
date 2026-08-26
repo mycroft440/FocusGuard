@@ -105,8 +105,8 @@ import kotlin.math.roundToInt
 import kotlin.math.sin
 
 private val PomodoroPageBg = Color(0xFF05080B)
-private val PomodoroSurface = Color(0xFF141B23)
-private val PomodoroSurfaceMuted = Color(0xFF10161D)
+private val PomodoroSurface = Color(0xFF0A0F16)
+private val PomodoroSurfaceMuted = Color(0xFF080C11)
 private val PomodoroStroke = Color(0xFF222C36)
 private val PomodoroText = Color(0xFFEDF2F7)
 private val PomodoroTextDim = Color(0xFF93A1AD)

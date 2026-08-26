@@ -18,9 +18,9 @@ import androidx.compose.ui.unit.sp
 
 // Dark Theme Base — unified with the Pomodoro visual language.
 val DarkBg = Color(0xFF05080B)
-val DarkSurface = Color(0xFF0E141B)
-val DarkCard = Color(0xFF141B23)
-val DarkCardElevated = Color(0xFF10161D)
+val DarkSurface = Color(0xFF080C11)
+val DarkCard = Color(0xFF0A0F16)
+val DarkCardElevated = Color(0xFF080C11)
 
 // Accent Colors
 val AccentCyan = Color(0xFF5CCFE6)
@@ -45,33 +45,33 @@ val AccentCyanEdge = Color(0x2E5CCFE6)
 // Superfícies com leve profundidade: o topo do card recebe um pouco mais de
 // luz que a base, o que dá volume sem precisar de sombra pesada.
 //
-// O nível de luz foi baixado depois de ver o app rodando: um aplicativo que
-// existe para tirar distração da frente não combina com uma tela clara, e os
-// cartões destacavam demais do fundo. O cartão saiu de 1.21:1 contra o fundo
-// para 1.11:1 — continua se lendo como cartão, com a ajuda da borda, mas para
-// de puxar o olho. O texto de apoio em cima dele até melhorou no caminho, de
-// 6.3:1 para 6.8:1, e o de dica passou do mínimo de leitura (4.7:1).
-val SurfaceRaisedTop = Color(0xFF101720)
-val SurfaceRaisedBottom = Color(0xFF0A0F15)
+// O nível de luz foi baixado em dois passos, depois de ver o app rodando: um
+// aplicativo que existe para tirar distração da frente não combina com uma tela
+// clara, e os cartões destacavam demais do fundo. Saíram de 1.21:1 contra o
+// fundo para 1.07:1.
+//
+// A essa altura quem desenha o cartão é a borda, não o preenchimento: a borda
+// está a 1.33:1 do cartão e a 1.42:1 do fundo, enquanto o preenchimento quase
+// encosta no fundo. É de propósito — é o que faz a tela parecer apagada sem
+// perder onde um cartão começa e termina. Mexer na borda, aí sim, apaga tudo.
+//
+// O texto por cima melhorou nos dois passos em vez de piorar: apoio de 6.3:1
+// para 7.1:1, dica de 4.4:1 para 4.9:1.
+val SurfaceRaisedTop = Color(0xFF0C1219)
+val SurfaceRaisedBottom = Color(0xFF080C11)
 
 // O segundo nível de profundidade, para o cartão que precisa recuar em relação
 // a outro na mesma tela — a etapa ainda por vir da jornada de recuperação, ao
 // lado da etapa em curso.
 //
-// Três medidas tinham que fechar ao mesmo tempo, e é por isso que os valores
-// são estes: o degradê entre topo e base precisa continuar existindo (1.04:1)
-// para o cartão não virar uma chapa; a distância para a superfície elevada
-// precisa bastar para se ler "esta é a etapa de agora, aquela é a de depois"
-// (1.06:1); e o cartão ainda tem que se separar do fundo do app (1.05:1), senão
-// a etapa futura desaparece na tela em vez de recuar. Diluir a superfície
-// elevada com alfa não faria nenhuma das três — apaga o degradê e leva o texto
-// por cima junto.
-//
-// As três margens ficaram estreitas quando as superfícies escureceram: sobra
-// pouco espaço abaixo da elevada antes de bater no fundo. Quem for escurecer
-// mais o app precisa mexer nas duas escalas juntas, ou este nível some.
-val SurfaceSunkenTop = Color(0xFF0B1016)
-val SurfaceSunkenBottom = Color(0xFF070A0E)
+// Com as superfícies tão perto do fundo, não sobrou degrau abaixo do cartão
+// normal: qualquer tom mais escuro que ele já é o próprio fundo. Então o recuo
+// deixou de ser uma cor e passou a ser a ausência dela — a etapa futura fica
+// sem preenchimento, e só a borda a desenha. Ao lado de uma etapa em curso que
+// tem preenchimento e borda no acento, a diferença se lê de imediato, e sem
+// depender de dois cinzas quase iguais que ninguém distingue no escuro.
+val SurfaceSunkenTop = DarkBg
+val SurfaceSunkenBottom = DarkBg
 
 // Semantic Colors
 val SuccessGreen = Color(0xFF4CAF50)

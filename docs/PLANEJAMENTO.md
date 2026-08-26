@@ -22,8 +22,8 @@ executados depois do objetivo em andamento.
 | 9 | Resolver a emenda no topo da tela (sem mexer em insets) | cumprido |
 | 10 | Nova rodada do supervisor sobre os itens 8 e 9 | cumprido — APROVADO, sem bloqueadores |
 | 11 | Ao terminar tudo, commitar tudo na main | cumprido |
-| 13 | Relógio do pomodoro na cor do print (ciano), idêntico ao print | em andamento |
-| 14 | Tela inicial está clara demais para um app de bloqueio — escurecer | pendente |
+| 13 | Relógio do pomodoro na cor do print (ciano), idêntico ao print | cumprido |
+| 14 | Tela inicial está clara demais para um app de bloqueio — escurecer | cumprido (dois passos) |
 | 12 | Não alterar os bloqueios nem como funcionam — só aparência | cumprido e verificado |
 
 ## Regras de trabalho definidas pelo usuário
@@ -188,3 +188,33 @@ A outra observação dele — `FocusCard` alocando mesmo sem clique — foi recu
 de propósito: é exatamente a otimização que virou armadilha na rodada anterior,
 quando o `StageCard` passou a alternar `onClick` entre nulo e não-nulo. O
 motivo está anotado no próprio componente.
+
+
+## Escurecimento — dois passos
+
+O pedido veio duas vezes, então foi em dois passos. O primeiro baixou só as
+superfícies do cartão (1.21:1 -> 1.11:1 contra o fundo). O segundo levou o app
+inteiro junto — `DarkSurface`, `DarkCard`, `DarkCardElevated` e a paleta local
+do Pomodoro — e chegou a 1.07:1.
+
+A partir daí quem desenha o cartão é a borda, não o preenchimento. E a
+superfície rebaixada perdeu o degrau que tinha: com tudo tão perto do fundo,
+qualquer tom abaixo do cartão já É o fundo. Então o recuo virou ausência de
+preenchimento — a etapa futura da recuperação fica só com a borda.
+
+O texto melhorou nos dois passos, em vez de piorar: apoio de 6.3:1 para 7.1:1,
+dica de 4.4:1 para 4.9:1, vermelho de 3.9:1 para 4.6:1.
+
+Verificado por conta própria (o agente supervisor caiu com o reinício da
+sessão): `SurfaceSunken` só é consumido pela jornada de recuperação;
+`DarkCardElevated` continua mais escuro que `DarkCard`, como já era antes;
+e os dois lugares onde ele vira fundo de botão (`BlockingSessionStatusSheet`,
+`ActiveSessionsScreen`) são código sem nenhum ponto de uso.
+
+## Decisão em aberto para o usuário
+
+O arco do relógio ficou em #75CCD6 (a cor do print) enquanto o resto do app usa
+#5CCFE6. A diferença é ΔE 8.3 — são duas cores distinguíveis lado a lado, e a
+pílula "Pronto para focar" logo acima do relógio usa a do app. Fica à espera de
+decisão: unificar tudo em #75CCD6, unificar tudo em #5CCFE6, ou deixar o relógio
+com a cor escolhida no print.
