@@ -18,6 +18,11 @@ executados depois do objetivo em andamento.
 | 5 | Manter todas as funções (nada de lógica alterada) | cumprido |
 | 6 | Mexer apenas e exclusivamente na aparência | cumprido |
 | 7 | Revisão do agente supervisor até ele aprovar | cumprido (aprovado na rodada 2) |
+| 8 | Repaginar Permissões, Lista de Sessões, Recuperação e Detalhe da Sessão | cumprido |
+| 9 | Resolver a emenda no topo da tela (sem mexer em insets) | cumprido |
+| 10 | Nova rodada do supervisor sobre os itens 8 e 9 | parcial — agente caiu por limite de sessão; revisão feita por conta própria |
+| 11 | Ao terminar tudo, commitar tudo na main | em andamento |
+| 12 | Não alterar os bloqueios nem como funcionam — só aparência | cumprido e verificado |
 
 ## Regras de trabalho definidas pelo usuário
 
@@ -93,7 +98,21 @@ revisadas visualmente: `headlineSmall` é o título de todo `AlertDialog` do
 Material 3 (~20 arquivos) e `titleSmall` é o rótulo das abas. Nenhum quebra
 layout pela medição, mas vale abrir um diálogo no aparelho antes de fechar.
 
-### Sugestões oferecidas ao usuário, não aplicadas
+### Sugestões — o usuário mandou executar (objetivos 8 e 9)
+
+Sobre a sugestão 1 (item 8): repaginação mecânica das quatro telas, sem tocar
+em lógica. Modo de Foco, Configuração de Proteção e a cortina de bloqueio
+continuam fora, pelo motivo já registrado.
+
+Sobre a sugestão 2 (item 9): `enableEdgeToEdge()` segue descartado — muda o
+contrato de margens de todas as telas e três Activities já mexem nisso por
+conta própria; seria comportamento de janela, não aparência. Mas o propósito
+dela (não haver emenda visível no topo) dá para cumprir de outro jeito: fazer
+o halo começar transparente na primeira linha, encostando na cor exata da barra
+de status, e só atingir o pico um pouco abaixo. Mesmo resultado, sem tocar em
+inset nenhum.
+
+### Texto original das sugestões oferecidas
 
 1. Faixa preta da barra de status em Android 14 e anteriores. A correção
    (`enableEdgeToEdge()`) muda o contrato de margens de todas as telas e há
@@ -103,3 +122,24 @@ layout pela medição, mas vale abrir um diálogo no aparelho antes de fechar.
    Troca mecânica de `Card` por `FocusCard`, sem tocar em lógica.
    Não repaginar: Modo de Foco, Configuração de Proteção e a cortina de
    bloqueio — muito estado de permissão e segurança acoplado.
+
+
+## Verificação dos bloqueios (pedido explícito do usuário)
+
+O usuário pediu cuidado redobrado com os bloqueios. Provas levantadas contra
+`origin/main`, e não por leitura casual:
+
+- Nenhum arquivo em `manager/`, `service/`, `security/`, `database/`,
+  `receiver/`, `admin/`, `utils/`, `data/`, `focusmode/`, `pomodoro/` ou
+  `analytics/` aparece no diff. Só `ui/compose/` e `colors.xml`.
+- Nenhum arquivo de strings mudou — em nenhum idioma. O único recurso alterado
+  é `colors.xml`.
+- O enum `BlockTypeUi` é idêntico byte a byte: mesmos nomes, mesma ordem
+  (PASSWORD, DAILY_LIMIT, DOPAMINE_FAST), mesmos ícones, cores e `entriesOf`.
+- Nas quatro telas que tocam bloqueio (BlockTypeDetail, SessionsList,
+  SessionDetail, Main), a lista de chamadas a `BlockingSessionManager`,
+  `AuthManager`, `WebsiteBlocker`, `PredefinedApps`, `BlockCountdownPolicy` e ao
+  banco é idêntica antes e depois, chamada por chamada.
+- A separação das listas em aplicativos e sites (`filterNot { it.isWebsite }` /
+  `filter { it.isWebsite }`) e a ordem das seções continuam as mesmas; as linhas
+  só mudaram de indentação.

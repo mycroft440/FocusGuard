@@ -12,7 +12,6 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -44,8 +43,6 @@ import androidx.compose.material.icons.outlined.VisibilityOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -82,6 +79,11 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.focusguard.R
+import com.focusguard.ui.compose.theme.CardBorder
+import com.focusguard.ui.compose.theme.DarkCardElevated
+import com.focusguard.ui.compose.theme.FocusCard
+import com.focusguard.ui.compose.theme.SurfaceRaisedBottom
+import com.focusguard.ui.compose.theme.focusCardBrush
 import com.focusguard.data.RecoveryJourney
 import com.focusguard.data.RecoveryJourney.Stage
 import com.focusguard.data.RecoveryJourney.Status
@@ -335,13 +337,10 @@ private fun JourneyHeader(completed: Set<Stage>) {
         )
 
         Spacer(Modifier.height(18.dp))
-        Card(
+        FocusCard(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.surfaceVariant
-            ),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+            border = BorderStroke(1.dp, CardBorder)
         ) {
             Column(Modifier.padding(horizontal = 18.dp, vertical = 16.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -514,24 +513,23 @@ private fun StageCard(
     // de ativada, vira apenas um registro concluído e não pode ser duplicada.
     val canOpen = !locked && (current || content.confirmationRes != null)
 
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .then(
-                if (canOpen) Modifier.clickable(onClick = onAction) else Modifier
-            ),
+    // A etapa em curso vem com a superfície cheia e a borda no acento; as
+    // demais recuam para a superfície rebaixada, que é o mesmo degradê visto
+    // mais fundo. A hierarquia entre "é agora" e "é depois" fica na luz, sem
+    // precisar de mais texto.
+    FocusCard(
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(
-            containerColor = if (current) {
-                MaterialTheme.colorScheme.surfaceVariant
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-            }
-        ),
+        brush = if (current) {
+            focusCardBrush()
+        } else {
+            focusCardBrush(SurfaceRaisedBottom, DarkCardElevated)
+        },
         border = BorderStroke(
             if (current) 1.5.dp else 1.dp,
-            if (current) accent.copy(alpha = 0.6f) else MaterialTheme.colorScheme.outline
-        )
+            if (current) accent.copy(alpha = 0.6f) else CardBorder
+        ),
+        onClick = if (canOpen) onAction else null
     ) {
         Column(Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -844,11 +842,8 @@ private fun RecoveryBookDetails(
 
         content.attributionRes?.let { attributionRes ->
             Spacer(Modifier.height(20.dp))
-            Card(
-                colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
-                ),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            FocusCard(
+                border = BorderStroke(1.dp, CardBorder),
                 shape = RoundedCornerShape(16.dp)
             ) {
                 Text(

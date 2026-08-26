@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -67,67 +66,78 @@ fun SessionDetailScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(title, color = TextPrimary, fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), tint = TextPrimary)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBg)
-            )
-        },
-        containerColor = DarkBg
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .verticalScroll(rememberScrollState())
-                .padding(16.dp)
-        ) {
-            if (isLoading) {
-                Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
-                    CircularProgressIndicator(color = AccentCyan)
-                }
-            } else if (sessions.isEmpty()) {
-                EmptySessionCard(sessionType)
-            } else {
-                sessions.forEach { session ->
-                    SessionDetailCard(session)
-                    Spacer(modifier = Modifier.height(16.dp))
-                }
-            }
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Add New Block Button
-            Button(
-                onClick = onAddNewBlock,
+    FocusGuardAmbientBackground(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
+                        Text(
+                            title,
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = (-0.2).sp
+                        )
+                    },
+                    navigationIcon = {
+                        FocusGuardBackButton(
+                            onBack = onBack,
+                            contentDescription = stringResource(R.string.action_back)
+                        )
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent
+                    )
+                )
+            },
+            containerColor = Color.Transparent
+        ) { padding ->
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .height(56.dp),
-                shape = RoundedCornerShape(16.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                    .fillMaxSize()
+                    .padding(padding)
+                    .verticalScroll(rememberScrollState())
+                    .padding(16.dp)
             ) {
-                Icon(Icons.Default.Add, contentDescription = null, tint = DarkBg)
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.session_detail_add_new), color = DarkBg, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-            }
+                if (isLoading) {
+                    Box(Modifier.fillMaxWidth().height(200.dp), contentAlignment = Alignment.Center) {
+                        CircularProgressIndicator(color = AccentCyan)
+                    }
+                } else if (sessions.isEmpty()) {
+                    EmptySessionCard(sessionType)
+                } else {
+                    sessions.forEach { session ->
+                        SessionDetailCard(session)
+                        Spacer(modifier = Modifier.height(16.dp))
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                // Add New Block Button
+                Button(
+                    onClick = onAddNewBlock,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null, tint = DarkBg)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(stringResource(R.string.session_detail_add_new), color = DarkBg, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                }
             
-            Spacer(modifier = Modifier.height(32.dp))
+                Spacer(modifier = Modifier.height(32.dp))
+            }
         }
     }
 }
 
 @Composable
 fun EmptySessionCard(type: String) {
-    Card(
+    FocusCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
         border = BorderStroke(1.dp, CardBorder)
     ) {
         Column(
@@ -184,10 +194,9 @@ fun SessionDetailCard(session: BlockSession) {
         }
     }
 
-    Card(
+    FocusCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
         border = BorderStroke(1.dp, CardBorder)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {

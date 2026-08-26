@@ -21,7 +21,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -52,6 +55,10 @@ import androidx.compose.ui.unit.sp
 val FocusCardShape = RoundedCornerShape(18.dp)
 
 private val GlowHeight = 300.dp
+private val BackButtonShape = RoundedCornerShape(12.dp)
+
+/** Onde o halo atinge o brilho máximo, em fração da própria altura. */
+private const val GLOW_PEAK = 0.22f
 private const val PRESSED_SCALE = 0.975f
 
 /**
@@ -100,8 +107,17 @@ fun FocusGuardAmbientBackground(
     glowColor: Color = AccentCyanWash,
     content: @Composable BoxScope.() -> Unit
 ) {
+    // O degradê começa transparente na primeira linha, sobe até o pico e só
+    // então some. Transparente sobre a base é exatamente a base, então o topo
+    // do halo encosta na cor da barra de status sem emenda — antes ele começava
+    // no ponto mais claro e deixava um risco horizontal colado na barra, que em
+    // Android 14 e anteriores é pintada de cor sólida pelo sistema.
     val glow = remember(glowColor) {
-        Brush.verticalGradient(listOf(glowColor, Color.Transparent))
+        Brush.verticalGradient(
+            0f to Color.Transparent,
+            GLOW_PEAK to glowColor,
+            1f to Color.Transparent
+        )
     }
     // [enabled] desligado é para a tela que aparece embutida em outra que já
     // pinta o halo. Dois halos empilhados não somam brilho: o de dentro traz a
@@ -127,6 +143,14 @@ fun FocusGuardAmbientBackground(
  * Substitui o par `Card` + `CardDefaults.cardColors(DarkCard)` + borda plana
  * que estava repetido em quase toda tela. Quando recebe [onClick] ele responde
  * ao toque encolhendo de leve; sem [onClick] é apenas um painel.
+ *
+ * O caminho é um só, clicável ou não, e precisa continuar assim. Separar os
+ * dois casos em ramos distintos economizaria um InteractionSource por painel,
+ * mas poria [content] em dois grupos de composição diferentes: um cartão cujo
+ * [onClick] deixa de ser nulo em tempo de execução — como a etapa da jornada de
+ * recuperação, que passa a abrir quando a anterior é concluída — perderia todo
+ * o estado lembrado lá dentro na troca. Um objeto pequeno por cartão é preço
+ * baixo por não ter essa armadilha à espera.
  */
 @Composable
 fun FocusCard(
@@ -137,30 +161,17 @@ fun FocusCard(
     onClick: (() -> Unit)? = null,
     content: @Composable BoxScope.() -> Unit
 ) {
-    // Painel sem clique não paga por animação de toque: numa lista longa seriam
-    // dezenas de InteractionSource e camadas de gráfico criados à toa. Por isso
-    // os dois casos são caminhos separados, e não um Modifier condicional.
-    if (onClick == null) {
-        Box(
-            modifier = modifier
-                .clip(shape)
-                .background(brush)
-                .border(border, shape),
-            content = content
-        )
-        return
-    }
-
     val interactionSource = remember { MutableInteractionSource() }
     val pressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
-        targetValue = if (pressed) PRESSED_SCALE else 1f,
+        targetValue = if (onClick != null && pressed) PRESSED_SCALE else 1f,
         animationSpec = spring(
             dampingRatio = Spring.DampingRatioNoBouncy,
             stiffness = Spring.StiffnessMediumLow
         ),
         label = "FocusCardPress"
     )
+    val indication = LocalIndication.current
 
     Box(
         modifier = modifier
@@ -176,14 +187,54 @@ fun FocusCard(
             // cartão pareceria não responder. `role = Role.Button` é o que o
             // Card clicável do Material 3 colocava sozinho — sem ele o TalkBack
             // anuncia o cartão como texto e não avisa que dá para tocar.
-            .clickable(
-                interactionSource = interactionSource,
-                indication = LocalIndication.current,
-                role = Role.Button,
-                onClick = onClick
+            .then(
+                if (onClick != null) {
+                    Modifier.clickable(
+                        interactionSource = interactionSource,
+                        indication = indication,
+                        role = Role.Button,
+                        onClick = onClick
+                    )
+                } else {
+                    Modifier
+                }
             ),
         content = content
     )
+}
+
+/**
+ * A seta de voltar da barra de título, com alvo desenhado.
+ *
+ * Em fundo quase preto um ícone solto no canto parece um detalhe da tela, e não
+ * um botão. O chip dá a ele uma borda e uma superfície para tocar. O
+ * [IconButton] em volta continua com os 48dp de alvo do Material; o chip de
+ * 36dp é só desenho dentro dele.
+ */
+@Composable
+fun FocusGuardBackButton(
+    onBack: () -> Unit,
+    contentDescription: String,
+    modifier: Modifier = Modifier,
+    tint: Color = TextPrimary
+) {
+    IconButton(onClick = onBack, modifier = modifier) {
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(BackButtonShape)
+                .background(SurfaceRaisedTop)
+                .border(1.dp, CardBorder, BackButtonShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = contentDescription,
+                tint = tint,
+                modifier = Modifier.size(19.dp)
+            )
+        }
+    }
 }
 
 /**

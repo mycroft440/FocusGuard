@@ -34,8 +34,6 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.Surface
@@ -72,7 +70,7 @@ import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
-import com.focusguard.ui.compose.theme.DarkCard
+import com.focusguard.ui.compose.theme.FocusCard
 import com.focusguard.ui.compose.theme.DarkCardElevated
 import com.focusguard.ui.compose.theme.DarkSurface
 import com.focusguard.ui.compose.theme.SuccessGreen
@@ -537,10 +535,9 @@ private fun SequentialPermissionCard(
     onAllow: () -> Unit,
     onSkip: () -> Unit
 ) {
-    Card(
+    FocusCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
         border = BorderStroke(1.dp, CardBorder)
     ) {
         Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -659,10 +656,9 @@ private fun PermissionsSummaryCard(
     val grantedCount = countGranted(permissionState, steps)
     val protectionReady = permissionState.hasAllProtectionPermissions()
     val statusColor = if (protectionReady) SuccessGreen else WarningAmber
-    Card(
+    FocusCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
         border = BorderStroke(1.dp, CardBorder)
     ) {
         Column(modifier = Modifier.padding(20.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -942,10 +938,9 @@ fun PermissionCard(
     isGranted: Boolean,
     onClick: () -> Unit
 ) {
-    Card(
+    FocusCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
         border = BorderStroke(1.dp, CardBorder)
     ) {
         Row(modifier = Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {

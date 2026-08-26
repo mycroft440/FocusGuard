@@ -15,7 +15,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -71,136 +70,148 @@ fun SessionsListScreen(
     val title = if (sessionType == "PASSWORD") stringResource(R.string.sessions_title_password) else stringResource(R.string.sessions_title_time)
     val icon = if (sessionType == "PASSWORD") Icons.Default.VpnKey else Icons.Default.Timer
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(title, color = TextPrimary, fontWeight = FontWeight.Bold) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.action_back), tint = TextPrimary)
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBg)
-            )
-        },
-        containerColor = DarkBg,
-        floatingActionButton = {
-            FloatingActionButton(
-                onClick = {
-                    val intent = Intent(context, CreateSessionActivity::class.java).apply {
-                        putExtra("SESSION_TYPE", sessionType)
-                    }
-                    context.startActivity(intent)
-                },
-                containerColor = AccentCyan,
-                contentColor = DarkBg,
-                shape = CircleShape
-            ) {
-                Icon(Icons.Default.Add, contentDescription = stringResource(R.string.sessions_add_new))
-            }
-        }
-    ) { padding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(horizontal = 16.dp)
-        ) {
-            if (filteredSessions.isEmpty()) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Icon(
-                            imageVector = icon,
-                            contentDescription = null,
-                            modifier = Modifier.size(64.dp),
-                            tint = TextHint.copy(alpha = 0.3f)
-                        )
-                        Spacer(Modifier.height(16.dp))
+    FocusGuardAmbientBackground(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            topBar = {
+                TopAppBar(
+                    title = {
                         Text(
-                            stringResource(R.string.sessions_empty_title),
-                            color = TextHint,
-                            fontSize = 16.sp,
-                            textAlign = TextAlign.Center
+                            title,
+                            color = TextPrimary,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = (-0.2).sp
                         )
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            stringResource(R.string.sessions_empty_desc),
-                            color = TextHint.copy(alpha = 0.6f),
-                            fontSize = 14.sp,
-                            textAlign = TextAlign.Center
+                    },
+                    navigationIcon = {
+                        FocusGuardBackButton(
+                            onBack = onBack,
+                            contentDescription = stringResource(R.string.action_back)
                         )
-                    }
-                }
-            } else {
-                Text(
-                    stringResource(R.string.sessions_active_header),
-                    color = TextSecondary,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(vertical = 16.dp)
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = Color.Transparent
+                    )
                 )
-                
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxSize()
+            },
+            containerColor = Color.Transparent,
+            floatingActionButton = {
+                FloatingActionButton(
+                    onClick = {
+                        val intent = Intent(context, CreateSessionActivity::class.java).apply {
+                            putExtra("SESSION_TYPE", sessionType)
+                        }
+                        context.startActivity(intent)
+                    },
+                    containerColor = AccentCyan,
+                    contentColor = DarkBg,
+                    shape = CircleShape
                 ) {
-                    items(filteredSessions, key = { it.id }) { session ->
-                        SessionListItem(
-                            session = session,
-                            viewModel = viewModel,
-                            onRemoveBlock = { showPasswordPrompt = session.id },
-                            onAddContent = { showAppPickerForSession = session },
-                            onClick = { showDetailsSheet = session }
-                        )
+                    Icon(Icons.Default.Add, contentDescription = stringResource(R.string.sessions_add_new))
+                }
+            }
+        ) { padding ->
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(padding)
+                    .padding(horizontal = 16.dp)
+            ) {
+                if (filteredSessions.isEmpty()) {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = icon,
+                                contentDescription = null,
+                                modifier = Modifier.size(64.dp),
+                                tint = TextHint.copy(alpha = 0.3f)
+                            )
+                            Spacer(Modifier.height(16.dp))
+                            Text(
+                                stringResource(R.string.sessions_empty_title),
+                                color = TextHint,
+                                fontSize = 16.sp,
+                                textAlign = TextAlign.Center
+                            )
+                            Spacer(Modifier.height(8.dp))
+                            Text(
+                                stringResource(R.string.sessions_empty_desc),
+                                color = TextHint.copy(alpha = 0.6f),
+                                fontSize = 14.sp,
+                                textAlign = TextAlign.Center
+                            )
+                        }
                     }
-                    item { Spacer(Modifier.height(80.dp)) }
+                } else {
+                    Text(
+                        stringResource(R.string.sessions_active_header),
+                        color = TextSecondary,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(vertical = 16.dp)
+                    )
+                
+                    LazyColumn(
+                        verticalArrangement = Arrangement.spacedBy(12.dp),
+                        modifier = Modifier.fillMaxSize()
+                    ) {
+                        items(filteredSessions, key = { it.id }) { session ->
+                            SessionListItem(
+                                session = session,
+                                viewModel = viewModel,
+                                onRemoveBlock = { showPasswordPrompt = session.id },
+                                onAddContent = { showAppPickerForSession = session },
+                                onClick = { showDetailsSheet = session }
+                            )
+                        }
+                        item { Spacer(Modifier.height(80.dp)) }
+                    }
                 }
             }
         }
-    }
 
-    val sessionIdToEnd = showPasswordPrompt
-    if (sessionIdToEnd != null) {
-        PasswordPromptDialog(
-            onDismiss = {
-                showPasswordPrompt = null
-                authViewModel.reset()
-            },
-            onAuthenticated = {
-                viewModel.endSession(sessionIdToEnd)
-                showPasswordPrompt = null
-                authViewModel.reset()
-            },
-            authViewModel = authViewModel
-        )
-    }
+        val sessionIdToEnd = showPasswordPrompt
+        if (sessionIdToEnd != null) {
+            PasswordPromptDialog(
+                onDismiss = {
+                    showPasswordPrompt = null
+                    authViewModel.reset()
+                },
+                onAuthenticated = {
+                    viewModel.endSession(sessionIdToEnd)
+                    showPasswordPrompt = null
+                    authViewModel.reset()
+                },
+                authViewModel = authViewModel
+            )
+        }
 
-    if (showDetailsSheet != null) {
-        val currentDetails = showDetailsSheet
-        SessionDetailsSheet(
-            session = currentDetails!!,
-            onDismiss = { showDetailsSheet = null },
-            onAddClick = { 
-                // Captura o ID antes de mudar o estado — evita race com
-                // recomposição que poderia setar showDetailsSheet = null
-                // entre o check e o uso (force-unwrap crash).
-                currentDetails?.let { s ->
-                    showDetailsSheet = null
-                    showAppPickerForSession = s
-                }
-            },
-            viewModel = viewModel
-        )
-    }
-
-    if (showAppPickerForSession != null) {
-        val currentPicker = showAppPickerForSession
-        currentPicker?.let { session ->
-            ContentPickerSheet(
-                session = session,
-                onDismiss = { showAppPickerForSession = null },
+        if (showDetailsSheet != null) {
+            val currentDetails = showDetailsSheet
+            SessionDetailsSheet(
+                session = currentDetails!!,
+                onDismiss = { showDetailsSheet = null },
+                onAddClick = { 
+                    // Captura o ID antes de mudar o estado — evita race com
+                    // recomposição que poderia setar showDetailsSheet = null
+                    // entre o check e o uso (force-unwrap crash).
+                    currentDetails?.let { s ->
+                        showDetailsSheet = null
+                        showAppPickerForSession = s
+                    }
+                },
                 viewModel = viewModel
             )
+        }
+
+        if (showAppPickerForSession != null) {
+            val currentPicker = showAppPickerForSession
+            currentPicker?.let { session ->
+                ContentPickerSheet(
+                    session = session,
+                    onDismiss = { showAppPickerForSession = null },
+                    viewModel = viewModel
+                )
+            }
         }
     }
 }
@@ -598,16 +609,14 @@ fun SessionListItem(
     var showMenu by remember { mutableStateOf(false) }
     val isCurrentlyActive = viewModel.isCurrentlyInBlockingWindow(session)
     
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable { onClick() },
+    FocusCard(
+        modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
         border = BorderStroke(
             width = if (isCurrentlyActive) 1.5.dp else 1.dp,
             color = if (isCurrentlyActive) AccentCyan.copy(alpha = 0.5f) else CardBorder
-        )
+        ),
+        onClick = onClick
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {

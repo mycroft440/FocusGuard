@@ -15,7 +15,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
@@ -157,23 +156,10 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                             )
                         },
                         navigationIcon = {
-                            IconButton(onClick = onBack) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(36.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .background(SurfaceRaisedTop)
-                                        .border(1.dp, CardBorder, RoundedCornerShape(12.dp)),
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    Icon(
-                                        Icons.AutoMirrored.Filled.ArrowBack,
-                                        contentDescription = stringResource(R.string.action_back),
-                                        tint = TextPrimary,
-                                        modifier = Modifier.size(19.dp)
-                                    )
-                                }
-                            }
+                            FocusGuardBackButton(
+                                onBack = onBack,
+                                contentDescription = stringResource(R.string.action_back)
+                            )
                         },
                         colors = TopAppBarDefaults.topAppBarColors(
                             containerColor = Color.Transparent

@@ -24,7 +24,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.HourglassEmpty
@@ -35,7 +34,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -79,9 +77,9 @@ import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
 import com.focusguard.ui.compose.theme.FocusCard
 import com.focusguard.ui.compose.theme.FocusGuardAmbientBackground
+import com.focusguard.ui.compose.theme.FocusGuardBackButton
 import com.focusguard.ui.compose.theme.FocusSectionLabel
 import com.focusguard.ui.compose.theme.StatusPill
-import com.focusguard.ui.compose.theme.SurfaceRaisedTop
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
@@ -195,23 +193,10 @@ fun BlockTypeDetailScreen(
                         )
                     },
                     navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Box(
-                                modifier = Modifier
-                                    .size(36.dp)
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(SurfaceRaisedTop)
-                                    .border(1.dp, CardBorder, RoundedCornerShape(12.dp)),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    Icons.AutoMirrored.Filled.ArrowBack,
-                                    contentDescription = stringResource(R.string.action_back),
-                                    tint = TextPrimary,
-                                    modifier = Modifier.size(19.dp)
-                                )
-                            }
-                        }
+                        FocusGuardBackButton(
+                            onBack = onBack,
+                            contentDescription = stringResource(R.string.action_back)
+                        )
                     },
                     colors = TopAppBarDefaults.topAppBarColors(
                         containerColor = Color.Transparent
