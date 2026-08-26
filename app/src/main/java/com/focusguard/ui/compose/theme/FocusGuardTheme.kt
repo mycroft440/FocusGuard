@@ -34,32 +34,44 @@ val AccentCyanLine = Color(0x475CCFE6)
 // Ciano estendido — o mesmo #5CCFE6 em opacidades diferentes, para os halos,
 // realces e bordas. Nenhum troca a cor de identidade do app: são o próprio
 // AccentCyan com mais ou menos presença.
+//
+// O halo (AccentCyanWash) foi baixado de 7% para 5% junto com as superfícies:
+// numa tela mais escura, a mesma opacidade de antes voltava a clarear o topo
+// mais do que o resto da tela suporta.
 val AccentCyanGlow = Color(0x385CCFE6)
-val AccentCyanWash = Color(0x125CCFE6)
+val AccentCyanWash = Color(0x0C5CCFE6)
 val AccentCyanEdge = Color(0x2E5CCFE6)
 
 // Superfícies com leve profundidade: o topo do card recebe um pouco mais de
-// luz que a base, o que dá volume sem precisar de sombra pesada. O topo é
-// medido, não escolhido no olho: cada passo de luz aqui derruba o contraste do
-// texto que fica em cima dele, e #171F29 é o ponto onde o volume ainda se vê
-// sem empurrar TextSecondary para baixo de 6:1.
-val SurfaceRaisedTop = Color(0xFF171F29)
-val SurfaceRaisedBottom = Color(0xFF10171F)
+// luz que a base, o que dá volume sem precisar de sombra pesada.
+//
+// O nível de luz foi baixado depois de ver o app rodando: um aplicativo que
+// existe para tirar distração da frente não combina com uma tela clara, e os
+// cartões destacavam demais do fundo. O cartão saiu de 1.21:1 contra o fundo
+// para 1.11:1 — continua se lendo como cartão, com a ajuda da borda, mas para
+// de puxar o olho. O texto de apoio em cima dele até melhorou no caminho, de
+// 6.3:1 para 6.8:1, e o de dica passou do mínimo de leitura (4.7:1).
+val SurfaceRaisedTop = Color(0xFF101720)
+val SurfaceRaisedBottom = Color(0xFF0A0F15)
 
 // O segundo nível de profundidade, para o cartão que precisa recuar em relação
 // a outro na mesma tela — a etapa ainda por vir da jornada de recuperação, ao
 // lado da etapa em curso.
 //
 // Três medidas tinham que fechar ao mesmo tempo, e é por isso que os valores
-// são estes: o degradê entre topo e base precisa continuar visível (1.07:1,
-// perto do 1.09:1 da superfície elevada) para o cartão não virar uma chapa; a
-// distância para a superfície elevada precisa bastar para se ler "esta é a
-// etapa de agora, aquela é a de depois" (1.09:1); e o cartão ainda tem que se
-// destacar do fundo do app (1.11:1), senão a etapa futura desaparece na tela em
-// vez de recuar. Diluir a superfície elevada com alfa não faria nenhuma das
-// três — apaga o degradê e leva o texto por cima junto.
-val SurfaceSunkenTop = Color(0xFF101720)
-val SurfaceSunkenBottom = Color(0xFF0A0E13)
+// são estes: o degradê entre topo e base precisa continuar existindo (1.04:1)
+// para o cartão não virar uma chapa; a distância para a superfície elevada
+// precisa bastar para se ler "esta é a etapa de agora, aquela é a de depois"
+// (1.06:1); e o cartão ainda tem que se separar do fundo do app (1.05:1), senão
+// a etapa futura desaparece na tela em vez de recuar. Diluir a superfície
+// elevada com alfa não faria nenhuma das três — apaga o degradê e leva o texto
+// por cima junto.
+//
+// As três margens ficaram estreitas quando as superfícies escureceram: sobra
+// pouco espaço abaixo da elevada antes de bater no fundo. Quem for escurecer
+// mais o app precisa mexer nas duas escalas juntas, ou este nível some.
+val SurfaceSunkenTop = Color(0xFF0B1016)
+val SurfaceSunkenBottom = Color(0xFF070A0E)
 
 // Semantic Colors
 val SuccessGreen = Color(0xFF4CAF50)

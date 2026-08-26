@@ -22,6 +22,8 @@ executados depois do objetivo em andamento.
 | 9 | Resolver a emenda no topo da tela (sem mexer em insets) | cumprido |
 | 10 | Nova rodada do supervisor sobre os itens 8 e 9 | cumprido — APROVADO, sem bloqueadores |
 | 11 | Ao terminar tudo, commitar tudo na main | cumprido |
+| 13 | Relógio do pomodoro na cor do print (ciano), idêntico ao print | em andamento |
+| 14 | Tela inicial está clara demais para um app de bloqueio — escurecer | pendente |
 | 12 | Não alterar os bloqueios nem como funcionam — só aparência | cumprido e verificado |
 
 ## Regras de trabalho definidas pelo usuário
