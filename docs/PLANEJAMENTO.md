@@ -211,10 +211,12 @@ sessão): `SurfaceSunken` só é consumido pela jornada de recuperação;
 e os dois lugares onde ele vira fundo de botão (`BlockingSessionStatusSheet`,
 `ActiveSessionsScreen`) são código sem nenhum ponto de uso.
 
-## Decisão em aberto para o usuário
+## Decisão do usuário: dois cianos, de propósito
 
-O arco do relógio ficou em #75CCD6 (a cor do print) enquanto o resto do app usa
-#5CCFE6. A diferença é ΔE 8.3 — são duas cores distinguíveis lado a lado, e a
-pílula "Pronto para focar" logo acima do relógio usa a do app. Fica à espera de
-decisão: unificar tudo em #75CCD6, unificar tudo em #5CCFE6, ou deixar o relógio
-com a cor escolhida no print.
+O arco do relógio fica em #75CCD6, a cor escolhida no print, e o resto do app
+segue em #5CCFE6. Foram medidos ΔE 8.3 entre os dois — são distinguíveis lado a
+lado, inclusive da pílula "Pronto para focar" logo acima do relógio e da barra
+de navegação logo abaixo. O usuário viu o número e escolheu deixar assim.
+
+Ou seja: se alguém encontrar os dois tons e achar que é descuido, não é. Antes
+de "corrigir" para um só, vale perguntar.
