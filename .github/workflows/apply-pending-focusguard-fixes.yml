@@ -1,0 +1,740 @@
+name: Apply pending FocusGuard fixes
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/apply-pending-focusguard-fixes.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Apply planned source changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 <<'PY'
+          from pathlib import Path
+
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{label}: expected exactly one match, found {count}")
+              return text.replace(old, new, 1)
+
+          def replace_between(text: str, start: str, end: str, replacement: str, label: str) -> str:
+              start_index = text.find(start)
+              if start_index < 0:
+                  raise SystemExit(f"{label}: start marker not found")
+              end_index = text.find(end, start_index)
+              if end_index < 0:
+                  raise SystemExit(f"{label}: end marker not found")
+              return text[:start_index] + replacement + text[end_index:]
+
+          # ------------------------------------------------------------------
+          # 1) Focus Mode: compact setup, fixed Start button and help overlay.
+          # ------------------------------------------------------------------
+          focus_path = Path("app/src/main/java/com/focusguard/ui/compose/screens/FocusModeScreen.kt")
+          focus = focus_path.read_text()
+          imports = {
+              "import androidx.compose.foundation.BorderStroke\n": "import androidx.compose.foundation.BorderStroke\nimport androidx.compose.foundation.background\n",
+              "import androidx.compose.foundation.layout.width\n": "import androidx.compose.foundation.layout.width\nimport androidx.compose.foundation.rememberScrollState\n",
+              "import androidx.compose.foundation.selection.toggleable\n": "import androidx.compose.foundation.selection.toggleable\nimport androidx.compose.foundation.verticalScroll\n",
+              "import androidx.compose.ui.graphics.ImageBitmap\n": "import androidx.compose.ui.graphics.Color\nimport androidx.compose.ui.graphics.ImageBitmap\n",
+          }
+          for old, new in imports.items():
+              if new.splitlines()[-1] not in focus:
+                  focus = replace_once(focus, old, new, f"Focus import {old.strip()}")
+
+          new_focus_setup = r'''@Composable
+          private fun FocusModeSetupContent(
+              apps: List<FocusModeSelectableApp>,
+              mandatoryPackages: Set<String>,
+              isLoadingApps: Boolean,
+              selectedPackages: Set<String>,
+              durationText: String,
+              onDurationTextChange: (String) -> Unit,
+              durationUnit: FocusModePolicy.DurationUnit,
+              onDurationUnitChange: (FocusModePolicy.DurationUnit) -> Unit,
+              durationValid: Boolean,
+              grayscaleEnabled: Boolean,
+              onGrayscaleEnabledChange: (Boolean) -> Unit,
+              onAddApps: () -> Unit,
+              isStarting: Boolean,
+              startOutcome: FocusModeManager.StartOutcome?,
+              onStart: () -> Unit
+          ) {
+              val selectedApps = remember(apps, mandatoryPackages, selectedPackages) {
+                  apps.filter {
+                      it.packageName in selectedPackages && it.packageName !in mandatoryPackages
+                  }
+              }
+              val initialTotalMinutes = when (durationUnit) {
+                  FocusModePolicy.DurationUnit.MINUTES -> durationText.toIntOrNull() ?: 40
+                  FocusModePolicy.DurationUnit.HOURS -> (durationText.toIntOrNull() ?: 1) * 60
+                  FocusModePolicy.DurationUnit.DAYS -> (durationText.toIntOrNull() ?: 0) * 24 * 60
+              }.coerceIn(1, FOCUS_DURATION_MAX_MINUTES)
+              var sliderMinutes by rememberSaveable { mutableIntStateOf(initialTotalMinutes) }
+              var showHowItWorks by rememberSaveable { mutableStateOf(false) }
+
+              val hoursUnit = stringResource(R.string.focus_mode_static_hours_short)
+              val minutesUnit = stringResource(R.string.focus_mode_static_minutes_short)
+              val durationLabel = when {
+                  sliderMinutes < 60 -> "$sliderMinutes $minutesUnit"
+                  sliderMinutes % 60 == 0 -> "${sliderMinutes / 60} $hoursUnit"
+                  else -> "${sliderMinutes / 60} $hoursUnit ${sliderMinutes % 60} $minutesUnit"
+              }
+              val allowedSummary = when (selectedApps.size) {
+                  0 -> stringResource(R.string.focus_mode_static_no_extra_apps)
+                  1 -> stringResource(R.string.focus_mode_static_one_extra_app)
+                  else -> stringResource(R.string.focus_mode_static_many_extra_apps, selectedApps.size)
+              }
+              val howTitle = stringResource(R.string.focus_mode_how_it_works)
+
+              Box(modifier = Modifier.fillMaxSize()) {
+                  Column(
+                      modifier = Modifier
+                          .fillMaxSize()
+                          .padding(horizontal = 16.dp, vertical = 6.dp)
+                  ) {
+                      Column(
+                          modifier = Modifier
+                              .weight(1f)
+                              .fillMaxWidth()
+                              .verticalScroll(rememberScrollState()),
+                          verticalArrangement = Arrangement.spacedBy(9.dp)
+                      ) {
+                          Row(
+                              modifier = Modifier.fillMaxWidth(),
+                              verticalAlignment = Alignment.CenterVertically
+                          ) {
+                              Text(
+                                  text = stringResource(R.string.focus_mode_compact_purpose),
+                                  color = TextHint,
+                                  fontSize = 13.sp,
+                                  lineHeight = 18.sp,
+                                  modifier = Modifier.weight(1f)
+                              )
+                              TextButton(onClick = { showHowItWorks = true }) {
+                                  Text(
+                                      text = howTitle,
+                                      color = TextSecondary,
+                                      fontSize = 12.sp,
+                                      fontWeight = FontWeight.SemiBold
+                                  )
+                                  Icon(
+                                      Icons.Default.ArrowDropDown,
+                                      contentDescription = null,
+                                      tint = TextHint,
+                                      modifier = Modifier.size(18.dp)
+                                  )
+                              }
+                          }
+
+                          Text(
+                              text = stringResource(R.string.focus_mode_static_duration_section),
+                              color = TextHint,
+                              fontSize = 11.sp,
+                              fontWeight = FontWeight.Bold,
+                              letterSpacing = 1.5.sp,
+                              modifier = Modifier.align(Alignment.CenterHorizontally)
+                          )
+                          Text(
+                              text = durationLabel,
+                              color = TextPrimary,
+                              fontSize = 46.sp,
+                              fontWeight = FontWeight.Bold,
+                              modifier = Modifier.align(Alignment.CenterHorizontally)
+                          )
+
+                          Slider(
+                              value = sliderMinutes.toFloat(),
+                              onValueChange = { raw ->
+                                  val next = raw.roundToInt().coerceIn(1, FOCUS_DURATION_MAX_MINUTES)
+                                  if (next != sliderMinutes) {
+                                      sliderMinutes = next
+                                      onDurationUnitChange(FocusModePolicy.DurationUnit.MINUTES)
+                                      onDurationTextChange(next.toString())
+                                  }
+                              },
+                              valueRange = 1f..FOCUS_DURATION_MAX_MINUTES.toFloat(),
+                              colors = SliderDefaults.colors(
+                                  thumbColor = AccentCyan,
+                                  activeTrackColor = AccentCyan,
+                                  inactiveTrackColor = CardBorder
+                              )
+                          )
+                          Row(
+                              modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+                              horizontalArrangement = Arrangement.SpaceBetween
+                          ) {
+                              Text("1 $minutesUnit", color = TextHint, fontSize = 10.sp)
+                              Text("8 $hoursUnit", color = TextHint, fontSize = 10.sp)
+                          }
+
+                          Card(
+                              modifier = Modifier
+                                  .fillMaxWidth()
+                                  .toggleable(
+                                      value = grayscaleEnabled,
+                                      role = Role.Switch,
+                                      onValueChange = onGrayscaleEnabledChange
+                                  ),
+                              colors = CardDefaults.cardColors(containerColor = DarkCard),
+                              border = BorderStroke(1.dp, CardBorder),
+                              shape = RoundedCornerShape(14.dp)
+                          ) {
+                              Row(
+                                  modifier = Modifier
+                                      .fillMaxWidth()
+                                      .padding(horizontal = 14.dp, vertical = 5.dp),
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  Text(
+                                      text = stringResource(R.string.fg_focus_grayscale),
+                                      color = TextPrimary,
+                                      fontWeight = FontWeight.SemiBold,
+                                      fontSize = 14.sp,
+                                      modifier = Modifier.weight(1f)
+                                  )
+                                  Switch(checked = grayscaleEnabled, onCheckedChange = null)
+                              }
+                          }
+
+                          Text(
+                              text = stringResource(R.string.focus_mode_static_allowed_section),
+                              color = TextHint,
+                              fontSize = 11.sp,
+                              fontWeight = FontWeight.Bold,
+                              letterSpacing = 1.sp,
+                              modifier = Modifier.padding(top = 2.dp)
+                          )
+
+                          Row(
+                              modifier = Modifier.fillMaxWidth(),
+                              horizontalArrangement = Arrangement.spacedBy(8.dp)
+                          ) {
+                              FocusPrototypeAppTile(
+                                  label = stringResource(R.string.focus_mode_static_phone),
+                                  tag = stringResource(R.string.focus_mode_static_always),
+                                  modifier = Modifier.weight(1f)
+                              ) {
+                                  Icon(
+                                      Icons.Default.Phone,
+                                      contentDescription = null,
+                                      tint = TextHint,
+                                      modifier = Modifier.size(30.dp)
+                                  )
+                              }
+                              FocusPrototypeAppTile(
+                                  label = stringResource(R.string.focus_mode_static_sms),
+                                  tag = stringResource(R.string.focus_mode_static_always),
+                                  modifier = Modifier.weight(1f)
+                              ) {
+                                  Icon(
+                                      Icons.Default.Message,
+                                      contentDescription = null,
+                                      tint = TextPrimary,
+                                      modifier = Modifier.size(30.dp)
+                                  )
+                              }
+                              FocusPrototypeSelectedAppsTile(
+                                  selectedApps = selectedApps,
+                                  isLoading = isLoadingApps,
+                                  onClick = onAddApps,
+                                  modifier = Modifier.weight(1f)
+                              )
+                          }
+
+                          if (startOutcome != null) {
+                              FocusModeStartError(startOutcome)
+                          }
+                          Spacer(modifier = Modifier.height(8.dp))
+                      }
+
+                      Text(
+                          text = stringResource(
+                              R.string.focus_mode_static_dock_summary,
+                              durationLabel,
+                              allowedSummary
+                          ),
+                          color = TextHint,
+                          fontSize = 11.sp,
+                          textAlign = TextAlign.Center,
+                          modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 5.dp)
+                      )
+
+                      Button(
+                          onClick = onStart,
+                          enabled = !isStarting && durationValid && !isLoadingApps,
+                          modifier = Modifier.fillMaxWidth().height(52.dp),
+                          colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                          shape = RoundedCornerShape(14.dp)
+                      ) {
+                          if (isStarting) {
+                              CircularProgressIndicator(
+                                  color = MaterialTheme.colorScheme.onPrimary,
+                                  strokeWidth = 2.dp,
+                                  modifier = Modifier.size(20.dp)
+                              )
+                          } else {
+                              Text(
+                                  stringResource(R.string.focus_mode_start),
+                                  fontWeight = FontWeight.Bold,
+                                  fontSize = 16.sp
+                              )
+                          }
+                      }
+                  }
+
+                  if (showHowItWorks) {
+                      Box(
+                          modifier = Modifier
+                              .fillMaxSize()
+                              .background(Color.Black.copy(alpha = 0.72f))
+                              .clickable { showHowItWorks = false }
+                              .padding(24.dp),
+                          contentAlignment = Alignment.Center
+                      ) {
+                          Card(
+                              colors = CardDefaults.cardColors(containerColor = DarkCard),
+                              border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.38f)),
+                              shape = RoundedCornerShape(18.dp)
+                          ) {
+                              Column(
+                                  modifier = Modifier.fillMaxWidth().padding(18.dp),
+                                  verticalArrangement = Arrangement.spacedBy(9.dp)
+                              ) {
+                                  Text(
+                                      text = howTitle,
+                                      color = TextPrimary,
+                                      fontSize = 18.sp,
+                                      fontWeight = FontWeight.Bold
+                                  )
+                                  Text(
+                                      text = stringResource(R.string.focus_mode_static_purpose_body),
+                                      color = TextSecondary,
+                                      fontSize = 13.sp,
+                                      lineHeight = 19.sp
+                                  )
+                                  Text(
+                                      text = stringResource(R.string.focus_mode_tap_anywhere_to_close),
+                                      color = TextHint,
+                                      fontSize = 11.sp
+                                  )
+                              }
+                          }
+                      }
+                  }
+              }
+          }
+
+          '''
+          focus = replace_between(
+              focus,
+              "@Composable\nprivate fun FocusModeSetupContent(",
+              "@Composable\nprivate fun FocusDurationChip(",
+              new_focus_setup,
+              "FocusModeSetupContent"
+          )
+          focus_path.write_text(focus)
+
+          focus_strings = {
+              "app/src/main/res/values/focus_mode_pending_strings.xml": '''<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="focus_mode_compact_purpose">Blocks the phone and releases only what you choose.</string>\n    <string name="focus_mode_how_it_works">How it works</string>\n    <string name="focus_mode_tap_anywhere_to_close">Tap anywhere to close.</string>\n</resources>\n''',
+              "app/src/main/res/values-en/focus_mode_pending_strings.xml": '''<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="focus_mode_compact_purpose">Blocks the phone and releases only what you choose.</string>\n    <string name="focus_mode_how_it_works">How it works</string>\n    <string name="focus_mode_tap_anywhere_to_close">Tap anywhere to close.</string>\n</resources>\n''',
+              "app/src/main/res/values-pt/focus_mode_pending_strings.xml": '''<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="focus_mode_compact_purpose">Bloqueia o telefone e libera só o que você escolher.</string>\n    <string name="focus_mode_how_it_works">Como funciona</string>\n    <string name="focus_mode_tap_anywhere_to_close">Toque em qualquer área da tela para fechar.</string>\n</resources>\n''',
+          }
+          for path, content in focus_strings.items():
+              Path(path).write_text(content)
+
+          # ------------------------------------------------------------------
+          # 2) Usage limits: intuitive hours + minutes input, persisted as minutes.
+          # ------------------------------------------------------------------
+          limits_path = Path("app/src/main/java/com/focusguard/ui/compose/screens/UsageLimitRedesignedSheet.kt")
+          limits = limits_path.read_text()
+          old_state = '''    var dailyMinutes by remember(app.packageName, app.currentLimitMinutes) {
+              mutableStateOf(app.currentLimitMinutes?.toString().orEmpty())
+          }
+          '''
+          new_state = '''    val initialDailyLimitMinutes = app.currentLimitMinutes ?: 0
+              var dailyHours by remember(app.packageName, app.currentLimitMinutes) {
+                  mutableStateOf(
+                      (initialDailyLimitMinutes / 60)
+                          .takeIf { it > 0 }
+                          ?.toString()
+                          .orEmpty()
+                  )
+              }
+              var dailyMinutePart by remember(app.packageName, app.currentLimitMinutes) {
+                  mutableStateOf(
+                      (initialDailyLimitMinutes % 60)
+                          .takeIf { it > 0 }
+                          ?.toString()
+                          .orEmpty()
+                  )
+              }
+              '''
+          limits = replace_once(limits, old_state, new_state, "daily limit state")
+          limits = replace_once(
+              limits,
+              "    var minutesFocused by remember { mutableStateOf(false) }\n",
+              "",
+              "minutesFocused removal"
+          )
+          limits = replace_once(
+              limits,
+              "    val enteredMinutes = dailyMinutes.toIntOrNull() ?: 0\n",
+              '''    val enteredHours = dailyHours.toIntOrNull() ?: 0
+              val enteredMinutePart = dailyMinutePart.toIntOrNull() ?: 0
+              val enteredMinutes = enteredHours * 60 + enteredMinutePart
+              val dailyTimeValid = enteredHours in 0..24 &&
+                  enteredMinutePart in 0..59 &&
+                  enteredMinutes in 1..(24 * 60)
+              ''',
+              "entered minutes calculation"
+          )
+          limits = replace_once(
+              limits,
+              "    val canSave = enteredMinutes > 0 && enteredDuration > 0 && ruleEnd != null\n",
+              "    val canSave = dailyTimeValid && enteredDuration > 0 && ruleEnd != null\n",
+              "usage limit canSave"
+          )
+
+          daily_start = '''                UsageLimitDecisionBlock(
+                              title = stringResource(R.string.limits_daily_max_title),
+          '''
+          daily_end = '''                UsageLimitDecisionBlock(
+                              title = stringResource(R.string.limits_after_reaching_title)
+          '''
+          new_daily_block = r'''                UsageLimitDecisionBlock(
+                              title = stringResource(R.string.limits_daily_max_title),
+                              hint = stringResource(R.string.limits_daily_max_time_hint)
+                          ) {
+                              Row(
+                                  modifier = Modifier
+                                      .fillMaxWidth()
+                                      .padding(top = 14.dp, bottom = 8.dp),
+                                  horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                  verticalAlignment = Alignment.CenterVertically
+                              ) {
+                                  UsageLimitTimeField(
+                                      value = dailyHours,
+                                      label = stringResource(R.string.limits_time_hours_short),
+                                      maxValue = 24,
+                                      maxChars = 2,
+                                      onValueChange = { dailyHours = it },
+                                      modifier = Modifier.weight(1f)
+                                  )
+                                  UsageLimitTimeField(
+                                      value = dailyMinutePart,
+                                      label = stringResource(R.string.limits_time_minutes_short),
+                                      maxValue = 59,
+                                      maxChars = 2,
+                                      onValueChange = { dailyMinutePart = it },
+                                      modifier = Modifier.weight(1f)
+                                  )
+                              }
+
+                              if (!dailyTimeValid && (dailyHours.isNotEmpty() || dailyMinutePart.isNotEmpty())) {
+                                  Text(
+                                      text = stringResource(R.string.limits_daily_max_time_invalid),
+                                      color = DangerRed,
+                                      fontSize = 11.sp,
+                                      modifier = Modifier.padding(bottom = 8.dp)
+                                  )
+                              }
+
+                              UsageLimitMinuteShortcuts(
+                                  selectedMinutes = enteredMinutes.takeIf { dailyTimeValid },
+                                  onSelect = { totalMinutes ->
+                                      dailyHours = (totalMinutes / 60)
+                                          .takeIf { it > 0 }
+                                          ?.toString()
+                                          .orEmpty()
+                                      dailyMinutePart = (totalMinutes % 60)
+                                          .takeIf { it > 0 }
+                                          ?.toString()
+                                          .orEmpty()
+                                  }
+                              )
+                          }
+
+          '''
+          limits = replace_between(
+              limits,
+              daily_start,
+              daily_end,
+              new_daily_block,
+              "daily maximum block"
+          )
+
+          helper_marker = "@Composable\nprivate fun UsageLimitSheetHeader("
+          time_helper = r'''@Composable
+          private fun UsageLimitTimeField(
+              value: String,
+              label: String,
+              maxValue: Int,
+              maxChars: Int,
+              onValueChange: (String) -> Unit,
+              modifier: Modifier = Modifier
+          ) {
+              var focused by remember { mutableStateOf(false) }
+              Column(modifier = modifier) {
+                  BasicTextField(
+                      value = value,
+                      onValueChange = { raw ->
+                          val digits = raw.filter(Char::isDigit).take(maxChars)
+                          val parsed = digits.toIntOrNull()
+                          if (digits.isEmpty() || (parsed != null && parsed <= maxValue)) {
+                              onValueChange(digits)
+                          }
+                      },
+                      modifier = Modifier
+                          .fillMaxWidth()
+                          .onFocusChanged { focused = it.isFocused },
+                      singleLine = true,
+                      keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                      textStyle = TextStyle(
+                          color = TextPrimary,
+                          fontSize = 34.sp,
+                          fontWeight = FontWeight.Bold,
+                          textAlign = TextAlign.Center
+                      ),
+                      decorationBox = { innerTextField ->
+                          Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                              Box(
+                                  modifier = Modifier.fillMaxWidth().height(46.dp),
+                                  contentAlignment = Alignment.Center
+                              ) {
+                                  if (value.isEmpty()) {
+                                      Text(
+                                          "0",
+                                          color = TextHint.copy(alpha = 0.45f),
+                                          fontSize = 34.sp,
+                                          fontWeight = FontWeight.Bold
+                                      )
+                                  }
+                                  innerTextField()
+                              }
+                              HorizontalDivider(
+                                  thickness = 2.dp,
+                                  color = if (focused) AccentCyan else UsageLimitSecondaryStroke
+                              )
+                              Text(
+                                  text = label,
+                                  color = TextSecondary,
+                                  fontSize = 12.sp,
+                                  modifier = Modifier.padding(top = 5.dp)
+                              )
+                          }
+                      }
+                  )
+              }
+          }
+
+          '''
+          if "private fun UsageLimitTimeField(" not in limits:
+              limits = limits.replace(helper_marker, time_helper + helper_marker, 1)
+          limits_path.write_text(limits)
+
+          usage_strings = {
+              "app/src/main/res/values/usage_limit_time_strings.xml": '''<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="limits_time_hours_short">hours</string>\n    <string name="limits_time_minutes_short">minutes</string>\n    <string name="limits_daily_max_time_hint">Set hours and minutes. The counter resets at midnight.</string>\n    <string name="limits_daily_max_time_invalid">Choose a time between 1 minute and 24 hours.</string>\n</resources>\n''',
+              "app/src/main/res/values-en/usage_limit_time_strings.xml": '''<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="limits_time_hours_short">hours</string>\n    <string name="limits_time_minutes_short">minutes</string>\n    <string name="limits_daily_max_time_hint">Set hours and minutes. The counter resets at midnight.</string>\n    <string name="limits_daily_max_time_invalid">Choose a time between 1 minute and 24 hours.</string>\n</resources>\n''',
+              "app/src/main/res/values-pt/usage_limit_time_strings.xml": '''<?xml version="1.0" encoding="utf-8"?>\n<resources>\n    <string name="limits_time_hours_short">horas</string>\n    <string name="limits_time_minutes_short">minutos</string>\n    <string name="limits_daily_max_time_hint">Defina horas e minutos. O contador zera à meia-noite.</string>\n    <string name="limits_daily_max_time_invalid">Escolha um tempo entre 1 minuto e 24 horas.</string>\n</resources>\n''',
+          }
+          for path, content in usage_strings.items():
+              Path(path).write_text(content)
+
+          # ------------------------------------------------------------------
+          # 3) Website blocking: resolved package, no artificial debounce,
+          #    dynamic browser recognition and 1-second usage-limit pulse.
+          # ------------------------------------------------------------------
+          service_path = Path("app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt")
+          service = service_path.read_text()
+          service = replace_once(
+              service,
+              "    private val browserDebounceMillis = 120L\n",
+              "    private val browserDebounceMillis = 0L\n",
+              "browser debounce"
+          )
+          service = replace_once(
+              service,
+              "    private val websitePulseMillis = 5_000L\n",
+              "    private val websitePulseMillis = 1_000L\n",
+              "website usage pulse"
+          )
+
+          service = service.replace(
+              "handleBrowserEvent(event)",
+              "handleBrowserEvent(event, packageName)"
+          )
+
+          old_content_condition = '''                    if (packageName in browserPackages &&
+                                  (fastEvent || now - lastBrowserCheck >= browserDebounceMillis)
+                              ) {
+          '''
+          new_content_condition = '''                    if (isRecognizedBrowserSurface(event, packageName) &&
+                                  (fastEvent || now - lastBrowserCheck >= browserDebounceMillis)
+                              ) {
+          '''
+          service = replace_once(
+              service,
+              old_content_condition,
+              new_content_condition,
+              "browser content condition"
+          )
+
+          old_window_branch = '''            packageName in browserPackages &&
+                          (blockedWebsitesDomainSet.isNotEmpty() || limitedWebsiteDomains.isNotEmpty()) ->
+                          handleBrowserEvent(event, packageName)
+          '''
+          new_window_branch = '''            isRecognizedBrowserSurface(event, packageName) &&
+                          (blockedWebsitesDomainSet.isNotEmpty() || limitedWebsiteDomains.isNotEmpty()) ->
+                          handleBrowserEvent(event, packageName)
+          '''
+          service = replace_once(
+              service,
+              old_window_branch,
+              new_window_branch,
+              "browser window branch"
+          )
+
+          old_handler = '''    private fun handleBrowserEvent(event: AccessibilityEvent) {
+                  val packageName = event.packageName?.toString() ?: return
+                  if (packageName !in browserPackages) return
+          '''
+          new_handler = '''    private fun handleBrowserEvent(
+                  event: AccessibilityEvent,
+                  resolvedPackageName: String
+              ) {
+                  val packageName = resolvedPackageName.takeIf(String::isNotBlank) ?: return
+                  if (!isRecognizedBrowserSurface(event, packageName)) return
+          '''
+          service = replace_once(service, old_handler, new_handler, "handleBrowserEvent signature")
+
+          helper_insert = r'''    /**
+               * Browser discovery is not restricted to the hard-coded compatibility list.
+               * Any package that declares HTTPS handling is already indexed by
+               * calculateBrowserPackages(); this fallback promotes an unknown package as soon
+               * as it exposes an accessible address bar/URI field. That covers browsers and
+               * WebView shells that are absent from the static list without treating ordinary
+               * page text as a URL.
+               */
+              private fun isRecognizedBrowserSurface(
+                  event: AccessibilityEvent,
+                  packageName: String
+              ): Boolean {
+                  if (packageName.isBlank()) return false
+                  if (packageName in browserPackages) return true
+
+                  if (WebsiteBlocker.extractAddressBarTextFromEvent(event, packageName) != null) {
+                      browserPackages = browserPackages + packageName
+                      return true
+                  }
+
+                  val canInspectRoot = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                      event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED ||
+                      event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+                      event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED
+                  if (!canInspectRoot) return false
+
+                  val root = rootInActiveWindow ?: sourceNodeForEvent(event) ?: return false
+                  val recognized = try {
+                      WebsiteBlocker.extractAddressBarTextFromRoot(root, packageName) != null
+                  } finally {
+                      recycleSafely(root)
+                  }
+                  if (recognized) browserPackages = browserPackages + packageName
+                  return recognized
+              }
+
+          '''
+          handler_marker = "    private fun handleBrowserEvent(\n"
+          if "private fun isRecognizedBrowserSurface(" not in service:
+              service = service.replace(handler_marker, helper_insert + handler_marker, 1)
+
+          old_begin_block = '''    private fun beginWebsiteBlock(domain: String, packageName: String): Boolean {
+                  val now = System.currentTimeMillis()
+                  val blockKey = "$packageName|$domain"
+                  if (blockKey == lastWebsiteBlockKey &&
+                      now - lastWebsiteBlockTime < websiteBlockCooldownMillis
+                  ) return false
+
+                  lastWebsiteBlockKey = blockKey
+                  lastWebsiteBlockTime = now
+                  stopWebsiteTracking(now)
+                  return true
+              }
+          '''
+          new_begin_block = '''    private fun beginWebsiteBlock(domain: String, packageName: String): Boolean {
+                  val now = System.currentTimeMillis()
+                  // Do not suppress repeated attempts. App blocking already renews the
+                  // curtain on every launch; websites must behave the same way so a quick
+                  // Back/forward/reload cannot land inside the old cooldown window.
+                  lastWebsiteBlockKey = "$packageName|$domain"
+                  lastWebsiteBlockTime = now
+                  stopWebsiteTracking(now)
+                  return true
+              }
+          '''
+          service = replace_once(service, old_begin_block, new_begin_block, "website block cooldown")
+          service_path.write_text(service)
+
+          # Keep the implementation limits explicit in docs: dynamic compatibility is broad,
+          # but a browser that deliberately hides both URL and network policy surfaces cannot
+          # be inspected by a normal Android accessibility service.
+          website_doc = Path("docs/WEBSITE_BLOCKING.md")
+          doc = website_doc.read_text()
+          old_doc = """   - É a camada comum para qualquer navegador instalado que declare suporte a\n     links HTTPS, além de uma lista de compatibilidade para os navegadores mais\n     usados (Firefox, Brave, Samsung Internet, Opera, Vivaldi e DuckDuckGo).\n"""
+          new_doc = """   - É a camada comum para qualquer navegador instalado que declare suporte a\n     links HTTPS. Além disso, um pacote desconhecido passa a ser reconhecido\n     dinamicamente assim que expõe uma barra de endereço/entrada URI acessível;\n     a lista de navegadores conhecidos fica apenas como fallback de compatibilidade.\n"""
+          if old_doc in doc:
+              doc = doc.replace(old_doc, new_doc, 1)
+          website_doc.write_text(doc)
+
+          plan = Path("docs/EXECUTION_PLAN_2026-08-27.md")
+          plan.write_text('''# Plano de execução — 27/08/2026\n\n## Concluído nesta rodada\n\n- Modo foco: botão **Iniciar** fixo e sempre visível.\n- Modo foco: atalhos/sugestões de duração removidos; duração concentrada no controle principal.\n- Modo foco: **Tela cinza** compactada.\n- Modo foco: **Como funciona** abre um card modal que fecha ao tocar em qualquer área.\n- Limites de uso: entrada por **horas + minutos**, persistida no formato de minutos já usado pelo banco.\n- Sites: pacote resolvido do evento é preservado até a inspeção da URL.\n- Sites: navegador desconhecido é reconhecido dinamicamente quando expõe barra de endereço/URI.\n- Sites: debounce artificial removido e cooldown que permitia tentativas rápidas repetidas eliminado.\n- Limites de sites: pulso de contabilização reduzido de 5 s para 1 s.\n\n## Próxima revisão\n\n- Validar em Chrome, Firefox, Brave, Samsung Internet, Edge, Opera, Vivaldi e DuckDuckGo.\n- Validar navegador não listado que declare HTTPS e navegador não listado reconhecido pela barra acessível.\n- Revisar o restante do widget Pomodoro (atualização visual contínua e dimensões).\n''')
+          PY
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android 16 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Compile and test before commit
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew :app:compileDebugKotlin testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Commit verified changes and remove temporary workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/apply-pending-focusguard-fixes.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git commit -m "Melhora Modo foco, limites e bloqueio imediato de sites"
+          git push origin HEAD:main
