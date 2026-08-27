@@ -759,9 +759,8 @@ private fun CreatorFeedbackButton(
 /**
  * O cartão de cada tipo de bloqueio na tela inicial.
  *
- * O acento recebido (ciano, âmbar ou vermelho, conforme o tipo) agora aparece
- * três vezes no mesmo cartão — no selo do ícone, numa faixa fina à esquerda e
- * na seta — para dar identidade a cada linha sem precisar de mais texto.
+ * O acento recebido (ciano, âmbar ou vermelho, conforme o tipo) aparece no
+ * selo do ícone e na seta, sem uma faixa colorida junto à borda do cartão.
  */
 @Composable
 fun SessionCard(
@@ -784,26 +783,9 @@ fun SessionCard(
                 .height(IntrinsicSize.Min),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // A faixa é desenhada como conteúdo, ou seja, por cima da borda do
-            // cartão. O padding de 1dp a encosta na borda em vez de cobri-la.
-            Box(
-                modifier = Modifier
-                    .padding(vertical = 1.dp, horizontal = 1.dp)
-                    .width(3.dp)
-                    .fillMaxHeight()
-                    .background(
-                        Brush.verticalGradient(
-                            listOf(
-                                accent.copy(alpha = 0.0f),
-                                accent.copy(alpha = 0.85f),
-                                accent.copy(alpha = 0.0f)
-                            )
-                        )
-                    )
-            )
             Row(
                 modifier = Modifier.padding(
-                    start = if (compact) 12.dp else 15.dp,
+                    start = if (compact) 17.dp else 20.dp,
                     end = if (compact) 13.dp else 16.dp,
                     top = if (compact) 12.dp else 16.dp,
                     bottom = if (compact) 12.dp else 16.dp
