@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.widget.RemoteViews
 import android.widget.Toast
+import com.focusguard.MainActivity
 import com.focusguard.R
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.pomodoro.PomodoroPhase
@@ -38,9 +39,6 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 val store = PomodoroPlanStore(context)
-                // "Iniciar" nunca deve reiniciar silenciosamente um ciclo que já
-                // está rodando. A edição pelo relógio continua valendo para o
-                // próximo plano, mas o runtime atual permanece imutável.
                 if (store.readRuntime()?.active == true) {
                     requestUpdate(context)
                     return@launch
@@ -68,7 +66,7 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
     companion object {
         private const val ACTION_START_POMODORO =
             "com.focusguard.action.START_POMODORO_FROM_WIDGET"
-        private const val REQUEST_OPEN_DIAL = 5101
+        private const val REQUEST_CONFIGURE = 5101
         private const val REQUEST_START = 5102
 
         fun requestUpdate(context: Context) {
@@ -90,6 +88,7 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
             val runtime = store.readRuntime()?.takeIf { it.active }
             val displayConfig = runtime?.config ?: savedConfig
             val views = RemoteViews(context.packageName, R.layout.widget_pomodoro)
+            val now = System.currentTimeMillis()
 
             val phaseLabel = runtime?.let {
                 context.getString(
@@ -106,46 +105,29 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
                     context.getString(R.string.fg_pomodoro_widget_title_phase, it)
                 } ?: context.getString(R.string.fg_pomodoro_title)
             )
-            views.setTextViewText(
-                R.id.widget_pomodoro_focus,
-                context.getString(
-                    R.string.fg_pomodoro_widget_focus_break,
-                    formatMinutes(displayConfig.focusMinutes),
-                    formatMinutes(displayConfig.shortBreakMinutes)
+
+            val remainingMillis = runtime?.let {
+                (it.intervalEndTime - now).coerceAtLeast(0L)
+            } ?: displayConfig.focusMinutes.coerceAtLeast(1) * 60_000L
+            val durationMillis = runtime?.intervalDurationMillis
+                ?.takeIf { it > 0L }
+                ?: phaseDurationMillis(runtime?.phase, displayConfig)
+            val activeProgress = runtime?.let {
+                if (durationMillis <= 0L) 0f
+                else (remainingMillis.toFloat() / durationMillis.toFloat()).coerceIn(0f, 1f)
+            }
+
+            views.setImageViewBitmap(
+                R.id.widget_pomodoro_clock,
+                PomodoroWidgetClockRenderer.render(
+                    context = context,
+                    minutes = displayConfig.focusMinutes.coerceIn(1, 180),
+                    maxMinutes = 180,
+                    activeProgress = activeProgress,
+                    remainingMillis = remainingMillis
                 )
             )
-            views.setTextViewText(
-                R.id.widget_pomodoro_break,
-                context.getString(
-                    R.string.fg_pomodoro_widget_long_break,
-                    formatMinutes(displayConfig.longBreakMinutes),
-                    displayConfig.longBreakEvery
-                )
-            )
-            views.setTextViewText(
-                R.id.widget_pomodoro_sessions,
-                if (runtime != null) {
-                    if (runtime.config.targetSessions == 0) {
-                        context.getString(
-                            R.string.fg_pomodoro_widget_completed_unlimited,
-                            runtime.completedFocusSessions
-                        )
-                    } else {
-                        context.getString(
-                            R.string.fg_pomodoro_widget_completed_target,
-                            runtime.completedFocusSessions,
-                            runtime.config.targetSessions
-                        )
-                    }
-                } else {
-                    val target = if (savedConfig.targetSessions == 0) {
-                        context.getString(R.string.fg_pomodoro_until_i_stop)
-                    } else {
-                        savedConfig.targetSessions.toString()
-                    }
-                    context.getString(R.string.fg_pomodoro_widget_sessions, target)
-                }
-            )
+
             views.setTextViewText(
                 R.id.widget_pomodoro_start,
                 context.getString(
@@ -156,15 +138,25 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
                     }
                 )
             )
+            views.setBoolean(R.id.widget_pomodoro_start, "setEnabled", runtime == null)
 
-            val dialIntent = Intent(context, PomodoroWidgetDialActivity::class.java)
-            val dialPendingIntent = PendingIntent.getActivity(
+            val configureIntent = Intent(context, MainActivity::class.java)
+                .putExtra(MainActivity.EXTRA_OPEN_POMODORO, true)
+                .addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            val configurePendingIntent = PendingIntent.getActivity(
                 context,
-                REQUEST_OPEN_DIAL,
-                dialIntent,
+                REQUEST_CONFIGURE,
+                configureIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            views.setOnClickPendingIntent(R.id.widget_pomodoro_dial, dialPendingIntent)
+            views.setOnClickPendingIntent(
+                R.id.widget_pomodoro_configure,
+                configurePendingIntent
+            )
 
             val startIntent = Intent(context, PomodoroWidgetProvider::class.java)
                 .setAction(ACTION_START_POMODORO)
@@ -179,14 +171,17 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
             manager.updateAppWidget(appWidgetId, views)
         }
 
-        private fun formatMinutes(minutes: Int): String {
-            val hours = minutes / 60
-            val remaining = minutes % 60
-            return when {
-                hours == 0 -> "${minutes}m"
-                remaining == 0 -> "${hours}h"
-                else -> "${hours}h${remaining}m"
+        private fun phaseDurationMillis(
+            phase: PomodoroPhase?,
+            config: com.focusguard.pomodoro.PomodoroPlanConfig
+        ): Long {
+            val minutes = when (phase) {
+                PomodoroPhase.SHORT_BREAK -> config.shortBreakMinutes
+                PomodoroPhase.LONG_BREAK -> config.longBreakMinutes
+                PomodoroPhase.FOCUS,
+                null -> config.focusMinutes
             }
+            return minutes.coerceAtLeast(1) * 60_000L
         }
     }
 }
