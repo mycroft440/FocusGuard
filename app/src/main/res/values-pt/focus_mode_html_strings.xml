@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="focus_html_intro">Bloqueia o telefone e libera só o que você escolher.</string>
+    <string name="focus_html_how_it_works">Como funciona</string>
+    <string name="focus_html_how_it_works_body">Enquanto o foco estiver ativo, nenhum app abre fora da lista de liberados — nem trocando de tela, nem pela notificação. O bloqueio só sai quando o tempo acaba.</string>
+    <string name="focus_html_duration">DURAÇÃO</string>
+    <string name="focus_html_min">min</string>
+    <string name="focus_html_hour">hora</string>
+    <string name="focus_html_hours">horas</string>
+    <string name="focus_html_tick_1m">1 min</string>
+    <string name="focus_html_tick_4h">4 h</string>
+    <string name="focus_html_tick_8h">8 h</string>
+    <string name="focus_html_preset_25">25 min</string>
+    <string name="focus_html_preset_40">40 min</string>
+    <string name="focus_html_preset_1h">1 h</string>
+    <string name="focus_html_preset_2h">2 h</string>
+    <string name="focus_html_grayscale">Tela cinza</string>
+    <string name="focus_html_grayscale_desc">Deixa o celular em preto e branco durante o foco. Telas sem cor puxam menos a atenção.</string>
+    <string name="focus_html_allowed">LIBERADOS DURANTE O FOCO</string>
+    <string name="focus_html_apps_count">%1$d apps</string>
+    <string name="focus_html_one_app_count">1 app</string>
+    <string name="focus_html_phone">Ligação</string>
+    <string name="focus_html_sms">SMS</string>
+    <string name="focus_html_always_allowed">sempre liberado</string>
+    <string name="focus_html_you_allowed">você liberou</string>
+    <string name="focus_html_add_app">Adicionar app</string>
+    <string name="focus_html_choose_essential">escolha o essencial</string>
+    <string name="focus_html_selected_apps">%1$d selecionados</string>
+    <string name="focus_html_summary">%1$s · %2$s · termina %3$s</string>
+    <string name="focus_html_zero_apps">0 apps liberados</string>
+    <string name="focus_html_one_app">1 app liberado</string>
+    <string name="focus_html_many_apps">%1$d apps liberados</string>
+    <string name="focus_html_review_start">Revisar e iniciar</string>
+    <string name="focus_html_active">FOCO ATIVO</string>
+    <string name="focus_html_remaining">restantes</string>
+    <string name="focus_html_fixed_notice">Esta tela permanece fixa até o foco terminar.</string>
+</resources>
