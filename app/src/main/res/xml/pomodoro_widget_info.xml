@@ -3,9 +3,9 @@
     android:description="@string/app_name"
     android:initialLayout="@layout/widget_pomodoro"
     android:minWidth="250dp"
-    android:minHeight="290dp"
+    android:minHeight="310dp"
     android:minResizeWidth="240dp"
-    android:minResizeHeight="270dp"
+    android:minResizeHeight="300dp"
     android:resizeMode="horizontal|vertical"
     android:updatePeriodMillis="0"
     android:widgetCategory="home_screen" />

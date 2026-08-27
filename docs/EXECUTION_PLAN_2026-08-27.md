@@ -20,3 +20,12 @@ Sem VPN/proxy/extensão, Android não permite que um app comum leia HTTPS de um 
 
 - Revisar atualização contínua e dimensões do widget Pomodoro.
 - Validar manualmente Chrome, Edge, Firefox, Brave, Samsung Internet, Opera, Vivaldi, DuckDuckGo e pelo menos um navegador não listado.
+
+## Widget Pomodoro — revisão final
+
+- Relógio do widget passa a atualizar quando o minuto visível muda e nas trocas de fase.
+- A atualização é acionada pelo serviço foreground já existente, sem depender do `updatePeriodMillis` de 30 minutos do Android.
+- Ao encerrar o plano, o widget é atualizado imediatamente para o estado inativo.
+- Altura mínima do widget foi alinhada ao conteúdo real para evitar corte em launchers redimensionáveis.
+- Controles do widget ficaram explicitamente focáveis/clicáveis.
+- O espaçamento de letras do rótulo do relógio agora é realmente desenhado, em vez de usar um no-op.

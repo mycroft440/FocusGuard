@@ -148,11 +148,16 @@ internal object PomodoroWidgetClockRenderer {
 
         paint.typeface = Typeface.create(Typeface.MONOSPACE, Typeface.NORMAL)
         paint.textSize = 11f * unit
-        paint.letterSpacingCompat(0.18f)
         paint.color = secondaryText
         val label = context.getString(R.string.fg_pomodoro_clock_minutes)
-        canvas.drawText(label, center, numberBaseline + 19f * unit, paint)
-        paint.letterSpacingCompat(0f)
+        drawTrackedText(
+            canvas = canvas,
+            text = label,
+            centerX = center,
+            baseline = numberBaseline + 19f * unit,
+            paint = paint,
+            trackingPx = 1.8f * unit
+        )
 
         val formatter = SimpleDateFormat("HH:mm", Locale.getDefault())
         val endAt = formatter.format(Date(System.currentTimeMillis() + safeRemaining))
@@ -214,6 +219,25 @@ internal object PomodoroWidgetClockRenderer {
         Color.blue(color)
     )
 
-    /** Paint letter spacing is available only on TextPaint; emulate it only where useful. */
-    private fun Paint.letterSpacingCompat(@Suppress("UNUSED_PARAMETER") value: Float) = Unit
+    private fun drawTrackedText(
+        canvas: Canvas,
+        text: String,
+        centerX: Float,
+        baseline: Float,
+        paint: Paint,
+        trackingPx: Float
+    ) {
+        if (text.isEmpty()) return
+        val widths = FloatArray(text.length)
+        paint.getTextWidths(text, widths)
+        val totalWidth = widths.sum() + trackingPx * (text.length - 1).coerceAtLeast(0)
+        var x = centerX - totalWidth / 2f
+        val previousAlign = paint.textAlign
+        paint.textAlign = Paint.Align.LEFT
+        text.forEachIndexed { index, char ->
+            canvas.drawText(char.toString(), x, baseline, paint)
+            x += widths[index] + trackingPx
+        }
+        paint.textAlign = previousAlign
+    }
 }

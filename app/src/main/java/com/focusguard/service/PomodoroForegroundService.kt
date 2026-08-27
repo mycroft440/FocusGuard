@@ -20,6 +20,7 @@ import com.focusguard.pomodoro.PomodoroPhase
 import com.focusguard.pomodoro.PomodoroPlanStore
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.widget.PomodoroWidgetProvider
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -40,6 +41,7 @@ class PomodoroForegroundService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private var watchdogJob: Job? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var lastWidgetUpdateKey: String? = null
 
     companion object {
         private const val CHANNEL_ID = "focusguard_pomodoro_watchdog"
@@ -171,12 +173,14 @@ class PomodoroForegroundService : Service() {
             while (true) {
                 try {
                     if (!hasActivePlan()) {
+                        PomodoroWidgetProvider.requestUpdate(applicationContext)
                         cancelWatchdogAlarm(applicationContext)
                         stopSelf()
                         break
                     }
 
                     updateNotification()
+                    updateWidgetIfNeeded()
                     if (StrictPomodoroLock.isActive(applicationContext)) {
                         ensureLockActivityOnTop()
                         scheduleWatchdogAlarm(applicationContext)
@@ -189,6 +193,27 @@ class PomodoroForegroundService : Service() {
                 delay(2_000L)
             }
         }
+    }
+
+    /**
+     * The widget only renders whole remaining minutes. Refresh it when that visible
+     * minute changes, when the phase/end-time changes, and once when the service
+     * starts. This keeps the home-screen clock live without rebuilding a large
+     * RemoteViews bitmap every two seconds with the notification loop.
+     */
+    private fun updateWidgetIfNeeded() {
+        val runtime = PomodoroPlanStore(applicationContext).readRuntime()
+            ?.takeIf { it.active }
+        val updateKey = runtime?.let {
+            val remaining = (it.intervalEndTime - System.currentTimeMillis())
+                .coerceAtLeast(0L)
+            val displayedMinutes = (remaining + 59_999L) / 60_000L
+            "${it.phase}|${it.intervalEndTime}|$displayedMinutes"
+        } ?: "inactive"
+
+        if (updateKey == lastWidgetUpdateKey) return
+        lastWidgetUpdateKey = updateKey
+        PomodoroWidgetProvider.requestUpdate(applicationContext)
     }
 
     private fun ensureLockActivityOnTop() {
