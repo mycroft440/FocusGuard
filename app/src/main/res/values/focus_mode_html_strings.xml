@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="focus_html_intro">Blocks the phone and only allows what you choose.</string>
+    <string name="focus_html_how_it_works">How it works</string>
+    <string name="focus_html_how_it_works_body">While focus is active, no app opens outside the allowed list — not by switching screens or through notifications. The restriction ends only when the timer finishes.</string>
+    <string name="focus_html_duration">DURATION</string>
+    <string name="focus_html_min">min</string>
+    <string name="focus_html_hour">hour</string>
+    <string name="focus_html_hours">hours</string>
+    <string name="focus_html_tick_1m">1 min</string>
+    <string name="focus_html_tick_4h">4 h</string>
+    <string name="focus_html_tick_8h">8 h</string>
+    <string name="focus_html_preset_25">25 min</string>
+    <string name="focus_html_preset_40">40 min</string>
+    <string name="focus_html_preset_1h">1 h</string>
+    <string name="focus_html_preset_2h">2 h</string>
+    <string name="focus_html_grayscale">Grayscale</string>
+    <string name="focus_html_grayscale_desc">Turns the phone black and white during focus. Colorless screens attract less attention.</string>
+    <string name="focus_html_allowed">ALLOWED DURING FOCUS</string>
+    <string name="focus_html_apps_count">%1$d apps</string>
+    <string name="focus_html_one_app_count">1 app</string>
+    <string name="focus_html_phone">Phone</string>
+    <string name="focus_html_sms">SMS</string>
+    <string name="focus_html_always_allowed">always allowed</string>
+    <string name="focus_html_you_allowed">you allowed</string>
+    <string name="focus_html_add_app">Add app</string>
+    <string name="focus_html_choose_essential">choose the essential</string>
+    <string name="focus_html_selected_apps">%1$d selected</string>
+    <string name="focus_html_summary">%1$s · %2$s · ends %3$s</string>
+    <string name="focus_html_zero_apps">0 apps allowed</string>
+    <string name="focus_html_one_app">1 app allowed</string>
+    <string name="focus_html_many_apps">%1$d apps allowed</string>
+    <string name="focus_html_review_start">Review and start</string>
+    <string name="focus_html_active">FOCUS ACTIVE</string>
+    <string name="focus_html_remaining">remaining</string>
+    <string name="focus_html_fixed_notice">This screen stays fixed until focus ends.</string>
+</resources>
