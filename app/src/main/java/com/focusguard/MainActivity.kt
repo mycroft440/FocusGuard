@@ -49,6 +49,7 @@ class MainActivity : AppCompatActivity() {
     private var pendingCurtainGeneration = 0L
     private var freshFrameGeneration = 0L
     private val focusModeReturnNonce = mutableLongStateOf(0L)
+    private val pomodoroNavigationNonce = mutableLongStateOf(0L)
 
     /**
      * Last-resort Back guard for every FocusGuard screen. Compose screens keep
@@ -91,6 +92,7 @@ class MainActivity : AppCompatActivity() {
         onBackPressedDispatcher.addCallback(this, focusModeBackGuard)
         updateFocusModeBackGuard()
         consumeFocusModeReturnIntent(intent)
+        consumePomodoroNavigationIntent(intent)
         FocusModeKioskController.reconcileSystemRestrictions(this)
 
         FocusGuardLogger.log("MainActivity", "Managers inicializados com sucesso")
@@ -103,6 +105,7 @@ class MainActivity : AppCompatActivity() {
                     pomodoroManager = pomodoroManager,
                     focusModeManager = focusModeManager,
                     focusModeReturnNonce = focusModeReturnNonce.longValue,
+                    pomodoroNavigationNonce = pomodoroNavigationNonce.longValue,
                     onEnforceFocusModeLockTask = ::enforceFocusModeLockTask
                 )
             }
@@ -120,6 +123,7 @@ class MainActivity : AppCompatActivity() {
         super.onNewIntent(intent)
         setIntent(intent)
         consumeFocusModeReturnIntent(intent)
+        consumePomodoroNavigationIntent(intent)
         updateFocusModeBackGuard()
         enforceFocusModeLockTask()
         notifyCurtainWhenDrawn(intent)
@@ -192,6 +196,14 @@ class MainActivity : AppCompatActivity() {
         val homeIntent = sourceIntent.action == Intent.ACTION_MAIN &&
             sourceIntent.categories?.contains(Intent.CATEGORY_HOME) == true
         if (explicitRestore || homeIntent) requestFocusModeHomeSurface()
+    }
+
+    private fun consumePomodoroNavigationIntent(sourceIntent: Intent) {
+        if (!sourceIntent.getBooleanExtra(EXTRA_OPEN_POMODORO, false)) return
+        sourceIntent.removeExtra(EXTRA_OPEN_POMODORO)
+        if (!focusModeManager.isActive()) {
+            pomodoroNavigationNonce.longValue = pomodoroNavigationNonce.longValue + 1L
+        }
     }
 
     private fun updateFocusModeBackGuard() {
@@ -279,5 +291,9 @@ class MainActivity : AppCompatActivity() {
             decorView.setLayerType(View.LAYER_TYPE_NONE, null)
         }
         decorView.invalidate()
+    }
+
+    companion object {
+        const val EXTRA_OPEN_POMODORO = "com.focusguard.extra.OPEN_POMODORO"
     }
 }

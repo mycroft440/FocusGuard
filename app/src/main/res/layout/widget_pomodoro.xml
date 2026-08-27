@@ -1,105 +1,69 @@
 <?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
-    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@drawable/widget_pomodoro_background"
+    android:gravity="center_horizontal"
     android:orientation="vertical"
-    android:padding="14dp">
+    android:padding="12dp">
+
+    <TextView
+        android:id="@+id/widget_pomodoro_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center"
+        android:maxLines="1"
+        android:text="@string/fg_pomodoro_title"
+        android:textColor="#FF8E97A6"
+        android:textSize="12sp"
+        android:textStyle="bold" />
+
+    <ImageView
+        android:id="@+id/widget_pomodoro_clock"
+        android:layout_width="205dp"
+        android:layout_height="205dp"
+        android:layout_marginTop="2dp"
+        android:adjustViewBounds="true"
+        android:contentDescription="@string/fg_pomodoro_title"
+        android:scaleType="fitCenter" />
 
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
         android:gravity="center_vertical"
         android:orientation="horizontal">
-
-        <ImageView
-            android:layout_width="24dp"
-            android:layout_height="24dp"
-            android:contentDescription="@string/fg_pomodoro_title"
-            android:src="@drawable/ic_shield"
-            app:tint="#FF4DD0E1" />
 
         <TextView
-            android:id="@+id/widget_pomodoro_title"
+            android:id="@+id/widget_pomodoro_configure"
             android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="9dp"
-            android:layout_weight="1"
-            android:text="@string/fg_pomodoro_title"
-            android:textColor="#FFF8FAFC"
-            android:textSize="17sp"
-            android:textStyle="bold" />
-    </LinearLayout>
-
-    <TextView
-        android:id="@+id/widget_pomodoro_focus"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="8dp"
-        android:maxLines="1"
-        android:text="@string/fg_pomodoro_ready"
-        android:textColor="#FFD5DBE5"
-        android:textSize="12sp" />
-
-    <TextView
-        android:id="@+id/widget_pomodoro_break"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
-        android:maxLines="1"
-        android:text="@string/fg_pomodoro_title"
-        android:textColor="#FF9AA7B8"
-        android:textSize="11sp" />
-
-    <TextView
-        android:id="@+id/widget_pomodoro_sessions"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
-        android:maxLines="1"
-        android:text="@string/fg_pomodoro_title"
-        android:textColor="#FF9AA7B8"
-        android:textSize="11sp" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="10dp"
-        android:gravity="center_vertical"
-        android:orientation="horizontal">
-
-        <Button
-            android:id="@+id/widget_pomodoro_dial"
-            android:layout_width="0dp"
-            android:layout_height="42dp"
+            android:layout_height="46dp"
             android:layout_marginEnd="5dp"
             android:layout_weight="1"
-            android:backgroundTint="#FF263346"
-            android:minHeight="0dp"
-            android:minWidth="0dp"
-            android:paddingStart="7dp"
-            android:paddingEnd="7dp"
-            android:text="@string/fg_pomodoro_dial_title"
-            android:textAllCaps="false"
-            android:textColor="#FFF8FAFC"
-            android:textSize="11sp" />
+            android:background="@drawable/widget_pomodoro_config_button"
+            android:gravity="center"
+            android:maxLines="1"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
+            android:text="@string/fg_pomodoro_configure"
+            android:textColor="#FF8E97A6"
+            android:textSize="13sp"
+            android:textStyle="bold" />
 
-        <Button
+        <TextView
             android:id="@+id/widget_pomodoro_start"
             android:layout_width="0dp"
-            android:layout_height="42dp"
+            android:layout_height="46dp"
             android:layout_marginStart="5dp"
-            android:layout_weight="1"
-            android:backgroundTint="#FF4DD0E1"
-            android:minHeight="0dp"
-            android:minWidth="0dp"
-            android:paddingStart="7dp"
-            android:paddingEnd="7dp"
+            android:layout_weight="1.2"
+            android:background="@drawable/widget_pomodoro_start_button"
+            android:gravity="center"
+            android:maxLines="1"
+            android:paddingStart="10dp"
+            android:paddingEnd="10dp"
             android:text="@string/fg_pomodoro_start"
-            android:textAllCaps="false"
-            android:textColor="#FF07141D"
-            android:textSize="11sp"
+            android:textColor="#FF75CCD6"
+            android:textSize="13sp"
             android:textStyle="bold" />
     </LinearLayout>
 </LinearLayout>
