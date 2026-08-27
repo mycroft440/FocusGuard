@@ -66,7 +66,10 @@ fun TimeSessionConfigScreen(
                     }
                     return@launch
                 }
-                val dailyLimitMinutes = (config.dailyLimitHours.coerceAtLeast(1) * 60)
+                val dailyLimitMinutes = (
+                    config.dailyLimitHours.coerceIn(0, 24) * 60 +
+                        config.dailyLimitMinutes.coerceIn(0, 59)
+                    ).coerceIn(1, 24 * 60)
                 val now = System.currentTimeMillis()
                 val lockMode = when (config.limitType) {
                     LimitType.HARD_BLOCK_NO_PASSWORD -> "TIME"

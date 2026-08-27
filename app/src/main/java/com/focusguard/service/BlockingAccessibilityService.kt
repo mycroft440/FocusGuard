@@ -185,9 +185,8 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private val cacheTimeoutMillis = 5_000L
-    private val browserDebounceMillis = 120L
-    private val websiteBlockCooldownMillis = 1_500L
-    private val websitePulseMillis = 5_000L
+    private val browserDebounceMillis = 0L
+    private val websitePulseMillis = 1_000L
     private val appLimitPulseMillis = 5_000L
     private val maxUsageDeltaMillis = 15_000L
     private val channelId = "focusguard_service_channel"
@@ -768,11 +767,11 @@ class BlockingAccessibilityService : AccessibilityService() {
                 AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
                 AccessibilityEvent.TYPE_VIEW_FOCUSED -> {
                     val fastEvent = event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-                    if (packageName in browserPackages &&
+                    if (isRecognizedBrowserSurface(event, packageName) &&
                         (fastEvent || now - lastBrowserCheck >= browserDebounceMillis)
                     ) {
                         lastBrowserCheck = now
-                        handleBrowserEvent(event)
+                        handleBrowserEvent(event, packageName)
                     }
                 }
             }
@@ -1170,9 +1169,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                 packageName = packageName,
                 now = System.currentTimeMillis()
             )
-            packageName in browserPackages &&
+            isRecognizedBrowserSurface(event, packageName) &&
                 (blockedWebsitesDomainSet.isNotEmpty() || limitedWebsiteDomains.isNotEmpty()) ->
-                handleBrowserEvent(event)
+                handleBrowserEvent(event, packageName)
         }
     }
 
@@ -2011,9 +2010,45 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun handleBrowserEvent(event: AccessibilityEvent) {
-        val packageName = event.packageName?.toString() ?: return
-        if (packageName !in browserPackages) return
+    /**
+     * Dynamic browser recognition. All installed HTTPS handlers are already in
+     * [browserPackages]; this fallback promotes an unknown browser/WebView shell
+     * as soon as it exposes a genuine address-bar/URI node to accessibility.
+     */
+    private fun isRecognizedBrowserSurface(
+        event: AccessibilityEvent,
+        packageName: String
+    ): Boolean {
+        if (packageName.isBlank()) return false
+        if (packageName in browserPackages) return true
+
+        if (WebsiteBlocker.extractAddressBarTextFromEvent(event, packageName) != null) {
+            browserPackages = browserPackages + packageName
+            return true
+        }
+
+        val canInspectRoot = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED
+        if (!canInspectRoot) return false
+
+        val root = rootInActiveWindow ?: sourceNodeForEvent(event) ?: return false
+        val recognized = try {
+            WebsiteBlocker.extractAddressBarTextFromRoot(root, packageName) != null
+        } finally {
+            recycleSafely(root)
+        }
+        if (recognized) browserPackages = browserPackages + packageName
+        return recognized
+    }
+
+    private fun handleBrowserEvent(
+        event: AccessibilityEvent,
+        resolvedPackageName: String
+    ) {
+        val packageName = resolvedPackageName.takeIf(String::isNotBlank) ?: return
+        if (!isRecognizedBrowserSurface(event, packageName)) return
 
         val pornographyCategoryActive = blockedWebsitesDomainSet.any(
             WebsiteBlocker::isPornographyRule
@@ -2297,12 +2332,9 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun beginWebsiteBlock(domain: String, packageName: String): Boolean {
         val now = System.currentTimeMillis()
-        val blockKey = "$packageName|$domain"
-        if (blockKey == lastWebsiteBlockKey &&
-            now - lastWebsiteBlockTime < websiteBlockCooldownMillis
-        ) return false
-
-        lastWebsiteBlockKey = blockKey
+        // Match app blocking: every attempt renews enforcement. Reload, Back and
+        // forward navigation must never slip through an old cooldown window.
+        lastWebsiteBlockKey = "$packageName|$domain"
         lastWebsiteBlockTime = now
         stopWebsiteTracking(now)
         return true

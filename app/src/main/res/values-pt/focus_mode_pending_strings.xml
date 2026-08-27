@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="focus_mode_compact_purpose">Bloqueia o telefone e libera só o que você escolher.</string>
+    <string name="focus_mode_how_it_works">Como funciona</string>
+    <string name="focus_mode_tap_anywhere_to_close">Toque em qualquer área da tela para fechar.</string>
+</resources>

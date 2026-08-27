@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="focus_mode_compact_purpose">Blocks the phone and releases only what you choose.</string>
+    <string name="focus_mode_how_it_works">How it works</string>
+    <string name="focus_mode_tap_anywhere_to_close">Tap anywhere to close.</string>
+</resources>

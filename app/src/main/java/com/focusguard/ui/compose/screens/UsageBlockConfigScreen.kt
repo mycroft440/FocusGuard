@@ -55,6 +55,7 @@ enum class LimitType {
 
 data class BlockConfig(
     val dailyLimitHours: Int = 0,
+    val dailyLimitMinutes: Int = 0,
     val daysLimit: Int = 0,
     val usePassword: Boolean = false,
     val limitType: LimitType = LimitType.WARNING_ONLY,
@@ -70,17 +71,20 @@ fun UsageBlockConfigScreen(
     onCreateOrManagePassword: () -> Unit = {}
 ) {
     var dailyLimitHoursText by remember { mutableStateOf("") }
+    var dailyLimitMinutesText by remember { mutableStateOf("") }
     var selectedType by remember { mutableStateOf(LimitType.WARNING_ONLY) }
     var daysToBlockText by remember { mutableStateOf("") }
     var agreementText by remember { mutableStateOf("") }
 
-    val dailyLimitHours = dailyLimitHoursText.toIntOrNull() ?: 0
+    val dailyLimitHours = (dailyLimitHoursText.toIntOrNull() ?: 0).coerceIn(0, 24)
+    val dailyLimitMinutes = (dailyLimitMinutesText.toIntOrNull() ?: 0).coerceIn(0, 59)
+    val dailyLimitTotalMinutes = dailyLimitHours * 60 + dailyLimitMinutes
     val daysToBlock = (daysToBlockText.toIntOrNull() ?: 0).coerceIn(0, 120)
     val requiresPassword = selectedType == LimitType.HARD_BLOCK_WITH_PASSWORD
     val requiresDays = selectedType == LimitType.HARD_BLOCK_NO_PASSWORD
     val agreementValid = agreementText.trim().equals("eu concordo e entendo os riscos", ignoreCase = true)
 
-    val canSave = dailyLimitHours > 0 && when (selectedType) {
+    val canSave = dailyLimitTotalMinutes in 1..(24 * 60) && when (selectedType) {
         LimitType.WARNING_ONLY -> true
         LimitType.HARD_BLOCK_WITH_PASSWORD -> true
         LimitType.HARD_BLOCK_NO_PASSWORD -> daysToBlock in 1..120 && agreementValid
@@ -120,13 +124,37 @@ fun UsageBlockConfigScreen(
 
                     Spacer(modifier = Modifier.height(12.dp))
 
-                    OutlinedTextField(
-                        value = dailyLimitHoursText,
-                        onValueChange = { value -> dailyLimitHoursText = value.filter { it.isDigit() } },
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text(stringResource(R.string.ex_2), color = TextHint) },
-                        singleLine = true
-                    )
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        OutlinedTextField(
+                            value = dailyLimitHoursText,
+                            onValueChange = { value ->
+                                val digits = value.filter(Char::isDigit).take(2)
+                                if (digits.isEmpty() || (digits.toIntOrNull() ?: 0) <= 24) {
+                                    dailyLimitHoursText = digits
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            label = { Text(stringResource(R.string.limits_time_hours_short)) },
+                            placeholder = { Text("0", color = TextHint) },
+                            singleLine = true
+                        )
+                        OutlinedTextField(
+                            value = dailyLimitMinutesText,
+                            onValueChange = { value ->
+                                val digits = value.filter(Char::isDigit).take(2)
+                                if (digits.isEmpty() || (digits.toIntOrNull() ?: 0) <= 59) {
+                                    dailyLimitMinutesText = digits
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            label = { Text(stringResource(R.string.limits_time_minutes_short)) },
+                            placeholder = { Text("0", color = TextHint) },
+                            singleLine = true
+                        )
+                    }
 
                     Spacer(modifier = Modifier.height(10.dp))
 
@@ -344,6 +372,7 @@ fun UsageBlockConfigScreen(
                         onSave(
                             BlockConfig(
                                 dailyLimitHours = dailyLimitHours,
+                                dailyLimitMinutes = dailyLimitMinutes,
                                 daysLimit = if (requiresDays) daysToBlock else 0,
                                 usePassword = selectedType == LimitType.HARD_BLOCK_WITH_PASSWORD,
                                 limitType = selectedType,

@@ -15,8 +15,9 @@ bloqueio combina as duas camadas nativas disponíveis no Android:
 
 2. **Serviço de acessibilidade**
    - É a camada comum para qualquer navegador instalado que declare suporte a
-     links HTTPS, além de uma lista de compatibilidade para os navegadores mais
-     usados (Firefox, Brave, Samsung Internet, Opera, Vivaldi e DuckDuckGo).
+     links HTTPS. Um navegador desconhecido também passa a ser reconhecido
+     dinamicamente assim que expõe uma barra de endereço ou campo URI à
+     acessibilidade; a lista conhecida fica apenas como fallback.
    - Observa alterações da janela, do conteúdo e do texto da barra de endereço.
    - Localiza a barra por ids do pacote, descrição acessível ou input do tipo
      URI; texto comum da página não é interpretado como endereço.
