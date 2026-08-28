@@ -17,6 +17,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Normalize current companion indentation
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
+          s = p.read_text()
+          old = "\n    internal fun settingsInterceptionEventTypesForTest(): Set<Int> =\n        settingsInterceptionEventTypes\n\n        internal fun settingsTransitionGuardMillisForTest(): Long =\n"
+          new = "\n        internal fun settingsInterceptionEventTypesForTest(): Set<Int> =\n        settingsInterceptionEventTypes\n\n        internal fun settingsTransitionGuardMillisForTest(): Long =\n"
+          if old not in s:
+              raise SystemExit('expected companion indentation marker not found')
+          p.write_text(s.replace(old, new, 1))
+          PY
+
       - name: Apply instant website blocking patch
         run: python3 .github/scripts/apply_instant_website_blocking.py
 
