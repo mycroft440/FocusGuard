@@ -3,6 +3,10 @@ name: FocusGuard Release
 on:
   push:
     branches: ["main"]
+    paths-ignore:
+      - ".github/**"
+      - "docs/**"
+      - "README.md"
   workflow_dispatch:
 
 concurrency:
@@ -14,7 +18,7 @@ permissions:
 
 jobs:
   release:
-    name: Build and publish signed release
+    name: Build and publish canonical signed release
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
@@ -52,13 +56,12 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          "$SDKMANAGER" "platforms;android-36" "build-tools;36.0.0"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Make Gradle wrapper executable
         run: chmod +x gradlew
 
-      - name: Require release signing secrets
+      - name: Require canonical release signing secrets
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -72,11 +75,11 @@ jobs:
             fi
           done
           if [ "$missing" -ne 0 ]; then
-            echo "Configure the four release-signing secrets before publishing a release." >> "$GITHUB_STEP_SUMMARY"
+            echo "The canonical production signing key is mandatory. No fallback APK will be published." >> "$GITHUB_STEP_SUMMARY"
             exit 1
           fi
 
-      - name: Decode release keystore
+      - name: Decode canonical release keystore
         shell: bash
         env:
           KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
@@ -85,7 +88,7 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | tr -d '\n\r' | base64 --decode > "$RUNNER_TEMP/focusguard-release.jks"
           test -s "$RUNNER_TEMP/focusguard-release.jks"
 
-      - name: Run release checks and build Release APK + Debug APK + AAB
+      - name: Run checks and build canonical Release APK and AAB
         shell: bash
         env:
           KEYSTORE_FILE: ${{ runner.temp }}/focusguard-release.jks
@@ -95,78 +98,76 @@ jobs:
             lintRelease \
             testReleaseUnitTest \
             assembleRelease \
-            assembleDebug \
             bundleRelease \
             --no-daemon \
             --stacktrace
 
-      - name: Collect release files
+      - name: Collect canonical release files
         id: collect
         shell: bash
         run: |
           set -euo pipefail
           APK="$(find app/build/outputs/apk/release -type f -name '*.apk' -size +0c | head -n 1)"
-          DEBUG_APK="$(find app/build/outputs/apk/debug -type f -name '*.apk' -size +0c | head -n 1)"
           AAB="$(find app/build/outputs/bundle/release -type f -name '*.aab' -size +0c | head -n 1)"
           test -n "$APK" && test -s "$APK"
-          test -n "$DEBUG_APK" && test -s "$DEBUG_APK"
           test -n "$AAB" && test -s "$AAB"
 
           mkdir -p release
-          RELEASE_APK="release/FocusGuard-vc${CI_VERSION_CODE}.apk"
-          RELEASE_DEBUG_APK="release/FocusGuard-debug-vc${CI_VERSION_CODE}.apk"
-          RELEASE_AAB="release/FocusGuard-vc${CI_VERSION_CODE}.aab"
+          RELEASE_APK="release/HardBlock-vc${CI_VERSION_CODE}.apk"
+          RELEASE_AAB="release/HardBlock-vc${CI_VERSION_CODE}.aab"
           cp "$APK" "$RELEASE_APK"
-          cp "$DEBUG_APK" "$RELEASE_DEBUG_APK"
           cp "$AAB" "$RELEASE_AAB"
           sha256sum "$RELEASE_APK" "$RELEASE_AAB" > release/SHA256SUMS.txt
 
           echo "apk=$RELEASE_APK" >> "$GITHUB_OUTPUT"
-          echo "debug_apk=$RELEASE_DEBUG_APK" >> "$GITHUB_OUTPUT"
           echo "aab=$RELEASE_AAB" >> "$GITHUB_OUTPUT"
           echo "tag=build-vc${CI_VERSION_CODE}" >> "$GITHUB_OUTPUT"
 
-      - name: Verify APK and AAB signatures
+      - name: Verify update identity and signatures
         shell: bash
         run: |
           set -euo pipefail
-          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
           test -x "$APKSIGNER"
-          "$APKSIGNER" verify --verbose --print-certs "${{ steps.collect.outputs.apk }}"
+          test -x "$AAPT"
+
+          "$APKSIGNER" verify --verbose --print-certs "${{ steps.collect.outputs.apk }}" | tee release/apksigner.txt
+          "$AAPT" dump badging "${{ steps.collect.outputs.apk }}" | head -n 1 | tee release/package.txt
+
+          grep -q "package: name='com.focusguard.v2'" release/package.txt
+          grep -qi "e8da4209d0012052b052b280fa64becb788bf6929563ce54a0707cb8c3385157" release/apksigner.txt
           jarsigner -verify "${{ steps.collect.outputs.aab }}"
 
-      - name: Upload signed Release APK artifact
+          echo "Canonical package: com.focusguard.v2" >> "$GITHUB_STEP_SUMMARY"
+          echo "Canonical signer SHA-256: e8da4209d0012052b052b280fa64becb788bf6929563ce54a0707cb8c3385157" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload canonical Release APK
         uses: actions/upload-artifact@v4
         with:
-          name: focusguard-release-apk-vc${{ steps.version.outputs.version_code }}
+          name: hardblock-update-apk-vc${{ steps.version.outputs.version_code }}
           path: ${{ steps.collect.outputs.apk }}
           if-no-files-found: error
           retention-days: 90
           compression-level: 0
 
-      - name: Upload Debug APK artifact
+      - name: Upload Play AAB
         uses: actions/upload-artifact@v4
         with:
-          name: focusguard-debug-apk-vc${{ steps.version.outputs.version_code }}
-          path: ${{ steps.collect.outputs.debug_apk }}
-          if-no-files-found: error
-          retention-days: 90
-          compression-level: 0
-
-      - name: Upload Play AAB artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: focusguard-play-aab-vc${{ steps.version.outputs.version_code }}
+          name: hardblock-play-aab-vc${{ steps.version.outputs.version_code }}
           path: ${{ steps.collect.outputs.aab }}
           if-no-files-found: error
           retention-days: 90
           compression-level: 0
 
-      - name: Upload checksums
+      - name: Upload checksums and identity reports
         uses: actions/upload-artifact@v4
         with:
-          name: focusguard-release-checksums-vc${{ steps.version.outputs.version_code }}
-          path: release/SHA256SUMS.txt
+          name: hardblock-release-identity-vc${{ steps.version.outputs.version_code }}
+          path: |
+            release/SHA256SUMS.txt
+            release/apksigner.txt
+            release/package.txt
           if-no-files-found: error
           retention-days: 90
 
@@ -179,8 +180,8 @@ jobs:
         run: |
           set -euo pipefail
           TAG="${{ steps.collect.outputs.tag }}"
-          TITLE="FocusGuard automated release vc${CI_VERSION_CODE}"
-          NOTES="Automated signed FocusGuard release from commit ${GITHUB_SHA}. Android versionCode ${CI_VERSION_CODE}. Includes an installable Release APK, a Google Play AAB, and SHA-256 checksums. A Debug APK is also available as a workflow artifact."
+          TITLE="Hard Block update vc${CI_VERSION_CODE}"
+          NOTES="Canonical Hard Block update from ${GITHUB_SHA}. Package: com.focusguard.v2. Signed with the permanent production update key. Android versionCode ${CI_VERSION_CODE}. This APK is the only installable update artifact published by this workflow."
 
           if gh release view "$TAG" >/dev/null 2>&1; then
             gh release upload "$TAG" \
@@ -198,14 +199,14 @@ jobs:
               --notes "$NOTES"
           fi
 
-      - name: Record GitHub Release publication fallback
+      - name: Record publication fallback
         if: steps.publish_release.outcome == 'failure'
         shell: bash
         run: |
           {
-            echo "### Signed build completed"
-            echo "Release APK, Debug APK, AAB and checksums were built, verified and uploaded as workflow artifacts."
-            echo "The optional GitHub Releases API publication was not available to the workflow token, so it was not allowed to mark the Android build as failed."
+            echo "### Canonical signed build completed"
+            echo "The production Release APK and AAB passed package and signing-identity verification and were uploaded as workflow artifacts."
+            echo "Only the optional GitHub Release publication failed."
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove release keystore
