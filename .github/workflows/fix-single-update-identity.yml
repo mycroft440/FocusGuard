@@ -26,132 +26,138 @@ jobs:
           import re
 
           cert = "e8da4209d0012052b052b280fa64becb788bf6929563ce54a0707cb8c3385157"
+          gh = '$' + '{{'
 
-          # Gradle: Release can only be the canonical production package/signature.
+          def sub1(pattern, repl, text, label, flags=0):
+              updated, count = re.subn(pattern, repl, text, count=1, flags=flags)
+              assert count == 1, f"{label}: expected one match, got {count}"
+              return updated
+
+          # Gradle: the Release identity may never switch to a .ci package/debug key.
           path = Path("app/build.gradle.kts")
           text = path.read_text()
-          old = '''    val ciSigningEnabled = System.getenv("FOCUSGUARD_CI_SIGNING")
-              ?.equals("true", ignoreCase = true) == true
-          '''
-          assert old in text, "ciSigningEnabled block not found"
-          text = text.replace(old, "", 1)
-          old = '''            when {
-                          releaseSigningAvailable -> {
-                              signingConfig = signingConfigs.getByName("release")
-                          }
-                          ciSigningEnabled -> {
-                              // GitHub Actions must never publish an unsigned APK. When no
-                              // production keystore is available, build a clearly isolated
-                              // CI package with the cached Android debug signing key instead.
-                              applicationIdSuffix = ".ci"
-                              versionNameSuffix = "-ci"
-                              signingConfig = signingConfigs.getByName("debug")
-                          }
-                      }
-          '''
-          assert old in text, "release signing fallback block not found"
-          text = text.replace(old, '''            if (releaseSigningAvailable) {
-                          signingConfig = signingConfigs.getByName("release")
-                      }
-          ''', 1)
+          text = sub1(
+              r'\n    val ciSigningEnabled = System\.getenv\("FOCUSGUARD_CI_SIGNING"\)\n\s*\?\.equals\("true", ignoreCase = true\) == true\n',
+              '\n', text, 'ciSigningEnabled'
+          )
+          text = sub1(
+              r'''            when \{\n\s*releaseSigningAvailable -> \{\n\s*signingConfig = signingConfigs\.getByName\("release"\)\n\s*\}\n\s*ciSigningEnabled -> \{.*?signingConfig = signingConfigs\.getByName\("debug"\)\n\s*\}\n\s*\}\n''',
+              '''            if (releaseSigningAvailable) {
+                signingConfig = signingConfigs.getByName("release")
+            }
+''',
+              text, 'release CI fallback', re.S
+          )
           path.write_text(text)
 
-          # Android CI: main artifacts must use the production key and canonical package.
+          # Android CI: only production-signed canonical artifacts are distributable.
           path = Path(".github/workflows/android-ci.yml")
           text = path.read_text()
-          text = text.replace(
-              '  build-artifacts:\n    name: Build and verify installable Android artifacts\n',
-              '  build-artifacts:\n    name: Build and verify canonical update artifacts\n    if: github.event_name != \'pull_request\'\n',
-              1,
+          text = sub1(
+              r'  build-artifacts:\n    name: Build and verify installable Android artifacts\n',
+              "  build-artifacts:\n    name: Build and verify canonical update artifacts\n    if: github.event_name != 'pull_request'\n",
+              text, 'CI artifact job'
           )
-          text = text.replace(
-              '      # This only activates the isolated `.ci` signing fallback when a real\n      # production keystore was not provided through repository secrets.\n      FOCUSGUARD_CI_SIGNING: "true"\n      RELEASE_KEYSTORE_BASE64: ${{ secrets.RELEASE_KEYSTORE_BASE64 }}\n',
-              '      KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}\n',
-              1,
+          text = re.sub(
+              r'      # This only activates the isolated `\.ci` signing fallback when a real\n      # production keystore was not provided through repository secrets\.\n      FOCUSGUARD_CI_SIGNING: "true"\n',
+              '', text, count=1
+          )
+          # Construct the GitHub expression at runtime so Actions does not expand it inside this patcher.
+          secret_expr = gh + ' secrets.KEYSTORE_BASE64 }}'
+          text = sub1(
+              r'      RELEASE_KEYSTORE_BASE64: .*\n',
+              '      KEYSTORE_BASE64: ' + secret_expr + '\n',
+              text, 'CI keystore secret'
           )
           text = text.replace('RELEASE_KEYSTORE_BASE64', 'KEYSTORE_BASE64')
-          old = '''          else
-                      echo "SIGNING_MODE=ci" >> "$GITHUB_ENV"
-                    fi
-          '''
-          assert old in text, "CI signing fallback not found"
-          text = text.replace(old, '''          else
-                      echo "::error::Production signing secrets are required for installable main artifacts."
-                      exit 1
-                    fi
-          ''', 1)
-          text = text.replace(
-              '          grep -Eq "package: name=\'com\\.focusguard\\.v2(\\.ci)?\'" \\\n            ci-artifacts/release-package.txt\n',
-              '          grep -q "package: name=\'com.focusguard.v2\'" ci-artifacts/release-package.txt\n          grep -qi "' + cert + '" ci-artifacts/release-apksigner.txt\n',
-              1,
+          text = sub1(
+              r'          else\n            echo "SIGNING_MODE=ci" >> "\$GITHUB_ENV"\n          fi\n',
+              '''          else
+            echo "::error::Production signing secrets are required for installable main artifacts."
+            exit 1
+          fi
+''', text, 'CI signing fallback'
           )
-          # The CI fallback branch must never be reached or distributed anymore.
+          text = sub1(
+              r'          grep -Eq "package: name=\'com\\\.focusguard\\\.v2\(\\\.ci\)\?\'" \\\n            ci-artifacts/release-package\.txt\n',
+              '          grep -q "package: name=\'com.focusguard.v2\'" ci-artifacts/release-package.txt\n'
+              f'          grep -qi "{cert}" ci-artifacts/release-apksigner.txt\n',
+              text, 'CI package invariant'
+          )
           text = re.sub(
               r'\n      - name: Upload installable CI Release APK\n.*?(?=\n      - name: Upload Debug APK)',
-              '\n', text, count=1, flags=re.S,
+              '\n', text, count=1, flags=re.S
           )
           text = re.sub(
               r'\n      - name: Upload Debug APK\n.*?(?=\n      - name: Upload production Release AAB)',
-              '\n', text, count=1, flags=re.S,
+              '\n', text, count=1, flags=re.S
           )
           text = re.sub(
               r'\n      - name: Upload CI Release AAB\n.*?(?=\n      - name: Upload checksums)',
-              '\n', text, count=1, flags=re.S,
+              '\n', text, count=1, flags=re.S
           )
           path.write_text(text)
 
-          # Release: expose only the canonical production APK/AAB, never a parallel Debug app.
+          # Release: publish only the canonical production APK/AAB.
           path = Path(".github/workflows/release.yml")
           text = path.read_text()
           text = text.replace(
               '      - name: Run release checks and build Release APK + Debug APK + AAB\n',
-              '      - name: Run release checks and build canonical Release APK + AAB\n', 1,
+              '      - name: Run release checks and build canonical Release APK + AAB\n', 1
           )
           text = text.replace('            assembleDebug \\\n', '', 1)
-          text = text.replace(
-              '          DEBUG_APK="$(find app/build/outputs/apk/debug -type f -name \'*.apk\' -size +0c | head -n 1)"\n', '', 1,
-          )
+          text = re.sub(r'^          DEBUG_APK=.*\n', '', text, count=1, flags=re.M)
           text = text.replace('          test -n "$DEBUG_APK" && test -s "$DEBUG_APK"\n', '', 1)
-          text = text.replace('          RELEASE_DEBUG_APK="release/FocusGuard-debug-vc${CI_VERSION_CODE}.apk"\n', '', 1)
+          text = re.sub(r'^          RELEASE_DEBUG_APK=.*\n', '', text, count=1, flags=re.M)
           text = text.replace('          cp "$DEBUG_APK" "$RELEASE_DEBUG_APK"\n', '', 1)
           text = text.replace('          echo "debug_apk=$RELEASE_DEBUG_APK" >> "$GITHUB_OUTPUT"\n', '', 1)
           text = re.sub(
               r'\n      - name: Upload Debug APK artifact\n.*?(?=\n      - name: Upload Play AAB artifact)',
-              '\n', text, count=1, flags=re.S,
+              '\n', text, count=1, flags=re.S
           )
-          old = '''          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
-                    test -x "$APKSIGNER"
-                    "$APKSIGNER" verify --verbose --print-certs "${{ steps.collect.outputs.apk }}"
-                    jarsigner -verify "${{ steps.collect.outputs.aab }}"
-          '''
-          assert old in text, "release verification block not found"
-          text = text.replace(old, '''          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"
-                    AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
-                    test -x "$APKSIGNER"
-                    test -x "$AAPT"
-                    "$APKSIGNER" verify --verbose --print-certs "${{ steps.collect.outputs.apk }}" | tee release/apksigner.txt
-                    "$AAPT" dump badging "${{ steps.collect.outputs.apk }}" | head -n 1 | tee release/package.txt
-                    grep -q "package: name='com.focusguard.v2'" release/package.txt
-                    grep -qi "''' + cert + '''" release/apksigner.txt
-                    jarsigner -verify "${{ steps.collect.outputs.aab }}"
-          ''', 1)
+
+          apk_expr = gh + ' steps.collect.outputs.apk }}'
+          aab_expr = gh + ' steps.collect.outputs.aab }}'
+          old = (
+              '          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"\n'
+              '          test -x "$APKSIGNER"\n'
+              f'          "$APKSIGNER" verify --verbose --print-certs "{apk_expr}"\n'
+              f'          jarsigner -verify "{aab_expr}"\n'
+          )
+          assert old in text, 'release verification block not found'
+          new = (
+              '          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -type f -name apksigner | sort -V | tail -n 1)"\n'
+              '          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"\n'
+              '          test -x "$APKSIGNER"\n'
+              '          test -x "$AAPT"\n'
+              f'          "$APKSIGNER" verify --verbose --print-certs "{apk_expr}" | tee release/apksigner.txt\n'
+              f'          "$AAPT" dump badging "{apk_expr}" | head -n 1 | tee release/package.txt\n'
+              '          grep -q "package: name=\'com.focusguard.v2\'" release/package.txt\n'
+              f'          grep -qi "{cert}" release/apksigner.txt\n'
+              f'          jarsigner -verify "{aab_expr}"\n'
+          )
+          text = text.replace(old, new, 1)
           text = text.replace(
               'Includes an installable Release APK, a Google Play AAB, and SHA-256 checksums. A Debug APK is also available as a workflow artifact.',
-              'Includes the canonical installable Release APK (com.focusguard.v2), a Google Play AAB, and SHA-256 checksums.',
+              'Includes the canonical installable Release APK (com.focusguard.v2), a Google Play AAB, and SHA-256 checksums.'
           )
           text = text.replace(
               'Release APK, Debug APK, AAB and checksums were built, verified and uploaded as workflow artifacts.',
-              'Canonical Release APK, AAB and checksums were built, verified and uploaded as workflow artifacts.',
+              'Canonical Release APK, AAB and checksums were built, verified and uploaded as workflow artifacts.'
           )
           path.write_text(text)
 
-          # Guard against accidental reintroduction of parallel release identities.
+          # Final invariants.
           gradle = Path("app/build.gradle.kts").read_text()
+          ci = Path(".github/workflows/android-ci.yml").read_text()
+          release = Path(".github/workflows/release.yml").read_text()
           assert 'applicationId = "com.focusguard.v2"' in gradle
-          release_section = gradle.split('release {', 1)[1].split('}', 1)[0]
-          assert 'applicationIdSuffix' not in release_section
+          assert 'applicationIdSuffix = ".ci"' not in gradle
           assert 'FOCUSGUARD_CI_SIGNING' not in gradle
-          assert 'secrets.RELEASE_KEYSTORE_BASE64' not in Path('.github/workflows/android-ci.yml').read_text()
+          assert 'secrets.RELEASE_KEYSTORE_BASE64' not in ci
+          assert 'com.focusguard.v2(.ci)?' not in ci
+          assert cert in ci and cert in release
+          assert 'Upload Debug APK artifact' not in release
           PY
 
       - name: Commit canonical update identity
