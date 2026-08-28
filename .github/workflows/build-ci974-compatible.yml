@@ -36,10 +36,7 @@ jobs:
           set -euo pipefail
           COMMIT_COUNT="$(git rev-list --count HEAD)"
           VERSION_CODE="$((1000 + COMMIT_COUNT))"
-          if [ "$VERSION_CODE" -le 10 ]; then
-            echo "::error::versionCode must be greater than CI 974 versionCode 10"
-            exit 1
-          fi
+          test "$VERSION_CODE" -gt 10
           echo "CI_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
           echo "CI_VERSION_NAME=2.5.0" >> "$GITHUB_ENV"
           echo "Building CI-974-compatible update with versionCode=$VERSION_CODE"
@@ -80,52 +77,44 @@ jobs:
           path = Path("app/build.gradle.kts")
           text = path.read_text(encoding="utf-8")
 
-          signing_anchor = '''    val releaseSigningAvailable = !releaseKeystorePath.isNullOrBlank() &&
-              !releaseKeystorePassword.isNullOrBlank() &&
-              !releaseKeyAlias.isNullOrBlank() &&
-              !releaseKeyPassword.isNullOrBlank() &&
-              file(releaseKeystorePath).exists()
-          '''.replace("              !", "        !").replace("              file", "        file")
-          signing_replacement = signing_anchor + '''    val ciSigningEnabled = System.getenv("FOCUSGUARD_CI_SIGNING")
-              ?.equals("true", ignoreCase = true) == true
-          '''.replace("              ?", "        ?")
-          if signing_anchor not in text:
-              raise SystemExit("releaseSigningAvailable anchor not found")
-          text = text.replace(signing_anchor, signing_replacement, 1)
+          line = '        file(releaseKeystorePath).exists()\n'
+          if line not in text:
+              raise SystemExit("release signing availability terminator not found")
+          text = text.replace(
+              line,
+              line + '\n    val ciSigningEnabled = System.getenv("FOCUSGUARD_CI_SIGNING")\n'
+                     '        ?.equals("true", ignoreCase = true) == true\n',
+              1,
+          )
 
-          release_anchor = '''            if (releaseSigningAvailable) {
-                          signingConfig = signingConfigs.getByName("release")
-                      }
-          '''.replace("                          signingConfig", "                signingConfig").replace("                      }", "            }")
-          release_replacement = '''            when {
-                          releaseSigningAvailable -> {
-                              signingConfig = signingConfigs.getByName("release")
-                          }
-                          ciSigningEnabled -> {
-                              // Compatibility mode for Android CI Pro run #974 only.
-                              applicationIdSuffix = ".ci"
-                              versionNameSuffix = "-ci"
-                              signingConfig = signingConfigs.getByName("debug")
-                          }
-                      }
-          '''
-          release_replacement = (release_replacement
-              .replace("                          releaseSigningAvailable", "                releaseSigningAvailable")
-              .replace("                              signingConfig", "                    signingConfig")
-              .replace("                          }", "                }")
-              .replace("                          ciSigningEnabled", "                ciSigningEnabled")
-              .replace("                              //", "                    //")
-              .replace("                              applicationIdSuffix", "                    applicationIdSuffix")
-              .replace("                              versionNameSuffix", "                    versionNameSuffix")
-              .replace("                      }", "            }"))
-          if release_anchor not in text:
-              raise SystemExit("release signing block anchor not found")
-          text = text.replace(release_anchor, release_replacement, 1)
+          old = (
+              '            if (releaseSigningAvailable) {\n'
+              '                signingConfig = signingConfigs.getByName("release")\n'
+              '            }\n'
+          )
+          new = (
+              '            when {\n'
+              '                releaseSigningAvailable -> {\n'
+              '                    signingConfig = signingConfigs.getByName("release")\n'
+              '                }\n'
+              '                ciSigningEnabled -> {\n'
+              '                    // Compatibility mode for Android CI Pro run #974 only.\n'
+              '                    applicationIdSuffix = ".ci"\n'
+              '                    versionNameSuffix = "-ci"\n'
+              '                    signingConfig = signingConfigs.getByName("debug")\n'
+              '                }\n'
+              '            }\n'
+          )
+          if old not in text:
+              raise SystemExit("release signing if block not found")
+          text = text.replace(old, new, 1)
 
           path.write_text(text, encoding="utf-8")
           PY
 
+          grep -q 'val ciSigningEnabled' app/build.gradle.kts
           grep -q 'applicationIdSuffix = ".ci"' app/build.gradle.kts
+          git diff --check
           git diff -- app/build.gradle.kts
 
       - name: Install Android 16 SDK
@@ -164,10 +153,7 @@ jobs:
 
           ACTUAL_VERSION_CODE="$(sed -n "s/.*versionCode='\([0-9][0-9]*\)'.*/\1/p" ci974-artifacts/package.txt)"
           test -n "$ACTUAL_VERSION_CODE"
-          if [ "$ACTUAL_VERSION_CODE" -le 10 ]; then
-            echo "::error::Generated APK cannot update CI 974 because versionCode=$ACTUAL_VERSION_CODE"
-            exit 1
-          fi
+          test "$ACTUAL_VERSION_CODE" -gt 10
 
           OUTPUT="ci974-artifacts/HardBlock-CI974-compatible-vc${ACTUAL_VERSION_CODE}.apk"
           cp "$APK" "$OUTPUT"
