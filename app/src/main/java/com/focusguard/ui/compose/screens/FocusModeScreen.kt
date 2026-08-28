@@ -35,6 +35,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Apps
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockClock
@@ -73,12 +74,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.ImageBitmap
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -86,17 +90,26 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.progressBarRangeInfo
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.setProgress
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.focusguard.R
+import com.focusguard.focusmode.FocusDurationDialMath
 import com.focusguard.focusmode.FocusModeAppCatalog
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.focusmode.FocusModePolicy
@@ -113,7 +126,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import kotlin.math.PI
 import kotlin.math.atan2
 import kotlin.math.cos
 import kotlin.math.roundToInt
@@ -650,40 +662,45 @@ private fun FocusModeSetupContent(
         }
 
         if (showHowItWorks) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.78f))
-                    .clickable { showHowItWorks = false }
-                    .padding(24.dp),
-                contentAlignment = Alignment.Center
+            Dialog(
+                onDismissRequest = { showHowItWorks = false },
+                properties = DialogProperties(usePlatformDefaultWidth = false)
             ) {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = surface),
-                    border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.38f)),
-                    shape = RoundedCornerShape(18.dp)
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.82f))
+                        .clickable { showHowItWorks = false }
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center
                 ) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().padding(18.dp),
-                        verticalArrangement = Arrangement.spacedBy(9.dp)
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = surface),
+                        border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.38f)),
+                        shape = RoundedCornerShape(18.dp)
                     ) {
-                        Text(
-                            text = howTitle,
-                            color = TextPrimary,
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = stringResource(R.string.focus_mode_static_purpose_body),
-                            color = TextSecondary,
-                            fontSize = 13.sp,
-                            lineHeight = 19.sp
-                        )
-                        Text(
-                            text = stringResource(R.string.focus_mode_tap_anywhere_to_close),
-                            color = tertiaryText,
-                            fontSize = 11.sp
-                        )
+                        Column(
+                            modifier = Modifier.fillMaxWidth().padding(18.dp),
+                            verticalArrangement = Arrangement.spacedBy(9.dp)
+                        ) {
+                            Text(
+                                text = howTitle,
+                                color = TextPrimary,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = stringResource(R.string.focus_mode_static_purpose_body),
+                                color = TextSecondary,
+                                fontSize = 13.sp,
+                                lineHeight = 19.sp
+                            )
+                            Text(
+                                text = stringResource(R.string.focus_mode_tap_anywhere_to_close),
+                                color = tertiaryText,
+                                fontSize = 11.sp
+                            )
+                        }
                     }
                 }
             }
@@ -702,13 +719,18 @@ private fun FocusDurationDial(
     hoursUnit: String
 ) {
     val progress = ((minutes - 1f) / (FOCUS_DURATION_MAX_MINUTES - 1f)).coerceIn(0f, 1f)
-    val displayNumber = when {
-        minutes < 60 -> minutes.toString()
-        minutes % 60 == 0 -> (minutes / 60).toString()
-        else -> String.format(Locale.getDefault(), "%.1f", minutes / 60f)
+    val displayNumber = FocusDurationDialMath.displayValue(minutes)
+    val displayUnit = if (minutes < 60) {
+        minutesUnit.uppercase(Locale.getDefault())
+    } else {
+        "${hoursUnit.uppercase(Locale.getDefault())}:${minutesUnit.uppercase(Locale.getDefault())}"
     }
-    val displayUnit = if (minutes < 60) minutesUnit.uppercase(Locale.getDefault())
-    else hoursUnit.uppercase(Locale.getDefault())
+    val durationA11yLabel = stringResource(R.string.focus_mode_static_duration_section)
+    val durationA11yValue = if (minutes < 60) {
+        "$minutes $minutesUnit"
+    } else {
+        "${minutes / 60} $hoursUnit ${minutes % 60} $minutesUnit"
+    }
 
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
         Box(
@@ -718,24 +740,32 @@ private fun FocusDurationDial(
             Canvas(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(Unit) {
+                    .semantics {
+                        contentDescription = durationA11yLabel
+                        stateDescription = durationA11yValue
+                        progressBarRangeInfo = ProgressBarRangeInfo(
+                            current = minutes.toFloat(),
+                            range = 1f..FOCUS_DURATION_MAX_MINUTES.toFloat(),
+                            steps = FOCUS_DURATION_MAX_MINUTES - 2
+                        )
+                        setProgress { target ->
+                            onMinutesChange(
+                                target.roundToInt().coerceIn(1, FOCUS_DURATION_MAX_MINUTES)
+                            )
+                            true
+                        }
+                    }
+                    .pointerInput(minutes) {
                         fun update(position: Offset) {
                             val cx = size.width / 2f
                             val cy = size.height / 2f
-                            var degrees = Math.toDegrees(
+                            val degrees = Math.toDegrees(
                                 atan2(
                                     (position.y - cy).toDouble(),
                                     (position.x - cx).toDouble()
                                 )
                             ).toFloat()
-                            if (degrees < 0f) degrees += 360f
-                            var relative = degrees - 135f
-                            if (relative < 0f) relative += 360f
-                            relative = relative.coerceIn(0f, 270f)
-                            val next = (
-                                1f + (relative / 270f) * (FOCUS_DURATION_MAX_MINUTES - 1f)
-                            ).roundToInt().coerceIn(1, FOCUS_DURATION_MAX_MINUTES)
-                            onMinutesChange(next)
+                            onMinutesChange(FocusDurationDialMath.minutesForAngle(degrees))
                         }
                         detectDragGestures(
                             onDragStart = { update(it) },
@@ -846,7 +876,24 @@ private fun FocusDrawerTile(
                     .size(52.dp)
                     .clip(RoundedCornerShape(15.dp))
                     .background(surface2)
-                    .border(1.dp, if (dashedStyle) stroke else Color.Transparent, RoundedCornerShape(15.dp)),
+                    .then(
+                        if (dashedStyle) {
+                            Modifier.drawBehind {
+                                drawRoundRect(
+                                    color = stroke,
+                                    cornerRadius = CornerRadius(15.dp.toPx()),
+                                    style = Stroke(
+                                        width = 1.5.dp.toPx(),
+                                        pathEffect = PathEffect.dashPathEffect(
+                                            floatArrayOf(6.dp.toPx(), 5.dp.toPx())
+                                        )
+                                    )
+                                )
+                            }
+                        } else {
+                            Modifier
+                        }
+                    ),
                 contentAlignment = Alignment.Center
             ) { icon() }
             if (locked || selected) {
@@ -860,7 +907,7 @@ private fun FocusDrawerTile(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        if (selected) Icons.Default.Add else Icons.Default.Lock,
+                        if (selected) Icons.Default.Check else Icons.Default.Lock,
                         contentDescription = null,
                         tint = if (selected) Color(0xFF04201B) else Color(0xFF14171D),
                         modifier = Modifier.size(if (selected) 12.dp else 10.dp)

@@ -91,6 +91,13 @@ class PowerMenuProtectionPolicyTest {
             PowerMenuProtectionPolicy.classifyDirect(
                 packageName = "com.android.systemui",
                 className = "com.android.systemui.ActionsDialog",
+                values = listOf("Reiniciar")
+            )
+        ).isEqualTo(DirectDecision.UNKNOWN)
+        assertThat(
+            PowerMenuProtectionPolicy.classifyDirect(
+                packageName = "com.android.systemui",
+                className = "com.android.systemui.ActionsDialog",
                 values = listOf("Desligar", "Reiniciar")
             )
         ).isEqualTo(DirectDecision.MATCH)

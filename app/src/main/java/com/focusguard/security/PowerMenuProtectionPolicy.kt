@@ -111,9 +111,20 @@ object PowerMenuProtectionPolicy {
         val hasPowerOff = matchesAction(Action.POWER_OFF, rendered)
         val hasRestart = matchesAction(Action.RESTART, rendered)
         val hasEmergency = matchesAction(Action.EMERGENCY, rendered)
-        val knownClass = classMarkers.any { className.contains(it, ignoreCase = true) }
+        val specificClass = specificClassMarkers.any {
+            className.contains(it, ignoreCase = true)
+        }
+        val ambiguousClass = ambiguousClassMarkers.any {
+            className.contains(it, ignoreCase = true)
+        }
+        val evidenceCount = listOf(hasPowerOff, hasRestart, hasEmergency).count { it }
+
         return when {
-            knownClass -> hasPowerOff || hasRestart
+            // Explicit OEM/AOSP global-actions classes are already a strong signal.
+            specificClass -> hasPowerOff || hasRestart
+            // ActionsDialog is reused by SystemUI. One word such as “Restart” is
+            // not enough: require two independent power-menu actions.
+            ambiguousClass -> evidenceCount >= 2 && (hasPowerOff || hasRestart)
             hasPowerOff && hasRestart -> true
             hasPowerOff && hasEmergency -> true
             hasRestart && hasEmergency -> true

@@ -53,12 +53,12 @@ class ProtectedPowerMenuController(
     private val service: AccessibilityService
 ) {
     internal enum class PowerMenuPresence { PRESENT, ABSENT_CONFIRMED, UNKNOWN }
-    internal enum class CloseStage { NONE, BACK_REQUESTED, HOME_REQUESTED }
-    internal enum class RecheckDecision { HIDE, KEEP_CHECKING, REQUEST_BACK, REQUEST_HOME }
+    internal enum class CloseStage { NONE, BACK_REQUESTED }
+    internal enum class RecheckDecision { HIDE, KEEP_CHECKING, REQUEST_BACK }
     internal enum class PowerMatchOverlayDecision {
         PASS,
         SHIELD_AND_CONSUME,
-        REQUEST_HOME_FALLBACK
+        REQUEST_BACK_FALLBACK
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -76,9 +76,10 @@ class ProtectedPowerMenuController(
     private var reliableWindowObserved = false
     private var closeStage = CloseStage.NONE
     private var closeStageAtElapsed = 0L
-    private var homeFallbackAttempted = false
+    private var closeBackAttempts = 0
     private var recheckScheduled = false
     private var protectionActive = false
+    private var screenOff = false
     private var statusText: TextView? = null
 
     fun isVisible(): Boolean = overlayVisible
@@ -239,16 +240,33 @@ class ProtectedPowerMenuController(
     }
 
     /**
-     * Screen-off must never synthesize HOME. In Focus Mode HOME resolves to the
-     * Hard Block shell itself, which can look like the app opened spontaneously.
-     * A later real global-actions event will recreate the shield if still needed.
+     * Screen-off never performs BACK/HOME and never uncovers a power menu that
+     * might survive the display transition. The overlay stays attached/visible,
+     * while rechecks are paused until SCREEN_ON. This avoids both spontaneous
+     * launcher navigation and a protection gap on OEMs that preserve Global Actions.
      */
     fun onScreenOff() {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             mainHandler.post(::onScreenOff)
             return
         }
-        if (overlayVisible) dismiss()
+        screenOff = true
+        mainHandler.removeCallbacks(recheckRunnable)
+        recheckScheduled = false
+        if (!shouldKeepPowerOverlayOnScreenOff(overlayVisible)) {
+            dismiss()
+        }
+    }
+
+    fun onScreenOn() {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            mainHandler.post(::onScreenOn)
+            return
+        }
+        screenOff = false
+        if (shouldRecheckPowerOverlayOnScreenOn(overlayVisible)) {
+            scheduleRecheck()
+        }
     }
 
     fun destroy() {
@@ -257,6 +275,7 @@ class ProtectedPowerMenuController(
             return
         }
         protectionActive = false
+        screenOff = false
         release()
     }
 
@@ -279,7 +298,7 @@ class ProtectedPowerMenuController(
             overlayShownAtElapsed = SystemClock.elapsedRealtime()
             closeStage = CloseStage.NONE
             closeStageAtElapsed = 0L
-            homeFallbackAttempted = false
+            closeBackAttempts = 0
             true
         }.onFailure { error ->
             FocusGuardLogger.logError(
@@ -301,30 +320,13 @@ class ProtectedPowerMenuController(
             scheduleRecheck()
             true
         }
-        PowerMatchOverlayDecision.REQUEST_HOME_FALLBACK -> {
-            requestUnshieldedHomeFallback()
+        PowerMatchOverlayDecision.REQUEST_BACK_FALLBACK -> {
+            // A positively identified native power menu may be closed with BACK,
+            // but never with HOME. In Focus Mode HOME is HardBlock itself.
+            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
             false
         }
         PowerMatchOverlayDecision.PASS -> false
-    }
-
-    private fun requestUnshieldedHomeFallback() {
-        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
-        runCatching {
-            service.startActivity(
-                Intent(Intent.ACTION_MAIN).apply {
-                    addCategory(Intent.CATEGORY_HOME)
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                }
-            )
-        }.onFailure { error ->
-            FocusGuardLogger.logError(
-                "PowerMenu",
-                "Falha no fechamento HOME sem overlay do menu de energia",
-                error
-            )
-            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-        }
     }
 
     private fun prepareOverlay() {
@@ -550,7 +552,7 @@ class ProtectedPowerMenuController(
         reliableWindowObserved = false
         closeStage = CloseStage.NONE
         closeStageAtElapsed = 0L
-        homeFallbackAttempted = false
+        closeBackAttempts = 0
     }
 
     private fun addActionCard(
@@ -887,13 +889,15 @@ class ProtectedPowerMenuController(
     }
 
     private fun scheduleRecheck() {
-        if (!shouldScheduleRecheck(recheckScheduled)) return
+        if (!shouldScheduleRecheck(recheckScheduled, screenOff)) return
         recheckScheduled = true
         mainHandler.postDelayed(recheckRunnable, RECHECK_DELAY_MILLIS)
     }
 
     private val recheckRunnable = Runnable {
         recheckScheduled = false
+        if (screenOff) return@Runnable
+
         val root = findPowerMenuRoot()
         val nowElapsed = SystemClock.elapsedRealtime()
         if (root != null) reliableWindowObserved = true
@@ -914,7 +918,7 @@ class ProtectedPowerMenuController(
             visibleForMillis = (nowElapsed - overlayShownAtElapsed).coerceAtLeast(0L),
             closeStage = closeStage,
             closeStageForMillis = (nowElapsed - closeStageAtElapsed).coerceAtLeast(0L),
-            homeFallbackAttempted = homeFallbackAttempted,
+            closeBackAttempts = closeBackAttempts,
             unconfirmedSignalGraceExpired = directSignalActive &&
                 directMatchedWindowId < 0 &&
                 !undefinedWindowGraceActive
@@ -922,67 +926,21 @@ class ProtectedPowerMenuController(
             RecheckDecision.HIDE -> dismiss()
             RecheckDecision.KEEP_CHECKING -> scheduleRecheck()
             RecheckDecision.REQUEST_BACK -> requestNativeBackClose()
-            RecheckDecision.REQUEST_HOME -> requestNativeHomeClose()
         }
         recycleSafely(root)
     }
 
     private fun requestExplicitCancelClose() {
         if (!overlayVisible) return
-        closeStage = CloseStage.BACK_REQUESTED
-        closeStageAtElapsed = SystemClock.elapsedRealtime()
-        val globalBackAccepted =
-            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-        if (!globalBackAccepted) {
-            requestNativeHomeClose()
-            return
-        }
-        scheduleRecheck()
+        requestNativeBackClose()
     }
 
     private fun requestNativeBackClose() {
-        if (!overlayVisible || closeStage != CloseStage.NONE) return
+        if (!overlayVisible) return
         closeStage = CloseStage.BACK_REQUESTED
         closeStageAtElapsed = SystemClock.elapsedRealtime()
-        val globalBackAccepted =
-            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
-        if (!globalBackAccepted) {
-            requestNativeHomeClose()
-            return
-        }
-        scheduleRecheck()
-    }
-
-    private fun requestNativeHomeClose() {
-        if (!overlayVisible) return
-        val retryingPersistentWindow = closeStage == CloseStage.HOME_REQUESTED
-        closeStage = CloseStage.HOME_REQUESTED
-        closeStageAtElapsed = SystemClock.elapsedRealtime()
-        val globalHomeAccepted =
-            service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_HOME)
-        if (shouldLaunchHomeIntentFallback(
-                globalHomeAccepted = globalHomeAccepted,
-                retryingPersistentWindow = retryingPersistentWindow
-            )
-        ) {
-            val fallbackResult = runCatching {
-                service.startActivity(
-                    Intent(Intent.ACTION_MAIN).apply {
-                        addCategory(Intent.CATEGORY_HOME)
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                    }
-                )
-            }.onFailure { error ->
-                FocusGuardLogger.logError(
-                    "PowerMenu",
-                    "Falha no fallback HOME ao fechar menu nativo",
-                    error
-                )
-            }
-            homeFallbackAttempted = shouldMarkHomeFallbackAttempted(
-                fallbackIntentSucceeded = fallbackResult.isSuccess
-            )
-        }
+        closeBackAttempts += 1
+        service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK)
         scheduleRecheck()
     }
 
@@ -993,7 +951,8 @@ class ProtectedPowerMenuController(
         reliableWindowObserved = false
         closeStage = CloseStage.NONE
         closeStageAtElapsed = 0L
-        homeFallbackAttempted = false
+        closeBackAttempts = 0
+        screenOff = false
     }
 
     private fun showStatus(resId: Int) {
@@ -1015,7 +974,7 @@ class ProtectedPowerMenuController(
         ): PowerMatchOverlayDecision = when {
             !powerMatched -> PowerMatchOverlayDecision.PASS
             overlayShown -> PowerMatchOverlayDecision.SHIELD_AND_CONSUME
-            else -> PowerMatchOverlayDecision.REQUEST_HOME_FALLBACK
+            else -> PowerMatchOverlayDecision.REQUEST_BACK_FALLBACK
         }
 
         internal fun recheckDecision(
@@ -1024,27 +983,27 @@ class ProtectedPowerMenuController(
             visibleForMillis: Long,
             closeStage: CloseStage,
             closeStageForMillis: Long,
-            homeFallbackAttempted: Boolean = false,
+            closeBackAttempts: Int = 0,
             unconfirmedSignalGraceExpired: Boolean
         ): RecheckDecision = when {
             !overlayVisible -> RecheckDecision.HIDE
             presence == PowerMenuPresence.ABSENT_CONFIRMED -> RecheckDecision.HIDE
-            closeStage == CloseStage.HOME_REQUESTED &&
-                closeStageForMillis >= HOME_CLOSE_HARD_CAP_MILLIS &&
-                presence == PowerMenuPresence.PRESENT -> RecheckDecision.REQUEST_HOME
-            closeStage == CloseStage.HOME_REQUESTED &&
-                closeStageForMillis >= HOME_CLOSE_HARD_CAP_MILLIS &&
-                !homeFallbackAttempted -> RecheckDecision.REQUEST_HOME
-            closeStage == CloseStage.HOME_REQUESTED &&
-                closeStageForMillis >= HOME_CLOSE_HARD_CAP_MILLIS -> RecheckDecision.HIDE
-            closeStage == CloseStage.BACK_REQUESTED &&
-                closeStageForMillis >= BACK_TO_HOME_MILLIS -> RecheckDecision.REQUEST_HOME
-            closeStage != CloseStage.NONE -> RecheckDecision.KEEP_CHECKING
             // A class-only/undefined-window signal that never became a real
             // SystemUI power-menu root is a false-positive candidate. Hide it
-            // instead of injecting BACK/HOME into whatever the user is doing.
+            // without injecting navigation into the foreground app.
             unconfirmedSignalGraceExpired -> RecheckDecision.HIDE
-            visibleForMillis >= MAX_OVERLAY_VISIBLE_MILLIS -> RecheckDecision.REQUEST_BACK
+            closeStage == CloseStage.BACK_REQUESTED &&
+                closeStageForMillis >= BACK_RETRY_MILLIS &&
+                presence == PowerMenuPresence.PRESENT &&
+                closeBackAttempts < MAX_AUTOMATIC_BACK_ATTEMPTS -> RecheckDecision.REQUEST_BACK
+            closeStage == CloseStage.BACK_REQUESTED &&
+                closeStageForMillis >= BACK_UNKNOWN_GIVE_UP_MILLIS &&
+                presence == PowerMenuPresence.UNKNOWN -> RecheckDecision.HIDE
+            closeStage != CloseStage.NONE -> RecheckDecision.KEEP_CHECKING
+            visibleForMillis >= MAX_OVERLAY_VISIBLE_MILLIS &&
+                presence == PowerMenuPresence.PRESENT -> RecheckDecision.REQUEST_BACK
+            visibleForMillis >= MAX_OVERLAY_VISIBLE_MILLIS &&
+                presence == PowerMenuPresence.UNKNOWN -> RecheckDecision.HIDE
             else -> RecheckDecision.KEEP_CHECKING
         }
 
@@ -1056,17 +1015,10 @@ class ProtectedPowerMenuController(
             (flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()) or
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
 
-        internal fun shouldScheduleRecheck(alreadyScheduled: Boolean): Boolean =
-            !alreadyScheduled
-
-        internal fun shouldLaunchHomeIntentFallback(
-            globalHomeAccepted: Boolean,
-            retryingPersistentWindow: Boolean
-        ): Boolean = !globalHomeAccepted || retryingPersistentWindow
-
-        internal fun shouldMarkHomeFallbackAttempted(
-            fallbackIntentSucceeded: Boolean
-        ): Boolean = fallbackIntentSucceeded
+        internal fun shouldScheduleRecheck(
+            alreadyScheduled: Boolean,
+            screenOff: Boolean = false
+        ): Boolean = !alreadyScheduled && !screenOff
 
         internal fun shouldConsumeExternalWindowEvent(): Boolean = false
 
@@ -1074,7 +1026,11 @@ class ProtectedPowerMenuController(
             overlayVisible: Boolean
         ): Boolean = overlayVisible
 
-        internal fun shouldRequestCloseOnScreenOff(
+        internal fun shouldKeepPowerOverlayOnScreenOff(
+            overlayVisible: Boolean
+        ): Boolean = overlayVisible
+
+        internal fun shouldRecheckPowerOverlayOnScreenOn(
             overlayVisible: Boolean
         ): Boolean = overlayVisible
 
@@ -1089,8 +1045,10 @@ class ProtectedPowerMenuController(
         const val MAX_TEXT_VALUES = 300
         const val RECHECK_DELAY_MILLIS = 350L
         const val UNDEFINED_WINDOW_GRACE_MILLIS = 1_050L
-        const val BACK_TO_HOME_MILLIS = 1_050L
-        const val HOME_CLOSE_HARD_CAP_MILLIS = 1_050L
+        const val BACK_RETRY_MILLIS = 1_050L
+        const val BACK_UNKNOWN_GIVE_UP_MILLIS = 2_100L
+        const val MAX_AUTOMATIC_BACK_ATTEMPTS = 2
         const val MAX_OVERLAY_VISIBLE_MILLIS = 30_000L
     }
+
 }

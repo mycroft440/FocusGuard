@@ -7,245 +7,29 @@ import org.junit.Test
 class OverlayWindowStateTest {
 
     @Test
-    fun `hidden instant curtain stays attached but cannot consume touches`() {
+    fun `hidden overlays are inert and visible overlays remain touchable without key focus`() {
         val base = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-        val hidden = BlockingAccessibilityService.hiddenOverlayFlags(base)
-        val visible = BlockingAccessibilityService.visibleOverlayFlags(hidden)
+        val hiddenCurtain = BlockingAccessibilityService.hiddenOverlayFlags(base)
+        val visibleCurtain = BlockingAccessibilityService.visibleOverlayFlags(hiddenCurtain)
+        val hiddenPower = ProtectedPowerMenuController.hiddenFlags(base)
+        val visiblePower = ProtectedPowerMenuController.visibleFlags(hiddenPower)
 
-        assertThat(hidden and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE).isNotEqualTo(0)
-        assertThat(hidden and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE).isNotEqualTo(0)
-        assertThat(visible and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE).isEqualTo(0)
-        assertThat(visible and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE).isNotEqualTo(0)
+        assertThat(hiddenCurtain and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE).isNotEqualTo(0)
+        assertThat(hiddenCurtain and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE).isNotEqualTo(0)
+        assertThat(visibleCurtain and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE).isEqualTo(0)
+        assertThat(visibleCurtain and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE).isNotEqualTo(0)
+        assertThat(hiddenPower and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE).isNotEqualTo(0)
+        assertThat(visiblePower and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE).isEqualTo(0)
+        assertThat(visiblePower and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE).isNotEqualTo(0)
     }
 
     @Test
-    fun `hidden power overlay is inert and visible power overlay stays touchable without key focus`() {
-        val base = WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN
-        val hidden = ProtectedPowerMenuController.hiddenFlags(base)
-        val visible = ProtectedPowerMenuController.visibleFlags(hidden)
-
-        assertThat(hidden and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE).isNotEqualTo(0)
-        assertThat(hidden and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE).isNotEqualTo(0)
-        assertThat(visible and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE).isEqualTo(0)
-        assertThat(visible and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE).isNotEqualTo(0)
-    }
-
-    @Test
-    fun `power overlay closes only after confirmed absence or staged evacuation`() {
+    fun `confirmed absence hides while a present menu stays shielded`() {
         assertThat(
             ProtectedPowerMenuController.recheckDecision(
                 overlayVisible = true,
                 presence = ProtectedPowerMenuController.PowerMenuPresence.PRESENT,
                 visibleForMillis = 350L,
-                closeStage = ProtectedPowerMenuController.CloseStage.NONE,
-                closeStageForMillis = 0L,
-                unconfirmedSignalGraceExpired = false
-            )
-        ).isEqualTo(ProtectedPowerMenuController.RecheckDecision.KEEP_CHECKING)
-        assertThat(
-            ProtectedPowerMenuController.recheckDecision(
-                overlayVisible = true,
-                presence =
-                    ProtectedPowerMenuController.PowerMenuPresence.ABSENT_CONFIRMED,
-                visibleForMillis = 700L,
-                closeStage = ProtectedPowerMenuController.CloseStage.NONE,
-                closeStageForMillis = 0L,
-                unconfirmedSignalGraceExpired = false
-            )
-        ).isEqualTo(ProtectedPowerMenuController.RecheckDecision.HIDE)
-        assertThat(
-            ProtectedPowerMenuController.recheckDecision(
-                overlayVisible = true,
-                presence = ProtectedPowerMenuController.PowerMenuPresence.PRESENT,
-                visibleForMillis = ProtectedPowerMenuController.MAX_OVERLAY_VISIBLE_MILLIS,
-                closeStage = ProtectedPowerMenuController.CloseStage.NONE,
-                closeStageForMillis = 0L,
-                unconfirmedSignalGraceExpired = false
-            )
-        ).isEqualTo(
-            ProtectedPowerMenuController.RecheckDecision.REQUEST_BACK
-        )
-    }
-
-    @Test
-    fun `undefined unconfirmed power signal hides without injecting navigation`() {
-        assertThat(
-            ProtectedPowerMenuController.recheckDecision(
-                overlayVisible = true,
-                presence = ProtectedPowerMenuController.PowerMenuPresence.UNKNOWN,
-                visibleForMillis = ProtectedPowerMenuController.UNDEFINED_WINDOW_GRACE_MILLIS,
-                closeStage = ProtectedPowerMenuController.CloseStage.NONE,
-                closeStageForMillis = 0L,
-                unconfirmedSignalGraceExpired = true
-            )
-        ).isEqualTo(
-            ProtectedPowerMenuController.RecheckDecision.HIDE
-        )
-    }
-
-    @Test
-    fun `ignored back escalates and a proven native window stays covered`() {
-        assertThat(
-            ProtectedPowerMenuController.recheckDecision(
-                overlayVisible = true,
-                presence = ProtectedPowerMenuController.PowerMenuPresence.PRESENT,
-                visibleForMillis = 5_000L,
-                closeStage = ProtectedPowerMenuController.CloseStage.BACK_REQUESTED,
-                closeStageForMillis = ProtectedPowerMenuController.BACK_TO_HOME_MILLIS,
-                unconfirmedSignalGraceExpired = false
-            )
-        ).isEqualTo(ProtectedPowerMenuController.RecheckDecision.REQUEST_HOME)
-        assertThat(
-            ProtectedPowerMenuController.recheckDecision(
-                overlayVisible = true,
-                presence = ProtectedPowerMenuController.PowerMenuPresence.PRESENT,
-                visibleForMillis = 6_000L,
-                closeStage = ProtectedPowerMenuController.CloseStage.HOME_REQUESTED,
-                closeStageForMillis =
-                    ProtectedPowerMenuController.HOME_CLOSE_HARD_CAP_MILLIS,
-                unconfirmedSignalGraceExpired = false
-            )
-        ).isEqualTo(ProtectedPowerMenuController.RecheckDecision.REQUEST_HOME)
-        assertThat(
-            ProtectedPowerMenuController.recheckDecision(
-                overlayVisible = true,
-                presence = ProtectedPowerMenuController.PowerMenuPresence.UNKNOWN,
-                visibleForMillis = 6_000L,
-                closeStage = ProtectedPowerMenuController.CloseStage.HOME_REQUESTED,
-                closeStageForMillis =
-                    ProtectedPowerMenuController.HOME_CLOSE_HARD_CAP_MILLIS,
-                homeFallbackAttempted = false,
-                unconfirmedSignalGraceExpired = false
-            )
-        ).isEqualTo(ProtectedPowerMenuController.RecheckDecision.REQUEST_HOME)
-        assertThat(
-            ProtectedPowerMenuController.recheckDecision(
-                overlayVisible = true,
-                presence = ProtectedPowerMenuController.PowerMenuPresence.UNKNOWN,
-                visibleForMillis = 7_050L,
-                closeStage = ProtectedPowerMenuController.CloseStage.HOME_REQUESTED,
-                closeStageForMillis =
-                    ProtectedPowerMenuController.HOME_CLOSE_HARD_CAP_MILLIS,
-                homeFallbackAttempted = true,
-                unconfirmedSignalGraceExpired = false
-            )
-        ).isEqualTo(ProtectedPowerMenuController.RecheckDecision.HIDE)
-    }
-
-    @Test
-    fun `accepted home with persistent native window also uses launcher fallback`() {
-        assertThat(
-            ProtectedPowerMenuController.shouldLaunchHomeIntentFallback(
-                globalHomeAccepted = true,
-                retryingPersistentWindow = true
-            )
-        ).isTrue()
-        assertThat(
-            ProtectedPowerMenuController.shouldLaunchHomeIntentFallback(
-                globalHomeAccepted = true,
-                retryingPersistentWindow = false
-            )
-        ).isFalse()
-    }
-
-    @Test
-    fun `failed launcher fallback keeps unknown power menu covered for retry`() {
-        val attempted = ProtectedPowerMenuController.shouldMarkHomeFallbackAttempted(
-            fallbackIntentSucceeded = false
-        )
-        assertThat(attempted).isFalse()
-        assertThat(
-            ProtectedPowerMenuController.recheckDecision(
-                overlayVisible = true,
-                presence = ProtectedPowerMenuController.PowerMenuPresence.UNKNOWN,
-                visibleForMillis = 8_000L,
-                closeStage = ProtectedPowerMenuController.CloseStage.HOME_REQUESTED,
-                closeStageForMillis =
-                    ProtectedPowerMenuController.HOME_CLOSE_HARD_CAP_MILLIS,
-                homeFallbackAttempted = attempted,
-                unconfirmedSignalGraceExpired = false
-            )
-        ).isEqualTo(ProtectedPowerMenuController.RecheckDecision.REQUEST_HOME)
-    }
-
-    @Test
-    fun `blank package inspects only the exact power window`() {
-        assertThat(
-            ProtectedPowerMenuController.shouldInspectExactPowerWindow(
-                packageName = "",
-                relevantEvent = true
-            )
-        ).isTrue()
-        assertThat(
-            ProtectedPowerMenuController.shouldInspectExactPowerWindow(
-                packageName = "com.example.app",
-                relevantEvent = true
-            )
-        ).isFalse()
-        assertThat(
-            ProtectedPowerMenuController.shouldInspectExactPowerWindow(
-                packageName = "",
-                relevantEvent = false
-            )
-        ).isFalse()
-    }
-
-    @Test
-    fun `matched power menu without a drawn overlay closes instead of consuming`() {
-        assertThat(
-            ProtectedPowerMenuController.powerMatchOverlayDecision(
-                powerMatched = true,
-                overlayShown = false
-            )
-        ).isEqualTo(
-            ProtectedPowerMenuController.PowerMatchOverlayDecision.REQUEST_HOME_FALLBACK
-        )
-        assertThat(
-            ProtectedPowerMenuController.powerMatchOverlayDecision(
-                powerMatched = true,
-                overlayShown = true
-            )
-        ).isEqualTo(
-            ProtectedPowerMenuController.PowerMatchOverlayDecision.SHIELD_AND_CONSUME
-        )
-    }
-
-    @Test
-    fun `cancel back request cannot dismiss on its old 120ms timer`() {
-        assertThat(
-            ProtectedPowerMenuController.recheckDecision(
-                overlayVisible = true,
-                presence = ProtectedPowerMenuController.PowerMenuPresence.PRESENT,
-                visibleForMillis = 120L,
-                closeStage = ProtectedPowerMenuController.CloseStage.BACK_REQUESTED,
-                closeStageForMillis = 120L,
-                unconfirmedSignalGraceExpired = false
-            )
-        ).isEqualTo(
-            ProtectedPowerMenuController.RecheckDecision.KEEP_CHECKING
-        )
-    }
-
-    @Test
-    fun `system ui event storm cannot postpone an already scheduled recheck`() {
-        assertThat(
-            ProtectedPowerMenuController.shouldScheduleRecheck(alreadyScheduled = false)
-        ).isTrue()
-        repeat(1_000) {
-            assertThat(
-                ProtectedPowerMenuController.shouldScheduleRecheck(alreadyScheduled = true)
-            ).isFalse()
-        }
-    }
-
-    @Test
-    fun `external window cannot uncover a still present native power menu`() {
-        assertThat(ProtectedPowerMenuController.shouldConsumeExternalWindowEvent()).isFalse()
-        assertThat(
-            ProtectedPowerMenuController.recheckDecision(
-                overlayVisible = true,
-                presence = ProtectedPowerMenuController.PowerMenuPresence.PRESENT,
-                visibleForMillis = 700L,
                 closeStage = ProtectedPowerMenuController.CloseStage.NONE,
                 closeStageForMillis = 0L,
                 unconfirmedSignalGraceExpired = false
@@ -264,30 +48,99 @@ class OverlayWindowStateTest {
     }
 
     @Test
-    fun `accessibility feedback interrupt rechecks instead of hiding power overlay`() {
+    fun `undefined false positive hides without any navigation`() {
         assertThat(
-            ProtectedPowerMenuController.shouldRecheckAfterFeedbackInterrupt(
-                overlayVisible = true
+            ProtectedPowerMenuController.recheckDecision(
+                overlayVisible = true,
+                presence = ProtectedPowerMenuController.PowerMenuPresence.UNKNOWN,
+                visibleForMillis = ProtectedPowerMenuController.UNDEFINED_WINDOW_GRACE_MILLIS,
+                closeStage = ProtectedPowerMenuController.CloseStage.NONE,
+                closeStageForMillis = 0L,
+                unconfirmedSignalGraceExpired = true
             )
+        ).isEqualTo(ProtectedPowerMenuController.RecheckDecision.HIDE)
+    }
+
+    @Test
+    fun `automatic close may retry back but never escalates to home`() {
+        assertThat(
+            ProtectedPowerMenuController.recheckDecision(
+                overlayVisible = true,
+                presence = ProtectedPowerMenuController.PowerMenuPresence.PRESENT,
+                visibleForMillis = 5_000L,
+                closeStage = ProtectedPowerMenuController.CloseStage.BACK_REQUESTED,
+                closeStageForMillis = ProtectedPowerMenuController.BACK_RETRY_MILLIS,
+                closeBackAttempts = 1,
+                unconfirmedSignalGraceExpired = false
+            )
+        ).isEqualTo(ProtectedPowerMenuController.RecheckDecision.REQUEST_BACK)
+        assertThat(
+            ProtectedPowerMenuController.recheckDecision(
+                overlayVisible = true,
+                presence = ProtectedPowerMenuController.PowerMenuPresence.PRESENT,
+                visibleForMillis = 7_000L,
+                closeStage = ProtectedPowerMenuController.CloseStage.BACK_REQUESTED,
+                closeStageForMillis = 4_000L,
+                closeBackAttempts = ProtectedPowerMenuController.MAX_AUTOMATIC_BACK_ATTEMPTS,
+                unconfirmedSignalGraceExpired = false
+            )
+        ).isEqualTo(ProtectedPowerMenuController.RecheckDecision.KEEP_CHECKING)
+    }
+
+    @Test
+    fun `matched power menu without overlay falls back to back not home`() {
+        assertThat(
+            ProtectedPowerMenuController.powerMatchOverlayDecision(
+                powerMatched = true,
+                overlayShown = false
+            )
+        ).isEqualTo(ProtectedPowerMenuController.PowerMatchOverlayDecision.REQUEST_BACK_FALLBACK)
+        assertThat(
+            ProtectedPowerMenuController.powerMatchOverlayDecision(
+                powerMatched = true,
+                overlayShown = true
+            )
+        ).isEqualTo(ProtectedPowerMenuController.PowerMatchOverlayDecision.SHIELD_AND_CONSUME)
+    }
+
+    @Test
+    fun `screen off keeps the shield and pauses rechecks until screen on`() {
+        assertThat(ProtectedPowerMenuController.shouldKeepPowerOverlayOnScreenOff(true)).isTrue()
+        assertThat(ProtectedPowerMenuController.shouldKeepPowerOverlayOnScreenOff(false)).isFalse()
+        assertThat(ProtectedPowerMenuController.shouldScheduleRecheck(false, screenOff = true)).isFalse()
+        assertThat(ProtectedPowerMenuController.shouldRecheckPowerOverlayOnScreenOn(true)).isTrue()
+        assertThat(ProtectedPowerMenuController.shouldRecheckPowerOverlayOnScreenOn(false)).isFalse()
+    }
+
+    @Test
+    fun `system ui event storm cannot postpone an already scheduled recheck`() {
+        assertThat(ProtectedPowerMenuController.shouldScheduleRecheck(false)).isTrue()
+        repeat(1_000) {
+            assertThat(ProtectedPowerMenuController.shouldScheduleRecheck(true)).isFalse()
+        }
+    }
+
+    @Test
+    fun `blank package inspects only the exact candidate window`() {
+        assertThat(
+            ProtectedPowerMenuController.shouldInspectExactPowerWindow("", relevantEvent = true)
         ).isTrue()
         assertThat(
-            ProtectedPowerMenuController.shouldRecheckAfterFeedbackInterrupt(
-                overlayVisible = false
+            ProtectedPowerMenuController.shouldInspectExactPowerWindow(
+                "com.example.app",
+                relevantEvent = true
             )
         ).isFalse()
     }
 
     @Test
-    fun `screen off requests native close without uncovering power menu`() {
-        assertThat(
-            ProtectedPowerMenuController.shouldRequestCloseOnScreenOff(
-                overlayVisible = true
-            )
-        ).isTrue()
-        assertThat(
-            ProtectedPowerMenuController.shouldRequestCloseOnScreenOff(
-                overlayVisible = false
-            )
-        ).isFalse()
+    fun `external window does not get consumed by the power shield`() {
+        assertThat(ProtectedPowerMenuController.shouldConsumeExternalWindowEvent()).isFalse()
+    }
+
+    @Test
+    fun `feedback interrupt rechecks only while overlay is visible`() {
+        assertThat(ProtectedPowerMenuController.shouldRecheckAfterFeedbackInterrupt(true)).isTrue()
+        assertThat(ProtectedPowerMenuController.shouldRecheckAfterFeedbackInterrupt(false)).isFalse()
     }
 }

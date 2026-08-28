@@ -316,21 +316,24 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private val screenStateReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == Intent.ACTION_SCREEN_OFF) {
-                foregroundPackageName = null
-                stopWebsiteTracking()
-                protectedPowerMenuController?.onScreenOff()
-                when (screenOffCurtainDecision(
-                    curtainVisible = instantBlockCurtainVisible,
-                    awaitingSafeSurfaceGeneration = awaitingSafeSurfaceGeneration,
-                    unsafeWindowVisible = instantBlockCurtainVisible &&
-                        hasUnsafeVisibleWindow()
-                )) {
-                    InstantCurtainFailsafeDecision.NO_ACTION -> Unit
-                    InstantCurtainFailsafeDecision.HIDE -> dismissInstantBlockCurtain()
-                    InstantCurtainFailsafeDecision.EVACUATE_THEN_HIDE ->
-                        beginCurtainEvacuationBeforeHide()
+            when (intent?.action) {
+                Intent.ACTION_SCREEN_OFF -> {
+                    foregroundPackageName = null
+                    stopWebsiteTracking()
+                    protectedPowerMenuController?.onScreenOff()
+                    when (screenOffCurtainDecision(
+                        curtainVisible = instantBlockCurtainVisible,
+                        awaitingSafeSurfaceGeneration = awaitingSafeSurfaceGeneration,
+                        unsafeWindowVisible = instantBlockCurtainVisible &&
+                            hasUnsafeVisibleWindow()
+                    )) {
+                        InstantCurtainFailsafeDecision.NO_ACTION -> Unit
+                        InstantCurtainFailsafeDecision.HIDE -> dismissInstantBlockCurtain()
+                        InstantCurtainFailsafeDecision.EVACUATE_THEN_HIDE ->
+                            beginCurtainEvacuationBeforeHide()
+                    }
                 }
+                Intent.ACTION_SCREEN_ON -> protectedPowerMenuController?.onScreenOn()
             }
         }
     }
@@ -402,7 +405,10 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun registerScreenStateReceiver() {
-        val filter = IntentFilter(Intent.ACTION_SCREEN_OFF)
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_SCREEN_ON)
+        }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             registerReceiver(screenStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
         } else {
