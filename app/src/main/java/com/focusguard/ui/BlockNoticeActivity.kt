@@ -693,9 +693,12 @@ private suspend fun attemptUnlock(
             DeactivationCredentialManager.VerificationResult.NOT_CONFIGURED -> false
         }
         if (!masterCredentialVerified) return UnlockResult.WRONG_PASSWORD
-        val sessionId = sessionManager.findResponsibleSessionId(blockedPackage, blockedDomain)
-            ?: return UnlockResult.NO_REVOCABLE_SESSION
-        when (sessionManager.endSessionAndWait(sessionId)) {
+        when (
+            sessionManager.unlockPasswordSessionTarget(
+                blockedPackage = blockedPackage,
+                blockedDomain = blockedDomain
+            )
+        ) {
             BlockingSessionManager.EndSessionResult.ENDED -> UnlockResult.SUCCESS
             BlockingSessionManager.EndSessionResult.POMODORO_NOT_REVOCABLE -> UnlockResult.POMODORO
             BlockingSessionManager.EndSessionResult.TIME_NOT_REVOCABLE -> UnlockResult.TIME_SESSION

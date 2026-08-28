@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.WebsiteUsageLimit
+import com.focusguard.data.PredefinedApps
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
 import com.focusguard.security.DeactivationCredentialManager
@@ -310,7 +311,7 @@ fun AppLimitsTab(
             }
             val stats = usageStatsManager.queryAndAggregateUsageStats(cal.timeInMillis, System.currentTimeMillis())
 
-            val loadedApps = resolveInfos.mapNotNull { info ->
+            val installedApps = resolveInfos.mapNotNull { info ->
                 val packageName = info.activityInfo.packageName
                 if (packageName == context.packageName) return@mapNotNull null
                 val appName = info.loadLabel(pm).toString()
@@ -325,7 +326,45 @@ fun AppLimitsTab(
                     lockPasswordHash = limit?.lockPasswordHash,
                     lockUntilTimestamp = limit?.lockUntilTimestamp
                 )
-            }.sortedBy { it.appName }
+            }
+            val installedPackages = installedApps.mapTo(mutableSetOf()) { it.packageName }
+            val absentKnownApps = PredefinedApps.PREVENTIVE_APPS
+                .asSequence()
+                .filter { it.packageName !in installedPackages }
+                .map { predefined ->
+                    val limit = existingLimits[predefined.packageName]
+                    UsageLimitAppUi(
+                        packageName = predefined.packageName,
+                        appName = predefined.appName,
+                        currentLimitMinutes = limit?.dailyLimitMinutes,
+                        isEnabled = limit?.isEnabled ?: false,
+                        usageMs = 0L,
+                        lockMode = limit?.lockMode ?: "NONE",
+                        lockPasswordHash = limit?.lockPasswordHash,
+                        lockUntilTimestamp = limit?.lockUntilTimestamp
+                    )
+                }
+                .toList()
+            val absentConfiguredApps = existingLimits.values
+                .asSequence()
+                .filter { it.packageName !in installedPackages }
+                .filter { limit -> absentKnownApps.none { it.packageName == limit.packageName } }
+                .map { limit ->
+                    UsageLimitAppUi(
+                        packageName = limit.packageName,
+                        appName = limit.appName.ifBlank { limit.packageName },
+                        currentLimitMinutes = limit.dailyLimitMinutes,
+                        isEnabled = limit.isEnabled,
+                        usageMs = 0L,
+                        lockMode = limit.lockMode,
+                        lockPasswordHash = limit.lockPasswordHash,
+                        lockUntilTimestamp = limit.lockUntilTimestamp
+                    )
+                }
+                .toList()
+            val loadedApps = (installedApps + absentKnownApps + absentConfiguredApps)
+                .distinctBy { it.packageName }
+                .sortedBy { it.appName }
 
             withContext(Dispatchers.Main) { apps = loadedApps; isLoading = false }
         }

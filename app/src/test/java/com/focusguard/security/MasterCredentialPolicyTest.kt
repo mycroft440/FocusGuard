@@ -371,6 +371,46 @@ class MasterCredentialPolicyTest {
     }
 
     @Test
+    fun `recurring time commitment remains active outside its daily window`() {
+        assertThat(
+            MasterCredentialPolicy.isTimeCommitmentActive(
+                sessionType = "TIME",
+                isActive = true,
+                endTime = 10_000L,
+                nowMillis = 5_000L
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun `expired or inactive time commitment is no longer armed`() {
+        assertThat(
+            MasterCredentialPolicy.isTimeCommitmentActive(
+                sessionType = "TIME",
+                isActive = true,
+                endTime = 5_000L,
+                nowMillis = 5_000L
+            )
+        ).isFalse()
+        assertThat(
+            MasterCredentialPolicy.isTimeCommitmentActive(
+                sessionType = "TIME",
+                isActive = false,
+                endTime = null,
+                nowMillis = 5_000L
+            )
+        ).isFalse()
+        assertThat(
+            MasterCredentialPolicy.isTimeCommitmentActive(
+                sessionType = "PASSWORD",
+                isActive = true,
+                endTime = null,
+                nowMillis = 5_000L
+            )
+        ).isFalse()
+    }
+
+    @Test
     fun `only explicit time block prevents uninstall`() {
         assertThat(MasterCredentialPolicy.blocksUninstall("TIME")).isTrue()
         assertThat(MasterCredentialPolicy.blocksUninstall("time")).isTrue()

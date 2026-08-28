@@ -289,6 +289,27 @@ class WebsiteBlockerTest {
     }
 
     @Test
+    fun `pornography category blocks adult searches on major non Google engines`() {
+        val category = listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
+
+        assertThat(
+            WebsiteBlocker.isUrlBlocked("https://www.bing.com/search?q=free+porn", category)
+        ).isTrue()
+        assertThat(
+            WebsiteBlocker.isUrlBlocked("https://duckduckgo.com/?q=hentai+videos", category)
+        ).isTrue()
+        assertThat(
+            WebsiteBlocker.isUrlBlocked("https://search.yahoo.com/search?p=xxx", category)
+        ).isTrue()
+        assertThat(
+            WebsiteBlocker.isUrlBlocked("https://yandex.com/search/?text=conteudo+sexual", category)
+        ).isTrue()
+        assertThat(
+            WebsiteBlocker.isUrlBlocked("https://safe-example.com/search?q=porn", category)
+        ).isFalse()
+    }
+
+    @Test
     fun `pornography category maps effective keyword identifiers back to one rule`() {
         val rules = WebsiteBlocker.normalizeRules(
             listOf(PredefinedWebsites.PORNOGRAPHY_RULE)

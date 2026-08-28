@@ -40,6 +40,24 @@ object WebsiteUsageLimitPolicy {
      * novos dos limites de apps. Esses modos carregam o packageName depois de ':' para que o
      * estado persistente da pausa seja isolado por aplicativo sem exigir migração do banco.
      */
+    fun requiresUrlObservationForHardLimit(
+        lockMode: String,
+        lockUntilTimestamp: Long?,
+        nowMillis: Long
+    ): Boolean {
+        return when {
+            UsageLimitBehaviorPolicy.isPauseMode(lockMode) ||
+                UsageLimitBehaviorPolicy.isBlockUntilTomorrowMode(lockMode) ->
+                UsageLimitBehaviorPolicy.isRuleActive(lockUntilTimestamp, nowMillis)
+            else -> when (lockMode.uppercase(Locale.ROOT)) {
+                "WARNING" -> false
+                "TIME" -> lockUntilTimestamp?.let { it > nowMillis } == true
+                "PASSWORD" -> lockUntilTimestamp?.let { nowMillis >= it } ?: true
+                else -> true
+            }
+        }
+    }
+
     fun isBlockingModeActive(
         lockMode: String,
         lockUntilTimestamp: Long?,

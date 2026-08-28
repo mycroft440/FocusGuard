@@ -117,16 +117,12 @@ internal fun PasswordProtectedAppUnlockPanel(
                     onInvalid?.invoke()
                     return@launch
                 }
-                val sessionId = sessionManager.findResponsibleSessionId(
-                    blockedPackage = blockedPackage,
-                    blockedDomain = null
-                )
-                if (sessionId == null) {
-                    error = failureMessage
-                    onInvalid?.invoke()
-                    return@launch
-                }
-                when (sessionManager.endSessionAndWait(sessionId)) {
+                when (
+                    sessionManager.unlockPasswordSessionTarget(
+                        blockedPackage = blockedPackage,
+                        blockedDomain = null
+                    )
+                ) {
                     BlockingSessionManager.EndSessionResult.ENDED -> {
                         showCredentialDialog = false
                         onUnlocked()

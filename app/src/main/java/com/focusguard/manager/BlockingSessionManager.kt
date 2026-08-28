@@ -30,6 +30,7 @@ import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.DopamineStartPolicy
 import com.focusguard.security.MasterCredentialPolicy
 import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.security.PasswordAppUnlockStore
 import com.focusguard.security.SelfProtectionStateStore
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.service.PomodoroForegroundService
@@ -410,8 +411,12 @@ class BlockingSessionManager @Inject constructor(
         val now = System.currentTimeMillis()
         sessions.any { session ->
             MasterCredentialPolicy.blocksUninstall(session.sessionType) &&
-                participatesInBlocking(session) &&
-                isCurrentlyInBlockingWindow(session)
+                MasterCredentialPolicy.isTimeCommitmentActive(
+                    sessionType = session.sessionType,
+                    isActive = session.isActive,
+                    endTime = session.endTime,
+                    nowMillis = now
+                )
         } || appLimits.any { limit ->
             limit.isEnabled && MasterCredentialPolicy.isTimeHardened(
                 lockMode = limit.lockMode,
@@ -941,6 +946,49 @@ class BlockingSessionManager @Inject constructor(
         }
     }
 
+    /** True only while a password-backed rule is actually blocking now. */
+    suspend fun hasPasswordProtectionBlockingNow(): Boolean = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        val passwordSessionActive = database.blockSessionDao()
+            .getAllActiveSessionsStatic()
+            .any { session ->
+                session.sessionType.equals("PASSWORD", ignoreCase = true) &&
+                    isCurrentlyInBlockingWindow(session)
+            }
+        if (passwordSessionActive) return@withContext true
+
+        val passwordAppLimits = database.appUsageLimitDao()
+            .getAllActiveLimitsStatic()
+            .filter { it.lockMode.equals("PASSWORD", ignoreCase = true) }
+        if (getExceededAppLimits(passwordAppLimits, now).isNotEmpty()) {
+            return@withContext true
+        }
+
+        val passwordWebsiteLimits = database.websiteUsageLimitDao()
+            .getAllStatic()
+            .filter {
+                it.isEnabled && it.lockMode.equals("PASSWORD", ignoreCase = true)
+            }
+        if (passwordWebsiteLimits.isEmpty()) return@withContext false
+
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now)
+        val usageByWebsite = WebsiteUsageLimitPolicy.aggregateUsageByRule(
+            usageByIdentifier = database.dailyUsageStatDao()
+                .getStatsForDateStatic(today)
+                .map { it.identifier to it.timeSpentMs },
+            configuredRules = passwordWebsiteLimits.map { it.domain }
+        )
+        passwordWebsiteLimits.any { limit ->
+            WebsiteUsageLimitPolicy.shouldBlock(
+                usedMillis = usageByWebsite[WebsiteBlocker.normalizeRule(limit.domain)] ?: 0L,
+                dailyLimitMinutes = limit.dailyLimitMinutes,
+                lockMode = limit.lockMode,
+                lockUntilTimestamp = limit.lockUntilTimestamp,
+                nowMillis = now
+            )
+        }
+    }
+
     suspend fun hasTimeSession(): Boolean {
         return database.blockSessionDao().getAllActiveSessionsStatic()
             .any { it.sessionType == "TIME" }
@@ -1020,8 +1068,11 @@ class BlockingSessionManager @Inject constructor(
                 ?: return EndSessionResult.NOT_FOUND
             when {
                 session.sessionType == "POMODORO" -> EndSessionResult.POMODORO_NOT_REVOCABLE
-                session.sessionType == "TIME" && isCurrentlyInBlockingWindow(session) ->
-                    EndSessionResult.TIME_NOT_REVOCABLE
+                MasterCredentialPolicy.isTimeCommitmentActive(
+                    sessionType = session.sessionType,
+                    isActive = session.isActive,
+                    endTime = session.endTime
+                ) -> EndSessionResult.TIME_NOT_REVOCABLE
                 database.blockSessionDao().deactivateSession(sessionId) == 0 ->
                     EndSessionResult.NOT_FOUND
                 else -> {
@@ -1058,6 +1109,72 @@ class BlockingSessionManager @Inject constructor(
         }
 
         return null
+    }
+
+    /**
+     * Releases only the target whose password was successfully authenticated.
+     * A PASSWORD session can contain several apps; opening one must never end the
+     * protection of all siblings in that session.
+     */
+    suspend fun unlockPasswordSessionTarget(
+        blockedPackage: String?,
+        blockedDomain: String?
+    ): EndSessionResult = withContext(Dispatchers.IO) {
+        try {
+            val sessionId = findResponsibleSessionId(blockedPackage, blockedDomain)
+                ?: return@withContext EndSessionResult.NOT_FOUND
+            val session = database.blockSessionDao().getActiveSessionById(sessionId)
+                ?: return@withContext EndSessionResult.NOT_FOUND
+            if (!session.sessionType.equals("PASSWORD", ignoreCase = true)) {
+                return@withContext EndSessionResult.NOT_FOUND
+            }
+
+            database.withTransaction {
+                blockedPackage?.takeIf(String::isNotBlank)?.let { packageName ->
+                    database.sessionAppCrossRefDao().deleteSpecificApp(sessionId, packageName)
+                }
+                blockedDomain?.takeIf(String::isNotBlank)?.let { domain ->
+                    val sessionSites = database.sessionWebsiteCrossRefDao()
+                        .getWebsitesForSessions(listOf(sessionId))
+                    sessionSites.filter { configuredRule ->
+                        WebsiteBlocker.isUrlBlocked(domain, listOf(configuredRule))
+                    }.forEach { configuredRule ->
+                        database.sessionWebsiteCrossRefDao()
+                            .deleteSpecificWebsite(sessionId, configuredRule)
+                    }
+                }
+
+                val remainingApps = database.sessionAppCrossRefDao()
+                    .getAppsForSessions(listOf(sessionId))
+                val remainingSites = database.sessionWebsiteCrossRefDao()
+                    .getWebsitesForSessions(listOf(sessionId))
+                if (remainingApps.isEmpty() && remainingSites.isEmpty()) {
+                    database.blockSessionDao().deactivateSession(sessionId)
+                } else {
+                    database.blockSessionDao().updateBlockSession(
+                        session.copy(
+                            blockedAppsCount = remainingApps.distinct().size,
+                            blockedWebsitesCount = remainingSites.distinct().size
+                        )
+                    )
+                }
+            }
+
+            blockedPackage?.takeIf(String::isNotBlank)?.let { packageName ->
+                PasswordAppUnlockStore(context).clearPackages(listOf(packageName))
+            }
+            checkAndEnforceOrThrow()
+            EndSessionResult.ENDED
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            FocusGuardLogger.logError(
+                "BlockingSessionManager",
+                "Erro ao liberar alvo de sessão PASSWORD",
+                error
+            )
+            EndSessionResult.FAILED
+        }
     }
 
     /**
@@ -1279,6 +1396,14 @@ class BlockingSessionManager @Inject constructor(
                 }
 
                 val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
+                val activeTimeCommitment = activeSessions.any { session ->
+                    MasterCredentialPolicy.isTimeCommitmentActive(
+                        sessionType = session.sessionType,
+                        isActive = session.isActive,
+                        endTime = session.endTime,
+                        nowMillis = now
+                    )
+                }
                 val enforcingSessions = activeSessions.filter {
                     participatesInBlocking(it) && isCurrentlyInBlockingWindow(it)
                 }
@@ -1437,7 +1562,7 @@ class BlockingSessionManager @Inject constructor(
                     hasBlockedSites = sitesToBlock.isNotEmpty(),
                     adultFilterEnabled = adultFilterEnabled,
                     focusModeActive = focusModeSession != null
-                )
+                ) || activeTimeCommitment
                 if (selfProtectionRequired) {
                     // Persist before DevicePolicyManager/broadcast work. The
                     // AccessibilityService can be recreated between any two of

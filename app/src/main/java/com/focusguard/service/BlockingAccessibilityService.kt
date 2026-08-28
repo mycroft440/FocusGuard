@@ -63,6 +63,7 @@ import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
 import com.focusguard.utils.UsageLimitForegroundPolicy
 import com.focusguard.utils.WebsiteBlocker
+import com.focusguard.utils.WebsiteObservabilityPolicy
 import com.focusguard.utils.WebsiteUsageLimitPolicy
 import dagger.hilt.android.AndroidEntryPoint
 import java.text.SimpleDateFormat
@@ -114,6 +115,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     @Volatile private var blockedWebsitesDomainSet: Set<String> = emptySet()
     @Volatile private var blockedWebsiteAppDomains: Map<String, String> = emptyMap()
     @Volatile private var limitedWebsiteDomains: Set<String> = emptySet()
+    @Volatile private var hardLimitedWebsiteDomains: Set<String> = emptySet()
     @Volatile private var limitedWebsiteAppDomains: Map<String, String> = emptyMap()
     @Volatile private var isBlockingSessionActive = false
     @Volatile private var isPomodoroStrictActive = false
@@ -172,6 +174,8 @@ class BlockingAccessibilityService : AccessibilityService() {
     @Volatile private var trackedSinceMillis = 0L
     private var websiteTrackingJob: Job? = null
     private var appLimitMonitoringJob: Job? = null
+    private val opaqueBrowserFirstSeenElapsed = mutableMapOf<String, Long>()
+    private val opaqueBrowserVerificationScheduled = mutableSetOf<String>()
 
     private data class WebsiteUsageSlice(
         val domain: String,
@@ -187,7 +191,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private val cacheTimeoutMillis = 5_000L
     private val browserDebounceMillis = 0L
     private val websitePulseMillis = 1_000L
-    private val appLimitPulseMillis = 5_000L
+    private val appLimitPulseMillis = 1_000L
     private val maxUsageDeltaMillis = 15_000L
     private val channelId = "focusguard_service_channel"
     private val notificationId = 101
@@ -814,7 +818,10 @@ class BlockingAccessibilityService : AccessibilityService() {
             blockedWebsitesDomainSet = emptySet()
             blockedWebsiteAppDomains = emptyMap()
             limitedWebsiteDomains = emptySet()
+            hardLimitedWebsiteDomains = emptySet()
             limitedWebsiteAppDomains = emptyMap()
+            opaqueBrowserFirstSeenElapsed.clear()
+            opaqueBrowserVerificationScheduled.clear()
             isBlockingSessionActive = false
             focusModeSessionActive = false
             focusModeFallbackActive = false
@@ -935,6 +942,15 @@ class BlockingAccessibilityService : AccessibilityService() {
                         val configuredWebsiteDomains = WebsiteBlocker.normalizeRules(
                             websiteLimits.map { it.domain }
                         )
+                        val hardConfiguredWebsiteDomains = WebsiteBlocker.normalizeRules(
+                            websiteLimits.filter { limit ->
+                                WebsiteUsageLimitPolicy.requiresUrlObservationForHardLimit(
+                                    lockMode = limit.lockMode,
+                                    lockUntilTimestamp = limit.lockUntilTimestamp,
+                                    nowMillis = System.currentTimeMillis()
+                                )
+                            }.map { it.domain }
+                        )
                         val exceededWebsiteDomains = calculateExceededWebsiteLimits(websiteLimits)
                         val blockedWebsiteDomains = WebsiteBlocker.normalizeRules(
                             sessionSites + exceededWebsiteDomains + adultRules
@@ -982,7 +998,15 @@ class BlockingAccessibilityService : AccessibilityService() {
                             blockedWebsitesDomainSet = blockedWebsiteDomains
                             blockedWebsiteAppDomains = blockedWebsiteApps
                             limitedWebsiteDomains = configuredWebsiteDomains
+                            hardLimitedWebsiteDomains = hardConfiguredWebsiteDomains
                             limitedWebsiteAppDomains = limitedWebsiteApps
+                            if (
+                                blockedWebsiteDomains.isEmpty() &&
+                                hardConfiguredWebsiteDomains.isEmpty()
+                            ) {
+                                opaqueBrowserFirstSeenElapsed.clear()
+                                opaqueBrowserVerificationScheduled.clear()
+                            }
                             hasActiveAppLimits = activeAppLimits.isNotEmpty()
                             isBlockingSessionActive = isSelfProtectionEngaged(
                                 cachedActive = enforcingSessions.isNotEmpty() ||
@@ -2035,7 +2059,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         val root = rootInActiveWindow ?: sourceNodeForEvent(event) ?: return false
         val recognized = try {
-            WebsiteBlocker.extractAddressBarTextFromRoot(root, packageName) != null
+            WebsiteBlocker.hasAddressBarNode(root, packageName)
         } finally {
             recycleSafely(root)
         }
@@ -2063,6 +2087,12 @@ class BlockingAccessibilityService : AccessibilityService() {
         val url = fastUrl ?: WebsiteBlocker.extractUrlFromRoot(root, packageName)
         val addressText = fastAddressText
             ?: WebsiteBlocker.extractAddressBarTextFromRoot(root, packageName)
+        val addressBarObservable = fastAddressText != null ||
+            url != null || WebsiteBlocker.hasAddressBarNode(root, packageName)
+        if (handleBrowserObservability(packageName, addressBarObservable)) {
+            recycleSafely(root)
+            return
+        }
         val now = System.currentTimeMillis()
 
         if (pornographyCategoryActive) {
@@ -2109,6 +2139,90 @@ class BlockingAccessibilityService : AccessibilityService() {
         recycleSafely(root)
     }
 
+    private fun websiteObservationRequired(): Boolean =
+        blockedWebsitesDomainSet.isNotEmpty() || hardLimitedWebsiteDomains.isNotEmpty()
+
+    private fun handleBrowserObservability(
+        packageName: String,
+        addressBarObservable: Boolean
+    ): Boolean {
+        if (!websiteObservationRequired() || addressBarObservable) {
+            opaqueBrowserFirstSeenElapsed.remove(packageName)
+            opaqueBrowserVerificationScheduled.remove(packageName)
+            return false
+        }
+
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val firstSeen = opaqueBrowserFirstSeenElapsed.getOrPut(packageName) { nowElapsed }
+        if (WebsiteObservabilityPolicy.shouldBlockOpaqueBrowser(
+                websiteProtectionRequiresObservation = true,
+                browserStillForeground = foregroundPackageName == packageName,
+                addressBarObservable = false,
+                firstUnobservableElapsed = firstSeen,
+                nowElapsed = nowElapsed
+            )
+        ) {
+            blockOpaqueBrowser(packageName)
+            return true
+        }
+
+        if (opaqueBrowserVerificationScheduled.add(packageName)) {
+            val delayMillis = (
+                WebsiteObservabilityPolicy.OPAQUE_BROWSER_GRACE_MILLIS -
+                    (nowElapsed - firstSeen)
+                ).coerceAtLeast(1L)
+            mainHandler.postDelayed({ verifyOpaqueBrowser(packageName, firstSeen) }, delayMillis)
+        }
+        return false
+    }
+
+    private fun verifyOpaqueBrowser(packageName: String, expectedFirstSeen: Long) {
+        opaqueBrowserVerificationScheduled.remove(packageName)
+        if (opaqueBrowserFirstSeenElapsed[packageName] != expectedFirstSeen) return
+        if (!websiteObservationRequired() || foregroundPackageName != packageName) {
+            opaqueBrowserFirstSeenElapsed.remove(packageName)
+            return
+        }
+
+        val root = rootInActiveWindow
+        val observable = try {
+            WebsiteBlocker.hasAddressBarNode(root, packageName)
+        } finally {
+            recycleSafely(root)
+        }
+        if (observable) {
+            opaqueBrowserFirstSeenElapsed.remove(packageName)
+            return
+        }
+
+        val nowElapsed = SystemClock.elapsedRealtime()
+        if (WebsiteObservabilityPolicy.shouldBlockOpaqueBrowser(
+                websiteProtectionRequiresObservation = true,
+                browserStillForeground = foregroundPackageName == packageName,
+                addressBarObservable = false,
+                firstUnobservableElapsed = expectedFirstSeen,
+                nowElapsed = nowElapsed
+            )
+        ) {
+            blockOpaqueBrowser(packageName)
+        }
+    }
+
+    private fun blockOpaqueBrowser(packageName: String) {
+        opaqueBrowserFirstSeenElapsed.remove(packageName)
+        opaqueBrowserVerificationScheduled.remove(packageName)
+        stopWebsiteTracking()
+        val noticeLaunched = launchBlockNotice(
+            blockedPackage = null,
+            blockedDomain = "Navegador sem URL verificável",
+            redirectBrowserPackage = packageName
+        )
+        if (!noticeLaunched && !redirectBrowserToSafePage(packageName)) {
+            performGlobalAction(GLOBAL_ACTION_BACK)
+            performGlobalAction(GLOBAL_ACTION_HOME)
+        }
+    }
+
     private fun updateWebsiteTracking(urlOrDomain: String, packageName: String, now: Long) {
         val matchingRules = WebsiteBlocker.findMatchingRules(
             urlOrDomain,
@@ -2119,7 +2233,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             return
         }
         val pornographyGoogleSurface =
-            WebsiteBlocker.isPornographyGoogleSearchUrl(urlOrDomain) ||
+            WebsiteBlocker.isPornographySearchUrl(urlOrDomain) ||
                 WebsiteBlocker.isGoogleImagesUrl(urlOrDomain)
         val usageDomain = if (
             PredefinedWebsites.PORNOGRAPHY_RULE in matchingRules &&

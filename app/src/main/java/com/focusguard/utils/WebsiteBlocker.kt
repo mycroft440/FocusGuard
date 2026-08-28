@@ -329,7 +329,7 @@ object WebsiteBlocker {
             val normalizedCandidate = normalizeRule(urlOrDomain)
             val pornographyMatched = isPornographyRule(normalizedCandidate) ||
                 findDirectMatchingRules(urlOrDomain, pornographyBlockingRules).isNotEmpty() ||
-                isPornographyGoogleSearchUrl(urlOrDomain) ||
+                isPornographySearchUrl(urlOrDomain) ||
                 isGoogleImagesUrl(urlOrDomain)
             if (pornographyMatched) matches += PredefinedWebsites.PORNOGRAPHY_RULE
         }
@@ -510,6 +510,15 @@ object WebsiteBlocker {
         return result
     }
 
+    /** True even while a genuine address bar is still empty (e.g. a new tab). */
+    fun hasAddressBarNode(
+        root: AccessibilityNodeInfo?,
+        browserPackageName: String
+    ): Boolean {
+        if (root == null || browserPackageName.isBlank()) return false
+        return findAddressBarNode(root, browserPackageName, 0, intArrayOf(0))
+    }
+
     /** Fallback para texto ainda digitado quando o evento não veio da barra. */
     fun extractAddressBarTextFromRoot(
         root: AccessibilityNodeInfo?,
@@ -542,7 +551,7 @@ object WebsiteBlocker {
     fun isPornographySearchInput(text: String): Boolean {
         val candidateUrl = extractUrlCandidate(text)
         if (candidateUrl != null &&
-            (isPornographyGoogleSearchUrl(candidateUrl) || isGoogleImagesUrl(candidateUrl))
+            (isPornographySearchUrl(candidateUrl) || isGoogleImagesUrl(candidateUrl))
         ) {
             return true
         }
@@ -562,6 +571,14 @@ object WebsiteBlocker {
         if (!isGoogleUrl(url)) return false
         return searchQueryValues(url).any(::containsPornographySearchTerm)
     }
+
+    /** Detecta a mesma consulta também em Bing, DuckDuckGo, Brave, Yahoo e afins. */
+    fun isPornographySearchUrl(url: String): Boolean {
+        val domain = extractDomain(url)
+        if (domain.isEmpty() || !isKnownSearchEngineDomain(domain)) return false
+        return searchQueryValues(url).any(::containsPornographySearchTerm)
+    }
+
 
     /**
      * No modo estrito, qualquer superfície de pesquisa visual do Google fica
@@ -633,6 +650,34 @@ object WebsiteBlocker {
         return sequenceOf(node.text, node.contentDescription, node.hintText)
             .map { value -> sanitizeText(value?.toString().orEmpty()) }
             .firstOrNull(String::isNotEmpty)
+    }
+
+    private fun findAddressBarNode(
+        node: AccessibilityNodeInfo?,
+        browserPackageName: String,
+        depth: Int,
+        visitedNodes: IntArray
+    ): Boolean {
+        if (node == null || depth > MAX_TREE_DEPTH) return false
+        visitedNodes[0] += 1
+        if (visitedNodes[0] > MAX_TREE_NODES) return false
+        return try {
+            if (isAddressBarNode(node, browserPackageName)) return true
+            for (index in 0 until node.childCount) {
+                val child = node.getChild(index) ?: continue
+                try {
+                    if (findAddressBarNode(child, browserPackageName, depth + 1, visitedNodes)) {
+                        return true
+                    }
+                } finally {
+                    recycleSafely(child)
+                }
+            }
+            false
+        } catch (error: RuntimeException) {
+            FocusGuardLogger.logError(TAG, "Falha ao localizar barra de endereço", error)
+            false
+        }
     }
 
     private fun findAddressBarValue(
@@ -739,6 +784,13 @@ object WebsiteBlocker {
         }
         return node.isEditable && packageMatches &&
             (idSuggestsAddressBar || uriInput && hasBrowserResourceId)
+    }
+
+    private fun isKnownSearchEngineDomain(domain: String): Boolean {
+        if (GOOGLE_HOST_REGEX.matches(domain)) return true
+        return SEARCH_ENGINE_DOMAIN_SUFFIXES.any { suffix ->
+            domain == suffix || domain.endsWith(".$suffix")
+        }
     }
 
     private fun authorityHost(authority: String?): String? {
@@ -996,7 +1048,12 @@ object WebsiteBlocker {
     private val WHITESPACE_REGEX = Regex("\\s+")
     private val KEYWORD_REGEX = Regex("^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?$")
     private const val MAX_QUERY_DECODE_PASSES = 3
-    private val SEARCH_QUERY_KEYS = setOf("q", "query", "oq")
+    private val SEARCH_QUERY_KEYS = setOf("q", "query", "oq", "p", "text", "search", "keyword", "wd")
+    private val SEARCH_ENGINE_DOMAIN_SUFFIXES = setOf(
+        "bing.com", "duckduckgo.com", "search.brave.com", "ecosia.org",
+        "startpage.com", "qwant.com", "yahoo.com", "yandex.com", "yandex.ru",
+        "baidu.com", "aol.com", "ask.com", "naver.com"
+    )
     private val GOOGLE_IMAGE_PATH_PREFIXES = setOf(
         "/imghp",
         "/imgres",

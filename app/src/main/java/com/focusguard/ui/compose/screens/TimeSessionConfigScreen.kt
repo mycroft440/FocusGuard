@@ -16,6 +16,7 @@ import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.WebsiteUsageLimit
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
+import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.utils.WebsiteBlocker
@@ -41,7 +42,7 @@ fun TimeSessionConfigScreen(
     val database = rememberAppDatabase()
 
     LaunchedEffect(passwordRefreshKey) {
-        hasPassword = authManager.hasPasswordSet()
+        hasPassword = DeactivationCredentialManager(context).hasCredential()
     }
 
     UsageBlockConfigScreen(

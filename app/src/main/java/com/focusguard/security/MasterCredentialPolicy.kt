@@ -214,6 +214,24 @@ object MasterCredentialPolicy {
     }
 
     /**
+     * A TIME commitment stays armed from creation until its absolute end, even
+     * when a recurring schedule is currently outside its daily blocking window.
+     * The schedule decides when targets are inaccessible; it must never become an
+     * escape hatch for deleting the session or uninstalling FocusGuard.
+     */
+    fun isTimeCommitmentActive(
+        sessionType: String,
+        isActive: Boolean,
+        endTime: Long?,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Boolean {
+        if (!isActive || !sessionType.equals(SESSION_TYPE_TIME, ignoreCase = true)) {
+            return false
+        }
+        return endTime == null || endTime > nowMillis
+    }
+
+    /**
      * Only the explicit passwordless time block prevents uninstall. A PASSWORD
      * session is removable with its credential, and Pomodoro is a focus timer,
      * not the long-term uninstall commitment shown by the Protection screen.

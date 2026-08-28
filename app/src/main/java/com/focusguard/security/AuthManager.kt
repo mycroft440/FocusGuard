@@ -9,6 +9,7 @@ import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.AppPassword
+import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.utils.SecurePrefsManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -120,25 +121,9 @@ class AuthManager(context: Context) {
      */
     suspend fun isAppLocked(): Boolean {
         ensureMigrationDone()
-        val hasMasterCredential = DeactivationCredentialManager(appContext).hasCredential()
-        val activeSessionTypes = database.blockSessionDao()
-            .getAllActiveSessionsStatic()
-            .map { it.sessionType }
-        val hasPasswordProtectedAppLimit = database.appUsageLimitDao()
-            .getAllActiveLimitsStatic()
-            .any { it.lockMode.equals("PASSWORD", ignoreCase = true) }
-        val hasPasswordProtectedWebsiteLimit = database.websiteUsageLimitDao()
-            .getAllStatic()
-            .any {
-                it.isEnabled && it.lockMode.equals("PASSWORD", ignoreCase = true)
-            }
-
-        return AppEntryLockPolicy.requiresPassword(
-            hasMasterCredential = hasMasterCredential,
-            activeSessionTypes = activeSessionTypes,
-            hasPasswordProtectedAppLimit = hasPasswordProtectedAppLimit,
-            hasPasswordProtectedWebsiteLimit = hasPasswordProtectedWebsiteLimit
-        )
+        if (!DeactivationCredentialManager(appContext).hasCredential()) return false
+        return BlockingSessionManager.getInstance(appContext)
+            .hasPasswordProtectionBlockingNow()
     }
 
     suspend fun hasPasswordSet(): Boolean {
