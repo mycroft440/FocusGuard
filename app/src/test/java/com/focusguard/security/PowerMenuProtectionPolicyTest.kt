@@ -79,6 +79,24 @@ class PowerMenuProtectionPolicyTest {
     }
 
     @Test
+    fun `ambiguous actions dialog needs actual power actions`() {
+        assertThat(
+            PowerMenuProtectionPolicy.classifyDirect(
+                packageName = "com.android.systemui",
+                className = "com.android.systemui.ActionsDialog",
+                values = listOf("Wi-Fi", "Bluetooth")
+            )
+        ).isEqualTo(DirectDecision.UNKNOWN)
+        assertThat(
+            PowerMenuProtectionPolicy.classifyDirect(
+                packageName = "com.android.systemui",
+                className = "com.android.systemui.ActionsDialog",
+                values = listOf("Desligar", "Reiniciar")
+            )
+        ).isEqualTo(DirectDecision.MATCH)
+    }
+
+    @Test
     fun `generic system ui window falls back to its tree`() {
         assertThat(
             PowerMenuProtectionPolicy.classifyDirect(

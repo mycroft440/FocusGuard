@@ -86,7 +86,13 @@ object PowerMenuProtectionPolicy {
             return DirectDecision.NOT_MATCH
         }
         if (ambiguousClassMarkers.any { className.contains(it, ignoreCase = true) }) {
-            return DirectDecision.MATCH
+            // `ActionsDialog` is reused by SystemUI for surfaces that are not the
+            // power menu. Require rendered power actions before accepting it.
+            return if (isPowerMenu(packageName, className, values)) {
+                DirectDecision.MATCH
+            } else {
+                DirectDecision.UNKNOWN
+            }
         }
         return if (isPowerMenu(packageName, className, values)) {
             DirectDecision.MATCH

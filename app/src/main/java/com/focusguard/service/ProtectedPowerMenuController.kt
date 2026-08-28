@@ -238,15 +238,17 @@ class ProtectedPowerMenuController(
         if (shouldRecheckAfterFeedbackInterrupt(overlayVisible)) scheduleRecheck()
     }
 
-    /** Screen-off is not proof that an OEM global-actions window disappeared. */
+    /**
+     * Screen-off must never synthesize HOME. In Focus Mode HOME resolves to the
+     * Hard Block shell itself, which can look like the app opened spontaneously.
+     * A later real global-actions event will recreate the shield if still needed.
+     */
     fun onScreenOff() {
         if (Looper.myLooper() != Looper.getMainLooper()) {
             mainHandler.post(::onScreenOff)
             return
         }
-        if (shouldRequestCloseOnScreenOff(overlayVisible)) {
-            requestNativeHomeClose()
-        }
+        if (overlayVisible) dismiss()
     }
 
     fun destroy() {
@@ -1038,7 +1040,10 @@ class ProtectedPowerMenuController(
             closeStage == CloseStage.BACK_REQUESTED &&
                 closeStageForMillis >= BACK_TO_HOME_MILLIS -> RecheckDecision.REQUEST_HOME
             closeStage != CloseStage.NONE -> RecheckDecision.KEEP_CHECKING
-            unconfirmedSignalGraceExpired -> RecheckDecision.REQUEST_BACK
+            // A class-only/undefined-window signal that never became a real
+            // SystemUI power-menu root is a false-positive candidate. Hide it
+            // instead of injecting BACK/HOME into whatever the user is doing.
+            unconfirmedSignalGraceExpired -> RecheckDecision.HIDE
             visibleForMillis >= MAX_OVERLAY_VISIBLE_MILLIS -> RecheckDecision.REQUEST_BACK
             else -> RecheckDecision.KEEP_CHECKING
         }

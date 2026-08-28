@@ -87,9 +87,9 @@ fun MainScreen(
                                     .align(Alignment.CenterStart)
                                     .padding(start = 16.dp),
                                 color = TextPrimary,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold,
-                                letterSpacing = (-0.2).sp
+                                fontSize = 30.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                letterSpacing = (-0.6).sp
                             )
                         } else if (!focusModeActive) {
                             FocusCard(

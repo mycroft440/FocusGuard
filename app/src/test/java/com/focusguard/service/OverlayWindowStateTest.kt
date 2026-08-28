@@ -68,7 +68,7 @@ class OverlayWindowStateTest {
     }
 
     @Test
-    fun `undefined window expiry requests back while overlay remains`() {
+    fun `undefined unconfirmed power signal hides without injecting navigation`() {
         assertThat(
             ProtectedPowerMenuController.recheckDecision(
                 overlayVisible = true,
@@ -79,7 +79,7 @@ class OverlayWindowStateTest {
                 unconfirmedSignalGraceExpired = true
             )
         ).isEqualTo(
-            ProtectedPowerMenuController.RecheckDecision.REQUEST_BACK
+            ProtectedPowerMenuController.RecheckDecision.HIDE
         )
     }
 

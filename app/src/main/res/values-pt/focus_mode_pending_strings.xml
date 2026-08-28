@@ -3,4 +3,6 @@
     <string name="focus_mode_compact_purpose">Bloqueia o telefone e libera só o que você escolher.</string>
     <string name="focus_mode_how_it_works">Como funciona</string>
     <string name="focus_mode_tap_anywhere_to_close">Toque em qualquer área da tela para fechar.</string>
+    <string name="focus_mode_grayscale_hint">Remove as cores para reduzir estímulos.</string>
+    <string name="focus_mode_review_start">Revisar e iniciar</string>
 </resources>
