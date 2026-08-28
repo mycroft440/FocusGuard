@@ -1,0 +1,202 @@
+name: Build CI 974 Compatible APK
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/build-ci974-compatible.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci974-compatible-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build APK with CI 974 identity
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      FOCUSGUARD_CI_SIGNING: "true"
+      EXPECTED_PACKAGE: "com.focusguard.v2.ci"
+      EXPECTED_CERT_SHA256: "121efb1973812c062e2608f301eaa17b4def66260f9f57971110a0a25fef5141"
+
+    steps:
+      - name: Checkout current main
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set update-compatible version
+        shell: bash
+        run: |
+          set -euo pipefail
+          COMMIT_COUNT="$(git rev-list --count HEAD)"
+          VERSION_CODE="$((1000 + COMMIT_COUNT))"
+          if [ "$VERSION_CODE" -le 10 ]; then
+            echo "::error::versionCode must be greater than CI 974 versionCode 10"
+            exit 1
+          fi
+          echo "CI_VERSION_CODE=$VERSION_CODE" >> "$GITHUB_ENV"
+          echo "CI_VERSION_NAME=2.5.0" >> "$GITHUB_ENV"
+          echo "Building CI-974-compatible update with versionCode=$VERSION_CODE"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Restore exact CI 974 signing key
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: focusguard-ci-signing-v1
+          fail-on-cache-miss: true
+
+      - name: Require cached signing key
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -s "$HOME/.android/debug.keystore"
+          keytool -list \
+            -keystore "$HOME/.android/debug.keystore" \
+            -storepass android \
+            -alias androiddebugkey >/dev/null
+
+      - name: Enable CI 974 identity only in runner
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path("app/build.gradle.kts")
+          text = path.read_text(encoding="utf-8")
+
+          signing_anchor = '''    val releaseSigningAvailable = !releaseKeystorePath.isNullOrBlank() &&
+              !releaseKeystorePassword.isNullOrBlank() &&
+              !releaseKeyAlias.isNullOrBlank() &&
+              !releaseKeyPassword.isNullOrBlank() &&
+              file(releaseKeystorePath).exists()
+          '''
+          signing_replacement = signing_anchor + '''    val ciSigningEnabled = System.getenv("FOCUSGUARD_CI_SIGNING")
+              ?.equals("true", ignoreCase = true) == true
+          '''
+          if signing_anchor not in text:
+              raise SystemExit("releaseSigningAvailable anchor not found")
+          text = text.replace(signing_anchor, signing_replacement, 1)
+
+          release_anchor = '''            if (releaseSigningAvailable) {
+                          signingConfig = signingConfigs.getByName("release")
+                      }
+          '''
+          release_replacement = '''            when {
+                          releaseSigningAvailable -> {
+                              signingConfig = signingConfigs.getByName("release")
+                          }
+                          ciSigningEnabled -> {
+                              // Compatibility mode for Android CI Pro run #974 only.
+                              applicationIdSuffix = ".ci"
+                              versionNameSuffix = "-ci"
+                              signingConfig = signingConfigs.getByName("debug")
+                          }
+                      }
+          '''
+          if release_anchor not in text:
+              raise SystemExit("release signing block anchor not found")
+          text = text.replace(release_anchor, release_replacement, 1)
+
+          path.write_text(text, encoding="utf-8")
+          PY
+
+          grep -q 'applicationIdSuffix = ".ci"' app/build.gradle.kts
+          git diff -- app/build.gradle.kts
+
+      - name: Install Android 16 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Build CI 974 compatible Release APK
+        shell: bash
+        run: |
+          set -o pipefail
+          chmod +x gradlew
+          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1 | tee ci974-build.log
+
+      - name: Verify exact CI 974 identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="$(find app/build/outputs/apk/release -type f -name '*.apk' -size +0c | head -n 1)"
+          APKSIGNER="$ANDROID_HOME/build-tools/36.0.0/apksigner"
+          AAPT="$ANDROID_HOME/build-tools/36.0.0/aapt"
+
+          test -n "$APK" && test -s "$APK"
+          mkdir -p ci974-artifacts
+
+          "$APKSIGNER" verify --verbose --print-certs "$APK" \
+            | tee ci974-artifacts/apksigner.txt
+          "$AAPT" dump badging "$APK" | head -n 1 \
+            | tee ci974-artifacts/package.txt
+
+          grep -q "package: name='$EXPECTED_PACKAGE'" ci974-artifacts/package.txt
+          grep -qi "$EXPECTED_CERT_SHA256" ci974-artifacts/apksigner.txt
+          grep -q "versionName='2.5.0-ci'" ci974-artifacts/package.txt
+
+          ACTUAL_VERSION_CODE="$(sed -n "s/.*versionCode='\([0-9][0-9]*\)'.*/\1/p" ci974-artifacts/package.txt)"
+          test -n "$ACTUAL_VERSION_CODE"
+          if [ "$ACTUAL_VERSION_CODE" -le 10 ]; then
+            echo "::error::Generated APK cannot update CI 974 because versionCode=$ACTUAL_VERSION_CODE"
+            exit 1
+          fi
+
+          OUTPUT="ci974-artifacts/HardBlock-CI974-compatible-vc${ACTUAL_VERSION_CODE}.apk"
+          cp "$APK" "$OUTPUT"
+          sha256sum "$OUTPUT" > ci974-artifacts/SHA256SUMS.txt
+
+          {
+            echo "### CI 974 compatibility verified"
+            echo "- Package: $EXPECTED_PACKAGE"
+            echo "- Certificate SHA-256: $EXPECTED_CERT_SHA256"
+            echo "- versionCode: $ACTUAL_VERSION_CODE (> 10)"
+            echo "- versionName: 2.5.0-ci"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload CI 974 compatible APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: hardblock-ci974-compatible-${{ github.run_number }}
+          path: ci974-artifacts/HardBlock-CI974-compatible-vc*.apk
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0
+
+      - name: Upload identity verification
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci974-identity-verification-${{ github.run_number }}
+          path: |
+            ci974-artifacts/apksigner.txt
+            ci974-artifacts/package.txt
+            ci974-artifacts/SHA256SUMS.txt
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload build diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci974-build-diagnostics-${{ github.run_number }}
+          path: ci974-build.log
+          if-no-files-found: warn
+          retention-days: 14
