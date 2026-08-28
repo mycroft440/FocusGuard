@@ -26,6 +26,20 @@ jobs:
 
       - uses: gradle/actions/setup-gradle@v4
 
+      - name: Harden executor match handling
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('.github/scripts/apply_critic_corrections.py')
+          text = p.read_text(encoding='utf-8')
+          old = """    if count != 1:\n        raise SystemExit(f'{label}: expected exactly one match, found {count}')\n    return text.replace(old, new, 1)\n"""
+          new = """    if label == 'detection state reset' and count > 1:\n        index = text.rfind(old)\n        return text[:index] + new + text[index + len(old):]\n    if count != 1:\n        raise SystemExit(f'{label}: expected exactly one match, found {count}')\n    return text.replace(old, new, 1)\n"""
+          if old not in text:
+              raise SystemExit('replace_once helper marker not found')
+          p.write_text(text.replace(old, new, 1), encoding='utf-8')
+          PY
+
       - name: Apply critic corrections
         run: python3 .github/scripts/apply_critic_corrections.py
 
