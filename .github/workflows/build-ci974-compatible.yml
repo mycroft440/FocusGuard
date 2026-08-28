@@ -50,22 +50,43 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Restore exact CI 974 signing key
-        uses: actions/cache@v4
+      - name: Restore cache with exact action revision used by CI 974
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830
         with:
           path: ~/.android/debug.keystore
           key: focusguard-ci-signing-v1
           fail-on-cache-miss: true
 
-      - name: Require cached signing key
+      - name: Require exact CI 974 private key
         shell: bash
         run: |
           set -euo pipefail
-          test -s "$HOME/.android/debug.keystore"
+          KEYSTORE="$HOME/.android/debug.keystore"
+          test -s "$KEYSTORE"
           keytool -list \
-            -keystore "$HOME/.android/debug.keystore" \
+            -keystore "$KEYSTORE" \
             -storepass android \
             -alias androiddebugkey >/dev/null
+
+          ACTUAL_CERT_SHA256="$(
+            keytool -exportcert \
+              -keystore "$KEYSTORE" \
+              -storepass android \
+              -alias androiddebugkey \
+              -rfc 2>/dev/null \
+              | openssl x509 -noout -fingerprint -sha256 \
+              | sed 's/.*=//' \
+              | tr -d ':' \
+              | tr '[:upper:]' '[:lower:]'
+          )"
+
+          echo "Recovered certificate SHA-256: $ACTUAL_CERT_SHA256"
+          if [ "$ACTUAL_CERT_SHA256" != "$EXPECTED_CERT_SHA256" ]; then
+            echo "::error::The restored cache is not the CI 974 private key. Expected $EXPECTED_CERT_SHA256, got $ACTUAL_CERT_SHA256"
+            exit 1
+          fi
+
+          echo "Exact CI 974 private key recovered."
 
       - name: Enable CI 974 identity only in runner
         shell: bash
