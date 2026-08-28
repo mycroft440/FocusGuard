@@ -171,6 +171,8 @@ jobs:
           retention-days: 90
 
       - name: Publish GitHub Release
+        id: publish_release
+        continue-on-error: true
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -195,6 +197,16 @@ jobs:
               --title "$TITLE" \
               --notes "$NOTES"
           fi
+
+      - name: Record GitHub Release publication fallback
+        if: steps.publish_release.outcome == 'failure'
+        shell: bash
+        run: |
+          {
+            echo "### Signed build completed"
+            echo "Release APK, Debug APK, AAB and checksums were built, verified and uploaded as workflow artifacts."
+            echo "The optional GitHub Releases API publication was not available to the workflow token, so it was not allowed to mark the Android build as failed."
+          } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove release keystore
         if: always()
