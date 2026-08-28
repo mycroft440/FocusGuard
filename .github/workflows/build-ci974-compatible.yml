@@ -85,10 +85,10 @@ jobs:
               !releaseKeyAlias.isNullOrBlank() &&
               !releaseKeyPassword.isNullOrBlank() &&
               file(releaseKeystorePath).exists()
-          '''
+          '''.replace("              !", "        !").replace("              file", "        file")
           signing_replacement = signing_anchor + '''    val ciSigningEnabled = System.getenv("FOCUSGUARD_CI_SIGNING")
               ?.equals("true", ignoreCase = true) == true
-          '''
+          '''.replace("              ?", "        ?")
           if signing_anchor not in text:
               raise SystemExit("releaseSigningAvailable anchor not found")
           text = text.replace(signing_anchor, signing_replacement, 1)
@@ -96,7 +96,7 @@ jobs:
           release_anchor = '''            if (releaseSigningAvailable) {
                           signingConfig = signingConfigs.getByName("release")
                       }
-          '''
+          '''.replace("                          signingConfig", "                signingConfig").replace("                      }", "            }")
           release_replacement = '''            when {
                           releaseSigningAvailable -> {
                               signingConfig = signingConfigs.getByName("release")
@@ -109,6 +109,15 @@ jobs:
                           }
                       }
           '''
+          release_replacement = (release_replacement
+              .replace("                          releaseSigningAvailable", "                releaseSigningAvailable")
+              .replace("                              signingConfig", "                    signingConfig")
+              .replace("                          }", "                }")
+              .replace("                          ciSigningEnabled", "                ciSigningEnabled")
+              .replace("                              //", "                    //")
+              .replace("                              applicationIdSuffix", "                    applicationIdSuffix")
+              .replace("                              versionNameSuffix", "                    versionNameSuffix")
+              .replace("                      }", "            }"))
           if release_anchor not in text:
               raise SystemExit("release signing block anchor not found")
           text = text.replace(release_anchor, release_replacement, 1)
