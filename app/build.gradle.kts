@@ -15,6 +15,8 @@ android {
     val ciVersionName = System.getenv("CI_VERSION_NAME")?.takeIf { it.isNotBlank() }
 
     defaultConfig {
+        // Permanent Android update identity. Never change this applicationId:
+        // every production APK must update the same installed Hard Block app.
         applicationId = "com.focusguard.v2"
         minSdk = 26
         targetSdk = 36
@@ -55,8 +57,6 @@ android {
         !releaseKeyAlias.isNullOrBlank() &&
         !releaseKeyPassword.isNullOrBlank() &&
         file(releaseKeystorePath).exists()
-    val ciSigningEnabled = System.getenv("FOCUSGUARD_CI_SIGNING")
-        ?.equals("true", ignoreCase = true) == true
 
     signingConfigs {
         if (releaseSigningAvailable) {
@@ -66,8 +66,8 @@ android {
                 keyAlias = releaseKeyAlias
                 keyPassword = releaseKeyPassword
                 // Android 8+ is the minimum supported version. Modern schemes
-                // provide stronger integrity while Play App Signing preserves the
-                // trusted update identity across releases.
+                // provide stronger integrity while the same permanent key keeps
+                // every production build update-compatible with prior releases.
                 enableV1Signing = false
                 enableV2Signing = true
                 enableV3Signing = true
@@ -77,6 +77,8 @@ android {
 
     buildTypes {
         debug {
+            // Debug remains an explicitly separate development-only variant and
+            // is never published as an update artifact by CI/Release workflows.
             applicationIdSuffix = ".debug"
             versionNameSuffix = "-debug"
         }
@@ -87,18 +89,11 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
             )
-            when {
-                releaseSigningAvailable -> {
-                    signingConfig = signingConfigs.getByName("release")
-                }
-                ciSigningEnabled -> {
-                    // GitHub Actions must never publish an unsigned APK. When no
-                    // production keystore is available, build a clearly isolated
-                    // CI package with the cached Android debug signing key instead.
-                    applicationIdSuffix = ".ci"
-                    versionNameSuffix = "-ci"
-                    signingConfig = signingConfigs.getByName("debug")
-                }
+            // There is deliberately no .ci/debug fallback here. A production
+            // Release without the permanent signing key must remain unpublished
+            // rather than creating a second Android package or incompatible app.
+            if (releaseSigningAvailable) {
+                signingConfig = signingConfigs.getByName("release")
             }
         }
     }
@@ -159,7 +154,7 @@ dependencies {
 
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
-    ksp(libs.androidx.room.compiler)
+    ksp(libs.room.compiler)
 
     implementation(libs.hilt.android)
     ksp(libs.hilt.compiler)
