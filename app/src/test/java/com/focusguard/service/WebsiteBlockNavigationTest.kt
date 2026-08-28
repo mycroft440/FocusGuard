@@ -3,6 +3,7 @@ package com.focusguard.service
 import android.content.Context
 import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
+import com.focusguard.data.PredefinedWebsites
 import com.focusguard.ui.BlockNoticeActivity
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
@@ -29,6 +30,57 @@ class WebsiteBlockNavigationTest {
         ).isNotEqualTo(0)
         assertThat(BlockingAccessibilityService.EVENT_NOTIFICATION_TIMEOUT_MILLIS)
             .isEqualTo(0L)
+    }
+
+    @Test
+    fun `website blocking listens to address bar events with no delivery debounce`() {
+        val immediateTypes = BlockingAccessibilityService.immediateBrowserBlockEventTypesForTest()
+        val requested = BlockingAccessibilityService.requestedAccessibilityEventTypes()
+
+        assertThat(immediateTypes).containsAtLeast(
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_FOCUSED,
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        )
+        immediateTypes.forEach { type ->
+            assertThat(requested and type).isNotEqualTo(0)
+        }
+        assertThat(BlockingAccessibilityService.EVENT_NOTIFICATION_TIMEOUT_MILLIS).isEqualTo(0L)
+    }
+
+    @Test
+    fun `blocked domain is classified immediately from address bar`() {
+        assertThat(
+            BlockingAccessibilityService.immediateWebsiteBlockTarget(
+                addressText = "https://m.facebook.com/profile",
+                url = "https://m.facebook.com/profile",
+                blockedRules = listOf("facebook.com")
+            )
+        ).isEqualTo("m.facebook.com")
+    }
+
+    @Test
+    fun `pornography search is classified before navigation finishes`() {
+        assertThat(
+            BlockingAccessibilityService.immediateWebsiteBlockTarget(
+                addressText = "free porn videos",
+                url = null,
+                blockedRules = listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
+            )
+        ).isEqualTo(PredefinedWebsites.PORNOGRAPHY_RULE)
+    }
+
+    @Test
+    fun `safe address is not blocked by the immediate classifier`() {
+        assertThat(
+            BlockingAccessibilityService.immediateWebsiteBlockTarget(
+                addressText = "https://example.com/news",
+                url = "https://example.com/news",
+                blockedRules = listOf("facebook.com", PredefinedWebsites.PORNOGRAPHY_RULE)
+            )
+        ).isNull()
     }
 
     @Test

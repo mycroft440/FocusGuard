@@ -704,6 +704,19 @@ class BlockingAccessibilityService : AccessibilityService() {
                 return
             }
 
+            // Website fast path: mirror the launcher/app fast path above. For a
+            // known browser, an address-bar event already contains enough evidence
+            // to decide a configured block. Do that BEFORE resolving windows or
+            // touching rootInActiveWindow, because those binder/tree reads are the
+            // largest avoidable delay between the browser event and our warm
+            // accessibility curtain becoming opaque and touch-consuming.
+            if (event.eventType in immediateBrowserBlockEventTypes &&
+                directPackage in browserPackages &&
+                handleImmediateBrowserBlock(event, directPackage)
+            ) {
+                return
+            }
+
             val packageName = resolveEventPackageName(event)
             // Second chance: `event.packageName` is occasionally blank, and for
             // TYPE_WINDOWS_CHANGED it can name a different window than the one that
@@ -2067,6 +2080,29 @@ class BlockingAccessibilityService : AccessibilityService() {
         return recognized
     }
 
+    private fun handleImmediateBrowserBlock(
+        event: AccessibilityEvent,
+        packageName: String
+    ): Boolean {
+        if (blockedWebsitesDomainSet.isEmpty()) return false
+
+        val addressText = WebsiteBlocker.extractAddressBarTextFromEvent(event, packageName)
+        val url = addressText?.let(WebsiteBlocker::extractUrlCandidate)
+            ?: WebsiteBlocker.extractUrlFromEvent(event, packageName)
+        val blockTarget = immediateWebsiteBlockTarget(
+            addressText = addressText,
+            url = url,
+            blockedRules = blockedWebsitesDomainSet
+        ) ?: return false
+
+        blockWebsite(
+            domain = blockTarget,
+            browserPackageName = packageName,
+            eventUptimeMillis = event.eventTime
+        )
+        return true
+    }
+
     private fun handleBrowserEvent(
         event: AccessibilityEvent,
         resolvedPackageName: String
@@ -2089,6 +2125,25 @@ class BlockingAccessibilityService : AccessibilityService() {
             ?: WebsiteBlocker.extractAddressBarTextFromRoot(root, packageName)
         val addressBarObservable = fastAddressText != null ||
             url != null || WebsiteBlocker.hasAddressBarNode(root, packageName)
+
+        // Even on the root-fallback path, the block decision outranks tracking,
+        // policy refreshes and observability bookkeeping. Once the URL is known,
+        // cover the page immediately just like blockApp() covers an app window.
+        val immediateTarget = immediateWebsiteBlockTarget(
+            addressText = addressText,
+            url = url,
+            blockedRules = blockedWebsitesDomainSet
+        )
+        if (immediateTarget != null) {
+            blockWebsite(
+                domain = immediateTarget,
+                browserPackageName = packageName,
+                eventUptimeMillis = event.eventTime
+            )
+            recycleSafely(root)
+            return
+        }
+
         if (handleBrowserObservability(packageName, addressBarObservable)) {
             recycleSafely(root)
             return
@@ -2096,18 +2151,19 @@ class BlockingAccessibilityService : AccessibilityService() {
         val now = System.currentTimeMillis()
 
         if (pornographyCategoryActive) {
-            val addressBarHasBlockedSearch = addressText?.let(
-                WebsiteBlocker::isPornographySearchInput
-            ) == true
+            // Some Google result pages expose the search field event without the
+            // omnibox in that same event. Keep this secondary detector after the
+            // address-bar fast path so it adds coverage without delaying it.
             val googlePageFieldHasBlockedSearch = fastAddressText == null &&
                 url?.let(WebsiteBlocker::isGoogleUrl) == true &&
                 WebsiteBlocker.extractEditableTextFromEvent(event)?.let(
                     WebsiteBlocker::containsPornographySearchTerm
                 ) == true
-            if (addressBarHasBlockedSearch || googlePageFieldHasBlockedSearch) {
+            if (googlePageFieldHasBlockedSearch) {
                 blockWebsite(
-                    PredefinedWebsites.PORNOGRAPHY_RULE,
-                    packageName
+                    domain = PredefinedWebsites.PORNOGRAPHY_RULE,
+                    browserPackageName = packageName,
+                    eventUptimeMillis = event.eventTime
                 )
                 recycleSafely(root)
                 return
@@ -2115,22 +2171,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
 
         if (!url.isNullOrBlank()) {
-            val domain = WebsiteBlocker.extractDomain(url)
             updateWebsiteTracking(url, packageName, now)
-            val matchingRule = WebsiteBlocker.findMatchingRule(
-                url,
-                blockedWebsitesDomainSet
-            )
-            if (matchingRule != null) {
-                val blockTarget = if (WebsiteBlocker.isPornographyRule(matchingRule)) {
-                    matchingRule
-                } else {
-                    domain
-                }
-                blockWebsite(blockTarget, packageName)
-                recycleSafely(root)
-                return
-            }
         } else if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             // Uma nova aba/tela interna sem URL não deve continuar somando o
             // tempo do site visitado anteriormente.
@@ -2423,12 +2464,17 @@ class BlockingAccessibilityService : AccessibilityService() {
         )
     }
 
-    private fun blockWebsite(domain: String, browserPackageName: String) {
+    private fun blockWebsite(
+        domain: String,
+        browserPackageName: String,
+        eventUptimeMillis: Long = SystemClock.uptimeMillis()
+    ) {
         if (!beginWebsiteBlock(domain, browserPackageName)) return
         val noticeLaunched = launchBlockNotice(
             blockedPackage = null,
             blockedDomain = WebsiteBlocker.displayRule(domain),
-            redirectBrowserPackage = browserPackageName
+            redirectBrowserPackage = browserPackageName,
+            eventUptimeMillis = eventUptimeMillis
         )
         if (!noticeLaunched && !redirectBrowserToSafePage(browserPackageName)) {
             performGlobalAction(GLOBAL_ACTION_BACK)
@@ -2990,6 +3036,15 @@ class BlockingAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
             AccessibilityEvent.TYPE_VIEW_CLICKED
         )
+        // Events whose source can expose an address bar before a root/window walk.
+        // Zero notification timeout means Android delivers them without batching.
+        private val immediateBrowserBlockEventTypes = setOf(
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_FOCUSED,
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        )
         internal const val WEBSITE_BLOCK_NOTICE_DURATION_MILLIS = 1_000L
         const val ACTION_REFRESH_BLOCKING = "com.focusguard.ACTION_REFRESH_BLOCKING"
         internal const val ACTION_DEV_RELINQUISH_ACCESSIBILITY =
@@ -3013,8 +3068,40 @@ class BlockingAccessibilityService : AccessibilityService() {
     ): Boolean = directAccessibility ||
         (installedAccessibilityApps && rootMentionsAccessibility())
 
-    internal fun settingsInterceptionEventTypesForTest(): Set<Int> =
+        internal fun settingsInterceptionEventTypesForTest(): Set<Int> =
         settingsInterceptionEventTypes
+
+        internal fun immediateBrowserBlockEventTypesForTest(): Set<Int> =
+            immediateBrowserBlockEventTypes
+
+        internal fun immediateWebsiteBlockTarget(
+            addressText: String?,
+            url: String?,
+            blockedRules: Collection<String>
+        ): String? {
+            val rules = WebsiteBlocker.normalizeRules(blockedRules)
+            if (rules.isEmpty()) return null
+
+            val pornographyActive = rules.any(WebsiteBlocker::isPornographyRule)
+            if (pornographyActive &&
+                !addressText.isNullOrBlank() &&
+                WebsiteBlocker.isPornographySearchInput(addressText)
+            ) {
+                return PredefinedWebsites.PORNOGRAPHY_RULE
+            }
+
+            val candidate = url?.takeIf(String::isNotBlank)
+                ?: addressText?.let(WebsiteBlocker::extractUrlCandidate)
+                ?: return null
+            val matchingRule = WebsiteBlocker.findMatchingRule(candidate, rules)
+                ?: return null
+            return if (WebsiteBlocker.isPornographyRule(matchingRule)) {
+                matchingRule
+            } else {
+                WebsiteBlocker.extractDomain(candidate)
+                    .ifBlank { WebsiteBlocker.displayRule(matchingRule) }
+            }
+        }
 
         internal fun settingsTransitionGuardMillisForTest(): Long =
             SETTINGS_TRANSITION_GUARD_MILLIS

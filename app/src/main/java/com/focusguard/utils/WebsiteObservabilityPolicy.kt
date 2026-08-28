@@ -2,7 +2,7 @@ package com.focusguard.utils
 
 /** Fail-closed policy for browsers that hide their address bar from accessibility. */
 object WebsiteObservabilityPolicy {
-    const val OPAQUE_BROWSER_GRACE_MILLIS = 800L
+    const val OPAQUE_BROWSER_GRACE_MILLIS = 200L
 
     fun shouldBlockOpaqueBrowser(
         websiteProtectionRequiresObservation: Boolean,
