@@ -1,8 +1,8 @@
 package com.focusguard.ui.compose.components
 
-import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import androidx.activity.ComponentActivity
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -104,8 +104,8 @@ fun RewardedAdGateDialog(
     )
 }
 
-private tailrec fun Context.findActivity(): Activity? = when (this) {
-    is Activity -> this
+private tailrec fun Context.findActivity(): ComponentActivity? = when (this) {
+    is ComponentActivity -> this
     is ContextWrapper -> baseContext.findActivity()
     else -> null
 }
