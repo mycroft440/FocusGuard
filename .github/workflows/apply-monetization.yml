@@ -1,0 +1,50 @@
+name: Apply monetization integration
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/apply-monetization.yml'
+      - 'tools/apply_monetization_patch.py'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+          cache: gradle
+
+      - name: Apply monetization integration
+        run: python3 tools/apply_monetization_patch.py
+
+      - name: Validate patch whitespace
+        run: git diff --check
+
+      - name: Build and test
+        run: |
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest assembleDebug --no-daemon
+
+      - name: Commit validated integration
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app gradle
+          if git diff --cached --quiet; then
+            echo "No integration changes to commit"
+          else
+            git commit -m "feat: integrate monetization gates and usage impact stats"
+            git push origin HEAD:main
+          fi
