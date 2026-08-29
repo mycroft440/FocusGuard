@@ -1,7 +1,7 @@
 package com.focusguard.monetization
 
-import android.app.Activity
 import android.content.Context
+import androidx.activity.ComponentActivity
 import androidx.lifecycle.Lifecycle
 import com.focusguard.utils.FocusGuardLogger
 import com.google.android.libraries.ads.mobile.sdk.MobileAds
@@ -57,7 +57,6 @@ object FocusGuardAds {
                 context,
                 InitializationConfig.Builder(TEST_APP_ID).build()
             ) { }
-            // A API Next-Gen está pronta para aceitar requests quando initialize retorna.
             initialized = true
         }
     }
@@ -67,7 +66,7 @@ object FocusGuardAds {
      * A recompensa é creditada exclusivamente por onUserEarnedReward.
      */
     fun showRewarded(
-        activity: Activity,
+        activity: ComponentActivity,
         onRewardEarned: () -> Unit,
         onClosedWithoutReward: () -> Unit,
         onUnavailable: (String) -> Unit
@@ -139,7 +138,7 @@ object FocusGuardAds {
      * O fim do plano Pomodoro é persistido como pendente. Se o plano terminar em
      * segundo plano, o anúncio aparece somente quando uma Activity estiver RESUMED.
      */
-    fun showPendingPomodoroCompletion(activity: Activity) {
+    fun showPendingPomodoroCompletion(activity: ComponentActivity) {
         if (activity.isFinishing || activity.isDestroyed ||
             !activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
         ) return
