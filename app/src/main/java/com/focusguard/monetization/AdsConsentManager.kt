@@ -1,5 +1,6 @@
 package com.focusguard.monetization
 
+import android.content.Context
 import androidx.activity.ComponentActivity
 import com.focusguard.utils.FocusGuardLogger
 import com.google.android.ump.ConsentInformation
@@ -7,20 +8,33 @@ import com.google.android.ump.ConsentRequestParameters
 import com.google.android.ump.UserMessagingPlatform
 
 /**
- * Centraliza a atualização de consentimento da UMP.
+ * Centraliza consentimento e opções de privacidade da UMP.
  *
- * Uma atualização é feita por processo antes da primeira solicitação de anúncio.
- * Isso mantém anúncios bloqueados até que a UMP diga que podem ser solicitados.
+ * A atualização de consentimento ocorre uma vez por processo e pode ser iniciada
+ * no lançamento do app. Toda solicitação de anúncio aguarda esta etapa e consulta
+ * canRequestAds() antes de prosseguir.
  */
 object AdsConsentManager {
     private val lock = Any()
-    private val pendingCallbacks = mutableListOf<(Boolean) -> Unit>()
+    private val pendingCallbacks = mutableListOf<(ConsentInformation) -> Unit>()
 
     @Volatile
     private var updateInFlight = false
 
     @Volatile
     private var updateCompletedThisProcess = false
+
+    /**
+     * Atualiza consentimento no início da Activity. O callback sempre é entregue
+     * depois da tentativa de atualização/formulário, inclusive quando a UMP usa
+     * uma decisão válida de sessão anterior após erro de rede.
+     */
+    fun refresh(
+        activity: ComponentActivity,
+        onComplete: () -> Unit = {}
+    ) {
+        ensureUpdated(activity) { onComplete() }
+    }
 
     fun ensureCanRequestAds(
         activity: ComponentActivity,
@@ -30,6 +44,51 @@ object AdsConsentManager {
             onResult(false)
             return
         }
+        ensureUpdated(activity) { consentInformation ->
+            onResult(consentInformation.canRequestAds())
+        }
+    }
+
+    fun isPrivacyOptionsRequired(context: Context): Boolean {
+        val consentInformation = UserMessagingPlatform.getConsentInformation(
+            context.applicationContext
+        )
+        return consentInformation.privacyOptionsRequirementStatus ==
+            ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED
+    }
+
+    fun showPrivacyOptions(
+        activity: ComponentActivity,
+        onDismissed: (String?) -> Unit = {}
+    ) {
+        if (activity.isFinishing || activity.isDestroyed) {
+            onDismissed("A tela não está disponível.")
+            return
+        }
+        ensureUpdated(activity) { consentInformation ->
+            if (consentInformation.privacyOptionsRequirementStatus !=
+                ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED
+            ) {
+                onDismissed(null)
+                return@ensureUpdated
+            }
+            UserMessagingPlatform.showPrivacyOptionsForm(activity) { formError ->
+                if (formError != null) {
+                    FocusGuardLogger.log(
+                        "AdsConsent",
+                        "Falha ao abrir opções de privacidade: ${formError.message}"
+                    )
+                }
+                onDismissed(formError?.message)
+            }
+        }
+    }
+
+    private fun ensureUpdated(
+        activity: ComponentActivity,
+        callback: (ConsentInformation) -> Unit
+    ) {
+        if (activity.isFinishing || activity.isDestroyed) return
 
         val consentInformation = UserMessagingPlatform.getConsentInformation(
             activity.applicationContext
@@ -37,10 +96,10 @@ object AdsConsentManager {
 
         synchronized(lock) {
             if (updateCompletedThisProcess) {
-                onResult(consentInformation.canRequestAds())
+                callback(consentInformation)
                 return
             }
-            pendingCallbacks += onResult
+            pendingCallbacks += callback
             if (updateInFlight) return
             updateInFlight = true
         }
@@ -77,7 +136,6 @@ object AdsConsentManager {
             updateCompletedThisProcess = true
             pendingCallbacks.toList().also { pendingCallbacks.clear() }
         }
-        val canRequest = consentInformation.canRequestAds()
-        callbacks.forEach { callback -> callback(canRequest) }
+        callbacks.forEach { callback -> callback(consentInformation) }
     }
 }
