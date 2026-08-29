@@ -17,13 +17,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.focusguard.monetization.FocusGuardAds
+import com.focusguard.monetization.RewardedGateStateStore
 
 /**
  * Gate explícito de rewarded ads. Cada anúncio exige um novo toque do usuário.
- * Fechar/pular um anúncio não concede progresso.
+ * Fechar/pular um anúncio não concede progresso, e o progresso já conquistado
+ * sobrevive a recriações da Activity e à morte do processo.
  */
 @Composable
 fun RewardedAdGateDialog(
+    gateKey: String,
     requiredAds: Int,
     title: String,
     description: String,
@@ -32,13 +35,21 @@ fun RewardedAdGateDialog(
 ) {
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() }
-    var watched by remember { mutableIntStateOf(0) }
+    val target = requiredAds.coerceAtLeast(1)
+    var watched by remember(gateKey, target) {
+        mutableIntStateOf(
+            if (RewardedGateStateStore.hasCredit(context, gateKey)) {
+                target
+            } else {
+                RewardedGateStateStore.progress(context, gateKey).coerceAtMost(target - 1)
+            }
+        )
+    }
     var loading by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var completionDelivered by remember { mutableStateOf(false) }
-    val target = requiredAds.coerceAtLeast(1)
 
-    LaunchedEffect(watched, target) {
+    LaunchedEffect(watched, target, gateKey) {
         if (watched >= target && !completionDelivered) {
             completionDelivered = true
             onComplete()
@@ -55,9 +66,12 @@ fun RewardedAdGateDialog(
                 buildString {
                     append(description)
                     append("\n\nAnúncios concluídos: ")
-                    append(watched)
+                    append(watched.coerceAtMost(target))
                     append('/')
                     append(target)
+                    if (watched in 1 until target) {
+                        append("\nSeu progresso ficará salvo se você sair agora.")
+                    }
                     error?.let {
                         append("\n\n")
                         append(it)
@@ -76,7 +90,17 @@ fun RewardedAdGateDialog(
                         activity = host,
                         onRewardEarned = {
                             loading = false
-                            watched += 1
+                            val completed = RewardedGateStateStore.recordReward(
+                                context = context,
+                                gateKey = gateKey,
+                                requiredAds = target
+                            )
+                            watched = if (completed) {
+                                target
+                            } else {
+                                RewardedGateStateStore.progress(context, gateKey)
+                                    .coerceAtMost(target - 1)
+                            }
                         },
                         onClosedWithoutReward = {
                             loading = false
@@ -92,7 +116,13 @@ fun RewardedAdGateDialog(
                 if (loading) {
                     CircularProgressIndicator()
                 } else {
-                    Text(if (watched + 1 >= target) "Assistir último anúncio" else "Assistir próximo anúncio")
+                    Text(
+                        if (watched + 1 >= target) {
+                            "Assistir último anúncio"
+                        } else {
+                            "Assistir próximo anúncio"
+                        }
+                    )
                 }
             }
         },
