@@ -29,6 +29,12 @@ jobs:
       - name: Apply monetization integration
         run: python3 tools/apply_monetization_patch.py
 
+      - name: Normalize generated whitespace
+        run: |
+          sed -i 's/[[:space:]]\+$//' \
+            app/src/main/java/com/focusguard/ui/compose/screens/UsageLimitsScreen.kt \
+            app/src/main/java/com/focusguard/ui/compose/screens/TimeSessionConfigScreen.kt
+
       - name: Validate patch whitespace
         run: git diff --check
 
