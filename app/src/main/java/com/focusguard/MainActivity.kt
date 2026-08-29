@@ -1,5 +1,6 @@
 package com.focusguard
 
+import com.focusguard.monetization.FocusGuardAds
 import android.content.Context
 import android.content.Intent
 import android.graphics.ColorMatrix
@@ -89,6 +90,13 @@ class MainActivity : AppCompatActivity() {
 
         // PomodoroManager ainda usa o singleton legado.
         pomodoroManager = PomodoroManager.getInstance(applicationContext)
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.RESUMED) {
+                pomodoroManager.onSessionFinished.collect {
+                    FocusGuardAds.showPendingPomodoroCompletion(this@MainActivity)
+                }
+            }
+        }
         onBackPressedDispatcher.addCallback(this, focusModeBackGuard)
         updateFocusModeBackGuard()
         consumeFocusModeReturnIntent(intent)
@@ -132,6 +140,7 @@ class MainActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         activityResumed = true
+        window.decorView.post { FocusGuardAds.showPendingPomodoroCompletion(this@MainActivity) }
         acknowledgePendingCurtainIfPresented()
         FocusGuardLogger.log("MainActivity", "onResume disparado")
         updateFocusModeBackGuard()

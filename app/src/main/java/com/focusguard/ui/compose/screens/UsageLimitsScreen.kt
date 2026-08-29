@@ -1,5 +1,7 @@
 package com.focusguard.ui.compose.screens
 
+import com.focusguard.monetization.RewardedGateCoordinator
+import com.focusguard.monetization.MonetizationPolicy
 import kotlin.OptIn
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -304,7 +306,7 @@ fun AppLimitsTab(
             val limitDao = db.appUsageLimitDao()
             val existingLimits = limitDao.getAllStatic().associateBy { it.packageName }
             val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
-            val cal = java.util.Calendar.getInstance().apply { 
+            val cal = java.util.Calendar.getInstance().apply {
                 set(java.util.Calendar.HOUR_OF_DAY, 0)
                 set(java.util.Calendar.MINUTE, 0)
                 set(java.util.Calendar.SECOND, 0)
@@ -436,6 +438,7 @@ fun AppLimitsTab(
             onConfigureMasterPassword = onConfigureMasterPassword,
             onDismiss = { showDialog = false },
             onSave = { minutes, enabled, lockMode, lockPassword, lockUntil ->
+                val monetizedAction: () -> Unit = {
                 scope.launch(Dispatchers.IO) {
                     if (!ProtectionPermissionGate.read(context).isReady) {
                         withContext(Dispatchers.Main) { onPermissionsRequired() }
@@ -469,6 +472,22 @@ fun AppLimitsTab(
                     }
                     blockingSessionManager.checkAndEnforce()
                     withContext(Dispatchers.Main) { showDialog = false }
+                }
+
+                }
+                val targetAlreadyConfigured = selectedApp!!.currentLimitMinutes != null
+                val isCreatingLimit = minutes != null && minutes > 0 && !targetAlreadyConfigured
+                val configuredCount = apps.count { it.currentLimitMinutes != null }
+                if (isCreatingLimit && MonetizationPolicy.requiresExtraUsageLimitAd(configuredCount, targetAlreadyConfigured)) {
+                    RewardedGateCoordinator.launch(
+                        context = context,
+                        requiredAds = 1,
+                        title = "Adicionar mais um aplicativo",
+                        description = "Assista a 1 anúncio para adicionar este aplicativo ao limite diário.",
+                        action = monetizedAction
+                    )
+                } else {
+                    monetizedAction()
                 }
             }
         )
@@ -697,6 +716,7 @@ fun WebsiteLimitsTab(
             onConfigureMasterPassword = onConfigureMasterPassword,
             onDismiss = { showAddDialog = false },
             onSave = { domain, minutes, lockMode, _, lockUntil ->
+                val monetizedAction: () -> Unit = {
                 scope.launch(Dispatchers.IO) {
                     if (!ProtectionPermissionGate.read(context).isReady) {
                         withContext(Dispatchers.Main) { onPermissionsRequired() }
@@ -736,6 +756,22 @@ fun WebsiteLimitsTab(
                         )
                         showAddDialog = false
                     }
+                }
+
+                }
+                val normalizedTarget = WebsiteBlocker.normalizeRule(domain)
+                val targetAlreadyConfigured = sites.any { WebsiteBlocker.normalizeRule(it.domain) == normalizedTarget }
+                val isCreatingLimit = normalizedTarget.isNotBlank() && minutes > 0 && !targetAlreadyConfigured
+                if (isCreatingLimit && MonetizationPolicy.requiresExtraUsageLimitAd(sites.size, targetAlreadyConfigured)) {
+                    RewardedGateCoordinator.launch(
+                        context = context,
+                        requiredAds = 1,
+                        title = "Adicionar mais um site",
+                        description = "Assista a 1 anúncio para adicionar este site ao limite diário.",
+                        action = monetizedAction
+                    )
+                } else {
+                    monetizedAction()
                 }
             }
         )

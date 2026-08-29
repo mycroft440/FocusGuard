@@ -132,6 +132,18 @@
             android:theme="@style/Theme.FocusGuard" />
 
         <activity
+            android:name=".ui.RewardedGateActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.FocusGuard" />
+
+        <activity
+            android:name=".ui.UsageImpactActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@style/Theme.FocusGuard" />
+
+        <activity
             android:name=".ui.BlockNoticeActivity"
             android:excludeFromRecents="true"
             android:exported="false"

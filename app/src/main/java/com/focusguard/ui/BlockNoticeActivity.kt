@@ -1,5 +1,6 @@
 package com.focusguard.ui
 
+import com.focusguard.usage.UsageImpactRouter
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
@@ -201,7 +202,8 @@ class BlockNoticeActivity : AppCompatActivity() {
                     deactivationCredentialManager = deactivationCredentialManager,
                     onGoHome = ::goHome,
                     onRedirectBlockedWebsite = ::redirectBlockedWebsite,
-                    onGoToPomodoroLock = ::goToPomodoroLock
+                    onGoToPomodoroLock = ::goToPomodoroLock,
+                    onGoToUsageImpact = ::goToUsageImpact
                 )
             }
         }
@@ -303,6 +305,11 @@ class BlockNoticeActivity : AppCompatActivity() {
         finish()
     }
 
+    private fun goToUsageImpact(packageName: String) {
+        startActivity(UsageImpactActivity.createIntent(this, packageName))
+        finish()
+    }
+
     private fun goHome() {
         startActivity(
             Intent(Intent.ACTION_MAIN).apply {
@@ -325,10 +332,20 @@ private fun BlockNoticeContent(
     deactivationCredentialManager: DeactivationCredentialManager,
     onGoHome: () -> Unit,
     onRedirectBlockedWebsite: (String) -> Unit,
-    onGoToPomodoroLock: () -> Unit
+    onGoToPomodoroLock: () -> Unit,
+    onGoToUsageImpact: (String) -> Unit
 ) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    LaunchedEffect(strictBlock, blockedPackage, blockedDomain) {
+        val packageToInspect = blockedPackage
+        if (!strictBlock && blockedDomain == null && !packageToInspect.isNullOrBlank() &&
+            UsageImpactRouter.shouldShowForBlockedApp(context, packageToInspect)
+        ) {
+            delay(650L)
+            onGoToUsageImpact(packageToInspect)
+        }
+    }
     val focusRequester = remember { FocusRequester() }
     val appUnlockStore = remember(context) { PasswordAppUnlockStore(context) }
     val customUnlockConfig = remember(blockedPackage) {

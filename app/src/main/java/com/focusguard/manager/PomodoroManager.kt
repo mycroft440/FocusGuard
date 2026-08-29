@@ -1,5 +1,6 @@
 package com.focusguard.manager
 
+import com.focusguard.monetization.MonetizationStateStore
 import android.content.Context
 import android.content.Intent
 import com.focusguard.database.AppDatabase
@@ -638,7 +639,8 @@ class PomodoroManager @Inject constructor(
         notificationController.restore()
         notifyBlockingChanged()
         FocusModeNotificationService.requestRefresh(context)
-        if (emitFinished) _onSessionFinished.tryEmit(Unit)
+        if (emitFinished) MonetizationStateStore.markPomodoroCompletionAdPending(context)
+            _onSessionFinished.tryEmit(Unit)
     }
 
     fun isPomodoroActive(): Boolean {

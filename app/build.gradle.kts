@@ -132,6 +132,7 @@ baselineProfile {
 }
 
 dependencies {
+    implementation(libs.google.mobile.ads)
     implementation(libs.kotlin.stdlib)
 
     implementation(libs.androidx.core.ktx)

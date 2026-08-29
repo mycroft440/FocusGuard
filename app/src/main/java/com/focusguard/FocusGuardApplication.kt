@@ -1,5 +1,6 @@
 package com.focusguard
 
+import com.focusguard.monetization.FocusGuardAds
 import android.app.Application
 import android.os.UserManager
 import com.focusguard.admin.DeviceOwnerManager
@@ -50,6 +51,7 @@ class FocusGuardApplication : Application() {
 
         val deviceOwnerManager = DeviceOwnerManager.getInstance(this)
         if (userUnlocked) {
+            FocusGuardAds.warmUp(this)
             // Reaplica as políticas oficiais e inicia dependências que usam Room/Keystore.
             deviceOwnerManager.applyNuclearShield()
             AccessibilityStateMonitor.start(this)

@@ -1,5 +1,7 @@
 package com.focusguard.ui.compose.screens
 
+import com.focusguard.monetization.RewardedGateCoordinator
+import com.focusguard.monetization.MonetizationPolicy
 import androidx.compose.runtime.*
 import android.widget.Toast
 import com.focusguard.R
@@ -55,6 +57,7 @@ fun TimeSessionConfigScreen(
                 onCreateOrManagePassword()
                 return@UsageBlockConfigScreen
             }
+            val monetizedAction: () -> Unit = {
 
             scope.launch(Dispatchers.IO) {
                 if (!ProtectionPermissionGate.read(context).isReady) {
@@ -134,6 +137,19 @@ fun TimeSessionConfigScreen(
                     Toast.makeText(context, context.getString(R.string.limite_diario_ativado_com_sucesso), Toast.LENGTH_LONG).show()
                     onFinish()
                 }
+            }
+
+            }
+            if (config.limitType == LimitType.HARD_BLOCK_NO_PASSWORD) {
+                RewardedGateCoordinator.launch(
+                    context = context,
+                    requiredAds = MonetizationPolicy.TIME_BLOCK_REWARDED_ADS,
+                    title = "Ativar bloqueio sem senha",
+                    description = "Assista a 3 anúncios para criar este bloqueio por tempo.",
+                    action = monetizedAction
+                )
+            } else {
+                monetizedAction()
             }
         }
     )
