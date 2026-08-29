@@ -26,7 +26,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -35,6 +34,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -61,10 +61,14 @@ import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.ui.compose.theme.SuccessGreen
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
+import com.focusguard.usage.UsageInterventionStore
+import com.focusguard.usage.UsageInterventionType
 import com.google.android.libraries.ads.mobile.sdk.banner.AdView
 import com.google.android.libraries.ads.mobile.sdk.nativead.MediaView
 import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAd
 import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdView
+import java.text.SimpleDateFormat
+import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.Dispatchers
@@ -124,7 +128,9 @@ private data class UsageImpactSnapshot(
     val beforeMillis: Long,
     val afterMillis: Long,
     val windowMillis: Long,
-    val dailyLimitMinutes: Int
+    val interventionType: UsageInterventionType,
+    val dailyLimitMinutes: Int?,
+    val endsAt: Long?
 )
 
 @Composable
@@ -139,11 +145,14 @@ private fun UsageImpactScreen(
         value = loadUsageImpact(context, packageName)
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Scaffold(
+        modifier = Modifier.fillMaxSize(),
+        bottomBar = { ImpactRevenueBanner(activity) }
+    ) { innerPadding ->
         Column(
             modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
+                .fillMaxSize()
+                .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 24.dp, vertical = 20.dp),
             horizontalAlignment = Alignment.CenterHorizontally
@@ -175,15 +184,15 @@ private fun UsageImpactScreen(
                 Spacer(Modifier.height(18.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     UsageCard(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(0.48f),
                         title = "Antes",
                         value = formatDuration(data.beforeMillis)
                     )
                     UsageCard(
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.fillMaxWidth(0.48f),
                         title = "Depois",
                         value = formatDuration(data.afterMillis)
                     )
@@ -216,22 +225,41 @@ private fun UsageImpactScreen(
                 }
 
                 Text(
-                    text = "Comparação com períodos equivalentes de ${formatWindow(data.windowMillis)}. " +
-                        "Limite configurado: ${data.dailyLimitMinutes} min/dia.",
+                    text = impactDescription(data),
                     color = TextSecondary,
                     textAlign = TextAlign.Center,
                     fontSize = 13.sp
                 )
             }
 
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(32.dp))
             Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
                 Text("Voltar")
             }
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(32.dp))
         }
+    }
+}
 
-        ImpactRevenueBanner(activity)
+private fun impactDescription(data: UsageImpactSnapshot): String {
+    val period = "Comparação com períodos equivalentes de ${formatWindow(data.windowMillis)}."
+    return when (data.interventionType) {
+        UsageInterventionType.TIME_BLOCK -> {
+            val end = data.endsAt?.takeIf { it > System.currentTimeMillis() }
+            if (end != null) {
+                "$period Bloqueio por tempo ativo até ${formatTimestamp(end)}."
+            } else {
+                "$period Bloqueio por tempo."
+            }
+        }
+        UsageInterventionType.USAGE_LIMIT -> {
+            val limit = data.dailyLimitMinutes
+            if (limit != null) {
+                "$period Limite configurado: $limit min/dia."
+            } else {
+                "$period Limitador diário ativo."
+            }
+        }
     }
 }
 
@@ -366,9 +394,8 @@ private fun createNativeImpactAdView(context: Context, nativeAd: NativeAd): Nati
 
 @Composable
 private fun ImpactRevenueBanner(activity: ComponentActivity) {
-    val context = LocalContext.current
     val widthDp = LocalConfiguration.current.screenWidthDp.coerceAtLeast(300)
-    val adView = remember(context) { AdView(context) }
+    val adView = remember(activity) { AdView(activity) }
 
     LaunchedEffect(adView, widthDp) {
         FocusGuardAds.loadLargeAdaptiveBanner(
@@ -415,13 +442,17 @@ private suspend fun loadUsageImpact(context: Context, packageName: String): Usag
             .appUsageLimitDao()
             .getAllStatic()
             .firstOrNull { it.packageName == packageName }
-        val activation = limit?.createdAt
-            ?.takeIf { it > 0L && it < now }
-            ?: (now - DAY_MILLIS)
-        val elapsed = (now - activation).coerceAtLeast(MIN_WINDOW_MILLIS)
-        val window = elapsed.coerceAtMost(MAX_WINDOW_MILLIS)
-        val beforeStart = (activation - window).coerceAtLeast(0L)
-        val afterEnd = (activation + window).coerceAtMost(now)
+        val intervention = UsageInterventionStore.readApp(context, packageName)
+            ?: limit?.let { UsageInterventionStore.syncFromLimit(context, it) }
+        val activation = intervention?.startedAt
+            ?.takeIf { it in 1 until now }
+            ?: limit?.createdAt?.takeIf { it in 1 until now }
+            ?: now
+        val elapsed = (now - activation).coerceAtLeast(1L)
+        val window = minOf(elapsed, activation).coerceAtMost(MAX_WINDOW_MILLIS)
+            .coerceAtLeast(1L)
+        val beforeStart = activation - window
+        val afterEnd = activation + window
         val manager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
         val before = manager?.queryAndAggregateUsageStats(beforeStart, activation)
             ?.get(packageName)?.totalTimeInForeground ?: 0L
@@ -431,13 +462,21 @@ private suspend fun loadUsageImpact(context: Context, packageName: String): Usag
             val info = context.packageManager.getApplicationInfo(packageName, 0)
             context.packageManager.getApplicationLabel(info).toString()
         }.getOrDefault(packageName)
+        val type = intervention?.type ?: if (limit?.lockMode.equals("TIME", true)) {
+            UsageInterventionType.TIME_BLOCK
+        } else {
+            UsageInterventionType.USAGE_LIMIT
+        }
 
         UsageImpactSnapshot(
             appName = label,
             beforeMillis = before,
             afterMillis = after,
             windowMillis = window,
-            dailyLimitMinutes = limit?.dailyLimitMinutes ?: 0
+            interventionType = type,
+            dailyLimitMinutes = intervention?.dailyLimitMinutes
+                ?: limit?.dailyLimitMinutes?.takeIf { it > 0 },
+            endsAt = intervention?.endsAt ?: limit?.lockUntilTimestamp
         )
     }
 
@@ -449,14 +488,19 @@ private fun formatDuration(millis: Long): String {
 }
 
 private fun formatWindow(millis: Long): String {
+    val seconds = (millis / 1_000L).coerceAtLeast(1L)
+    val minutes = seconds / 60L
     val hours = millis.toDouble() / 3_600_000.0
     return when {
         hours >= 48.0 -> String.format(Locale.getDefault(), "%.1f dias", hours / 24.0)
         hours >= 1.0 -> String.format(Locale.getDefault(), "%.1f horas", hours)
-        else -> "${(millis / 60_000L).coerceAtLeast(1L)} min"
+        minutes >= 1L -> "$minutes min"
+        else -> "$seconds s"
     }
 }
 
-private const val MIN_WINDOW_MILLIS = 60_000L
+private fun formatTimestamp(timestamp: Long): String =
+    SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()).format(Date(timestamp))
+
 private const val DAY_MILLIS = 24L * 60L * 60L * 1000L
 private const val MAX_WINDOW_MILLIS = 7L * DAY_MILLIS
