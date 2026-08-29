@@ -133,6 +133,7 @@ baselineProfile {
 
 dependencies {
     implementation(libs.google.mobile.ads)
+    implementation(libs.google.user.messaging.platform)
     implementation(libs.kotlin.stdlib)
 
     implementation(libs.androidx.core.ktx)
