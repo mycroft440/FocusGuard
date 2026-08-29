@@ -639,8 +639,10 @@ class PomodoroManager @Inject constructor(
         notificationController.restore()
         notifyBlockingChanged()
         FocusModeNotificationService.requestRefresh(context)
-        if (emitFinished) MonetizationStateStore.markPomodoroCompletionAdPending(context)
+        if (emitFinished) {
+            MonetizationStateStore.markPomodoroCompletionAdPending(context)
             _onSessionFinished.tryEmit(Unit)
+        }
     }
 
     fun isPomodoroActive(): Boolean {
