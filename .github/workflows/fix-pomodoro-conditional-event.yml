@@ -1,0 +1,38 @@
+name: One-shot Pomodoro conditional fix
+
+on:
+  push:
+    branches:
+      - fix/monetization-audit-20260829
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/monetization-audit-20260829
+          fetch-depth: 0
+      - name: Patch conditional completion event and self-remove
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("app/src/main/java/com/focusguard/manager/PomodoroManager.kt")
+          text = path.read_text(encoding="utf-8")
+          old = """        if (emitFinished) MonetizationStateStore.markPomodoroCompletionAdPending(context)\n            _onSessionFinished.tryEmit(Unit)\n"""
+          new = """        if (emitFinished) {\n            MonetizationStateStore.markPomodoroCompletionAdPending(context)\n            _onSessionFinished.tryEmit(Unit)\n        }\n"""
+          if old not in text:
+              raise SystemExit("Expected Pomodoro completion block not found")
+          path.write_text(text.replace(old, new, 1), encoding="utf-8")
+          Path(".github/workflows/fix-pomodoro-conditional-event.yml").unlink()
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/focusguard/manager/PomodoroManager.kt .github/workflows/fix-pomodoro-conditional-event.yml
+          git commit -m "fix: gate Pomodoro completion event"
+          git push origin HEAD:fix/monetization-audit-20260829
