@@ -54,3 +54,5 @@ jobs:
             git commit -m "feat: integrate monetization gates and usage impact stats"
             git push origin HEAD:main
           fi
+
+      # Trigger marker: timed-block impact routing is part of this validation.
