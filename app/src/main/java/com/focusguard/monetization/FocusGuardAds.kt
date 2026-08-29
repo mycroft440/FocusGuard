@@ -4,8 +4,8 @@ import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.Lifecycle
 import com.focusguard.utils.FocusGuardLogger
-import com.google.android.gms.ads.AdSize
 import com.google.android.libraries.ads.mobile.sdk.MobileAds
+import com.google.android.libraries.ads.mobile.sdk.banner.AdSize
 import com.google.android.libraries.ads.mobile.sdk.banner.AdView
 import com.google.android.libraries.ads.mobile.sdk.banner.BannerAd
 import com.google.android.libraries.ads.mobile.sdk.banner.BannerAdRequest
@@ -34,9 +34,9 @@ import kotlinx.coroutines.withContext
 /**
  * Ponto único de integração de anúncios do FocusGuard.
  *
- * Enquanto a conta AdMob de produção não estiver configurada, todos os IDs abaixo
- * são IDs oficiais de teste do Google. Eles DEVEM ser substituídos antes de uma
- * versão de produção monetizada.
+ * Por decisão do projeto, Debug e Release usam permanentemente os IDs oficiais de
+ * teste do Google. A infraestrutura de consentimento, lifecycle e recompensa é a
+ * mesma que seria usada com unidades monetizadas, mas estes IDs não geram receita.
  */
 object FocusGuardAds {
     const val TEST_APP_ID = "ca-app-pub-3940256099942544~3347511713"
@@ -47,16 +47,18 @@ object FocusGuardAds {
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val initMutex = Mutex()
-    @Volatile private var initialized = false
+
+    @Volatile
+    private var initialized = false
+
     private val pomodoroAdInFlight = AtomicBoolean(false)
 
+    /**
+     * Mantido para compatibilidade com o Application. Não inicializa o SDK sem uma
+     * Activity, pois a primeira solicitação precisa passar pela UMP.
+     */
     fun warmUp(context: Context) {
-        scope.launch {
-            runCatching { ensureInitialized(context.applicationContext) }
-                .onFailure {
-                    FocusGuardLogger.logError("Ads", "Falha ao inicializar anúncios", it)
-                }
-        }
+        FocusGuardLogger.log("Ads", "Warm-up adiado até uma Activity poder validar consentimento")
     }
 
     private suspend fun ensureInitialized(context: Context) {
@@ -71,27 +73,55 @@ object FocusGuardAds {
         }
     }
 
-    /**
-     * Carrega um anúncio nativo para uma superfície de conteúdo. O layout final é
-     * responsabilidade da Activity/Composable que recebeu o NativeAd.
-     */
+    private fun withAdsReady(
+        activity: ComponentActivity,
+        onReady: () -> Unit,
+        onUnavailable: (String) -> Unit
+    ) {
+        if (activity.isFinishing || activity.isDestroyed) {
+            onUnavailable("A tela não está disponível para exibir anúncios.")
+            return
+        }
+
+        activity.runOnUiThread {
+            AdsConsentManager.ensureCanRequestAds(activity) { canRequestAds ->
+                if (!canRequestAds) {
+                    onUnavailable("Os anúncios não podem ser solicitados com as escolhas de privacidade atuais.")
+                    return@ensureCanRequestAds
+                }
+
+                scope.launch {
+                    runCatching { ensureInitialized(activity.applicationContext) }
+                        .onFailure { error ->
+                            withContext(Dispatchers.Main) {
+                                onUnavailable(
+                                    error.message ?: "Não foi possível inicializar os anúncios."
+                                )
+                            }
+                        }
+                        .onSuccess {
+                            withContext(Dispatchers.Main) {
+                                if (activity.isFinishing || activity.isDestroyed) {
+                                    onUnavailable("A tela não está mais disponível.")
+                                } else {
+                                    onReady()
+                                }
+                            }
+                        }
+                }
+            }
+        }
+    }
+
     fun loadNative(
         activity: ComponentActivity,
         onLoaded: (NativeAd) -> Unit,
         onUnavailable: (String) -> Unit = {}
     ) {
-        if (activity.isFinishing || activity.isDestroyed) return
-        scope.launch {
-            runCatching { ensureInitialized(activity.applicationContext) }
-                .onFailure { error ->
-                    withContext(Dispatchers.Main) {
-                        onUnavailable(error.message ?: "Não foi possível inicializar os anúncios.")
-                    }
-                    return@launch
-                }
-
-            withContext(Dispatchers.Main) {
-                if (activity.isFinishing || activity.isDestroyed) return@withContext
+        withAdsReady(
+            activity = activity,
+            onUnavailable = onUnavailable,
+            onReady = {
                 val request = NativeAdRequest.Builder(
                     TEST_NATIVE_ID,
                     listOf(NativeAd.NativeAdType.NATIVE)
@@ -109,38 +139,27 @@ object FocusGuardAds {
 
                         override fun onAdFailedToLoad(adError: LoadAdError) {
                             onUnavailable(
-                                adError.message.ifBlank { "Nenhum anúncio nativo está disponível agora." }
+                                adError.message.ifBlank {
+                                    "Nenhum anúncio nativo está disponível agora."
+                                }
                             )
                         }
                     }
                 )
             }
-        }
+        )
     }
 
-    /**
-     * Carrega o banner adaptativo grande ancorado. Esse formato usa mais área que o
-     * banner tradicional e foi escolhido para maximizar o potencial de receita da
-     * tela de estatísticas sem usar outro anúncio em tela cheia.
-     */
     fun loadLargeAdaptiveBanner(
         activity: ComponentActivity,
         adView: AdView,
         widthDp: Int,
         onUnavailable: (String) -> Unit = {}
     ) {
-        if (activity.isFinishing || activity.isDestroyed) return
-        scope.launch {
-            runCatching { ensureInitialized(activity.applicationContext) }
-                .onFailure { error ->
-                    withContext(Dispatchers.Main) {
-                        onUnavailable(error.message ?: "Não foi possível inicializar os anúncios.")
-                    }
-                    return@launch
-                }
-
-            withContext(Dispatchers.Main) {
-                if (activity.isFinishing || activity.isDestroyed) return@withContext
+        withAdsReady(
+            activity = activity,
+            onUnavailable = onUnavailable,
+            onReady = {
                 val adSize = AdSize.getLargeAnchoredAdaptiveBannerAdSize(
                     activity,
                     widthDp.coerceAtLeast(300)
@@ -168,39 +187,23 @@ object FocusGuardAds {
                     }
                 )
             }
-        }
+        )
     }
 
-    /**
-     * Mostra um rewarded somente após ação explícita do usuário.
-     * A recompensa é creditada exclusivamente por onUserEarnedReward.
-     */
+    /** A recompensa só é creditada por onUserEarnedReward. */
     fun showRewarded(
         activity: ComponentActivity,
         onRewardEarned: () -> Unit,
         onClosedWithoutReward: () -> Unit,
         onUnavailable: (String) -> Unit
     ) {
-        if (activity.isFinishing || activity.isDestroyed) {
-            onUnavailable("A tela não está disponível para exibir o anúncio.")
-            return
-        }
-
-        scope.launch {
-            runCatching { ensureInitialized(activity.applicationContext) }
-                .onFailure { error ->
-                    withContext(Dispatchers.Main) {
-                        onUnavailable(error.message ?: "Não foi possível inicializar os anúncios.")
-                    }
-                    return@launch
-                }
-
-            withContext(Dispatchers.Main) {
-                if (activity.isFinishing || activity.isDestroyed ||
-                    !activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-                ) {
+        withAdsReady(
+            activity = activity,
+            onUnavailable = onUnavailable,
+            onReady = {
+                if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
                     onUnavailable("Volte para o aplicativo e tente novamente.")
-                    return@withContext
+                    return@withAdsReady
                 }
 
                 RewardedAd.load(
@@ -235,18 +238,21 @@ object FocusGuardAds {
 
                         override fun onAdFailedToLoad(adError: LoadAdError) {
                             onUnavailable(
-                                adError.message.ifBlank { "Nenhum anúncio está disponível agora." }
+                                adError.message.ifBlank {
+                                    "Nenhum anúncio está disponível agora."
+                                }
                             )
                         }
                     }
                 )
             }
-        }
+        )
     }
 
     /**
-     * O fim do plano Pomodoro é persistido como pendente. Se o plano terminar em
-     * segundo plano, o anúncio aparece somente quando uma Activity estiver RESUMED.
+     * Exibe no máximo um intersticial por conclusão persistida de plano Pomodoro.
+     * Falha de carregamento mantém a conclusão na fila; falha ao apresentar devolve
+     * a reserva à fila para uma futura tentativa.
      */
     fun showPendingPomodoroCompletion(activity: ComponentActivity) {
         if (activity.isFinishing || activity.isDestroyed ||
@@ -255,28 +261,42 @@ object FocusGuardAds {
         if (!MonetizationStateStore.hasPomodoroCompletionAdPending(activity)) return
         if (!pomodoroAdInFlight.compareAndSet(false, true)) return
 
-        scope.launch {
-            runCatching { ensureInitialized(activity.applicationContext) }
-                .onFailure { error ->
+        withAdsReady(
+            activity = activity,
+            onUnavailable = { message ->
+                pomodoroAdInFlight.set(false)
+                FocusGuardLogger.log("Ads", "Pomodoro aguardando anúncio: $message")
+            },
+            onReady = {
+                if (!activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
                     pomodoroAdInFlight.set(false)
-                    FocusGuardLogger.logError("Ads", "Falha no anúncio final do Pomodoro", error)
-                    return@launch
+                    return@withAdsReady
                 }
 
-            withContext(Dispatchers.Main) {
-                if (activity.isFinishing || activity.isDestroyed ||
-                    !activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-                ) {
-                    pomodoroAdInFlight.set(false)
-                    return@withContext
-                }
-
-                // Uma tentativa de apresentação corresponde a um único encerramento de plano.
-                MonetizationStateStore.consumePomodoroCompletionAdPending(activity)
                 InterstitialAd.load(
                     AdRequest.Builder(TEST_INTERSTITIAL_ID).build(),
                     object : AdLoadCallback<InterstitialAd> {
                         override fun onAdLoaded(ad: InterstitialAd) {
+                            if (activity.isFinishing || activity.isDestroyed ||
+                                !activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+                            ) {
+                                pomodoroAdInFlight.set(false)
+                                return
+                            }
+
+                            if (!MonetizationStateStore.consumePomodoroCompletionAdPending(activity)) {
+                                pomodoroAdInFlight.set(false)
+                                return
+                            }
+
+                            var reservationRestored = false
+                            fun restoreReservation() {
+                                if (!reservationRestored) {
+                                    reservationRestored = true
+                                    MonetizationStateStore.restorePomodoroCompletionAdPending(activity)
+                                }
+                            }
+
                             ad.adEventCallback = object : InterstitialAdEventCallback {
                                 override fun onAdDismissedFullScreenContent() {
                                     pomodoroAdInFlight.set(false)
@@ -285,6 +305,7 @@ object FocusGuardAds {
                                 override fun onAdFailedToShowFullScreenContent(
                                     fullScreenContentError: FullScreenContentError
                                 ) {
+                                    restoreReservation()
                                     pomodoroAdInFlight.set(false)
                                     FocusGuardLogger.log(
                                         "Ads",
@@ -292,12 +313,21 @@ object FocusGuardAds {
                                     )
                                 }
                             }
-                            ad.show(activity)
+
+                            runCatching { ad.show(activity) }
+                                .onFailure { error ->
+                                    restoreReservation()
+                                    pomodoroAdInFlight.set(false)
+                                    FocusGuardLogger.logError(
+                                        "Ads",
+                                        "Falha ao apresentar intersticial do Pomodoro",
+                                        error
+                                    )
+                                }
                         }
 
                         override fun onAdFailedToLoad(adError: LoadAdError) {
                             pomodoroAdInFlight.set(false)
-                            // Fail-open: o fim do Pomodoro nunca fica preso por falta de anúncio.
                             FocusGuardLogger.log(
                                 "Ads",
                                 "Interstitial Pomodoro não carregou: ${adError.message}"
@@ -306,6 +336,6 @@ object FocusGuardAds {
                     }
                 )
             }
-        }
+        )
     }
 }
