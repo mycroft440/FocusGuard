@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="ads_privacy_options_title">Opções de privacidade</string>
+    <string name="ads_privacy_options_subtitle">Revise ou altere suas escolhas de consentimento para anúncios.</string>
+</resources>
