@@ -4,7 +4,11 @@ import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.Lifecycle
 import com.focusguard.utils.FocusGuardLogger
+import com.google.android.gms.ads.AdSize
 import com.google.android.libraries.ads.mobile.sdk.MobileAds
+import com.google.android.libraries.ads.mobile.sdk.banner.AdView
+import com.google.android.libraries.ads.mobile.sdk.banner.BannerAd
+import com.google.android.libraries.ads.mobile.sdk.banner.BannerAdRequest
 import com.google.android.libraries.ads.mobile.sdk.common.AdLoadCallback
 import com.google.android.libraries.ads.mobile.sdk.common.AdRequest
 import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
@@ -12,6 +16,10 @@ import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
 import com.google.android.libraries.ads.mobile.sdk.initialization.InitializationConfig
 import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAd
 import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAdEventCallback
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAd
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdLoader
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdLoaderCallback
+import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdRequest
 import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardedAd
 import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardedAdEventCallback
 import java.util.concurrent.atomic.AtomicBoolean
@@ -34,6 +42,8 @@ object FocusGuardAds {
     const val TEST_APP_ID = "ca-app-pub-3940256099942544~3347511713"
     const val TEST_INTERSTITIAL_ID = "ca-app-pub-3940256099942544/1033173712"
     const val TEST_REWARDED_ID = "ca-app-pub-3940256099942544/5224354917"
+    const val TEST_ADAPTIVE_BANNER_ID = "ca-app-pub-3940256099942544/9214589741"
+    const val TEST_NATIVE_ID = "ca-app-pub-3940256099942544/2247696110"
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val initMutex = Mutex()
@@ -58,6 +68,106 @@ object FocusGuardAds {
                 InitializationConfig.Builder(TEST_APP_ID).build()
             ) { }
             initialized = true
+        }
+    }
+
+    /**
+     * Carrega um anúncio nativo para uma superfície de conteúdo. O layout final é
+     * responsabilidade da Activity/Composable que recebeu o NativeAd.
+     */
+    fun loadNative(
+        activity: ComponentActivity,
+        onLoaded: (NativeAd) -> Unit,
+        onUnavailable: (String) -> Unit = {}
+    ) {
+        if (activity.isFinishing || activity.isDestroyed) return
+        scope.launch {
+            runCatching { ensureInitialized(activity.applicationContext) }
+                .onFailure { error ->
+                    withContext(Dispatchers.Main) {
+                        onUnavailable(error.message ?: "Não foi possível inicializar os anúncios.")
+                    }
+                    return@launch
+                }
+
+            withContext(Dispatchers.Main) {
+                if (activity.isFinishing || activity.isDestroyed) return@withContext
+                val request = NativeAdRequest.Builder(
+                    TEST_NATIVE_ID,
+                    listOf(NativeAd.NativeAdType.NATIVE)
+                ).build()
+                NativeAdLoader.load(
+                    request,
+                    object : NativeAdLoaderCallback {
+                        override fun onNativeAdLoaded(nativeAd: NativeAd) {
+                            if (activity.isFinishing || activity.isDestroyed) {
+                                nativeAd.destroy()
+                            } else {
+                                onLoaded(nativeAd)
+                            }
+                        }
+
+                        override fun onAdFailedToLoad(adError: LoadAdError) {
+                            onUnavailable(
+                                adError.message.ifBlank { "Nenhum anúncio nativo está disponível agora." }
+                            )
+                        }
+                    }
+                )
+            }
+        }
+    }
+
+    /**
+     * Carrega o banner adaptativo grande ancorado. Esse formato usa mais área que o
+     * banner tradicional e foi escolhido para maximizar o potencial de receita da
+     * tela de estatísticas sem usar outro anúncio em tela cheia.
+     */
+    fun loadLargeAdaptiveBanner(
+        activity: ComponentActivity,
+        adView: AdView,
+        widthDp: Int,
+        onUnavailable: (String) -> Unit = {}
+    ) {
+        if (activity.isFinishing || activity.isDestroyed) return
+        scope.launch {
+            runCatching { ensureInitialized(activity.applicationContext) }
+                .onFailure { error ->
+                    withContext(Dispatchers.Main) {
+                        onUnavailable(error.message ?: "Não foi possível inicializar os anúncios.")
+                    }
+                    return@launch
+                }
+
+            withContext(Dispatchers.Main) {
+                if (activity.isFinishing || activity.isDestroyed) return@withContext
+                val adSize = AdSize.getLargeAnchoredAdaptiveBannerAdSize(
+                    activity,
+                    widthDp.coerceAtLeast(300)
+                )
+                val request = BannerAdRequest.Builder(
+                    TEST_ADAPTIVE_BANNER_ID,
+                    adSize
+                ).build()
+                adView.loadAd(
+                    request,
+                    object : AdLoadCallback<BannerAd> {
+                        override fun onAdLoaded(ad: BannerAd) {
+                            FocusGuardLogger.log("Ads", "Banner adaptativo de impacto carregado")
+                        }
+
+                        override fun onAdFailedToLoad(adError: LoadAdError) {
+                            FocusGuardLogger.log(
+                                "Ads",
+                                "Banner adaptativo indisponível: ${adError.message}"
+                            )
+                            onUnavailable(
+                                adError.message.ifBlank { "Nenhum banner está disponível agora." }
+                            )
+                        }
+                    }
+                )
+            }
         }
     }
 
