@@ -1,5 +1,6 @@
 package com.focusguard.ui.compose.screens
 
+import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -26,6 +27,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -46,6 +48,7 @@ import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.data.UserProfile
 import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.monetization.AdsConsentManager
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.ui.MasterPasswordActivity
 import com.focusguard.ui.MasterRemovalActivity
@@ -72,6 +75,7 @@ fun SettingsScreen(
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
+    val activity = context as? ComponentActivity
     val deactivationCredentialManager = remember(context) {
         DeactivationCredentialManager(context)
     }
@@ -85,10 +89,20 @@ fun SettingsScreen(
     var showDeviceOwnerSetupGuideDialog by remember { mutableStateOf(false) }
     var deactivationCredentialRevision by remember { mutableIntStateOf(0) }
     var deviceOwnerRevision by remember { mutableIntStateOf(0) }
+    var privacyOptionsRequired by remember {
+        mutableStateOf(AdsConsentManager.isPrivacyOptionsRequired(context))
+    }
     val masterPasswordLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) {
         deactivationCredentialRevision++
+    }
+
+    LaunchedEffect(activity) {
+        val host = activity ?: return@LaunchedEffect
+        AdsConsentManager.refresh(host) {
+            privacyOptionsRequired = AdsConsentManager.isPrivacyOptionsRequired(host)
+        }
     }
 
     val isBlockingActive by blockingSessionManager.isBlockingActiveFlow.collectAsState(
@@ -170,6 +184,19 @@ fun SettingsScreen(
                 stringResource(R.string.settings_language_subtitle),
                 onClick = onLanguageClick
             )
+            if (privacyOptionsRequired && activity != null) {
+                SettingsItem(
+                    Icons.Default.Security,
+                    stringResource(R.string.ads_privacy_options_title),
+                    stringResource(R.string.ads_privacy_options_subtitle),
+                    onClick = {
+                        AdsConsentManager.showPrivacyOptions(activity) {
+                            privacyOptionsRequired = AdsConsentManager
+                                .isPrivacyOptionsRequired(activity)
+                        }
+                    }
+                )
+            }
 
             Spacer(Modifier.height(24.dp))
             FocusGuardSectionHeader(stringResource(R.string.settings_category_blocking))

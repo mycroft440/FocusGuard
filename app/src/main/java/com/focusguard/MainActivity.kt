@@ -1,5 +1,6 @@
 package com.focusguard
 
+import com.focusguard.monetization.AdsConsentManager
 import com.focusguard.monetization.FocusGuardAds
 import android.content.Context
 import android.content.Intent
@@ -87,6 +88,10 @@ class MainActivity : AppCompatActivity() {
             finish()
             return
         }
+
+        // A UMP deve atualizar o status de consentimento em cada novo processo
+        // antes que qualquer unidade de anúncio seja solicitada.
+        AdsConsentManager.refresh(this)
 
         // PomodoroManager ainda usa o singleton legado.
         pomodoroManager = PomodoroManager.getInstance(applicationContext)
