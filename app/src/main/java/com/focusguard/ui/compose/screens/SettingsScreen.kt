@@ -1,5 +1,6 @@
 package com.focusguard.ui.compose.screens
 
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -33,6 +34,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -47,6 +49,7 @@ import com.focusguard.BuildConfig
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.data.UserProfile
+import com.focusguard.dev.DevelopmentPermissionResetter
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.monetization.AdsConsentManager
 import com.focusguard.security.DeactivationCredentialManager
@@ -63,6 +66,7 @@ import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.FocusCard
 import com.focusguard.ui.compose.theme.TextHint
 import kotlin.math.ceil
+import kotlinx.coroutines.launch
 
 @Composable
 fun SettingsScreen(
@@ -76,6 +80,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? ComponentActivity
+    val coroutineScope = rememberCoroutineScope()
     val deactivationCredentialManager = remember(context) {
         DeactivationCredentialManager(context)
     }
@@ -89,6 +94,7 @@ fun SettingsScreen(
     var showDeviceOwnerSetupGuideDialog by remember { mutableStateOf(false) }
     var deactivationCredentialRevision by remember { mutableIntStateOf(0) }
     var deviceOwnerRevision by remember { mutableIntStateOf(0) }
+    var developmentResetInProgress by remember { mutableStateOf(false) }
     var privacyOptionsRequired by remember {
         mutableStateOf(AdsConsentManager.isPrivacyOptionsRequired(context))
     }
@@ -247,6 +253,49 @@ fun SettingsScreen(
                 titleColor = DangerRed,
                 onClick = { showDeviceOwnerSetupGuideDialog = true }
             )
+            if (DevelopmentPermissionResetter.TEMPORARY_TEST_ESCAPE_ENABLED) {
+                SettingsItem(
+                    Icons.Default.Warning,
+                    stringResource(R.string.dev_revoke_permissions_title),
+                    stringResource(
+                        if (developmentResetInProgress) {
+                            R.string.dev_revoke_permissions_running
+                        } else {
+                            R.string.dev_revoke_permissions_subtitle
+                        }
+                    ),
+                    iconTint = DangerRed,
+                    titleColor = DangerRed,
+                    onClick = {
+                        if (!developmentResetInProgress) {
+                            developmentResetInProgress = true
+                            coroutineScope.launch {
+                                val result = DevelopmentPermissionResetter
+                                    .disarmForTesting(context)
+                                val runtimeRevocationScheduled =
+                                    DevelopmentPermissionResetter
+                                        .revokeRuntimePermissionsOnKill(context)
+
+                                developmentResetInProgress = false
+                                deviceOwnerRevision++
+
+                                val messageRes = when {
+                                    !result.coreProtectionDisarmed ->
+                                        R.string.dev_revoke_permissions_failed
+                                    runtimeRevocationScheduled ->
+                                        R.string.dev_revoke_permissions_done
+                                    else -> R.string.dev_revoke_permissions_partial
+                                }
+                                Toast.makeText(
+                                    context,
+                                    context.getString(messageRes),
+                                    Toast.LENGTH_LONG
+                                ).show()
+                            }
+                        }
+                    }
+                )
+            }
             SettingsItem(
                 Icons.Default.DeleteForever,
                 stringResource(R.string.uninstall_app_title),

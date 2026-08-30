@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dev_revoke_permissions_title">Revoke permissions (test)</string>
+    <string name="dev_revoke_permissions_subtitle">Temporary test escape hatch: removes every HardBlock restriction, releases admin/accessibility, and revokes runtime permissions with one tap.</string>
+    <string name="dev_revoke_permissions_running">Removing test protections…</string>
+    <string name="dev_revoke_permissions_done">Test reset applied. HardBlock protections were disarmed.</string>
+    <string name="dev_revoke_permissions_partial">Test reset applied. Android may still show special access in system Settings, but HardBlock enforcement was disarmed.</string>
+    <string name="dev_revoke_permissions_failed">Could not completely disarm the test protections.</string>
+</resources>
