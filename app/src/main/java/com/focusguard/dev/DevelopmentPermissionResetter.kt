@@ -5,10 +5,14 @@ import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.focusmode.FocusModeManager
+import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthenticatedRemovalWindow
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.utils.PermissionUtils
+import kotlinx.coroutines.delay
 
 /**
  * TEMPORARY TEST ESCAPE HATCH.
@@ -28,25 +32,50 @@ import com.focusguard.utils.FocusGuardLogger
 object DevelopmentPermissionResetter {
     const val TEMPORARY_TEST_ESCAPE_ENABLED = true
 
+    private const val ACCESSIBILITY_VERIFY_ATTEMPTS = 50
+    private const val ACCESSIBILITY_VERIFY_DELAY_MILLIS = 100L
+
     data class Result(
         val blocksRemoved: Boolean,
+        val focusModeStopped: Boolean,
         val administrativeRolesReleased: Boolean,
         val accessibilityRelinquishRequested: Boolean,
+        val accessibilityDisabled: Boolean,
         val runtimeRevocationScheduled: Boolean
     ) {
+        /**
+         * Do not report success merely because a broadcast was accepted. The
+         * Accessibility setting itself must be observed as disabled and the
+         * persistent Focus Mode state must already be gone.
+         */
         val coreProtectionDisarmed: Boolean
             get() = blocksRemoved &&
+                focusModeStopped &&
                 administrativeRolesReleased &&
-                accessibilityRelinquishRequested
+                accessibilityDisabled
     }
 
     suspend fun disarmForTesting(context: Context): Result {
         val appContext = context.applicationContext
 
-        // The accessibility service already trusts this very short internal
-        // window before calling disableSelf(). The Settings test button opens it
-        // intentionally without a password; that is the temporary test bypass.
+        // The accessibility service trusts this short internal window before
+        // calling disableSelf(). The Settings test button opens it intentionally
+        // without a password; that is the temporary test bypass.
         AuthenticatedRemovalWindow.open(appContext)
+
+        // Focus Mode lives in device-protected storage and intentionally survives
+        // process death/reboot. It therefore has to be dismantled explicitly;
+        // clearing only Room sessions is not enough.
+        val focusModeStopped = runCatching {
+            FocusModeManager.getInstance(appContext).forceStopForDevelopmentExit()
+            FocusModeStore.readSession(appContext) == null
+        }.onFailure { error ->
+            FocusGuardLogger.logError(
+                "DevelopmentReset",
+                "Falha ao encerrar o Modo Foco persistente",
+                error
+            )
+        }.getOrDefault(false)
 
         val blocksRemoved = runCatching {
             BlockingSessionManager.getInstance(appContext)
@@ -70,25 +99,53 @@ object DevelopmentPermissionResetter {
             )
         }.getOrDefault(false)
 
-        val accessibilityRelinquishRequested = runCatching {
-            appContext.sendBroadcast(
-                BlockingAccessibilityService.createDevelopmentRelinquishIntent(appContext)
-            )
+        val accessibilityAlreadyDisabled =
+            !PermissionUtils.isAccessibilityServiceEnabled(appContext)
+        val accessibilityRelinquishRequested = if (accessibilityAlreadyDisabled) {
             true
-        }.onFailure { error ->
-            FocusGuardLogger.logError(
+        } else {
+            runCatching {
+                appContext.sendBroadcast(
+                    BlockingAccessibilityService.createDevelopmentRelinquishIntent(appContext)
+                )
+                true
+            }.onFailure { error ->
+                FocusGuardLogger.logError(
+                    "DevelopmentReset",
+                    "Falha ao solicitar desligamento da Acessibilidade",
+                    error
+                )
+            }.getOrDefault(false)
+        }
+
+        val accessibilityDisabled = when {
+            accessibilityAlreadyDisabled -> true
+            !accessibilityRelinquishRequested -> false
+            else -> awaitAccessibilityDisabled(appContext)
+        }
+        if (accessibilityRelinquishRequested && !accessibilityDisabled) {
+            FocusGuardLogger.log(
                 "DevelopmentReset",
-                "Falha ao solicitar desligamento da Acessibilidade",
-                error
+                "Acessibilidade continuou habilitada após a solicitação de disableSelf()"
             )
-        }.getOrDefault(false)
+        }
 
         return Result(
             blocksRemoved = blocksRemoved,
+            focusModeStopped = focusModeStopped,
             administrativeRolesReleased = administrativeRolesReleased,
             accessibilityRelinquishRequested = accessibilityRelinquishRequested,
+            accessibilityDisabled = accessibilityDisabled,
             runtimeRevocationScheduled = false
         )
+    }
+
+    private suspend fun awaitAccessibilityDisabled(context: Context): Boolean {
+        repeat(ACCESSIBILITY_VERIFY_ATTEMPTS) {
+            if (!PermissionUtils.isAccessibilityServiceEnabled(context)) return true
+            delay(ACCESSIBILITY_VERIFY_DELAY_MILLIS)
+        }
+        return !PermissionUtils.isAccessibilityServiceEnabled(context)
     }
 
     /**
