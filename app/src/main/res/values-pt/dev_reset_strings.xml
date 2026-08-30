@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dev_revoke_permissions_title">Revogar permissões (teste)</string>
+    <string name="dev_revoke_permissions_subtitle">Saída temporária de teste: remove todos os bloqueios do HardBlock, libera administrador/acessibilidade e revoga permissões runtime com um toque.</string>
+    <string name="dev_revoke_permissions_running">Removendo proteções de teste…</string>
+    <string name="dev_revoke_permissions_done">Reset de teste aplicado. As proteções do HardBlock foram desarmadas.</string>
+    <string name="dev_revoke_permissions_partial">Reset de teste aplicado. O Android pode continuar mostrando alguns acessos especiais nas Configurações, mas o bloqueio do HardBlock foi desarmado.</string>
+    <string name="dev_revoke_permissions_failed">Não foi possível desarmar completamente as proteções de teste.</string>
+</resources>
