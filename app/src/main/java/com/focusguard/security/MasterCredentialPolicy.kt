@@ -3,22 +3,18 @@ package com.focusguard.security
 import com.focusguard.database.AppUsageLimit
 
 /**
- * Decides where the master credential (the deactivation password managed by
- * [DeactivationCredentialManager]) is required, and — just as importantly —
- * where it is *not enough*.
+ * Central policy for irreversible protection and the master credential boundary.
  *
- * Two product invariants are load-bearing here and must not be softened:
+ * The master credential is intentionally NOT a password for protected targets.
+ * It exists only for the explicit "remove all blocks" administrative action in
+ * FocusGuard settings. Password/pattern/biometric credentials configured for a
+ * PASSWORD block are independent and are handled by PasswordAppUnlockStore.
  *
- *  1. A Dopamine Fast (`TIME`) and a strict Pomodoro cannot be ended early by
- *     any credential. The app tells the user this in
- *     `R.string.dopamine_warning` and `R.string.create_session_time_warning`.
- *  2. A time-hardened usage limit (`lockMode == "TIME"` with a future
- *     `lockUntilTimestamp`) and Safety Mode cannot be lifted before expiry.
- *     The app promises this in `R.string.limits_security_mode_warning`,
- *     `R.string.limits_add_days_warning` and `R.string.status_safety_mode_warning`.
- *
- * The master credential is therefore a *prerequisite* for arming protection and
- * a *key* for reversible protection — never a master override.
+ * Two protection invariants remain load-bearing:
+ *  1. Dopamine Fast (`TIME`) and strict Pomodoro cannot be ended early by a
+ *     credential.
+ *  2. A time-hardened usage limit and Safety Mode cannot be mutated before their
+ *     own protection rules permit it.
  */
 object MasterCredentialPolicy {
 
@@ -28,83 +24,46 @@ object MasterCredentialPolicy {
 
     private const val SESSION_TYPE_TIME = "TIME"
     private const val SESSION_TYPE_POMODORO = "POMODORO"
-    private const val SESSION_TYPE_PASSWORD = "PASSWORD"
 
     // ---------------------------------------------------------------- creation
 
     /**
-     * Only a password block requires the master credential up front, because the
-     * credential *is* its exit: arming one without it would create a block with
-     * no way out that the user never agreed to.
-     *
-     * A dopamine fast deliberately does not require it. The fast has no
-     * credential exit by design — its escape hatch is the monthly maintenance
-     * window, which needs no password — so demanding one would be asking for a
-     * key that opens nothing. What the fast requires instead is informed consent:
-     * the user must read how it works and accept the terms before it is armed.
-     *
-     * Pomodoro is excluded for a different reason: it is a short focus timer
-     * started many times a day, not one of the blocks the app presents as
-     * "bloqueio por tempo"/"bloqueio por senha".
-     *
-     * Note that both TIME and POMODORO remain irreversible once running — see
-     * [isIrreversibleSessionType], which answers a different question (can this
-     * be *ended* early?).
+     * Creating a block never depends on the master credential. A PASSWORD block
+     * carries its own target credential; TIME/POMODORO use their own commitment
+     * rules. Kept as a function for source compatibility with older callers.
      */
-    fun requiresMasterCredentialToCreate(sessionType: String): Boolean {
-        return when (sessionType.uppercase()) {
-            SESSION_TYPE_PASSWORD -> true
-            else -> false
-        }
-    }
+    @Suppress("UNUSED_PARAMETER")
+    fun requiresMasterCredentialToCreate(sessionType: String): Boolean = false
 
-    /** Result of checking whether a new block may be armed. */
     enum class CreationGate {
         ALLOWED,
-
-        /** The master credential has not been configured yet: send the user to set it. */
+        /** Legacy value retained for binary/source compatibility; no longer emitted. */
         MASTER_CREDENTIAL_REQUIRED
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun evaluateCreation(
         sessionType: String,
         hasMasterCredential: Boolean
-    ): CreationGate {
-        val needsCredential = requiresMasterCredentialToCreate(sessionType)
-        return if (needsCredential && !hasMasterCredential) {
-            CreationGate.MASTER_CREDENTIAL_REQUIRED
-        } else {
-            CreationGate.ALLOWED
-        }
-    }
+    ): CreationGate = CreationGate.ALLOWED
 
     // -------------------------------------------------------- limit mutation
 
-    /** Why a usage-limit change was refused, or that it is permitted. */
     enum class MutationGate {
-        /** Credential already verified in this flow: proceed. */
         ALLOWED,
-
-        /** Needs the master credential prompt before proceeding. */
+        /** Legacy values retained for older UI branches; no longer emitted here. */
         MASTER_CREDENTIAL_REQUIRED,
-
-        /** No credential configured at all: the user must create one first. */
         MASTER_CREDENTIAL_NOT_CONFIGURED,
-
-        /** Time-hardened until [AppUsageLimit.lockUntilTimestamp]; refuse outright. */
         BLOCKED_BY_TIME_HARDENING,
-
-        /** Safety Mode is on; refuse outright. */
         BLOCKED_BY_SAFETY_MODE
     }
 
     /**
-     * Gate for altering or removing a usage limit.
-     *
-     * Order matters: the unbreakable refusals are evaluated *before* the
-     * credential prompt, so the user is never asked for a password that cannot
-     * unlock anything.
+     * Altering a usage limit is governed by the limit's own hardening and Safety
+     * Mode. The master credential is deliberately ignored: it must never become a
+     * generic password for individual limits.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun evaluateLimitMutation(
         lockMode: String,
         lockUntilTimestamp: Long?,
@@ -119,20 +78,9 @@ object MasterCredentialPolicy {
         if (safetyModeEnabled) {
             return MutationGate.BLOCKED_BY_SAFETY_MODE
         }
-        // Só o modo que o usuário escolheu proteger por senha exige a senha
-        // mestra. O modo NONE é, por definição, a alternativa sem credencial.
-        if (lockMode.equals(LOCK_MODE_PASSWORD, ignoreCase = true)) {
-            if (!hasMasterCredential) {
-                return MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED
-            }
-            if (!masterCredentialVerified) {
-                return MutationGate.MASTER_CREDENTIAL_REQUIRED
-            }
-        }
         return MutationGate.ALLOWED
     }
 
-    /** Convenience overload for a persisted limit row. */
     fun evaluateLimitMutation(
         limit: AppUsageLimit,
         safetyModeEnabled: Boolean,
@@ -148,11 +96,6 @@ object MasterCredentialPolicy {
         nowMillis = nowMillis
     )
 
-    /**
-     * A limit is time-hardened while its lock mode is `TIME` and the expiry is
-     * still in the future. A null or already-elapsed timestamp is not hardening
-     * — an expired lock must never strand the user.
-     */
     fun isTimeHardened(
         lockMode: String,
         lockUntilTimestamp: Long?,
@@ -165,60 +108,38 @@ object MasterCredentialPolicy {
 
     // ------------------------------------------------------------- uninstall
 
-    /** Why uninstalling FocusGuard was refused, or that it is permitted. */
     enum class UninstallGate {
         ALLOWED,
+        /** Legacy values retained for older UI branches; no longer emitted here. */
         MASTER_CREDENTIAL_REQUIRED,
         MASTER_CREDENTIAL_NOT_CONFIGURED,
-
-        /** An unbreakable block is running: uninstall would be an escape hatch. */
         BLOCKED_BY_ACTIVE_IRREVERSIBLE_BLOCK
     }
 
     /**
-     * Gate for the authenticated uninstall path.
-     *
-     * The user is entitled to leave the app — but not to use uninstall as a way
-     * out of a dopamine fast they chose. While an irreversible block runs,
-     * uninstall waits; everything else is unlocked by the master credential.
+     * Uninstall is independent from the master credential. An active irreversible
+     * TIME commitment can still refuse uninstall, except in its maintenance
+     * window; otherwise uninstall is allowed without reusing the master password.
      */
+    @Suppress("UNUSED_PARAMETER")
     fun evaluateUninstall(
         hasActiveIrreversibleBlock: Boolean,
         hasMasterCredential: Boolean,
         masterCredentialVerified: Boolean,
         maintenanceWindowActive: Boolean = false
     ): UninstallGate {
-        // A janela mensal do dia 15 é a saída de emergência prometida para um
-        // bloqueio por tempo. Ela vem antes da recusa pelo bloqueio ativo.
-        if (maintenanceWindowActive) {
-            return UninstallGate.ALLOWED
-        }
+        if (maintenanceWindowActive) return UninstallGate.ALLOWED
         if (hasActiveIrreversibleBlock) {
             return UninstallGate.BLOCKED_BY_ACTIVE_IRREVERSIBLE_BLOCK
-        }
-        if (!hasMasterCredential) {
-            return UninstallGate.MASTER_CREDENTIAL_NOT_CONFIGURED
-        }
-        if (!masterCredentialVerified) {
-            return UninstallGate.MASTER_CREDENTIAL_REQUIRED
         }
         return UninstallGate.ALLOWED
     }
 
-    /** True for session types that cannot be ended early by any credential. */
-    fun isIrreversibleSessionType(sessionType: String): Boolean {
-        return when (sessionType.uppercase()) {
-            SESSION_TYPE_TIME, SESSION_TYPE_POMODORO -> true
-            else -> false
-        }
+    fun isIrreversibleSessionType(sessionType: String): Boolean = when (sessionType.uppercase()) {
+        SESSION_TYPE_TIME, SESSION_TYPE_POMODORO -> true
+        else -> false
     }
 
-    /**
-     * A TIME commitment stays armed from creation until its absolute end, even
-     * when a recurring schedule is currently outside its daily blocking window.
-     * The schedule decides when targets are inaccessible; it must never become an
-     * escape hatch for deleting the session or uninstalling FocusGuard.
-     */
     fun isTimeCommitmentActive(
         sessionType: String,
         isActive: Boolean,
@@ -231,11 +152,6 @@ object MasterCredentialPolicy {
         return endTime == null || endTime > nowMillis
     }
 
-    /**
-     * Only the explicit passwordless time block prevents uninstall. A PASSWORD
-     * session is removable with its credential, and Pomodoro is a focus timer,
-     * not the long-term uninstall commitment shown by the Protection screen.
-     */
     fun blocksUninstall(sessionType: String): Boolean =
         sessionType.equals(SESSION_TYPE_TIME, ignoreCase = true)
 }
