@@ -1,6 +1,7 @@
 package com.focusguard.ui.compose.screens
 
 import android.Manifest
+import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -61,12 +62,15 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.core.graphics.drawable.toBitmap
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import com.focusguard.R
 import com.focusguard.data.PredefinedApps
 import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.monetization.MonetizationPolicy
+import com.focusguard.monetization.RewardedGateCoordinator
 import com.focusguard.security.AppUnlockBiometricAuthenticator
 import com.focusguard.security.AuthManager
 import com.focusguard.security.BlockCountdownPolicy
@@ -330,8 +334,9 @@ fun BlockTypeDetailScreen(
  * Ferramentas relacionadas a tentativas de abertura de apps protegidos.
  *
  * O desbloqueio biométrico usa a mesma preferência e o mesmo autenticador do
- * fluxo real de abertura. A selfie precisa da permissão de câmera e só é
- * ativada depois que o Android concede a permissão.
+ * fluxo real de abertura. Ativar biometria ou selfie exige uma recompensa
+ * independente. A selfie pede a permissão de câmera antes do anúncio para não
+ * cobrar uma recompensa por uma função que o Android não poderá habilitar.
  */
 @Composable
 private fun PasswordProtectionTools(
@@ -349,11 +354,46 @@ private fun PasswordProtectionTools(
     }
     var selfieEnabled by remember { mutableStateOf(authManager.isPhotoCaptureEnabled()) }
 
+    val biometricGateTitle = stringResource(R.string.password_app_unlock_quick_biometric_title)
+    val biometricGateDescription =
+        stringResource(R.string.password_app_unlock_biometric_rewarded_desc)
+    val selfieGateTitle = stringResource(R.string.limits_intruder_selfie)
+    val selfieGateDescription =
+        stringResource(R.string.password_app_unlock_intruder_selfie_rewarded_desc)
+
+    val launchBiometricRewardedGate: () -> Unit = {
+        RewardedGateCoordinator.launch(
+            context = context,
+            requiredAds = MonetizationPolicy.BIOMETRIC_UNLOCK_REWARDED_ADS,
+            title = biometricGateTitle,
+            description = biometricGateDescription
+        ) {
+            biometricEnabled = true
+            authManager.setBiometricAppUnlockEnabled(true)
+        }
+    }
+
+    val launchSelfieRewardedGate: () -> Unit = {
+        RewardedGateCoordinator.launch(
+            context = context,
+            requiredAds = MonetizationPolicy.INTRUDER_SELFIE_REWARDED_ADS,
+            title = selfieGateTitle,
+            description = selfieGateDescription
+        ) {
+            selfieEnabled = true
+            authManager.setPhotoCaptureEnabled(true)
+        }
+    }
+
     val cameraPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
-        selfieEnabled = granted
-        authManager.setPhotoCaptureEnabled(granted)
+        if (granted) {
+            launchSelfieRewardedGate()
+        } else {
+            selfieEnabled = false
+            authManager.setPhotoCaptureEnabled(false)
+        }
     }
 
     Column {
@@ -363,7 +403,7 @@ private fun PasswordProtectionTools(
             border = BorderStroke(1.dp, CardBorder)
         ) {
             ToggleRow(
-                title = stringResource(R.string.password_app_unlock_quick_biometric_title),
+                title = biometricGateTitle,
                 subtitle = stringResource(
                     if (biometricAvailable) {
                         R.string.password_app_unlock_quick_biometric_desc
@@ -375,8 +415,12 @@ private fun PasswordProtectionTools(
                 enabled = biometricAvailable,
                 accent = accent,
                 onCheckedChange = { enable ->
-                    biometricEnabled = enable
-                    authManager.setBiometricAppUnlockEnabled(enable)
+                    if (enable) {
+                        launchBiometricRewardedGate()
+                    } else {
+                        biometricEnabled = false
+                        authManager.setBiometricAppUnlockEnabled(false)
+                    }
                 }
             )
         }
@@ -389,14 +433,22 @@ private fun PasswordProtectionTools(
             border = BorderStroke(1.dp, CardBorder)
         ) {
             ToggleRow(
-                title = stringResource(R.string.limits_intruder_selfie),
+                title = selfieGateTitle,
                 subtitle = stringResource(R.string.limits_intruder_selfie_desc),
                 checked = selfieEnabled,
                 enabled = true,
                 accent = accent,
                 onCheckedChange = { enable ->
                     if (enable) {
-                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                        val cameraGranted = ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.CAMERA
+                        ) == PackageManager.PERMISSION_GRANTED
+                        if (cameraGranted) {
+                            launchSelfieRewardedGate()
+                        } else {
+                            cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                        }
                     } else {
                         selfieEnabled = false
                         authManager.setPhotoCaptureEnabled(false)
