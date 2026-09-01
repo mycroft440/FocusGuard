@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="master_remove_all_blocks_title">Remover todos os bloqueios</string>
+    <string name="master_remove_all_blocks_subtitle">Usa a senha mestre para apagar todos os bloqueios e limites configurados</string>
+    <string name="master_remove_all_blocks_prompt">Digite a senha mestre para remover todos os bloqueios. Esta senha não desbloqueia aplicativos ou sites individualmente.</string>
+    <string name="master_remove_all_blocks_success">Todos os bloqueios foram removidos</string>
+    <string name="master_remove_all_blocks_failed">Não foi possível remover todos os bloqueios</string>
+</resources>
