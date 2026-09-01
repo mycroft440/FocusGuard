@@ -42,7 +42,8 @@ object ImmediateInterceptionPolicy {
                 if (rendered in allKnownLabels) {
                     val exact = uniqueIdentityByLabel[rendered]?.packageName
                     return exact?.takeIf {
-                        it in blockedPackages || it in additionalBlockedPackages
+                        (it in blockedPackages || it in additionalBlockedPackages) &&
+                            !PasswordTargetAccessGrant.isPackageGranted(it)
                     }
                 }
 
@@ -53,11 +54,6 @@ object ImmediateInterceptionPolicy {
                 val lastDigitIndex = raw.indexOfLast(Char::isDigit)
                 for (boundary in raw.indices.reversed()) {
                     if (raw[boundary] !in SAFE_LABEL_SUFFIXES || boundary <= 0) continue
-                    // Folders, widgets and pinned shortcuts are not represented in
-                    // the PackageManager label index. Only strip punctuation when
-                    // the suffix itself starts with a numeric notification badge.
-                    // A digit later in a shortcut name ("Foo, Trabalho 2") is not
-                    // evidence that the prefix identifies the launched app.
                     if (lastDigitIndex <= boundary) continue
                     var suffixStart = boundary + 1
                     while (suffixStart < raw.length && raw[suffixStart].isWhitespace()) {
@@ -68,7 +64,8 @@ object ImmediateInterceptionPolicy {
                     if (candidate in allKnownLabels) {
                         val packageName = uniqueIdentityByLabel[candidate]?.packageName
                         return packageName?.takeIf {
-                            it in blockedPackages || it in additionalBlockedPackages
+                            (it in blockedPackages || it in additionalBlockedPackages) &&
+                                !PasswordTargetAccessGrant.isPackageGranted(it)
                         }
                     }
                 }
@@ -126,9 +123,6 @@ object ImmediateInterceptionPolicy {
     /** Conservative class gate before a launcher label may identify a package. */
     fun isLikelyLauncherAppIconClass(className: String): Boolean {
         if (className.isBlank()) return false
-        // AOSP Launcher3's BubbleTextView reports TextView as its accessibility
-        // class. Check the exact framework class before the generic non-app
-        // markers, because its package name itself contains "widget".
         if (className == "android.widget.TextView") return true
         if (NON_APP_LAUNCHER_CLASS_MARKERS.any {
                 className.contains(it, ignoreCase = true)
@@ -142,12 +136,9 @@ object ImmediateInterceptionPolicy {
         foregroundPackageName: String,
         blockedPackages: Set<String>
     ): Boolean = foregroundPackageName.isNotBlank() &&
-        foregroundPackageName in blockedPackages
+        foregroundPackageName in blockedPackages &&
+        !PasswordTargetAccessGrant.isPackageGranted(foregroundPackageName)
 
-    /**
-     * Classifies only direct event fields. NEED_TREE is explicit: callers may pay
-     * for source/root inspection only for that small ambiguous subset.
-     */
     fun classifySettingsClick(
         packageName: String,
         className: String,
@@ -203,9 +194,7 @@ object ImmediateInterceptionPolicy {
                 SettingsSurface.APP_INFO
             )
 
-            managed.appInfoGateway -> SettingsClickDecision(
-                DirectDecision.NEED_TREE
-            )
+            managed.appInfoGateway -> SettingsClickDecision(DirectDecision.NEED_TREE)
 
             accessibility.installedAccessibilityApps && accessibility.accessibility ->
                 SettingsClickDecision(
@@ -233,7 +222,6 @@ object ImmediateInterceptionPolicy {
                 SettingsSurface.APP_INFO
             )
 
-            // The first FocusGuard row click is itself an early removal gateway.
             managed.focusGuard -> SettingsClickDecision(
                 DirectDecision.PROTECT,
                 SettingsSurface.APP_INFO
@@ -253,8 +241,6 @@ object ImmediateInterceptionPolicy {
                 DirectDecision.NEED_TREE
             )
 
-            // OEM Settings frequently sends a textless generic row click. There
-            // is no safe negative decision until source/root confirms its context.
             else -> SettingsClickDecision(DirectDecision.NEED_TREE)
         }
     }
@@ -270,12 +256,6 @@ object ImmediateInterceptionPolicy {
         }
     }
 
-    /**
-     * Reclassifies only an ambiguous System UI click after the caller obtains
-     * context from the clicked notification subtree. Keeping the expansion
-     * lazy avoids a node-tree Binder query for directly proven or clearly
-     * unrelated notifications.
-     */
     fun classifySystemUiClickWithContext(
         className: String,
         directValues: Iterable<CharSequence?>,
