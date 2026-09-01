@@ -147,4 +147,9 @@
   initSearch();
   restoreProgress();
   updateProgress();
+
+  const editorScript = document.createElement('script');
+  editorScript.src = 'assets/js/editor.js';
+  editorScript.defer = true;
+  document.body.appendChild(editorScript);
 })();

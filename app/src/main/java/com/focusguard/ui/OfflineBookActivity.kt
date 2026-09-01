@@ -5,13 +5,17 @@ import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
+import android.webkit.JavascriptInterface
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.OnBackPressedCallback
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -22,6 +26,26 @@ import com.focusguard.R
 class OfflineBookActivity : ComponentActivity() {
     private lateinit var webView: WebView
     private lateinit var bookAssetDirectory: String
+    private var pendingBookExportHtml: String? = null
+
+    private val createBookDocumentLauncher =
+        registerForActivityResult(ActivityResultContracts.CreateDocument("text/html")) { uri ->
+            val html = pendingBookExportHtml
+            pendingBookExportHtml = null
+            if (uri == null || html == null) return@registerForActivityResult
+
+            runCatching {
+                contentResolver.openOutputStream(uri)?.use { output ->
+                    output.writer(Charsets.UTF_8).buffered().use { writer ->
+                        writer.write(html)
+                    }
+                } ?: error("Unable to open destination file")
+            }.onSuccess {
+                Toast.makeText(this, "Livro HTML exportado com sucesso.", Toast.LENGTH_SHORT).show()
+            }.onFailure {
+                Toast.makeText(this, "Não foi possível exportar o livro.", Toast.LENGTH_LONG).show()
+            }
+        }
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -62,6 +86,11 @@ class OfflineBookActivity : ComponentActivity() {
             displayZoomControls = false
             cacheMode = WebSettings.LOAD_NO_CACHE
         }
+        webView.webChromeClient = WebChromeClient()
+
+        if (bookAssetDirectory == OfflineBook.EASYPEASY.assetDirectory) {
+            webView.addJavascriptInterface(BookEditorBridge(), BOOK_EDITOR_BRIDGE)
+        }
 
         webView.webViewClient = object : WebViewClient() {
             override fun shouldInterceptRequest(
@@ -100,13 +129,39 @@ class OfflineBookActivity : ComponentActivity() {
 
     override fun onDestroy() {
         webView.apply {
+            removeJavascriptInterface(BOOK_EDITOR_BRIDGE)
             stopLoading()
             loadUrl("about:blank")
             clearHistory()
             removeAllViews()
             destroy()
         }
+        pendingBookExportHtml = null
         super.onDestroy()
+    }
+
+    private inner class BookEditorBridge {
+        @JavascriptInterface
+        fun exportHtml(fileName: String, html: String) {
+            if (html.isBlank()) return
+            runOnUiThread {
+                pendingBookExportHtml = html
+                createBookDocumentLauncher.launch(normalizeHtmlFileName(fileName))
+            }
+        }
+    }
+
+    private fun normalizeHtmlFileName(fileName: String): String {
+        val sanitized = fileName
+            .replace(Regex("[\\\\/:*?\"<>|]"), "_")
+            .trim()
+            .take(120)
+            .ifBlank { "EasyPeasy-editado.html" }
+        return if (sanitized.endsWith(".html", ignoreCase = true)) {
+            sanitized
+        } else {
+            "$sanitized.html"
+        }
     }
 
     private fun Uri.isOfflineBookAsset(): Boolean =
@@ -124,6 +179,7 @@ class OfflineBookActivity : ComponentActivity() {
 
     companion object {
         private const val EXTRA_BOOK = "offline_book"
+        private const val BOOK_EDITOR_BRIDGE = "FocusGuardBookExporter"
 
         fun createIntent(context: Context, book: OfflineBook): Intent =
             Intent(context, OfflineBookActivity::class.java)
