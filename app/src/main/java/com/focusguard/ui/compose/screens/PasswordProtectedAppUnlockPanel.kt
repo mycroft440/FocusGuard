@@ -45,9 +45,9 @@ import com.focusguard.security.AuthManager
 import com.focusguard.security.BiometricAppUnlockPolicy
 import com.focusguard.security.CameraManager
 import com.focusguard.security.IntruderCapturePolicy
-import com.focusguard.security.PasswordAppUnlockConfig
 import com.focusguard.security.PasswordAppUnlockMode
 import com.focusguard.security.PasswordAppUnlockStore
+import com.focusguard.security.PasswordTargetAccessGrant
 import com.focusguard.ui.compose.components.PatternLockInput
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
@@ -57,8 +57,11 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * Controles de desbloqueio para uma sessão PASSWORD criada pelo novo assistente.
- * Configurações antigas continuam usando a senha mestra no BlockNoticeActivity.
+ * Unlock controls for a PASSWORD session.
+ *
+ * The credential configured for the protected app is independent from the master
+ * credential. A successful unlock grants one foreground visit and never removes
+ * the app from its PASSWORD session.
  */
 @Composable
 internal fun PasswordProtectedAppUnlockPanel(
@@ -117,24 +120,14 @@ internal fun PasswordProtectedAppUnlockPanel(
                     onInvalid?.invoke()
                     return@launch
                 }
-                when (
-                    sessionManager.unlockPasswordSessionTarget(
-                        blockedPackage = blockedPackage,
-                        blockedDomain = null
-                    )
-                ) {
-                    BlockingSessionManager.EndSessionResult.ENDED -> {
-                        showCredentialDialog = false
-                        onUnlocked()
-                    }
-                    else -> {
-                        error = failureMessage
-                        onInvalid?.invoke()
-                    }
-                }
+
+                PasswordTargetAccessGrant.grantPackage(context, blockedPackage)
+                showCredentialDialog = false
+                onUnlocked()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
+                PasswordTargetAccessGrant.revokePackage(blockedPackage)
                 error = failureMessage
                 onInvalid?.invoke()
             } finally {
