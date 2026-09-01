@@ -19,14 +19,7 @@ data class PasswordAppUnlockConfig(
         get() = mode != PasswordAppUnlockMode.BIOMETRIC_ONLY
 }
 
-/**
- * Configuração de como um app protegido por uma sessão PASSWORD pode ser aberto.
- *
- * A senha/padrão nunca é persistida em texto puro: somente um verificador PBKDF2
- * fica dentro das preferências criptografadas do FocusGuard. A configuração é
- * indexada pelo packageName para que grupos diferentes de apps possam usar
- * métodos de desbloqueio diferentes sem alterar o schema Room das sessões.
- */
+/** Per-app credential used only to open apps protected by a PASSWORD session. */
 class PasswordAppUnlockStore(context: Context) {
     private val preferences = SecurePrefsManager(context.applicationContext).prefs
 
@@ -39,23 +32,18 @@ class PasswordAppUnlockStore(context: Context) {
     ): Boolean {
         val targets = packageNames.filter(String::isNotBlank).distinct()
         require(targets.isNotEmpty()) { "É necessário selecionar ao menos um aplicativo" }
-        require(
-            mode == PasswordAppUnlockMode.BIOMETRIC_ONLY || !credential.isNullOrBlank()
-        ) { "A credencial não pode ficar vazia" }
-
+        require(mode == PasswordAppUnlockMode.BIOMETRIC_ONLY || !credential.isNullOrBlank()) {
+            "A credencial não pode ficar vazia"
+        }
         val verifier = credential
             ?.takeIf { mode != PasswordAppUnlockMode.BIOMETRIC_ONLY }
             ?.let(::serializeSecret)
-
         val editor = preferences.edit()
         targets.forEach { packageName ->
             val prefix = prefix(packageName)
             editor.putString(prefix + KEY_MODE, mode.name)
-            if (verifier == null) {
-                editor.remove(prefix + KEY_VERIFIER)
-            } else {
-                editor.putString(prefix + KEY_VERIFIER, verifier)
-            }
+            if (verifier == null) editor.remove(prefix + KEY_VERIFIER)
+            else editor.putString(prefix + KEY_VERIFIER, verifier)
             editor.putBoolean(
                 prefix + KEY_BIOMETRIC_ENABLED,
                 biometricEnabled || mode == PasswordAppUnlockMode.BIOMETRIC_ONLY
@@ -73,8 +61,7 @@ class PasswordAppUnlockStore(context: Context) {
         val target = packageName?.takeIf(String::isNotBlank) ?: return null
         val prefix = prefix(target)
         val modeName = preferences.getString(prefix + KEY_MODE, null) ?: return null
-        val mode = runCatching { PasswordAppUnlockMode.valueOf(modeName) }.getOrNull()
-            ?: return null
+        val mode = runCatching { PasswordAppUnlockMode.valueOf(modeName) }.getOrNull() ?: return null
         return PasswordAppUnlockConfig(
             mode = mode,
             biometricEnabled = preferences.getBoolean(
@@ -82,10 +69,7 @@ class PasswordAppUnlockStore(context: Context) {
                 mode == PasswordAppUnlockMode.BIOMETRIC_ONLY
             ),
             hidePatternTrace = preferences.getBoolean(prefix + KEY_HIDE_PATTERN, false),
-            biometricOfferShown = preferences.getBoolean(
-                prefix + KEY_BIOMETRIC_OFFER_SHOWN,
-                false
-            )
+            biometricOfferShown = preferences.getBoolean(prefix + KEY_BIOMETRIC_OFFER_SHOWN, false)
         )
     }
 
@@ -129,10 +113,17 @@ class PasswordAppUnlockStore(context: Context) {
         editor.commit()
     }
 
+    fun clearAll() {
+        val keys = preferences.all.keys.filter { it.startsWith(KEY_NAMESPACE) }
+        if (keys.isEmpty()) return
+        val editor = preferences.edit()
+        keys.forEach(editor::remove)
+        editor.commit()
+    }
+
     companion object {
         const val MIN_PASSWORD_LENGTH = 6
         const val MIN_PATTERN_POINTS = 4
-
         private const val KEY_NAMESPACE = "password_app_unlock."
         private const val KEY_MODE = ".mode"
         private const val KEY_VERIFIER = ".verifier"
@@ -141,9 +132,7 @@ class PasswordAppUnlockStore(context: Context) {
         private const val KEY_BIOMETRIC_OFFER_SHOWN = ".biometric_offer_shown"
 
         fun isPasswordValid(value: String): Boolean =
-            value.length >= MIN_PASSWORD_LENGTH &&
-                value.any(Char::isLetter) &&
-                value.any(Char::isDigit)
+            value.length >= MIN_PASSWORD_LENGTH && value.any(Char::isLetter) && value.any(Char::isDigit)
 
         fun isPatternValid(value: String): Boolean =
             decodePattern(value).distinct().size >= MIN_PATTERN_POINTS
