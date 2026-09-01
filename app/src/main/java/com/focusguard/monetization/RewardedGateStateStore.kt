@@ -6,10 +6,16 @@ object RewardedGateKeys {
     const val EXTRA_APP_LIMIT_SLOT = "extra_app_limit_slot"
     const val EXTRA_SITE_LIMIT_SLOT = "extra_site_limit_slot"
     const val TIME_BLOCK_CREATION = "time_block_creation"
+    const val BIOMETRIC_APP_UNLOCK = "biometric_app_unlock"
+    const val INTRUDER_SELFIE = "intruder_selfie"
 
     fun forRequest(title: String, requiredAds: Int): String {
         val normalized = title.lowercase()
         return when {
+            "desbloquear apps com digital" in normalized ||
+                "unlock apps with biometric" in normalized -> BIOMETRIC_APP_UNLOCK
+
+            "selfie" in normalized || "intruder" in normalized -> INTRUDER_SELFIE
             "aplicativo" in normalized -> EXTRA_APP_LIMIT_SLOT
             "site" in normalized -> EXTRA_SITE_LIMIT_SLOT
             "bloqueio sem senha" in normalized -> TIME_BLOCK_CREATION
