@@ -1,12 +1,9 @@
 package com.focusguard.ui.compose.components.limits
 
-import android.graphics.drawable.Drawable
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.CircleShape
@@ -15,25 +12,22 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.asImageBitmap
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.graphics.drawable.toBitmap
 import com.focusguard.R
+import com.focusguard.ui.compose.components.FocusGuardAppIcon
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.utils.UsageLimitBehaviorPolicy
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 data class UsageLimitAppUi(
     val packageName: String,
@@ -52,17 +46,6 @@ fun UsageLimitItem(
     isActive: Boolean,
     onClick: () -> Unit
 ) {
-    val context = LocalContext.current
-    var iconDrawable by remember(app.packageName) { mutableStateOf<Drawable?>(null) }
-
-    LaunchedEffect(app.packageName) {
-        withContext(Dispatchers.IO) {
-            try {
-                iconDrawable = context.packageManager.getApplicationIcon(app.packageName)
-            } catch (_: Exception) {}
-        }
-    }
-
     val now = System.currentTimeMillis()
     val dailyBehavior = UsageLimitBehaviorPolicy.isDailyBehaviorMode(app.lockMode)
     val ruleExpired = dailyBehavior &&
@@ -130,32 +113,12 @@ fun UsageLimitItem(
             modifier = Modifier.padding(12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            if (iconDrawable != null) {
-                val bitmap = remember(iconDrawable) {
-                    iconDrawable!!.toBitmap(80, 80).asImageBitmap()
-                }
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = app.appName,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                )
-            } else {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(AccentCyan.copy(alpha = 0.2f)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        app.appName.take(1).uppercase(),
-                        color = AccentCyan,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
+            FocusGuardAppIcon(
+                packageName = app.packageName,
+                appName = app.appName,
+                modifier = Modifier.size(40.dp),
+                cornerRadius = 10.dp
+            )
 
             Spacer(modifier = Modifier.width(12.dp))
 
@@ -210,7 +173,7 @@ fun UsageLimitItem(
                 if (app.currentLimitMinutes != null) {
                     Spacer(Modifier.height(4.dp))
                     LinearProgressIndicator(
-                        progress = progress,
+                        progress = { progress },
                         modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
                         color = progressColor,
                         trackColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
