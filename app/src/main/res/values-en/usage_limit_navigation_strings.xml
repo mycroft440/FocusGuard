@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="limits_tab_keywords">Words</string>
+    <string name="limits_top_used_section">Most used</string>
+    <string name="limits_social_section">Social networks</string>
+    <string name="limits_other_apps_section">Other apps</string>
+    <string name="limits_search_results_section">Search results</string>
+    <string name="limits_add_keyword_btn">Add word</string>
+    <string name="limits_keyword_label">Word</string>
+    <string name="limits_keyword_helper">The daily time is added across every site whose domain contains this word.</string>
+    <string name="limits_common_sites_section">Sites</string>
+    <string name="limits_common_keywords_section">Words</string>
+    <string name="limits_custom_targets_section">Other configured limits</string>
+    <string name="limits_preset_not_configured">Tap to set a daily limit</string>
+</resources>
