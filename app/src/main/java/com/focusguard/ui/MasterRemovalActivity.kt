@@ -6,51 +6,37 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
-import android.text.InputType
-import android.view.View
-import android.view.ViewGroup
 import android.view.ViewTreeObserver
-import android.widget.EditText
-import android.widget.LinearLayout
-import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
 import androidx.core.view.doOnPreDraw
-import androidx.lifecycle.lifecycleScope
 import com.focusguard.R
-import com.focusguard.admin.DeviceOwnerManager
-import com.focusguard.focusmode.FocusModeManager
-import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthenticatedRemovalWindow
 import com.focusguard.security.CurtainDestinationReadyCoordinator
-import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.ProtectedSettingsResetWindow
 import com.focusguard.security.SafeSurfaceReadinessPolicy
+import com.focusguard.security.SelfProtectionStateStore
 import com.focusguard.service.BlockingAccessibilityService
-import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
+/**
+ * Gate between active self-protection and Android-owned removal/settings surfaces.
+ *
+ * There is intentionally no credential field here. The master password is accepted
+ * only by RemoveAllBlocksActivity. While protection is active these system surfaces
+ * stay closed; after all blocks are removed they are available without a password.
+ */
 class MasterRemovalActivity : ComponentActivity() {
 
     enum class Target { APP_INFO, DEVICE_ADMIN, ACCESSIBILITY, UNINSTALL }
 
-    private lateinit var credentialManager: DeactivationCredentialManager
-    private lateinit var sessionManager: BlockingSessionManager
-    private lateinit var deviceOwnerManager: DeviceOwnerManager
-    private lateinit var focusModeManager: FocusModeManager
-    private lateinit var passwordField: EditText
-    private lateinit var errorText: TextView
-    private var working = false
     private var dialogShown = false
     private var dialogDrawn = false
     private var activityResumed = false
     private var pendingCurtainGeneration = 0L
     private var freshFrameGeneration = 0L
-    private var credentialDialog: AlertDialog? = null
+    private var protectionDialog: AlertDialog? = null
     private val dialogWindowFocusListener = ViewTreeObserver.OnWindowFocusChangeListener {
-        if (it) acknowledgePendingCredentialIfPresented()
+        if (it) acknowledgePendingSurfaceIfPresented()
     }
 
     private val target: Target
@@ -59,15 +45,7 @@ class MasterRemovalActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        credentialManager = DeactivationCredentialManager(applicationContext)
-        sessionManager = BlockingSessionManager.getInstance(applicationContext)
-        deviceOwnerManager = DeviceOwnerManager.getInstance(applicationContext)
-        focusModeManager = FocusModeManager.getInstance(applicationContext)
-
-        onBackPressedDispatcher.addCallback(this) {
-            if (!working) cancelRemovalAttempt()
-        }
-
+        onBackPressedDispatcher.addCallback(this) { cancelAttempt() }
         handleGateIntent(intent)
     }
 
@@ -80,7 +58,7 @@ class MasterRemovalActivity : ComponentActivity() {
     override fun onResume() {
         super.onResume()
         activityResumed = true
-        acknowledgePendingCredentialIfPresented()
+        acknowledgePendingSurfaceIfPresented()
     }
 
     override fun onPause() {
@@ -89,7 +67,7 @@ class MasterRemovalActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        credentialDialog?.window?.decorView?.viewTreeObserver?.let { observer ->
+        protectionDialog?.window?.decorView?.viewTreeObserver?.let { observer ->
             if (observer.isAlive) {
                 observer.removeOnWindowFocusChangeListener(dialogWindowFocusListener)
             }
@@ -101,26 +79,26 @@ class MasterRemovalActivity : ComponentActivity() {
         val generation = curtainGeneration(sourceIntent)
         pendingCurtainGeneration = generation
         freshFrameGeneration = 0L
+
         if (dialogShown) {
-            notifyWhenCredentialIsDrawn(generation)
+            notifyWhenSurfaceIsDrawn(generation)
             return
         }
+
         if (shouldResetSettingsTaskBeforeCredential(target) &&
             !sourceIntent.getBooleanExtra(EXTRA_SETTINGS_TASK_RESET_DONE, false)
         ) {
             resetProtectedSettingsTaskAndReturnToGate(generation)
+            return
+        }
+
+        if (SelfProtectionStateStore.isArmed(applicationContext)) {
+            showProtectionDialog(generation)
         } else {
-            showCredentialDialogOnce(generation)
+            openAuthorizedSurface()
         }
     }
 
-    /**
-     * Android does not let a normal app force-stop the system Settings process.
-     * The strongest safe equivalent is to clear the Settings task and recreate it
-     * at its root, then immediately bring this private credential task back.
-     * Cancelling the gate goes to HOME, so the protected deep screen is not left
-     * ready in Recents and the next attempt must navigate Settings again.
-     */
     private fun resetProtectedSettingsTaskAndReturnToGate(curtainGeneration: Long) {
         ProtectedSettingsResetWindow.open(curtainGeneration)
         runCatching {
@@ -128,72 +106,47 @@ class MasterRemovalActivity : ComponentActivity() {
             startActivity(createGateReturnIntent(this, target, curtainGeneration))
         }.onFailure {
             ProtectedSettingsResetWindow.close(curtainGeneration)
-            // Failing to reset the task must never remove the credential gate.
-            showCredentialDialogOnce(curtainGeneration)
+            if (SelfProtectionStateStore.isArmed(applicationContext)) {
+                showProtectionDialog(curtainGeneration)
+            } else {
+                openAuthorizedSurface()
+            }
         }
     }
 
-    private fun showCredentialDialogOnce(curtainGeneration: Long) {
-        if (isFinishing || isDestroyed) return
-        if (dialogShown) {
-            notifyWhenCredentialIsDrawn(curtainGeneration)
+    private fun showProtectionDialog(curtainGeneration: Long) {
+        if (isFinishing || isDestroyed || dialogShown) {
+            notifyWhenSurfaceIsDrawn(curtainGeneration)
             return
         }
         dialogShown = true
-        showCredentialDialog(curtainGeneration)
-    }
-
-    private fun showCredentialDialog(curtainGeneration: Long) {
-        val density = resources.displayMetrics.density
-        val container = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding((24 * density).toInt(), (6 * density).toInt(), (24 * density).toInt(), 0)
+        val message = if (target == Target.UNINSTALL) {
+            R.string.protected_uninstall_blocked_description
+        } else {
+            R.string.protected_settings_blocked_description
         }
-        passwordField = EditText(this).apply {
-            hint = getString(R.string.master_removal_password_hint)
-            inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
-            isSingleLine = true
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-        }
-        errorText = TextView(this).apply {
-            setTextColor(getColor(android.R.color.holo_red_dark))
-            visibility = View.GONE
-        }
-        container.addView(passwordField)
-        container.addView(errorText)
-
         val dialog = AlertDialog.Builder(this)
-            .setTitle(R.string.master_removal_title)
-            .setMessage(R.string.master_removal_description)
-            .setView(container)
-            .setNegativeButton(R.string.cancel) { _, _ -> cancelRemovalAttempt() }
-            .setPositiveButton(R.string.master_removal_confirm, null)
-            .setOnCancelListener { cancelRemovalAttempt() }
+            .setTitle(R.string.protected_settings_blocked_title)
+            .setMessage(message)
+            .setPositiveButton(R.string.action_ok) { _, _ -> cancelAttempt() }
+            .setOnCancelListener { cancelAttempt() }
             .create()
-        credentialDialog = dialog
-
+        protectionDialog = dialog
+        dialog.setCanceledOnTouchOutside(false)
         dialog.setOnShowListener {
             dialog.window?.decorView?.viewTreeObserver
                 ?.addOnWindowFocusChangeListener(dialogWindowFocusListener)
-            dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener {
-                authorizeAndRelease(dialog)
-            }
-            passwordField.requestFocus()
-            notifyWhenCredentialIsDrawn(curtainGeneration)
+            notifyWhenSurfaceIsDrawn(curtainGeneration)
         }
-        dialog.setCanceledOnTouchOutside(false)
         dialog.show()
     }
 
-    private fun notifyWhenCredentialIsDrawn(curtainGeneration: Long) {
+    private fun notifyWhenSurfaceIsDrawn(curtainGeneration: Long) {
         if (curtainGeneration <= 0L) return
         pendingCurtainGeneration = curtainGeneration
         freshFrameGeneration = 0L
-        if (acknowledgePendingCredentialIfPresented()) return
-        val decor = credentialDialog?.window?.decorView ?: return
+        if (acknowledgePendingSurfaceIfPresented()) return
+        val decor = protectionDialog?.window?.decorView ?: return
         decor.doOnPreDraw {
             dialogDrawn = true
             if (pendingCurtainGeneration == curtainGeneration &&
@@ -201,15 +154,15 @@ class MasterRemovalActivity : ComponentActivity() {
             ) {
                 freshFrameGeneration = curtainGeneration
             }
-            acknowledgePendingCredentialIfPresented()
+            acknowledgePendingSurfaceIfPresented()
         }
         decor.invalidate()
     }
 
-    private fun acknowledgePendingCredentialIfPresented(): Boolean {
+    private fun acknowledgePendingSurfaceIfPresented(): Boolean {
         val generation = pendingCurtainGeneration
         if (generation <= 0L) return false
-        val decor = credentialDialog?.window?.decorView ?: return false
+        val decor = protectionDialog?.window?.decorView ?: return false
         val ready = SafeSurfaceReadinessPolicy.decide(
             alreadyDrawn = dialogDrawn,
             freshFrameAfterRequest = freshFrameGeneration == generation,
@@ -220,100 +173,26 @@ class MasterRemovalActivity : ComponentActivity() {
         if (!ready) return false
         pendingCurtainGeneration = 0L
         freshFrameGeneration = 0L
-        notifyCredentialReady(generation)
+        ProtectedSettingsResetWindow.close(generation)
+        CurtainDestinationReadyCoordinator.notifyReady(generation)
         return true
     }
 
-    private fun notifyCredentialReady(curtainGeneration: Long) {
-        if (curtainGeneration <= 0L) return
-        // The internal Settings reset is finished as soon as this safe credential
-        // surface is really on screen. Keeping the reset exemption alive for its
-        // old 3-second timeout let a second real Settings click pass through.
-        ProtectedSettingsResetWindow.close(curtainGeneration)
-        CurtainDestinationReadyCoordinator.notifyReady(curtainGeneration)
-    }
-
-    private fun cancelRemovalAttempt() {
-        // If cancellation races the first drawn credential frame, revoke the reset
-        // exemption before HOME so no user click can inherit it.
+    private fun cancelAttempt() {
         ProtectedSettingsResetWindow.close(pendingCurtainGeneration)
         runCatching { startActivity(createHomeIntent()) }
         finish()
     }
 
-    private fun authorizeAndRelease(dialog: AlertDialog) {
-        if (working) return
-        val credential = passwordField.text?.toString().orEmpty()
-        if (credential.isBlank()) return
-        working = true
-        passwordField.isEnabled = false
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = false
-        errorText.visibility = View.GONE
-
-        lifecycleScope.launch {
-            val verified = withContext(Dispatchers.Default) {
-                when (credentialManager.verify(credential)) {
-                    DeactivationCredentialManager.VerificationResult.PASSWORD_ACCEPTED,
-                    DeactivationCredentialManager.VerificationResult.RECOVERY_ACCEPTED -> true
-                    DeactivationCredentialManager.VerificationResult.REJECTED -> false
-                    DeactivationCredentialManager.VerificationResult.NOT_CONFIGURED -> null
-                }
-            }
-            if (verified == null) {
-                showError(getString(R.string.master_credential_not_configured), dialog)
-                return@launch
-            }
-            if (!verified) {
-                showError(getString(R.string.master_removal_wrong_password), dialog)
-                return@launch
-            }
-
-            if (!sessionManager.removeAllBlocksForDevelopmentExit()) {
-                showError(getString(R.string.master_removal_release_failed), dialog)
-                return@launch
-            }
-
-            AuthenticatedRemovalWindow.open(applicationContext)
-            if (!deviceOwnerManager.releaseRemovalProtectionForDevelopmentExit()) {
-                AuthenticatedRemovalWindow.close(applicationContext)
-                showError(getString(R.string.master_removal_release_failed), dialog)
-                return@launch
-            }
-
-            try {
-                // Keep Focus Mode state available until Device Owner has used it to
-                // unsuspend packages and clear kiosk policies. Only then erase the
-                // persisted session, cancel its alarm/service and refresh its UI.
-                focusModeManager.forceStopForDevelopmentExit()
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                AuthenticatedRemovalWindow.close(applicationContext)
-                showError(getString(R.string.master_removal_release_failed), dialog)
-                return@launch
-            }
-
-            sendBroadcast(
-                BlockingAccessibilityService.createDevelopmentRelinquishIntent(applicationContext)
-            )
-
-            if (!openRequestedAndroidSurface()) {
-                showError(getString(R.string.master_removal_open_failed), dialog)
-                return@launch
-            }
-            dialog.dismiss()
-            finish()
+    private fun openAuthorizedSurface() {
+        ProtectedSettingsResetWindow.close(pendingCurtainGeneration)
+        AuthenticatedRemovalWindow.open(applicationContext)
+        if (!openRequestedAndroidSurface()) {
+            AuthenticatedRemovalWindow.close(applicationContext)
+            cancelAttempt()
+            return
         }
-    }
-
-    private fun showError(message: String, dialog: AlertDialog) {
-        working = false
-        passwordField.isEnabled = true
-        passwordField.text?.clear()
-        errorText.text = message
-        errorText.visibility = View.VISIBLE
-        dialog.getButton(AlertDialog.BUTTON_POSITIVE).isEnabled = true
-        passwordField.requestFocus()
+        finish()
     }
 
     private fun openRequestedAndroidSurface(): Boolean = runCatching {
@@ -323,11 +202,7 @@ class MasterRemovalActivity : ComponentActivity() {
                     data = Uri.parse("package:$packageName")
                 }
             )
-            Target.DEVICE_ADMIN -> {
-                if (!deviceOwnerManager.openDeviceAdminSettings(this)) {
-                    error("Device Admin settings unavailable")
-                }
-            }
+            Target.DEVICE_ADMIN -> startActivity(Intent(Settings.ACTION_DEVICE_SECURITY_SETTINGS))
             Target.ACCESSIBILITY -> startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             Target.UNINSTALL -> startActivity(
                 Intent(Intent.ACTION_DELETE).apply { data = Uri.parse("package:$packageName") }
@@ -344,15 +219,15 @@ class MasterRemovalActivity : ComponentActivity() {
             context: Context,
             target: Target,
             curtainGeneration: Long = 0L
-        ): Intent =
-            Intent(context, MasterRemovalActivity::class.java).apply {
-                putExtra(EXTRA_TARGET, target.name)
-                putExtra(
-                    BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION,
-                    curtainGeneration
-                )
-            }
+        ): Intent = Intent(context, MasterRemovalActivity::class.java).apply {
+            putExtra(EXTRA_TARGET, target.name)
+            putExtra(
+                BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION,
+                curtainGeneration
+            )
+        }
 
+        /** Kept for the interception tests; the gate no longer asks a credential. */
         internal fun shouldResetSettingsTaskBeforeCredential(target: Target): Boolean =
             target == Target.APP_INFO ||
                 target == Target.DEVICE_ADMIN ||
@@ -382,14 +257,14 @@ class MasterRemovalActivity : ComponentActivity() {
             target: Target,
             curtainGeneration: Long
         ): Intent = createIntent(context, target, curtainGeneration).apply {
-                putExtra(EXTRA_SETTINGS_TASK_RESET_DONE, true)
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                        Intent.FLAG_ACTIVITY_NO_ANIMATION
-                )
-            }
+            putExtra(EXTRA_SETTINGS_TASK_RESET_DONE, true)
+            addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                    Intent.FLAG_ACTIVITY_NO_ANIMATION
+            )
+        }
 
         private fun curtainGeneration(intent: Intent): Long = intent.getLongExtra(
             BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION,
