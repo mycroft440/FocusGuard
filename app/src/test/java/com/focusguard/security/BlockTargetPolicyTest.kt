@@ -7,13 +7,13 @@ import org.junit.Test
 class BlockTargetPolicyTest {
 
     @Test
-    fun `password blocks protect apps only`() {
+    fun `password blocks protect apps and sites but not keywords`() {
         val kinds = BlockTargetPolicy.forSessionType("PASSWORD")
 
         assertThat(kinds.apps).isTrue()
-        assertThat(kinds.websites).isFalse()
+        assertThat(kinds.websites).isTrue()
         assertThat(kinds.keywords).isFalse()
-        assertThat(kinds.needsTabs).isFalse()
+        assertThat(kinds.needsTabs).isTrue()
     }
 
     @Test
@@ -39,13 +39,16 @@ class BlockTargetPolicyTest {
     }
 
     @Test
-    fun `a password session drops every site and keyword rule`() {
+    fun `a password session keeps sites but drops keyword rules`() {
         val accepted = BlockTargetPolicy.acceptedRulesForSessionType(
             sessionType = "PASSWORD",
             rules = listOf("youtube.com", "porn", PredefinedWebsites.PORNOGRAPHY_RULE)
         )
 
-        assertThat(accepted).isEmpty()
+        assertThat(accepted).containsExactly(
+            "youtube.com",
+            PredefinedWebsites.PORNOGRAPHY_RULE
+        )
     }
 
     @Test
