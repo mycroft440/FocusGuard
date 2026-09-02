@@ -544,7 +544,7 @@ private fun PatternSetupDialog(
                 Spacer(Modifier.height(8.dp))
                 PatternLockInput(
                     modifier = Modifier.fillMaxWidth(),
-                    hideTrace = hidePatternTrace,
+                    hideTrace = hideTrace,
                     resetKey = resetKey,
                     onPatternComplete = { pattern ->
                         when {
