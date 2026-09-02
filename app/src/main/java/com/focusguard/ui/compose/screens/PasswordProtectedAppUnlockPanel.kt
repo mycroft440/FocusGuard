@@ -1,7 +1,6 @@
 package com.focusguard.ui.compose.screens
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -57,15 +56,15 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * Unlock controls for a PASSWORD session.
+ * Unlock controls for a PASSWORD session target.
  *
- * The credential configured for the protected app is independent from the master
- * credential. A successful unlock grants one foreground visit and never removes
- * the app from its PASSWORD session.
+ * The target credential is independent from the master credential. A successful
+ * unlock grants a temporary visit and never edits or deletes the PASSWORD block.
  */
 @Composable
-internal fun PasswordProtectedAppUnlockPanel(
-    blockedPackage: String,
+internal fun PasswordProtectedTargetUnlockPanel(
+    blockedPackage: String?,
+    blockedDomain: String?,
     authManager: AuthManager,
     sessionManager: BlockingSessionManager,
     onUnlocked: () -> Unit
@@ -74,8 +73,15 @@ internal fun PasswordProtectedAppUnlockPanel(
     val activity = context as? FragmentActivity
     val scope = rememberCoroutineScope()
     val store = remember(context) { PasswordAppUnlockStore(context) }
-    var config by remember(blockedPackage) {
-        mutableStateOf(store.get(blockedPackage))
+    val websiteTargetId = remember(blockedDomain) {
+        store.resolveWebsiteTargetId(blockedDomain)
+    }
+    val websiteRule = remember(websiteTargetId) {
+        PasswordAppUnlockStore.websiteRuleFromTargetId(websiteTargetId)
+    }
+    val targetId = websiteTargetId ?: PasswordAppUnlockStore.targetIdForPackage(blockedPackage)
+    var config by remember(targetId) {
+        mutableStateOf(store.getTarget(targetId))
     }
     var showCredentialDialog by remember { mutableStateOf(false) }
     var showBiometricOffer by remember { mutableStateOf(false) }
@@ -104,15 +110,23 @@ internal fun PasswordProtectedAppUnlockPanel(
         }
     }
 
+    fun revokePendingGrant() {
+        if (websiteRule != null) {
+            PasswordTargetAccessGrant.revokeWebsiteRule(websiteRule)
+        } else {
+            PasswordTargetAccessGrant.revokePackage(blockedPackage)
+        }
+    }
+
     fun completeUnlock(onInvalid: (() -> Unit)? = null) {
-        if (verifying) return
+        if (verifying || targetId == null) return
         scope.launch {
             verifying = true
             error = null
             try {
                 val origin = sessionManager.credentialUnlockOrigin(
                     blockedPackage = blockedPackage,
-                    blockedDomain = null,
+                    blockedDomain = blockedDomain,
                     strictPomodoroActive = false
                 )
                 if (origin != BiometricAppUnlockPolicy.BlockOrigin.PASSWORD_SESSION) {
@@ -121,13 +135,23 @@ internal fun PasswordProtectedAppUnlockPanel(
                     return@launch
                 }
 
-                PasswordTargetAccessGrant.grantPackage(context, blockedPackage)
+                if (websiteRule != null) {
+                    PasswordTargetAccessGrant.grantWebsite(context, websiteRule)
+                } else {
+                    val packageName = blockedPackage?.takeIf(String::isNotBlank)
+                        ?: run {
+                            error = failureMessage
+                            onInvalid?.invoke()
+                            return@launch
+                        }
+                    PasswordTargetAccessGrant.grantPackage(context, packageName)
+                }
                 showCredentialDialog = false
                 onUnlocked()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                PasswordTargetAccessGrant.revokePackage(blockedPackage)
+                revokePendingGrant()
                 error = failureMessage
                 onInvalid?.invoke()
             } finally {
@@ -141,7 +165,7 @@ internal fun PasswordProtectedAppUnlockPanel(
             error = failureMessage
             return
         }
-        val latest = store.get(blockedPackage) ?: run {
+        val latest = store.getTarget(targetId) ?: run {
             error = failureMessage
             return
         }
@@ -156,10 +180,8 @@ internal fun PasswordProtectedAppUnlockPanel(
             subtitle = promptSubtitle,
             cancelLabel = cancelLabel,
             onSuccess = {
-                val rechecked = store.get(blockedPackage)
-                if (rechecked?.biometricEnabled == true) {
-                    completeUnlock()
-                }
+                val rechecked = store.getTarget(targetId)
+                if (rechecked?.biometricEnabled == true) completeUnlock()
             },
             onError = { message ->
                 if (message.isNotBlank()) error = message
@@ -254,8 +276,8 @@ internal fun PasswordProtectedAppUnlockPanel(
     if (showBiometricOffer) {
         AlertDialog(
             onDismissRequest = {
-                store.markBiometricOfferShown(blockedPackage)
-                config = store.get(blockedPackage)
+                store.markBiometricOfferShownForTarget(targetId)
+                config = store.getTarget(targetId)
                 showBiometricOffer = false
             },
             title = { Text(stringResource(R.string.password_app_unlock_biometric_offer_title)) },
@@ -263,8 +285,8 @@ internal fun PasswordProtectedAppUnlockPanel(
             confirmButton = {
                 Button(
                     onClick = {
-                        if (store.setBiometricEnabled(blockedPackage, true)) {
-                            config = store.get(blockedPackage)
+                        if (store.setBiometricEnabledForTarget(targetId, true)) {
+                            config = store.getTarget(targetId)
                             showBiometricOffer = false
                             launchBiometric()
                         }
@@ -276,8 +298,8 @@ internal fun PasswordProtectedAppUnlockPanel(
             dismissButton = {
                 TextButton(
                     onClick = {
-                        store.markBiometricOfferShown(blockedPackage)
-                        config = store.get(blockedPackage)
+                        store.markBiometricOfferShownForTarget(targetId)
+                        config = store.getTarget(targetId)
                         showBiometricOffer = false
                     }
                 ) {
@@ -299,7 +321,7 @@ internal fun PasswordProtectedAppUnlockPanel(
                     }
                 },
                 onSubmit = { password ->
-                    if (store.verify(blockedPackage, password)) {
+                    if (store.verifyTarget(targetId, password)) {
                         completeUnlock()
                     } else {
                         error = wrongCredentialMessage
@@ -319,7 +341,7 @@ internal fun PasswordProtectedAppUnlockPanel(
                     }
                 },
                 onSubmit = { pattern, reset ->
-                    if (store.verify(blockedPackage, pattern)) {
+                    if (store.verifyTarget(targetId, pattern)) {
                         completeUnlock(onInvalid = reset)
                     } else {
                         error = wrongCredentialMessage
@@ -333,6 +355,21 @@ internal fun PasswordProtectedAppUnlockPanel(
         }
     }
 }
+
+/** Compatibility wrapper for call sites that still have an app-only target. */
+@Composable
+internal fun PasswordProtectedAppUnlockPanel(
+    blockedPackage: String,
+    authManager: AuthManager,
+    sessionManager: BlockingSessionManager,
+    onUnlocked: () -> Unit
+) = PasswordProtectedTargetUnlockPanel(
+    blockedPackage = blockedPackage,
+    blockedDomain = null,
+    authManager = authManager,
+    sessionManager = sessionManager,
+    onUnlocked = onUnlocked
+)
 
 @Composable
 private fun PasswordUnlockDialog(
