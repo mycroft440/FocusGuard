@@ -95,8 +95,8 @@ class PasswordAppUnlockStore(context: Context) {
     fun get(packageName: String?): PasswordAppUnlockConfig? =
         targetIdForPackage(packageName)?.let(::getTarget)
 
-    fun getWebsite(websiteRule: String?): PasswordAppUnlockConfig? =
-        targetIdForWebsite(websiteRule)?.let(::getTarget)
+    fun getWebsite(websiteOrRule: String?): PasswordAppUnlockConfig? =
+        resolveWebsiteTargetId(websiteOrRule)?.let(::getTarget)
 
     fun getTarget(targetId: String?): PasswordAppUnlockConfig? {
         val target = targetId?.takeIf(String::isNotBlank) ?: return null
@@ -117,8 +117,8 @@ class PasswordAppUnlockStore(context: Context) {
     fun verify(packageName: String?, credential: String): Boolean =
         targetIdForPackage(packageName)?.let { verifyTarget(it, credential) } == true
 
-    fun verifyWebsite(websiteRule: String?, credential: String): Boolean =
-        targetIdForWebsite(websiteRule)?.let { verifyTarget(it, credential) } == true
+    fun verifyWebsite(websiteOrRule: String?, credential: String): Boolean =
+        resolveWebsiteTargetId(websiteOrRule)?.let { verifyTarget(it, credential) } == true
 
     fun verifyTarget(targetId: String?, credential: String): Boolean {
         val target = targetId?.takeIf(String::isNotBlank) ?: return false
@@ -128,6 +128,23 @@ class PasswordAppUnlockStore(context: Context) {
         val verifier = preferences.getString(prefix + KEY_VERIFIER, null) ?: return false
         return AuthManager.verifySerializedPassword(credential, verifier)
     }
+
+    /**
+     * Maps an observed URL/domain back to the configured PASSWORD rule. This is
+     * important for aliases such as youtu.be -> youtube.com: the credential is
+     * stored for the configured rule, not every URL that can trigger it.
+     */
+    fun resolveWebsiteTargetId(websiteOrRule: String?): String? {
+        val candidate = websiteOrRule?.takeIf(String::isNotBlank) ?: return null
+        val storedRules = storedWebsiteRules()
+        if (storedRules.isEmpty()) return null
+        val matchingRule = WebsiteBlocker.findMatchingRule(candidate, storedRules)
+            ?: WebsiteBlocker.normalizeRule(candidate).takeIf { it in storedRules }
+        return matchingRule?.let(::targetIdForWebsite)
+    }
+
+    fun websiteRuleForObservedTarget(websiteOrRule: String?): String? =
+        resolveWebsiteTargetId(websiteOrRule)?.let(::websiteRuleFromTargetId)
 
     fun setBiometricEnabled(packageName: String?, enabled: Boolean): Boolean =
         targetIdForPackage(packageName)?.let { setBiometricEnabledForTarget(it, enabled) } == true
@@ -181,6 +198,14 @@ class PasswordAppUnlockStore(context: Context) {
         keys.forEach(editor::remove)
         editor.commit()
     }
+
+    private fun storedWebsiteRules(): Set<String> = preferences.all.keys.asSequence()
+        .filter { it.startsWith(KEY_NAMESPACE) && it.endsWith(KEY_MODE) }
+        .map { key -> key.removePrefix(KEY_NAMESPACE).removeSuffix(KEY_MODE) }
+        .mapNotNull(::websiteRuleFromTargetId)
+        .map(WebsiteBlocker::normalizeRule)
+        .filter(String::isNotBlank)
+        .toCollection(linkedSetOf())
 
     companion object {
         const val MIN_PASSWORD_LENGTH = 6
