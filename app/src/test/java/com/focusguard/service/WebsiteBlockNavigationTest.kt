@@ -214,6 +214,12 @@ class WebsiteBlockNavigationTest {
         assertThat(guard.confirmGoogle(CHROME_PACKAGE, windowId = 7, eventUptimeMillis = 99L))
             .isFalse()
         assertThat(transition.safeGoogleConfirmed.isCompleted).isFalse()
+        guard.observeBrowserEvent(
+            browserPackageName = CHROME_PACKAGE,
+            windowId = 7,
+            eventUptimeMillis = 100L,
+            eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+        )
         assertThat(guard.confirmGoogle(CHROME_PACKAGE, windowId = 7, eventUptimeMillis = 100L))
             .isTrue()
         assertThat(transition.safeGoogleConfirmed.isCompleted).isTrue()
@@ -234,6 +240,12 @@ class WebsiteBlockNavigationTest {
             guard.markDestinationRequested(CHROME_PACKAGE, 12L, requestedAtUptimeMillis = 100L)
         ).isFalse()
         guard.markSanitizationRequested(CHROME_PACKAGE, 12L, requestedAtUptimeMillis = 80L)
+        guard.observeBrowserEvent(
+            browserPackageName = CHROME_PACKAGE,
+            windowId = 7,
+            eventUptimeMillis = 80L,
+            eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+        )
         assertThat(guard.confirmGoogle(CHROME_PACKAGE, windowId = 7, eventUptimeMillis = 80L))
             .isTrue()
         guard.markDestinationRequested(
@@ -261,7 +273,17 @@ class WebsiteBlockNavigationTest {
         ).isTrue()
         assertThat(
             BlockingAccessibilityService.isSafeGoogleRedirectSurface(
+                "https://google.com/"
+            )
+        ).isTrue()
+        assertThat(
+            BlockingAccessibilityService.isSafeGoogleRedirectSurface(
                 "https://www.google.com.br/?hl=pt-BR&gl=br"
+            )
+        ).isTrue()
+        assertThat(
+            BlockingAccessibilityService.isSafeGoogleRedirectSurface(
+                "https://www.google.co.za/"
             )
         ).isTrue()
         assertThat(
@@ -297,38 +319,171 @@ class WebsiteBlockNavigationTest {
         )
 
         assertThat(
-            guard.transitionForConfirmation(BRAVE_PACKAGE, windowId = 7, eventUptimeMillis = 499L)
+            guard.transitionForConfirmation(
+                BRAVE_PACKAGE,
+                windowId = 7,
+                eventUptimeMillis = 499L,
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            )
         ).isNull()
         assertThat(
-            guard.transitionForConfirmation(BRAVE_PACKAGE, windowId = 8, eventUptimeMillis = 500L)
+            guard.transitionForConfirmation(
+                BRAVE_PACKAGE,
+                windowId = 8,
+                eventUptimeMillis = 500L,
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            )
+        ).isNull()
+        assertThat(
+            guard.transitionForConfirmation(
+                BRAVE_PACKAGE,
+                windowId = 7,
+                eventUptimeMillis = 501L,
+                eventType = AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
+            )
         ).isNull()
         assertThat(transition.safeGoogleConfirmed.isCompleted).isFalse()
+        guard.observeBrowserEvent(
+            browserPackageName = BRAVE_PACKAGE,
+            windowId = 7,
+            eventUptimeMillis = 502L,
+            eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+        )
         assertThat(
-            guard.transitionForConfirmation(BRAVE_PACKAGE, windowId = 7, eventUptimeMillis = 501L)
+            guard.transitionForConfirmation(
+                BRAVE_PACKAGE,
+                windowId = 7,
+                eventUptimeMillis = 502L,
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            )
         ).isSameInstanceAs(transition)
     }
 
     @Test
-    fun `Brave tab policy rejects delayed window and stops touching tab after redirect`() {
+    fun `text and focus events cannot release the curtain after submit`() {
+        val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
+        val transition = guard.tryStart(
+            FIREFOX_PACKAGE,
+            transitionId = 22L,
+            destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+            expectedWindowId = 9,
+            detectionEventUptimeMillis = 50L
+        )!!
+        guard.markSanitizationRequested(
+            FIREFOX_PACKAGE,
+            transitionId = 22L,
+            requestedAtUptimeMillis = 100L
+        )
+
+        listOf(
+            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
+            AccessibilityEvent.TYPE_VIEW_FOCUSED
+        ).forEachIndexed { index, eventType ->
+            val eventTime = 101L + index
+            guard.observeBrowserEvent(FIREFOX_PACKAGE, 9, eventTime, eventType)
+            assertThat(
+                guard.transitionForConfirmation(
+                    FIREFOX_PACKAGE,
+                    windowId = 9,
+                    eventUptimeMillis = eventTime,
+                    eventType = eventType
+                )
+            ).isNull()
+            assertThat(guard.confirmGoogle(FIREFOX_PACKAGE, 9, eventTime)).isFalse()
+        }
+        assertThat(transition.safeGoogleConfirmed.isCompleted).isFalse()
+    }
+
+    @Test
+    fun `confirmed close can rebind only to the fresh Google browser window`() {
+        val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
+        val transition = guard.tryStart(
+            CHROME_PACKAGE,
+            transitionId = 23L,
+            destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+            expectedWindowId = 7,
+            detectionEventUptimeMillis = 50L
+        )!!
+        assertThat(guard.markCloseClicked(CHROME_PACKAGE, 23L, 100L)).isTrue()
+        assertThat(guard.markCloseConfirmed(CHROME_PACKAGE, 23L, 101L)).isTrue()
+        assertThat(guard.markSanitizationRequested(CHROME_PACKAGE, 23L, 110L)).isTrue()
+
+        guard.observeBrowserEvent(
+            browserPackageName = CHROME_PACKAGE,
+            windowId = 8,
+            eventUptimeMillis = 111L,
+            eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+        )
+        assertThat(
+            guard.transitionForConfirmation(
+                CHROME_PACKAGE,
+                windowId = 8,
+                eventUptimeMillis = 111L,
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            )
+        ).isSameInstanceAs(transition)
+        assertThat(
+            guard.rebindPostCloseGoogleWindow(
+                CHROME_PACKAGE,
+                transitionId = 23L,
+                windowId = 8,
+                eventUptimeMillis = 111L
+            )
+        ).isTrue()
+        assertThat(guard.confirmGoogle(CHROME_PACKAGE, 8, 111L)).isTrue()
+    }
+
+    @Test
+    fun `Chromium capability policy is package based and rejects stale surfaces`() {
+        val arbitraryChromiumPackage = "org.example.chromium.fork"
         val policy = BlockingAccessibilityService.WebsiteTabNeutralizationPolicy(
-            browserPackageName = BRAVE_PACKAGE,
+            browserPackageName = arbitraryChromiumPackage,
             expectedWindowId = 7
         )
 
-        assertThat(policy.mayTouchBlockedTab(BRAVE_PACKAGE, 7)).isTrue()
-        assertThat(policy.mayAttemptBraveClose(BRAVE_PACKAGE, 7)).isTrue()
-        assertThat(policy.mayTouchBlockedTab(BRAVE_PACKAGE, 8)).isFalse()
-        assertThat(policy.mayTouchBlockedTab(CHROME_PACKAGE, 7)).isFalse()
-        policy.markRedirectRequested()
-        assertThat(policy.mayTouchBlockedTab(BRAVE_PACKAGE, 7)).isFalse()
-
-        listOf("com.brave.browser_beta", "com.brave.browser_nightly").forEach { packageName ->
-            val variant = BlockingAccessibilityService.WebsiteTabNeutralizationPolicy(
-                browserPackageName = packageName,
-                expectedWindowId = 9
+        assertThat(policy.mayTouchBlockedTab(arbitraryChromiumPackage, 7)).isTrue()
+        assertThat(
+            policy.mayAttemptChromiumClose(
+                arbitraryChromiumPackage,
+                activeWindowId = 7,
+                phaseStartedAtUptimeMillis = 100L,
+                latestWindowTransitionEventUptimeMillis = 100L
             )
-            assertThat(variant.mayAttemptBraveClose(packageName, 9)).isTrue()
-        }
+        ).isTrue()
+        assertThat(
+            policy.mayAttemptChromiumClose(
+                arbitraryChromiumPackage,
+                activeWindowId = 7,
+                phaseStartedAtUptimeMillis = 100L,
+                latestWindowTransitionEventUptimeMillis = 101L
+            )
+        ).isFalse()
+        assertThat(policy.mayTouchBlockedTab(arbitraryChromiumPackage, 8)).isFalse()
+        assertThat(policy.mayTouchBlockedTab(CHROME_PACKAGE, 7)).isFalse()
+        policy.markSafeAddressSet(200L)
+        assertThat(policy.mayTouchBlockedTab(arbitraryChromiumPackage, 7)).isFalse()
+        assertThat(
+            policy.maySubmitSafeAddress(
+                arbitraryChromiumPackage,
+                activeWindowId = 7,
+                latestWindowTransitionEventUptimeMillis = 200L
+            )
+        ).isTrue()
+        assertThat(
+            policy.maySubmitSafeAddress(
+                arbitraryChromiumPackage,
+                activeWindowId = 7,
+                latestWindowTransitionEventUptimeMillis = 201L
+            )
+        ).isFalse()
+        policy.markRedirectRequested()
+        assertThat(
+            policy.maySubmitSafeAddress(
+                arbitraryChromiumPackage,
+                activeWindowId = 7,
+                latestWindowTransitionEventUptimeMillis = 200L
+            )
+        ).isFalse()
     }
 
     @Test
@@ -432,6 +587,102 @@ class WebsiteBlockNavigationTest {
         assertThat(BlockingAccessibilityService.afterSafeAddressSubmit(false)).isEqualTo(
             BlockingAccessibilityService.WebsiteSanitizationDecision.EVACUATE_HOME
         )
+        assertThat(BlockingAccessibilityService.canUseCertifiableImeSubmit(29)).isFalse()
+        assertThat(BlockingAccessibilityService.canUseCertifiableImeSubmit(30)).isTrue()
+    }
+
+    @Test
+    fun `accepted close never rewrites the surviving tab`() {
+        assertThat(
+            BlockingAccessibilityService.afterChromiumCloseAttempt(
+                closeActionAccepted = true,
+                closeConfirmed = false,
+                originalBlockedSurfaceStillCurrent = true
+            )
+        ).isEqualTo(
+            BlockingAccessibilityService.WebsiteCloseFollowUp.EVACUATE_WITHOUT_REWRITE
+        )
+        assertThat(
+            BlockingAccessibilityService.afterChromiumCloseAttempt(
+                closeActionAccepted = false,
+                closeConfirmed = false,
+                originalBlockedSurfaceStillCurrent = true
+            )
+        ).isEqualTo(
+            BlockingAccessibilityService.WebsiteCloseFollowUp.REWRITE_SAME_BLOCKED_TAB
+        )
+        assertThat(
+            BlockingAccessibilityService.afterChromiumCloseAttempt(
+                closeActionAccepted = true,
+                closeConfirmed = true,
+                originalBlockedSurfaceStillCurrent = false
+            )
+        ).isEqualTo(
+            BlockingAccessibilityService.WebsiteCloseFollowUp
+                .REQUEST_SAFE_GOOGLE_AFTER_CONFIRMED_CLOSE
+        )
+    }
+
+    @Test
+    fun `close is confirmed only after an event proves the blocked surface disappeared`() {
+        assertThat(
+            BlockingAccessibilityService.isClosedSurfaceConfirmed(
+                closeActionAccepted = true,
+                browserSurfaceMutationObservedAfterClick = true,
+                originalBlockedSurfaceStillCurrent = false
+            )
+        ).isTrue()
+        assertThat(
+            BlockingAccessibilityService.isClosedSurfaceConfirmed(
+                closeActionAccepted = true,
+                browserSurfaceMutationObservedAfterClick = false,
+                originalBlockedSurfaceStillCurrent = false
+            )
+        ).isFalse()
+        assertThat(
+            BlockingAccessibilityService.isClosedSurfaceConfirmed(
+                closeActionAccepted = true,
+                browserSurfaceMutationObservedAfterClick = true,
+                originalBlockedSurfaceStillCurrent = true
+            )
+        ).isFalse()
+        assertThat(
+            BlockingAccessibilityService.isClosedSurfaceConfirmed(
+                closeActionAccepted = false,
+                browserSurfaceMutationObservedAfterClick = true,
+                originalBlockedSurfaceStillCurrent = false
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `post-click browser window change is observed without authorizing early Google`() {
+        val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
+        val transition = guard.tryStart(
+            CHROME_PACKAGE,
+            transitionId = 24L,
+            destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+            expectedWindowId = 7,
+            detectionEventUptimeMillis = 50L
+        )!!
+        guard.markCloseClicked(CHROME_PACKAGE, 24L, 100L)
+        guard.observeBrowserEvent(
+            browserPackageName = CHROME_PACKAGE,
+            windowId = 8,
+            eventUptimeMillis = 101L,
+            eventType = AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        )
+
+        assertThat(transition.latestSurfaceMutationEventUptimeMillis).isEqualTo(101L)
+        assertThat(transition.latestWindowTransitionEventUptimeMillis).isEqualTo(101L)
+        assertThat(
+            guard.transitionForConfirmation(
+                CHROME_PACKAGE,
+                windowId = 8,
+                eventUptimeMillis = 101L,
+                eventType = AccessibilityEvent.TYPE_WINDOWS_CHANGED
+            )
+        ).isNull()
     }
 
     @Test

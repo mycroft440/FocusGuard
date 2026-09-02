@@ -15,14 +15,30 @@ bloqueio combina as duas camadas nativas disponíveis no Android:
 
 2. **Serviço de acessibilidade**
    - É a camada comum para qualquer navegador instalado que declare suporte a
-     links HTTPS. Um navegador desconhecido também passa a ser reconhecido
-     dinamicamente assim que expõe uma barra de endereço ou campo URI à
-     acessibilidade; a lista conhecida fica apenas como fallback.
+     links HTTPS. Um navegador desconhecido também pode ser reconhecido quando
+     expõe um id forte de omnibox sob o próprio pacote; um campo URI sem essa
+     prova só é aceito se o pacote já foi confirmado como handler HTTPS.
    - Observa alterações da janela, do conteúdo e do texto da barra de endereço.
-   - Localiza a barra por ids do pacote, descrição acessível ou input do tipo
-     URI; texto comum da página não é interpretado como endereço.
-   - Ao detectar um domínio bloqueado, sai imediatamente do navegador e mostra
-     a tela de bloqueio.
+   - Localiza a barra por ids estritos usados por Chromium, Gecko/Firefox,
+     Samsung Internet, Via e navegadores compactos. Inputs URI, ids fracos e
+     descrições localizadas ajudam apenas a observar a URL de um handler HTTPS
+     confirmado: nunca autorizam foco, troca de texto, submissão ou fechamento.
+   - Sob uma cortina opaca e consumidora de toque, tenta fechar a guia apenas
+     quando a árvore atual publica exatamente `tab_switcher_button` e
+     `close_tab` sob o pacote do navegador. Essa capacidade atende Chrome e
+     forks Chromium compatíveis sem uma allowlist de marcas.
+   - Um clique em `close_tab` só conta como fechamento depois de um evento
+     posterior do navegador e do desaparecimento comprovado da superfície
+     bloqueada. Após essa confirmação, abre um novo documento limpo do Google
+     no mesmo navegador; a guia sobrevivente jamais é sobrescrita.
+   - Se o fechamento não estiver disponível, substitui a própria guia bloqueada
+     por uma raiz segura do Google somente quando há um único nó forte, visível,
+     editável e com cada ação anunciada. Em Android 8 a 10 (API 26–29), ou quando
+     não existe submissão certificável, a cortina permanece e o fluxo evacua para
+     HOME. `ACTION_VIEW` só é permitido depois de um fechamento já confirmado.
+   - Um clique aceito mas não confirmado nunca autoriza reescrever a guia que
+     restou. O fluxo falha fechado em HOME; uma superfície que reapareça será
+     avaliada como uma nova navegação.
 
 ## Regras de domínio
 
@@ -81,6 +97,21 @@ de zero requisição de rede em um navegador que esconda esses dados. Em aparelh
 Device Owner, Chrome e Edge recebem a camada preventiva adicional por
 `URLBlocklist`.
 
+A neutralização rápida também é adaptativa: interfaces proprietárias que não
+publiquem os ids e as ações esperados falham de modo fechado e são evacuadas para
+HOME. O Android não oferece uma API pública universal para fechar a guia atual
+ou remover de forma portátil a tarefa do navegador da tela de Recentes. Assim,
+o FocusGuard não promete manipular menus proprietários nem apagar a tarefa de
+Recentes; promete não tocar uma guia ambígua e não liberar a cortina sobre uma
+superfície ainda não confirmada.
+
+Isso também explica cartões como os exibidos no seletor de abas e na tela de
+Recentes: quando o navegador publica a ação exata, o FocusGuard confirma que a
+guia bloqueada desapareceu antes de prosseguir. Se a interface não publicar essa
+capacidade, o Android não permite apagá-la de maneira universal; nesse caso a
+página fica coberta durante a evacuação, mas uma miniatura antiga ainda pode ser
+mantida pelo próprio navegador ou pelo sistema.
+
 O DNS familiar impede a resolução dos domínios adultos classificados em todos
 os navegadores, mas DNS enxerga apenas o host. Ele não consegue ler a consulta
 `q=` dentro de HTTPS sem interceptar e descriptografar o tráfego. A consulta do
@@ -107,6 +138,11 @@ Com uma sessão ativa bloqueando `example.com`, validar:
   barra e pelo campo da página;
 - Google Imagens com uma consulta segura, que também deve ser bloqueada;
 - Chrome, Firefox, Brave, Samsung Internet e ao menos outro navegador instalado;
+- Via e qualquer navegador adicional configurado como handler HTTPS;
+- Android API 26, 29 e 30 ou superior, incluindo o fallback HOME nas APIs 26–29;
+- várias abas abertas, duas abas com a mesma URL e menu de abas já visível;
+- confirmação de que um clique de fechar recusado ou inconclusivo não altera a
+  aba sobrevivente;
 - uma busca web comum como `Essex Inglaterra`, que deve permanecer liberada;
 - fim da sessão e remoção imediata da política;
 - reinício do aparelho durante uma sessão ativa.
@@ -121,6 +157,7 @@ Com uma sessão ativa bloqueando `example.com`, validar:
 - [Política de modo anônimo do Chrome](https://chromeenterprise.google/policies/incognito-mode-availability/)
 - [Formato dos filtros de URL do Chrome](https://support.google.com/chrome/a/answer/9942583?hl=pt-BR)
 - [Google Imagens](https://images.google.com/)
+- [Domínios regionais oficiais do Google](https://www.google.com/supported_domains)
 - [Política URLBlocklist do Microsoft Edge](https://learn.microsoft.com/pt-br/deployedge/microsoft-edge-policies/urlblocklist)
 - [Política InPrivate do Microsoft Edge](https://learn.microsoft.com/pt-br/deployedge/microsoft-edge-policies/inprivatemodeavailability)
 - [Filtros DNS gratuitos do CleanBrowsing](https://cleanbrowsing.org/filters)

@@ -305,23 +305,11 @@ class BlockNoticeActivity : AppCompatActivity() {
         return true
     }
 
-    private fun redirectBlockedWebsite(browserPackageName: String) {
-        val redirected = runCatching {
-            startActivity(BlockingAccessibilityService.createSafeRedirectIntent(browserPackageName))
-            true
-        }.getOrElse { error ->
-            FocusGuardLogger.logError(
-                "BlockNotice",
-                "Falha ao redirecionar site bloqueado para o Google",
-                error
-            )
-            false
-        }
-
+    private fun redirectBlockedWebsite(@Suppress("UNUSED_PARAMETER") browserPackageName: String) {
+        // A fresh ACTION_VIEW does not prove that the blocked tab was neutralized
+        // and can expose another browser surface outside the guarded window.
         if (strictBlock) {
             goToPomodoroLock()
-        } else if (redirected) {
-            finish()
         } else {
             goHome()
         }
@@ -471,7 +459,7 @@ private fun BlockNoticeContent(
             ) {
                 Spacer(Modifier.height(12.dp))
                 Text(
-                    text = "Redirecionando para o Google…",
+                    text = "Voltando à tela inicial…",
                     color = TextHint,
                     fontSize = 13.sp,
                     textAlign = TextAlign.Center
