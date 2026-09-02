@@ -27,7 +27,6 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -155,15 +154,6 @@ private data class UsageImpactSnapshot(
     val endsAt: Long?
 )
 
-/**
- * Fixed, non-scrollable impact surface.
- *
- * The previous layout combined a tall native ad, generous spacers and a large
- * anchored banner inside a scrolling column. On common phones the user had to
- * scroll just to reach the comparison text and Back button. This layout reserves
- * one compact native-ad slot and keeps the adaptive banner anchored by Scaffold,
- * so the entire block result remains on a single screen.
- */
 @Composable
 private fun UsageImpactScreen(
     activity: ComponentActivity,
