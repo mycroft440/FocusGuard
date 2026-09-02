@@ -1,0 +1,219 @@
+from pathlib import Path
+
+
+def replace_once(path: str, old: str, new: str) -> None:
+    p = Path(path)
+    text = p.read_text()
+    count = text.count(old)
+    if count != 1:
+        raise SystemExit(f"{path}: expected exactly one match, found {count}")
+    p.write_text(text.replace(old, new, 1))
+
+
+replace_once(
+    "app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt",
+    "import com.focusguard.utils.FocusGuardLogger\nimport com.focusguard.utils.PermissionUtils\nimport com.focusguard.utils.UsageLimitForegroundPolicy",
+    "import com.focusguard.utils.AppUsageLimitActivationUsage\nimport com.focusguard.utils.FocusGuardLogger\nimport com.focusguard.utils.PermissionUtils\nimport com.focusguard.utils.UsageLimitForegroundPolicy",
+)
+
+replace_once(
+    "app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt",
+    '''        val startOfDay = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val usage = manager.queryAndAggregateUsageStats(startOfDay, System.currentTimeMillis())
+        val now = System.currentTimeMillis()
+
+        return limits.filter { limit ->
+            val usedMinutes = UsageLimitForegroundPolicy.usedMinutes(
+                usage[limit.packageName]?.totalTimeInForeground ?: 0L
+            )
+            usedMinutes >= limit.dailyLimitMinutes &&
+                limit.preventOpeningAfterLimit &&
+                WebsiteUsageLimitPolicy.isBlockingModeActive(
+                    limit.lockMode,
+                    limit.lockUntilTimestamp,
+                    now
+                )
+        }.mapTo(mutableSetOf()) { it.packageName }''',
+    '''        val now = System.currentTimeMillis()
+        val startOfDay = Calendar.getInstance().apply {
+            timeInMillis = now
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val usage = manager.queryAndAggregateUsageStats(startOfDay, now)
+
+        return limits.filter { limit ->
+            val totalDayUsageMillis =
+                usage[limit.packageName]?.totalTimeInForeground ?: 0L
+            val effectiveUsageMillis = AppUsageLimitActivationUsage.effectiveUsageMillis(
+                context = this,
+                usageStatsManager = manager,
+                limit = limit,
+                currentDayUsageMillis = totalDayUsageMillis,
+                dayStartMillis = startOfDay,
+                nowMillis = now
+            )
+            UsageLimitForegroundPolicy.usedMinutes(effectiveUsageMillis) >=
+                limit.dailyLimitMinutes &&
+                limit.preventOpeningAfterLimit &&
+                WebsiteUsageLimitPolicy.isBlockingModeActive(
+                    limit.lockMode,
+                    limit.lockUntilTimestamp,
+                    now
+                )
+        }.mapTo(mutableSetOf()) { it.packageName }''',
+)
+
+replace_once(
+    "app/src/main/java/com/focusguard/manager/BlockingSessionManager.kt",
+    "import com.focusguard.utils.FocusGuardLogger\nimport com.focusguard.utils.UsageLimitForegroundPolicy",
+    "import com.focusguard.utils.AppUsageLimitActivationUsage\nimport com.focusguard.utils.FocusGuardLogger\nimport com.focusguard.utils.UsageLimitForegroundPolicy",
+)
+
+replace_once(
+    "app/src/main/java/com/focusguard/manager/BlockingSessionManager.kt",
+    '''        val startOfDay = Calendar.getInstance().apply {
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val usage = usageStatsManager.queryAndAggregateUsageStats(startOfDay, now)
+
+        return limits.filter { limit ->
+            val usedMinutes = UsageLimitForegroundPolicy.usedMinutes(
+                usage[limit.packageName]?.totalTimeInForeground ?: 0L
+            )
+            usedMinutes >= limit.dailyLimitMinutes &&
+                limit.preventOpeningAfterLimit &&
+                WebsiteUsageLimitPolicy.isBlockingModeActive(
+                    limit.lockMode,
+                    limit.lockUntilTimestamp,
+                    now
+                )
+        }.map { it.packageName }''',
+    '''        val startOfDay = Calendar.getInstance().apply {
+            timeInMillis = now
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+        }.timeInMillis
+        val usage = usageStatsManager.queryAndAggregateUsageStats(startOfDay, now)
+
+        return limits.filter { limit ->
+            val totalDayUsageMillis =
+                usage[limit.packageName]?.totalTimeInForeground ?: 0L
+            val effectiveUsageMillis = AppUsageLimitActivationUsage.effectiveUsageMillis(
+                context = context,
+                usageStatsManager = usageStatsManager,
+                limit = limit,
+                currentDayUsageMillis = totalDayUsageMillis,
+                dayStartMillis = startOfDay,
+                nowMillis = now
+            )
+            UsageLimitForegroundPolicy.usedMinutes(effectiveUsageMillis) >=
+                limit.dailyLimitMinutes &&
+                limit.preventOpeningAfterLimit &&
+                WebsiteUsageLimitPolicy.isBlockingModeActive(
+                    limit.lockMode,
+                    limit.lockUntilTimestamp,
+                    now
+                )
+        }.map { it.packageName }''',
+)
+
+replace_once(
+    "app/src/main/java/com/focusguard/ui/compose/screens/UsageLimitsScreen.kt",
+    "import com.focusguard.ui.compose.theme.*\nimport com.focusguard.utils.WebsiteBlocker",
+    "import com.focusguard.ui.compose.theme.*\nimport com.focusguard.utils.AppUsageLimitActivationUsage\nimport com.focusguard.utils.WebsiteBlocker",
+)
+
+replace_once(
+    "app/src/main/java/com/focusguard/ui/compose/screens/UsageLimitsScreen.kt",
+    '''            val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
+            val cal = java.util.Calendar.getInstance().apply {
+                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+            val stats = usageStatsManager.queryAndAggregateUsageStats(
+                cal.timeInMillis,
+                System.currentTimeMillis()
+            )''',
+    '''            val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
+            val now = System.currentTimeMillis()
+            val cal = java.util.Calendar.getInstance().apply {
+                timeInMillis = now
+                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                set(java.util.Calendar.MINUTE, 0)
+                set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
+            }
+            val stats = usageStatsManager.queryAndAggregateUsageStats(
+                cal.timeInMillis,
+                now
+            )''',
+)
+
+replace_once(
+    "app/src/main/java/com/focusguard/ui/compose/screens/UsageLimitsScreen.kt",
+    '''                val limit = existingLimits[packageName]
+                UsageLimitAppUi(
+                    packageName = packageName,
+                    appName = info.loadLabel(pm).toString(),
+                    currentLimitMinutes = limit?.dailyLimitMinutes,
+                    isEnabled = limit?.isEnabled ?: false,
+                    usageMs = stats[packageName]?.totalTimeInForeground ?: 0L,
+                    lockMode = limit?.lockMode ?: "NONE",''',
+    '''                val limit = existingLimits[packageName]
+                val totalDayUsageMillis =
+                    stats[packageName]?.totalTimeInForeground ?: 0L
+                val displayedUsageMillis = limit
+                    ?.takeIf { it.isEnabled }
+                    ?.let { activeLimit ->
+                        AppUsageLimitActivationUsage.effectiveUsageMillis(
+                            context = context,
+                            usageStatsManager = usageStatsManager,
+                            limit = activeLimit,
+                            currentDayUsageMillis = totalDayUsageMillis,
+                            dayStartMillis = cal.timeInMillis,
+                            nowMillis = now
+                        )
+                    }
+                    ?: totalDayUsageMillis
+                UsageLimitAppUi(
+                    packageName = packageName,
+                    appName = info.loadLabel(pm).toString(),
+                    currentLimitMinutes = limit?.dailyLimitMinutes,
+                    isEnabled = limit?.isEnabled ?: false,
+                    usageMs = displayedUsageMillis,
+                    lockMode = limit?.lockMode ?: "NONE",''',
+)
+
+replace_once(
+    "app/src/main/java/com/focusguard/ui/compose/screens/UsageLimitsScreen.kt",
+    '''                            appToSave.copy(
+                                currentLimitMinutes = minutes,
+                                isEnabled = enabled,
+                                lockMode = lockMode,
+                                lockPasswordHash = null,
+                                lockUntilTimestamp = lockUntil
+                            )''',
+    '''                            appToSave.copy(
+                                currentLimitMinutes = minutes,
+                                isEnabled = enabled,
+                                usageMs = 0L,
+                                lockMode = lockMode,
+                                lockPasswordHash = null,
+                                lockUntilTimestamp = lockUntil
+                            )''',
+)
