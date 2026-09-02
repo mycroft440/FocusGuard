@@ -339,15 +339,14 @@ private fun BlockNoticeContent(
         if (unlocked) return@LaunchedEffect
         when {
             strictBlock && redirectBrowserPackage != null -> {
-                delay(BlockingAccessibilityService.WEBSITE_BLOCK_NOTICE_DURATION_MILLIS)
+                delay(BlockingAccessibilityService.STRICT_BLOCK_NOTICE_DURATION_MILLIS)
                 onRedirectBlockedWebsite(redirectBrowserPackage)
             }
             strictBlock -> {
-                delay(BlockingAccessibilityService.WEBSITE_BLOCK_NOTICE_DURATION_MILLIS)
+                delay(BlockingAccessibilityService.STRICT_BLOCK_NOTICE_DURATION_MILLIS)
                 onGoToPomodoroLock()
             }
             redirectBrowserPackage != null && credentialUnlockResolved && !hasTargetCredential -> {
-                delay(BlockingAccessibilityService.WEBSITE_BLOCK_NOTICE_DURATION_MILLIS)
                 onRedirectBlockedWebsite(redirectBrowserPackage)
             }
         }

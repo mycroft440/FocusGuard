@@ -73,6 +73,7 @@ import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 import javax.inject.Inject
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -83,6 +84,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 @AndroidEntryPoint
 class BlockingAccessibilityService : AccessibilityService() {
@@ -96,6 +98,150 @@ class BlockingAccessibilityService : AccessibilityService() {
     internal enum class CurtainLaunchFailureDecision {
         NO_ACTION,
         EVACUATE_THEN_HIDE
+    }
+
+    internal enum class WebsiteTransitionDestination {
+        GOOGLE,
+        POMODORO
+    }
+
+    internal enum class WebsiteTransitionAction {
+        SHOW_CURTAIN,
+        DISMISS_BLOCKED_PAGE,
+        OPEN_GOOGLE,
+        OPEN_POMODORO,
+        HIDE_CURTAIN,
+        EVACUATE_HOME
+    }
+
+    internal class WebsiteBlockTransitionStateMachine(private val strict: Boolean) {
+        private enum class State { NEW, BACK_REQUESTED, DESTINATION_REQUESTED, FINISHED }
+
+        private var state = State.NEW
+
+        fun begin(): List<WebsiteTransitionAction> {
+            check(state == State.NEW)
+            state = State.BACK_REQUESTED
+            return listOf(
+                WebsiteTransitionAction.SHOW_CURTAIN,
+                WebsiteTransitionAction.DISMISS_BLOCKED_PAGE
+            )
+        }
+
+        fun afterBackSettled(): WebsiteTransitionAction {
+            check(state == State.BACK_REQUESTED)
+            state = State.DESTINATION_REQUESTED
+            return if (strict) {
+                WebsiteTransitionAction.OPEN_POMODORO
+            } else {
+                WebsiteTransitionAction.OPEN_GOOGLE
+            }
+        }
+
+        fun onDestinationConfirmed(): WebsiteTransitionAction {
+            check(state == State.DESTINATION_REQUESTED)
+            state = State.FINISHED
+            return WebsiteTransitionAction.HIDE_CURTAIN
+        }
+
+        fun onFailureOrTimeout(): WebsiteTransitionAction {
+            check(state != State.FINISHED)
+            state = State.FINISHED
+            return WebsiteTransitionAction.EVACUATE_HOME
+        }
+    }
+
+    internal data class WebsiteBlockTransitionHandle(
+        val id: Long,
+        val browserPackageName: String,
+        val destination: WebsiteTransitionDestination,
+        internal val destinationConfirmed: CompletableDeferred<Unit> = CompletableDeferred(),
+        internal var destinationRequested: Boolean = false,
+        internal var curtainGeneration: Long = 0L
+    )
+
+    internal class WebsiteBlockTransitionGuard {
+        private val activeTransitions = mutableMapOf<String, WebsiteBlockTransitionHandle>()
+
+        @Synchronized
+        fun tryStart(
+            browserPackageName: String,
+            transitionId: Long,
+            destination: WebsiteTransitionDestination
+        ): WebsiteBlockTransitionHandle? {
+            require(browserPackageName.isNotBlank())
+            require(transitionId > 0L)
+            if (browserPackageName in activeTransitions) return null
+            return WebsiteBlockTransitionHandle(
+                id = transitionId,
+                browserPackageName = browserPackageName,
+                destination = destination
+            ).also { activeTransitions[browserPackageName] = it }
+        }
+
+        @Synchronized
+        fun isActive(browserPackageName: String): Boolean =
+            browserPackageName in activeTransitions
+
+        @Synchronized
+        fun activeBrowserPackages(): Set<String> = activeTransitions.keys.toSet()
+
+        @Synchronized
+        fun markDestinationRequested(browserPackageName: String, transitionId: Long): Boolean {
+            val transition = activeTransitions[browserPackageName] ?: return false
+            if (transition.id != transitionId) return false
+            transition.destinationRequested = true
+            return true
+        }
+
+        @Synchronized
+        fun markCurtainGeneration(
+            browserPackageName: String,
+            transitionId: Long,
+            curtainGeneration: Long
+        ): Boolean {
+            val transition = activeTransitions[browserPackageName] ?: return false
+            if (transition.id != transitionId || curtainGeneration <= 0L) return false
+            transition.curtainGeneration = curtainGeneration
+            return true
+        }
+
+        @Synchronized
+        fun confirmGoogle(browserPackageName: String): Boolean {
+            val transition = activeTransitions[browserPackageName] ?: return false
+            if (!transition.destinationRequested ||
+                transition.destination != WebsiteTransitionDestination.GOOGLE
+            ) return false
+            return transition.destinationConfirmed.complete(Unit)
+        }
+
+        @Synchronized
+        fun confirmPomodoro(curtainGeneration: Long? = null): Boolean {
+            var confirmed = false
+            activeTransitions.values
+                .filter {
+                    it.destinationRequested &&
+                        it.destination == WebsiteTransitionDestination.POMODORO &&
+                        (curtainGeneration == null || it.curtainGeneration == curtainGeneration)
+                }
+                .toList()
+                .forEach { transition ->
+                    confirmed = transition.destinationConfirmed.complete(Unit) || confirmed
+                }
+            return confirmed
+        }
+
+        @Synchronized
+        fun finish(browserPackageName: String, transitionId: Long): Boolean {
+            if (activeTransitions[browserPackageName]?.id != transitionId) return false
+            activeTransitions.remove(browserPackageName)
+            return true
+        }
+
+        @Synchronized
+        fun clear() {
+            activeTransitions.clear()
+        }
     }
 
     @Inject lateinit var authManager: AuthManager
@@ -128,8 +274,6 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private var lastLoadTime = 0L
     private var lastBrowserCheck = 0L
-    private var lastWebsiteBlockTime = 0L
-    private var lastWebsiteBlockKey: String? = null
     private var lastToastTime = 0L
     private var defaultLauncherPackage: String? = null
     @Volatile private var launcherLabelIndex =
@@ -176,6 +320,8 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var appLimitMonitoringJob: Job? = null
     private val opaqueBrowserFirstSeenElapsed = mutableMapOf<String, Long>()
     private val opaqueBrowserVerificationScheduled = mutableSetOf<String>()
+    private val websiteBlockTransitionCounter = AtomicLong(0L)
+    private val websiteBlockTransitionGuard = WebsiteBlockTransitionGuard()
 
     private data class WebsiteUsageSlice(
         val domain: String,
@@ -302,6 +448,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private val curtainDestinationReadyListener =
         CurtainDestinationReadyCoordinator.Listener { generation ->
             mainHandler.post {
+                if (websiteBlockTransitionGuard.confirmPomodoro(generation)) return@post
                 if (shouldDismissCurtain(instantBlockCurtainGeneration, generation)) {
                     if (pendingReadyWindowValidationGeneration != generation) {
                         pendingReadyWindowValidationGeneration = generation
@@ -666,6 +813,11 @@ class BlockingAccessibilityService : AccessibilityService() {
             // the switch that disables this service, so nothing that can block runs
             // ahead of the decision to bounce them out.
             val directPackage = event.packageName?.toString().orEmpty()
+
+            // An in-flight website transition still consumes browser events, but
+            // first gives them a chance to prove that the requested safe surface
+            // is actually visible. The curtain is never released on elapsed time.
+            if (observeWebsiteTransitionDestination(event, directPackage)) return
 
             // Shield the native System UI power menu before any other handling.
             // A touch-consuming TYPE_ACCESSIBILITY_OVERLAY stays on top while the
@@ -1202,7 +1354,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         val blockedWebsiteDomain = blockedWebsiteAppDomains[packageName]
         val limitedWebsiteDomain = limitedWebsiteAppDomains[packageName]
         when {
-            blockedWebsiteDomain != null -> blockWebsiteApp(blockedWebsiteDomain, packageName)
+            blockedWebsiteDomain != null -> blockWebsiteApp(blockedWebsiteDomain)
             ImmediateInterceptionPolicy.isBlockedTargetWindow(
                 packageName,
                 blockedAppsSet
@@ -2086,26 +2238,57 @@ class BlockingAccessibilityService : AccessibilityService() {
         return recognized
     }
 
+    private fun observeWebsiteTransitionDestination(
+        event: AccessibilityEvent,
+        packageName: String
+    ): Boolean {
+        if (packageName == this.packageName &&
+            event.className?.toString() == PomodoroLockActivity::class.java.name &&
+            websiteBlockTransitionGuard.confirmPomodoro()
+        ) return true
+
+        if (!websiteBlockTransitionGuard.isActive(packageName)) return false
+
+        val eventAddress = WebsiteBlocker.extractAddressBarTextFromEvent(event, packageName)
+        val eventUrl = eventAddress?.let(WebsiteBlocker::extractUrlCandidate)
+            ?: WebsiteBlocker.extractUrlFromEvent(event, packageName)
+        var root: AccessibilityNodeInfo? = null
+        val url = eventUrl ?: run {
+            root = rootInActiveWindow ?: sourceNodeForEvent(event)
+            WebsiteBlocker.extractUrlFromRoot(root, packageName)
+                ?: WebsiteBlocker.extractAddressBarTextFromRoot(root, packageName)
+        }
+        recycleSafely(root)
+
+        if (isSafeGoogleRedirectSurface(url)) {
+            websiteBlockTransitionGuard.confirmGoogle(packageName)
+        }
+        // Consume stale blocked-URL events, while allowing the safe one above to
+        // complete the waiter that owns this browser's curtain generation.
+        return true
+    }
+
     private fun handleImmediateBrowserBlock(
         event: AccessibilityEvent,
         packageName: String
     ): Boolean {
+        // BACK and the explicit browser launch are asynchronous. Ignore the
+        // browser's follow-up accessibility events until that handoff finishes,
+        // otherwise the stale blocked URL can start overlapping redirect loops.
+        if (websiteBlockTransitionGuard.isActive(packageName)) return true
         if (blockedWebsitesDomainSet.isEmpty()) return false
 
         val addressText = WebsiteBlocker.extractAddressBarTextFromEvent(event, packageName)
         val url = addressText?.let(WebsiteBlocker::extractUrlCandidate)
             ?: WebsiteBlocker.extractUrlFromEvent(event, packageName)
-        val blockTarget = immediateWebsiteBlockTarget(
-            addressText = addressText,
-            url = url,
-            blockedRules = blockedWebsitesDomainSet
-        ) ?: return false
+        if (immediateWebsiteBlockTarget(
+                addressText = addressText,
+                url = url,
+                blockedRules = blockedWebsitesDomainSet
+            ) == null
+        ) return false
 
-        blockWebsite(
-            domain = blockTarget,
-            browserPackageName = packageName,
-            eventUptimeMillis = event.eventTime
-        )
+        blockWebsite(browserPackageName = packageName)
         return true
     }
 
@@ -2114,6 +2297,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         resolvedPackageName: String
     ) {
         val packageName = resolvedPackageName.takeIf(String::isNotBlank) ?: return
+        if (observeWebsiteTransitionDestination(event, packageName)) return
         if (!isRecognizedBrowserSurface(event, packageName)) return
 
         val pornographyCategoryActive = blockedWebsitesDomainSet.any(
@@ -2135,17 +2319,13 @@ class BlockingAccessibilityService : AccessibilityService() {
         // Even on the root-fallback path, the block decision outranks tracking,
         // policy refreshes and observability bookkeeping. Once the URL is known,
         // cover the page immediately just like blockApp() covers an app window.
-        val immediateTarget = immediateWebsiteBlockTarget(
-            addressText = addressText,
-            url = url,
-            blockedRules = blockedWebsitesDomainSet
-        )
-        if (immediateTarget != null) {
-            blockWebsite(
-                domain = immediateTarget,
-                browserPackageName = packageName,
-                eventUptimeMillis = event.eventTime
-            )
+        if (immediateWebsiteBlockTarget(
+                addressText = addressText,
+                url = url,
+                blockedRules = blockedWebsitesDomainSet
+            ) != null
+        ) {
+            blockWebsite(browserPackageName = packageName)
             recycleSafely(root)
             return
         }
@@ -2166,11 +2346,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                     WebsiteBlocker::containsPornographySearchTerm
                 ) == true
             if (googlePageFieldHasBlockedSearch) {
-                blockWebsite(
-                    domain = PredefinedWebsites.PORNOGRAPHY_RULE,
-                    browserPackageName = packageName,
-                    eventUptimeMillis = event.eventTime
-                )
+                blockWebsite(browserPackageName = packageName)
                 recycleSafely(root)
                 return
             }
@@ -2259,15 +2435,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         opaqueBrowserFirstSeenElapsed.remove(packageName)
         opaqueBrowserVerificationScheduled.remove(packageName)
         stopWebsiteTracking()
-        val noticeLaunched = launchBlockNotice(
-            blockedPackage = null,
-            blockedDomain = "Navegador sem URL verificável",
-            redirectBrowserPackage = packageName
-        )
-        if (!noticeLaunched && !redirectBrowserToSafePage(packageName)) {
-            performGlobalAction(GLOBAL_ACTION_BACK)
-            performGlobalAction(GLOBAL_ACTION_HOME)
-        }
+        startWebsiteBlockTransition(packageName)
     }
 
     private fun updateWebsiteTracking(urlOrDomain: String, packageName: String, now: Long) {
@@ -2449,12 +2617,12 @@ class BlockingAccessibilityService : AccessibilityService() {
 
             blockedWebsitesDomainSet = blockedWebsitesDomainSet + exceededRules
             if (usage.packageName in browserPackages) {
-                blockWebsite(usage.domain, usage.packageName)
+                blockWebsite(usage.packageName)
             } else {
                 val displayRule = exceededRules.firstOrNull() ?: usage.domain
                 blockedWebsiteAppDomains = blockedWebsiteAppDomains +
                     (usage.packageName to displayRule)
-                blockWebsiteApp(displayRule, usage.packageName)
+                blockWebsiteApp(displayRule)
             }
         }
     }
@@ -2470,40 +2638,160 @@ class BlockingAccessibilityService : AccessibilityService() {
         )
     }
 
-    private fun blockWebsite(
-        domain: String,
-        browserPackageName: String,
-        eventUptimeMillis: Long = SystemClock.uptimeMillis()
-    ) {
-        if (!beginWebsiteBlock(domain, browserPackageName)) return
-        val noticeLaunched = launchBlockNotice(
-            blockedPackage = null,
-            blockedDomain = WebsiteBlocker.displayRule(domain),
-            redirectBrowserPackage = browserPackageName,
-            eventUptimeMillis = eventUptimeMillis
-        )
-        if (!noticeLaunched && !redirectBrowserToSafePage(browserPackageName)) {
-            performGlobalAction(GLOBAL_ACTION_BACK)
-            performGlobalAction(GLOBAL_ACTION_HOME)
-        }
+    private fun blockWebsite(browserPackageName: String) {
+        val now = System.currentTimeMillis()
+        stopWebsiteTracking(now)
+        startWebsiteBlockTransition(browserPackageName)
     }
 
-    private fun blockWebsiteApp(domain: String, packageName: String) {
-        if (!beginWebsiteBlock(domain, packageName)) return
+    private fun blockWebsiteApp(domain: String) {
+        stopWebsiteTracking()
         launchBlockNotice(
             blockedPackage = null,
             blockedDomain = WebsiteBlocker.displayRule(domain)
         )
     }
 
-    private fun beginWebsiteBlock(domain: String, packageName: String): Boolean {
-        val now = System.currentTimeMillis()
-        // Match app blocking: every attempt renews enforcement. Reload, Back and
-        // forward navigation must never slip through an old cooldown window.
-        lastWebsiteBlockKey = "$packageName|$domain"
-        lastWebsiteBlockTime = now
-        stopWebsiteTracking(now)
-        return true
+    private fun startWebsiteBlockTransition(browserPackageName: String) {
+        val strictAtDetection = isPomodoroStrictActive
+        val destination = if (strictAtDetection) {
+            WebsiteTransitionDestination.POMODORO
+        } else {
+            WebsiteTransitionDestination.GOOGLE
+        }
+        val transitionId = websiteBlockTransitionCounter.incrementAndGet()
+        val transition = websiteBlockTransitionGuard.tryStart(
+            browserPackageName = browserPackageName,
+            transitionId = transitionId,
+            destination = destination
+        ) ?: return
+        val stateMachine = WebsiteBlockTransitionStateMachine(strict = strictAtDetection)
+
+        scope.launch(Dispatchers.Main.immediate) {
+            var curtainGeneration = 0L
+            try {
+                var backAccepted = false
+                stateMachine.begin().forEach { action ->
+                    when (action) {
+                        WebsiteTransitionAction.SHOW_CURTAIN -> {
+                            curtainGeneration = showInstantBlockCurtain(
+                                mode = CurtainMode.BLOCK_NOTICE
+                            )
+                            awaitingSafeSurfaceGeneration = curtainGeneration
+                            check(
+                                websiteBlockTransitionGuard.markCurtainGeneration(
+                                    browserPackageName,
+                                    transitionId,
+                                    curtainGeneration
+                                )
+                            )
+                        }
+                        WebsiteTransitionAction.DISMISS_BLOCKED_PAGE -> {
+                            backAccepted = runCatching {
+                                performGlobalAction(GLOBAL_ACTION_BACK)
+                            }.getOrDefault(false)
+                        }
+                        else -> error("Ação inicial de site inesperada: $action")
+                    }
+                }
+
+                if (!backAccepted) {
+                    check(
+                        stateMachine.onFailureOrTimeout() ==
+                            WebsiteTransitionAction.EVACUATE_HOME
+                    )
+                    beginCurtainEvacuationBeforeHide(curtainGeneration)
+                    awaitWebsiteCurtainEvacuation(curtainGeneration)
+                    return@launch
+                }
+
+                // This interval only lets Android finish the accepted BACK before
+                // the destination request. It never authorizes curtain dismissal.
+                delay(WEBSITE_BACK_SETTLE_MILLIS)
+
+                val destinationAction = stateMachine.afterBackSettled()
+                check(
+                    websiteBlockTransitionGuard.markDestinationRequested(
+                        browserPackageName,
+                        transitionId
+                    )
+                )
+                val launchSucceeded = when (destinationAction) {
+                    WebsiteTransitionAction.OPEN_GOOGLE ->
+                        redirectBrowserToSafePage(browserPackageName)
+                    WebsiteTransitionAction.OPEN_POMODORO ->
+                        launchPomodoroLockForWebsiteTransition(curtainGeneration)
+                    else -> false
+                }
+                if (!launchSucceeded) {
+                    check(
+                        stateMachine.onFailureOrTimeout() ==
+                            WebsiteTransitionAction.EVACUATE_HOME
+                    )
+                    beginCurtainEvacuationBeforeHide(curtainGeneration)
+                    awaitWebsiteCurtainEvacuation(curtainGeneration)
+                    return@launch
+                }
+
+                val destinationConfirmed = withTimeoutOrNull(
+                    WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS
+                ) {
+                    transition.destinationConfirmed.await()
+                    true
+                } == true
+                if (destinationConfirmed) {
+                    check(
+                        stateMachine.onDestinationConfirmed() ==
+                            WebsiteTransitionAction.HIDE_CURTAIN
+                    )
+                    dismissInstantBlockCurtain(curtainGeneration)
+                } else {
+                    check(
+                        stateMachine.onFailureOrTimeout() ==
+                            WebsiteTransitionAction.EVACUATE_HOME
+                    )
+                    beginCurtainEvacuationBeforeHide(curtainGeneration)
+                    awaitWebsiteCurtainEvacuation(curtainGeneration)
+                }
+            } finally {
+                websiteBlockTransitionGuard.finish(browserPackageName, transitionId)
+            }
+        }
+    }
+
+    private suspend fun awaitWebsiteCurtainEvacuation(expectedGeneration: Long) {
+        // The failsafe keeps requesting HOME/launcher while the browser remains a
+        // visible unsafe window. Keep its per-browser guard alive until that exact
+        // curtain is hidden or superseded; clearing it on a fixed timer could make
+        // a late browser frame look safe.
+        while (instantBlockCurtainGeneration == expectedGeneration &&
+            instantBlockCurtainVisible
+        ) {
+            delay(UNSAFE_WINDOW_RECHECK_MILLIS)
+        }
+    }
+
+    private fun launchPomodoroLockForWebsiteTransition(curtainGeneration: Long): Boolean {
+        return runCatching {
+            startActivity(
+                Intent(this, PomodoroLockActivity::class.java).apply {
+                    addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    )
+                    putExtra(EXTRA_CURTAIN_GENERATION, curtainGeneration)
+                }
+            )
+            true
+        }.getOrElse { error ->
+            FocusGuardLogger.logError(
+                "A11y",
+                "Falha ao abrir bloqueio Pomodoro após dispensar site",
+                error
+            )
+            false
+        }
     }
 
     private fun redirectBrowserToSafePage(browserPackageName: String): Boolean {
@@ -2826,7 +3114,8 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun hasUnsafeVisibleWindow(): Boolean {
-        val blockedTargets = blockedAppsSet + focusModeBlockedAppsSet
+        val blockedTargets = blockedAppsSet + focusModeBlockedAppsSet +
+            websiteBlockTransitionGuard.activeBrowserPackages()
         val protectSettings = instantBlockCurtainMode == CurtainMode.SELF_PROTECTION
         val protectedSettingsPackages = SettingsInterceptionPolicy.settingsPackages +
             SettingsInterceptionPolicy.packageInstallerPackages
@@ -2971,6 +3260,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     override fun onDestroy() {
         accessibilityServiceConnected = false
         stopWebsiteTracking()
+        websiteBlockTransitionGuard.clear()
         mainHandler.removeCallbacks(protectionCurtainDismiss)
         protectionActionUntilElapsed = 0L
         protectedPowerMenuController?.destroy()
@@ -3051,7 +3341,12 @@ class BlockingAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
             AccessibilityEvent.TYPE_WINDOWS_CHANGED
         )
-        internal const val WEBSITE_BLOCK_NOTICE_DURATION_MILLIS = 1_000L
+        // BACK settling only orders the two navigation requests. Curtain release
+        // is separately gated by a positively observed safe destination.
+        internal const val WEBSITE_BACK_SETTLE_MILLIS = 160L
+        internal const val WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS = 2_000L
+        internal const val STRICT_BLOCK_NOTICE_DURATION_MILLIS = 1_000L
+        private val SAFE_GOOGLE_ROOT_QUERY_PARAMETERS = setOf("gl", "gws_rd", "hl")
         const val ACTION_REFRESH_BLOCKING = "com.focusguard.ACTION_REFRESH_BLOCKING"
         internal const val ACTION_DEV_RELINQUISH_ACCESSIBILITY =
             "com.focusguard.ACTION_DEV_RELINQUISH_ACCESSIBILITY"
@@ -3107,6 +3402,21 @@ class BlockingAccessibilityService : AccessibilityService() {
                 WebsiteBlocker.extractDomain(candidate)
                     .ifBlank { WebsiteBlocker.displayRule(matchingRule) }
             }
+        }
+
+        internal fun isSafeGoogleRedirectSurface(urlOrAddress: String?): Boolean {
+            val raw = urlOrAddress?.trim()?.takeIf(String::isNotEmpty) ?: return false
+            val candidate = WebsiteBlocker.extractUrlCandidate(raw) ?: raw
+            val withScheme = if ("://" in candidate) candidate else "https://$candidate"
+            val uri = runCatching { Uri.parse(withScheme) }.getOrNull() ?: return false
+            val host = uri.host?.lowercase(Locale.US)?.removePrefix("www.") ?: return false
+            return host.startsWith("google.") &&
+                WebsiteBlocker.isGoogleUrl(withScheme) &&
+                !WebsiteBlocker.isGoogleImagesUrl(withScheme) &&
+                !WebsiteBlocker.isPornographySearchUrl(withScheme) &&
+                (uri.path.isNullOrEmpty() || uri.path == "/") &&
+                uri.queryParameterNames.all(SAFE_GOOGLE_ROOT_QUERY_PARAMETERS::contains) &&
+                uri.fragment.isNullOrEmpty()
         }
 
         internal fun settingsTransitionGuardMillisForTest(): Long =

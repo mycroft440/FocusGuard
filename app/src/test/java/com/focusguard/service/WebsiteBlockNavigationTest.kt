@@ -149,32 +149,176 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
-    fun `notice has a visible interval before the browser redirect`() {
-        assertThat(BlockingAccessibilityService.WEBSITE_BLOCK_NOTICE_DURATION_MILLIS)
-            .isAtLeast(1_000L)
+    fun `automatic website handoff delay only orders back before destination`() {
+        assertThat(BlockingAccessibilityService.WEBSITE_BACK_SETTLE_MILLIS)
+            .isGreaterThan(BlockingAccessibilityService.EVENT_NOTIFICATION_TIMEOUT_MILLIS)
+        assertThat(BlockingAccessibilityService.WEBSITE_BACK_SETTLE_MILLIS)
+            .isLessThan(1_000L)
+        assertThat(BlockingAccessibilityService.WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS)
+            .isGreaterThan(BlockingAccessibilityService.WEBSITE_BACK_SETTLE_MILLIS)
     }
 
     @Test
-    fun `blocked website opens FocusGuard notice with deferred browser redirect`() {
-        val intent = BlockingAccessibilityService.createBlockNoticeIntent(
-            context = context,
-            strictBlock = false,
-            blockedPackage = null,
-            blockedDomain = "youtube.com",
-            redirectBrowserPackage = CHROME_PACKAGE
+    fun `website transition guard rejects overlap only for the same browser`() {
+        val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
+
+        assertThat(
+            guard.tryStart(
+                CHROME_PACKAGE,
+                transitionId = 1L,
+                destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE
+            )
+        ).isNotNull()
+        assertThat(
+            guard.tryStart(
+                CHROME_PACKAGE,
+                transitionId = 2L,
+                destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE
+            )
+        ).isNull()
+        assertThat(
+            guard.tryStart(
+                FIREFOX_PACKAGE,
+                transitionId = 3L,
+                destination = BlockingAccessibilityService.WebsiteTransitionDestination.POMODORO
+            )
+        ).isNotNull()
+        assertThat(guard.finish(CHROME_PACKAGE, transitionId = 2L)).isFalse()
+        assertThat(guard.isActive(CHROME_PACKAGE)).isTrue()
+        assertThat(guard.finish(CHROME_PACKAGE, transitionId = 1L)).isTrue()
+        assertThat(
+            guard.tryStart(
+                CHROME_PACKAGE,
+                transitionId = 4L,
+                destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE
+            )
+        ).isNotNull()
+    }
+
+    @Test
+    fun `safe browser event confirms only after redirect was requested`() {
+        val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
+        val transition = guard.tryStart(
+            CHROME_PACKAGE,
+            transitionId = 11L,
+            destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE
+        )!!
+
+        assertThat(guard.confirmGoogle(CHROME_PACKAGE)).isFalse()
+        assertThat(transition.destinationConfirmed.isCompleted).isFalse()
+        assertThat(guard.markDestinationRequested(CHROME_PACKAGE, transitionId = 11L)).isTrue()
+        assertThat(guard.confirmGoogle(CHROME_PACKAGE)).isTrue()
+        assertThat(transition.destinationConfirmed.isCompleted).isTrue()
+    }
+
+    @Test
+    fun `strict guard accepts Pomodoro confirmation and rejects Google`() {
+        val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
+        val transition = guard.tryStart(
+            CHROME_PACKAGE,
+            transitionId = 12L,
+            destination = BlockingAccessibilityService.WebsiteTransitionDestination.POMODORO
+        )!!
+        guard.markCurtainGeneration(CHROME_PACKAGE, transitionId = 12L, curtainGeneration = 44L)
+        guard.markDestinationRequested(CHROME_PACKAGE, transitionId = 12L)
+
+        assertThat(guard.confirmGoogle(CHROME_PACKAGE)).isFalse()
+        assertThat(transition.destinationConfirmed.isCompleted).isFalse()
+        assertThat(guard.confirmPomodoro(curtainGeneration = 43L)).isFalse()
+        assertThat(guard.confirmPomodoro(curtainGeneration = 44L)).isTrue()
+        assertThat(transition.destinationConfirmed.isCompleted).isTrue()
+    }
+
+    @Test
+    fun `google confirmation accepts homepage but rejects search and lookalike`() {
+        assertThat(
+            BlockingAccessibilityService.isSafeGoogleRedirectSurface(
+                "https://www.google.com/"
+            )
+        ).isTrue()
+        assertThat(
+            BlockingAccessibilityService.isSafeGoogleRedirectSurface(
+                "https://www.google.com.br/?hl=pt-BR&gl=br"
+            )
+        ).isTrue()
+        assertThat(
+            BlockingAccessibilityService.isSafeGoogleRedirectSurface(
+                "https://www.google.com/search?q=blocked"
+            )
+        ).isFalse()
+        assertThat(
+            BlockingAccessibilityService.isSafeGoogleRedirectSurface(
+                "https://google.com.evil.example/"
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `normal transition orders back before Google and hides only after confirmation`() {
+        val machine = BlockingAccessibilityService.WebsiteBlockTransitionStateMachine(
+            strict = false
         )
 
-        assertThat(intent.component?.className).isEqualTo(BlockNoticeActivity::class.java.name)
-        assertThat(intent.getStringExtra(BlockingAccessibilityService.EXTRA_BLOCKED_DOMAIN))
-            .isEqualTo("youtube.com")
-        assertThat(
-            intent.getStringExtra(
-                BlockingAccessibilityService.EXTRA_REDIRECT_BROWSER_PACKAGE
-            )
-        ).isEqualTo(CHROME_PACKAGE)
-        assertThat(intent.flags and Intent.FLAG_ACTIVITY_NEW_TASK).isNotEqualTo(0)
-        assertThat(intent.flags and Intent.FLAG_ACTIVITY_CLEAR_TOP).isNotEqualTo(0)
-        assertThat(intent.flags and Intent.FLAG_ACTIVITY_CLEAR_TASK).isEqualTo(0)
+        assertThat(machine.begin()).containsExactly(
+            BlockingAccessibilityService.WebsiteTransitionAction.SHOW_CURTAIN,
+            BlockingAccessibilityService.WebsiteTransitionAction.DISMISS_BLOCKED_PAGE
+        ).inOrder()
+        assertThat(machine.afterBackSettled()).isEqualTo(
+            BlockingAccessibilityService.WebsiteTransitionAction.OPEN_GOOGLE
+        )
+        assertThat(machine.onDestinationConfirmed()).isEqualTo(
+            BlockingAccessibilityService.WebsiteTransitionAction.HIDE_CURTAIN
+        )
+    }
+
+    @Test
+    fun `confirmation timeout evacuates Home without hiding directly`() {
+        val machine = BlockingAccessibilityService.WebsiteBlockTransitionStateMachine(
+            strict = false
+        )
+        machine.begin()
+        machine.afterBackSettled()
+
+        assertThat(machine.onFailureOrTimeout()).isEqualTo(
+            BlockingAccessibilityService.WebsiteTransitionAction.EVACUATE_HOME
+        )
+    }
+
+    @Test
+    fun `back or destination launch failure evacuates Home`() {
+        val backFailure = BlockingAccessibilityService.WebsiteBlockTransitionStateMachine(
+            strict = false
+        )
+        backFailure.begin()
+        assertThat(backFailure.onFailureOrTimeout()).isEqualTo(
+            BlockingAccessibilityService.WebsiteTransitionAction.EVACUATE_HOME
+        )
+
+        val launchFailure = BlockingAccessibilityService.WebsiteBlockTransitionStateMachine(
+            strict = false
+        )
+        launchFailure.begin()
+        launchFailure.afterBackSettled()
+        assertThat(launchFailure.onFailureOrTimeout()).isEqualTo(
+            BlockingAccessibilityService.WebsiteTransitionAction.EVACUATE_HOME
+        )
+    }
+
+    @Test
+    fun `strict transition opens Pomodoro after back and never Google`() {
+        val machine = BlockingAccessibilityService.WebsiteBlockTransitionStateMachine(
+            strict = true
+        )
+
+        assertThat(machine.begin().last()).isEqualTo(
+            BlockingAccessibilityService.WebsiteTransitionAction.DISMISS_BLOCKED_PAGE
+        )
+        assertThat(machine.afterBackSettled()).isEqualTo(
+            BlockingAccessibilityService.WebsiteTransitionAction.OPEN_POMODORO
+        )
+        assertThat(machine.onDestinationConfirmed()).isEqualTo(
+            BlockingAccessibilityService.WebsiteTransitionAction.HIDE_CURTAIN
+        )
     }
 
     @Test
@@ -199,6 +343,7 @@ class WebsiteBlockNavigationTest {
             redirectBrowserPackage = null
         )
 
+        assertThat(intent.component?.className).isEqualTo(BlockNoticeActivity::class.java.name)
         assertThat(
             intent.hasExtra(BlockingAccessibilityService.EXTRA_REDIRECT_BROWSER_PACKAGE)
         ).isFalse()
@@ -206,5 +351,6 @@ class WebsiteBlockNavigationTest {
 
     private companion object {
         const val CHROME_PACKAGE = "com.android.chrome"
+        const val FIREFOX_PACKAGE = "org.mozilla.firefox"
     }
 }

@@ -46,6 +46,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.view.doOnPreDraw
 import androidx.lifecycle.lifecycleScope
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
@@ -53,6 +54,8 @@ import com.focusguard.focusmode.FocusModePolicy
 import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.manager.StrictPomodoroLock
+import com.focusguard.security.CurtainDestinationReadyCoordinator
+import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DarkBg
@@ -110,6 +113,25 @@ class PomodoroLockActivity : ComponentActivity() {
                 )
             }
         }
+        acknowledgeWebsiteTransitionWhenDrawn(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        acknowledgeWebsiteTransitionWhenDrawn(intent)
+    }
+
+    private fun acknowledgeWebsiteTransitionWhenDrawn(sourceIntent: Intent) {
+        val generation = sourceIntent.getLongExtra(
+            BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION,
+            0L
+        )
+        if (generation <= 0L) return
+        window.decorView.doOnPreDraw {
+            CurtainDestinationReadyCoordinator.notifyReady(generation)
+        }
+        window.decorView.invalidate()
     }
 
     override fun onStart() {
