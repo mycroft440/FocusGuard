@@ -16,6 +16,7 @@ import android.graphics.PixelFormat
 import android.graphics.Rect
 import android.net.Uri
 import android.os.Build
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.PowerManager
@@ -108,39 +109,41 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     internal enum class WebsiteTransitionAction {
         SHOW_CURTAIN,
-        DISMISS_BLOCKED_PAGE,
-        OPEN_GOOGLE,
+        NEUTRALIZE_BLOCKED_TAB,
         OPEN_POMODORO,
         HIDE_CURTAIN,
         EVACUATE_HOME
     }
 
+    internal enum class WebsiteSanitizationDecision {
+        SUBMIT_ADDRESS_BAR,
+        AWAIT_GOOGLE_CONFIRMATION,
+        EVACUATE_HOME
+    }
+
     internal class WebsiteBlockTransitionStateMachine(private val strict: Boolean) {
-        private enum class State { NEW, BACK_REQUESTED, DESTINATION_REQUESTED, FINISHED }
+        private enum class State { NEW, SANITIZATION_PENDING, POMODORO_REQUESTED, FINISHED }
 
         private var state = State.NEW
 
         fun begin(): List<WebsiteTransitionAction> {
             check(state == State.NEW)
-            state = State.BACK_REQUESTED
+            state = State.SANITIZATION_PENDING
             return listOf(
                 WebsiteTransitionAction.SHOW_CURTAIN,
-                WebsiteTransitionAction.DISMISS_BLOCKED_PAGE
+                WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB
             )
         }
 
-        fun afterBackSettled(): WebsiteTransitionAction {
-            check(state == State.BACK_REQUESTED)
-            state = State.DESTINATION_REQUESTED
-            return if (strict) {
-                WebsiteTransitionAction.OPEN_POMODORO
-            } else {
-                WebsiteTransitionAction.OPEN_GOOGLE
-            }
+        fun afterGoogleSanitized(): WebsiteTransitionAction {
+            check(state == State.SANITIZATION_PENDING)
+            state = if (strict) State.POMODORO_REQUESTED else State.FINISHED
+            return if (strict) WebsiteTransitionAction.OPEN_POMODORO
+            else WebsiteTransitionAction.HIDE_CURTAIN
         }
 
-        fun onDestinationConfirmed(): WebsiteTransitionAction {
-            check(state == State.DESTINATION_REQUESTED)
+        fun onPomodoroConfirmed(): WebsiteTransitionAction {
+            check(state == State.POMODORO_REQUESTED)
             state = State.FINISHED
             return WebsiteTransitionAction.HIDE_CURTAIN
         }
@@ -156,10 +159,41 @@ class BlockingAccessibilityService : AccessibilityService() {
         val id: Long,
         val browserPackageName: String,
         val destination: WebsiteTransitionDestination,
+        val expectedWindowId: Int,
+        val blockedCandidate: String?,
+        val blockedRules: Set<String>,
+        val detectionEventUptimeMillis: Long,
+        internal val safeGoogleConfirmed: CompletableDeferred<Unit> = CompletableDeferred(),
         internal val destinationConfirmed: CompletableDeferred<Unit> = CompletableDeferred(),
+        internal var sanitizationRequested: Boolean = false,
+        internal var sanitizationRequestedAtUptimeMillis: Long = Long.MAX_VALUE,
         internal var destinationRequested: Boolean = false,
+        internal var destinationRequestedAtUptimeMillis: Long = Long.MAX_VALUE,
+        internal var latestObservedEventUptimeMillis: Long = detectionEventUptimeMillis,
+        internal var closeClickedAtUptimeMillis: Long = 0L,
         internal var curtainGeneration: Long = 0L
     )
+
+    /** Keeps destructive browser UI actions ahead of the safe redirect request. */
+    internal class WebsiteTabNeutralizationPolicy(
+        private val browserPackageName: String,
+        private val expectedWindowId: Int
+    ) {
+        private var redirectRequested = false
+
+        fun mayTouchBlockedTab(activePackageName: String, activeWindowId: Int): Boolean =
+            !redirectRequested &&
+                activePackageName == browserPackageName &&
+                activeWindowId == expectedWindowId
+
+        fun mayAttemptBraveClose(activePackageName: String, activeWindowId: Int): Boolean =
+            browserPackageName in BRAVE_BROWSER_PACKAGES &&
+                mayTouchBlockedTab(activePackageName, activeWindowId)
+
+        fun markRedirectRequested() {
+            redirectRequested = true
+        }
+    }
 
     internal class WebsiteBlockTransitionGuard {
         private val activeTransitions = mutableMapOf<String, WebsiteBlockTransitionHandle>()
@@ -168,7 +202,11 @@ class BlockingAccessibilityService : AccessibilityService() {
         fun tryStart(
             browserPackageName: String,
             transitionId: Long,
-            destination: WebsiteTransitionDestination
+            destination: WebsiteTransitionDestination,
+            expectedWindowId: Int = INVALID_BROWSER_WINDOW_ID,
+            blockedCandidate: String? = null,
+            blockedRules: Set<String> = emptySet(),
+            detectionEventUptimeMillis: Long = 0L
         ): WebsiteBlockTransitionHandle? {
             require(browserPackageName.isNotBlank())
             require(transitionId > 0L)
@@ -176,7 +214,11 @@ class BlockingAccessibilityService : AccessibilityService() {
             return WebsiteBlockTransitionHandle(
                 id = transitionId,
                 browserPackageName = browserPackageName,
-                destination = destination
+                destination = destination,
+                expectedWindowId = expectedWindowId,
+                blockedCandidate = blockedCandidate,
+                blockedRules = blockedRules,
+                detectionEventUptimeMillis = detectionEventUptimeMillis
             ).also { activeTransitions[browserPackageName] = it }
         }
 
@@ -188,10 +230,34 @@ class BlockingAccessibilityService : AccessibilityService() {
         fun activeBrowserPackages(): Set<String> = activeTransitions.keys.toSet()
 
         @Synchronized
-        fun markDestinationRequested(browserPackageName: String, transitionId: Long): Boolean {
+        fun markSanitizationRequested(
+            browserPackageName: String,
+            transitionId: Long,
+            requestedAtUptimeMillis: Long
+        ): Boolean {
             val transition = activeTransitions[browserPackageName] ?: return false
-            if (transition.id != transitionId) return false
+            if (transition.id != transitionId || transition.destinationRequested ||
+                requestedAtUptimeMillis < transition.detectionEventUptimeMillis
+            ) return false
+            transition.sanitizationRequested = true
+            transition.sanitizationRequestedAtUptimeMillis = requestedAtUptimeMillis
+            return true
+        }
+
+        @Synchronized
+        fun markDestinationRequested(
+            browserPackageName: String,
+            transitionId: Long,
+            requestedAtUptimeMillis: Long
+        ): Boolean {
+            val transition = activeTransitions[browserPackageName] ?: return false
+            if (transition.id != transitionId || !transition.safeGoogleConfirmed.isCompleted ||
+                requestedAtUptimeMillis < transition.sanitizationRequestedAtUptimeMillis
+            ) {
+                return false
+            }
             transition.destinationRequested = true
+            transition.destinationRequestedAtUptimeMillis = requestedAtUptimeMillis
             return true
         }
 
@@ -208,28 +274,74 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
 
         @Synchronized
-        fun confirmGoogle(browserPackageName: String): Boolean {
+        fun markCloseClicked(
+            browserPackageName: String,
+            transitionId: Long,
+            clickedAtUptimeMillis: Long
+        ): Boolean {
             val transition = activeTransitions[browserPackageName] ?: return false
-            if (!transition.destinationRequested ||
-                transition.destination != WebsiteTransitionDestination.GOOGLE
+            if (transition.id != transitionId || transition.destinationRequested ||
+                clickedAtUptimeMillis < transition.detectionEventUptimeMillis
             ) return false
-            return transition.destinationConfirmed.complete(Unit)
+            transition.closeClickedAtUptimeMillis = clickedAtUptimeMillis
+            return true
         }
 
         @Synchronized
-        fun confirmPomodoro(curtainGeneration: Long? = null): Boolean {
-            var confirmed = false
-            activeTransitions.values
-                .filter {
-                    it.destinationRequested &&
-                        it.destination == WebsiteTransitionDestination.POMODORO &&
-                        (curtainGeneration == null || it.curtainGeneration == curtainGeneration)
-                }
-                .toList()
-                .forEach { transition ->
-                    confirmed = transition.destinationConfirmed.complete(Unit) || confirmed
-                }
-            return confirmed
+        fun confirmGoogle(
+            browserPackageName: String,
+            windowId: Int,
+            eventUptimeMillis: Long
+        ): Boolean {
+            val transition = activeTransitions[browserPackageName] ?: return false
+            if (!transition.sanitizationRequested ||
+                transition.expectedWindowId != windowId ||
+                eventUptimeMillis < transition.sanitizationRequestedAtUptimeMillis
+            ) return false
+            transition.latestObservedEventUptimeMillis = maxOf(
+                transition.latestObservedEventUptimeMillis,
+                eventUptimeMillis
+            )
+            return transition.safeGoogleConfirmed.complete(Unit)
+        }
+
+        @Synchronized
+        fun transitionForConfirmation(
+            browserPackageName: String,
+            windowId: Int,
+            eventUptimeMillis: Long
+        ): WebsiteBlockTransitionHandle? {
+            val transition = activeTransitions[browserPackageName] ?: return null
+            return transition.takeIf {
+                it.sanitizationRequested &&
+                    it.expectedWindowId == windowId &&
+                    eventUptimeMillis >= it.sanitizationRequestedAtUptimeMillis
+            }
+        }
+
+        @Synchronized
+        fun observeBrowserEvent(
+            browserPackageName: String,
+            windowId: Int,
+            eventUptimeMillis: Long
+        ) {
+            val transition = activeTransitions[browserPackageName] ?: return
+            if (transition.expectedWindowId != windowId) return
+            transition.latestObservedEventUptimeMillis = maxOf(
+                transition.latestObservedEventUptimeMillis,
+                eventUptimeMillis
+            )
+        }
+
+        @Synchronized
+        fun confirmPomodoro(curtainGeneration: Long, readyAtUptimeMillis: Long): Boolean {
+            val transition = activeTransitions.values.singleOrNull {
+                it.destinationRequested &&
+                    it.destination == WebsiteTransitionDestination.POMODORO &&
+                    it.curtainGeneration == curtainGeneration &&
+                    readyAtUptimeMillis >= it.destinationRequestedAtUptimeMillis
+            } ?: return false
+            return transition.destinationConfirmed.complete(Unit)
         }
 
         @Synchronized
@@ -449,7 +561,11 @@ class BlockingAccessibilityService : AccessibilityService() {
     private val curtainDestinationReadyListener =
         CurtainDestinationReadyCoordinator.Listener { generation ->
             mainHandler.post {
-                if (websiteBlockTransitionGuard.confirmPomodoro(generation)) return@post
+                if (websiteBlockTransitionGuard.confirmPomodoro(
+                        curtainGeneration = generation,
+                        readyAtUptimeMillis = SystemClock.uptimeMillis()
+                    )
+                ) return@post
                 if (shouldDismissCurtain(instantBlockCurtainGeneration, generation)) {
                     if (pendingReadyWindowValidationGeneration != generation) {
                         pendingReadyWindowValidationGeneration = generation
@@ -2252,53 +2368,116 @@ class BlockingAccessibilityService : AccessibilityService() {
         event: AccessibilityEvent,
         packageName: String
     ): Boolean {
-        if (packageName == this.packageName &&
-            event.className?.toString() == PomodoroLockActivity::class.java.name &&
-            websiteBlockTransitionGuard.confirmPomodoro()
-        ) return true
-
         if (!websiteBlockTransitionGuard.isActive(packageName)) return false
+        websiteBlockTransitionGuard.observeBrowserEvent(
+            browserPackageName = packageName,
+            windowId = event.windowId,
+            eventUptimeMillis = event.eventTime
+        )
 
-        val eventAddress = WebsiteBlocker.extractAddressBarTextFromEvent(event, packageName)
-        val eventUrl = eventAddress?.let(WebsiteBlocker::extractUrlCandidate)
-            ?: WebsiteBlocker.extractUrlFromEvent(event, packageName)
-        var root: AccessibilityNodeInfo? = null
-        val url = eventUrl ?: run {
-            root = rootInActiveWindow ?: sourceNodeForEvent(event)
+        val transition = websiteBlockTransitionGuard.transitionForConfirmation(
+            browserPackageName = packageName,
+            windowId = event.windowId,
+            eventUptimeMillis = event.eventTime
+        ) ?: return true
+        val root = activeBrowserRoot(
+            browserPackageName = packageName,
+            expectedWindowId = transition.expectedWindowId
+        ) ?: return true
+
+        val url = try {
             WebsiteBlocker.extractUrlFromRoot(root, packageName)
                 ?: WebsiteBlocker.extractAddressBarTextFromRoot(root, packageName)
+        } finally {
+            recycleSafely(root)
         }
-        recycleSafely(root)
 
         if (isSafeGoogleRedirectSurface(url)) {
-            websiteBlockTransitionGuard.confirmGoogle(packageName)
+            websiteBlockTransitionGuard.confirmGoogle(
+                browserPackageName = packageName,
+                windowId = event.windowId,
+                eventUptimeMillis = event.eventTime
+            )
         }
         // Consume stale blocked-URL events, while allowing the safe one above to
         // complete the waiter that owns this browser's curtain generation.
         return true
     }
 
+    private fun activeBrowserRoot(
+        browserPackageName: String,
+        expectedWindowId: Int
+    ): AccessibilityNodeInfo? = browserRootForExpectedWindow(
+        browserPackageName = browserPackageName,
+        expectedWindowId = expectedWindowId,
+        requireActive = true
+    )
+
+    private fun browserRootForExpectedWindow(
+        browserPackageName: String,
+        expectedWindowId: Int,
+        requireActive: Boolean
+    ): AccessibilityNodeInfo? {
+        if (browserPackageName.isBlank() || expectedWindowId < 0) return null
+        val window = windows.firstOrNull {
+            it.id == expectedWindowId && (!requireActive || it.isActive)
+        } ?: return null
+        val root = runCatching { window.root }.getOrNull() ?: return null
+        val rootMatches = runCatching {
+            root.packageName?.toString() == browserPackageName &&
+                root.windowId == expectedWindowId
+        }.getOrDefault(false)
+        if (rootMatches) return root
+        recycleSafely(root)
+        return null
+    }
+
+    private fun resolveBrowserWindowId(
+        browserPackageName: String,
+        preferredWindowId: Int
+    ): Int {
+        val candidates = if (preferredWindowId >= 0) {
+            windows.filter { it.id == preferredWindowId }
+        } else {
+            windows.filter { it.isActive }
+        }
+        candidates.forEach { window ->
+            if (!window.isActive) return@forEach
+            val root = runCatching { window.root }.getOrNull() ?: return@forEach
+            val matches = runCatching {
+                root.packageName?.toString() == browserPackageName && root.windowId == window.id
+            }.getOrDefault(false)
+            recycleSafely(root)
+            if (matches) return window.id
+        }
+        return INVALID_BROWSER_WINDOW_ID
+    }
+
     private fun handleImmediateBrowserBlock(
         event: AccessibilityEvent,
         packageName: String
     ): Boolean {
-        // BACK and the explicit browser launch are asynchronous. Ignore the
-        // browser's follow-up accessibility events until that handoff finishes,
-        // otherwise the stale blocked URL can start overlapping redirect loops.
+        // Tab neutralization and the safe redirect are asynchronous. Ignore the
+        // browser's follow-up events until that handoff finishes so a stale
+        // blocked address cannot start an overlapping redirect loop.
         if (websiteBlockTransitionGuard.isActive(packageName)) return true
         if (blockedWebsitesDomainSet.isEmpty()) return false
 
         val addressText = WebsiteBlocker.extractAddressBarTextFromEvent(event, packageName)
         val url = addressText?.let(WebsiteBlocker::extractUrlCandidate)
             ?: WebsiteBlocker.extractUrlFromEvent(event, packageName)
-        if (immediateWebsiteBlockTarget(
+        val blockedCandidate = immediateWebsiteBlockTarget(
                 addressText = addressText,
                 url = url,
                 blockedRules = blockedWebsitesDomainSet
-            ) == null
-        ) return false
+            ) ?: return false
 
-        blockWebsite(browserPackageName = packageName)
+        blockWebsite(
+            browserPackageName = packageName,
+            browserWindowId = event.windowId,
+            blockedCandidate = url ?: addressText ?: blockedCandidate,
+            detectionEventUptimeMillis = event.eventTime
+        )
         return true
     }
 
@@ -2329,13 +2508,18 @@ class BlockingAccessibilityService : AccessibilityService() {
         // Even on the root-fallback path, the block decision outranks tracking,
         // policy refreshes and observability bookkeeping. Once the URL is known,
         // cover the page immediately just like blockApp() covers an app window.
-        if (immediateWebsiteBlockTarget(
+        val blockedCandidate = immediateWebsiteBlockTarget(
                 addressText = addressText,
                 url = url,
                 blockedRules = blockedWebsitesDomainSet
-            ) != null
-        ) {
-            blockWebsite(browserPackageName = packageName)
+            )
+        if (blockedCandidate != null) {
+            blockWebsite(
+                browserPackageName = packageName,
+                browserWindowId = event.windowId,
+                blockedCandidate = url ?: addressText ?: blockedCandidate,
+                detectionEventUptimeMillis = event.eventTime
+            )
             recycleSafely(root)
             return
         }
@@ -2356,7 +2540,12 @@ class BlockingAccessibilityService : AccessibilityService() {
                     WebsiteBlocker::containsPornographySearchTerm
                 ) == true
             if (googlePageFieldHasBlockedSearch) {
-                blockWebsite(browserPackageName = packageName)
+                blockWebsite(
+                    browserPackageName = packageName,
+                    browserWindowId = event.windowId,
+                    blockedCandidate = url,
+                    detectionEventUptimeMillis = event.eventTime
+                )
                 recycleSafely(root)
                 return
             }
@@ -2648,10 +2837,20 @@ class BlockingAccessibilityService : AccessibilityService() {
         )
     }
 
-    private fun blockWebsite(browserPackageName: String) {
+    private fun blockWebsite(
+        browserPackageName: String,
+        browserWindowId: Int = INVALID_BROWSER_WINDOW_ID,
+        blockedCandidate: String? = null,
+        detectionEventUptimeMillis: Long = 0L
+    ) {
         val now = System.currentTimeMillis()
         stopWebsiteTracking(now)
-        startWebsiteBlockTransition(browserPackageName)
+        startWebsiteBlockTransition(
+            browserPackageName,
+            browserWindowId,
+            blockedCandidate,
+            detectionEventUptimeMillis
+        )
     }
 
     private fun blockWebsiteApp(domain: String) {
@@ -2662,7 +2861,13 @@ class BlockingAccessibilityService : AccessibilityService() {
         )
     }
 
-    private fun startWebsiteBlockTransition(browserPackageName: String) {
+    private fun startWebsiteBlockTransition(
+        browserPackageName: String,
+        browserWindowId: Int = INVALID_BROWSER_WINDOW_ID,
+        blockedCandidate: String? = null,
+        detectionEventUptimeMillis: Long = 0L
+    ) {
+        val expectedWindowId = resolveBrowserWindowId(browserPackageName, browserWindowId)
         val strictAtDetection = isPomodoroStrictActive
         val destination = if (strictAtDetection) {
             WebsiteTransitionDestination.POMODORO
@@ -2673,14 +2878,17 @@ class BlockingAccessibilityService : AccessibilityService() {
         val transition = websiteBlockTransitionGuard.tryStart(
             browserPackageName = browserPackageName,
             transitionId = transitionId,
-            destination = destination
+            destination = destination,
+            expectedWindowId = expectedWindowId,
+            blockedCandidate = blockedCandidate,
+            blockedRules = blockedWebsitesDomainSet,
+            detectionEventUptimeMillis = detectionEventUptimeMillis
         ) ?: return
         val stateMachine = WebsiteBlockTransitionStateMachine(strict = strictAtDetection)
 
         scope.launch(Dispatchers.Main.immediate) {
             var curtainGeneration = 0L
             try {
-                var backAccepted = false
                 stateMachine.begin().forEach { action ->
                     when (action) {
                         WebsiteTransitionAction.SHOW_CURTAIN -> {
@@ -2696,76 +2904,428 @@ class BlockingAccessibilityService : AccessibilityService() {
                                 )
                             )
                         }
-                        WebsiteTransitionAction.DISMISS_BLOCKED_PAGE -> {
-                            backAccepted = runCatching {
-                                performGlobalAction(GLOBAL_ACTION_BACK)
-                            }.getOrDefault(false)
-                        }
+                        WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB -> Unit
                         else -> error("Ação inicial de site inesperada: $action")
                     }
                 }
 
-                if (!backAccepted) {
-                    check(
-                        stateMachine.onFailureOrTimeout() ==
-                            WebsiteTransitionAction.EVACUATE_HOME
+                if (!curtainReadyForTabAction(
+                        attached = instantBlockCurtainAttached,
+                        visible = instantBlockCurtainVisible,
+                        currentGeneration = instantBlockCurtainGeneration,
+                        expectedGeneration = curtainGeneration
                     )
-                    beginCurtainEvacuationBeforeHide(curtainGeneration)
-                    awaitWebsiteCurtainEvacuation(curtainGeneration)
+                ) {
+                    evacuateWebsiteTransition(curtainGeneration)
                     return@launch
                 }
 
-                // This interval only lets Android finish the accepted BACK before
-                // the destination request. It never authorizes curtain dismissal.
-                delay(WEBSITE_BACK_SETTLE_MILLIS)
-
-                val destinationAction = stateMachine.afterBackSettled()
-                check(
-                    websiteBlockTransitionGuard.markDestinationRequested(
+                val neutralizationPolicy = WebsiteTabNeutralizationPolicy(
+                    browserPackageName = browserPackageName,
+                    expectedWindowId = expectedWindowId
+                )
+                val closeResult = closeCurrentBraveTab(
+                    browserPackageName = browserPackageName,
+                    expectedWindowId = expectedWindowId,
+                    policy = neutralizationPolicy,
+                    transition = transition
+                )
+                if (closeResult.menuOpened && !closeResult.closeActionAccepted) {
+                    dismissBraveTabMenu(
                         browserPackageName,
-                        transitionId
+                        closeResult.menuWindowId,
+                        transition
+                    )
+                }
+
+                val addressBarPrepared = prepareSafeAddressBar(
+                    browserPackageName = browserPackageName,
+                    expectedWindowId = expectedWindowId,
+                    policy = neutralizationPolicy,
+                    transition = transition,
+                    requireBlockedTarget = !closeResult.closeActionAccepted
+                )
+                if (afterSafeAddressSet(addressBarPrepared) ==
+                    WebsiteSanitizationDecision.EVACUATE_HOME
+                ) {
+                    evacuateWebsiteTransition(curtainGeneration)
+                    return@launch
+                }
+
+                // SET_TEXT can emit an omnibox event while the blocked document
+                // is still rendered. Lock further destructive actions first, but
+                // arm Google confirmation only after IME_ENTER was accepted.
+                neutralizationPolicy.markRedirectRequested()
+                val submitAccepted = submitSafeAddressBar(
+                    browserPackageName,
+                    expectedWindowId,
+                    transition
+                )
+                if (afterSafeAddressSubmit(submitAccepted) ==
+                    WebsiteSanitizationDecision.EVACUATE_HOME
+                ) {
+                    evacuateWebsiteTransition(curtainGeneration)
+                    return@launch
+                }
+                val submittedAtUptimeMillis = SystemClock.uptimeMillis()
+                check(
+                    websiteBlockTransitionGuard.markSanitizationRequested(
+                        browserPackageName,
+                        transitionId,
+                        submittedAtUptimeMillis
                     )
                 )
-                val launchSucceeded = when (destinationAction) {
-                    WebsiteTransitionAction.OPEN_GOOGLE ->
-                        redirectBrowserToSafePage(browserPackageName)
-                    WebsiteTransitionAction.OPEN_POMODORO ->
-                        launchPomodoroLockForWebsiteTransition(curtainGeneration)
-                    else -> false
-                }
-                if (!launchSucceeded) {
-                    check(
-                        stateMachine.onFailureOrTimeout() ==
-                            WebsiteTransitionAction.EVACUATE_HOME
-                    )
-                    beginCurtainEvacuationBeforeHide(curtainGeneration)
-                    awaitWebsiteCurtainEvacuation(curtainGeneration)
+
+                val googleConfirmed = withTimeoutOrNull(
+                    WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS
+                ) {
+                    transition.safeGoogleConfirmed.await()
+                    true
+                } == true
+                if (!mayOpenDestinationAfterSanitization(googleConfirmed)) {
+                    evacuateWebsiteTransition(curtainGeneration)
                     return@launch
                 }
 
-                val destinationConfirmed = withTimeoutOrNull(
-                    WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS
-                ) {
-                    transition.destinationConfirmed.await()
-                    true
-                } == true
-                if (destinationConfirmed) {
-                    check(
-                        stateMachine.onDestinationConfirmed() ==
-                            WebsiteTransitionAction.HIDE_CURTAIN
-                    )
-                    dismissInstantBlockCurtain(curtainGeneration)
-                } else {
-                    check(
-                        stateMachine.onFailureOrTimeout() ==
-                            WebsiteTransitionAction.EVACUATE_HOME
-                    )
-                    beginCurtainEvacuationBeforeHide(curtainGeneration)
-                    awaitWebsiteCurtainEvacuation(curtainGeneration)
+                when (stateMachine.afterGoogleSanitized()) {
+                    WebsiteTransitionAction.HIDE_CURTAIN ->
+                        dismissInstantBlockCurtain(curtainGeneration)
+                    WebsiteTransitionAction.OPEN_POMODORO -> {
+                        val requestedAt = SystemClock.uptimeMillis()
+                        check(
+                            websiteBlockTransitionGuard.markDestinationRequested(
+                                browserPackageName,
+                                transitionId,
+                                requestedAt
+                            )
+                        )
+                        if (!launchPomodoroLockForWebsiteTransition(curtainGeneration)) {
+                            evacuateWebsiteTransition(curtainGeneration)
+                            return@launch
+                        }
+                        val pomodoroConfirmed = withTimeoutOrNull(
+                            WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS
+                        ) {
+                            transition.destinationConfirmed.await()
+                            true
+                        } == true
+                        if (pomodoroConfirmed) {
+                            check(
+                                stateMachine.onPomodoroConfirmed() ==
+                                    WebsiteTransitionAction.HIDE_CURTAIN
+                            )
+                            dismissInstantBlockCurtain(curtainGeneration)
+                        } else {
+                            evacuateWebsiteTransition(curtainGeneration)
+                        }
+                    }
+                    else -> error("Destino pós-saneamento inesperado")
                 }
             } finally {
                 websiteBlockTransitionGuard.finish(browserPackageName, transitionId)
             }
+        }
+    }
+
+    private data class BraveTabCloseResult(
+        val menuOpened: Boolean,
+        val closeActionAccepted: Boolean,
+        val menuWindowId: Int = INVALID_BROWSER_WINDOW_ID
+    )
+
+    private data class ExactNodeActionResult(
+        val found: Boolean,
+        val accepted: Boolean
+    )
+
+    private suspend fun closeCurrentBraveTab(
+        browserPackageName: String,
+        expectedWindowId: Int,
+        policy: WebsiteTabNeutralizationPolicy,
+        transition: WebsiteBlockTransitionHandle
+    ): BraveTabCloseResult {
+        if (!curtainReadyForTransition(transition)) {
+            return BraveTabCloseResult(menuOpened = false, closeActionAccepted = false)
+        }
+        val root = activeBrowserRoot(browserPackageName, expectedWindowId)
+            ?: return BraveTabCloseResult(menuOpened = false, closeActionAccepted = false)
+        if (!policy.mayAttemptBraveClose(
+                activePackageName = root.packageName?.toString().orEmpty(),
+                activeWindowId = root.windowId
+            ) || !rootStillShowsDetectedBlockedTarget(root, transition)
+        ) {
+            recycleSafely(root)
+            return BraveTabCloseResult(menuOpened = false, closeActionAccepted = false)
+        }
+        val windowsBeforeLongClick = windows.mapTo(mutableSetOf()) { it.id }
+        val longClick = performExactNodeAction(
+            root = root,
+            expectedViewId = "$browserPackageName:id/tab_switcher_button",
+            action = AccessibilityNodeInfo.ACTION_LONG_CLICK
+        )
+        recycleSafely(root)
+        if (!longClick.accepted) {
+            return BraveTabCloseResult(menuOpened = false, closeActionAccepted = false)
+        }
+
+        delay(WEBSITE_TAB_MENU_SETTLE_MILLIS)
+        if (!curtainReadyForTransition(transition)) {
+            return BraveTabCloseResult(menuOpened = false, closeActionAccepted = false)
+        }
+        val targetRoot = browserRootForExpectedWindow(
+            browserPackageName,
+            expectedWindowId,
+            requireActive = false
+        )
+            ?: return BraveTabCloseResult(menuOpened = false, closeActionAccepted = false)
+        val targetStillBlocked = rootStillShowsDetectedBlockedTarget(targetRoot, transition)
+        recycleSafely(targetRoot)
+        if (!targetStillBlocked) {
+            return BraveTabCloseResult(menuOpened = false, closeActionAccepted = false)
+        }
+        val menuRoot = braveCloseMenuRoot(
+            browserPackageName,
+            expectedWindowId,
+            windowsBeforeLongClick
+        )
+            ?: return BraveTabCloseResult(menuOpened = false, closeActionAccepted = false)
+        val menuWindowId = menuRoot.windowId
+        val close = run {
+            performExactNodeAction(
+                root = menuRoot,
+                expectedViewId = "$browserPackageName:id/close_tab",
+                action = AccessibilityNodeInfo.ACTION_CLICK
+            )
+        }
+        recycleSafely(menuRoot)
+        if (!close.accepted) {
+            return BraveTabCloseResult(
+                menuOpened = close.found,
+                closeActionAccepted = false,
+                menuWindowId = menuWindowId
+            )
+        }
+        val closeClickedAt = SystemClock.uptimeMillis()
+        if (!websiteBlockTransitionGuard.markCloseClicked(
+                browserPackageName = browserPackageName,
+                transitionId = transition.id,
+                clickedAtUptimeMillis = closeClickedAt
+            )
+        ) return BraveTabCloseResult(menuOpened = false, closeActionAccepted = false)
+
+        // ACTION_CLICK only queues the close. It never authorizes the handoff;
+        // the active browser surface must still be overwritten and confirmed.
+        delay(WEBSITE_TAB_CLOSE_CONFIRM_MILLIS)
+        return BraveTabCloseResult(
+            menuOpened = false,
+            closeActionAccepted = true
+        )
+    }
+
+    private suspend fun dismissBraveTabMenu(
+        browserPackageName: String,
+        menuWindowId: Int,
+        transition: WebsiteBlockTransitionHandle
+    ) {
+        if (!curtainReadyForTransition(transition)) return
+        val window = windows.singleOrNull { it.id == menuWindowId } ?: return
+        val root = runCatching { window.root }.getOrNull() ?: return
+        val browserOwned = root.packageName?.toString() == browserPackageName &&
+            root.windowId == menuWindowId
+        val menuStillOpen = browserOwned &&
+            containsExactNode(root, "$browserPackageName:id/close_tab")
+        recycleSafely(root)
+        if (browserOwned && menuStillOpen && performGlobalAction(GLOBAL_ACTION_BACK)) {
+            delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
+        }
+    }
+
+    private suspend fun prepareSafeAddressBar(
+        browserPackageName: String,
+        expectedWindowId: Int,
+        policy: WebsiteTabNeutralizationPolicy,
+        transition: WebsiteBlockTransitionHandle,
+        requireBlockedTarget: Boolean
+    ): Boolean {
+        if (!curtainReadyForTransition(transition)) return false
+        val root = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return false
+        if (!policy.mayTouchBlockedTab(
+                activePackageName = root.packageName?.toString().orEmpty(),
+                activeWindowId = root.windowId
+            ) || (requireBlockedTarget && !rootStillShowsDetectedBlockedTarget(root, transition))
+        ) {
+            recycleSafely(root)
+            return false
+        }
+        val focused = CHROMIUM_ADDRESS_BAR_VIEW_NAMES.any { name ->
+            val result = performExactNodeAction(
+                root = root,
+                expectedViewId = "$browserPackageName:id/$name",
+                action = AccessibilityNodeInfo.ACTION_FOCUS
+            )
+            result.found
+        }
+        recycleSafely(root)
+        if (!focused) return false
+
+        delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
+        if (!curtainReadyForTransition(transition)) return false
+        val editRoot = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return false
+        if (requireBlockedTarget && !rootStillShowsDetectedBlockedTarget(editRoot, transition)) {
+            recycleSafely(editRoot)
+            return false
+        }
+        val arguments = Bundle().apply {
+            putCharSequence(
+                AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
+                SAFE_REDIRECT_URL
+            )
+        }
+        val replaced = CHROMIUM_ADDRESS_BAR_VIEW_NAMES.any { name ->
+            performExactNodeAction(
+                root = editRoot,
+                expectedViewId = "$browserPackageName:id/$name",
+                action = AccessibilityNodeInfo.ACTION_SET_TEXT,
+                arguments = arguments
+            ).accepted
+        }
+        recycleSafely(editRoot)
+        return replaced
+    }
+
+    private fun submitSafeAddressBar(
+        browserPackageName: String,
+        expectedWindowId: Int,
+        transition: WebsiteBlockTransitionHandle
+    ): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R ||
+            !curtainReadyForTransition(transition)
+        ) return false
+        val root = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return false
+        val submitted = CHROMIUM_ADDRESS_BAR_VIEW_NAMES.any { name ->
+            performExactNodeAction(
+                root = root,
+                expectedViewId = "$browserPackageName:id/$name",
+                action = AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id
+            ).accepted
+        }
+        recycleSafely(root)
+        return submitted
+    }
+
+    private fun performExactNodeAction(
+        root: AccessibilityNodeInfo,
+        expectedViewId: String,
+        action: Int,
+        arguments: Bundle? = null
+    ): ExactNodeActionResult {
+        val nodes = runCatching { root.findAccessibilityNodeInfosByViewId(expectedViewId) }
+            .getOrDefault(emptyList())
+        var found = false
+        var accepted = false
+        nodes.forEach { node ->
+            val exactMatch = runCatching {
+                node.viewIdResourceName == expectedViewId &&
+                    node.windowId == root.windowId &&
+                    node.packageName?.toString() == root.packageName?.toString() &&
+                    node.isVisibleToUser
+            }.getOrDefault(false)
+            if (exactMatch) {
+                found = true
+                if (!accepted) {
+                    accepted = runCatching { node.performAction(action, arguments) }
+                        .getOrDefault(false)
+                }
+            }
+            recycleSafely(node)
+        }
+        return ExactNodeActionResult(found = found, accepted = accepted)
+    }
+
+    private fun containsExactNode(root: AccessibilityNodeInfo, expectedViewId: String): Boolean {
+        val nodes = runCatching { root.findAccessibilityNodeInfosByViewId(expectedViewId) }
+            .getOrDefault(emptyList())
+        var found = false
+        nodes.forEach { node ->
+            if (runCatching {
+                    node.viewIdResourceName == expectedViewId &&
+                        node.windowId == root.windowId &&
+                        node.packageName?.toString() == root.packageName?.toString() &&
+                        node.isVisibleToUser
+                }.getOrDefault(false)
+            ) found = true
+            recycleSafely(node)
+        }
+        return found
+    }
+
+    private fun curtainReadyForTransition(transition: WebsiteBlockTransitionHandle): Boolean =
+        curtainReadyForTabAction(
+            attached = instantBlockCurtainAttached,
+            visible = instantBlockCurtainVisible,
+            currentGeneration = instantBlockCurtainGeneration,
+            expectedGeneration = transition.curtainGeneration
+        )
+
+    private fun rootStillShowsDetectedBlockedTarget(
+        root: AccessibilityNodeInfo,
+        transition: WebsiteBlockTransitionHandle
+    ): Boolean {
+        val currentAddress = WebsiteBlocker.extractUrlFromRoot(
+            root,
+            transition.browserPackageName
+        ) ?: WebsiteBlocker.extractAddressBarTextFromRoot(
+            root,
+            transition.browserPackageName
+        )
+        return detectedBrowserTargetStillCurrent(
+            blockedCandidate = transition.blockedCandidate,
+            currentAddress = currentAddress,
+            blockedRules = transition.blockedRules,
+            detectionEventUptimeMillis = transition.detectionEventUptimeMillis,
+            latestObservedEventUptimeMillis = transition.latestObservedEventUptimeMillis
+        )
+    }
+
+    private fun braveCloseMenuRoot(
+        browserPackageName: String,
+        targetWindowId: Int,
+        windowsBeforeLongClick: Set<Int>
+    ): AccessibilityNodeInfo? {
+        val matches = mutableListOf<AccessibilityNodeInfo>()
+        windows.forEach { window ->
+            val derivedFromTarget = window.id == targetWindowId ||
+                window.id !in windowsBeforeLongClick ||
+                runCatching { window.parent?.id == targetWindowId }.getOrDefault(false)
+            if (!derivedFromTarget) return@forEach
+            val root = runCatching { window.root }.getOrNull() ?: return@forEach
+            val browserOwned = runCatching {
+                root.packageName?.toString() == browserPackageName &&
+                    root.windowId == window.id
+            }.getOrDefault(false)
+            if (browserOwned && containsExactNode(root, "$browserPackageName:id/close_tab")) {
+                matches += root
+            } else {
+                recycleSafely(root)
+            }
+        }
+        if (matches.size == 1) return matches.single()
+        matches.forEach(::recycleSafely)
+        return null
+    }
+
+    private suspend fun evacuateWebsiteTransition(expectedGeneration: Long) {
+        if (curtainReadyForTabAction(
+                attached = instantBlockCurtainAttached,
+                visible = instantBlockCurtainVisible,
+                currentGeneration = instantBlockCurtainGeneration,
+                expectedGeneration = expectedGeneration
+            )
+        ) {
+            beginCurtainEvacuationBeforeHide(expectedGeneration)
+            awaitWebsiteCurtainEvacuation(expectedGeneration)
+        } else {
+            evictBlockedAppFromForeground(forceLauncherFallback = true)
         }
     }
 
@@ -2798,20 +3358,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             FocusGuardLogger.logError(
                 "A11y",
                 "Falha ao abrir bloqueio Pomodoro após dispensar site",
-                error
-            )
-            false
-        }
-    }
-
-    private fun redirectBrowserToSafePage(browserPackageName: String): Boolean {
-        return runCatching {
-            startActivity(createSafeRedirectIntent(browserPackageName))
-            true
-        }.getOrElse { error ->
-            FocusGuardLogger.logError(
-                "A11y",
-                "Falha ao redirecionar navegador bloqueado",
                 error
             )
             false
@@ -3303,6 +3849,34 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val SAFE_REDIRECT_URL = "https://www.google.com"
+        private const val INVALID_BROWSER_WINDOW_ID = -1
+        private const val WEBSITE_TAB_MENU_SETTLE_MILLIS = 120L
+        private const val WEBSITE_TAB_CLOSE_CONFIRM_MILLIS = 180L
+        private const val WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS = 48L
+        private val BRAVE_BROWSER_PACKAGES = setOf(
+            "com.brave.browser",
+            "com.brave.browser_beta",
+            "com.brave.browser_nightly"
+        )
+        private val CHROMIUM_ADDRESS_BAR_VIEW_NAMES = listOf(
+            "url_bar",
+            "url_bar_edit_text"
+        )
+        private val SAFE_GOOGLE_HOSTS = setOf(
+            "google.com",
+            "google.com.br",
+            "google.co.uk",
+            "google.ca",
+            "google.de",
+            "google.fr",
+            "google.es",
+            "google.it",
+            "google.pt",
+            "google.com.au",
+            "google.co.in",
+            "google.co.jp",
+            "google.com.mx"
+        )
         /**
          * How long a relevant click keeps intercepting follow-up events.
          *
@@ -3351,9 +3925,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
             AccessibilityEvent.TYPE_WINDOWS_CHANGED
         )
-        // BACK settling only orders the two navigation requests. Curtain release
-        // is separately gated by a positively observed safe destination.
-        internal const val WEBSITE_BACK_SETTLE_MILLIS = 160L
         internal const val WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS = 2_000L
         internal const val STRICT_BLOCK_NOTICE_DURATION_MILLIS = 1_000L
         private val SAFE_GOOGLE_ROOT_QUERY_PARAMETERS = setOf("gl", "gws_rd", "hl")
@@ -3420,13 +3991,78 @@ class BlockingAccessibilityService : AccessibilityService() {
             val withScheme = if ("://" in candidate) candidate else "https://$candidate"
             val uri = runCatching { Uri.parse(withScheme) }.getOrNull() ?: return false
             val host = uri.host?.lowercase(Locale.US)?.removePrefix("www.") ?: return false
-            return host.startsWith("google.") &&
-                WebsiteBlocker.isGoogleUrl(withScheme) &&
+            return host in SAFE_GOOGLE_HOSTS &&
                 !WebsiteBlocker.isGoogleImagesUrl(withScheme) &&
                 !WebsiteBlocker.isPornographySearchUrl(withScheme) &&
                 (uri.path.isNullOrEmpty() || uri.path == "/") &&
                 uri.queryParameterNames.all(SAFE_GOOGLE_ROOT_QUERY_PARAMETERS::contains) &&
                 uri.fragment.isNullOrEmpty()
+        }
+
+        internal fun curtainReadyForTabAction(
+            attached: Boolean,
+            visible: Boolean,
+            currentGeneration: Long,
+            expectedGeneration: Long
+        ): Boolean = attached && visible && expectedGeneration > 0L &&
+            currentGeneration == expectedGeneration
+
+        internal fun detectedBrowserTargetStillCurrent(
+            blockedCandidate: String?,
+            currentAddress: String?,
+            blockedRules: Collection<String>,
+            detectionEventUptimeMillis: Long,
+            latestObservedEventUptimeMillis: Long
+        ): Boolean {
+            if (detectionEventUptimeMillis <= 0L ||
+                latestObservedEventUptimeMillis < detectionEventUptimeMillis
+            ) return false
+            val rules = WebsiteBlocker.normalizeRules(blockedRules)
+            val candidate = blockedCandidate?.takeIf(String::isNotBlank) ?: return false
+            val current = currentAddress?.takeIf(String::isNotBlank) ?: return false
+            val candidateRule = WebsiteBlocker.findMatchingRule(candidate, rules) ?: return false
+            val currentRule = WebsiteBlocker.findMatchingRule(current, rules) ?: return false
+            if (candidateRule != currentRule) return false
+            val candidateDomain = WebsiteBlocker.extractDomain(candidate)
+            val currentDomain = WebsiteBlocker.extractDomain(current)
+            if (candidateDomain.isNotBlank() && currentDomain.isNotBlank() &&
+                candidateDomain != currentDomain
+            ) return false
+            return browserTargetIdentity(candidate) == browserTargetIdentity(current)
+        }
+
+        private fun browserTargetIdentity(value: String): String {
+            val candidate = WebsiteBlocker.extractUrlCandidate(value)
+                ?: return value.trim().lowercase(Locale.ROOT)
+            val withScheme = if ("://" in candidate) candidate else "https://$candidate"
+            val uri = runCatching { Uri.parse(withScheme) }.getOrNull()
+                ?: return candidate.trim().lowercase(Locale.ROOT)
+            return buildString {
+                append(uri.host?.lowercase(Locale.ROOT).orEmpty())
+                append(uri.encodedPath.orEmpty().ifBlank { "/" })
+                uri.encodedQuery?.let { append('?').append(it) }
+                uri.encodedFragment?.let { append('#').append(it) }
+            }
+        }
+
+        internal fun mayOpenDestinationAfterSanitization(
+            safeGoogleConfirmed: Boolean
+        ): Boolean = safeGoogleConfirmed
+
+        internal fun afterSafeAddressSet(
+            accepted: Boolean
+        ): WebsiteSanitizationDecision = if (accepted) {
+            WebsiteSanitizationDecision.SUBMIT_ADDRESS_BAR
+        } else {
+            WebsiteSanitizationDecision.EVACUATE_HOME
+        }
+
+        internal fun afterSafeAddressSubmit(
+            accepted: Boolean
+        ): WebsiteSanitizationDecision = if (accepted) {
+            WebsiteSanitizationDecision.AWAIT_GOOGLE_CONFIRMATION
+        } else {
+            WebsiteSanitizationDecision.EVACUATE_HOME
         }
 
         internal fun settingsTransitionGuardMillisForTest(): Long =

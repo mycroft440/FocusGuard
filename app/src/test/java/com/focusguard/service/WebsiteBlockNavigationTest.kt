@@ -1,7 +1,6 @@
 package com.focusguard.service
 
 import android.content.Context
-import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 import com.focusguard.data.PredefinedWebsites
 import com.focusguard.ui.BlockNoticeActivity
@@ -149,13 +148,9 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
-    fun `automatic website handoff delay only orders back before destination`() {
-        assertThat(BlockingAccessibilityService.WEBSITE_BACK_SETTLE_MILLIS)
-            .isGreaterThan(BlockingAccessibilityService.EVENT_NOTIFICATION_TIMEOUT_MILLIS)
-        assertThat(BlockingAccessibilityService.WEBSITE_BACK_SETTLE_MILLIS)
-            .isLessThan(1_000L)
+    fun `website handoff waits for a positively confirmed destination`() {
         assertThat(BlockingAccessibilityService.WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS)
-            .isGreaterThan(BlockingAccessibilityService.WEBSITE_BACK_SETTLE_MILLIS)
+            .isGreaterThan(BlockingAccessibilityService.EVENT_NOTIFICATION_TIMEOUT_MILLIS)
     }
 
     @Test
@@ -196,36 +191,64 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
-    fun `safe browser event confirms only after redirect was requested`() {
+    fun `safe browser event confirms only after same window sanitization request`() {
         val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
         val transition = guard.tryStart(
             CHROME_PACKAGE,
             transitionId = 11L,
-            destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE
+            destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+            expectedWindowId = 7,
+            detectionEventUptimeMillis = 50L
         )!!
 
-        assertThat(guard.confirmGoogle(CHROME_PACKAGE)).isFalse()
-        assertThat(transition.destinationConfirmed.isCompleted).isFalse()
-        assertThat(guard.markDestinationRequested(CHROME_PACKAGE, transitionId = 11L)).isTrue()
-        assertThat(guard.confirmGoogle(CHROME_PACKAGE)).isTrue()
-        assertThat(transition.destinationConfirmed.isCompleted).isTrue()
+        assertThat(guard.confirmGoogle(CHROME_PACKAGE, windowId = 7, eventUptimeMillis = 99L))
+            .isFalse()
+        assertThat(transition.safeGoogleConfirmed.isCompleted).isFalse()
+        assertThat(
+            guard.markSanitizationRequested(
+                CHROME_PACKAGE,
+                transitionId = 11L,
+                requestedAtUptimeMillis = 100L
+            )
+        ).isTrue()
+        assertThat(guard.confirmGoogle(CHROME_PACKAGE, windowId = 7, eventUptimeMillis = 99L))
+            .isFalse()
+        assertThat(transition.safeGoogleConfirmed.isCompleted).isFalse()
+        assertThat(guard.confirmGoogle(CHROME_PACKAGE, windowId = 7, eventUptimeMillis = 100L))
+            .isTrue()
+        assertThat(transition.safeGoogleConfirmed.isCompleted).isTrue()
     }
 
     @Test
-    fun `strict guard accepts Pomodoro confirmation and rejects Google`() {
+    fun `strict guard rejects old Pomodoro ack and requires Google first`() {
         val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
         val transition = guard.tryStart(
             CHROME_PACKAGE,
             transitionId = 12L,
-            destination = BlockingAccessibilityService.WebsiteTransitionDestination.POMODORO
+            destination = BlockingAccessibilityService.WebsiteTransitionDestination.POMODORO,
+            expectedWindowId = 7,
+            detectionEventUptimeMillis = 50L
         )!!
         guard.markCurtainGeneration(CHROME_PACKAGE, transitionId = 12L, curtainGeneration = 44L)
-        guard.markDestinationRequested(CHROME_PACKAGE, transitionId = 12L)
+        assertThat(
+            guard.markDestinationRequested(CHROME_PACKAGE, 12L, requestedAtUptimeMillis = 100L)
+        ).isFalse()
+        guard.markSanitizationRequested(CHROME_PACKAGE, 12L, requestedAtUptimeMillis = 80L)
+        assertThat(guard.confirmGoogle(CHROME_PACKAGE, windowId = 7, eventUptimeMillis = 80L))
+            .isTrue()
+        guard.markDestinationRequested(
+            CHROME_PACKAGE,
+            transitionId = 12L,
+            requestedAtUptimeMillis = 100L
+        )
 
-        assertThat(guard.confirmGoogle(CHROME_PACKAGE)).isFalse()
         assertThat(transition.destinationConfirmed.isCompleted).isFalse()
-        assertThat(guard.confirmPomodoro(curtainGeneration = 43L)).isFalse()
-        assertThat(guard.confirmPomodoro(curtainGeneration = 44L)).isTrue()
+        assertThat(guard.confirmPomodoro(curtainGeneration = 43L, readyAtUptimeMillis = 101L))
+            .isFalse()
+        assertThat(guard.confirmPomodoro(curtainGeneration = 44L, readyAtUptimeMillis = 99L))
+            .isFalse()
+        assertThat(guard.confirmPomodoro(curtainGeneration = 44L, readyAtUptimeMillis = 101L))
+            .isTrue()
         assertThat(transition.destinationConfirmed.isCompleted).isTrue()
     }
 
@@ -251,22 +274,177 @@ class WebsiteBlockNavigationTest {
                 "https://google.com.evil.example/"
             )
         ).isFalse()
+        assertThat(
+            BlockingAccessibilityService.isSafeGoogleRedirectSurface(
+                "https://google.evil/"
+            )
+        ).isFalse()
     }
 
     @Test
-    fun `normal transition orders back before Google and hides only after confirmation`() {
+    fun `stale Google history and another browser window cannot confirm redirect`() {
+        val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
+        val transition = guard.tryStart(
+            BRAVE_PACKAGE,
+            transitionId = 21L,
+            destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+            expectedWindowId = 7
+        )!!
+        guard.markSanitizationRequested(
+            BRAVE_PACKAGE,
+            transitionId = 21L,
+            requestedAtUptimeMillis = 500L
+        )
+
+        assertThat(
+            guard.transitionForConfirmation(BRAVE_PACKAGE, windowId = 7, eventUptimeMillis = 499L)
+        ).isNull()
+        assertThat(
+            guard.transitionForConfirmation(BRAVE_PACKAGE, windowId = 8, eventUptimeMillis = 500L)
+        ).isNull()
+        assertThat(transition.safeGoogleConfirmed.isCompleted).isFalse()
+        assertThat(
+            guard.transitionForConfirmation(BRAVE_PACKAGE, windowId = 7, eventUptimeMillis = 501L)
+        ).isSameInstanceAs(transition)
+    }
+
+    @Test
+    fun `Brave tab policy rejects delayed window and stops touching tab after redirect`() {
+        val policy = BlockingAccessibilityService.WebsiteTabNeutralizationPolicy(
+            browserPackageName = BRAVE_PACKAGE,
+            expectedWindowId = 7
+        )
+
+        assertThat(policy.mayTouchBlockedTab(BRAVE_PACKAGE, 7)).isTrue()
+        assertThat(policy.mayAttemptBraveClose(BRAVE_PACKAGE, 7)).isTrue()
+        assertThat(policy.mayTouchBlockedTab(BRAVE_PACKAGE, 8)).isFalse()
+        assertThat(policy.mayTouchBlockedTab(CHROME_PACKAGE, 7)).isFalse()
+        policy.markRedirectRequested()
+        assertThat(policy.mayTouchBlockedTab(BRAVE_PACKAGE, 7)).isFalse()
+
+        listOf("com.brave.browser_beta", "com.brave.browser_nightly").forEach { packageName ->
+            val variant = BlockingAccessibilityService.WebsiteTabNeutralizationPolicy(
+                browserPackageName = packageName,
+                expectedWindowId = 9
+            )
+            assertThat(variant.mayAttemptBraveClose(packageName, 9)).isTrue()
+        }
+    }
+
+    @Test
+    fun `obsolete detection in same window cannot touch a changed tab`() {
+        val rules = setOf("facebook.com", "instagram.com")
+
+        assertThat(
+            BlockingAccessibilityService.detectedBrowserTargetStillCurrent(
+                blockedCandidate = "https://m.facebook.com/profile",
+                currentAddress = "m.facebook.com/profile",
+                blockedRules = rules,
+                detectionEventUptimeMillis = 100L,
+                latestObservedEventUptimeMillis = 101L
+            )
+        ).isTrue()
+        assertThat(
+            BlockingAccessibilityService.detectedBrowserTargetStillCurrent(
+                blockedCandidate = "https://m.facebook.com/profile",
+                currentAddress = "https://m.facebook.com/other-tab",
+                blockedRules = rules,
+                detectionEventUptimeMillis = 100L,
+                latestObservedEventUptimeMillis = 101L
+            )
+        ).isFalse()
+        assertThat(
+            BlockingAccessibilityService.detectedBrowserTargetStillCurrent(
+                blockedCandidate = "https://m.facebook.com/profile",
+                currentAddress = "https://www.instagram.com/reels",
+                blockedRules = rules,
+                detectionEventUptimeMillis = 100L,
+                latestObservedEventUptimeMillis = 101L
+            )
+        ).isFalse()
+        assertThat(
+            BlockingAccessibilityService.detectedBrowserTargetStillCurrent(
+                blockedCandidate = "https://m.facebook.com/profile",
+                currentAddress = "https://m.facebook.com/profile",
+                blockedRules = rules,
+                detectionEventUptimeMillis = 100L,
+                latestObservedEventUptimeMillis = 99L
+            )
+        ).isFalse()
+        assertThat(
+            BlockingAccessibilityService.detectedBrowserTargetStillCurrent(
+                blockedCandidate = "https://m.facebook.com/profile",
+                currentAddress = "https://example.com/",
+                blockedRules = rules,
+                detectionEventUptimeMillis = 100L,
+                latestObservedEventUptimeMillis = 101L
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `missing or superseded curtain aborts destructive tab actions`() {
+        assertThat(
+            BlockingAccessibilityService.curtainReadyForTabAction(
+                attached = false,
+                visible = true,
+                currentGeneration = 7L,
+                expectedGeneration = 7L
+            )
+        ).isFalse()
+        assertThat(
+            BlockingAccessibilityService.curtainReadyForTabAction(
+                attached = true,
+                visible = false,
+                currentGeneration = 7L,
+                expectedGeneration = 7L
+            )
+        ).isFalse()
+        assertThat(
+            BlockingAccessibilityService.curtainReadyForTabAction(
+                attached = true,
+                visible = true,
+                currentGeneration = 8L,
+                expectedGeneration = 7L
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `close click alone never authorizes destination`() {
+        assertThat(
+            BlockingAccessibilityService.mayOpenDestinationAfterSanitization(
+                safeGoogleConfirmed = false
+            )
+        ).isFalse()
+        assertThat(
+            BlockingAccessibilityService.mayOpenDestinationAfterSanitization(
+                safeGoogleConfirmed = true
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun `set or submit failure evacuates Home instead of ACTION_VIEW`() {
+        assertThat(BlockingAccessibilityService.afterSafeAddressSet(false)).isEqualTo(
+            BlockingAccessibilityService.WebsiteSanitizationDecision.EVACUATE_HOME
+        )
+        assertThat(BlockingAccessibilityService.afterSafeAddressSubmit(false)).isEqualTo(
+            BlockingAccessibilityService.WebsiteSanitizationDecision.EVACUATE_HOME
+        )
+    }
+
+    @Test
+    fun `normal transition hides only after Google was sanitized`() {
         val machine = BlockingAccessibilityService.WebsiteBlockTransitionStateMachine(
             strict = false
         )
 
         assertThat(machine.begin()).containsExactly(
             BlockingAccessibilityService.WebsiteTransitionAction.SHOW_CURTAIN,
-            BlockingAccessibilityService.WebsiteTransitionAction.DISMISS_BLOCKED_PAGE
+            BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB
         ).inOrder()
-        assertThat(machine.afterBackSettled()).isEqualTo(
-            BlockingAccessibilityService.WebsiteTransitionAction.OPEN_GOOGLE
-        )
-        assertThat(machine.onDestinationConfirmed()).isEqualTo(
+        assertThat(machine.afterGoogleSanitized()).isEqualTo(
             BlockingAccessibilityService.WebsiteTransitionAction.HIDE_CURTAIN
         )
     }
@@ -277,7 +455,6 @@ class WebsiteBlockNavigationTest {
             strict = false
         )
         machine.begin()
-        machine.afterBackSettled()
 
         assertThat(machine.onFailureOrTimeout()).isEqualTo(
             BlockingAccessibilityService.WebsiteTransitionAction.EVACUATE_HOME
@@ -285,12 +462,12 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
-    fun `back or destination launch failure evacuates Home`() {
-        val backFailure = BlockingAccessibilityService.WebsiteBlockTransitionStateMachine(
+    fun `sanitization or destination failure evacuates Home`() {
+        val sanitizationFailure = BlockingAccessibilityService.WebsiteBlockTransitionStateMachine(
             strict = false
         )
-        backFailure.begin()
-        assertThat(backFailure.onFailureOrTimeout()).isEqualTo(
+        sanitizationFailure.begin()
+        assertThat(sanitizationFailure.onFailureOrTimeout()).isEqualTo(
             BlockingAccessibilityService.WebsiteTransitionAction.EVACUATE_HOME
         )
 
@@ -298,39 +475,26 @@ class WebsiteBlockNavigationTest {
             strict = false
         )
         launchFailure.begin()
-        launchFailure.afterBackSettled()
         assertThat(launchFailure.onFailureOrTimeout()).isEqualTo(
             BlockingAccessibilityService.WebsiteTransitionAction.EVACUATE_HOME
         )
     }
 
     @Test
-    fun `strict transition opens Pomodoro after back and never Google`() {
+    fun `strict transition opens Pomodoro only after Google sanitization`() {
         val machine = BlockingAccessibilityService.WebsiteBlockTransitionStateMachine(
             strict = true
         )
 
         assertThat(machine.begin().last()).isEqualTo(
-            BlockingAccessibilityService.WebsiteTransitionAction.DISMISS_BLOCKED_PAGE
+            BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB
         )
-        assertThat(machine.afterBackSettled()).isEqualTo(
+        assertThat(machine.afterGoogleSanitized()).isEqualTo(
             BlockingAccessibilityService.WebsiteTransitionAction.OPEN_POMODORO
         )
-        assertThat(machine.onDestinationConfirmed()).isEqualTo(
+        assertThat(machine.onPomodoroConfirmed()).isEqualTo(
             BlockingAccessibilityService.WebsiteTransitionAction.HIDE_CURTAIN
         )
-    }
-
-    @Test
-    fun `safe redirect opens Google in the browser that exposed the blocked site`() {
-        val intent = BlockingAccessibilityService.createSafeRedirectIntent(CHROME_PACKAGE)
-
-        assertThat(intent.action).isEqualTo(Intent.ACTION_VIEW)
-        assertThat(intent.data?.toString()).isEqualTo("https://www.google.com")
-        assertThat(intent.`package`).isEqualTo(CHROME_PACKAGE)
-        assertThat(intent.categories).contains(Intent.CATEGORY_BROWSABLE)
-        assertThat(intent.flags and Intent.FLAG_ACTIVITY_CLEAR_TOP).isNotEqualTo(0)
-        assertThat(intent.flags and Intent.FLAG_ACTIVITY_SINGLE_TOP).isNotEqualTo(0)
     }
 
     @Test
@@ -351,6 +515,7 @@ class WebsiteBlockNavigationTest {
 
     private companion object {
         const val CHROME_PACKAGE = "com.android.chrome"
+        const val BRAVE_PACKAGE = "com.brave.browser"
         const val FIREFOX_PACKAGE = "org.mozilla.firefox"
     }
 }
