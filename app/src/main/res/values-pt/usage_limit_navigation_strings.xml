@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="limits_tab_keywords">Palavras</string>
+    <string name="limits_top_used_section">Mais usados</string>
+    <string name="limits_social_section">Redes sociais</string>
+    <string name="limits_other_apps_section">Outros apps</string>
+    <string name="limits_search_results_section">Resultados da busca</string>
+    <string name="limits_add_keyword_btn">Adicionar palavra</string>
+    <string name="limits_keyword_label">Palavra</string>
+    <string name="limits_keyword_helper">O tempo diário é somado em todos os sites cujo domínio contém esta palavra.</string>
+    <string name="limits_common_sites_section">Sites</string>
+    <string name="limits_common_keywords_section">Palavras</string>
+    <string name="limits_custom_targets_section">Outros limites configurados</string>
+    <string name="limits_preset_not_configured">Toque para definir um limite diário</string>
+</resources>
