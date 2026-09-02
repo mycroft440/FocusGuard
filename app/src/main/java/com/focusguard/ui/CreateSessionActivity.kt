@@ -250,10 +250,15 @@ fun AppSelectionStep(
                 configured.allWebsiteRules
             }
             val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-            val launchables = pm.queryIntentActivities(launcherIntent, 0).map { it.activityInfo.packageName }.toSet()
+            val launcherQueryFlags = PackageManager.MATCH_DISABLED_COMPONENTS
+            val launchables = pm.queryIntentActivities(launcherIntent, launcherQueryFlags)
+                .map { it.activityInfo.packageName }
+                .toSet()
             val installedPackageNames = mutableSetOf<String>()
 
-            val installedApps = pm.getInstalledApplications(PackageManager.GET_META_DATA)
+            val installedApps = pm.getInstalledApplications(
+                PackageManager.GET_META_DATA or PackageManager.MATCH_DISABLED_COMPONENTS
+            )
                 .filter { info ->
                     info.packageName != context.packageName &&
                         info.packageName != "com.focusguard" &&
@@ -278,7 +283,7 @@ fun AppSelectionStep(
                     val iconUrl = if (!it.domain.isNullOrBlank()) {
                         "https://www.google.com/s2/favicons?domain=${it.domain}&sz=128"
                     } else null
-                    
+
                     SelectableAppUi(
                         packageName = it.packageName,
                         appName = it.appName,
