@@ -9,20 +9,16 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
-import com.focusguard.admin.DeviceOwnerManager
-import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.ui.compose.screens.DeactivationCredentialDialog
 import com.focusguard.ui.compose.theme.FocusGuardTheme
 
 /**
- * Destino único para criar ou alterar a senha mestra.
+ * Creates or changes the master password used by "Remove all blocks".
  *
- * Configurações, Proteger apps e Limites de uso abrem esta mesma Activity, de
- * modo que nunca existam formulários ou credenciais concorrentes.
+ * It is deliberately independent from target credentials. Creating an app/site
+ * PASSWORD block never opens this Activity, and this credential is never offered
+ * on a blocked-target screen.
  */
 class MasterPasswordActivity : ComponentActivity() {
 
@@ -30,25 +26,16 @@ class MasterPasswordActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContent {
             FocusGuardTheme {
-                val blockingManager = remember {
-                    BlockingSessionManager.getInstance(applicationContext)
-                }
-                val deviceOwnerManager = remember {
-                    DeviceOwnerManager.getInstance(applicationContext)
-                }
-                val blockingActive by blockingManager.isBlockingActiveFlow.collectAsState(
-                    initial = true
-                )
-                val managementLocked = blockingActive ||
-                    deviceOwnerManager.isArmoredProtectionArmed()
-
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .background(androidx.compose.material3.MaterialTheme.colorScheme.background)
                 ) {
                     DeactivationCredentialDialog(
-                        managementLocked = managementLocked,
+                        // The master credential is itself the authenticated escape
+                        // mechanism for the explicit remove-all action. It must be
+                        // possible to configure it even if a block already exists.
+                        managementLocked = false,
                         onDismiss = { finish() },
                         onCredentialChanged = {
                             setResult(Activity.RESULT_OK)

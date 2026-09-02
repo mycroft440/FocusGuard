@@ -5,23 +5,20 @@ import com.focusguard.utils.WebsiteBlocker
 /**
  * What each kind of protection is allowed to target.
  *
- * The three blocks do not cover the same ground, and the difference is a product
- * decision rather than a limitation:
+ * The three blocks deliberately cover different surfaces:
  *
- *  - **Password block**: apps only. Its exit is a password typed on the lock
- *    screen the app puts in front of the blocked target, which is something it
- *    can only do for an app it detects in the foreground. A site or a word would
- *    promise a prompt the block cannot reliably show.
+ *  - **Password block**: apps and sites. Each target uses the credential configured
+ *    for that PASSWORD block; the master credential is never involved. Keywords
+ *    stay out because a substring rule is too broad for a personal access lock.
  *  - **Daily limit**: apps and sites. A limit counts time against a target, and
  *    both apps and sites are measurable. A word is not a target you can spend
  *    two hours on, so keywords are out.
  *  - **Dopamine fast (time block)**: apps, sites and words. It is the strictest
- *    block and the one people arm against a whole habit, so it takes the widest
- *    net — including a word that matches any domain containing it.
+ *    block and can cover a whole habit, including a keyword rule.
  *
- * Decided here, in one place, so the wizard, the limits screen and
- * [com.focusguard.manager.BlockingSessionManager] cannot drift apart: the UI
- * hides what a block cannot take, and the manager drops it again on the way in.
+ * Decided here so the wizard, limits UI and BlockingSessionManager cannot drift
+ * apart: the UI hides unsupported target kinds and the manager filters again on
+ * persistence.
  */
 object BlockTargetPolicy {
 
@@ -29,39 +26,28 @@ object BlockTargetPolicy {
     const val SESSION_TYPE_TIME = "TIME"
     const val SESSION_TYPE_POMODORO = "POMODORO"
 
-    /**
-     * @param apps installed or preventive app packages.
-     * @param websites domain rules, including the pornography category shortcut.
-     * @param keywords `keyword:` rules that match any domain containing the word.
-     */
     data class Kinds(
         val apps: Boolean,
         val websites: Boolean,
         val keywords: Boolean
     ) {
-        /** True when the picker has more than one kind to switch between. */
         val needsTabs: Boolean
             get() = listOf(apps, websites, keywords).count { it } > 1
     }
 
     val APPS_ONLY = Kinds(apps = true, websites = false, keywords = false)
+    val APPS_AND_WEBSITES = Kinds(apps = true, websites = true, keywords = false)
 
     /** Usage limits measure time spent, so they take targets but never words. */
-    val DAILY_LIMIT = Kinds(apps = true, websites = true, keywords = false)
+    val DAILY_LIMIT = APPS_AND_WEBSITES
 
     fun forSessionType(sessionType: String): Kinds = when (sessionType.uppercase()) {
+        SESSION_TYPE_PASSWORD -> APPS_AND_WEBSITES
         SESSION_TYPE_TIME, SESSION_TYPE_POMODORO ->
             Kinds(apps = true, websites = true, keywords = true)
-
         else -> APPS_ONLY
     }
 
-    /**
-     * Normalizes website rules and drops the ones [kinds] does not accept.
-     *
-     * Returns normalized rules so callers persist the same shape the matcher
-     * reads back — a rule that survives the filter is ready to store.
-     */
     fun acceptedRules(kinds: Kinds, rules: Collection<String>): Set<String> {
         if (!kinds.websites && !kinds.keywords) return emptySet()
         return WebsiteBlocker.normalizeRules(rules).filterTo(linkedSetOf()) { rule ->
@@ -69,7 +55,6 @@ object BlockTargetPolicy {
         }
     }
 
-    /** Convenience for callers that only have the session type at hand. */
     fun acceptedRulesForSessionType(
         sessionType: String,
         rules: Collection<String>

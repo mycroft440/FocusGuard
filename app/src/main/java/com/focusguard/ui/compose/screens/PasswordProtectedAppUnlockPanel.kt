@@ -1,7 +1,6 @@
 package com.focusguard.ui.compose.screens
 
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -39,30 +38,35 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import com.focusguard.R
+import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AppUnlockBiometricAuthenticator
 import com.focusguard.security.AuthManager
 import com.focusguard.security.BiometricAppUnlockPolicy
 import com.focusguard.security.CameraManager
 import com.focusguard.security.IntruderCapturePolicy
-import com.focusguard.security.PasswordAppUnlockConfig
 import com.focusguard.security.PasswordAppUnlockMode
 import com.focusguard.security.PasswordAppUnlockStore
+import com.focusguard.security.PasswordTargetAccessGrant
 import com.focusguard.ui.compose.components.PatternLockInput
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
 import com.focusguard.ui.compose.theme.TextSecondary
+import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
 /**
- * Controles de desbloqueio para uma sessão PASSWORD criada pelo novo assistente.
- * Configurações antigas continuam usando a senha mestra no BlockNoticeActivity.
+ * Unlock controls for a PASSWORD session target.
+ *
+ * The target credential is independent from the master credential. A successful
+ * unlock grants a temporary visit and never edits or deletes the PASSWORD block.
  */
 @Composable
-internal fun PasswordProtectedAppUnlockPanel(
-    blockedPackage: String,
+internal fun PasswordProtectedTargetUnlockPanel(
+    blockedPackage: String?,
+    blockedDomain: String?,
     authManager: AuthManager,
     sessionManager: BlockingSessionManager,
     onUnlocked: () -> Unit
@@ -71,8 +75,15 @@ internal fun PasswordProtectedAppUnlockPanel(
     val activity = context as? FragmentActivity
     val scope = rememberCoroutineScope()
     val store = remember(context) { PasswordAppUnlockStore(context) }
-    var config by remember(blockedPackage) {
-        mutableStateOf(store.get(blockedPackage))
+    val websiteTargetId = remember(blockedDomain) {
+        store.resolveWebsiteTargetId(blockedDomain)
+    }
+    val websiteRule = remember(websiteTargetId) {
+        PasswordAppUnlockStore.websiteRuleFromTargetId(websiteTargetId)
+    }
+    val targetId = websiteTargetId ?: PasswordAppUnlockStore.targetIdForPackage(blockedPackage)
+    var config by remember(targetId) {
+        mutableStateOf(store.getTarget(targetId))
     }
     var showCredentialDialog by remember { mutableStateOf(false) }
     var showBiometricOffer by remember { mutableStateOf(false) }
@@ -101,15 +112,23 @@ internal fun PasswordProtectedAppUnlockPanel(
         }
     }
 
+    fun revokePendingGrant() {
+        if (websiteRule != null) {
+            PasswordTargetAccessGrant.revokeWebsiteRule(websiteRule)
+        } else {
+            PasswordTargetAccessGrant.revokePackage(blockedPackage)
+        }
+    }
+
     fun completeUnlock(onInvalid: (() -> Unit)? = null) {
-        if (verifying) return
+        if (verifying || targetId == null) return
         scope.launch {
             verifying = true
             error = null
             try {
                 val origin = sessionManager.credentialUnlockOrigin(
                     blockedPackage = blockedPackage,
-                    blockedDomain = null,
+                    blockedDomain = blockedDomain,
                     strictPomodoroActive = false
                 )
                 if (origin != BiometricAppUnlockPolicy.BlockOrigin.PASSWORD_SESSION) {
@@ -117,24 +136,57 @@ internal fun PasswordProtectedAppUnlockPanel(
                     onInvalid?.invoke()
                     return@launch
                 }
-                when (
-                    sessionManager.unlockPasswordSessionTarget(
-                        blockedPackage = blockedPackage,
-                        blockedDomain = null
-                    )
-                ) {
-                    BlockingSessionManager.EndSessionResult.ENDED -> {
-                        showCredentialDialog = false
-                        onUnlocked()
+
+                // A target credential is weaker than an irreversible protection.
+                // Before unsuspending/whitelisting anything, independently verify
+                // that the same target is not also held by a Dopamine Fast or an
+                // active Focus Mode session. This keeps overlapping persisted
+                // rules fail-closed even if an older database contains a conflict.
+                val overview = sessionManager.getBlockOverview()
+                val heldByDopamineFast = if (!blockedPackage.isNullOrBlank()) {
+                    overview.dopamineFastEntries.any {
+                        !it.isWebsite && it.identifier == blockedPackage
                     }
-                    else -> {
-                        error = failureMessage
-                        onInvalid?.invoke()
+                } else {
+                    val candidate = blockedDomain ?: websiteRule.orEmpty()
+                    overview.dopamineFastEntries.any { entry ->
+                        entry.isWebsite && WebsiteBlocker.isUrlBlocked(
+                            candidate,
+                            listOf(entry.identifier)
+                        )
                     }
                 }
+                val heldByFocusMode = blockedPackage
+                    ?.takeIf(String::isNotBlank)
+                    ?.let { packageName ->
+                        FocusModeStore.readSession(context)
+                            ?.takeIf { it.isActive() }
+                            ?.blockedPackages
+                            ?.contains(packageName) == true
+                    } == true
+                if (heldByDopamineFast || heldByFocusMode) {
+                    error = failureMessage
+                    onInvalid?.invoke()
+                    return@launch
+                }
+
+                if (websiteRule != null) {
+                    PasswordTargetAccessGrant.grantWebsite(context, websiteRule)
+                } else {
+                    val packageName = blockedPackage?.takeIf(String::isNotBlank)
+                        ?: run {
+                            error = failureMessage
+                            onInvalid?.invoke()
+                            return@launch
+                        }
+                    PasswordTargetAccessGrant.grantPackage(context, packageName)
+                }
+                showCredentialDialog = false
+                onUnlocked()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
+                revokePendingGrant()
                 error = failureMessage
                 onInvalid?.invoke()
             } finally {
@@ -148,7 +200,7 @@ internal fun PasswordProtectedAppUnlockPanel(
             error = failureMessage
             return
         }
-        val latest = store.get(blockedPackage) ?: run {
+        val latest = store.getTarget(targetId) ?: run {
             error = failureMessage
             return
         }
@@ -163,10 +215,8 @@ internal fun PasswordProtectedAppUnlockPanel(
             subtitle = promptSubtitle,
             cancelLabel = cancelLabel,
             onSuccess = {
-                val rechecked = store.get(blockedPackage)
-                if (rechecked?.biometricEnabled == true) {
-                    completeUnlock()
-                }
+                val rechecked = store.getTarget(targetId)
+                if (rechecked?.biometricEnabled == true) completeUnlock()
             },
             onError = { message ->
                 if (message.isNotBlank()) error = message
@@ -261,8 +311,8 @@ internal fun PasswordProtectedAppUnlockPanel(
     if (showBiometricOffer) {
         AlertDialog(
             onDismissRequest = {
-                store.markBiometricOfferShown(blockedPackage)
-                config = store.get(blockedPackage)
+                store.markBiometricOfferShownForTarget(targetId)
+                config = store.getTarget(targetId)
                 showBiometricOffer = false
             },
             title = { Text(stringResource(R.string.password_app_unlock_biometric_offer_title)) },
@@ -270,8 +320,8 @@ internal fun PasswordProtectedAppUnlockPanel(
             confirmButton = {
                 Button(
                     onClick = {
-                        if (store.setBiometricEnabled(blockedPackage, true)) {
-                            config = store.get(blockedPackage)
+                        if (store.setBiometricEnabledForTarget(targetId, true)) {
+                            config = store.getTarget(targetId)
                             showBiometricOffer = false
                             launchBiometric()
                         }
@@ -283,8 +333,8 @@ internal fun PasswordProtectedAppUnlockPanel(
             dismissButton = {
                 TextButton(
                     onClick = {
-                        store.markBiometricOfferShown(blockedPackage)
-                        config = store.get(blockedPackage)
+                        store.markBiometricOfferShownForTarget(targetId)
+                        config = store.getTarget(targetId)
                         showBiometricOffer = false
                     }
                 ) {
@@ -306,7 +356,7 @@ internal fun PasswordProtectedAppUnlockPanel(
                     }
                 },
                 onSubmit = { password ->
-                    if (store.verify(blockedPackage, password)) {
+                    if (store.verifyTarget(targetId, password)) {
                         completeUnlock()
                     } else {
                         error = wrongCredentialMessage
@@ -326,7 +376,7 @@ internal fun PasswordProtectedAppUnlockPanel(
                     }
                 },
                 onSubmit = { pattern, reset ->
-                    if (store.verify(blockedPackage, pattern)) {
+                    if (store.verifyTarget(targetId, pattern)) {
                         completeUnlock(onInvalid = reset)
                     } else {
                         error = wrongCredentialMessage
@@ -340,6 +390,21 @@ internal fun PasswordProtectedAppUnlockPanel(
         }
     }
 }
+
+/** Compatibility wrapper for call sites that still have an app-only target. */
+@Composable
+internal fun PasswordProtectedAppUnlockPanel(
+    blockedPackage: String,
+    authManager: AuthManager,
+    sessionManager: BlockingSessionManager,
+    onUnlocked: () -> Unit
+) = PasswordProtectedTargetUnlockPanel(
+    blockedPackage = blockedPackage,
+    blockedDomain = null,
+    authManager = authManager,
+    sessionManager = sessionManager,
+    onUnlocked = onUnlocked
+)
 
 @Composable
 private fun PasswordUnlockDialog(

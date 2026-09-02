@@ -7,10 +7,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,15 +23,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.admin.DeviceOwnerProtectionAuditor
 import com.focusguard.admin.DeviceOwnerProtectionDiagnostics
-import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.DeviceOwnerMaintenanceGate
 import kotlinx.coroutines.delay
 import kotlin.math.ceil
@@ -46,9 +41,7 @@ internal fun DeviceOwnerMaintenanceDialog(
     val context = LocalContext.current
     val manager = remember(context) { DeviceOwnerManager.getInstance(context) }
     val auditor = remember(context) { DeviceOwnerProtectionAuditor(context) }
-    val credentialManager = remember(context) { DeactivationCredentialManager(context) }
 
-    var credential by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var showRevokeConfirmation by remember { mutableStateOf(false) }
     var revision by remember { mutableIntStateOf(0) }
@@ -67,13 +60,10 @@ internal fun DeviceOwnerMaintenanceDialog(
     }
     val maintenanceActive = remainingMillis > 0L
     val remainingMinutes = ceil(remainingMillis / 60_000.0).toInt().coerceAtLeast(1)
-    val credentialConfigured = credentialManager.hasCredential()
     val diagnostics = remember(revision, clockTick / 5, isDeviceOwner) {
         auditor.inspect()
     }
 
-    val invalidCredential = stringResource(R.string.device_owner_maintenance_invalid_credential)
-    val missingCredential = stringResource(R.string.device_owner_maintenance_credential_missing)
     val automaticTimeRequired = stringResource(R.string.device_owner_maintenance_auto_time_required)
     val outsideWindow = stringResource(R.string.device_owner_maintenance_outside_window)
     val activeBlockRequiresMonthly = stringResource(
@@ -90,21 +80,20 @@ internal fun DeviceOwnerMaintenanceDialog(
     fun handleUnlockResult(result: DeviceOwnerMaintenanceGate.UnlockResult) {
         errorMessage = when (result) {
             DeviceOwnerMaintenanceGate.UnlockResult.UNLOCKED -> {
-                credential = ""
                 refreshState()
                 Toast.makeText(context, openedMessage, Toast.LENGTH_SHORT).show()
                 null
             }
             DeviceOwnerMaintenanceGate.UnlockResult.AUTOMATIC_DATE_TIME_REQUIRED ->
                 automaticTimeRequired
-            DeviceOwnerMaintenanceGate.UnlockResult.CREDENTIAL_NOT_CONFIGURED ->
-                missingCredential
-            DeviceOwnerMaintenanceGate.UnlockResult.INVALID_CREDENTIAL ->
-                invalidCredential
             DeviceOwnerMaintenanceGate.UnlockResult.OUTSIDE_MONTHLY_WINDOW ->
                 outsideWindow
             DeviceOwnerMaintenanceGate.UnlockResult.ACTIVE_BLOCK_REQUIRES_MONTHLY_WINDOW ->
                 activeBlockRequiresMonthly
+            // Credential maintenance is intentionally not exposed here. The
+            // master password is reserved for Settings > Remove all blocks.
+            DeviceOwnerMaintenanceGate.UnlockResult.CREDENTIAL_NOT_CONFIGURED,
+            DeviceOwnerMaintenanceGate.UnlockResult.INVALID_CREDENTIAL -> outsideWindow
         }
     }
 
@@ -215,49 +204,6 @@ internal fun DeviceOwnerMaintenanceDialog(
                         if (diagnostics.protectionArmed) {
                             Text(
                                 text = activeBlockRequiresMonthly,
-                                color = MaterialTheme.colorScheme.error,
-                                fontSize = 12.sp
-                            )
-                        } else if (credentialConfigured) {
-                            OutlinedTextField(
-                                value = credential,
-                                onValueChange = {
-                                    credential = it
-                                    errorMessage = null
-                                },
-                                modifier = Modifier.fillMaxWidth(),
-                                label = {
-                                    Text(
-                                        stringResource(
-                                            R.string.device_owner_maintenance_password_label
-                                        )
-                                    )
-                                },
-                                singleLine = true,
-                                visualTransformation = PasswordVisualTransformation(),
-                                keyboardOptions = KeyboardOptions(
-                                    keyboardType = KeyboardType.Password
-                                )
-                            )
-                            Spacer(Modifier.height(4.dp))
-                            TextButton(
-                                modifier = Modifier.fillMaxWidth(),
-                                enabled = credential.isNotBlank(),
-                                onClick = {
-                                    handleUnlockResult(
-                                        manager.requestMaintenanceWithCredential(credential)
-                                    )
-                                }
-                            ) {
-                                Text(
-                                    stringResource(
-                                        R.string.device_owner_maintenance_open_password
-                                    )
-                                )
-                            }
-                        } else {
-                            Text(
-                                text = missingCredential,
                                 color = MaterialTheme.colorScheme.error,
                                 fontSize = 12.sp
                             )

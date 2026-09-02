@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="master_password_settings_title">Senha mestre</string>
+    <string name="master_password_settings_subtitle">Usada somente para a opção Remover todos os bloqueios</string>
+    <string name="master_remove_all_blocks_title">Remover todos os bloqueios</string>
+    <string name="master_remove_all_blocks_subtitle">Usa a senha mestre para apagar todos os bloqueios e limites configurados</string>
+    <string name="master_remove_all_blocks_prompt">Digite a senha mestre para remover todos os bloqueios. Esta senha não desbloqueia aplicativos ou sites individualmente.</string>
+    <string name="master_remove_all_blocks_success">Todos os bloqueios foram removidos</string>
+    <string name="master_remove_all_blocks_failed">Não foi possível remover todos os bloqueios</string>
+    <string name="protected_settings_blocked_title">Proteção ativa</string>
+    <string name="protected_settings_blocked_description">Esta configuração não pode ser alterada enquanto o FocusGuard estiver protegendo algum bloqueio. Para encerrar tudo, use Remover todos os bloqueios nas Configurações e confirme com a senha mestre.</string>
+    <string name="protected_uninstall_blocked_description">O FocusGuard não pode ser desinstalado enquanto houver proteção ativa. Primeiro use Remover todos os bloqueios nas Configurações; a senha mestre é solicitada somente nessa ação.</string>
+    <string name="uninstall_app_subtitle_no_master">Disponível sem senha quando não houver bloqueios ativos</string>
+</resources>

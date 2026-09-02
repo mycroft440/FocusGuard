@@ -122,6 +122,11 @@
             android:theme="@style/Theme.FocusGuard" />
 
         <activity
+            android:name=".ui.RemoveAllBlocksActivity"
+            android:exported="false"
+            android:theme="@style/Theme.FocusGuard" />
+
+        <activity
             android:name=".ui.MasterRemovalActivity"
             android:excludeFromRecents="true"
             android:exported="false"

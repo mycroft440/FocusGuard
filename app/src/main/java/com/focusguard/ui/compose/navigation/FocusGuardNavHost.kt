@@ -38,7 +38,6 @@ import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.CreateSessionActivity
 import com.focusguard.ui.OfflineBookActivity
 import com.focusguard.ui.PermissionsActivity
-import com.focusguard.ui.compose.screens.AuthScreen
 import com.focusguard.ui.compose.screens.BlockCustomizationScreen
 import com.focusguard.ui.compose.screens.BlockTypeDetailScreen
 import com.focusguard.ui.compose.screens.BlockTypeUi
@@ -57,7 +56,6 @@ import com.focusguard.ui.compose.screens.SessionsListScreen
 import com.focusguard.ui.compose.screens.SettingsScreen
 import com.focusguard.ui.compose.screens.UsageLimitsScreen
 import com.focusguard.ui.compose.screens.UsageStatsDashboardScreen
-import com.focusguard.ui.compose.theme.DarkBg
 import androidx.lifecycle.Lifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -88,7 +86,6 @@ fun FocusGuardNavHost(
     focusModeReturnNonce: Long = 0L,
     onEnforceFocusModeLockTask: () -> Unit
 ) {
-    var isUnlocked by remember { mutableStateOf<Boolean?>(null) }
     var resumeKey by remember { mutableIntStateOf(0) }
 
     DisposableEffect(Unit) {
@@ -101,30 +98,9 @@ fun FocusGuardNavHost(
         onDispose { activity.lifecycle.removeObserver(callback) }
     }
 
-    LaunchedEffect(resumeKey) {
-        withContext(Dispatchers.IO) {
-            val locked = authManager.isAppLocked()
-            withContext(Dispatchers.Main) {
-                isUnlocked = !locked
-            }
-        }
-    }
-
-    when (isUnlocked) {
-        null -> {
-            Box(modifier = Modifier.fillMaxSize().background(DarkBg))
-            return
-        }
-        false -> {
-            AuthScreen(
-                authManager = authManager,
-                activity = activity,
-                onUnlock = { isUnlocked = true }
-            )
-            return
-        }
-        true -> Unit
-    }
+    // The FocusGuard shell itself is never unlocked by the master credential.
+    // Password/pattern/biometric credentials live on protected targets only;
+    // the master password is reserved for Settings > Remove all blocks.
 
     var currentRoute by remember { mutableStateOf(FocusGuardRoute.Home) }
     var selectedBlockType by remember { mutableStateOf(BlockTypeUi.PASSWORD) }

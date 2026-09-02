@@ -29,7 +29,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -50,11 +49,10 @@ import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.data.UserProfile
 import com.focusguard.dev.DevelopmentPermissionResetter
-import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.monetization.AdsConsentManager
-import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.ui.MasterPasswordActivity
 import com.focusguard.ui.MasterRemovalActivity
+import com.focusguard.ui.RemoveAllBlocksActivity
 import com.focusguard.ui.compose.layout.FocusGuardScreenScaffold
 import com.focusguard.ui.compose.layout.FocusGuardScrollableContent
 import com.focusguard.ui.compose.layout.FocusGuardSectionHeader
@@ -81,18 +79,11 @@ fun SettingsScreen(
     val context = LocalContext.current
     val activity = context as? ComponentActivity
     val coroutineScope = rememberCoroutineScope()
-    val deactivationCredentialManager = remember(context) {
-        DeactivationCredentialManager(context)
-    }
-    val blockingSessionManager = remember(context) {
-        BlockingSessionManager.getInstance(context)
-    }
     val deviceOwnerManager = remember(context) {
         DeviceOwnerManager.getInstance(context)
     }
     var showDeviceOwnerMaintenanceDialog by remember { mutableStateOf(false) }
     var showDeviceOwnerSetupGuideDialog by remember { mutableStateOf(false) }
-    var deactivationCredentialRevision by remember { mutableIntStateOf(0) }
     var deviceOwnerRevision by remember { mutableIntStateOf(0) }
     var developmentResetInProgress by remember { mutableStateOf(false) }
     var privacyOptionsRequired by remember {
@@ -100,9 +91,7 @@ fun SettingsScreen(
     }
     val masterPasswordLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) {
-        deactivationCredentialRevision++
-    }
+    ) { }
 
     LaunchedEffect(activity) {
         val host = activity ?: return@LaunchedEffect
@@ -111,23 +100,6 @@ fun SettingsScreen(
         }
     }
 
-    val isBlockingActive by blockingSessionManager.isBlockingActiveFlow.collectAsState(
-        initial = true
-    )
-    val deactivationCredentialConfigured = remember(deactivationCredentialRevision) {
-        deactivationCredentialManager.hasCredential()
-    }
-    val armoredProtectionArmed = remember(deviceOwnerRevision, isBlockingActive) {
-        deviceOwnerManager.isArmoredProtectionArmed()
-    }
-    val credentialManagementLocked = isBlockingActive || armoredProtectionArmed
-    val deactivationPasswordSubtitle = stringResource(
-        when {
-            credentialManagementLocked -> R.string.deactivation_password_locked_subtitle
-            deactivationCredentialConfigured -> R.string.deactivation_password_configured
-            else -> R.string.deactivation_password_not_configured
-        }
-    )
     val isDeviceOwnerActive = remember(deviceOwnerRevision) {
         deviceOwnerManager.isDeviceOwnerActive()
     }
@@ -156,7 +128,6 @@ fun SettingsScreen(
             else -> R.string.device_owner_status_inactive
         }
     )
-    val uninstallSubtitle = stringResource(R.string.uninstall_app_subtitle_auth)
 
     if (showDeviceOwnerMaintenanceDialog) {
         DeviceOwnerMaintenanceDialog(
@@ -208,11 +179,21 @@ fun SettingsScreen(
             FocusGuardSectionHeader(stringResource(R.string.settings_category_blocking))
             SettingsItem(
                 Icons.Default.Lock,
-                stringResource(R.string.deactivation_password_title),
-                deactivationPasswordSubtitle,
+                stringResource(R.string.master_password_settings_title),
+                stringResource(R.string.master_password_settings_subtitle),
                 onClick = {
-                    masterPasswordLauncher.launch(
-                        MasterPasswordActivity.createIntent(context)
+                    masterPasswordLauncher.launch(MasterPasswordActivity.createIntent(context))
+                }
+            )
+            SettingsItem(
+                Icons.Default.DeleteForever,
+                stringResource(R.string.master_remove_all_blocks_title),
+                stringResource(R.string.master_remove_all_blocks_subtitle),
+                iconTint = DangerRed,
+                titleColor = DangerRed,
+                onClick = {
+                    context.startActivity(
+                        android.content.Intent(context, RemoveAllBlocksActivity::class.java)
                     )
                 }
             )
@@ -270,11 +251,9 @@ fun SettingsScreen(
                         if (!developmentResetInProgress) {
                             developmentResetInProgress = true
                             coroutineScope.launch {
-                                val result = DevelopmentPermissionResetter
-                                    .disarmForTesting(context)
-                                val runtimeRevocationScheduled =
-                                    DevelopmentPermissionResetter
-                                        .revokeRuntimePermissionsOnKill(context)
+                                val result = DevelopmentPermissionResetter.disarmForTesting(context)
+                                val runtimeRevocationScheduled = DevelopmentPermissionResetter
+                                    .revokeRuntimePermissionsOnKill(context)
 
                                 developmentResetInProgress = false
                                 deviceOwnerRevision++
@@ -299,7 +278,7 @@ fun SettingsScreen(
             SettingsItem(
                 Icons.Default.DeleteForever,
                 stringResource(R.string.uninstall_app_title),
-                uninstallSubtitle,
+                stringResource(R.string.uninstall_app_subtitle_no_master),
                 iconTint = DangerRed,
                 titleColor = DangerRed,
                 onClick = {
@@ -338,8 +317,6 @@ private fun ProfileSettingsCard(
     profile: UserProfile,
     onClick: () -> Unit
 ) {
-    // O cartão do perfil abre a tela, então ganha a borda ciano: é o único
-    // item aqui que fala de quem usa o app, e não do que o app faz.
     FocusCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -393,9 +370,6 @@ fun SettingsItem(
     titleColor: Color = Color.Unspecified,
     onClick: () -> Unit
 ) {
-    // Cada linha ganha o selo de ícone padrão do app no lugar do ícone solto:
-    // com quinze itens empilhados, o selo é o que dá ritmo à lista e faz a
-    // vista pular de um item para o outro sem reler tudo.
     FocusCard(
         modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
         shape = RoundedCornerShape(14.dp),

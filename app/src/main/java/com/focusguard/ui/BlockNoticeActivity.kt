@@ -1,99 +1,69 @@
 package com.focusguard.ui
 
-import com.focusguard.usage.UsageImpactRouter
 import android.content.Intent
 import android.os.Bundle
 import android.os.SystemClock
-import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
+import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.doOnPreDraw
 import com.focusguard.R
 import com.focusguard.manager.BlockingSessionManager
-import androidx.compose.ui.platform.LocalContext
-import androidx.fragment.app.FragmentActivity
 import com.focusguard.security.AuthManager
 import com.focusguard.security.BiometricAppUnlockPolicy
-import com.focusguard.security.CameraManager
 import com.focusguard.security.CurtainDestinationReadyCoordinator
-import com.focusguard.security.IntruderCapturePolicy
-import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.PasswordAppUnlockStore
 import com.focusguard.security.SafeSurfaceReadinessPolicy
 import com.focusguard.service.BlockingAccessibilityService
-import com.focusguard.ui.compose.screens.PasswordProtectedAppUnlockPanel
+import com.focusguard.ui.compose.screens.PasswordProtectedTargetUnlockPanel
 import com.focusguard.ui.compose.theme.AccentCyan
-import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
-import com.focusguard.ui.compose.theme.DarkSurface
 import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.ui.compose.theme.SuccessGreen
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
+import com.focusguard.usage.UsageImpactRouter
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
-// AppCompatActivity mantém a base FragmentActivity usada pela captura silenciosa.
 class BlockNoticeActivity : AppCompatActivity() {
 
     @Inject lateinit var authManager: AuthManager
     @Inject lateinit var blockingSessionManager: BlockingSessionManager
-    @Inject lateinit var deactivationCredentialManager: DeactivationCredentialManager
 
     private var strictBlock = false
     private var redirectBrowserPackage: String? = null
@@ -113,7 +83,6 @@ class BlockNoticeActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
                 val browserPackage = redirectBrowserPackage
@@ -124,7 +93,6 @@ class BlockNoticeActivity : AppCompatActivity() {
                 }
             }
         })
-
         showBlockNotice(intent)
     }
 
@@ -176,31 +144,23 @@ class BlockNoticeActivity : AppCompatActivity() {
         pendingCurtainGeneration = curtainGeneration
         freshFrameGeneration = 0L
 
-        // singleTop can receive several copies of the same accessibility event.
-        // Keep the existing composition (including an open password dialog) and
-        // only acknowledge readiness after the next actual draw. The generation
-        // prevents an older Activity callback from hiding a newer curtain.
         if (renderedNotice == payload) {
             acknowledgeNotice(curtainGeneration)
             return
         }
         renderedNotice = payload
         noticeDrawn = false
-        val blockedPackage = payload.blockedPackage
-        val blockedDomain = payload.blockedDomain
-        val browserPackageForRedirect = redirectBrowserPackage
 
         setContent {
             FocusGuardTheme {
                 BlockNoticeContent(
                     strictBlock = payload.strictBlock,
-                    blockedPackage = blockedPackage,
-                    blockedDomain = blockedDomain,
-                    redirectBrowserPackage = browserPackageForRedirect,
+                    blockedPackage = payload.blockedPackage,
+                    blockedDomain = payload.blockedDomain,
+                    redirectBrowserPackage = payload.redirectBrowserPackage,
                     authManager = authManager,
                     blockingSessionManager = blockingSessionManager,
-                    deactivationCredentialManager = deactivationCredentialManager,
-                    onGoHome = ::goHome,
+                    onReturnToTarget = ::finish,
                     onRedirectBlockedWebsite = ::redirectBlockedWebsite,
                     onGoToPomodoroLock = ::goToPomodoroLock,
                     onGoToUsageImpact = ::goToUsageImpact
@@ -260,19 +220,13 @@ class BlockNoticeActivity : AppCompatActivity() {
         if (!ready) return false
         pendingCurtainGeneration = 0L
         freshFrameGeneration = 0L
-        notifyNoticeReady(generation)
+        CurtainDestinationReadyCoordinator.notifyReady(generation)
         return true
-    }
-
-    private fun notifyNoticeReady(curtainGeneration: Long) {
-        CurtainDestinationReadyCoordinator.notifyReady(curtainGeneration)
     }
 
     private fun redirectBlockedWebsite(browserPackageName: String) {
         val redirected = runCatching {
-            startActivity(
-                BlockingAccessibilityService.createSafeRedirectIntent(browserPackageName)
-            )
+            startActivity(BlockingAccessibilityService.createSafeRedirectIntent(browserPackageName))
             true
         }.getOrElse { error ->
             FocusGuardLogger.logError(
@@ -329,14 +283,28 @@ private fun BlockNoticeContent(
     redirectBrowserPackage: String?,
     authManager: AuthManager,
     blockingSessionManager: BlockingSessionManager,
-    deactivationCredentialManager: DeactivationCredentialManager,
-    onGoHome: () -> Unit,
+    onReturnToTarget: () -> Unit,
     onRedirectBlockedWebsite: (String) -> Unit,
     onGoToPomodoroLock: () -> Unit,
     onGoToUsageImpact: (String) -> Unit
 ) {
-    val scope = rememberCoroutineScope()
     val context = LocalContext.current
+    val unlockStore = remember(context) { PasswordAppUnlockStore(context) }
+    val targetId = remember(blockedPackage, blockedDomain) {
+        unlockStore.resolveWebsiteTargetId(blockedDomain)
+            ?: PasswordAppUnlockStore.targetIdForPackage(blockedPackage)
+    }
+    val customUnlockConfig = remember(targetId) { unlockStore.getTarget(targetId) }
+    var unlocked by remember { mutableStateOf(false) }
+    var credentialUnlockOrigin by remember {
+        mutableStateOf<BiometricAppUnlockPolicy.BlockOrigin?>(null)
+    }
+    var credentialUnlockResolved by remember { mutableStateOf(false) }
+
+    val hasTargetCredential = credentialUnlockResolved &&
+        credentialUnlockOrigin == BiometricAppUnlockPolicy.BlockOrigin.PASSWORD_SESSION &&
+        customUnlockConfig != null
+
     LaunchedEffect(strictBlock, blockedPackage, blockedDomain) {
         val packageToInspect = blockedPackage
         if (!strictBlock && blockedDomain == null && !packageToInspect.isNullOrBlank() &&
@@ -346,26 +314,6 @@ private fun BlockNoticeContent(
             onGoToUsageImpact(packageToInspect)
         }
     }
-    val focusRequester = remember { FocusRequester() }
-    val appUnlockStore = remember(context) { PasswordAppUnlockStore(context) }
-    val customUnlockConfig = remember(blockedPackage) {
-        appUnlockStore.get(blockedPackage)
-    }
-    var showUnlockDialog by remember { mutableStateOf(false) }
-    var password by remember { mutableStateOf("") }
-    var error by remember { mutableStateOf<String?>(null) }
-    var verifying by remember { mutableStateOf(false) }
-    var unlocked by remember { mutableStateOf(false) }
-    var credentialUnlockOrigin by remember {
-        mutableStateOf<BiometricAppUnlockPolicy.BlockOrigin?>(null)
-    }
-    var credentialUnlockResolved by remember { mutableStateOf(false) }
-
-    val wrongPasswordMessage = stringResource(R.string.sessions_wrong_password)
-    val pomodoroMessage = stringResource(R.string.block_notice_pomodoro_cannot_stop)
-    val timeSessionMessage = stringResource(R.string.block_notice_time_cannot_revoke)
-    val noSessionMessage = stringResource(R.string.block_notice_no_active_session)
-    val failureMessage = stringResource(R.string.block_notice_unlock_failed)
 
     LaunchedEffect(strictBlock, blockedPackage, blockedDomain) {
         credentialUnlockResolved = false
@@ -384,14 +332,13 @@ private fun BlockNoticeContent(
     LaunchedEffect(
         strictBlock,
         redirectBrowserPackage,
-        showUnlockDialog,
+        credentialUnlockResolved,
+        hasTargetCredential,
         unlocked
     ) {
-        val shouldRedirectWebsite = redirectBrowserPackage != null &&
-            !unlocked &&
-            (strictBlock || !showUnlockDialog)
+        if (unlocked) return@LaunchedEffect
         when {
-            shouldRedirectWebsite -> {
+            strictBlock && redirectBrowserPackage != null -> {
                 delay(BlockingAccessibilityService.WEBSITE_BLOCK_NOTICE_DURATION_MILLIS)
                 onRedirectBlockedWebsite(redirectBrowserPackage)
             }
@@ -399,13 +346,10 @@ private fun BlockNoticeContent(
                 delay(BlockingAccessibilityService.WEBSITE_BLOCK_NOTICE_DURATION_MILLIS)
                 onGoToPomodoroLock()
             }
-        }
-    }
-
-    LaunchedEffect(showUnlockDialog) {
-        if (showUnlockDialog) {
-            delay(100L)
-            focusRequester.requestFocus()
+            redirectBrowserPackage != null && credentialUnlockResolved && !hasTargetCredential -> {
+                delay(BlockingAccessibilityService.WEBSITE_BLOCK_NOTICE_DURATION_MILLIS)
+                onRedirectBlockedWebsite(redirectBrowserPackage)
+            }
         }
     }
 
@@ -450,7 +394,12 @@ private fun BlockNoticeContent(
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center
             )
-            if (redirectBrowserPackage != null && !unlocked) {
+            if (
+                redirectBrowserPackage != null &&
+                !unlocked &&
+                credentialUnlockResolved &&
+                !hasTargetCredential
+            ) {
                 Spacer(Modifier.height(12.dp))
                 Text(
                     text = "Redirecionando para o Google…",
@@ -461,271 +410,52 @@ private fun BlockNoticeContent(
             }
             Spacer(Modifier.height(28.dp))
 
-            if (unlocked) {
-                Surface(
-                    color = SuccessGreen.copy(alpha = 0.15f),
-                    shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, SuccessGreen)
-                ) {
+            when {
+                unlocked -> {
+                    Surface(
+                        color = SuccessGreen.copy(alpha = 0.15f),
+                        shape = RoundedCornerShape(12.dp),
+                        border = BorderStroke(1.dp, SuccessGreen)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.block_notice_unlock_success),
+                            color = SuccessGreen,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(16.dp),
+                            textAlign = TextAlign.Center
+                        )
+                    }
+                    LaunchedEffect(Unit) {
+                        delay(250L)
+                        onReturnToTarget()
+                    }
+                }
+                strictBlock -> {
                     Text(
-                        text = stringResource(R.string.block_notice_unlock_success),
-                        color = SuccessGreen,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier.padding(16.dp),
+                        text = stringResource(R.string.block_notice_pomodoro_cannot_stop),
+                        color = TextHint,
+                        fontSize = 13.sp,
                         textAlign = TextAlign.Center
                     )
                 }
-                LaunchedEffect(Unit) {
-                    delay(600L)
-                    onGoHome()
-                }
-            } else if (strictBlock) {
-                Text(
-                    text = stringResource(R.string.block_notice_pomodoro_cannot_stop),
-                    color = TextHint,
-                    fontSize = 13.sp,
-                    textAlign = TextAlign.Center
-                )
-            } else if (credentialUnlockOrigin != null) {
-                if (
-                    blockedPackage != null &&
-                    customUnlockConfig != null &&
-                    credentialUnlockOrigin == BiometricAppUnlockPolicy.BlockOrigin.PASSWORD_SESSION
-                ) {
-                    PasswordProtectedAppUnlockPanel(
+                hasTargetCredential -> {
+                    PasswordProtectedTargetUnlockPanel(
                         blockedPackage = blockedPackage,
+                        blockedDomain = blockedDomain,
                         authManager = authManager,
                         sessionManager = blockingSessionManager,
                         onUnlocked = { unlocked = true }
                     )
-                } else {
-                    Button(
-                        onClick = { showUnlockDialog = true },
-                        modifier = Modifier.fillMaxWidth().height(50.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Icon(Icons.Default.LockOpen, contentDescription = null, tint = DarkBg)
-                        Spacer(Modifier.width(8.dp))
-                        Text(
-                            stringResource(R.string.block_notice_unlock_with_password),
-                            color = DarkBg,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
                 }
-            } else if (credentialUnlockResolved) {
-                Text(
-                    text = stringResource(R.string.block_notice_no_password_unlock),
-                    color = TextHint,
-                    fontSize = 13.sp,
-                    textAlign = TextAlign.Center
-                )
-            }
-        }
-    }
-
-    if (showUnlockDialog) {
-        fun submit() {
-            if (password.isBlank() || verifying) return
-            scope.launch {
-                verifying = true
-                error = null
-                try {
-                    when (
-                        attemptUnlock(
-                            password = password,
-                            blockedPackage = blockedPackage,
-                            blockedDomain = blockedDomain,
-                            authManager = authManager,
-                            sessionManager = blockingSessionManager,
-                            deactivationCredentialManager = deactivationCredentialManager
-                        )
-                    ) {
-                        UnlockResult.SUCCESS -> {
-                            showUnlockDialog = false
-                            unlocked = true
-                        }
-                        UnlockResult.WRONG_PASSWORD -> {
-                            error = wrongPasswordMessage
-                            // O unico lugar onde a selfie faz sentido: alguem
-                            // tentando abrir um app que voce protegeu. Dispara na
-                            // primeira senha errada — ver IntruderCapturePolicy.
-                            //
-                            // Sem incrementFailedAttempts() aqui: aquele contador e
-                            // global e alimenta o limite da tela de bloqueio do
-                            // FocusGuard. Incrementa-lo a partir daqui faria uma
-                            // tentativa num app protegido contar contra o desbloqueio
-                            // do proprio app.
-                            if (IntruderCapturePolicy.shouldCapture(
-                                    surface = IntruderCapturePolicy
-                                        .Surface.BLOCKED_APP_UNLOCK,
-                                    photoCaptureEnabled = authManager.isPhotoCaptureEnabled()
-                                )
-                            ) {
-                                (context as? FragmentActivity)?.let { host ->
-                                    CameraManager(host).setupAndCaptureSilent(host) { _ -> }
-                                }
-                            }
-                        }
-                        UnlockResult.POMODORO -> error = pomodoroMessage
-                        UnlockResult.TIME_SESSION -> error = timeSessionMessage
-                        UnlockResult.NO_REVOCABLE_SESSION -> error = noSessionMessage
-                        UnlockResult.FAILURE -> error = failureMessage
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } finally {
-                    verifying = false
-                }
-            }
-        }
-
-        AlertDialog(
-            onDismissRequest = {
-                if (!verifying) {
-                    showUnlockDialog = false
-                    password = ""
-                    error = null
-                }
-            },
-            containerColor = DarkSurface,
-            title = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(Icons.Default.Lock, contentDescription = null, tint = AccentCyan)
-                    Spacer(Modifier.width(8.dp))
+                credentialUnlockResolved -> {
                     Text(
-                        stringResource(R.string.block_notice_unlock_title),
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold
+                        text = stringResource(R.string.block_notice_no_password_unlock),
+                        color = TextHint,
+                        fontSize = 13.sp,
+                        textAlign = TextAlign.Center
                     )
-                }
-            },
-            text = {
-                Column {
-                    Text(
-                        stringResource(R.string.block_notice_unlock_desc),
-                        color = TextSecondary,
-                        fontSize = 14.sp
-                    )
-                    Spacer(Modifier.height(16.dp))
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = {
-                            password = it
-                            error = null
-                        },
-                        modifier = Modifier.fillMaxWidth().focusRequester(focusRequester),
-                        singleLine = true,
-                        enabled = !verifying,
-                        isError = error != null,
-                        visualTransformation = PasswordVisualTransformation(),
-                        keyboardOptions = KeyboardOptions(
-                            keyboardType = KeyboardType.Password,
-                            imeAction = ImeAction.Done
-                        ),
-                        keyboardActions = KeyboardActions(onDone = { submit() }),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedTextColor = TextPrimary,
-                            unfocusedTextColor = TextPrimary,
-                            focusedBorderColor = AccentCyan
-                        )
-                    )
-                    error?.let {
-                        Text(
-                            text = it,
-                            color = DangerRed,
-                            fontSize = 12.sp,
-                            modifier = Modifier.padding(top = 8.dp)
-                        )
-                    }
-
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = { submit() },
-                    enabled = password.isNotBlank() && !verifying,
-                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-                ) {
-                    if (verifying) {
-                        CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp,
-                            color = DarkBg
-                        )
-                        Spacer(Modifier.width(8.dp))
-                    }
-                    Text(stringResource(R.string.sessions_confirm), color = DarkBg)
-                }
-            },
-            dismissButton = {
-                TextButton(
-                    onClick = { if (!verifying) showUnlockDialog = false }
-                ) {
-                    Text(stringResource(R.string.cancel), color = TextSecondary)
                 }
             }
-        )
-    }
-}
-
-private enum class UnlockResult {
-    SUCCESS,
-    WRONG_PASSWORD,
-    POMODORO,
-    TIME_SESSION,
-    NO_REVOCABLE_SESSION,
-    FAILURE
-}
-
-private suspend fun attemptUnlock(
-    password: String,
-    blockedPackage: String?,
-    blockedDomain: String?,
-    authManager: AuthManager,
-    sessionManager: BlockingSessionManager,
-    deactivationCredentialManager: DeactivationCredentialManager
-): UnlockResult {
-    return try {
-        when (
-            sessionManager.unlockPasswordProtectedLimit(
-                password = password,
-                blockedPackage = blockedPackage,
-                blockedDomain = blockedDomain
-            )
-        ) {
-            BlockingSessionManager.LimitUnlockResult.UNLOCKED ->
-                return UnlockResult.SUCCESS
-            BlockingSessionManager.LimitUnlockResult.FAILED ->
-                return UnlockResult.FAILURE
-            BlockingSessionManager.LimitUnlockResult.WRONG_PASSWORD,
-            BlockingSessionManager.LimitUnlockResult.NOT_FOUND -> Unit
         }
-
-        val masterCredentialVerified = when (deactivationCredentialManager.verify(password)) {
-            DeactivationCredentialManager.VerificationResult.PASSWORD_ACCEPTED,
-            DeactivationCredentialManager.VerificationResult.RECOVERY_ACCEPTED -> true
-            DeactivationCredentialManager.VerificationResult.REJECTED,
-            DeactivationCredentialManager.VerificationResult.NOT_CONFIGURED -> false
-        }
-        if (!masterCredentialVerified) return UnlockResult.WRONG_PASSWORD
-        when (
-            sessionManager.unlockPasswordSessionTarget(
-                blockedPackage = blockedPackage,
-                blockedDomain = blockedDomain
-            )
-        ) {
-            BlockingSessionManager.EndSessionResult.ENDED -> UnlockResult.SUCCESS
-            BlockingSessionManager.EndSessionResult.POMODORO_NOT_REVOCABLE -> UnlockResult.POMODORO
-            BlockingSessionManager.EndSessionResult.TIME_NOT_REVOCABLE -> UnlockResult.TIME_SESSION
-            BlockingSessionManager.EndSessionResult.NOT_FOUND -> UnlockResult.NO_REVOCABLE_SESSION
-            BlockingSessionManager.EndSessionResult.FAILED -> UnlockResult.FAILURE
-        }
-    } catch (cancelled: CancellationException) {
-        throw cancelled
-    } catch (error: Exception) {
-        FocusGuardLogger.logError("BlockNotice", "Erro ao desbloquear", error)
-        UnlockResult.FAILURE
     }
 }

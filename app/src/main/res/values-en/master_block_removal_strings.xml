@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="master_password_settings_title">Master password</string>
+    <string name="master_password_settings_subtitle">Used only for the Remove all blocks option</string>
+    <string name="master_remove_all_blocks_title">Remove all blocks</string>
+    <string name="master_remove_all_blocks_subtitle">Uses the master password to delete all configured blocks and limits</string>
+    <string name="master_remove_all_blocks_prompt">Enter the master password to remove all blocks. This password does not unlock individual apps or websites.</string>
+    <string name="master_remove_all_blocks_success">All blocks were removed</string>
+    <string name="master_remove_all_blocks_failed">Could not remove all blocks</string>
+    <string name="protected_settings_blocked_title">Protection active</string>
+    <string name="protected_settings_blocked_description">This setting cannot be changed while FocusGuard is enforcing any block. To end all protection, use Remove all blocks in Settings and confirm with the master password.</string>
+    <string name="protected_uninstall_blocked_description">FocusGuard cannot be uninstalled while protection is active. First use Remove all blocks in Settings; the master password is requested only for that action.</string>
+    <string name="uninstall_app_subtitle_no_master">Available without a password when no blocks are active</string>
+</resources>
