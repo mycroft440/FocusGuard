@@ -1,6 +1,7 @@
 package com.focusguard.ui.compose.components
 
-import android.graphics.drawable.Drawable
+import android.graphics.Bitmap
+import android.util.LruCache
 import androidx.annotation.DrawableRes
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -36,11 +37,11 @@ import kotlinx.coroutines.withContext
 /**
  * Single app-icon renderer used by blocking and usage-limit screens.
  *
- * Installed applications always use Android's real launcher icon. Known apps that
- * are not installed can still be configured preventively, so they fall back to
- * an icon bundled with FocusGuard (for the most visible presets) or to the
- * preset's domain favicon. A branded local mark stays behind the remote image,
- * which means an offline device never renders an empty icon.
+ * Launcher icons are decoded off the main thread and kept in a small process cache.
+ * The old implementation decoded the same icon again whenever a LazyColumn item was
+ * recreated while scrolling, which could create visible jank in the usage-limit
+ * catalogue. Known apps that are not installed can still use a bundled mark or,
+ * where the caller allows it, a remote favicon.
  */
 @Composable
 fun FocusGuardAppIcon(
@@ -48,20 +49,32 @@ fun FocusGuardAppIcon(
     appName: String,
     modifier: Modifier = Modifier,
     iconUrl: String? = null,
-    cornerRadius: Dp = 10.dp
+    cornerRadius: Dp = 10.dp,
+    allowRemoteFallback: Boolean = true
 ) {
     val context = LocalContext.current
-    var installedDrawable by remember(packageName) { mutableStateOf<Drawable?>(null) }
+    var installedBitmap by remember(packageName) {
+        mutableStateOf(appIconCache.get(packageName))
+    }
 
     LaunchedEffect(packageName) {
-        installedDrawable = withContext(Dispatchers.IO) {
-            runCatching { context.packageManager.getApplicationIcon(packageName) }.getOrNull()
+        if (installedBitmap != null) return@LaunchedEffect
+        val loaded = withContext(Dispatchers.IO) {
+            runCatching {
+                context.packageManager.getApplicationIcon(packageName)
+                    .toBitmap(APP_ICON_SIZE_PX, APP_ICON_SIZE_PX)
+            }.getOrNull()
+        }
+        if (loaded != null) {
+            appIconCache.put(packageName, loaded)
+            installedBitmap = loaded
         }
     }
 
     val bundledIcon = remember(packageName) { bundledPredefinedIcon(packageName) }
-    val remoteIconUrl = remember(packageName, iconUrl) {
-        iconUrl?.takeIf { it.isNotBlank() } ?: predefinedFaviconUrl(packageName)
+    val remoteIconUrl = remember(packageName, iconUrl, allowRemoteFallback) {
+        if (!allowRemoteFallback) null
+        else iconUrl?.takeIf { it.isNotBlank() } ?: predefinedFaviconUrl(packageName)
     }
     val shape = RoundedCornerShape(cornerRadius)
 
@@ -72,9 +85,9 @@ fun FocusGuardAppIcon(
         BrandedAppFallback(packageName = packageName, appName = appName)
 
         when {
-            installedDrawable != null -> {
-                val bitmap = remember(installedDrawable) {
-                    requireNotNull(installedDrawable).toBitmap(96, 96).asImageBitmap()
+            installedBitmap != null -> {
+                val bitmap = remember(installedBitmap) {
+                    requireNotNull(installedBitmap).asImageBitmap()
                 }
                 Image(
                     bitmap = bitmap,
@@ -165,3 +178,6 @@ private fun fallbackBrandColor(packageName: String): Color = when {
     packageName.contains("discord") -> Color(0xFF5865F2)
     else -> Color(packageName.hashCode()).copy(alpha = 1f)
 }
+
+private const val APP_ICON_SIZE_PX = 96
+private val appIconCache = object : LruCache<String, Bitmap>(96) {}
