@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="master_password_settings_title">Senha mestre</string>
+    <string name="master_password_settings_subtitle">Usada somente para a opção Remover todos os bloqueios</string>
     <string name="master_remove_all_blocks_title">Remover todos os bloqueios</string>
     <string name="master_remove_all_blocks_subtitle">Usa a senha mestre para apagar todos os bloqueios e limites configurados</string>
     <string name="master_remove_all_blocks_prompt">Digite a senha mestre para remover todos os bloqueios. Esta senha não desbloqueia aplicativos ou sites individualmente.</string>
