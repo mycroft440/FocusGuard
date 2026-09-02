@@ -93,7 +93,7 @@ class PomodoroManager @Inject constructor(
     private val _cycleState = MutableStateFlow<PomodoroCycleRuntime?>(null)
     val cycleState: StateFlow<PomodoroCycleRuntime?> = _cycleState.asStateFlow()
 
-    /** Emitido quando o plano inteiro termina, não a cada pausa. */
+    /** Emitido quando o plano encerra naturalmente ou por ação manual do usuário. */
     private val _onSessionFinished = MutableSharedFlow<Unit>(extraBufferCapacity = 1)
     val onSessionFinished = _onSessionFinished.asSharedFlow()
 
@@ -255,12 +255,11 @@ class PomodoroManager @Inject constructor(
         PomodoroForegroundService.start(context)
         if (session.isBlockingEnabled) {
             StrictPomodoroLock.save(context, session.endTime, session.durationMillis)
-            PomodoroForegroundService.scheduleWatchdogAlarm(context)
             launchStrictLockActivity()
         } else {
             StrictPomodoroLock.clear(context)
-            PomodoroForegroundService.cancelWatchdogAlarm(context)
         }
+        PomodoroForegroundService.scheduleWatchdogAlarm(context)
         startTicker()
     }
 
@@ -308,8 +307,8 @@ class PomodoroManager @Inject constructor(
                 .getAllActiveSessionsStatic()
                 .any { blockSession ->
                     blockSession.sessionType == "POMODORO" &&
-                        blockSession.isBlockingEnabled &&
-                        (blockSession.endTime ?: 0L) > now
+                    blockSession.isBlockingEnabled &&
+                    (blockSession.endTime ?: 0L) > now
                 }
             if (armed) {
                 sessionManager.checkAndEnforceStrict()
@@ -514,11 +513,10 @@ class PomodoroManager @Inject constructor(
         }
         if (blocking) {
             StrictPomodoroLock.save(context, endTime, durationMillis)
-            PomodoroForegroundService.scheduleWatchdogAlarm(context)
         } else {
             StrictPomodoroLock.clear(context)
-            PomodoroForegroundService.cancelWatchdogAlarm(context)
         }
+        PomodoroForegroundService.scheduleWatchdogAlarm(context)
 
         notifyBlockingChanged()
         FocusModeNotificationService.requestRefresh(context)
@@ -615,7 +613,10 @@ class PomodoroManager @Inject constructor(
 
     suspend fun stopSession() {
         finishMutex.withLock {
-            cleanupAllStateLocked(emitFinished = false, cancelAlarm = true)
+            val hadActivePlan = _cycleState.value?.active == true ||
+                planStore.readRuntime()?.active == true ||
+                _currentSession.value?.isActive == true
+            cleanupAllStateLocked(emitFinished = hadActivePlan, cancelAlarm = true)
         }
     }
 
