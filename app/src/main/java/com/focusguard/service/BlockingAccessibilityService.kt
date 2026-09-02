@@ -59,6 +59,7 @@ import com.focusguard.security.UsageAccessPausePolicy
 import com.focusguard.ui.BlockNoticeActivity
 import com.focusguard.ui.MasterRemovalActivity
 import com.focusguard.ui.PomodoroLockActivity
+import com.focusguard.utils.AppUsageLimitActivationUsage
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
 import com.focusguard.utils.UsageLimitForegroundPolicy
@@ -1243,20 +1244,29 @@ class BlockingAccessibilityService : AccessibilityService() {
             return emptySet()
         }
 
+        val now = System.currentTimeMillis()
         val startOfDay = Calendar.getInstance().apply {
+            timeInMillis = now
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
-        val usage = manager.queryAndAggregateUsageStats(startOfDay, System.currentTimeMillis())
-        val now = System.currentTimeMillis()
+        val usage = manager.queryAndAggregateUsageStats(startOfDay, now)
 
         return limits.filter { limit ->
-            val usedMinutes = UsageLimitForegroundPolicy.usedMinutes(
+            val totalDayUsageMillis =
                 usage[limit.packageName]?.totalTimeInForeground ?: 0L
+            val effectiveUsageMillis = AppUsageLimitActivationUsage.effectiveUsageMillis(
+                context = this,
+                usageStatsManager = manager,
+                limit = limit,
+                currentDayUsageMillis = totalDayUsageMillis,
+                dayStartMillis = startOfDay,
+                nowMillis = now
             )
-            usedMinutes >= limit.dailyLimitMinutes &&
+            UsageLimitForegroundPolicy.usedMinutes(effectiveUsageMillis) >=
+                limit.dailyLimitMinutes &&
                 limit.preventOpeningAfterLimit &&
                 WebsiteUsageLimitPolicy.isBlockingModeActive(
                     limit.lockMode,

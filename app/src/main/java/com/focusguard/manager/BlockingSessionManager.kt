@@ -34,6 +34,7 @@ import com.focusguard.security.PasswordAppUnlockStore
 import com.focusguard.security.SelfProtectionStateStore
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.service.PomodoroForegroundService
+import com.focusguard.utils.AppUsageLimitActivationUsage
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.UsageLimitForegroundPolicy
 import com.focusguard.utils.WebsiteBlocker
@@ -1638,6 +1639,7 @@ class BlockingSessionManager @Inject constructor(
             UsageStatsManager
         if (usageStatsManager == null) return emptyList()
         val startOfDay = Calendar.getInstance().apply {
+            timeInMillis = now
             set(Calendar.HOUR_OF_DAY, 0)
             set(Calendar.MINUTE, 0)
             set(Calendar.SECOND, 0)
@@ -1646,10 +1648,18 @@ class BlockingSessionManager @Inject constructor(
         val usage = usageStatsManager.queryAndAggregateUsageStats(startOfDay, now)
 
         return limits.filter { limit ->
-            val usedMinutes = UsageLimitForegroundPolicy.usedMinutes(
+            val totalDayUsageMillis =
                 usage[limit.packageName]?.totalTimeInForeground ?: 0L
+            val effectiveUsageMillis = AppUsageLimitActivationUsage.effectiveUsageMillis(
+                context = context,
+                usageStatsManager = usageStatsManager,
+                limit = limit,
+                currentDayUsageMillis = totalDayUsageMillis,
+                dayStartMillis = startOfDay,
+                nowMillis = now
             )
-            usedMinutes >= limit.dailyLimitMinutes &&
+            UsageLimitForegroundPolicy.usedMinutes(effectiveUsageMillis) >=
+                limit.dailyLimitMinutes &&
                 limit.preventOpeningAfterLimit &&
                 WebsiteUsageLimitPolicy.isBlockingModeActive(
                     limit.lockMode,

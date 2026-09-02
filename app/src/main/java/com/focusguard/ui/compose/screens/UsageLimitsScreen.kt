@@ -51,6 +51,7 @@ import com.focusguard.ui.compose.components.limits.UsageLimitItem
 import com.focusguard.ui.compose.components.limits.WebsiteLimitItem
 import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.ui.compose.theme.*
+import com.focusguard.utils.AppUsageLimitActivationUsage
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -329,7 +330,9 @@ fun AppLimitsTab(
             val limitDao = db.appUsageLimitDao()
             val existingLimits = limitDao.getAllStatic().associateBy { it.packageName }
             val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as android.app.usage.UsageStatsManager
+            val now = System.currentTimeMillis()
             val cal = java.util.Calendar.getInstance().apply {
+                timeInMillis = now
                 set(java.util.Calendar.HOUR_OF_DAY, 0)
                 set(java.util.Calendar.MINUTE, 0)
                 set(java.util.Calendar.SECOND, 0)
@@ -337,7 +340,7 @@ fun AppLimitsTab(
             }
             val stats = usageStatsManager.queryAndAggregateUsageStats(
                 cal.timeInMillis,
-                System.currentTimeMillis()
+                now
             )
             val discoveredSocialPackages = PredefinedApps.PREVENTIVE_APPS
                 .asSequence()
@@ -354,12 +357,27 @@ fun AppLimitsTab(
                     discoveredSocialPackages += packageName
                 }
                 val limit = existingLimits[packageName]
+                val totalDayUsageMillis =
+                    stats[packageName]?.totalTimeInForeground ?: 0L
+                val displayedUsageMillis = limit
+                    ?.takeIf { it.isEnabled }
+                    ?.let { activeLimit ->
+                        AppUsageLimitActivationUsage.effectiveUsageMillis(
+                            context = context,
+                            usageStatsManager = usageStatsManager,
+                            limit = activeLimit,
+                            currentDayUsageMillis = totalDayUsageMillis,
+                            dayStartMillis = cal.timeInMillis,
+                            nowMillis = now
+                        )
+                    }
+                    ?: totalDayUsageMillis
                 UsageLimitAppUi(
                     packageName = packageName,
                     appName = info.loadLabel(pm).toString(),
                     currentLimitMinutes = limit?.dailyLimitMinutes,
                     isEnabled = limit?.isEnabled ?: false,
-                    usageMs = stats[packageName]?.totalTimeInForeground ?: 0L,
+                    usageMs = displayedUsageMillis,
                     lockMode = limit?.lockMode ?: "NONE",
                     lockPasswordHash = limit?.lockPasswordHash,
                     lockUntilTimestamp = limit?.lockUntilTimestamp
@@ -540,6 +558,7 @@ fun AppLimitsTab(
                             appToSave.copy(
                                 currentLimitMinutes = minutes,
                                 isEnabled = enabled,
+                                usageMs = 0L,
                                 lockMode = lockMode,
                                 lockPasswordHash = null,
                                 lockUntilTimestamp = lockUntil
