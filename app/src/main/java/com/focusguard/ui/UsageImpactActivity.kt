@@ -18,18 +18,19 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.weight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -51,6 +52,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
@@ -76,11 +78,12 @@ import kotlinx.coroutines.withContext
 
 class UsageImpactActivity : AppCompatActivity() {
     private var nativeAd by mutableStateOf<NativeAd?>(null)
+    private var targetPackage by mutableStateOf("")
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val packageName = intent.getStringExtra(EXTRA_PACKAGE_NAME).orEmpty()
-        if (packageName.isBlank()) {
+        targetPackage = intent.getStringExtra(EXTRA_PACKAGE_NAME).orEmpty()
+        if (targetPackage.isBlank()) {
             finish()
             return
         }
@@ -89,13 +92,28 @@ class UsageImpactActivity : AppCompatActivity() {
             FocusGuardTheme {
                 UsageImpactScreen(
                     activity = this,
-                    packageName = packageName,
+                    packageName = targetPackage,
                     nativeAd = nativeAd,
                     onClose = ::finish
                 )
             }
         }
 
+        loadNativeAd()
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        val nextPackage = intent.getStringExtra(EXTRA_PACKAGE_NAME).orEmpty()
+        if (nextPackage.isBlank()) {
+            finish()
+            return
+        }
+        targetPackage = nextPackage
+    }
+
+    private fun loadNativeAd() {
         FocusGuardAds.loadNative(
             activity = this,
             onLoaded = { loadedAd ->
@@ -118,7 +136,11 @@ class UsageImpactActivity : AppCompatActivity() {
         fun createIntent(context: Context, packageName: String): Intent =
             Intent(context, UsageImpactActivity::class.java).apply {
                 putExtra(EXTRA_PACKAGE_NAME, packageName)
-                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                addFlags(
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_NO_ANIMATION
+                )
             }
     }
 }
@@ -133,6 +155,15 @@ private data class UsageImpactSnapshot(
     val endsAt: Long?
 )
 
+/**
+ * Fixed, non-scrollable impact surface.
+ *
+ * The previous layout combined a tall native ad, generous spacers and a large
+ * anchored banner inside a scrolling column. On common phones the user had to
+ * scroll just to reach the comparison text and Back button. This layout reserves
+ * one compact native-ad slot and keeps the adaptive banner anchored by Scaffold,
+ * so the entire block result remains on a single screen.
+ */
 @Composable
 private fun UsageImpactScreen(
     activity: ComponentActivity,
@@ -141,9 +172,14 @@ private fun UsageImpactScreen(
     onClose: () -> Unit
 ) {
     val context = LocalContext.current
+    val configuration = LocalConfiguration.current
+    val compact = configuration.screenHeightDp <= 760
     val snapshot by produceState<UsageImpactSnapshot?>(initialValue = null, packageName) {
         value = loadUsageImpact(context, packageName)
     }
+
+    val horizontalPadding = if (compact) 16.dp else 20.dp
+    val nativeHeight = if (compact) 172.dp else 204.dp
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
@@ -153,109 +189,123 @@ private fun UsageImpactScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 24.dp, vertical = 20.dp),
+                .padding(horizontal = horizontalPadding, vertical = if (compact) 8.dp else 12.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Text(
                 text = "Impacto do bloqueio",
                 color = TextPrimary,
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold
+                fontSize = if (compact) 21.sp else 23.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
             )
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(if (compact) 2.dp else 4.dp))
             Text(
-                text = "Veja como seu uso mudou antes e depois de ativar o bloqueio ou limitador.",
+                text = "Compare o uso antes e depois do bloqueio.",
                 color = TextSecondary,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                fontSize = if (compact) 11.sp else 12.sp,
+                maxLines = 1
             )
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(if (compact) 6.dp else 9.dp))
 
             val data = snapshot
             if (data == null) {
-                CircularProgressIndicator()
+                Box(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator(modifier = Modifier.size(34.dp))
+                }
             } else {
                 Text(
                     text = data.appName,
                     color = TextPrimary,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.SemiBold
+                    fontSize = if (compact) 16.sp else 18.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1
                 )
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(if (compact) 6.dp else 8.dp))
+
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     UsageCard(
-                        modifier = Modifier.fillMaxWidth(0.48f),
+                        modifier = Modifier.weight(1f),
                         title = "Antes",
-                        value = formatDuration(data.beforeMillis)
+                        value = formatDuration(data.beforeMillis),
+                        compact = compact
                     )
                     UsageCard(
-                        modifier = Modifier.fillMaxWidth(0.48f),
+                        modifier = Modifier.weight(1f),
                         title = "Depois",
-                        value = formatDuration(data.afterMillis)
+                        value = formatDuration(data.afterMillis),
+                        compact = compact
                     )
                 }
-                Spacer(Modifier.height(18.dp))
+                Spacer(Modifier.height(if (compact) 6.dp else 9.dp))
 
                 val reduction = if (data.beforeMillis > 0L) {
                     ((1.0 - data.afterMillis.toDouble() / data.beforeMillis.toDouble()) * 100.0)
                         .roundToInt()
                 } else null
-                if (reduction != null) {
-                    Text(
-                        text = if (reduction >= 0) {
-                            "Uso reduzido em ${reduction}%"
-                        } else {
-                            "Uso aumentou em ${-reduction}%"
-                        },
-                        color = if (reduction >= 0) SuccessGreen else TextSecondary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp
-                    )
-                }
+                Text(
+                    text = when {
+                        reduction == null -> "Bloqueio ativo"
+                        reduction >= 0 -> "Uso reduzido em ${reduction}%"
+                        else -> "Uso aumentou em ${-reduction}%"
+                    },
+                    color = if (reduction == null || reduction >= 0) SuccessGreen else TextSecondary,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = if (compact) 15.sp else 17.sp,
+                    maxLines = 1
+                )
+                Spacer(Modifier.height(if (compact) 6.dp else 8.dp))
 
-                if (nativeAd != null) {
-                    Spacer(Modifier.height(24.dp))
-                    NativeImpactAd(nativeAd)
-                    Spacer(Modifier.height(24.dp))
-                } else {
-                    Spacer(Modifier.height(18.dp))
-                }
+                ImpactNativeAdSlot(
+                    nativeAd = nativeAd,
+                    compact = compact,
+                    height = nativeHeight
+                )
+                Spacer(Modifier.height(if (compact) 5.dp else 7.dp))
 
                 Text(
                     text = impactDescription(data),
                     color = TextSecondary,
                     textAlign = TextAlign.Center,
-                    fontSize = 13.sp
+                    fontSize = if (compact) 10.sp else 11.sp,
+                    lineHeight = if (compact) 12.sp else 14.sp,
+                    maxLines = 2
                 )
-            }
+                Spacer(Modifier.height(if (compact) 5.dp else 7.dp))
 
-            Spacer(Modifier.height(32.dp))
-            Button(onClick = onClose, modifier = Modifier.fillMaxWidth()) {
-                Text("Voltar")
+                Button(
+                    onClick = onClose,
+                    modifier = Modifier.fillMaxWidth().height(if (compact) 42.dp else 46.dp)
+                ) {
+                    Text("Voltar", fontSize = if (compact) 14.sp else 15.sp)
+                }
             }
-            Spacer(Modifier.height(32.dp))
         }
     }
 }
 
 private fun impactDescription(data: UsageImpactSnapshot): String {
-    val period = "Comparação com períodos equivalentes de ${formatWindow(data.windowMillis)}."
+    val period = "Períodos equivalentes de ${formatWindow(data.windowMillis)}."
     return when (data.interventionType) {
         UsageInterventionType.TIME_BLOCK -> {
             val end = data.endsAt?.takeIf { it > System.currentTimeMillis() }
             if (end != null) {
-                "$period Bloqueio por tempo ativo até ${formatTimestamp(end)}."
+                "$period Bloqueio ativo até ${formatTimestamp(end)}."
             } else {
-                "$period Bloqueio por tempo."
+                "$period Bloqueio por tempo ativo."
             }
         }
         UsageInterventionType.USAGE_LIMIT -> {
             val limit = data.dailyLimitMinutes
             if (limit != null) {
-                "$period Limite configurado: $limit min/dia."
+                "$period Limite: $limit min/dia."
             } else {
                 "$period Limitador diário ativo."
             }
@@ -264,26 +314,45 @@ private fun impactDescription(data: UsageImpactSnapshot): String {
 }
 
 @Composable
-private fun NativeImpactAd(nativeAd: NativeAd) {
-    key(nativeAd) {
+private fun ImpactNativeAdSlot(
+    nativeAd: NativeAd?,
+    compact: Boolean,
+    height: Dp
+) {
+    if (nativeAd == null) {
+        Card(
+            modifier = Modifier.fillMaxWidth().height(height),
+            shape = RoundedCornerShape(16.dp),
+            colors = CardDefaults.cardColors(containerColor = DarkSurface)
+        ) {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(modifier = Modifier.size(28.dp))
+            }
+        }
+        return
+    }
+
+    key(nativeAd, compact) {
         AndroidView(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 260.dp),
-            factory = { context -> createNativeImpactAdView(context, nativeAd) }
+            modifier = Modifier.fillMaxWidth().height(height),
+            factory = { context -> createNativeImpactAdView(context, nativeAd, compact) }
         )
     }
 }
 
-private fun createNativeImpactAdView(context: Context, nativeAd: NativeAd): NativeAdView {
+private fun createNativeImpactAdView(
+    context: Context,
+    nativeAd: NativeAd,
+    compact: Boolean
+): NativeAdView {
     val density = context.resources.displayMetrics.density
     fun dp(value: Int): Int = (value * density).roundToInt()
 
     val root = NativeAdView(context).apply {
-        setPadding(dp(16), dp(14), dp(16), dp(16))
+        setPadding(dp(10), dp(8), dp(10), dp(8))
         background = GradientDrawable().apply {
             setColor(Color.rgb(31, 34, 38))
-            cornerRadius = dp(18).toFloat()
+            cornerRadius = dp(16).toFloat()
         }
     }
 
@@ -298,21 +367,22 @@ private fun createNativeImpactAdView(context: Context, nativeAd: NativeAd): Nati
     val attribution = AndroidTextView(context).apply {
         text = "Anúncio"
         setTextColor(Color.LTGRAY)
-        textSize = 11f
+        textSize = 9f
         setTypeface(typeface, Typeface.BOLD)
+        maxLines = 1
     }
     content.addView(attribution)
 
     val header = LinearLayout(context).apply {
         orientation = LinearLayout.HORIZONTAL
         gravity = Gravity.CENTER_VERTICAL
-        setPadding(0, dp(10), 0, dp(10))
+        setPadding(0, dp(4), 0, dp(4))
     }
 
     val icon = ImageView(context).apply {
         scaleType = ImageView.ScaleType.CENTER_CROP
-        layoutParams = LinearLayout.LayoutParams(dp(48), dp(48)).apply {
-            marginEnd = dp(12)
+        layoutParams = LinearLayout.LayoutParams(dp(34), dp(34)).apply {
+            marginEnd = dp(8)
         }
     }
     header.addView(icon)
@@ -323,13 +393,13 @@ private fun createNativeImpactAdView(context: Context, nativeAd: NativeAd): Nati
     }
     val headline = AndroidTextView(context).apply {
         setTextColor(Color.WHITE)
-        textSize = 17f
+        textSize = if (compact) 13f else 14f
         setTypeface(typeface, Typeface.BOLD)
-        maxLines = 2
+        maxLines = 1
     }
     val advertiser = AndroidTextView(context).apply {
         setTextColor(Color.LTGRAY)
-        textSize = 12f
+        textSize = 9f
         maxLines = 1
     }
     headerText.addView(headline)
@@ -340,25 +410,27 @@ private fun createNativeImpactAdView(context: Context, nativeAd: NativeAd): Nati
     val mediaView = MediaView(context).apply {
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            dp(170)
+            dp(if (compact) 58 else 78)
         )
     }
     content.addView(mediaView)
 
     val body = AndroidTextView(context).apply {
         setTextColor(Color.LTGRAY)
-        textSize = 14f
-        setPadding(0, dp(12), 0, dp(10))
-        maxLines = 3
+        textSize = if (compact) 10f else 11f
+        setPadding(0, dp(4), 0, dp(3))
+        maxLines = 1
     }
     content.addView(body)
 
     val callToAction = AndroidButton(context).apply {
         isAllCaps = false
-        minHeight = dp(48)
+        textSize = if (compact) 11f else 12f
+        minHeight = dp(if (compact) 32 else 36)
+        minimumHeight = dp(if (compact) 32 else 36)
         layoutParams = LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
+            dp(if (compact) 34 else 38)
         )
     }
     content.addView(callToAction)
@@ -418,19 +490,30 @@ private fun ImpactRevenueBanner(activity: ComponentActivity) {
 }
 
 @Composable
-private fun UsageCard(modifier: Modifier, title: String, value: String) {
+private fun UsageCard(
+    modifier: Modifier,
+    title: String,
+    value: String,
+    compact: Boolean
+) {
     Card(
         modifier = modifier,
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = DarkSurface)
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth().padding(18.dp),
+            modifier = Modifier.fillMaxWidth().padding(vertical = if (compact) 8.dp else 11.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(title, color = TextSecondary, fontSize = 13.sp)
-            Spacer(Modifier.height(6.dp))
-            Text(value, color = TextPrimary, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text(title, color = TextSecondary, fontSize = if (compact) 11.sp else 12.sp)
+            Spacer(Modifier.height(2.dp))
+            Text(
+                value,
+                color = TextPrimary,
+                fontSize = if (compact) 18.sp else 20.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1
+            )
         }
     }
 }
