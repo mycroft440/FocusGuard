@@ -37,6 +37,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.doOnPreDraw
+import androidx.lifecycle.lifecycleScope
 import com.focusguard.R
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
@@ -57,7 +58,9 @@ import com.focusguard.usage.UsageImpactRouter
 import com.focusguard.utils.FocusGuardLogger
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class BlockNoticeActivity : AppCompatActivity() {
@@ -73,6 +76,14 @@ class BlockNoticeActivity : AppCompatActivity() {
     private var windowFocused = false
     private var pendingCurtainGeneration = 0L
     private var freshFrameGeneration = 0L
+
+    // A usage-limit block can reuse the same singleTop Activity many times. Keep
+    // an attempt id so every new interception gets its own impact-route decision,
+    // even when the visible block payload is identical to the previous one.
+    private var blockAttemptId = 0L
+    private var pendingUsageImpactAttemptId = 0L
+    private var pendingUsageImpactPackage: String? = null
+    private var usageImpactJob: Job? = null
 
     private data class NoticePayload(
         val strictBlock: Boolean,
@@ -106,6 +117,7 @@ class BlockNoticeActivity : AppCompatActivity() {
         super.onResume()
         activityResumed = true
         acknowledgePendingNoticeIfPresented()
+        routeToUsageImpactIfReady()
     }
 
     override fun onPause() {
@@ -116,7 +128,16 @@ class BlockNoticeActivity : AppCompatActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         windowFocused = hasFocus
-        if (hasFocus) acknowledgePendingNoticeIfPresented()
+        if (hasFocus) {
+            acknowledgePendingNoticeIfPresented()
+            routeToUsageImpactIfReady()
+        }
+    }
+
+    override fun onDestroy() {
+        usageImpactJob?.cancel()
+        usageImpactJob = null
+        super.onDestroy()
     }
 
     private fun showBlockNotice(sourceIntent: Intent) {
@@ -144,6 +165,9 @@ class BlockNoticeActivity : AppCompatActivity() {
         pendingCurtainGeneration = curtainGeneration
         freshFrameGeneration = 0L
 
+        val attemptId = ++blockAttemptId
+        scheduleUsageImpactRoute(payload, attemptId)
+
         if (renderedNotice == payload) {
             acknowledgeNotice(curtainGeneration)
             return
@@ -162,8 +186,7 @@ class BlockNoticeActivity : AppCompatActivity() {
                     blockingSessionManager = blockingSessionManager,
                     onReturnToTarget = ::finish,
                     onRedirectBlockedWebsite = ::redirectBlockedWebsite,
-                    onGoToPomodoroLock = ::goToPomodoroLock,
-                    onGoToUsageImpact = ::goToUsageImpact
+                    onGoToPomodoroLock = ::goToPomodoroLock
                 )
             }
         }
@@ -186,8 +209,61 @@ class BlockNoticeActivity : AppCompatActivity() {
                 )
             }
             acknowledgePendingNoticeIfPresented()
+            routeToUsageImpactIfReady()
         }
         window.decorView.invalidate()
+    }
+
+    /**
+     * Resolve whether this exact block attempt came from an active app usage limit.
+     * The decision runs while the notice is drawing, instead of waiting an arbitrary
+     * 650 ms. Navigation itself is held until the curtain handshake confirms that a
+     * safe FocusGuard frame was actually presented, preventing the impact Activity
+     * from racing the instant blocking curtain.
+     */
+    private fun scheduleUsageImpactRoute(payload: NoticePayload, attemptId: Long) {
+        usageImpactJob?.cancel()
+        usageImpactJob = null
+        pendingUsageImpactAttemptId = 0L
+        pendingUsageImpactPackage = null
+
+        val packageName = payload.blockedPackage
+        if (payload.strictBlock || payload.blockedDomain != null || packageName.isNullOrBlank()) {
+            return
+        }
+
+        usageImpactJob = lifecycleScope.launch {
+            val shouldShow = UsageImpactRouter.shouldShowForBlockedApp(
+                this@BlockNoticeActivity,
+                packageName
+            )
+            if (!shouldShow ||
+                attemptId != blockAttemptId ||
+                isFinishing ||
+                isDestroyed
+            ) return@launch
+
+            pendingUsageImpactAttemptId = attemptId
+            pendingUsageImpactPackage = packageName
+            routeToUsageImpactIfReady()
+        }
+    }
+
+    private fun routeToUsageImpactIfReady() {
+        val packageName = pendingUsageImpactPackage ?: return
+        if (pendingUsageImpactAttemptId != blockAttemptId) return
+        if (pendingCurtainGeneration > 0L ||
+            !noticeDrawn ||
+            !activityResumed ||
+            !windowFocused ||
+            isFinishing ||
+            isDestroyed
+        ) return
+
+        pendingUsageImpactPackage = null
+        pendingUsageImpactAttemptId = 0L
+        usageImpactJob = null
+        goToUsageImpact(packageName)
     }
 
     private fun acknowledgeNotice(curtainGeneration: Long) {
@@ -202,13 +278,17 @@ class BlockNoticeActivity : AppCompatActivity() {
                 freshFrameGeneration = curtainGeneration
             }
             acknowledgePendingNoticeIfPresented()
+            routeToUsageImpactIfReady()
         }
         window.decorView.invalidate()
     }
 
     private fun acknowledgePendingNoticeIfPresented(): Boolean {
         val generation = pendingCurtainGeneration
-        if (generation <= 0L) return false
+        if (generation <= 0L) {
+            routeToUsageImpactIfReady()
+            return false
+        }
         val decor = window.decorView
         val ready = SafeSurfaceReadinessPolicy.decide(
             alreadyDrawn = noticeDrawn,
@@ -221,6 +301,7 @@ class BlockNoticeActivity : AppCompatActivity() {
         pendingCurtainGeneration = 0L
         freshFrameGeneration = 0L
         CurtainDestinationReadyCoordinator.notifyReady(generation)
+        routeToUsageImpactIfReady()
         return true
     }
 
@@ -285,8 +366,7 @@ private fun BlockNoticeContent(
     blockingSessionManager: BlockingSessionManager,
     onReturnToTarget: () -> Unit,
     onRedirectBlockedWebsite: (String) -> Unit,
-    onGoToPomodoroLock: () -> Unit,
-    onGoToUsageImpact: (String) -> Unit
+    onGoToPomodoroLock: () -> Unit
 ) {
     val context = LocalContext.current
     val unlockStore = remember(context) { PasswordAppUnlockStore(context) }
@@ -304,16 +384,6 @@ private fun BlockNoticeContent(
     val hasTargetCredential = credentialUnlockResolved &&
         credentialUnlockOrigin == BiometricAppUnlockPolicy.BlockOrigin.PASSWORD_SESSION &&
         customUnlockConfig != null
-
-    LaunchedEffect(strictBlock, blockedPackage, blockedDomain) {
-        val packageToInspect = blockedPackage
-        if (!strictBlock && blockedDomain == null && !packageToInspect.isNullOrBlank() &&
-            UsageImpactRouter.shouldShowForBlockedApp(context, packageToInspect)
-        ) {
-            delay(650L)
-            onGoToUsageImpact(packageToInspect)
-        }
-    }
 
     LaunchedEffect(strictBlock, blockedPackage, blockedDomain) {
         credentialUnlockResolved = false
