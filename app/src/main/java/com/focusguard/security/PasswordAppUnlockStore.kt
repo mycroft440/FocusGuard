@@ -2,6 +2,7 @@ package com.focusguard.security
 
 import android.content.Context
 import com.focusguard.utils.SecurePrefsManager
+import com.focusguard.utils.WebsiteBlocker
 
 enum class PasswordAppUnlockMode {
     PASSWORD,
@@ -19,7 +20,13 @@ data class PasswordAppUnlockConfig(
         get() = mode != PasswordAppUnlockMode.BIOMETRIC_ONLY
 }
 
-/** Per-app credential used only to open apps protected by a PASSWORD session. */
+/**
+ * Credential store for targets protected by a PASSWORD session.
+ *
+ * App package names intentionally keep their historical raw key so existing
+ * installations remain compatible. Website keys use a namespaced, normalized
+ * identifier. Neither kind ever reads or writes the master credential.
+ */
 class PasswordAppUnlockStore(context: Context) {
     private val preferences = SecurePrefsManager(context.applicationContext).prefs
 
@@ -29,9 +36,37 @@ class PasswordAppUnlockStore(context: Context) {
         credential: String?,
         biometricEnabled: Boolean,
         hidePatternTrace: Boolean
+    ): Boolean = saveForTargets(
+        targetIds = packageNames.mapNotNull(::targetIdForPackage),
+        mode = mode,
+        credential = credential,
+        biometricEnabled = biometricEnabled,
+        hidePatternTrace = hidePatternTrace
+    )
+
+    fun saveForWebsites(
+        websiteRules: Collection<String>,
+        mode: PasswordAppUnlockMode,
+        credential: String?,
+        biometricEnabled: Boolean,
+        hidePatternTrace: Boolean
+    ): Boolean = saveForTargets(
+        targetIds = websiteRules.mapNotNull(::targetIdForWebsite),
+        mode = mode,
+        credential = credential,
+        biometricEnabled = biometricEnabled,
+        hidePatternTrace = hidePatternTrace
+    )
+
+    fun saveForTargets(
+        targetIds: Collection<String>,
+        mode: PasswordAppUnlockMode,
+        credential: String?,
+        biometricEnabled: Boolean,
+        hidePatternTrace: Boolean
     ): Boolean {
-        val targets = packageNames.filter(String::isNotBlank).distinct()
-        require(targets.isNotEmpty()) { "É necessário selecionar ao menos um aplicativo" }
+        val targets = targetIds.filter(String::isNotBlank).distinct()
+        require(targets.isNotEmpty()) { "É necessário selecionar ao menos um alvo" }
         require(mode == PasswordAppUnlockMode.BIOMETRIC_ONLY || !credential.isNullOrBlank()) {
             "A credencial não pode ficar vazia"
         }
@@ -39,8 +74,8 @@ class PasswordAppUnlockStore(context: Context) {
             ?.takeIf { mode != PasswordAppUnlockMode.BIOMETRIC_ONLY }
             ?.let(::serializeSecret)
         val editor = preferences.edit()
-        targets.forEach { packageName ->
-            val prefix = prefix(packageName)
+        targets.forEach { targetId ->
+            val prefix = prefix(targetId)
             editor.putString(prefix + KEY_MODE, mode.name)
             if (verifier == null) editor.remove(prefix + KEY_VERIFIER)
             else editor.putString(prefix + KEY_VERIFIER, verifier)
@@ -57,8 +92,14 @@ class PasswordAppUnlockStore(context: Context) {
         return editor.commit()
     }
 
-    fun get(packageName: String?): PasswordAppUnlockConfig? {
-        val target = packageName?.takeIf(String::isNotBlank) ?: return null
+    fun get(packageName: String?): PasswordAppUnlockConfig? =
+        targetIdForPackage(packageName)?.let(::getTarget)
+
+    fun getWebsite(websiteRule: String?): PasswordAppUnlockConfig? =
+        targetIdForWebsite(websiteRule)?.let(::getTarget)
+
+    fun getTarget(targetId: String?): PasswordAppUnlockConfig? {
+        val target = targetId?.takeIf(String::isNotBlank) ?: return null
         val prefix = prefix(target)
         val modeName = preferences.getString(prefix + KEY_MODE, null) ?: return null
         val mode = runCatching { PasswordAppUnlockMode.valueOf(modeName) }.getOrNull() ?: return null
@@ -73,18 +114,27 @@ class PasswordAppUnlockStore(context: Context) {
         )
     }
 
-    fun verify(packageName: String?, credential: String): Boolean {
-        val target = packageName?.takeIf(String::isNotBlank) ?: return false
+    fun verify(packageName: String?, credential: String): Boolean =
+        targetIdForPackage(packageName)?.let { verifyTarget(it, credential) } == true
+
+    fun verifyWebsite(websiteRule: String?, credential: String): Boolean =
+        targetIdForWebsite(websiteRule)?.let { verifyTarget(it, credential) } == true
+
+    fun verifyTarget(targetId: String?, credential: String): Boolean {
+        val target = targetId?.takeIf(String::isNotBlank) ?: return false
         val prefix = prefix(target)
-        val config = get(target) ?: return false
+        val config = getTarget(target) ?: return false
         if (!config.hasTypedCredential) return false
         val verifier = preferences.getString(prefix + KEY_VERIFIER, null) ?: return false
         return AuthManager.verifySerializedPassword(credential, verifier)
     }
 
-    fun setBiometricEnabled(packageName: String?, enabled: Boolean): Boolean {
-        val target = packageName?.takeIf(String::isNotBlank) ?: return false
-        val config = get(target) ?: return false
+    fun setBiometricEnabled(packageName: String?, enabled: Boolean): Boolean =
+        targetIdForPackage(packageName)?.let { setBiometricEnabledForTarget(it, enabled) } == true
+
+    fun setBiometricEnabledForTarget(targetId: String?, enabled: Boolean): Boolean {
+        val target = targetId?.takeIf(String::isNotBlank) ?: return false
+        val config = getTarget(target) ?: return false
         if (config.mode == PasswordAppUnlockMode.BIOMETRIC_ONLY && !enabled) return false
         return preferences.edit()
             .putBoolean(prefix(target) + KEY_BIOMETRIC_ENABLED, enabled)
@@ -92,18 +142,29 @@ class PasswordAppUnlockStore(context: Context) {
             .commit()
     }
 
-    fun markBiometricOfferShown(packageName: String?): Boolean {
-        val target = packageName?.takeIf(String::isNotBlank) ?: return false
-        if (get(target) == null) return false
+    fun markBiometricOfferShown(packageName: String?): Boolean =
+        targetIdForPackage(packageName)?.let(::markBiometricOfferShownForTarget) == true
+
+    fun markBiometricOfferShownForTarget(targetId: String?): Boolean {
+        val target = targetId?.takeIf(String::isNotBlank) ?: return false
+        if (getTarget(target) == null) return false
         return preferences.edit()
             .putBoolean(prefix(target) + KEY_BIOMETRIC_OFFER_SHOWN, true)
             .commit()
     }
 
     fun clearPackages(packageNames: Collection<String>) {
+        clearTargets(packageNames.mapNotNull(::targetIdForPackage))
+    }
+
+    fun clearWebsites(websiteRules: Collection<String>) {
+        clearTargets(websiteRules.mapNotNull(::targetIdForWebsite))
+    }
+
+    fun clearTargets(targetIds: Collection<String>) {
         val editor = preferences.edit()
-        packageNames.filter(String::isNotBlank).distinct().forEach { packageName ->
-            val prefix = prefix(packageName)
+        targetIds.filter(String::isNotBlank).distinct().forEach { targetId ->
+            val prefix = prefix(targetId)
             editor.remove(prefix + KEY_MODE)
             editor.remove(prefix + KEY_VERIFIER)
             editor.remove(prefix + KEY_BIOMETRIC_ENABLED)
@@ -124,12 +185,26 @@ class PasswordAppUnlockStore(context: Context) {
     companion object {
         const val MIN_PASSWORD_LENGTH = 6
         const val MIN_PATTERN_POINTS = 4
+        private const val WEBSITE_TARGET_PREFIX = "site:"
         private const val KEY_NAMESPACE = "password_app_unlock."
         private const val KEY_MODE = ".mode"
         private const val KEY_VERIFIER = ".verifier"
         private const val KEY_BIOMETRIC_ENABLED = ".biometric_enabled"
         private const val KEY_HIDE_PATTERN = ".hide_pattern"
         private const val KEY_BIOMETRIC_OFFER_SHOWN = ".biometric_offer_shown"
+
+        fun targetIdForPackage(packageName: String?): String? =
+            packageName?.trim()?.takeIf(String::isNotBlank)
+
+        fun targetIdForWebsite(websiteRule: String?): String? = websiteRule
+            ?.let(WebsiteBlocker::normalizeRule)
+            ?.takeIf(String::isNotBlank)
+            ?.let { WEBSITE_TARGET_PREFIX + it }
+
+        fun websiteRuleFromTargetId(targetId: String?): String? = targetId
+            ?.takeIf { it.startsWith(WEBSITE_TARGET_PREFIX) }
+            ?.removePrefix(WEBSITE_TARGET_PREFIX)
+            ?.takeIf(String::isNotBlank)
 
         fun isPasswordValid(value: String): Boolean =
             value.length >= MIN_PASSWORD_LENGTH && value.any(Char::isLetter) && value.any(Char::isDigit)
@@ -143,7 +218,7 @@ class PasswordAppUnlockStore(context: Context) {
         fun decodePattern(value: String): List<Int> =
             value.split('-').mapNotNull(String::toIntOrNull).filter { it in 0..8 }
 
-        private fun prefix(packageName: String): String = KEY_NAMESPACE + packageName
+        private fun prefix(targetId: String): String = KEY_NAMESPACE + targetId
 
         private fun serializeSecret(secret: String): String {
             val salt = AuthManager.generateSalt()
