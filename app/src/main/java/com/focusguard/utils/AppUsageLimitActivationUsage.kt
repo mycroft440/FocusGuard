@@ -11,15 +11,25 @@ import com.focusguard.database.AppUsageLimit
  * UsageStats gives us a cheap aggregate from local midnight to now. Querying a
  * second arbitrary range for every app on every 1-second enforcement pulse would
  * make the limiter noticeably heavier, so the pre-activation baseline is lazily
- * captured once per {package, activation, day} and kept in SharedPreferences.
- * From the following local midnight onward the activation predates the day and no
- * subtraction is required: the limit naturally becomes a normal daily allowance.
+ * captured once per {package, activation, day}. It stays in memory for the hot
+ * path and is mirrored to SharedPreferences so process recreation keeps the exact
+ * same allowance. From the following local midnight onward the activation
+ * predates the day and no subtraction is required: the limit naturally becomes a
+ * normal daily allowance.
  */
 object AppUsageLimitActivationUsage {
     private const val PREFS_NAME = "app_usage_limit_activation_usage"
     private const val SUFFIX_ACTIVATED_AT = ".activated_at"
     private const val SUFFIX_DAY_START = ".day_start"
     private const val SUFFIX_BASELINE_MS = ".baseline_ms"
+
+    private data class BaselineKey(
+        val packageName: String,
+        val activatedAtMillis: Long,
+        val dayStartMillis: Long
+    )
+
+    private val memoryBaselines = mutableMapOf<BaselineKey, Long>()
 
     fun effectiveUsageMillis(
         context: Context,
@@ -38,10 +48,6 @@ object AppUsageLimitActivationUsage {
         // A wall-clock correction must never make a newly-created limit inherit
         // usage from before its apparent activation time.
         if (activatedAt > nowMillis) return 0L
-
-        // Do not cache a fake zero baseline while Usage Access is missing. If the
-        // permission is restored later we can still reconstruct the real baseline.
-        if (!PermissionUtils.isUsageAccessEnabled(context)) return 0L
 
         val baseline = readOrCreateBaseline(
             context = context,
@@ -83,6 +89,9 @@ object AppUsageLimitActivationUsage {
         nowMillis: Long
     ): Long? {
         if (packageName.isBlank()) return null
+        val cacheKey = BaselineKey(packageName, activatedAtMillis, dayStartMillis)
+        memoryBaselines[cacheKey]?.let { return it }
+
         val prefs = context.applicationContext.getSharedPreferences(
             PREFS_NAME,
             Context.MODE_PRIVATE
@@ -91,8 +100,16 @@ object AppUsageLimitActivationUsage {
         val storedActivation = prefs.getLong(keyPrefix + SUFFIX_ACTIVATED_AT, Long.MIN_VALUE)
         val storedDayStart = prefs.getLong(keyPrefix + SUFFIX_DAY_START, Long.MIN_VALUE)
         if (storedActivation == activatedAtMillis && storedDayStart == dayStartMillis) {
-            return prefs.getLong(keyPrefix + SUFFIX_BASELINE_MS, 0L).coerceAtLeast(0L)
+            val persisted = prefs.getLong(keyPrefix + SUFFIX_BASELINE_MS, 0L)
+                .coerceAtLeast(0L)
+            memoryBaselines[cacheKey] = persisted
+            return persisted
         }
+
+        // Only a cache miss needs this binder/AppOps check. Never persist a fake
+        // zero baseline while Usage Access is absent; after permission restoration
+        // the real pre-activation usage can still be reconstructed correctly.
+        if (!PermissionUtils.isUsageAccessEnabled(context)) return null
 
         val baselineEnd = activatedAtMillis.coerceAtMost(nowMillis)
         val baseline = try {
@@ -106,6 +123,7 @@ object AppUsageLimitActivationUsage {
             return null
         }
 
+        memoryBaselines[cacheKey] = baseline
         prefs.edit()
             .putLong(keyPrefix + SUFFIX_ACTIVATED_AT, activatedAtMillis)
             .putLong(keyPrefix + SUFFIX_DAY_START, dayStartMillis)
