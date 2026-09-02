@@ -69,9 +69,9 @@ fun AppSelectionScreen(
 /**
  * The searchable app list on its own, without a top bar.
  *
- * Split out from [AppSelectionScreen] so the block wizard can show it as one tab
- * beside sites and words: those pickers need to sit under a shared top bar and a
- * shared "continue" button, which a nested Scaffold would fight over.
+ * Selected apps are intentionally separated from the available-app catalogue.
+ * This makes the future block explicit: selecting an app moves it into the
+ * selected list, and tapping it there removes it from the block again.
  */
 @Composable
 fun AppSelectionList(
@@ -84,16 +84,22 @@ fun AppSelectionList(
     var expandUninstalled by remember { mutableStateOf(false) }
     var expandInstalled by remember { mutableStateOf(false) }
 
-    val filteredApps = remember(apps, searchQuery) {
-        if (searchQuery.isBlank()) apps
-        else apps.filter {
-            it.appName.contains(searchQuery, ignoreCase = true) ||
-                it.packageName.contains(searchQuery, ignoreCase = true)
-        }
+    val selectedApps = remember(apps) {
+        apps.filter { it.isSelected }.sortedBy { it.appName.lowercase() }
     }
-
-    val installedApps = remember(filteredApps) { filteredApps.filter { it.isInstalled } }
-    val uninstalledApps = remember(filteredApps) { filteredApps.filter { !it.isInstalled } }
+    val availableApps = remember(apps, searchQuery) {
+        apps
+            .asSequence()
+            .filterNot { it.isSelected }
+            .filter {
+                searchQuery.isBlank() ||
+                    it.appName.contains(searchQuery, ignoreCase = true) ||
+                    it.packageName.contains(searchQuery, ignoreCase = true)
+            }
+            .toList()
+    }
+    val installedApps = remember(availableApps) { availableApps.filter { it.isInstalled } }
+    val uninstalledApps = remember(availableApps) { availableApps.filter { !it.isInstalled } }
 
     Column(
         modifier = modifier
@@ -134,6 +140,35 @@ fun AppSelectionList(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
             ) {
+                if (selectedApps.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = stringResource(R.string.app_selection_selected),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = AccentCyan,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 4.dp, start = 4.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.app_selection_selected_hint),
+                            fontSize = 12.sp,
+                            color = TextHint,
+                            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                        )
+                    }
+                    items(selectedApps, key = { "selected_${it.packageName}" }) { app ->
+                        AppSelectionItem(
+                            app = app,
+                            onToggle = { onToggleApp(app.packageName) }
+                        )
+                    }
+                    item {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider(color = CardBorder, thickness = 1.dp)
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                }
+
                 if (uninstalledApps.isNotEmpty()) {
                     item {
                         Text(
@@ -151,7 +186,7 @@ fun AppSelectionList(
                         uninstalledApps.take(3)
                     }
 
-                    items(visibleUninstalled, key = { it.packageName }) { app ->
+                    items(visibleUninstalled, key = { "available_${it.packageName}" }) { app ->
                         AppSelectionItem(
                             app = app,
                             onToggle = { onToggleApp(app.packageName) }
@@ -189,63 +224,21 @@ fun AppSelectionList(
                         }
                     }
 
-                    item {
-                        Spacer(modifier = Modifier.height(16.dp))
-                        HorizontalDivider(color = CardBorder, thickness = 1.dp)
-                        Spacer(modifier = Modifier.height(16.dp))
-                        Text(
-                            text = stringResource(R.string.app_selection_installed),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextPrimary,
-                            modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
-                        )
-                    }
-
-                    val visibleInstalled = if (expandInstalled || searchQuery.isNotBlank()) {
-                        installedApps
-                    } else {
-                        installedApps.take(3)
-                    }
-
-                    items(visibleInstalled, key = { it.packageName }) { app ->
-                        AppSelectionItem(
-                            app = app,
-                            onToggle = { onToggleApp(app.packageName) }
-                        )
-                    }
-
-                    if (!expandInstalled && searchQuery.isBlank() && installedApps.size > 3) {
+                    if (installedApps.isNotEmpty()) {
                         item {
-                            TextButton(
-                                onClick = { expandInstalled = true },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    stringResource(
-                                        R.string.app_selection_show_more,
-                                        installedApps.size - 3
-                                    ),
-                                    color = TextPrimary.copy(alpha = 0.7f)
-                                )
-                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            HorizontalDivider(color = CardBorder, thickness = 1.dp)
+                            Spacer(modifier = Modifier.height(16.dp))
+                            Text(
+                                text = stringResource(R.string.app_selection_installed),
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = TextPrimary,
+                                modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
+                            )
                         }
                     }
-
-                    if (expandInstalled && searchQuery.isBlank()) {
-                        item {
-                            TextButton(
-                                onClick = { expandInstalled = false },
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Text(
-                                    stringResource(R.string.app_selection_show_less),
-                                    color = TextPrimary.copy(alpha = 0.7f)
-                                )
-                            }
-                        }
-                    }
-                } else {
+                } else if (installedApps.isNotEmpty()) {
                     item {
                         Text(
                             text = stringResource(R.string.app_selection_installed),
@@ -255,14 +248,16 @@ fun AppSelectionList(
                             modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
                         )
                     }
+                }
 
+                if (installedApps.isNotEmpty()) {
                     val visibleInstalled = if (expandInstalled || searchQuery.isNotBlank()) {
                         installedApps
                     } else {
                         installedApps.take(3)
                     }
 
-                    items(visibleInstalled, key = { it.packageName }) { app ->
+                    items(visibleInstalled, key = { "available_${it.packageName}" }) { app ->
                         AppSelectionItem(
                             app = app,
                             onToggle = { onToggleApp(app.packageName) }
