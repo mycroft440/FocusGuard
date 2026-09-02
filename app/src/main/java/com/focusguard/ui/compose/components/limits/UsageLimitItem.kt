@@ -1,8 +1,5 @@
 package com.focusguard.ui.compose.components.limits
 
-import androidx.compose.animation.animateColorAsState
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -13,7 +10,6 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,6 +36,15 @@ data class UsageLimitAppUi(
     val lockUntilTimestamp: Long?
 )
 
+/**
+ * Lightweight row for the usage-limit catalogue.
+ *
+ * This list can contain a large number of targets. Per-row progress/color
+ * animations and remote favicon requests caused dozens of concurrent jobs while
+ * scrolling, which made the screen feel slow or stuck on lower-end devices.
+ * Values are intentionally rendered statically here; the data still updates when
+ * the screen state changes, without continuously animating every visible item.
+ */
 @Composable
 fun UsageLimitItem(
     app: UsageLimitAppUi,
@@ -69,23 +74,12 @@ fun UsageLimitItem(
     }
 
     val usageMin = app.usageMs / 60000L
-    val targetProgress = if ((app.currentLimitMinutes ?: 0) > 0) {
+    val progress = if ((app.currentLimitMinutes ?: 0) > 0) {
         (usageMin.toFloat() / app.currentLimitMinutes!!).coerceIn(0f, 1f)
     } else {
         0f
     }
-
-    val progress by animateFloatAsState(
-        targetValue = targetProgress,
-        animationSpec = tween(durationMillis = 800),
-        label = "progress_anim"
-    )
-
-    val progressColor by animateColorAsState(
-        targetValue = if (progress >= 0.9f) DangerRed else AccentCyan,
-        animationSpec = tween(durationMillis = 500),
-        label = "color_anim"
-    )
+    val progressColor = if (progress >= 0.9f) DangerRed else AccentCyan
 
     Card(
         modifier = Modifier
@@ -117,7 +111,8 @@ fun UsageLimitItem(
                 packageName = app.packageName,
                 appName = app.appName,
                 modifier = Modifier.size(40.dp),
-                cornerRadius = 10.dp
+                cornerRadius = 10.dp,
+                allowRemoteFallback = false
             )
 
             Spacer(modifier = Modifier.width(12.dp))
@@ -127,7 +122,8 @@ fun UsageLimitItem(
                     app.appName,
                     color = MaterialTheme.colorScheme.onSurface,
                     fontWeight = FontWeight.Bold,
-                    fontSize = 15.sp
+                    fontSize = 15.sp,
+                    maxLines = 1
                 )
 
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -166,7 +162,8 @@ fun UsageLimitItem(
                     Text(
                         text = status,
                         color = if (ruleExpired) DangerRed else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 10.sp
+                        fontSize = 10.sp,
+                        maxLines = 1
                     )
                 }
 
