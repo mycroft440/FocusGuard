@@ -38,6 +38,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
 import com.focusguard.R
+import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AppUnlockBiometricAuthenticator
 import com.focusguard.security.AuthManager
@@ -52,6 +53,7 @@ import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
 import com.focusguard.ui.compose.theme.TextSecondary
+import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -130,6 +132,39 @@ internal fun PasswordProtectedTargetUnlockPanel(
                     strictPomodoroActive = false
                 )
                 if (origin != BiometricAppUnlockPolicy.BlockOrigin.PASSWORD_SESSION) {
+                    error = failureMessage
+                    onInvalid?.invoke()
+                    return@launch
+                }
+
+                // A target credential is weaker than an irreversible protection.
+                // Before unsuspending/whitelisting anything, independently verify
+                // that the same target is not also held by a Dopamine Fast or an
+                // active Focus Mode session. This keeps overlapping persisted
+                // rules fail-closed even if an older database contains a conflict.
+                val overview = sessionManager.getBlockOverview()
+                val heldByDopamineFast = if (!blockedPackage.isNullOrBlank()) {
+                    overview.dopamineFastEntries.any {
+                        !it.isWebsite && it.identifier == blockedPackage
+                    }
+                } else {
+                    val candidate = blockedDomain ?: websiteRule.orEmpty()
+                    overview.dopamineFastEntries.any { entry ->
+                        entry.isWebsite && WebsiteBlocker.isUrlBlocked(
+                            candidate,
+                            listOf(entry.identifier)
+                        )
+                    }
+                }
+                val heldByFocusMode = blockedPackage
+                    ?.takeIf(String::isNotBlank)
+                    ?.let { packageName ->
+                        FocusModeStore.readSession(context)
+                            ?.takeIf { it.isActive() }
+                            ?.blockedPackages
+                            ?.contains(packageName) == true
+                    } == true
+                if (heldByDopamineFast || heldByFocusMode) {
                     error = failureMessage
                     onInvalid?.invoke()
                     return@launch
