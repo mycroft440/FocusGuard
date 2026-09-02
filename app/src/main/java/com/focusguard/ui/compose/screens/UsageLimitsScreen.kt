@@ -1,16 +1,14 @@
 package com.focusguard.ui.compose.screens
 
-import com.focusguard.monetization.RewardedGateCoordinator
-import com.focusguard.monetization.MonetizationPolicy
-import kotlin.OptIn
+import android.content.Context
+import android.content.Intent
+import android.content.pm.ApplicationInfo
+import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.setValue
-import androidx.compose.material3.ExperimentalMaterial3Api
-import com.focusguard.ui.compose.components.limits.*
-
-import android.content.Context
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -19,36 +17,44 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Tag
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import com.focusguard.R
+import com.focusguard.data.PredefinedApps
+import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.WebsiteUsageLimit
-import com.focusguard.data.PredefinedApps
 import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.monetization.MonetizationPolicy
+import com.focusguard.monetization.RewardedGateCoordinator
 import com.focusguard.security.AuthManager
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.MasterCredentialPolicy
 import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.MasterPasswordActivity
+import com.focusguard.ui.compose.components.limits.UsageLimitItem
+import com.focusguard.ui.compose.components.limits.WebsiteLimitItem
 import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.ui.compose.theme.*
-import com.focusguard.R
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import androidx.lifecycle.Lifecycle
-import androidx.lifecycle.LifecycleEventObserver
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -64,14 +70,10 @@ fun UsageLimitsScreen(
     var protectionPermissionsReady by remember { mutableStateOf<Boolean?>(null) }
     var credentialRevision by remember { mutableIntStateOf(0) }
     val credentialManager = remember(context) { DeactivationCredentialManager(context) }
-    val hasMasterCredential = remember(credentialRevision) {
-        credentialManager.hasCredential()
-    }
+    val hasMasterCredential = remember(credentialRevision) { credentialManager.hasCredential() }
     val masterPasswordLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) {
-        credentialRevision++
-    }
+    ) { credentialRevision++ }
     val openMasterPassword: () -> Unit = {
         masterPasswordLauncher.launch(MasterPasswordActivity.createIntent(context))
     }
@@ -99,60 +101,98 @@ fun UsageLimitsScreen(
         return
     }
 
-    val permissionsMissing = false
-
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.limits_title), color = MaterialTheme.colorScheme.onBackground, fontSize = 18.sp) },
+                title = {
+                    Text(
+                        stringResource(R.string.limits_title),
+                        color = MaterialTheme.colorScheme.onBackground,
+                        fontSize = 18.sp
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, stringResource(R.string.action_back), tint = MaterialTheme.colorScheme.onBackground)
+                        Icon(
+                            Icons.AutoMirrored.Filled.ArrowBack,
+                            stringResource(R.string.action_back),
+                            tint = MaterialTheme.colorScheme.onBackground
+                        )
                     }
                 },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background)
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
             )
         },
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding)) {
+        Column(Modifier.fillMaxSize().padding(padding)) {
             TabRow(
                 selectedTabIndex = selectedTab,
                 containerColor = MaterialTheme.colorScheme.surfaceVariant,
                 contentColor = AccentCyan
             ) {
-                Tab(
+                UsageLimitTab(
                     selected = selectedTab == 0,
-                    onClick = { selectedTab = 0 },
-                    text = { Text(stringResource(R.string.sessions_category_apps), color = if (selectedTab == 0) AccentCyan else TextHint, fontWeight = FontWeight.Bold) }
+                    text = stringResource(R.string.sessions_category_apps),
+                    onClick = { selectedTab = 0 }
                 )
-                // "Sites", não "Sites e palavras": um limite conta tempo gasto
-                // num alvo, e palavra não é alvo de tempo — ver BlockTargetPolicy.
-                Tab(
+                UsageLimitTab(
                     selected = selectedTab == 1,
-                    onClick = { selectedTab = 1 },
-                    text = { Text(stringResource(R.string.block_targets_tab_sites), color = if (selectedTab == 1) AccentCyan else TextHint, fontWeight = FontWeight.Bold) }
+                    text = stringResource(R.string.block_targets_tab_sites),
+                    onClick = { selectedTab = 1 }
+                )
+                UsageLimitTab(
+                    selected = selectedTab == 2,
+                    text = stringResource(R.string.limits_tab_keywords),
+                    onClick = { selectedTab = 2 }
                 )
             }
 
             when (selectedTab) {
                 0 -> AppLimitsTab(
-                    permissionsMissing = permissionsMissing,
+                    permissionsMissing = false,
                     authManager = authManager,
                     hasMasterCredential = hasMasterCredential,
                     onConfigureMasterPassword = openMasterPassword,
                     onPermissionsRequired = onPermissionsRequired
                 )
                 1 -> WebsiteLimitsTab(
-                    permissionsMissing = permissionsMissing,
+                    permissionsMissing = false,
                     authManager = authManager,
                     hasMasterCredential = hasMasterCredential,
                     onConfigureMasterPassword = openMasterPassword,
-                    onPermissionsRequired = onPermissionsRequired
+                    onPermissionsRequired = onPermissionsRequired,
+                    keywordMode = false
+                )
+                else -> WebsiteLimitsTab(
+                    permissionsMissing = false,
+                    authManager = authManager,
+                    hasMasterCredential = hasMasterCredential,
+                    onConfigureMasterPassword = openMasterPassword,
+                    onPermissionsRequired = onPermissionsRequired,
+                    keywordMode = true
                 )
             }
         }
     }
+}
+
+@Composable
+private fun UsageLimitTab(selected: Boolean, text: String, onClick: () -> Unit) {
+    Tab(
+        selected = selected,
+        onClick = onClick,
+        text = {
+            Text(
+                text,
+                color = if (selected) AccentCyan else TextHint,
+                fontWeight = FontWeight.Bold,
+                fontSize = 12.sp
+            )
+        }
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -189,10 +229,7 @@ private fun UsageLimitsPermissionGate(
         containerColor = MaterialTheme.colorScheme.background
     ) { padding ->
         Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(padding)
-                .padding(24.dp),
+            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
@@ -215,8 +252,7 @@ private fun UsageLimitsPermissionGate(
                 Spacer(Modifier.height(8.dp))
                 Text(
                     stringResource(R.string.blocking_permissions_required_desc),
-                    color = TextSecondary,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    color = TextSecondary
                 )
                 Spacer(Modifier.height(20.dp))
                 Button(
@@ -244,12 +280,10 @@ fun AppLimitsTab(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    // P2-2: usa Hilt EntryPoint via rememberAppDatabase()
     val db = rememberAppDatabase()
-    val blockingSessionManager = remember(context) {
-        BlockingSessionManager.getInstance(context)
-    }
+    val blockingSessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
     var apps by remember { mutableStateOf<List<UsageLimitAppUi>>(emptyList()) }
+    var socialPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
     var searchQuery by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(true) }
     var selectedApp by remember { mutableStateOf<UsageLimitAppUi?>(null) }
@@ -258,39 +292,28 @@ fun AppLimitsTab(
     var showTimeLockedAlert by remember { mutableStateOf(false) }
     var showSafetyModeAlert by remember { mutableStateOf(false) }
     var showCredentialMissingAlert by remember { mutableStateOf(false) }
-
     val credentialManager = remember(context) { DeactivationCredentialManager(context) }
 
-    /**
-     * Single entry point for opening the edit dialog.
-     *
-     * Every path — active, paused or unconfigured — funnels through the policy, so
-     * a limit cannot be edited or removed by taking a different route through the
-     * list. Unbreakable refusals are reported before asking for a credential.
-     */
     fun requestLimitEdit(app: UsageLimitAppUi) {
-        val gate = MasterCredentialPolicy.evaluateLimitMutation(
-            lockMode = app.lockMode,
-            lockUntilTimestamp = app.lockUntilTimestamp,
-            safetyModeEnabled = authManager.isSafetyModeEnabled(),
-            hasMasterCredential = credentialManager.hasCredential(),
-            masterCredentialVerified = false
-        )
-        when (gate) {
+        when (
+            MasterCredentialPolicy.evaluateLimitMutation(
+                lockMode = app.lockMode,
+                lockUntilTimestamp = app.lockUntilTimestamp,
+                safetyModeEnabled = authManager.isSafetyModeEnabled(),
+                hasMasterCredential = credentialManager.hasCredential(),
+                masterCredentialVerified = false
+            )
+        ) {
             MasterCredentialPolicy.MutationGate.BLOCKED_BY_TIME_HARDENING ->
                 showTimeLockedAlert = true
-
             MasterCredentialPolicy.MutationGate.BLOCKED_BY_SAFETY_MODE ->
                 showSafetyModeAlert = true
-
             MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED ->
                 showCredentialMissingAlert = true
-
             MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_REQUIRED -> {
                 selectedApp = app
                 showMasterCredentialConfirm = true
             }
-
             MasterCredentialPolicy.MutationGate.ALLOWED -> {
                 selectedApp = app
                 showDialog = true
@@ -301,7 +324,7 @@ fun AppLimitsTab(
     LaunchedEffect(Unit) {
         withContext(Dispatchers.IO) {
             val pm = context.packageManager
-            val intent = android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER)
+            val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
             val resolveInfos = pm.queryIntentActivities(intent, 0)
             val limitDao = db.appUsageLimitDao()
             val existingLimits = limitDao.getAllStatic().associateBy { it.packageName }
@@ -310,17 +333,30 @@ fun AppLimitsTab(
                 set(java.util.Calendar.HOUR_OF_DAY, 0)
                 set(java.util.Calendar.MINUTE, 0)
                 set(java.util.Calendar.SECOND, 0)
+                set(java.util.Calendar.MILLISECOND, 0)
             }
-            val stats = usageStatsManager.queryAndAggregateUsageStats(cal.timeInMillis, System.currentTimeMillis())
+            val stats = usageStatsManager.queryAndAggregateUsageStats(
+                cal.timeInMillis,
+                System.currentTimeMillis()
+            )
+            val discoveredSocialPackages = PredefinedApps.PREVENTIVE_APPS
+                .asSequence()
+                .filter { it.category.equals("Redes Sociais", ignoreCase = true) }
+                .mapTo(linkedSetOf()) { it.packageName }
 
             val installedApps = resolveInfos.mapNotNull { info ->
                 val packageName = info.activityInfo.packageName
                 if (packageName == context.packageName) return@mapNotNull null
-                val appName = info.loadLabel(pm).toString()
+                if (
+                    Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+                    info.activityInfo.applicationInfo.category == ApplicationInfo.CATEGORY_SOCIAL
+                ) {
+                    discoveredSocialPackages += packageName
+                }
                 val limit = existingLimits[packageName]
                 UsageLimitAppUi(
                     packageName = packageName,
-                    appName = appName,
+                    appName = info.loadLabel(pm).toString(),
                     currentLimitMinutes = limit?.dailyLimitMinutes,
                     isEnabled = limit?.isEnabled ?: false,
                     usageMs = stats[packageName]?.totalTimeInForeground ?: 0L,
@@ -366,64 +402,105 @@ fun AppLimitsTab(
                 .toList()
             val loadedApps = (installedApps + absentKnownApps + absentConfiguredApps)
                 .distinctBy { it.packageName }
-                .sortedBy { it.appName }
 
-            withContext(Dispatchers.Main) { apps = loadedApps; isLoading = false }
+            withContext(Dispatchers.Main) {
+                apps = loadedApps
+                socialPackages = discoveredSocialPackages
+                isLoading = false
+            }
         }
     }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize()) {
         OutlinedTextField(
             value = searchQuery,
             onValueChange = { searchQuery = it },
-            placeholder = { Text(stringResource(R.string.limits_search_placeholder), color = TextHint) },
-            leadingIcon = { Icon(Icons.Filled.Search, null, tint = TextHint) },
+            placeholder = {
+                Text(stringResource(R.string.limits_search_placeholder), color = TextHint)
+            },
+            leadingIcon = { Icon(Icons.Default.Search, null, tint = TextHint) },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(
+                            Icons.Default.Close,
+                            contentDescription = stringResource(R.string.cancel),
+                            tint = TextHint
+                        )
+                    }
+                }
+            },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = AccentCyan,
                 unfocusedTextColor = MaterialTheme.colorScheme.onBackground,
                 focusedTextColor = MaterialTheme.colorScheme.onBackground
             ),
-            trailingIcon = {
-                if (searchQuery.isNotEmpty()) {
-                    IconButton(onClick = { searchQuery = "" }) {
-                        Icon(Icons.Default.Close, contentDescription = stringResource(R.string.cancel), tint = TextHint)
-                    }
-                }
-            },
             shape = RoundedCornerShape(16.dp),
             singleLine = true
         )
 
         if (isLoading) {
-            Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator(color = AccentCyan) }
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = AccentCyan)
+            }
         } else {
-            LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
-                val allFiltered = filteredApps(apps, searchQuery)
-                val activeLimits = allFiltered.filter { it.currentLimitMinutes != null && it.isEnabled }
-                val inactiveLimits = allFiltered.filter { it.currentLimitMinutes != null && !it.isEnabled }
-                val unconfiguredApps = allFiltered.filter { it.currentLimitMinutes == null }
-
-                if (activeLimits.isNotEmpty()) {
-                    item { Text(stringResource(R.string.limits_active_section), fontSize = 16.sp, fontWeight = FontWeight.ExtraBold, color = AccentCyan, modifier = Modifier.padding(top = 16.dp, bottom = 8.dp)) }
-                    items(activeLimits, key = { "active_${it.packageName}" }) { app ->
-                        UsageLimitItem(app, isActive = true) { requestLimitEdit(app) }
+            val filtered = filteredApps(apps, searchQuery)
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                if (searchQuery.isNotBlank()) {
+                    if (filtered.isNotEmpty()) {
+                        item {
+                            UsageLimitSectionHeader(
+                                stringResource(R.string.limits_search_results_section)
+                            )
+                        }
+                        items(filtered.sortedBy { it.appName.lowercase() }, key = { "search_${it.packageName}" }) { app ->
+                            UsageLimitItem(
+                                app,
+                                isActive = app.currentLimitMinutes != null && app.isEnabled
+                            ) { requestLimitEdit(app) }
+                        }
                     }
-                }
-
-                if (inactiveLimits.isNotEmpty()) {
-                    item { Text(stringResource(R.string.limits_paused_section), fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextHint, modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)) }
-                    items(inactiveLimits, key = { "inactive_${it.packageName}" }) { app ->
-                        UsageLimitItem(app, isActive = false) { requestLimitEdit(app) }
+                } else {
+                    val sections = buildAppLimitSections(filtered, socialPackages)
+                    if (sections.topUsed.isNotEmpty()) {
+                        item {
+                            UsageLimitSectionHeader(
+                                stringResource(R.string.limits_top_used_section),
+                                accent = true
+                            )
+                        }
+                        items(sections.topUsed, key = { "top_${it.packageName}" }) { app ->
+                            UsageLimitItem(
+                                app,
+                                isActive = app.currentLimitMinutes != null && app.isEnabled
+                            ) { requestLimitEdit(app) }
+                        }
                     }
-                }
-
-                if (unconfiguredApps.isNotEmpty()) {
-                    item {
-                        val sectionTitle = if (activeLimits.isEmpty() && inactiveLimits.isEmpty()) stringResource(R.string.limits_setup_section) else stringResource(R.string.limits_other_section)
-                        Text(sectionTitle, fontSize = 14.sp, fontWeight = FontWeight.Bold, color = TextSecondary, modifier = Modifier.padding(top = 24.dp, bottom = 8.dp)) }
-                    items(unconfiguredApps, key = { "unconf_${it.packageName}" }) { app ->
-                        UsageLimitItem(app, isActive = false) { requestLimitEdit(app) }
+                    if (sections.social.isNotEmpty()) {
+                        item {
+                            UsageLimitSectionHeader(stringResource(R.string.limits_social_section))
+                        }
+                        items(sections.social, key = { "social_${it.packageName}" }) { app ->
+                            UsageLimitItem(
+                                app,
+                                isActive = app.currentLimitMinutes != null && app.isEnabled
+                            ) { requestLimitEdit(app) }
+                        }
+                    }
+                    if (sections.other.isNotEmpty()) {
+                        item {
+                            UsageLimitSectionHeader(stringResource(R.string.limits_other_apps_section))
+                        }
+                        items(sections.other, key = { "other_${it.packageName}" }) { app ->
+                            UsageLimitItem(
+                                app,
+                                isActive = app.currentLimitMinutes != null && app.isEnabled
+                            ) { requestLimitEdit(app) }
+                        }
                     }
                 }
             }
@@ -437,48 +514,63 @@ fun AppLimitsTab(
             hasMasterCredential = hasMasterCredential,
             onConfigureMasterPassword = onConfigureMasterPassword,
             onDismiss = { showDialog = false },
-            onSave = { minutes, enabled, lockMode, lockPassword, lockUntil ->
+            onSave = { minutes, enabled, lockMode, _, lockUntil ->
+                val appToSave = selectedApp ?: return@AppLimitRedesignedSheet
                 val monetizedAction: () -> Unit = {
-                scope.launch(Dispatchers.IO) {
-                    if (!ProtectionPermissionGate.read(context).isReady) {
-                        withContext(Dispatchers.Main) { onPermissionsRequired() }
-                        return@launch
-                    }
-                    val limitDao = db.appUsageLimitDao()
-                    if (minutes != null && minutes > 0) {
-                        limitDao.insert(
-                            AppUsageLimit(
-                                packageName = selectedApp!!.packageName,
-                                appName = selectedApp!!.appName,
-                                dailyLimitMinutes = minutes,
+                    scope.launch(Dispatchers.IO) {
+                        if (!ProtectionPermissionGate.read(context).isReady) {
+                            withContext(Dispatchers.Main) { onPermissionsRequired() }
+                            return@launch
+                        }
+                        val limitDao = db.appUsageLimitDao()
+                        val updated = if (minutes != null && minutes > 0) {
+                            limitDao.insert(
+                                AppUsageLimit(
+                                    packageName = appToSave.packageName,
+                                    appName = appToSave.appName,
+                                    dailyLimitMinutes = minutes,
+                                    isEnabled = enabled,
+                                    lockMode = lockMode,
+                                    lockPasswordHash = null,
+                                    lockUntilTimestamp = lockUntil,
+                                    preventOpeningAfterLimit = true,
+                                    unlockWithPassword = lockMode.equals("PASSWORD", ignoreCase = true)
+                                )
+                            )
+                            appToSave.copy(
+                                currentLimitMinutes = minutes,
                                 isEnabled = enabled,
                                 lockMode = lockMode,
                                 lockPasswordHash = null,
-                                lockUntilTimestamp = lockUntil,
-                                preventOpeningAfterLimit = true,
-                                unlockWithPassword = lockMode.equals(
-                                    "PASSWORD",
-                                    ignoreCase = true
-                                )
+                                lockUntilTimestamp = lockUntil
                             )
-                        )
-                        val updated = selectedApp!!.copy(currentLimitMinutes = minutes, isEnabled = enabled, lockMode = lockMode, lockPasswordHash = null, lockUntilTimestamp = lockUntil)
-                        apps = apps.map { if (it.packageName == updated.packageName) updated else it }
-                    } else {
-                        val existing = limitDao.getAllStatic().find { it.packageName == selectedApp!!.packageName }
-                        if (existing != null) limitDao.delete(existing)
-                        val updated = selectedApp!!.copy(currentLimitMinutes = null, isEnabled = false, lockMode = "NONE", lockPasswordHash = null, lockUntilTimestamp = null)
-                        apps = apps.map { if (it.packageName == updated.packageName) updated else it }
+                        } else {
+                            limitDao.getAllStatic()
+                                .firstOrNull { it.packageName == appToSave.packageName }
+                                ?.let { limitDao.delete(it) }
+                            appToSave.copy(
+                                currentLimitMinutes = null,
+                                isEnabled = false,
+                                lockMode = "NONE",
+                                lockPasswordHash = null,
+                                lockUntilTimestamp = null
+                            )
+                        }
+                        blockingSessionManager.checkAndEnforce()
+                        withContext(Dispatchers.Main) {
+                            apps = apps.map { if (it.packageName == updated.packageName) updated else it }
+                            selectedApp = updated
+                            showDialog = false
+                        }
                     }
-                    blockingSessionManager.checkAndEnforce()
-                    withContext(Dispatchers.Main) { showDialog = false }
                 }
-
-                }
-                val targetAlreadyConfigured = selectedApp!!.currentLimitMinutes != null
+                val targetAlreadyConfigured = appToSave.currentLimitMinutes != null
                 val isCreatingLimit = minutes != null && minutes > 0 && !targetAlreadyConfigured
                 val configuredCount = apps.count { it.currentLimitMinutes != null }
-                if (isCreatingLimit && MonetizationPolicy.requiresExtraUsageLimitAd(configuredCount, targetAlreadyConfigured)) {
+                if (
+                    isCreatingLimit &&
+                    MonetizationPolicy.requiresExtraUsageLimitAd(configuredCount, targetAlreadyConfigured)
+                ) {
                     RewardedGateCoordinator.launch(
                         context = context,
                         requiredAds = 1,
@@ -504,59 +596,52 @@ fun AppLimitsTab(
         )
     }
 
-    if (showTimeLockedAlert) {
-        AlertDialog(
-            onDismissRequest = { showTimeLockedAlert = false },
-            title = { Text(stringResource(R.string.limits_locked_alert_title), color = DangerRed) },
-            text = { Text(stringResource(R.string.limits_locked_alert_desc), color = MaterialTheme.colorScheme.onSurface) },
-            confirmButton = { TextButton({ showTimeLockedAlert = false }) { Text(stringResource(R.string.action_ok), color = AccentCyan) } },
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    }
+    LimitMutationAlerts(
+        showTimeLocked = showTimeLockedAlert,
+        onTimeLockedDismiss = { showTimeLockedAlert = false },
+        showSafetyMode = showSafetyModeAlert,
+        onSafetyModeDismiss = { showSafetyModeAlert = false },
+        showCredentialMissing = showCredentialMissingAlert,
+        onCredentialMissingDismiss = { showCredentialMissingAlert = false },
+        onConfigureMasterPassword = onConfigureMasterPassword
+    )
+}
 
-    if (showSafetyModeAlert) {
-        AlertDialog(
-            onDismissRequest = { showSafetyModeAlert = false },
-            title = { Text(stringResource(R.string.limits_security_mode), color = DangerRed) },
-            text = {
-                Text(
-                    stringResource(R.string.master_credential_blocked_by_safety_mode),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            },
-            confirmButton = {
-                TextButton({ showSafetyModeAlert = false }) {
-                    Text(stringResource(R.string.action_ok), color = AccentCyan)
-                }
-            },
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    }
+private data class AppLimitSections(
+    val topUsed: List<UsageLimitAppUi>,
+    val social: List<UsageLimitAppUi>,
+    val other: List<UsageLimitAppUi>
+)
 
-    if (showCredentialMissingAlert) {
-        AlertDialog(
-            onDismissRequest = { showCredentialMissingAlert = false },
-            title = { Text(stringResource(R.string.deactivation_password_title), color = DangerRed) },
-            text = {
-                Text(
-                    stringResource(R.string.master_credential_not_configured),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            },
-            confirmButton = {
-                TextButton({
-                    showCredentialMissingAlert = false
-                    onConfigureMasterPassword()
-                }) {
-                    Text(
-                        stringResource(R.string.master_credential_create_action),
-                        color = AccentCyan
-                    )
-                }
-            },
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    }
+private fun buildAppLimitSections(
+    apps: List<UsageLimitAppUi>,
+    socialPackages: Set<String>
+): AppLimitSections {
+    val byUsage = compareByDescending<UsageLimitAppUi> { it.usageMs }
+        .thenBy(String.CASE_INSENSITIVE_ORDER) { it.appName }
+    val topUsed = apps.sortedWith(byUsage).take(3)
+    val topPackages = topUsed.mapTo(hashSetOf()) { it.packageName }
+    val social = apps
+        .asSequence()
+        .filter { it.packageName !in topPackages && it.packageName in socialPackages }
+        .sortedWith(byUsage)
+        .toList()
+    val socialSet = social.mapTo(hashSetOf()) { it.packageName }
+    val other = apps
+        .filter { it.packageName !in topPackages && it.packageName !in socialSet }
+        .sortedBy { it.appName.lowercase() }
+    return AppLimitSections(topUsed, social, other)
+}
+
+@Composable
+private fun UsageLimitSectionHeader(text: String, accent: Boolean = false) {
+    Text(
+        text,
+        color = if (accent) AccentCyan else TextSecondary,
+        fontSize = if (accent) 16.sp else 14.sp,
+        fontWeight = FontWeight.ExtraBold,
+        modifier = Modifier.padding(top = 18.dp, bottom = 8.dp)
+    )
 }
 
 @Composable
@@ -565,18 +650,18 @@ fun WebsiteLimitsTab(
     authManager: AuthManager,
     hasMasterCredential: Boolean,
     onConfigureMasterPassword: () -> Unit,
-    onPermissionsRequired: () -> Unit
+    onPermissionsRequired: () -> Unit,
+    keywordMode: Boolean = false
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-    // P2-2: usa Hilt EntryPoint via rememberAppDatabase()
     val db = rememberAppDatabase()
-    val blockingSessionManager = remember(context) {
-        BlockingSessionManager.getInstance(context)
-    }
-    var sites by remember { mutableStateOf<List<WebsiteLimitUi>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    val blockingSessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
+    var sites by remember(keywordMode) { mutableStateOf<List<WebsiteLimitUi>>(emptyList()) }
+    var allConfiguredCount by remember { mutableIntStateOf(0) }
+    var isLoading by remember(keywordMode) { mutableStateOf(true) }
     var showAddDialog by remember { mutableStateOf(false) }
+    var initialRuleForAdd by remember { mutableStateOf<String?>(null) }
     var selectedSite by remember { mutableStateOf<WebsiteLimitUi?>(null) }
     var showEditDialog by remember { mutableStateOf(false) }
     var showMasterCredentialConfirm by remember { mutableStateOf(false) }
@@ -587,47 +672,35 @@ fun WebsiteLimitsTab(
     var showSafetyModeAlert by remember { mutableStateOf(false) }
     var showCredentialMissingAlert by remember { mutableStateOf(false) }
     var pendingAction: (() -> Unit)? by remember { mutableStateOf(null) }
-
     val credentialManager = remember(context) { DeactivationCredentialManager(context) }
 
-    /**
-     * Gate for editing or deleting a website limit. Mirrors the app-limit path so
-     * both kinds of usage limit obey the same rules.
-     */
-    fun requestSiteMutation(
-        site: WebsiteLimitUi,
-        promptRes: Int,
-        action: () -> Unit
-    ) {
-        val gate = MasterCredentialPolicy.evaluateLimitMutation(
-            lockMode = site.lockMode,
-            lockUntilTimestamp = site.lockUntilTimestamp,
-            safetyModeEnabled = authManager.isSafetyModeEnabled(),
-            hasMasterCredential = credentialManager.hasCredential(),
-            masterCredentialVerified = false
-        )
-        when (gate) {
+    fun requestSiteMutation(site: WebsiteLimitUi, promptRes: Int, action: () -> Unit) {
+        when (
+            MasterCredentialPolicy.evaluateLimitMutation(
+                lockMode = site.lockMode,
+                lockUntilTimestamp = site.lockUntilTimestamp,
+                safetyModeEnabled = authManager.isSafetyModeEnabled(),
+                hasMasterCredential = credentialManager.hasCredential(),
+                masterCredentialVerified = false
+            )
+        ) {
             MasterCredentialPolicy.MutationGate.BLOCKED_BY_TIME_HARDENING ->
                 showTimeLockedAlert = true
-
             MasterCredentialPolicy.MutationGate.BLOCKED_BY_SAFETY_MODE ->
                 showSafetyModeAlert = true
-
             MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED ->
                 showCredentialMissingAlert = true
-
             MasterCredentialPolicy.MutationGate.MASTER_CREDENTIAL_REQUIRED -> {
                 selectedSite = site
                 masterCredentialPromptRes = promptRes
                 pendingAction = action
                 showMasterCredentialConfirm = true
             }
-
             MasterCredentialPolicy.MutationGate.ALLOWED -> action()
         }
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(keywordMode) {
         withContext(Dispatchers.IO) {
             val today = java.text.SimpleDateFormat(
                 "yyyy-MM-dd",
@@ -640,134 +713,217 @@ fun WebsiteLimitsTab(
                     .map { it.identifier to it.timeSpentMs },
                 configuredRules = allLimits.map { it.domain }
             )
-            val loadedSites = allLimits.map {
-                WebsiteLimitUi(
-                    it.domain,
-                    it.dailyLimitMinutes,
-                    it.isEnabled,
-                    usageStats[WebsiteBlocker.normalizeRule(it.domain)] ?: 0L,
-                    it.lockMode,
-                    it.lockPasswordHash,
-                    it.lockUntilTimestamp
-                )
-            }
+            val loaded = allLimits
+                .filter {
+                    WebsiteBlocker.isKeywordRule(WebsiteBlocker.normalizeRule(it.domain)) == keywordMode
+                }
+                .map {
+                    val normalized = WebsiteBlocker.normalizeRule(it.domain)
+                    WebsiteLimitUi(
+                        domain = normalized,
+                        dailyLimitMinutes = it.dailyLimitMinutes,
+                        isEnabled = it.isEnabled,
+                        usageMs = usageStats[normalized] ?: 0L,
+                        lockMode = it.lockMode,
+                        lockPasswordHash = it.lockPasswordHash,
+                        lockUntilTimestamp = it.lockUntilTimestamp
+                    )
+                }
             withContext(Dispatchers.Main) {
-                sites = loadedSites
+                sites = loaded
+                allConfiguredCount = allLimits.size
                 isLoading = false
             }
         }
     }
 
+    val presetRules = remember(keywordMode) {
+        if (keywordMode) {
+            PredefinedWebsites.PORNOGRAPHY_KEYWORDS
+                .map { WebsiteBlocker.normalizeRule("keyword:$it") }
+                .filter(String::isNotEmpty)
+        } else {
+            PredefinedWebsites.ALL_PRESETS
+                .map { WebsiteBlocker.normalizeRule(it.domain) }
+                .filter(String::isNotEmpty)
+        }
+    }
+    val orderedRules = remember(presetRules, sites) {
+        (presetRules + sites.map { WebsiteBlocker.normalizeRule(it.domain) })
+            .filter(String::isNotEmpty)
+            .distinct()
+    }
+
     Column(Modifier.fillMaxSize()) {
         Button(
-            onClick = { showAddDialog = true },
-            modifier = Modifier.fillMaxWidth().padding(16.dp, 12.dp).height(48.dp),
+            onClick = {
+                initialRuleForAdd = null
+                showAddDialog = true
+            },
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).height(48.dp),
             colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
             shape = RoundedCornerShape(14.dp)
         ) {
             Icon(Icons.Default.Add, null, tint = DarkBg, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
-            Text(stringResource(R.string.limits_add_site_btn), color = DarkBg, fontWeight = FontWeight.Bold)
+            Text(
+                stringResource(
+                    if (keywordMode) R.string.limits_add_keyword_btn else R.string.limits_add_site_btn
+                ),
+                color = DarkBg,
+                fontWeight = FontWeight.Bold
+            )
         }
 
         if (isLoading) {
-            Box(Modifier.fillMaxSize(), Alignment.Center) { CircularProgressIndicator(color = AccentCyan) }
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator(color = AccentCyan)
+            }
         } else {
-            LazyColumn(modifier = Modifier.fillMaxSize(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)) {
-                items(sites, key = { it.domain }) { site ->
-                    WebsiteLimitItem(
-                        site = site,
-                        onClick = {
-                            requestSiteMutation(
-                                site = site,
-                                promptRes = R.string.master_credential_required_to_change_limit
-                            ) {
-                                selectedSite = site
-                                showEditDialog = true
-                            }
-                        },
-                        onDelete = {
-                            requestSiteMutation(
-                                site = site,
-                                promptRes = R.string.master_credential_required_to_remove_limit
-                            ) {
-                                scope.launch(Dispatchers.IO) {
-                                    val websiteDao = db.websiteUsageLimitDao()
-                                    val existing = websiteDao.getAllStatic()
-                                        .find { it.domain == site.domain }
-                                    if (existing != null) websiteDao.delete(existing)
-                                    blockingSessionManager.checkAndEnforce()
-                                    withContext(Dispatchers.Main) {
-                                        sites = sites.filter { it.domain != site.domain }
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+            ) {
+                item {
+                    UsageLimitSectionHeader(
+                        stringResource(
+                            if (keywordMode) R.string.limits_common_keywords_section
+                            else R.string.limits_common_sites_section
+                        ),
+                        accent = true
+                    )
+                }
+                items(orderedRules, key = { "rule_$it" }) { rule ->
+                    val configured = sites.firstOrNull {
+                        WebsiteBlocker.normalizeRule(it.domain) == rule
+                    }
+                    if (configured != null) {
+                        WebsiteLimitItem(
+                            site = configured,
+                            onClick = {
+                                requestSiteMutation(
+                                    configured,
+                                    R.string.master_credential_required_to_change_limit
+                                ) {
+                                    selectedSite = configured
+                                    showEditDialog = true
+                                }
+                            },
+                            onDelete = {
+                                requestSiteMutation(
+                                    configured,
+                                    R.string.master_credential_required_to_remove_limit
+                                ) {
+                                    scope.launch(Dispatchers.IO) {
+                                        val dao = db.websiteUsageLimitDao()
+                                        dao.getAllStatic()
+                                            .firstOrNull {
+                                                WebsiteBlocker.normalizeRule(it.domain) == rule
+                                            }
+                                            ?.let { dao.delete(it) }
+                                        blockingSessionManager.checkAndEnforce()
+                                        withContext(Dispatchers.Main) {
+                                            sites = sites.filterNot {
+                                                WebsiteBlocker.normalizeRule(it.domain) == rule
+                                            }
+                                            allConfiguredCount = (allConfiguredCount - 1).coerceAtLeast(0)
+                                        }
                                     }
                                 }
                             }
-                        }
-                    )
+                        )
+                    } else {
+                        UsageLimitPresetRow(
+                            rule = rule,
+                            keywordMode = keywordMode,
+                            onClick = {
+                                initialRuleForAdd = rule
+                                showAddDialog = true
+                            }
+                        )
+                    }
                 }
             }
         }
     }
 
     if (showAddDialog) {
-        AddWebsiteLimitDialog(
+        AddUsageLimitRuleDialog(
+            initialRule = initialRuleForAdd,
+            keywordMode = keywordMode,
             permissionsMissing = permissionsMissing,
             hasMasterCredential = hasMasterCredential,
             onConfigureMasterPassword = onConfigureMasterPassword,
-            onDismiss = { showAddDialog = false },
-            onSave = { domain, minutes, lockMode, _, lockUntil ->
+            onDismiss = {
+                showAddDialog = false
+                initialRuleForAdd = null
+            },
+            onSave = { rule, minutes, lockMode, _, lockUntil ->
+                val clean = WebsiteBlocker.normalizeRule(rule)
+                if (clean.isEmpty() || WebsiteBlocker.isKeywordRule(clean) != keywordMode) {
+                    return@AddUsageLimitRuleDialog
+                }
+                val targetAlreadyConfigured = sites.any {
+                    WebsiteBlocker.normalizeRule(it.domain) == clean
+                }
                 val monetizedAction: () -> Unit = {
-                scope.launch(Dispatchers.IO) {
-                    if (!ProtectionPermissionGate.read(context).isReady) {
-                        withContext(Dispatchers.Main) { onPermissionsRequired() }
-                        return@launch
-                    }
-                    val websiteDao = db.websiteUsageLimitDao()
-                    val clean = WebsiteBlocker.normalizeRule(domain)
-                    if (clean.isEmpty()) return@launch
-                    websiteDao.getAllStatic()
-                        .filter { existing ->
-                            existing.domain != clean &&
-                                WebsiteBlocker.normalizeRule(existing.domain) == clean
+                    scope.launch(Dispatchers.IO) {
+                        if (!ProtectionPermissionGate.read(context).isReady) {
+                            withContext(Dispatchers.Main) { onPermissionsRequired() }
+                            return@launch
                         }
-                        .forEach { websiteDao.delete(it) }
-                    websiteDao.insert(
-                        WebsiteUsageLimit(
-                            domain = clean,
-                            dailyLimitMinutes = minutes,
-                            isEnabled = true,
-                            lockMode = lockMode,
-                            lockPasswordHash = null,
-                            lockUntilTimestamp = lockUntil
+                        val dao = db.websiteUsageLimitDao()
+                        dao.getAllStatic()
+                            .filter {
+                                it.domain != clean && WebsiteBlocker.normalizeRule(it.domain) == clean
+                            }
+                            .forEach { dao.delete(it) }
+                        dao.insert(
+                            WebsiteUsageLimit(
+                                domain = clean,
+                                dailyLimitMinutes = minutes,
+                                isEnabled = true,
+                                lockMode = lockMode,
+                                lockPasswordHash = null,
+                                lockUntilTimestamp = lockUntil
+                            )
                         )
-                    )
-                    blockingSessionManager.checkAndEnforce()
-                    withContext(Dispatchers.Main) {
-                        sites = sites.filterNot {
-                            WebsiteBlocker.normalizeRule(it.domain) == clean
-                        } + WebsiteLimitUi(
-                            clean,
-                            minutes,
-                            true,
-                            0L,
-                            lockMode,
-                            null,
-                            lockUntil
-                        )
-                        showAddDialog = false
+                        blockingSessionManager.checkAndEnforce()
+                        withContext(Dispatchers.Main) {
+                            sites = sites.filterNot {
+                                WebsiteBlocker.normalizeRule(it.domain) == clean
+                            } + WebsiteLimitUi(
+                                domain = clean,
+                                dailyLimitMinutes = minutes,
+                                isEnabled = true,
+                                usageMs = 0L,
+                                lockMode = lockMode,
+                                lockPasswordHash = null,
+                                lockUntilTimestamp = lockUntil
+                            )
+                            if (!targetAlreadyConfigured) allConfiguredCount++
+                            showAddDialog = false
+                            initialRuleForAdd = null
+                        }
                     }
                 }
-
-                }
-                val normalizedTarget = WebsiteBlocker.normalizeRule(domain)
-                val targetAlreadyConfigured = sites.any { WebsiteBlocker.normalizeRule(it.domain) == normalizedTarget }
-                val isCreatingLimit = normalizedTarget.isNotBlank() && minutes > 0 && !targetAlreadyConfigured
-                if (isCreatingLimit && MonetizationPolicy.requiresExtraUsageLimitAd(sites.size, targetAlreadyConfigured)) {
+                val isCreatingLimit = minutes > 0 && !targetAlreadyConfigured
+                if (
+                    isCreatingLimit &&
+                    MonetizationPolicy.requiresExtraUsageLimitAd(
+                        allConfiguredCount,
+                        targetAlreadyConfigured
+                    )
+                ) {
                     RewardedGateCoordinator.launch(
                         context = context,
                         requiredAds = 1,
-                        title = "Adicionar mais um site",
-                        description = "Assista a 1 anúncio para adicionar este site ao limite diário.",
+                        title = if (keywordMode) "Adicionar mais uma palavra" else "Adicionar mais um site",
+                        description = if (keywordMode) {
+                            "Assista a 1 anúncio para adicionar esta palavra ao limite diário."
+                        } else {
+                            "Assista a 1 anúncio para adicionar este site ao limite diário."
+                        },
                         action = monetizedAction
                     )
                 } else {
@@ -778,51 +934,65 @@ fun WebsiteLimitsTab(
     }
 
     if (showEditDialog && selectedSite != null) {
-        EditWebsiteLimitDialog(site = selectedSite!!, permissionsMissing = permissionsMissing, onDismiss = { showEditDialog = false }, onSave = { minutes, enabled, lockMode, _, lockUntil ->
-            val siteToEdit = selectedSite ?: return@EditWebsiteLimitDialog
-            scope.launch(Dispatchers.IO) {
-                if (!ProtectionPermissionGate.read(context).isReady) {
-                    withContext(Dispatchers.Main) { onPermissionsRequired() }
-                    return@launch
-                }
-                val websiteDao = db.websiteUsageLimitDao()
-                val normalizedDomain = WebsiteBlocker.normalizeRule(siteToEdit.domain)
-                if (normalizedDomain.isEmpty()) return@launch
-                if (normalizedDomain != siteToEdit.domain) {
-                    websiteDao.getAllStatic()
-                        .firstOrNull { it.domain == siteToEdit.domain }
-                        ?.let { websiteDao.delete(it) }
-                }
-                websiteDao.insert(
-                    WebsiteUsageLimit(
-                        domain = normalizedDomain,
-                        dailyLimitMinutes = minutes,
-                        isEnabled = enabled,
-                        lockMode = lockMode,
-                        lockPasswordHash = null,
-                        lockUntilTimestamp = lockUntil
-                    )
-                )
-                blockingSessionManager.checkAndEnforce()
-                withContext(Dispatchers.Main) {
-                    sites = sites.map {
-                        if (it.domain == siteToEdit.domain) {
-                            it.copy(
-                                domain = normalizedDomain,
-                                dailyLimitMinutes = minutes,
-                                isEnabled = enabled,
-                                lockMode = lockMode,
-                                lockPasswordHash = null,
-                                lockUntilTimestamp = lockUntil
-                            )
-                        } else {
-                            it
-                        }
+        EditWebsiteLimitDialog(
+            site = selectedSite!!,
+            permissionsMissing = permissionsMissing,
+            onDismiss = { showEditDialog = false },
+            onSave = { minutes, enabled, lockMode, _, lockUntil ->
+                val siteToEdit = selectedSite ?: return@EditWebsiteLimitDialog
+                scope.launch(Dispatchers.IO) {
+                    if (!ProtectionPermissionGate.read(context).isReady) {
+                        withContext(Dispatchers.Main) { onPermissionsRequired() }
+                        return@launch
                     }
-                    showEditDialog = false
+                    val dao = db.websiteUsageLimitDao()
+                    val normalizedRule = WebsiteBlocker.normalizeRule(siteToEdit.domain)
+                    if (normalizedRule.isEmpty()) return@launch
+                    if (minutes <= 0) {
+                        dao.getAllStatic()
+                            .firstOrNull {
+                                WebsiteBlocker.normalizeRule(it.domain) == normalizedRule
+                            }
+                            ?.let { dao.delete(it) }
+                        blockingSessionManager.checkAndEnforce()
+                        withContext(Dispatchers.Main) {
+                            sites = sites.filterNot {
+                                WebsiteBlocker.normalizeRule(it.domain) == normalizedRule
+                            }
+                            allConfiguredCount = (allConfiguredCount - 1).coerceAtLeast(0)
+                            showEditDialog = false
+                        }
+                        return@launch
+                    }
+                    dao.insert(
+                        WebsiteUsageLimit(
+                            domain = normalizedRule,
+                            dailyLimitMinutes = minutes,
+                            isEnabled = enabled,
+                            lockMode = lockMode,
+                            lockPasswordHash = null,
+                            lockUntilTimestamp = lockUntil
+                        )
+                    )
+                    blockingSessionManager.checkAndEnforce()
+                    withContext(Dispatchers.Main) {
+                        sites = sites.map {
+                            if (WebsiteBlocker.normalizeRule(it.domain) == normalizedRule) {
+                                it.copy(
+                                    domain = normalizedRule,
+                                    dailyLimitMinutes = minutes,
+                                    isEnabled = enabled,
+                                    lockMode = lockMode,
+                                    lockPasswordHash = null,
+                                    lockUntilTimestamp = lockUntil
+                                )
+                            } else it
+                        }
+                        showEditDialog = false
+                    }
                 }
             }
-        })
+        )
     }
 
     if (showMasterCredentialConfirm && selectedSite != null) {
@@ -840,9 +1010,95 @@ fun WebsiteLimitsTab(
         )
     }
 
-    if (showSafetyModeAlert) {
+    LimitMutationAlerts(
+        showTimeLocked = showTimeLockedAlert,
+        onTimeLockedDismiss = { showTimeLockedAlert = false },
+        showSafetyMode = showSafetyModeAlert,
+        onSafetyModeDismiss = { showSafetyModeAlert = false },
+        showCredentialMissing = showCredentialMissingAlert,
+        onCredentialMissingDismiss = { showCredentialMissingAlert = false },
+        onConfigureMasterPassword = onConfigureMasterPassword
+    )
+}
+
+@Composable
+private fun UsageLimitPresetRow(
+    rule: String,
+    keywordMode: Boolean,
+    onClick: () -> Unit
+) {
+    val icon: ImageVector = if (keywordMode) Icons.Default.Tag else Icons.Default.Public
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 4.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f))
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(AccentCyan.copy(alpha = 0.10f), RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, contentDescription = null, tint = AccentCyan)
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(
+                    WebsiteBlocker.displayRule(rule),
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
+                )
+                Text(
+                    stringResource(R.string.limits_preset_not_configured),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp
+                )
+            }
+            Icon(Icons.Default.Add, contentDescription = null, tint = AccentCyan)
+        }
+    }
+}
+
+@Composable
+private fun LimitMutationAlerts(
+    showTimeLocked: Boolean,
+    onTimeLockedDismiss: () -> Unit,
+    showSafetyMode: Boolean,
+    onSafetyModeDismiss: () -> Unit,
+    showCredentialMissing: Boolean,
+    onCredentialMissingDismiss: () -> Unit,
+    onConfigureMasterPassword: () -> Unit
+) {
+    if (showTimeLocked) {
         AlertDialog(
-            onDismissRequest = { showSafetyModeAlert = false },
+            onDismissRequest = onTimeLockedDismiss,
+            title = { Text(stringResource(R.string.limits_locked_alert_title), color = DangerRed) },
+            text = {
+                Text(
+                    stringResource(R.string.limits_locked_alert_desc),
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = onTimeLockedDismiss) {
+                    Text(stringResource(R.string.action_ok), color = AccentCyan)
+                }
+            },
+            containerColor = MaterialTheme.colorScheme.surface
+        )
+    }
+    if (showSafetyMode) {
+        AlertDialog(
+            onDismissRequest = onSafetyModeDismiss,
             title = { Text(stringResource(R.string.limits_security_mode), color = DangerRed) },
             text = {
                 Text(
@@ -851,17 +1107,16 @@ fun WebsiteLimitsTab(
                 )
             },
             confirmButton = {
-                TextButton({ showSafetyModeAlert = false }) {
+                TextButton(onClick = onSafetyModeDismiss) {
                     Text(stringResource(R.string.action_ok), color = AccentCyan)
                 }
             },
             containerColor = MaterialTheme.colorScheme.surface
         )
     }
-
-    if (showCredentialMissingAlert) {
+    if (showCredentialMissing) {
         AlertDialog(
-            onDismissRequest = { showCredentialMissingAlert = false },
+            onDismissRequest = onCredentialMissingDismiss,
             title = {
                 Text(stringResource(R.string.deactivation_password_title), color = DangerRed)
             },
@@ -872,26 +1127,18 @@ fun WebsiteLimitsTab(
                 )
             },
             confirmButton = {
-                TextButton({
-                    showCredentialMissingAlert = false
-                    onConfigureMasterPassword()
-                }) {
+                TextButton(
+                    onClick = {
+                        onCredentialMissingDismiss()
+                        onConfigureMasterPassword()
+                    }
+                ) {
                     Text(
                         stringResource(R.string.master_credential_create_action),
                         color = AccentCyan
                     )
                 }
             },
-            containerColor = MaterialTheme.colorScheme.surface
-        )
-    }
-
-    if (showTimeLockedAlert) {
-        AlertDialog(
-            onDismissRequest = { showTimeLockedAlert = false },
-            title = { Text(stringResource(R.string.limits_locked_alert_title), color = DangerRed) },
-            text = { Text(stringResource(R.string.limits_locked_alert_desc), color = TextPrimary) },
-            confirmButton = { TextButton({ showTimeLockedAlert = false }) { Text(stringResource(R.string.action_ok), color = AccentCyan) } },
             containerColor = MaterialTheme.colorScheme.surface
         )
     }
