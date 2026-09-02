@@ -33,9 +33,9 @@ import kotlinx.coroutines.launch
 /**
  * Serviço foreground do Pomodoro.
  *
- * Antes ele existia apenas enquanto o bloqueio rigoroso estava ativo. Agora
- * mantém também os ciclos normais (foco/pausa/foco) vivos em segundo plano. O
- * watchdog agressivo e a LockActivity continuam exclusivos do modo rigoroso.
+ * Mantém ciclos normais e rigorosos (foco/pausa/foco) vivos em segundo plano.
+ * O watchdog também cobre ciclos normais para recuperar o serviço se o Android
+ * matar o processo; a LockActivity continua exclusiva do modo rigoroso.
  */
 class PomodoroForegroundService : Service() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -47,7 +47,8 @@ class PomodoroForegroundService : Service() {
         private const val CHANNEL_ID = "focusguard_pomodoro_watchdog"
         private const val NOTIFICATION_ID = 201
         private const val WATCHDOG_ALARM_REQUEST_CODE = 3001
-        private const val WATCHDOG_INTERVAL_MS = 30_000L
+        private const val STRICT_WATCHDOG_INTERVAL_MS = 30_000L
+        private const val NORMAL_WATCHDOG_INTERVAL_MS = 60_000L
 
         fun start(context: Context) {
             val intent = Intent(context, PomodoroForegroundService::class.java)
@@ -70,14 +71,35 @@ class PomodoroForegroundService : Service() {
         }
 
         fun scheduleWatchdogAlarm(context: Context) {
-            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+            val appContext = context.applicationContext
+            val runtime = PomodoroPlanStore(appContext).readRuntime()?.takeIf { it.active }
+            val strict = StrictPomodoroLock.isActive(appContext)
+            if (runtime == null && !strict) {
+                cancelWatchdogAlarm(appContext)
+                return
+            }
+
+            val alarmManager = appContext.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+                ?: return
             val canScheduleExact = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
                 alarmManager.canScheduleExactAlarms()
             } else {
                 true
             }
-            val pendingIntent = watchdogPendingIntent(context)
-            val triggerAt = System.currentTimeMillis() + WATCHDOG_INTERVAL_MS
+            val pendingIntent = watchdogPendingIntent(appContext)
+            val now = System.currentTimeMillis()
+            val safetyInterval = if (strict) {
+                STRICT_WATCHDOG_INTERVAL_MS
+            } else {
+                NORMAL_WATCHDOG_INTERVAL_MS
+            }
+            val intervalEndTime = runtime?.intervalEndTime ?: 0L
+            val triggerAt = when {
+                intervalEndTime in 1..now -> now + 1_000L
+                intervalEndTime > now -> minOf(now + safetyInterval, intervalEndTime)
+                else -> now + safetyInterval
+            }
+
             try {
                 if (canScheduleExact) {
                     alarmManager.setExactAndAllowWhileIdle(
@@ -154,11 +176,7 @@ class PomodoroForegroundService : Service() {
         }
 
         startWatchdogLoop()
-        if (StrictPomodoroLock.isActive(applicationContext)) {
-            scheduleWatchdogAlarm(applicationContext)
-        } else {
-            cancelWatchdogAlarm(applicationContext)
-        }
+        scheduleWatchdogAlarm(applicationContext)
         return START_STICKY
     }
 
@@ -183,10 +201,11 @@ class PomodoroForegroundService : Service() {
                     updateWidgetIfNeeded()
                     if (StrictPomodoroLock.isActive(applicationContext)) {
                         ensureLockActivityOnTop()
-                        scheduleWatchdogAlarm(applicationContext)
-                    } else {
-                        cancelWatchdogAlarm(applicationContext)
                     }
+                    // O alarme fica continuamente armado. Enquanto o serviço está
+                    // saudável ele é apenas renovado; se o processo morrer, a última
+                    // reserva acorda o receiver e restaura o ciclo persistido.
+                    scheduleWatchdogAlarm(applicationContext)
                 } catch (error: Throwable) {
                     FocusGuardLogger.logError("PomodoroFGService", "Erro no loop", error)
                 }
@@ -331,7 +350,7 @@ class PomodoroForegroundService : Service() {
 
     override fun onTaskRemoved(rootIntent: Intent?) {
         super.onTaskRemoved(rootIntent)
-        if (StrictPomodoroLock.isActive(applicationContext)) {
+        if (hasActivePlan()) {
             scheduleWatchdogAlarm(applicationContext)
         }
     }
@@ -339,7 +358,7 @@ class PomodoroForegroundService : Service() {
     override fun onDestroy() {
         watchdogJob?.cancel()
         releaseWakeLock()
-        if (StrictPomodoroLock.isActive(applicationContext)) {
+        if (hasActivePlan()) {
             scheduleWatchdogAlarm(applicationContext)
         }
         scope.cancel()
