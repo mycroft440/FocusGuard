@@ -6,6 +6,7 @@ import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.focusguard.data.PredefinedApps
 import com.focusguard.data.PredefinedWebsites
+import com.focusguard.security.PasswordTargetAccessGrant
 import java.net.IDN
 import java.net.Inet6Address
 import java.net.InetAddress
@@ -135,7 +136,6 @@ object WebsiteBlocker {
         if (sanitized.equals(PredefinedWebsites.PORNOGRAPHY_RULE, ignoreCase = true)) {
             return PredefinedWebsites.PORNOGRAPHY_RULE
         }
-        // Não aceita categorias arbitrárias digitadas pelo usuário.
         if (sanitized.startsWith(CATEGORY_RULE_PREFIX, ignoreCase = true)) return ""
 
         if (sanitized.startsWith(KEYWORD_RULE_PREFIX, ignoreCase = true)) {
@@ -251,17 +251,14 @@ object WebsiteBlocker {
     }
 
     /**
-     * Produz os filtros enviados aos navegadores Chromium gerenciados. Além dos
-     * domínios, a categoria de pornografia inclui consultas iniciadas pelas
-     * palavras configuradas. O sufixo `*` é uma correspondência de prefixo de
-     * token de query suportada oficialmente por URLBlocklist.
-     *
-     * A camada de acessibilidade continua sendo a regra principal para buscas:
-     * ela também reconhece o termo em qualquer posição da consulta e atende os
-     * navegadores que não aceitam políticas gerenciadas.
+     * Produz filtros de navegador gerenciado a partir das regras que estão
+     * efetivamente fechadas agora. Uma concessão PASSWORD remove somente sua
+     * regra durante a visita autenticada; a regra persistida permanece intacta.
      */
     fun managedBrowserFiltersFor(normalizedRules: Collection<String>): Set<String> {
         val normalized = normalizeRules(normalizedRules)
+            .filterNot(PasswordTargetAccessGrant::isWebsiteRuleGranted)
+            .toSet()
         return linkedSetOf<String>().apply {
             addAll(expandDomainAliases(normalized))
             if (normalized.any(::isPornographyRule)) {
@@ -277,11 +274,13 @@ object WebsiteBlocker {
 
     /**
      * Relaciona sites a apps que normalmente abrem seus links no Android.
-     * Isso evita que um link bloqueado seja desviado para o app nativo.
+     * Uma regra temporariamente autenticada também deixa de redirecionar seu app
+     * nativo até a visita terminar.
      */
     fun appPackageDomainsFor(domains: Collection<String>): Map<String, String> {
         val result = linkedMapOf<String, String>()
         normalizeRules(domains)
+            .filterNot(PasswordTargetAccessGrant::isWebsiteRuleGranted)
             .filterNot { isKeywordRule(it) || isPornographyRule(it) }
             .forEach { rule ->
                 val canonical = canonicalDomainFor(rule)
@@ -312,8 +311,9 @@ object WebsiteBlocker {
 
     /**
      * Retorna todas as regras que cobrem o domínio, da mais específica para a
-     * mais ampla. Isso permite que limites sobrepostos acumulem o mesmo uso
-     * sem alterar a precedência usada para decidir qual regra exibir.
+     * mais ampla. Antes de decidir, uma concessão PASSWORD observa a URL atual:
+     * permanecer no mesmo alvo mantém a visita aberta; navegar para fora revoga
+     * a concessão e restaura a proteção imediatamente.
      */
     fun findMatchingRules(
         urlOrDomain: String,
@@ -321,11 +321,20 @@ object WebsiteBlocker {
     ): Set<String> {
         if (normalizedBlockedDomains.isEmpty()) return emptySet()
 
-        val directRules = normalizedBlockedDomains
+        PasswordTargetAccessGrant.onWebsiteCandidateObserved(
+            urlOrDomain = urlOrDomain,
+            configuredRules = normalizedBlockedDomains
+        )
+        val effectiveBlockedDomains = normalizedBlockedDomains
+            .filterNot(PasswordTargetAccessGrant::isWebsiteRuleGranted)
+            .toSet()
+        if (effectiveBlockedDomains.isEmpty()) return emptySet()
+
+        val directRules = effectiveBlockedDomains
             .filterNot(::isPornographyRule)
             .toSet()
         val matches = findDirectMatchingRules(urlOrDomain, directRules).toMutableSet()
-        if (normalizedBlockedDomains.any(::isPornographyRule)) {
+        if (effectiveBlockedDomains.any(::isPornographyRule)) {
             val normalizedCandidate = normalizeRule(urlOrDomain)
             val pornographyMatched = isPornographyRule(normalizedCandidate) ||
                 findDirectMatchingRules(urlOrDomain, pornographyBlockingRules).isNotEmpty() ||
@@ -334,6 +343,27 @@ object WebsiteBlocker {
             if (pornographyMatched) matches += PredefinedWebsites.PORNOGRAPHY_RULE
         }
         return matches
+    }
+
+    /**
+     * Pure matcher used by the grant lifecycle itself. It deliberately ignores
+     * temporary grants to avoid recursion while deciding whether navigation left
+     * the authenticated website.
+     */
+    internal fun matchesRuleIgnoringGrants(
+        urlOrDomain: String,
+        normalizedRule: String
+    ): Boolean {
+        val rule = normalizeRule(normalizedRule)
+        if (rule.isBlank()) return false
+        if (isPornographyRule(rule)) {
+            val normalizedCandidate = normalizeRule(urlOrDomain)
+            return isPornographyRule(normalizedCandidate) ||
+                findDirectMatchingRules(urlOrDomain, pornographyBlockingRules).isNotEmpty() ||
+                isPornographySearchUrl(urlOrDomain) ||
+                isGoogleImagesUrl(urlOrDomain)
+        }
+        return findDirectMatchingRules(urlOrDomain, setOf(rule)).isNotEmpty()
     }
 
     private fun findDirectMatchingRules(
@@ -345,8 +375,6 @@ object WebsiteBlocker {
         val matches = linkedSetOf<String>()
         val domain = extractDomain(urlOrDomain)
         if (domain.isEmpty()) {
-            // Identificadores de uso persistidos e rótulos da UI podem ser a
-            // própria regra, sem representar uma URL navegável.
             val directRule = normalizeRule(urlOrDomain)
             if (directRule in normalizedBlockedDomains) matches += directRule
             return matches
@@ -371,12 +399,6 @@ object WebsiteBlocker {
                 domain == member || domain.endsWith(".$member")
             }
             if (candidateIsInFamily) {
-                // Só o membro em si cobre a família inteira. Uma regra mais
-                // específica que o visitado — `music.youtube.com` diante de
-                // `youtube.com` — não o cobre: aceitá-la fazia um limite no
-                // YouTube Music derrubar o YouTube todo, ao contrário do que
-                // acontece com domínios sem alias, onde a busca só sobe para os
-                // domínios-pai do visitado.
                 normalizedBlockedDomains.filterTo(matches) { configuredRule ->
                     configuredRule in family
                 }
@@ -400,12 +422,6 @@ object WebsiteBlocker {
         }?.key ?: rule
     }
 
-    /**
-     * Retorna a regra normalizada responsável pelo bloqueio. O conjunto
-     * recebido deve ter sido produzido por [normalizeRules]. A regra de
-     * domínio mais específica vence; na ausência dela, a palavra-chave mais
-     * longa que estiver contida no host é usada.
-     */
     fun findMatchingRule(
         urlOrDomain: String,
         normalizedBlockedDomains: Set<String>
@@ -456,11 +472,6 @@ object WebsiteBlocker {
         }
     }
 
-    /**
-     * Lê somente um campo editável que originou o evento. O chamador ainda
-     * precisa confirmar que a página atual é do Google antes de interpretar o
-     * texto como consulta; assim conteúdo arbitrário da página não é varrido.
-     */
     fun extractEditableTextFromEvent(event: AccessibilityEvent): String? {
         val source = event.source ?: return null
         return try {
@@ -477,10 +488,6 @@ object WebsiteBlocker {
         }
     }
 
-    /**
-     * Procura a barra de endereço usando primeiro ids específicos do pacote e,
-     * como fallback, uma única travessia limitada da árvore de acessibilidade.
-     */
     fun extractUrlFromRoot(
         root: AccessibilityNodeInfo?,
         browserPackageName: String
@@ -510,7 +517,6 @@ object WebsiteBlocker {
         return result
     }
 
-    /** True even while a genuine address bar is still empty (e.g. a new tab). */
     fun hasAddressBarNode(
         root: AccessibilityNodeInfo?,
         browserPackageName: String
@@ -519,7 +525,6 @@ object WebsiteBlocker {
         return findAddressBarNode(root, browserPackageName, 0, intArrayOf(0))
     }
 
-    /** Fallback para texto ainda digitado quando o evento não veio da barra. */
     fun extractAddressBarTextFromRoot(
         root: AccessibilityNodeInfo?,
         browserPackageName: String
@@ -543,11 +548,6 @@ object WebsiteBlocker {
         return findAddressBarText(root, browserPackageName, 0, intArrayOf(0))
     }
 
-    /**
-     * Retorna verdadeiro para uma consulta digitada na omnibox. URLs comuns
-     * não são examinadas pelo caminho; uma URL só entra aqui quando é uma
-     * pesquisa do Google, evitando falsos positivos como example.com/sex.
-     */
     fun isPornographySearchInput(text: String): Boolean {
         val candidateUrl = extractUrlCandidate(text)
         if (candidateUrl != null &&
@@ -556,35 +556,22 @@ object WebsiteBlocker {
             return true
         }
 
-        // A isenção vale só quando o texto inteiro é um endereço — é ela que
-        // evita derrubar example.com/sex. Uma consulta que apenas contém um
-        // domínio entre as palavras ("porn reddit.com") continua sendo consulta:
-        // antes, o domínio solto fazia a varredura de termos ser pulada e a
-        // busca passava batido em qualquer buscador que não fosse o Google.
         if (isValidUrl(text)) return false
 
         return containsPornographySearchTerm(text)
     }
 
-    /** Detecta os termos da categoria em `q=` de qualquer domínio regional do Google. */
     fun isPornographyGoogleSearchUrl(url: String): Boolean {
         if (!isGoogleUrl(url)) return false
         return searchQueryValues(url).any(::containsPornographySearchTerm)
     }
 
-    /** Detecta a mesma consulta também em Bing, DuckDuckGo, Brave, Yahoo e afins. */
     fun isPornographySearchUrl(url: String): Boolean {
         val domain = extractDomain(url)
         if (domain.isEmpty() || !isKnownSearchEngineDomain(domain)) return false
         return searchQueryValues(url).any(::containsPornographySearchTerm)
     }
 
-
-    /**
-     * No modo estrito, qualquer superfície de pesquisa visual do Google fica
-     * indisponível enquanto a categoria Pornografia estiver ativa. Isso inclui
-     * a página inicial, resultados antigos e atuais, busca reversa e Lens.
-     */
     fun isGoogleImagesUrl(url: String): Boolean {
         if (!isGoogleUrl(url)) return false
         val domain = extractDomain(url)
@@ -604,7 +591,6 @@ object WebsiteBlocker {
         }
     }
 
-    /** Usado para limitar a leitura de campos de página ao Google verificado pela URL. */
     fun isGoogleUrl(url: String): Boolean {
         val domain = extractDomain(url)
         return domain.isNotEmpty() && GOOGLE_HOST_REGEX.matches(domain)
@@ -618,11 +604,6 @@ object WebsiteBlocker {
         return PORNOGRAPHY_SEARCH_TERM_REGEX.containsMatchIn(normalized)
     }
 
-    /**
-     * Extrai uma URL de textos compostos usados em contentDescription, como
-     * "Barra de endereços, example.com". Só deve ser chamado após o nó ter
-     * sido identificado como barra do navegador.
-     */
     internal fun extractUrlCandidate(text: String): String? {
         val sanitized = sanitizeText(text)
         if (sanitized.isEmpty()) return null
@@ -863,7 +844,6 @@ object WebsiteBlocker {
             }.getOrDefault("")
         }
 
-        // Fallback para testes JVM sem a implementação ICU do Android.
         return runCatching {
             IDN.toASCII(host, IDN.USE_STD3_ASCII_RULES).lowercase(Locale.ROOT)
         }.getOrDefault("")
@@ -872,8 +852,6 @@ object WebsiteBlocker {
     private fun decodePercentEncodedHost(host: String): String {
         if ('%' !in host) return host
         return runCatching {
-            // URLDecoder trata '+' como espaço; em host ele é literal e será
-            // rejeitado depois pela validação STD3.
             URLDecoder.decode(host.replace("+", "%2B"), "UTF-8")
         }.getOrDefault(host)
     }
