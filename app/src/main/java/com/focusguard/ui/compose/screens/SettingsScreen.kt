@@ -128,7 +128,6 @@ fun SettingsScreen(
             else -> R.string.device_owner_status_inactive
         }
     )
-    val uninstallSubtitle = stringResource(R.string.uninstall_app_subtitle_auth)
 
     if (showDeviceOwnerMaintenanceDialog) {
         DeviceOwnerMaintenanceDialog(
@@ -279,7 +278,7 @@ fun SettingsScreen(
             SettingsItem(
                 Icons.Default.DeleteForever,
                 stringResource(R.string.uninstall_app_title),
-                uninstallSubtitle,
+                stringResource(R.string.uninstall_app_subtitle_no_master),
                 iconTint = DangerRed,
                 titleColor = DangerRed,
                 onClick = {
