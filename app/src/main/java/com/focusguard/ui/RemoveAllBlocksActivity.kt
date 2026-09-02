@@ -1,10 +1,11 @@
 package com.focusguard.ui
 
-import android.content.Intent
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -69,9 +70,15 @@ class RemoveAllBlocksActivity : ComponentActivity() {
                 var credential by remember { mutableStateOf("") }
                 var error by remember { mutableStateOf<String?>(null) }
                 var working by remember { mutableStateOf(false) }
-                var configuredRevision by remember { mutableStateOf(0) }
-                val masterConfigured = remember(configuredRevision) {
-                    credentialManager.hasCredential()
+                var masterConfigured by remember {
+                    mutableStateOf(credentialManager.hasCredential())
+                }
+                val masterSetupLauncher = rememberLauncherForActivityResult(
+                    ActivityResultContracts.StartActivityForResult()
+                ) {
+                    masterConfigured = credentialManager.hasCredential()
+                    credential = ""
+                    error = null
                 }
 
                 Column(
@@ -91,10 +98,9 @@ class RemoveAllBlocksActivity : ComponentActivity() {
                         Spacer(Modifier.height(12.dp))
                         Button(
                             onClick = {
-                                startActivity(
-                                    Intent(
-                                        this@RemoveAllBlocksActivity,
-                                        MasterPasswordActivity::class.java
+                                masterSetupLauncher.launch(
+                                    MasterPasswordActivity.createIntent(
+                                        this@RemoveAllBlocksActivity
                                     )
                                 )
                             }
@@ -116,7 +122,7 @@ class RemoveAllBlocksActivity : ComponentActivity() {
                             singleLine = true,
                             enabled = !working,
                             visualTransformation = PasswordVisualTransformation(),
-                            label = { Text(stringResource(R.string.deactivation_password_title)) }
+                            label = { Text(stringResource(R.string.master_password_settings_title)) }
                         )
                         error?.let {
                             Spacer(Modifier.height(8.dp))
@@ -172,7 +178,7 @@ class RemoveAllBlocksActivity : ComponentActivity() {
                                         error = getString(R.string.master_credential_wrong)
                                     }
                                     DeactivationCredentialManager.VerificationResult.NOT_CONFIGURED -> {
-                                        configuredRevision++
+                                        masterConfigured = false
                                         error = getString(
                                             R.string.master_credential_not_configured
                                         )
@@ -181,9 +187,7 @@ class RemoveAllBlocksActivity : ComponentActivity() {
                             }
                         ) {
                             if (working) {
-                                CircularProgressIndicator(
-                                    modifier = Modifier.height(18.dp)
-                                )
+                                CircularProgressIndicator(modifier = Modifier.height(18.dp))
                                 Spacer(Modifier.height(4.dp))
                             }
                             Text(stringResource(R.string.master_remove_all_blocks_title))
@@ -199,12 +203,5 @@ class RemoveAllBlocksActivity : ComponentActivity() {
                 }
             }
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        // Recreate Compose state after returning from master-password setup so the
-        // newly configured credential is visible immediately.
-        if (hasWindowFocus()) window.decorView.invalidate()
     }
 }
