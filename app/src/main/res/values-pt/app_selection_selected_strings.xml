@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_selection_selected">Apps selecionados</string>
+    <string name="app_selection_selected_hint">Estes apps entrarão no bloqueio. Toque em um para removê-lo.</string>
+</resources>
