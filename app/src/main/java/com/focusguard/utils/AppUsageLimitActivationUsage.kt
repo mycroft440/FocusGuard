@@ -113,8 +113,10 @@ object AppUsageLimitActivationUsage {
 
         val baselineEnd = activatedAtMillis.coerceAtMost(nowMillis)
         val baseline = try {
-            usageStatsManager.queryAndAggregateUsageStats(dayStartMillis, baselineEnd)
-                [packageName]?.totalTimeInForeground
+            usageStatsManager
+                .queryAndAggregateUsageStats(dayStartMillis, baselineEnd)
+                .get(packageName)
+                ?.totalTimeInForeground
                 ?.coerceAtLeast(0L)
                 ?: 0L
         } catch (_: RuntimeException) {
