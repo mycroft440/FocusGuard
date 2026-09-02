@@ -6,8 +6,10 @@ import android.os.UserManager
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.focusmode.FocusModeStore
+import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.DeviceAdminActivationWindow
 import com.focusguard.security.DeviceOwnerMaintenanceGate
+import com.focusguard.security.LegacyPasswordUsageLimitMigration
 import com.focusguard.utils.AccessibilityStateMonitor
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.UsageAccessStateMonitor
@@ -56,6 +58,18 @@ class FocusGuardApplication : Application() {
             deviceOwnerManager.applyNuclearShield()
             AccessibilityStateMonitor.start(this)
             UsageAccessStateMonitor.start(this)
+
+            // Builds anteriores permitiam limites diários que reutilizavam a senha
+            // mestre. A migração pausa somente essas linhas legadas e reconcilia as
+            // políticas logo depois, garantindo que a senha mestre permaneça
+            // exclusiva da ação explícita "Remover todos os bloqueios".
+            applicationScope.launch {
+                if (LegacyPasswordUsageLimitMigration.runIfNeeded(this@FocusGuardApplication)) {
+                    BlockingSessionManager.getInstance(this@FocusGuardApplication)
+                        .checkAndEnforce()
+                }
+            }
+
             // Instanciar o manager também instancia dependências protegidas pelo
             // AndroidKeyStore. Sem sessão persistida não existe nada a restaurar,
             // então evitamos esse custo no boot normal e em ambientes de teste
