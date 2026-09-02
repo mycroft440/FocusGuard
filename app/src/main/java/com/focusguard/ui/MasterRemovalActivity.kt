@@ -202,7 +202,7 @@ class MasterRemovalActivity : ComponentActivity() {
                     data = Uri.parse("package:$packageName")
                 }
             )
-            Target.DEVICE_ADMIN -> startActivity(Intent(Settings.ACTION_DEVICE_SECURITY_SETTINGS))
+            Target.DEVICE_ADMIN -> startActivity(Intent(Settings.ACTION_SECURITY_SETTINGS))
             Target.ACCESSIBILITY -> startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
             Target.UNINSTALL -> startActivity(
                 Intent(Intent.ACTION_DELETE).apply { data = Uri.parse("package:$packageName") }
