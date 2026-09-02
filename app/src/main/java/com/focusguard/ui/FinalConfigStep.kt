@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AppUnlockBiometricAuthenticator
+import com.focusguard.security.BlockTargetPolicy
 import com.focusguard.security.PasswordAppUnlockMode
 import com.focusguard.security.PasswordAppUnlockStore
 import com.focusguard.ui.compose.components.PatternLockInput
@@ -83,6 +84,20 @@ fun FinalConfigStep(
     val appUnlockStore = remember(context) { PasswordAppUnlockStore(context) }
     val biometricAvailable = remember(context) {
         AppUnlockBiometricAuthenticator.isAvailable(context)
+    }
+    val acceptedPasswordSites = remember(sites) {
+        BlockTargetPolicy.acceptedRulesForSessionType(
+            BlockTargetPolicy.SESSION_TYPE_PASSWORD,
+            sites
+        )
+    }
+    val passwordTargetIds = remember(apps, acceptedPasswordSites) {
+        buildList {
+            apps.mapNotNull(PasswordAppUnlockStore::targetIdForPackage).forEach(::add)
+            acceptedPasswordSites
+                .mapNotNull(PasswordAppUnlockStore::targetIdForWebsite)
+                .forEach(::add)
+        }.distinct()
     }
 
     var isSaving by remember { mutableStateOf(false) }
@@ -339,16 +354,12 @@ fun FinalConfigStep(
                             return@Button
                         }
 
-                        val appCredential = when (unlockMode) {
+                        val targetCredential = when (unlockMode) {
                             PasswordAppUnlockMode.PASSWORD -> unlockPassword
                             PasswordAppUnlockMode.PATTERN -> patternCredential
                             PasswordAppUnlockMode.BIOMETRIC_ONLY -> null
                         }
 
-                        // A preferência global da tela do bloqueio por senha é a
-                        // única chave para permitir biometria como alternativa.
-                        // "Somente digital" continua sendo explícito por app e,
-                        // portanto, habilita biometria independentemente do toggle.
                         val effectiveBiometricEnabled =
                             unlockMode == PasswordAppUnlockMode.BIOMETRIC_ONLY ||
                                 (
@@ -360,10 +371,10 @@ fun FinalConfigStep(
                         scope.launch {
                             try {
                                 check(
-                                    appUnlockStore.saveForPackages(
-                                        packageNames = apps,
+                                    appUnlockStore.saveForTargets(
+                                        targetIds = passwordTargetIds,
                                         mode = unlockMode,
-                                        credential = appCredential,
+                                        credential = targetCredential,
                                         biometricEnabled = effectiveBiometricEnabled,
                                         hidePatternTrace = hidePatternTrace
                                     )
@@ -378,10 +389,10 @@ fun FinalConfigStep(
                                         endMinute = 0,
                                         daysOfWeek = "",
                                         apps = apps,
-                                        sites = sites
+                                        sites = acceptedPasswordSites.toList()
                                     )
                                 } catch (error: Exception) {
-                                    appUnlockStore.clearPackages(apps)
+                                    appUnlockStore.clearTargets(passwordTargetIds)
                                     throw error
                                 }
 
@@ -411,7 +422,7 @@ fun FinalConfigStep(
                         }
                     }
                 },
-                enabled = !isSaving && apps.isNotEmpty(),
+                enabled = !isSaving && passwordTargetIds.isNotEmpty(),
                 modifier = Modifier.fillMaxWidth().height(56.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
                 shape = RoundedCornerShape(16.dp)
@@ -533,7 +544,7 @@ private fun PatternSetupDialog(
                 Spacer(Modifier.height(8.dp))
                 PatternLockInput(
                     modifier = Modifier.fillMaxWidth(),
-                    hideTrace = hideTrace,
+                    hideTrace = hidePatternTrace,
                     resetKey = resetKey,
                     onPatternComplete = { pattern ->
                         when {
