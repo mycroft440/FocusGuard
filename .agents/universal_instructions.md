@@ -13,7 +13,8 @@
    - Use `grep_search` com filtros de extensão (`*.kt`, `*.java`, etc).
    - Não repita informações que já estão nos artefatos.
 4. **Planejamento**: Sempre crie um `implementation_plan.md` para tarefas complexas.
-5. **Automação**: Use os scripts disponíveis em `scripts/` (ex: `setup_antigravity.ps1`) para manter a consistência."
+5. **Automação**: Use os scripts disponíveis em `scripts/` (ex: `setup_antigravity.ps1`) para manter a consistência.
+6. **Monetização**: Antes de qualquer alteração de anúncios, leia `.agents/ads_monetization_instructions.md` e `docs/AD_MONETIZATION_PLAYBOOK.md` e trate essas regras como obrigatórias."
 
 ---
 *Este prompt reduzirá o tempo de 'rampa' da IA e economizará até 40% de tokens nas primeiras interações.*
