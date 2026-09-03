@@ -40,10 +40,9 @@ data class UsageLimitAppUi(
  * Lightweight row for the usage-limit catalogue.
  *
  * This list can contain a large number of targets. Per-row progress/color
- * animations and remote favicon requests caused dozens of concurrent jobs while
- * scrolling, which made the screen feel slow or stuck on lower-end devices.
- * Values are intentionally rendered statically here; the data still updates when
- * the screen state changes, without continuously animating every visible item.
+ * animations are intentionally avoided. App logos use the shared icon resolver,
+ * which first checks the local launcher icon and only then falls back to a known
+ * remote brand favicon for preventive apps that are not installed.
  */
 @Composable
 fun UsageLimitItem(
@@ -112,7 +111,7 @@ fun UsageLimitItem(
                 appName = app.appName,
                 modifier = Modifier.size(40.dp),
                 cornerRadius = 10.dp,
-                allowRemoteFallback = false
+                allowRemoteFallback = true
             )
 
             Spacer(modifier = Modifier.width(12.dp))
