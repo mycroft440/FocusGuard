@@ -108,7 +108,7 @@ class PomodoroForegroundService : Service() {
                         pendingIntent
                     )
                 } else {
-                    alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+                    scheduleInexactAllowWhileIdle(alarmManager, triggerAt, pendingIntent)
                 }
             } catch (error: SecurityException) {
                 FocusGuardLogger.logError(
@@ -117,7 +117,7 @@ class PomodoroForegroundService : Service() {
                     error
                 )
                 runCatching {
-                    alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
+                    scheduleInexactAllowWhileIdle(alarmManager, triggerAt, pendingIntent)
                 }
             } catch (error: Throwable) {
                 FocusGuardLogger.logError(
@@ -125,6 +125,25 @@ class PomodoroForegroundService : Service() {
                     "Falha ao agendar watchdog",
                     error
                 )
+            }
+        }
+
+        /**
+         * Fallback que continua elegível durante Doze sem exigir alarme exato.
+         */
+        private fun scheduleInexactAllowWhileIdle(
+            alarmManager: AlarmManager,
+            triggerAt: Long,
+            pendingIntent: PendingIntent
+        ) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setAndAllowWhileIdle(
+                    AlarmManager.RTC_WAKEUP,
+                    triggerAt,
+                    pendingIntent
+                )
+            } else {
+                alarmManager.set(AlarmManager.RTC_WAKEUP, triggerAt, pendingIntent)
             }
         }
 
@@ -202,10 +221,9 @@ class PomodoroForegroundService : Service() {
                     if (StrictPomodoroLock.isActive(applicationContext)) {
                         ensureLockActivityOnTop()
                     }
-                    // O alarme fica continuamente armado. Enquanto o serviço está
-                    // saudável ele é apenas renovado; se o processo morrer, a última
-                    // reserva acorda o receiver e restaura o ciclo persistido.
-                    scheduleWatchdogAlarm(applicationContext)
+                    // O watchdog já é armado no início, nas transições de fase,
+                    // em onTaskRemoved() e onDestroy(). Evite regravar o AlarmManager
+                    // a cada 2 segundos: reduz trabalho sem perder recuperação.
                 } catch (error: Throwable) {
                     FocusGuardLogger.logError("PomodoroFGService", "Erro no loop", error)
                 }

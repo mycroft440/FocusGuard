@@ -589,7 +589,7 @@ class PomodoroManager @Inject constructor(
                 startIntervalLocked(
                     phase = nextBreak,
                     config = runtime.config,
-                    ensureForegroundService = false
+                    ensureForegroundService = true
                 )
             }
 
@@ -605,7 +605,7 @@ class PomodoroManager @Inject constructor(
                 startIntervalLocked(
                     phase = PomodoroPhase.FOCUS,
                     config = runtime.config,
-                    ensureForegroundService = false
+                    ensureForegroundService = true
                 )
             }
         }
