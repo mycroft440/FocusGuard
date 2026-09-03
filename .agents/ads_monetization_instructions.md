@@ -14,3 +14,5 @@ Qualquer agente ou pessoa que adicionar, remover, mover ou alterar anúncios no 
 10. Só considerar concluído com testes, Lint e CI verdes.
 
 Se uma solicitação entrar em conflito com política oficial do Google, **não implemente a violação**; proponha a alternativa mais lucrativa que permaneça compatível.
+
+> **Baseline validada em 2026-09-03:** a recuperação do Pomodoro em segundo plano que sustenta o anúncio no encerramento passou por `testDebugUnitTest`, `lintDebug` e `assembleDebug`. Qualquer alteração futura em anúncios ou no fluxo de encerramento do Pomodoro deve revalidar essa integração.
