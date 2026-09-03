@@ -38,10 +38,12 @@ import kotlinx.coroutines.withContext
  * Single app-icon renderer used by blocking and usage-limit screens.
  *
  * Launcher icons are decoded off the main thread and kept in a small process cache.
- * The old implementation decoded the same icon again whenever a LazyColumn item was
- * recreated while scrolling, which could create visible jank in the usage-limit
- * catalogue. Known apps that are not installed can still use a bundled mark or,
- * where the caller allows it, a remote favicon.
+ * Known apps that are not installed can still use a bundled mark or, where the caller
+ * allows it, a remote favicon.
+ *
+ * Remote fallback is deliberately deferred until the local PackageManager lookup
+ * finishes. This prevents installed apps from starting unnecessary network requests
+ * while their launcher icon is still being decoded.
  */
 @Composable
 fun FocusGuardAppIcon(
@@ -56,19 +58,28 @@ fun FocusGuardAppIcon(
     var installedBitmap by remember(packageName) {
         mutableStateOf(appIconCache.get(packageName))
     }
+    var localLookupFinished by remember(packageName) {
+        mutableStateOf(installedBitmap != null)
+    }
 
     LaunchedEffect(packageName) {
-        if (installedBitmap != null) return@LaunchedEffect
+        if (installedBitmap != null) {
+            localLookupFinished = true
+            return@LaunchedEffect
+        }
+
         val loaded = withContext(Dispatchers.IO) {
             runCatching {
                 context.packageManager.getApplicationIcon(packageName)
                     .toBitmap(APP_ICON_SIZE_PX, APP_ICON_SIZE_PX)
             }.getOrNull()
         }
+
         if (loaded != null) {
             appIconCache.put(packageName, loaded)
             installedBitmap = loaded
         }
+        localLookupFinished = true
     }
 
     val bundledIcon = remember(packageName) { bundledPredefinedIcon(packageName) }
@@ -106,7 +117,7 @@ fun FocusGuardAppIcon(
                 )
             }
 
-            remoteIconUrl != null -> {
+            localLookupFinished && remoteIconUrl != null -> {
                 AsyncImage(
                     model = remoteIconUrl,
                     contentDescription = appName,
