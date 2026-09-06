@@ -50,6 +50,21 @@ object UsageLimitBehaviorPolicy {
         ruleEndMillis?.let { it > nowMillis } == true
 
     /**
+     * Keeps the exact persisted deadline when an edit only changes allowance or
+     * post-limit behavior. Recomputing from an approximate "days remaining" value
+     * would silently extend an existing rule every time the editor was saved.
+     */
+    internal fun resolveRuleEndForEdit(
+        existingRuleEndMillis: Long?,
+        durationEdited: Boolean,
+        calculatedRuleEndMillis: Long?
+    ): Long? = if (!durationEdited && existingRuleEndMillis != null) {
+        existingRuleEndMillis
+    } else {
+        calculatedRuleEndMillis
+    }
+
+    /**
      * Uses calendar arithmetic so "2 months" means two calendar months, not a fixed 60-day guess.
      * The rule remains valid through the selected final local day.
      */
@@ -187,6 +202,58 @@ object UsageLimitPauseStateStore {
         return evaluation.shouldBlock
     }
 
+    /**
+     * Revokes the once-per-day PAUSE_30 release for one configured rule without
+     * touching the rule deadline. This is deliberately synchronous when backed by
+     * SharedPreferences because package replacement must finish clearing releases
+     * before blocking policy is reconciled again.
+     */
+    fun clearTemporaryReleaseFor(lockMode: String): Boolean {
+        if (!UsageLimitBehaviorPolicy.isPauseMode(lockMode)) return false
+        val identifier = UsageLimitBehaviorPolicy.identifierFrom(lockMode)
+            .takeIf(String::isNotBlank) ?: return false
+        val storageKey = safeKey(identifier)
+        return synchronized(stateLock) {
+            clearPauseState(storageKey, synchronous = true)
+        }
+    }
+
+    /**
+     * Revokes every persisted PAUSE_30 release, including stale entries no longer
+     * represented by a database row. Daily-notice bookkeeping is intentionally
+     * preserved because it cannot grant access. Returns the number of distinct
+     * targets whose pause-release state existed.
+     */
+    fun clearAllTemporaryReleases(): Int = synchronized(stateLock) {
+        val memoryKeys = memoryPauseStates.keys.toSet()
+        memoryPauseStates.clear()
+
+        val context = storageContext ?: return@synchronized memoryKeys.size
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val persistedKeys = linkedSetOf<String>()
+        prefs.all.keys.forEach { rawKey ->
+            when {
+                rawKey.startsWith(KEY_RULE_END) ->
+                    persistedKeys += rawKey.removePrefix(KEY_RULE_END)
+                rawKey.startsWith(KEY_DAY) ->
+                    persistedKeys += rawKey.removePrefix(KEY_DAY)
+                rawKey.startsWith(KEY_BLOCKED_UNTIL) ->
+                    persistedKeys += rawKey.removePrefix(KEY_BLOCKED_UNTIL)
+            }
+        }
+
+        if (persistedKeys.isNotEmpty()) {
+            val editor = prefs.edit()
+            persistedKeys.forEach { key ->
+                editor.remove(KEY_RULE_END + key)
+                    .remove(KEY_DAY + key)
+                    .remove(KEY_BLOCKED_UNTIL + key)
+            }
+            editor.commit()
+        }
+        (memoryKeys + persistedKeys).size
+    }
+
     fun notifyDailyBlockOnce(
         lockMode: String,
         ruleEndMillis: Long?,
@@ -234,13 +301,21 @@ object UsageLimitPauseStateStore {
             .apply()
     }
 
-    private fun clearPauseState(key: String) {
-        memoryPauseStates.remove(key)
-        storageContext?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)?.edit()
-            ?.remove(KEY_RULE_END + key)
-            ?.remove(KEY_DAY + key)
-            ?.remove(KEY_BLOCKED_UNTIL + key)
-            ?.apply()
+    private fun clearPauseState(key: String, synchronous: Boolean = false): Boolean {
+        val hadMemoryState = memoryPauseStates.remove(key) != null
+        val context = storageContext ?: return hadMemoryState
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val hadPersistedState = prefs.contains(KEY_RULE_END + key) ||
+            prefs.contains(KEY_DAY + key) ||
+            prefs.contains(KEY_BLOCKED_UNTIL + key)
+        if (hadPersistedState) {
+            val editor = prefs.edit()
+                .remove(KEY_RULE_END + key)
+                .remove(KEY_DAY + key)
+                .remove(KEY_BLOCKED_UNTIL + key)
+            if (synchronous) editor.commit() else editor.apply()
+        }
+        return hadMemoryState || hadPersistedState
     }
 
     private fun readDailyNotice(key: String): Pair<Long, Long>? {

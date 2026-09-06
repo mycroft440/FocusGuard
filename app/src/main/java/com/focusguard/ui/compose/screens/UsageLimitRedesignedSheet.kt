@@ -107,8 +107,8 @@ fun AppLimitRedesignedSheet(
     val context = LocalContext.current
     val editMode = app.currentLimitMinutes != null
     val now = System.currentTimeMillis()
-    val remainingDays = app.lockUntilTimestamp
-        ?.takeIf { it > now }
+    val activeExistingRuleEnd = app.lockUntilTimestamp?.takeIf { it > now }
+    val remainingDays = activeExistingRuleEnd
         ?.let {
             ((it - now + TimeUnit.DAYS.toMillis(1) - 1L) / TimeUnit.DAYS.toMillis(1)).toInt()
         }
@@ -137,6 +137,9 @@ fun AppLimitRedesignedSheet(
             else UsageLimitBehaviorPolicy.RuleDurationUnit.MONTHS
         )
     }
+    var durationEdited by remember(app.packageName, app.lockUntilTimestamp) {
+        mutableStateOf(false)
+    }
     var iconDrawable by remember(app.packageName) { mutableStateOf<Drawable?>(null) }
 
     LaunchedEffect(app.packageName) {
@@ -147,10 +150,15 @@ fun AppLimitRedesignedSheet(
 
     val enteredMinutes = dailyMinutes.toIntOrNull() ?: 0
     val enteredDuration = durationAmount.toIntOrNull() ?: 0
-    val ruleEnd = UsageLimitBehaviorPolicy.calculateRuleEndMillis(
+    val calculatedRuleEnd = UsageLimitBehaviorPolicy.calculateRuleEndMillis(
         nowMillis = now,
         amount = enteredDuration,
         unit = durationUnit
+    )
+    val ruleEnd = UsageLimitBehaviorPolicy.resolveRuleEndForEdit(
+        existingRuleEndMillis = activeExistingRuleEnd,
+        durationEdited = durationEdited,
+        calculatedRuleEndMillis = calculatedRuleEnd
     )
     val canAdvance = enteredMinutes > 0 && enteredDuration > 0 && ruleEnd != null
 
@@ -214,11 +222,15 @@ fun AppLimitRedesignedSheet(
                         enteredMinutes = enteredMinutes,
                         durationAmount = durationAmount,
                         onDurationAmountChange = { raw ->
+                            durationEdited = true
                             durationAmount = raw.filter(Char::isDigit).take(3)
                         },
                         enteredDuration = enteredDuration,
                         durationUnit = durationUnit,
-                        onDurationUnitChange = { durationUnit = it },
+                        onDurationUnitChange = {
+                            durationEdited = true
+                            durationUnit = it
+                        },
                         editMode = editMode,
                         currentRuleEnd = app.lockUntilTimestamp,
                         onRemove = { onSave(null, false, "NONE", null, null) },

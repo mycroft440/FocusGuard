@@ -26,25 +26,39 @@ class BlockingScheduleReceiver : BroadcastReceiver() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
                 if (action == Intent.ACTION_MY_PACKAGE_REPLACED) {
-                    val reset = AppUpdateUnlockResetter.reset(context.applicationContext)
-                    FocusGuardLogger.log(
+                    runCatching {
+                        AppUpdateUnlockResetter.reset(context.applicationContext)
+                    }.onSuccess { reset ->
+                        FocusGuardLogger.log(
+                            "BlockingSchedule",
+                            "Atualização instalada: liberações temporárias revogadas " +
+                                "(apps=${reset.appLimitUnlocksCleared}, " +
+                                "sites=${reset.websiteLimitUnlocksCleared}, " +
+                                "pausas=${reset.pauseReleasesCleared})"
+                        )
+                    }.onFailure { error ->
+                        FocusGuardLogger.logError(
+                            "BlockingSchedule",
+                            "Falha ao revogar todos os desbloqueios após atualização; " +
+                                "a reconciliação de proteção será executada mesmo assim",
+                            error
+                        )
+                    }
+                }
+
+                runCatching {
+                    BlockingSessionManager.getInstance(context).checkAndEnforce()
+                }.onFailure { error ->
+                    FocusGuardLogger.logError(
                         "BlockingSchedule",
-                        "Atualização instalada: liberações temporárias revogadas " +
-                            "(apps=${reset.appLimitUnlocksCleared}, " +
-                            "sites=${reset.websiteLimitUnlocksCleared})"
+                        if (action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+                            "Falha ao reconciliar proteção após atualização"
+                        } else {
+                            "Falha ao reconciliar mudança de horário"
+                        },
+                        error
                     )
                 }
-                BlockingSessionManager.getInstance(context).checkAndEnforce()
-            } catch (error: Exception) {
-                FocusGuardLogger.logError(
-                    "BlockingSchedule",
-                    if (action == Intent.ACTION_MY_PACKAGE_REPLACED) {
-                        "Falha ao revogar desbloqueios e reconciliar após atualização"
-                    } else {
-                        "Falha ao reconciliar mudança de horário"
-                    },
-                    error
-                )
             } finally {
                 pendingResult.finish()
             }

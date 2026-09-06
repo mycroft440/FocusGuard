@@ -149,7 +149,21 @@ interface SessionWebsiteCrossRefDao {
 @Dao
 interface AppUsageLimitDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(limit: AppUsageLimit)
+    suspend fun insertRaw(limit: AppUsageLimit)
+
+    /**
+     * Reconfiguring an existing limit must not look like a fresh activation.
+     * createdAt anchors the same-day pre-activation baseline, so replacing it
+     * would grant a new allowance after an edit. A true remove-and-readd still
+     * gets a fresh timestamp because there is no existing row to preserve.
+     */
+    @Transaction
+    suspend fun insert(limit: AppUsageLimit) {
+        val existing = getLimitForPackage(limit.packageName)
+        insertRaw(
+            if (existing == null) limit else limit.copy(createdAt = existing.createdAt)
+        )
+    }
 
     @Update
     suspend fun update(limit: AppUsageLimit)
