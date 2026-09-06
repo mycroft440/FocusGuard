@@ -176,12 +176,12 @@ class BlockingAccessibilityServiceIntentTest {
     }
 
     @Test
-    fun `blocked app notice evicts app while website notice does not`() {
+    fun `block notice keeps target task until safe credential surface is ready`() {
         assertThat(
             BlockingAccessibilityService.shouldEvictBlockedAppBeforeNotice(
                 "com.example.blocked"
             )
-        ).isTrue()
+        ).isFalse()
         assertThat(
             BlockingAccessibilityService.shouldEvictBlockedAppBeforeNotice(null)
         ).isFalse()

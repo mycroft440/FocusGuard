@@ -53,6 +53,7 @@ import com.focusguard.security.ImmediateInterceptionPolicy.DirectDecision
 import com.focusguard.security.ImmediateInterceptionPolicy.SettingsSurface
 import com.focusguard.security.LauncherIndexRefreshPolicy
 import com.focusguard.security.ManagedSelfProtectionPolicy
+import com.focusguard.security.PasswordTargetAccessGrant
 import com.focusguard.security.ProtectedSettingsResetWindow
 import com.focusguard.security.SettingsInterceptionPolicy
 import com.focusguard.security.SelfProtectionStateStore
@@ -1621,7 +1622,10 @@ class BlockingAccessibilityService : AccessibilityService() {
         val blockedWebsiteDomain = blockedWebsiteAppDomains[packageName]
         val limitedWebsiteDomain = limitedWebsiteAppDomains[packageName]
         when {
+            // Website/focus/strict protections keep precedence over a PASSWORD
+            // visit. The grant only bypasses this app's PASSWORD-session edge.
             blockedWebsiteDomain != null -> blockWebsiteApp(blockedWebsiteDomain)
+            PasswordTargetAccessGrant.isPackageGranted(packageName) -> Unit
             ImmediateInterceptionPolicy.isBlockedTargetWindow(
                 packageName,
                 blockedAppsSet
@@ -4165,6 +4169,10 @@ class BlockingAccessibilityService : AccessibilityService() {
         val protectedSettingsPackages = SettingsInterceptionPolicy.settingsPackages +
             SettingsInterceptionPolicy.packageInstallerPackages
         windows.forEach { window ->
+            // A blocked task may remain underneath the full-screen FocusGuard
+            // credential Activity. Only a currently active/focused window can
+            // make the safe-surface handshake unsafe.
+            if (!window.isActive && !window.isFocused) return@forEach
             val root = runCatching { window.root }.getOrNull() ?: return@forEach
             try {
                 val visiblePackage = root.packageName?.toString().orEmpty()
@@ -4689,8 +4697,16 @@ class BlockingAccessibilityService : AccessibilityService() {
             (flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()) or
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
 
-        internal fun shouldEvictBlockedAppBeforeNotice(blockedPackage: String?): Boolean =
-            !blockedPackage.isNullOrBlank()
+        /**
+         * The opaque accessibility curtain already prevents interaction with the
+         * blocked app while BlockNoticeActivity is coming forward. Evicting to
+         * HOME first destroys the task context and makes PASSWORD authentication
+         * arrive too late. HOME remains the fail-safe only when the safe Activity
+         * cannot be presented/acknowledged.
+         */
+        internal fun shouldEvictBlockedAppBeforeNotice(
+            @Suppress("UNUSED_PARAMETER") blockedPackage: String?
+        ): Boolean = false
 
         internal fun createBlockedAppEvictionIntent(): Intent =
             Intent(Intent.ACTION_MAIN).apply {
