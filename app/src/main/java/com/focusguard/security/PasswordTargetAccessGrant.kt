@@ -20,15 +20,22 @@ import kotlinx.coroutines.launch
  * Ephemeral authorization for targets protected by a PASSWORD session.
  *
  * A correct target credential never edits/deletes the configured block. App
- * grants cover one foreground visit. Website grants cover the current visit to
- * the matching rule and are revoked when URL matching observes navigation away;
- * a bounded timeout is a fail-closed fallback if no further browser event arrives.
+ * grants cover exactly one foreground visit. Website grants cover the current
+ * visit to the matching rule and are revoked when URL matching observes
+ * navigation away; a bounded timeout is a fail-closed fallback if no further
+ * browser event arrives.
  */
 object PasswordTargetAccessGrant {
     private const val APP_OPEN_TIMEOUT_MILLIS = 15_000L
-    private const val APP_POLL_MILLIS = 350L
+    private const val APP_POLL_MILLIS = 200L
     private const val EVENT_LOOKBACK_MILLIS = 30_000L
     private const val WEBSITE_GRANT_TIMEOUT_MILLIS = 5 * 60_000L
+
+    internal data class AppVisitObservation(
+        val latestForegroundPackage: String?,
+        val latestTargetForegroundAt: Long,
+        val latestTargetBackgroundAt: Long
+    )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private val grantedPackages = ConcurrentHashMap.newKeySet<String>()
@@ -132,23 +139,56 @@ object PasswordTargetAccessGrant {
     internal fun grantedWebsiteRulesSnapshot(): Set<String> =
         websiteExpiryElapsed.keys.filterTo(linkedSetOf(), ::isWebsiteRuleGranted)
 
+    /**
+     * Pure policy used by the monitor and unit tests. Once the authenticated app
+     * has actually reached foreground, either a newer lifecycle-background event
+     * for that target or another foreground package ends the one-visit grant.
+     *
+     * Watching the target's own PAUSED/STOPPED/BACKGROUND event is important:
+     * some launchers/OEMs publish the next foreground event late, which previously
+     * left the grant alive and made the next app entry appear permanently unlocked.
+     */
+    internal fun shouldRevokeAppGrant(
+        target: String,
+        targetSeenForeground: Boolean,
+        observation: AppVisitObservation
+    ): Boolean {
+        if (!targetSeenForeground || target.isBlank()) return false
+        if (observation.latestTargetBackgroundAt > observation.latestTargetForegroundAt) {
+            return true
+        }
+        val foreground = observation.latestForegroundPackage
+        return !foreground.isNullOrBlank() && foreground != target
+    }
+
     private suspend fun monitorSingleAppVisit(context: Context, target: String) {
         try {
             val usage = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
                 ?: return revokePackageWithoutCancellingSelf(target)
-            val grantedAt = SystemClock.elapsedRealtime()
+            val grantedAtElapsed = SystemClock.elapsedRealtime()
+            val grantedAtWallClock = System.currentTimeMillis()
             var targetSeenForeground = false
 
             while (target in grantedPackages) {
-                val foreground = mostRecentForegroundPackage(usage)
+                val observation = observeAppVisit(
+                    manager = usage,
+                    target = target,
+                    notBeforeMillis = grantedAtWallClock
+                )
                 if (!targetSeenForeground) {
-                    if (foreground == target) {
+                    val targetIsCurrentlyForeground =
+                        observation.latestForegroundPackage == target &&
+                            observation.latestTargetForegroundAt >=
+                            observation.latestTargetBackgroundAt
+                    if (targetIsCurrentlyForeground) {
                         targetSeenForeground = true
-                    } else if (SystemClock.elapsedRealtime() - grantedAt >= APP_OPEN_TIMEOUT_MILLIS) {
+                    } else if (
+                        SystemClock.elapsedRealtime() - grantedAtElapsed >= APP_OPEN_TIMEOUT_MILLIS
+                    ) {
                         revokePackageWithoutCancellingSelf(target)
                         return
                     }
-                } else if (!foreground.isNullOrBlank() && foreground != target) {
+                } else if (shouldRevokeAppGrant(target, targetSeenForeground, observation)) {
                     revokePackageWithoutCancellingSelf(target)
                     return
                 }
@@ -163,22 +203,55 @@ object PasswordTargetAccessGrant {
         }
     }
 
-    private fun mostRecentForegroundPackage(manager: UsageStatsManager): String? {
+    private fun observeAppVisit(
+        manager: UsageStatsManager,
+        target: String,
+        notBeforeMillis: Long
+    ): AppVisitObservation {
         val end = System.currentTimeMillis()
-        val events = manager.queryEvents(end - EVENT_LOOKBACK_MILLIS, end)
+        val start = maxOf(end - EVENT_LOOKBACK_MILLIS, notBeforeMillis)
+        val events = manager.queryEvents(start, end)
         val event = UsageEvents.Event()
-        var latestPackage: String? = null
-        var latestTime = Long.MIN_VALUE
+        var latestForegroundPackage: String? = null
+        var latestForegroundAt = Long.MIN_VALUE
+        var latestTargetForegroundAt = Long.MIN_VALUE
+        var latestTargetBackgroundAt = Long.MIN_VALUE
+
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
+            if (event.timeStamp < notBeforeMillis) continue
+
             val foregroundEvent = event.eventType == UsageEvents.Event.MOVE_TO_FOREGROUND ||
                 event.eventType == UsageEvents.Event.ACTIVITY_RESUMED
-            if (foregroundEvent && event.timeStamp >= latestTime) {
-                latestTime = event.timeStamp
-                latestPackage = event.packageName
+            if (foregroundEvent && event.timeStamp >= latestForegroundAt) {
+                latestForegroundAt = event.timeStamp
+                latestForegroundPackage = event.packageName
+            }
+            if (
+                foregroundEvent &&
+                event.packageName == target &&
+                event.timeStamp >= latestTargetForegroundAt
+            ) {
+                latestTargetForegroundAt = event.timeStamp
+            }
+
+            val backgroundEvent = event.eventType == UsageEvents.Event.MOVE_TO_BACKGROUND ||
+                event.eventType == UsageEvents.Event.ACTIVITY_PAUSED ||
+                event.eventType == UsageEvents.Event.ACTIVITY_STOPPED
+            if (
+                backgroundEvent &&
+                event.packageName == target &&
+                event.timeStamp >= latestTargetBackgroundAt
+            ) {
+                latestTargetBackgroundAt = event.timeStamp
             }
         }
-        return latestPackage
+
+        return AppVisitObservation(
+            latestForegroundPackage = latestForegroundPackage,
+            latestTargetForegroundAt = latestTargetForegroundAt,
+            latestTargetBackgroundAt = latestTargetBackgroundAt
+        )
     }
 
     private fun revokePackageWithoutCancellingSelf(target: String) {
