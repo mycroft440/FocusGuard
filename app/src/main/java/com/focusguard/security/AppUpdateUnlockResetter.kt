@@ -3,6 +3,7 @@ package com.focusguard.security
 import android.content.Context
 import androidx.room.withTransaction
 import com.focusguard.database.AppDatabase
+import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.UsageLimitBehaviorPolicy
 import com.focusguard.utils.UsageLimitPauseStateStore
 import kotlinx.coroutines.Dispatchers
@@ -37,24 +38,54 @@ object AppUpdateUnlockResetter {
         // a package replacement, including on OEMs that keep a process around.
         PasswordTargetAccessGrant.clear()
 
-        // These windows are deliberately persisted across ordinary process death,
-        // but an app update is a stronger trust boundary. Revoke them before any
-        // policy reconciliation can honor an authorization created by old code.
-        AuthenticatedRemovalWindow.close(appContext)
-        DeviceAdminActivationWindow.close(appContext)
-        DeviceOwnerMaintenanceGate.revoke(appContext)
+        // PAUSE_30 completion is itself a release for the rest of the local day.
+        // Clear it globally before touching Room so even an orphaned/stale entry,
+        // or a later database failure, cannot survive the package replacement.
+        val pauseReleasesCleared = runCatching {
+            UsageLimitPauseStateStore.clearAllTemporaryReleases()
+        }.onFailure { error ->
+            FocusGuardLogger.logError(
+                "AppUpdateUnlockResetter",
+                "Falha ao revogar liberações de pausa de 30 minutos",
+                error
+            )
+        }.getOrDefault(0)
+
+        // These windows deliberately survive ordinary process death, but must not
+        // cross an app update. Each cleanup is independent so one storage failure
+        // cannot prevent the remaining release paths from being revoked.
+        runCatching { AuthenticatedRemovalWindow.close(appContext) }
+            .onFailure { error ->
+                FocusGuardLogger.logError(
+                    "AppUpdateUnlockResetter",
+                    "Falha ao fechar janela autenticada de remoção",
+                    error
+                )
+            }
+        runCatching { DeviceAdminActivationWindow.close(appContext) }
+            .onFailure { error ->
+                FocusGuardLogger.logError(
+                    "AppUpdateUnlockResetter",
+                    "Falha ao fechar autorização temporária de Device Admin",
+                    error
+                )
+            }
+        runCatching { DeviceOwnerMaintenanceGate.revoke(appContext) }
+            .onFailure { error ->
+                FocusGuardLogger.logError(
+                    "AppUpdateUnlockResetter",
+                    "Falha ao revogar janela temporária de manutenção Device Owner",
+                    error
+                )
+            }
 
         val database = AppDatabase.getDatabase(appContext)
         var appUnlocksCleared = 0
         var websiteUnlocksCleared = 0
-        val pauseModesToReset = linkedSetOf<String>()
 
         database.withTransaction {
             val appDao = database.appUsageLimitDao()
             appDao.getAllStatic().forEach { limit ->
-                if (AppUpdateUnlockResetPolicy.shouldResetPauseRelease(limit.lockMode)) {
-                    pauseModesToReset += limit.lockMode
-                }
                 if (
                     AppUpdateUnlockResetPolicy.shouldResetPasswordRelease(
                         lockMode = limit.lockMode,
@@ -68,9 +99,6 @@ object AppUpdateUnlockResetter {
 
             val websiteDao = database.websiteUsageLimitDao()
             websiteDao.getAllStatic().forEach { limit ->
-                if (AppUpdateUnlockResetPolicy.shouldResetPauseRelease(limit.lockMode)) {
-                    pauseModesToReset += limit.lockMode
-                }
                 if (
                     AppUpdateUnlockResetPolicy.shouldResetPasswordRelease(
                         lockMode = limit.lockMode,
@@ -82,10 +110,6 @@ object AppUpdateUnlockResetter {
                     websiteUnlocksCleared++
                 }
             }
-        }
-
-        val pauseReleasesCleared = pauseModesToReset.count { lockMode ->
-            UsageLimitPauseStateStore.clearTemporaryReleaseFor(lockMode)
         }
 
         ResetResult(
