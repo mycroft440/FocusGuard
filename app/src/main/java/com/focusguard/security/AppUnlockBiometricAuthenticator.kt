@@ -25,8 +25,9 @@ object AppUnlockBiometricAuthenticator {
      *
      * [failureThresholdBeforeFallback] is optional so legacy callers keep the
      * previous behaviour. Password/pattern protected targets pass a positive
-     * threshold: after that many consecutive rejected scans the biometric prompt
-     * is closed and the caller can immediately present its typed/drawn fallback.
+     * threshold: after that many consecutive rejected scans, or after a terminal
+     * biometric error such as lockout, the caller can present its typed/drawn
+     * fallback immediately.
      */
     fun authenticate(
         activity: FragmentActivity,
@@ -41,6 +42,7 @@ object AppUnlockBiometricAuthenticator {
     ) {
         if (!isAvailable(activity)) {
             onError("Biometria forte indisponível neste aparelho")
+            if (failureThresholdBeforeFallback > 0) onFallbackRequested()
             return
         }
 
@@ -88,6 +90,12 @@ object AppUnlockBiometricAuthenticator {
                         onCancelled()
                     } else {
                         onError(errString.toString())
+                        // Lockout, timeout or another terminal biometric error
+                        // must not strand users who configured a password/pattern
+                        // fallback for this protected target.
+                        if (failureThresholdBeforeFallback > 0) {
+                            onFallbackRequested()
+                        }
                     }
                 }
             }
