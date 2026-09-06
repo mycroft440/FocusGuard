@@ -217,18 +217,18 @@ fun TimeBlockSessionConfigScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = 20.dp, vertical = 18.dp)
         ) {
-            SelectedAppsSummary(
-                appName = appName,
-                apps = apps
+            // A explicação é o primeiro conteúdo da tela, como solicitado, para que
+            // o compromisso seja entendido antes de qualquer configuração.
+            DopamineHowItWorksCard(
+                termsAccepted = termsAccepted,
+                onTermsAcceptedChange = { termsAccepted = it }
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // A explicação vem antes das escolhas para que o compromisso seja lido
-            // antes de o usuário configurar dias e duração.
-            DopamineHowItWorksCard(
-                termsAccepted = termsAccepted,
-                onTermsAcceptedChange = { termsAccepted = it }
+            SelectedAppsSummary(
+                appName = appName,
+                apps = apps
             )
 
             Spacer(modifier = Modifier.height(16.dp))
