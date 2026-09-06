@@ -218,6 +218,42 @@ object UsageLimitPauseStateStore {
         }
     }
 
+    /**
+     * Revokes every persisted PAUSE_30 release, including stale entries no longer
+     * represented by a database row. Daily-notice bookkeeping is intentionally
+     * preserved because it cannot grant access. Returns the number of distinct
+     * targets whose pause-release state existed.
+     */
+    fun clearAllTemporaryReleases(): Int = synchronized(stateLock) {
+        val memoryKeys = memoryPauseStates.keys.toSet()
+        memoryPauseStates.clear()
+
+        val context = storageContext ?: return@synchronized memoryKeys.size
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val persistedKeys = linkedSetOf<String>()
+        prefs.all.keys.forEach { rawKey ->
+            when {
+                rawKey.startsWith(KEY_RULE_END) ->
+                    persistedKeys += rawKey.removePrefix(KEY_RULE_END)
+                rawKey.startsWith(KEY_DAY) ->
+                    persistedKeys += rawKey.removePrefix(KEY_DAY)
+                rawKey.startsWith(KEY_BLOCKED_UNTIL) ->
+                    persistedKeys += rawKey.removePrefix(KEY_BLOCKED_UNTIL)
+            }
+        }
+
+        if (persistedKeys.isNotEmpty()) {
+            val editor = prefs.edit()
+            persistedKeys.forEach { key ->
+                editor.remove(KEY_RULE_END + key)
+                    .remove(KEY_DAY + key)
+                    .remove(KEY_BLOCKED_UNTIL + key)
+            }
+            editor.commit()
+        }
+        (memoryKeys + persistedKeys).size
+    }
+
     fun notifyDailyBlockOnce(
         lockMode: String,
         ruleEndMillis: Long?,
