@@ -57,6 +57,8 @@ import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
+private const val BIOMETRIC_FAILURES_BEFORE_FALLBACK = 2
+
 /**
  * Unlock controls for a PASSWORD session target.
  *
@@ -85,11 +87,11 @@ internal fun PasswordProtectedTargetUnlockPanel(
     var config by remember(targetId) {
         mutableStateOf(store.getTarget(targetId))
     }
-    var showCredentialDialog by remember { mutableStateOf(false) }
-    var showBiometricOffer by remember { mutableStateOf(false) }
-    var biometricPromptLaunched by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
-    var verifying by remember { mutableStateOf(false) }
+    var showCredentialDialog by remember(targetId) { mutableStateOf(false) }
+    var showBiometricOffer by remember(targetId) { mutableStateOf(false) }
+    var biometricPromptLaunched by remember(targetId) { mutableStateOf(false) }
+    var error by remember(targetId) { mutableStateOf<String?>(null) }
+    var verifying by remember(targetId) { mutableStateOf(false) }
 
     val biometricAvailable = activity != null &&
         AppUnlockBiometricAuthenticator.isAvailable(context)
@@ -209,17 +211,50 @@ internal fun PasswordProtectedTargetUnlockPanel(
             return
         }
 
+        // When password/pattern is available, the negative button becomes an
+        // explicit "use password/pattern" route instead of a generic cancel.
+        val fallbackLabel = if (latest.hasTypedCredential) {
+            host.getString(
+                if (latest.mode == PasswordAppUnlockMode.PATTERN) {
+                    R.string.password_app_unlock_with_pattern
+                } else {
+                    R.string.password_app_unlock_with_password
+                }
+            )
+        } else {
+            cancelLabel
+        }
+
         AppUnlockBiometricAuthenticator.authenticate(
             activity = host,
             title = promptTitle,
             subtitle = promptSubtitle,
-            cancelLabel = cancelLabel,
+            cancelLabel = fallbackLabel,
             onSuccess = {
                 val rechecked = store.getTarget(targetId)
                 if (rechecked?.biometricEnabled == true) completeUnlock()
             },
             onError = { message ->
                 if (message.isNotBlank()) error = message
+            },
+            failureThresholdBeforeFallback = if (latest.hasTypedCredential) {
+                BIOMETRIC_FAILURES_BEFORE_FALLBACK
+            } else {
+                0
+            },
+            onFallbackRequested = {
+                if (latest.hasTypedCredential) {
+                    error = null
+                    showCredentialDialog = true
+                }
+            },
+            onCancelled = {
+                if (latest.hasTypedCredential) {
+                    // A user pressing "use password/pattern" should land directly
+                    // on the alternate credential instead of having to tap again.
+                    error = null
+                    showCredentialDialog = true
+                }
             }
         )
     }
@@ -236,10 +271,13 @@ internal fun PasswordProtectedTargetUnlockPanel(
         }
     }
 
-    LaunchedEffect(config?.mode, biometricAvailable) {
+    // Biometric, when enabled for this target, is always the first unlock surface.
+    // Password/pattern remains a fallback after two failed scans or when the user
+    // explicitly chooses the negative button in the Android biometric prompt.
+    LaunchedEffect(config?.biometricEnabled, config?.mode, biometricAvailable, targetId) {
         val current = config ?: return@LaunchedEffect
         if (
-            current.mode == PasswordAppUnlockMode.BIOMETRIC_ONLY &&
+            current.biometricEnabled &&
             biometricAvailable &&
             !biometricPromptLaunched
         ) {
@@ -323,6 +361,7 @@ internal fun PasswordProtectedTargetUnlockPanel(
                         if (store.setBiometricEnabledForTarget(targetId, true)) {
                             config = store.getTarget(targetId)
                             showBiometricOffer = false
+                            biometricPromptLaunched = true
                             launchBiometric()
                         }
                     }
