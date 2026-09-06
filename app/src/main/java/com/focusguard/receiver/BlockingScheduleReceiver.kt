@@ -31,7 +31,8 @@ class BlockingScheduleReceiver : BroadcastReceiver() {
                         "BlockingSchedule",
                         "Atualização instalada: liberações temporárias revogadas " +
                             "(apps=${reset.appLimitUnlocksCleared}, " +
-                            "sites=${reset.websiteLimitUnlocksCleared})"
+                            "sites=${reset.websiteLimitUnlocksCleared}, " +
+                            "pausas=${reset.pauseReleasesCleared})"
                     )
                 }
                 BlockingSessionManager.getInstance(context).checkAndEnforce()
