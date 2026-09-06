@@ -70,7 +70,6 @@ class BlockNoticeActivity : AppCompatActivity() {
 
     private var strictBlock = false
     private var redirectBrowserPackage: String? = null
-    private var renderedNotice: NoticePayload? = null
     private var noticeDrawn = false
     private var activityResumed = false
     private var windowFocused = false
@@ -168,16 +167,17 @@ class BlockNoticeActivity : AppCompatActivity() {
         val attemptId = ++blockAttemptId
         scheduleUsageImpactRoute(payload, attemptId)
 
-        if (renderedNotice == payload) {
-            acknowledgeNotice(curtainGeneration)
-            return
-        }
-        renderedNotice = payload
+        // singleTop can deliver the exact same package/domain payload repeatedly,
+        // but the backing PASSWORD session/credential may have changed between
+        // attempts (especially immediately after arming the first password block).
+        // Always refresh the composition so unlock eligibility is re-read instead
+        // of preserving a stale "blocked with no credential" screen.
         noticeDrawn = false
 
         setContent {
             FocusGuardTheme {
                 BlockNoticeContent(
+                    blockAttemptId = attemptId,
                     strictBlock = payload.strictBlock,
                     blockedPackage = payload.blockedPackage,
                     blockedDomain = payload.blockedDomain,
@@ -346,6 +346,7 @@ class BlockNoticeActivity : AppCompatActivity() {
 
 @Composable
 private fun BlockNoticeContent(
+    blockAttemptId: Long,
     strictBlock: Boolean,
     blockedPackage: String?,
     blockedDomain: String?,
@@ -358,22 +359,24 @@ private fun BlockNoticeContent(
 ) {
     val context = LocalContext.current
     val unlockStore = remember(context) { PasswordAppUnlockStore(context) }
-    val targetId = remember(blockedPackage, blockedDomain) {
+    val targetId = remember(blockAttemptId, blockedPackage, blockedDomain) {
         unlockStore.resolveWebsiteTargetId(blockedDomain)
             ?: PasswordAppUnlockStore.targetIdForPackage(blockedPackage)
     }
-    val customUnlockConfig = remember(targetId) { unlockStore.getTarget(targetId) }
-    var unlocked by remember { mutableStateOf(false) }
-    var credentialUnlockOrigin by remember {
+    val customUnlockConfig = remember(blockAttemptId, targetId) {
+        unlockStore.getTarget(targetId)
+    }
+    var unlocked by remember(blockAttemptId) { mutableStateOf(false) }
+    var credentialUnlockOrigin by remember(blockAttemptId) {
         mutableStateOf<BiometricAppUnlockPolicy.BlockOrigin?>(null)
     }
-    var credentialUnlockResolved by remember { mutableStateOf(false) }
+    var credentialUnlockResolved by remember(blockAttemptId) { mutableStateOf(false) }
 
     val hasTargetCredential = credentialUnlockResolved &&
         credentialUnlockOrigin == BiometricAppUnlockPolicy.BlockOrigin.PASSWORD_SESSION &&
         customUnlockConfig != null
 
-    LaunchedEffect(strictBlock, blockedPackage, blockedDomain) {
+    LaunchedEffect(blockAttemptId, strictBlock, blockedPackage, blockedDomain) {
         credentialUnlockResolved = false
         credentialUnlockOrigin = if (strictBlock) {
             null
@@ -388,6 +391,7 @@ private fun BlockNoticeContent(
     }
 
     LaunchedEffect(
+        blockAttemptId,
         strictBlock,
         redirectBrowserPackage,
         credentialUnlockResolved,
