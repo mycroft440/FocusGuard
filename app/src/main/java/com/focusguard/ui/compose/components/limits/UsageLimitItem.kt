@@ -41,8 +41,8 @@ data class UsageLimitAppUi(
  *
  * This list can contain a large number of targets. Per-row progress/color
  * animations are intentionally avoided. App logos use the shared icon resolver,
- * which first checks the local launcher icon and only then falls back to a known
- * remote brand favicon for preventive apps that are not installed.
+ * which always keeps an installed app's original launcher icon and only uses a
+ * high-resolution official/domain fallback for apps that are not installed.
  */
 @Composable
 fun UsageLimitItem(
@@ -109,8 +109,8 @@ fun UsageLimitItem(
             FocusGuardAppIcon(
                 packageName = app.packageName,
                 appName = app.appName,
-                modifier = Modifier.size(40.dp),
-                cornerRadius = 10.dp,
+                modifier = Modifier.size(44.dp),
+                cornerRadius = 11.dp,
                 allowRemoteFallback = true
             )
 
