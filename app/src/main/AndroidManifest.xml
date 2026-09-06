@@ -148,6 +148,10 @@
             android:excludeFromRecents="true"
             android:theme="@style/Theme.FocusGuard" />
 
+        <!--
+            Accessibility launches only this UI-free router. It forwards the
+            curtain handshake to exactly one owner Activity below.
+        -->
         <activity
             android:name=".ui.BlockNoticeActivity"
             android:excludeFromRecents="true"
@@ -156,6 +160,24 @@
             android:noHistory="true"
             android:resizeableActivity="false"
             android:theme="@style/Theme.FocusGuard" />
+
+        <activity
+            android:name=".ui.GenericBlockNoticeActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:noHistory="true"
+            android:resizeableActivity="false"
+            android:theme="@style/Theme.FocusGuard" />
+
+        <activity
+            android:name=".ui.PasswordUnlockActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:resizeableActivity="false"
+            android:theme="@style/Theme.FocusGuard"
+            android:windowSoftInputMode="adjustResize" />
 
         <receiver
             android:name=".admin.FocusGuardDeviceAdminReceiver"
