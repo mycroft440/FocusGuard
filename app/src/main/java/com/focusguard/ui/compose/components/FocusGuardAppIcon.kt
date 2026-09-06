@@ -37,13 +37,15 @@ import kotlinx.coroutines.withContext
 /**
  * Single app-icon renderer used by blocking and usage-limit screens.
  *
- * Launcher icons are decoded off the main thread and kept in a small process cache.
- * Known apps that are not installed can still use a bundled mark or, where the caller
- * allows it, a remote favicon.
+ * Resolution priority is deliberate:
+ * 1) installed app -> always use the original launcher icon from PackageManager;
+ * 2) known uninstalled app -> try its official/domain favicon at high resolution;
+ * 3) bundled brand artwork when available;
+ * 4) branded local fallback as the last resort.
  *
- * Remote fallback is deliberately deferred until the local PackageManager lookup
- * finishes. This prevents installed apps from starting unnecessary network requests
- * while their launcher icon is still being decoded.
+ * The remote lookup only starts after PackageManager has proved that the app is not
+ * installed. That guarantees an installed app is never visually replaced by a web
+ * favicon and also avoids unnecessary network requests for installed targets.
  */
 @Composable
 fun FocusGuardAppIcon(
@@ -61,6 +63,7 @@ fun FocusGuardAppIcon(
     var localLookupFinished by remember(packageName) {
         mutableStateOf(installedBitmap != null)
     }
+    var remoteLoadFailed by remember(packageName, iconUrl) { mutableStateOf(false) }
 
     LaunchedEffect(packageName) {
         if (installedBitmap != null) {
@@ -70,6 +73,9 @@ fun FocusGuardAppIcon(
 
         val loaded = withContext(Dispatchers.IO) {
             runCatching {
+                // Decode at a density-independent high resolution instead of the old
+                // 96 px thumbnail. This keeps launcher artwork crisp on xxhdpi/xxxhdpi
+                // devices and preserves details in modern adaptive icons.
                 context.packageManager.getApplicationIcon(packageName)
                     .toBitmap(APP_ICON_SIZE_PX, APP_ICON_SIZE_PX)
             }.getOrNull()
@@ -84,15 +90,25 @@ fun FocusGuardAppIcon(
 
     val bundledIcon = remember(packageName) { bundledPredefinedIcon(packageName) }
     val remoteIconUrl = remember(packageName, iconUrl, allowRemoteFallback) {
-        if (!allowRemoteFallback) null
-        else iconUrl?.takeIf { it.isNotBlank() } ?: predefinedFaviconUrl(packageName)
+        if (!allowRemoteFallback) {
+            null
+        } else {
+            // For catalogued apps, prefer the known official domain over an arbitrary
+            // caller URL. Callers can still provide a URL for uncatalogued targets.
+            predefinedFaviconUrl(packageName)
+                ?: highResolutionCallerIconUrl(iconUrl)
+        }
     }
     val shape = RoundedCornerShape(cornerRadius)
 
     Box(
-        modifier = modifier.clip(shape),
+        modifier = modifier
+            .clip(shape)
+            .background(Color(0xFF111820)),
         contentAlignment = Alignment.Center
     ) {
+        // Kept underneath every other layer so image decoding/loading never leaves
+        // a blank square on screen.
         BrandedAppFallback(packageName = packageName, appName = appName)
 
         when {
@@ -103,8 +119,20 @@ fun FocusGuardAppIcon(
                 Image(
                     bitmap = bitmap,
                     contentDescription = appName,
-                    contentScale = ContentScale.Crop,
+                    // Fit preserves the complete original icon. Crop could cut the
+                    // outer mask/artwork of adaptive and legacy launcher icons.
+                    contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize()
+                )
+            }
+
+            localLookupFinished && remoteIconUrl != null && !remoteLoadFailed -> {
+                AsyncImage(
+                    model = remoteIconUrl,
+                    contentDescription = appName,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                    onError = { remoteLoadFailed = true }
                 )
             }
 
@@ -112,16 +140,7 @@ fun FocusGuardAppIcon(
                 Image(
                     painter = painterResource(bundledIcon),
                     contentDescription = appName,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-
-            localLookupFinished && remoteIconUrl != null -> {
-                AsyncImage(
-                    model = remoteIconUrl,
-                    contentDescription = appName,
-                    contentScale = ContentScale.Crop,
+                    contentScale = ContentScale.Fit,
                     modifier = Modifier.fillMaxSize()
                 )
             }
@@ -142,7 +161,25 @@ private fun predefinedFaviconUrl(packageName: String): String? =
         .firstOrNull { it.packageName == packageName }
         ?.domain
         ?.takeIf { it.isNotBlank() }
-        ?.let { domain -> "https://www.google.com/s2/favicons?domain=$domain&sz=128" }
+        ?.let { domain ->
+            "https://www.google.com/s2/favicons?domain=$domain&sz=$REMOTE_ICON_SIZE_PX"
+        }
+
+/** Upgrade old Google S2 favicon URLs supplied by legacy callers without touching
+ * arbitrary image providers. */
+private fun highResolutionCallerIconUrl(iconUrl: String?): String? {
+    val url = iconUrl?.trim()?.takeIf(String::isNotBlank) ?: return null
+    if (!url.contains("google.com/s2/favicons", ignoreCase = true)) return url
+
+    val sizeParameter = Regex("([?&]sz=)\\d+", RegexOption.IGNORE_CASE)
+    return if (sizeParameter.containsMatchIn(url)) {
+        sizeParameter.replace(url) { match ->
+            "${match.groupValues[1]}$REMOTE_ICON_SIZE_PX"
+        }
+    } else {
+        "$url${if ('?' in url) '&' else '?'}sz=$REMOTE_ICON_SIZE_PX"
+    }
+}
 
 @Composable
 private fun BrandedAppFallback(packageName: String, appName: String) {
@@ -190,5 +227,6 @@ private fun fallbackBrandColor(packageName: String): Color = when {
     else -> Color(packageName.hashCode()).copy(alpha = 1f)
 }
 
-private const val APP_ICON_SIZE_PX = 96
-private val appIconCache = object : LruCache<String, Bitmap>(96) {}
+private const val APP_ICON_SIZE_PX = 256
+private const val REMOTE_ICON_SIZE_PX = 256
+private val appIconCache = object : LruCache<String, Bitmap>(128) {}
