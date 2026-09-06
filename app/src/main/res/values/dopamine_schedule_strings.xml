@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="dopamine_selected_apps_count">
+        <item quantity="one">%1$d app selected</item>
+        <item quantity="other">%1$d apps selected</item>
+    </plurals>
+    <string name="dopamine_schedule_description">Selected apps and sites are blocked for the whole day only on the weekdays you choose, until the selected duration ends.</string>
+    <string name="dopamine_schedule_terms_how">Choose what to block, which weekdays the block applies to, and the total duration. On selected weekdays the targets stay blocked for the entire day; on unselected weekdays they remain available. The commitment itself cannot be ended early.</string>
+    <string name="dopamine_weekdays_question">Which days of the week do you want to block?</string>
+    <string name="dopamine_weekdays_hint">Blocking applies for the whole day only on the selected days.</string>
+    <string name="dopamine_weekdays_required">Select at least one day of the week.</string>
+    <string name="dopamine_duration_days_question">How many days should the dopamine fast remain active?</string>
+    <string name="dopamine_weekday_mon">Mon</string>
+    <string name="dopamine_weekday_tue">Tue</string>
+    <string name="dopamine_weekday_wed">Wed</string>
+    <string name="dopamine_weekday_thu">Thu</string>
+    <string name="dopamine_weekday_fri">Fri</string>
+    <string name="dopamine_weekday_sat">Sat</string>
+    <string name="dopamine_weekday_sun">Sun</string>
+</resources>

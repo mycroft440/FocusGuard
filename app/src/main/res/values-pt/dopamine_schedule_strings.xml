@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="dopamine_selected_apps_count">
+        <item quantity="one">%1$d app selecionado</item>
+        <item quantity="other">%1$d apps selecionados</item>
+    </plurals>
+    <string name="dopamine_schedule_description">Os apps e sites selecionados ficam bloqueados durante o dia inteiro somente nos dias da semana que você marcar, até o fim da duração escolhida.</string>
+    <string name="dopamine_schedule_terms_how">Escolha o que bloquear, em quais dias da semana o bloqueio será aplicado e a duração total. Nos dias marcados, os alvos ficam bloqueados durante o dia inteiro; nos dias não marcados, ficam disponíveis. O compromisso não pode ser encerrado antes do fim.</string>
+    <string name="dopamine_weekdays_question">Quais dias da semana deseja bloquear?</string>
+    <string name="dopamine_weekdays_hint">O bloqueio será aplicado durante o dia inteiro somente nos dias marcados.</string>
+    <string name="dopamine_weekdays_required">Selecione pelo menos um dia da semana.</string>
+    <string name="dopamine_duration_days_question">Quantos dias deve durar o jejum de dopamina ativo?</string>
+    <string name="dopamine_weekday_mon">Seg</string>
+    <string name="dopamine_weekday_tue">Ter</string>
+    <string name="dopamine_weekday_wed">Qua</string>
+    <string name="dopamine_weekday_thu">Qui</string>
+    <string name="dopamine_weekday_fri">Sex</string>
+    <string name="dopamine_weekday_sat">Sáb</string>
+    <string name="dopamine_weekday_sun">Dom</string>
+</resources>
