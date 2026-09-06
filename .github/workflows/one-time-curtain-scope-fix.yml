@@ -1,0 +1,70 @@
+name: One-time curtain scope hardening
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - '.github/workflows/one-time-curtain-scope-fix.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply exact guarded patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
+          text = path.read_text()
+
+          def replace_once(old: str, new: str, label: str):
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected exactly one match, got {count}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '''        // Every attempt renews the touch-blocking curtain and eviction. Activity\n'''
+              '''        // flags coalesce the already-drawn notice; no cooldown is allowed to leave\n'''
+              '''        // a newly foregrounded blocked app uncovered.\n''',
+              '''        // Every attempt renews the touch-blocking curtain. BlockNoticeActivity\n'''
+              '''        // becomes the safe foreground surface; HOME eviction is reserved for the\n'''
+              '''        // existing fail-safe path when that surface cannot be presented.\n''',
+              'launch comment'
+          )
+
+          replace_once(
+              '''            // A blocked task may remain underneath the full-screen FocusGuard\n'''
+              '''            // credential Activity. Only a currently active/focused window can\n'''
+              '''            // make the safe-surface handshake unsafe.\n'''
+              '''            if (!window.isActive && !window.isFocused) return@forEach\n''',
+              '''            // During an app block, the protected task may remain underneath the\n'''
+              '''            // full-screen FocusGuard credential Activity. Ignore that inactive\n'''
+              '''            // background task only in BLOCK_NOTICE mode. SELF_PROTECTION keeps\n'''
+              '''            // scanning every settings/installer window fail-closed.\n'''
+              '''            if (\n'''
+              '''                instantBlockCurtainMode == CurtainMode.BLOCK_NOTICE &&\n'''
+              '''                !window.isActive && !window.isFocused\n'''
+              '''            ) return@forEach\n''',
+              'window filter scope'
+          )
+
+          path.write_text(text)
+
+      - name: Commit hardening
+        run: |
+          git config user.name "FocusGuard CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+          git diff --cached --check
+          git commit -m "fix: scope background-window allowance to app notice"
+          git push origin HEAD:main
