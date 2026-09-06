@@ -9,6 +9,7 @@ import android.net.Uri
 import android.os.Build
 import com.focusguard.database.BlockSession
 import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.security.AppUpdateUnlockResetter
 import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,15 +20,29 @@ import kotlinx.coroutines.launch
 class BlockingScheduleReceiver : BroadcastReceiver() {
 
     override fun onReceive(context: Context, intent: Intent?) {
-        if (intent?.action !in SUPPORTED_ACTIONS) return
+        val action = intent?.action
+        if (action !in SUPPORTED_ACTIONS) return
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
+                if (action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+                    val reset = AppUpdateUnlockResetter.reset(context.applicationContext)
+                    FocusGuardLogger.log(
+                        "BlockingSchedule",
+                        "Atualização instalada: liberações temporárias revogadas " +
+                            "(apps=${reset.appLimitUnlocksCleared}, " +
+                            "sites=${reset.websiteLimitUnlocksCleared})"
+                    )
+                }
                 BlockingSessionManager.getInstance(context).checkAndEnforce()
             } catch (error: Exception) {
                 FocusGuardLogger.logError(
                     "BlockingSchedule",
-                    "Falha ao reconciliar mudança de horário",
+                    if (action == Intent.ACTION_MY_PACKAGE_REPLACED) {
+                        "Falha ao revogar desbloqueios e reconciliar após atualização"
+                    } else {
+                        "Falha ao reconciliar mudança de horário"
+                    },
                     error
                 )
             } finally {
