@@ -3,16 +3,18 @@
 package com.focusguard.ui.compose.screens
 
 import android.graphics.drawable.Drawable
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
@@ -22,21 +24,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -50,12 +52,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
@@ -80,14 +80,18 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
-private val UsageLimitSummaryAmber = Color(0xFFF6AD55)
-private val UsageLimitSecondaryStroke = Color(0xFF2B3844)
+private enum class AppLimitEditorStep {
+    DETAILS,
+    BLOCK_MODE
+}
 
 /**
- * Reorganized app-limit editor based on the three decisions a person makes:
- * how much time is available, what happens after it runs out, and how long the
- * rule remains active. This composable intentionally changes presentation only;
- * persistence and blocking semantics stay in the caller and behavior policy.
+ * Two-screen app-limit editor.
+ *
+ * Screen 1 owns the allowance and the overall rule duration. Screen 2 owns the
+ * post-limit behavior exclusively. Keeping the behavior on its own screen makes
+ * the two materially different outcomes explicit before the rule is persisted,
+ * while preserving the existing callback contract and database semantics.
  */
 @Suppress("UNUSED_PARAMETER")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -111,6 +115,7 @@ fun AppLimitRedesignedSheet(
         ?.coerceAtLeast(1)
         ?: 1
 
+    var step by remember(app.packageName) { mutableStateOf(AppLimitEditorStep.DETAILS) }
     var dailyMinutes by remember(app.packageName, app.currentLimitMinutes) {
         mutableStateOf(app.currentLimitMinutes?.toString().orEmpty())
     }
@@ -132,7 +137,6 @@ fun AppLimitRedesignedSheet(
             else UsageLimitBehaviorPolicy.RuleDurationUnit.MONTHS
         )
     }
-    var minutesFocused by remember { mutableStateOf(false) }
     var iconDrawable by remember(app.packageName) { mutableStateOf<Drawable?>(null) }
 
     LaunchedEffect(app.packageName) {
@@ -148,7 +152,7 @@ fun AppLimitRedesignedSheet(
         amount = enteredDuration,
         unit = durationUnit
     )
-    val canSave = enteredMinutes > 0 && enteredDuration > 0 && ruleEnd != null
+    val canAdvance = enteredMinutes > 0 && enteredDuration > 0 && ruleEnd != null
 
     val pauseLabel = stringResource(R.string.limits_pause_30_option)
     val blockTomorrowLabel = stringResource(R.string.limits_block_tomorrow_option)
@@ -166,8 +170,11 @@ fun AppLimitRedesignedSheet(
         UsageLimitBehaviorPolicy.RuleDurationUnit.MONTHS -> monthsLabel
     }
 
-    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    BackHandler(enabled = step == AppLimitEditorStep.BLOCK_MODE) {
+        step = AppLimitEditorStep.DETAILS
+    }
 
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
@@ -180,7 +187,7 @@ fun AppLimitRedesignedSheet(
             BottomSheetDefaults.DragHandle(
                 width = 36.dp,
                 height = 4.dp,
-                color = UsageLimitSecondaryStroke
+                color = CardBorder
             )
         }
     ) {
@@ -189,230 +196,58 @@ fun AppLimitRedesignedSheet(
                 .fillMaxWidth()
                 .heightIn(max = 760.dp)
         ) {
-            UsageLimitSheetHeader(
+            AppLimitSheetHeader(
                 appName = app.appName,
-                iconDrawable = iconDrawable
+                iconDrawable = iconDrawable,
+                step = step
             )
-
             HorizontalDivider(color = CardBorder, thickness = 1.dp)
 
-            Column(
-                modifier = Modifier
-                    .weight(1f, fill = false)
-                    .verticalScroll(rememberScrollState())
-                    .padding(horizontal = 22.dp)
-            ) {
-                PermissionWarning(permissionsMissing)
-
-                UsageLimitDecisionBlock(
-                    title = stringResource(R.string.limits_daily_max_title),
-                    hint = "O contador zera à meia-noite."
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.Bottom,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        modifier = Modifier.padding(top = 14.dp, bottom = 12.dp)
-                    ) {
-                        BasicTextField(
-                            value = dailyMinutes,
-                            onValueChange = { raw ->
-                                dailyMinutes = raw.filter(Char::isDigit).take(4)
-                            },
-                            modifier = Modifier
-                                .width(108.dp)
-                                .onFocusChanged { minutesFocused = it.isFocused },
-                            singleLine = true,
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            textStyle = TextStyle(
-                                color = TextPrimary,
-                                fontSize = 40.sp,
-                                fontWeight = FontWeight.Bold,
-                                textAlign = TextAlign.Center
-                            ),
-                            decorationBox = { innerTextField ->
-                                Column {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .height(50.dp),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        if (dailyMinutes.isEmpty()) {
-                                            Text(
-                                                "0",
-                                                color = TextHint.copy(alpha = 0.45f),
-                                                fontSize = 40.sp,
-                                                fontWeight = FontWeight.Bold
-                                            )
-                                        }
-                                        innerTextField()
-                                    }
-                                    HorizontalDivider(
-                                        thickness = 2.dp,
-                                        color = if (minutesFocused) AccentCyan else UsageLimitSecondaryStroke
-                                    )
-                                }
-                            }
-                        )
-                        Text(
-                            stringResource(R.string.limits_daily_max_minutes_label).lowercase(),
-                            color = TextSecondary,
-                            fontSize = 14.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.padding(bottom = 8.dp)
-                        )
-                    }
-
-                    UsageLimitMinuteShortcuts(
-                        selectedMinutes = enteredMinutes.takeIf { it > 0 },
-                        onSelect = { dailyMinutes = it.toString() }
+            when (step) {
+                AppLimitEditorStep.DETAILS -> {
+                    AppLimitDetailsScreen(
+                        permissionsMissing = permissionsMissing,
+                        dailyMinutes = dailyMinutes,
+                        onDailyMinutesChange = { raw ->
+                            dailyMinutes = raw.filter(Char::isDigit).take(4)
+                        },
+                        enteredMinutes = enteredMinutes,
+                        durationAmount = durationAmount,
+                        onDurationAmountChange = { raw ->
+                            durationAmount = raw.filter(Char::isDigit).take(3)
+                        },
+                        enteredDuration = enteredDuration,
+                        durationUnit = durationUnit,
+                        onDurationUnitChange = { durationUnit = it },
+                        editMode = editMode,
+                        currentRuleEnd = app.lockUntilTimestamp,
+                        onRemove = { onSave(null, false, "NONE", null, null) },
+                        onDismiss = onDismiss,
+                        canAdvance = canAdvance,
+                        onContinue = { step = AppLimitEditorStep.BLOCK_MODE }
                     )
                 }
 
-                UsageLimitDecisionBlock(
-                    title = stringResource(R.string.limits_after_reaching_title)
-                ) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(9.dp),
-                        modifier = Modifier.padding(top = 14.dp)
-                    ) {
-                        UsageLimitBehaviorChoice(
-                            selected = behavior == UsageLimitBehaviorPolicy.PAUSE_30_PREFIX,
-                            title = pauseLabel,
-                            description = stringResource(R.string.limits_pause_30_desc),
-                            onClick = { behavior = UsageLimitBehaviorPolicy.PAUSE_30_PREFIX }
-                        )
-                        UsageLimitBehaviorChoice(
-                            selected = behavior == UsageLimitBehaviorPolicy.BLOCK_UNTIL_TOMORROW_PREFIX,
-                            title = blockTomorrowLabel,
-                            description = stringResource(R.string.limits_block_tomorrow_desc),
-                            onClick = {
-                                behavior = UsageLimitBehaviorPolicy.BLOCK_UNTIL_TOMORROW_PREFIX
+                AppLimitEditorStep.BLOCK_MODE -> {
+                    AppLimitBehaviorScreen(
+                        behavior = behavior,
+                        onBehaviorChange = { behavior = it },
+                        minutes = enteredMinutes,
+                        duration = enteredDuration,
+                        durationUnitLabel = durationUnitLabel,
+                        behaviorLabel = selectedBehaviorLabel,
+                        canSave = canAdvance,
+                        onBack = { step = AppLimitEditorStep.DETAILS },
+                        onSave = {
+                            val persistedMode = if (
+                                behavior == UsageLimitBehaviorPolicy.PAUSE_30_PREFIX
+                            ) {
+                                UsageLimitBehaviorPolicy.pauseModeFor(app.packageName)
+                            } else {
+                                UsageLimitBehaviorPolicy.blockUntilTomorrowModeFor(app.packageName)
                             }
-                        )
-                    }
-                }
-
-                UsageLimitDecisionBlock(
-                    title = stringResource(R.string.limits_rule_duration_title),
-                    hint = "Depois desse prazo o limite sai sozinho.",
-                    showDivider = false
-                ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(top = 14.dp),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        UsageLimitDurationStepper(
-                            amount = enteredDuration.coerceAtLeast(0),
-                            onDecrease = {
-                                val next = (enteredDuration - 1).coerceAtLeast(1)
-                                durationAmount = next.toString()
-                            },
-                            onIncrease = {
-                                val next = (enteredDuration.coerceAtLeast(0) + 1).coerceAtMost(999)
-                                durationAmount = next.toString()
-                            }
-                        )
-                        UsageLimitDurationUnits(
-                            selected = durationUnit,
-                            daysLabel = daysLabel,
-                            weeksLabel = weeksLabel,
-                            monthsLabel = monthsLabel,
-                            onSelect = { durationUnit = it },
-                            modifier = Modifier.weight(1f)
-                        )
-                    }
-                }
-
-                if (editMode && app.lockUntilTimestamp?.let { it > now } == true) {
-                    val formatted = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
-                        .format(Date(requireNotNull(app.lockUntilTimestamp)))
-                    Text(
-                        stringResource(R.string.limits_rule_current_until, formatted),
-                        color = TextHint,
-                        fontSize = 11.sp,
-                        modifier = Modifier.padding(top = 2.dp, bottom = 10.dp)
-                    )
-                }
-
-                UsageLimitRuleSummary(
-                    canSave = canSave,
-                    minutes = enteredMinutes,
-                    behaviorLabel = selectedBehaviorLabel,
-                    duration = enteredDuration,
-                    durationUnitLabel = durationUnitLabel
-                )
-
-                if (editMode) {
-                    TextButton(
-                        onClick = { onSave(null, false, "NONE", null, null) },
-                        modifier = Modifier
-                            .align(Alignment.CenterHorizontally)
-                            .padding(bottom = 4.dp)
-                    ) {
-                        Text(
-                            stringResource(R.string.sessions_remove_item),
-                            color = DangerRed,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
-            }
-
-            HorizontalDivider(color = CardBorder, thickness = 1.dp)
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(DarkSurface)
-                    .padding(horizontal = 22.dp, vertical = 14.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                OutlinedButton(
-                    onClick = onDismiss,
-                    modifier = Modifier
-                        .weight(0.52f)
-                        .height(50.dp),
-                    shape = CircleShape,
-                    border = BorderStroke(1.dp, UsageLimitSecondaryStroke),
-                    colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary)
-                ) {
-                    Text(
-                        stringResource(R.string.pomodoro_cancel_btn),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-                Button(
-                    enabled = canSave,
-                    onClick = {
-                        val persistedMode = if (
-                            behavior == UsageLimitBehaviorPolicy.PAUSE_30_PREFIX
-                        ) {
-                            UsageLimitBehaviorPolicy.pauseModeFor(app.packageName)
-                        } else {
-                            UsageLimitBehaviorPolicy.blockUntilTomorrowModeFor(app.packageName)
+                            onSave(enteredMinutes, true, persistedMode, null, ruleEnd)
                         }
-                        onSave(enteredMinutes, true, persistedMode, null, ruleEnd)
-                    },
-                    modifier = Modifier
-                        .weight(1f)
-                        .height(50.dp),
-                    shape = CircleShape,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = AccentCyan,
-                        contentColor = AccentCyanInk,
-                        disabledContainerColor = CardBorder,
-                        disabledContentColor = TextHint
-                    )
-                ) {
-                    Text(
-                        stringResource(R.string.save),
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -421,9 +256,10 @@ fun AppLimitRedesignedSheet(
 }
 
 @Composable
-private fun UsageLimitSheetHeader(
+private fun AppLimitSheetHeader(
     appName: String,
-    iconDrawable: Drawable?
+    iconDrawable: Drawable?,
+    step: AppLimitEditorStep
 ) {
     Row(
         modifier = Modifier
@@ -461,20 +297,322 @@ private fun UsageLimitSheetHeader(
             }
         }
 
-        Column {
-            Text(
-                "DEFINIR LIMITE PARA",
-                color = TextSecondary,
-                fontSize = 10.5.sp,
-                fontWeight = FontWeight.Medium,
-                letterSpacing = 1.35.sp
-            )
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 appName,
                 color = TextPrimary,
                 fontSize = 18.sp,
                 fontWeight = FontWeight.SemiBold
             )
+            Text(
+                if (step == AppLimitEditorStep.DETAILS) "1 / 2" else "2 / 2",
+                color = TextHint,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
+
+@Composable
+private fun AppLimitDetailsScreen(
+    permissionsMissing: Boolean,
+    dailyMinutes: String,
+    onDailyMinutesChange: (String) -> Unit,
+    enteredMinutes: Int,
+    durationAmount: String,
+    onDurationAmountChange: (String) -> Unit,
+    enteredDuration: Int,
+    durationUnit: UsageLimitBehaviorPolicy.RuleDurationUnit,
+    onDurationUnitChange: (UsageLimitBehaviorPolicy.RuleDurationUnit) -> Unit,
+    editMode: Boolean,
+    currentRuleEnd: Long?,
+    onRemove: () -> Unit,
+    onDismiss: () -> Unit,
+    canAdvance: Boolean,
+    onContinue: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 22.dp)
+        ) {
+            PermissionWarning(permissionsMissing)
+
+            UsageLimitDecisionBlock(
+                title = stringResource(R.string.limits_daily_max_title)
+            ) {
+                OutlinedTextField(
+                    value = dailyMinutes,
+                    onValueChange = onDailyMinutesChange,
+                    label = { Text(stringResource(R.string.limits_daily_max_minutes_label)) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    textStyle = androidx.compose.ui.text.TextStyle(
+                        color = TextPrimary,
+                        fontSize = 24.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    ),
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = AccentCyan,
+                        unfocusedBorderColor = CardBorder,
+                        focusedTextColor = TextPrimary,
+                        unfocusedTextColor = TextPrimary
+                    )
+                )
+                Spacer(Modifier.height(12.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    listOf(15, 30, 60, 120).forEach { minutes ->
+                        FilterChip(
+                            selected = enteredMinutes == minutes,
+                            onClick = { onDailyMinutesChange(minutes.toString()) },
+                            label = { Text("$minutes min") },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = AccentCyan.copy(alpha = 0.18f),
+                                selectedLabelColor = AccentCyan
+                            )
+                        )
+                    }
+                }
+            }
+
+            UsageLimitDecisionBlock(
+                title = stringResource(R.string.limits_rule_duration_title),
+                showDivider = false
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    OutlinedTextField(
+                        value = durationAmount,
+                        onValueChange = onDurationAmountChange,
+                        label = { Text(stringResource(R.string.limits_duration_amount_label)) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.width(112.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = AccentCyan,
+                            unfocusedBorderColor = CardBorder,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        )
+                    )
+                    Text(
+                        enteredDuration.takeIf { it > 0 }?.toString().orEmpty(),
+                        color = Color.Transparent,
+                        modifier = Modifier.size(0.dp)
+                    )
+                }
+                Spacer(Modifier.height(10.dp))
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    DurationUnitChip(
+                        selected = durationUnit == UsageLimitBehaviorPolicy.RuleDurationUnit.DAYS,
+                        label = stringResource(R.string.limits_duration_days),
+                        onClick = {
+                            onDurationUnitChange(UsageLimitBehaviorPolicy.RuleDurationUnit.DAYS)
+                        }
+                    )
+                    DurationUnitChip(
+                        selected = durationUnit == UsageLimitBehaviorPolicy.RuleDurationUnit.WEEKS,
+                        label = stringResource(R.string.limits_duration_weeks),
+                        onClick = {
+                            onDurationUnitChange(UsageLimitBehaviorPolicy.RuleDurationUnit.WEEKS)
+                        }
+                    )
+                    DurationUnitChip(
+                        selected = durationUnit == UsageLimitBehaviorPolicy.RuleDurationUnit.MONTHS,
+                        label = stringResource(R.string.limits_duration_months),
+                        onClick = {
+                            onDurationUnitChange(UsageLimitBehaviorPolicy.RuleDurationUnit.MONTHS)
+                        }
+                    )
+                }
+            }
+
+            if (editMode && currentRuleEnd?.let { it > System.currentTimeMillis() } == true) {
+                val formatted = SimpleDateFormat("dd/MM/yyyy", Locale.getDefault())
+                    .format(Date(currentRuleEnd))
+                Text(
+                    stringResource(R.string.limits_rule_current_until, formatted),
+                    color = TextHint,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(bottom = 10.dp)
+                )
+            }
+
+            if (editMode) {
+                TextButton(
+                    onClick = onRemove,
+                    modifier = Modifier.align(Alignment.CenterHorizontally)
+                ) {
+                    Text(
+                        stringResource(R.string.sessions_remove_item),
+                        color = DangerRed,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            }
+        }
+
+        HorizontalDivider(color = CardBorder, thickness = 1.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(DarkSurface)
+                .padding(horizontal = 22.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            OutlinedButton(
+                onClick = onDismiss,
+                modifier = Modifier
+                    .weight(0.55f)
+                    .height(50.dp),
+                shape = CircleShape,
+                border = BorderStroke(1.dp, CardBorder),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary)
+            ) {
+                Text(stringResource(R.string.pomodoro_cancel_btn))
+            }
+            Button(
+                enabled = canAdvance,
+                onClick = onContinue,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(50.dp),
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = AccentCyan,
+                    contentColor = AccentCyanInk,
+                    disabledContainerColor = CardBorder,
+                    disabledContentColor = TextHint
+                )
+            ) {
+                Text(
+                    stringResource(R.string.limits_continue_to_behavior),
+                    fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppLimitBehaviorScreen(
+    behavior: String,
+    onBehaviorChange: (String) -> Unit,
+    minutes: Int,
+    duration: Int,
+    durationUnitLabel: String,
+    behaviorLabel: String,
+    canSave: Boolean,
+    onBack: () -> Unit,
+    onSave: () -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 22.dp, vertical = 20.dp)
+        ) {
+            Text(
+                stringResource(R.string.limits_after_reaching_title),
+                color = TextPrimary,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(18.dp))
+
+            BehaviorChoiceCard(
+                selected = behavior == UsageLimitBehaviorPolicy.BLOCK_UNTIL_TOMORROW_PREFIX,
+                title = stringResource(R.string.limits_block_tomorrow_option),
+                description = stringResource(R.string.limits_block_tomorrow_desc),
+                onClick = {
+                    onBehaviorChange(UsageLimitBehaviorPolicy.BLOCK_UNTIL_TOMORROW_PREFIX)
+                }
+            )
+            Spacer(Modifier.height(12.dp))
+            BehaviorChoiceCard(
+                selected = behavior == UsageLimitBehaviorPolicy.PAUSE_30_PREFIX,
+                title = stringResource(R.string.limits_pause_30_option),
+                description = stringResource(R.string.limits_pause_30_desc),
+                onClick = { onBehaviorChange(UsageLimitBehaviorPolicy.PAUSE_30_PREFIX) }
+            )
+
+            Spacer(Modifier.height(22.dp))
+            Card(
+                colors = CardDefaults.cardColors(containerColor = DarkCard),
+                border = BorderStroke(1.dp, CardBorder),
+                shape = RoundedCornerShape(14.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    stringResource(
+                        R.string.limits_rule_summary,
+                        minutes,
+                        behaviorLabel,
+                        duration,
+                        durationUnitLabel
+                    ),
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(16.dp)
+                )
+            }
+        }
+
+        HorizontalDivider(color = CardBorder, thickness = 1.dp)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(DarkSurface)
+                .padding(horizontal = 22.dp, vertical = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            OutlinedButton(
+                onClick = onBack,
+                modifier = Modifier
+                    .weight(0.55f)
+                    .height(50.dp),
+                shape = CircleShape,
+                border = BorderStroke(1.dp, CardBorder),
+                colors = ButtonDefaults.outlinedButtonColors(contentColor = TextSecondary)
+            ) {
+                Text(stringResource(R.string.action_back))
+            }
+            Button(
+                enabled = canSave,
+                onClick = onSave,
+                modifier = Modifier
+                    .weight(1f)
+                    .height(50.dp),
+                shape = CircleShape,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = AccentCyan,
+                    contentColor = AccentCyanInk,
+                    disabledContainerColor = CardBorder,
+                    disabledContentColor = TextHint
+                )
+            ) {
+                Text(
+                    stringResource(R.string.save),
+                    fontSize = 15.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
         }
     }
 }
@@ -482,7 +620,6 @@ private fun UsageLimitSheetHeader(
 @Composable
 private fun UsageLimitDecisionBlock(
     title: String,
-    hint: String? = null,
     showDivider: Boolean = true,
     content: @Composable () -> Unit
 ) {
@@ -494,267 +631,91 @@ private fun UsageLimitDecisionBlock(
         Text(
             title,
             color = TextPrimary,
-            fontSize = 15.sp,
-            fontWeight = FontWeight.SemiBold
+            fontSize = 16.sp,
+            fontWeight = FontWeight.Bold
         )
-        if (hint != null) {
-            Text(
-                hint,
-                color = TextSecondary,
-                fontSize = 12.5.sp,
-                lineHeight = 18.sp,
-                modifier = Modifier.padding(top = 2.dp)
-            )
-        }
+        Spacer(Modifier.height(12.dp))
         content()
         if (showDivider) {
-            HorizontalDivider(
-                color = CardBorder,
-                thickness = 1.dp,
-                modifier = Modifier.padding(top = 18.dp)
-            )
+            Spacer(Modifier.height(18.dp))
+            HorizontalDivider(color = CardBorder, thickness = 1.dp)
         }
     }
 }
 
 @Composable
-private fun UsageLimitMinuteShortcuts(
-    selectedMinutes: Int?,
-    onSelect: (Int) -> Unit
+private fun DurationUnitChip(
+    selected: Boolean,
+    label: String,
+    onClick: () -> Unit
 ) {
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        listOf(
-            15 to "15 min",
-            30 to "30 min",
-            45 to "45 min",
-            60 to "1 h",
-            120 to "2 h"
-        ).forEach { (minutes, label) ->
-            val selected = selectedMinutes == minutes
-            Surface(
-                onClick = { onSelect(minutes) },
-                shape = CircleShape,
-                color = if (selected) AccentCyan.copy(alpha = 0.14f) else Color.Transparent,
-                contentColor = if (selected) AccentCyan else TextSecondary,
-                border = BorderStroke(
-                    1.dp,
-                    if (selected) AccentCyan else UsageLimitSecondaryStroke
-                )
-            ) {
-                Text(
-                    label,
-                    modifier = Modifier.padding(horizontal = 15.dp, vertical = 8.dp),
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Medium
-                )
-            }
-        }
-    }
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = { Text(label) },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = AccentCyan.copy(alpha = 0.18f),
+            selectedLabelColor = AccentCyan
+        )
+    )
 }
 
 @Composable
-private fun UsageLimitBehaviorChoice(
+private fun BehaviorChoiceCard(
     selected: Boolean,
     title: String,
     description: String,
     onClick: () -> Unit
 ) {
-    Surface(
-        onClick = onClick,
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        color = if (selected) AccentCyan.copy(alpha = 0.09f) else DarkCard,
-        border = BorderStroke(
-            if (selected) 1.5.dp else 1.dp,
-            if (selected) AccentCyan else CardBorder
-        )
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(13.dp),
-            verticalAlignment = Alignment.Top
-        ) {
-            Box(
-                modifier = Modifier
-                    .padding(top = 1.dp)
-                    .size(20.dp)
-                    .border(
-                        2.dp,
-                        if (selected) AccentCyan else TextHint,
-                        CircleShape
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                if (selected) {
-                    Box(
-                        Modifier
-                            .size(10.dp)
-                            .background(AccentCyan, CircleShape)
-                    )
-                }
-            }
-            Column(Modifier.weight(1f)) {
-                Text(
-                    title,
-                    color = TextPrimary,
-                    fontSize = 15.sp,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    description,
-                    color = TextSecondary,
-                    fontSize = 12.5.sp,
-                    lineHeight = 18.sp,
-                    modifier = Modifier.padding(top = 3.dp)
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun UsageLimitDurationStepper(
-    amount: Int,
-    onDecrease: () -> Unit,
-    onIncrease: () -> Unit
-) {
-    Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = DarkCard,
-        border = BorderStroke(1.dp, UsageLimitSecondaryStroke)
-    ) {
-        Row(
-            modifier = Modifier.height(46.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            TextButton(
-                onClick = onDecrease,
-                enabled = amount > 1,
-                modifier = Modifier.width(40.dp)
-            ) {
-                Text(
-                    "−",
-                    color = if (amount > 1) AccentCyan else UsageLimitSecondaryStroke,
-                    fontSize = 20.sp
-                )
-            }
-            Text(
-                amount.coerceAtLeast(1).toString(),
-                modifier = Modifier.width(34.dp),
-                textAlign = TextAlign.Center,
-                color = TextPrimary,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.SemiBold
-            )
-            TextButton(
-                onClick = onIncrease,
-                enabled = amount < 999,
-                modifier = Modifier.width(40.dp)
-            ) {
-                Text(
-                    "+",
-                    color = if (amount < 999) AccentCyan else UsageLimitSecondaryStroke,
-                    fontSize = 20.sp
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun UsageLimitDurationUnits(
-    selected: UsageLimitBehaviorPolicy.RuleDurationUnit,
-    daysLabel: String,
-    weeksLabel: String,
-    monthsLabel: String,
-    onSelect: (UsageLimitBehaviorPolicy.RuleDurationUnit) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    Row(
-        modifier = modifier
-            .height(46.dp)
-            .background(DarkCard, RoundedCornerShape(12.dp))
-            .border(1.dp, UsageLimitSecondaryStroke, RoundedCornerShape(12.dp))
-            .padding(4.dp),
-        horizontalArrangement = Arrangement.spacedBy(3.dp)
-    ) {
-        listOf(
-            UsageLimitBehaviorPolicy.RuleDurationUnit.DAYS to daysLabel,
-            UsageLimitBehaviorPolicy.RuleDurationUnit.WEEKS to weeksLabel,
-            UsageLimitBehaviorPolicy.RuleDurationUnit.MONTHS to monthsLabel
-        ).forEach { (unit, label) ->
-            val active = selected == unit
-            Surface(
-                onClick = { onSelect(unit) },
-                modifier = Modifier
-                    .weight(1f)
-                    .height(38.dp),
-                shape = RoundedCornerShape(9.dp),
-                color = if (active) AccentCyan.copy(alpha = 0.16f) else Color.Transparent,
-                contentColor = if (active) AccentCyan else TextSecondary
-            ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        label,
-                        fontSize = 12.sp,
-                        fontWeight = if (active) FontWeight.SemiBold else FontWeight.Medium,
-                        maxLines = 1
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun UsageLimitRuleSummary(
-    canSave: Boolean,
-    minutes: Int,
-    behaviorLabel: String,
-    duration: Int,
-    durationUnitLabel: String
-) {
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(top = 4.dp, bottom = 14.dp),
-        shape = RoundedCornerShape(14.dp),
+            .clickable(onClick = onClick),
         colors = CardDefaults.cardColors(
-            containerColor = UsageLimitSummaryAmber.copy(alpha = 0.07f)
+            containerColor = if (selected) AccentCyan.copy(alpha = 0.12f) else DarkCard
         ),
-        border = BorderStroke(1.dp, UsageLimitSummaryAmber.copy(alpha = 0.26f))
+        border = BorderStroke(
+            1.dp,
+            if (selected) AccentCyan else CardBorder
+        ),
+        shape = RoundedCornerShape(16.dp)
     ) {
         Row(
-            modifier = Modifier.padding(15.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.Top
         ) {
-            Icon(
-                Icons.Default.Lock,
-                contentDescription = null,
-                tint = UsageLimitSummaryAmber,
-                modifier = Modifier.size(17.dp)
-            )
-            Text(
-                text = if (canSave) {
-                    stringResource(
-                        R.string.limits_rule_summary,
-                        minutes,
-                        behaviorLabel,
-                        duration,
-                        durationUnitLabel
-                    )
-                } else {
-                    "Escolha um tempo para ver o que vai acontecer."
-                },
-                color = if (canSave) TextPrimary else TextSecondary,
-                fontSize = 13.sp,
-                lineHeight = 19.sp,
-                fontWeight = if (canSave) FontWeight.SemiBold else FontWeight.Normal
-            )
+            Surface(
+                modifier = Modifier.size(24.dp),
+                shape = CircleShape,
+                color = if (selected) AccentCyan else Color.Transparent,
+                border = BorderStroke(2.dp, if (selected) AccentCyan else TextHint)
+            ) {
+                if (selected) {
+                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Surface(
+                            modifier = Modifier.size(8.dp),
+                            shape = CircleShape,
+                            color = AccentCyanInk
+                        ) {}
+                    }
+                }
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    title,
+                    color = if (selected) AccentCyan else TextPrimary,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(Modifier.height(5.dp))
+                Text(
+                    description,
+                    color = TextSecondary,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp
+                )
+            }
         }
     }
 }
