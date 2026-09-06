@@ -47,14 +47,14 @@ interface BlockedWebsiteDao {
     @Query("SELECT * FROM blocked_websites WHERE isBlocked = 1 ORDER BY createdAt DESC")
     fun getAllBlockedWebsites(): Flow<List<BlockedWebsite>>
 
-    @Query("SELECT * FROM blocked_websites WHERE domain = :domain LIMIT 1")
-    suspend fun getBlockedWebsiteByDomain(domain: String): BlockedWebsite?
+    @Query("SELECT * FROM blocked_websites WHERE packageName = :packageName LIMIT 1")
+    suspend fun getBlockedAppByPackage(packageName: String): BlockedApp?
 
-    @Query("DELETE FROM blocked_websites WHERE domain = :domain")
-    suspend fun deleteBlockedWebsiteByDomain(domain: String)
+    @Query("DELETE FROM blocked_apps WHERE packageName = :packageName")
+    suspend fun deleteBlockedAppByPackage(packageName: String)
 
-    @Query("DELETE FROM blocked_websites")
-    suspend fun deleteAllBlockedWebsites()
+    @Query("DELETE FROM blocked_apps")
+    suspend fun deleteAllBlockedApps()
 }
 
 @Dao
@@ -149,7 +149,21 @@ interface SessionWebsiteCrossRefDao {
 @Dao
 interface AppUsageLimitDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(limit: AppUsageLimit)
+    suspend fun insertRaw(limit: AppUsageLimit)
+
+    /**
+     * Edits must not look like a brand-new activation. createdAt is the anchor
+     * used by AppUsageLimitActivationUsage to subtract the pre-activation usage
+     * only once; replacing it during an edit would grant a fresh daily allowance.
+     * A true remove-and-readd still gets a new timestamp because no row exists.
+     */
+    @Transaction
+    suspend fun insert(limit: AppUsageLimit) {
+        val existing = getLimitForPackage(limit.packageName)
+        insertRaw(
+            if (existing == null) limit else limit.copy(createdAt = existing.createdAt)
+        )
+    }
 
     @Update
     suspend fun update(limit: AppUsageLimit)
