@@ -34,7 +34,9 @@ object PasswordTargetAccessGrant {
     internal data class AppVisitObservation(
         val latestForegroundPackage: String?,
         val latestTargetForegroundAt: Long,
-        val latestTargetBackgroundAt: Long
+        val latestNonTargetForegroundAt: Long,
+        val latestTargetPackageBackgroundAt: Long,
+        val latestTargetStoppedAt: Long
     )
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
@@ -140,21 +142,30 @@ object PasswordTargetAccessGrant {
         websiteExpiryElapsed.keys.filterTo(linkedSetOf(), ::isWebsiteRuleGranted)
 
     /**
-     * Pure policy used by the monitor and unit tests. Once the authenticated app
-     * has actually reached foreground, either a newer lifecycle-background event
-     * for that target or another foreground package ends the one-visit grant.
+     * Pure policy used by the monitor and unit tests. [visitStartedAt] is the
+     * foreground event that began this authenticated visit. Any later package
+     * background event or foreground transition to another package ends the grant
+     * even if the user reopens the target before the 200 ms poll runs again.
      *
-     * Watching the target's own PAUSED/STOPPED/BACKGROUND event is important:
-     * some launchers/OEMs publish the next foreground event late, which previously
-     * left the grant alive and made the next app entry appear permanently unlocked.
+     * ACTIVITY_STOPPED is kept only as an OEM fallback and only wins while it is
+     * newer than the target's latest RESUMED/FOREGROUND event, avoiding false
+     * relocks during ordinary navigation between activities inside the same app.
      */
     internal fun shouldRevokeAppGrant(
         target: String,
         targetSeenForeground: Boolean,
+        visitStartedAt: Long,
         observation: AppVisitObservation
     ): Boolean {
-        if (!targetSeenForeground || target.isBlank()) return false
-        if (observation.latestTargetBackgroundAt > observation.latestTargetForegroundAt) {
+        if (!targetSeenForeground || target.isBlank() || visitStartedAt == Long.MIN_VALUE) {
+            return false
+        }
+        if (observation.latestTargetPackageBackgroundAt > visitStartedAt) return true
+        if (observation.latestNonTargetForegroundAt > visitStartedAt) return true
+        if (
+            observation.latestTargetStoppedAt > visitStartedAt &&
+            observation.latestTargetStoppedAt > observation.latestTargetForegroundAt
+        ) {
             return true
         }
         val foreground = observation.latestForegroundPackage
@@ -168,6 +179,7 @@ object PasswordTargetAccessGrant {
             val grantedAtElapsed = SystemClock.elapsedRealtime()
             val grantedAtWallClock = System.currentTimeMillis()
             var targetSeenForeground = false
+            var visitStartedAt = Long.MIN_VALUE
 
             while (target in grantedPackages) {
                 val observation = observeAppVisit(
@@ -176,19 +188,30 @@ object PasswordTargetAccessGrant {
                     notBeforeMillis = grantedAtWallClock
                 )
                 if (!targetSeenForeground) {
+                    val latestTargetExit = maxOf(
+                        observation.latestTargetPackageBackgroundAt,
+                        observation.latestTargetStoppedAt
+                    )
                     val targetIsCurrentlyForeground =
                         observation.latestForegroundPackage == target &&
-                            observation.latestTargetForegroundAt >=
-                            observation.latestTargetBackgroundAt
+                            observation.latestTargetForegroundAt >= latestTargetExit
                     if (targetIsCurrentlyForeground) {
                         targetSeenForeground = true
+                        visitStartedAt = observation.latestTargetForegroundAt
                     } else if (
                         SystemClock.elapsedRealtime() - grantedAtElapsed >= APP_OPEN_TIMEOUT_MILLIS
                     ) {
                         revokePackageWithoutCancellingSelf(target)
                         return
                     }
-                } else if (shouldRevokeAppGrant(target, targetSeenForeground, observation)) {
+                } else if (
+                    shouldRevokeAppGrant(
+                        target = target,
+                        targetSeenForeground = targetSeenForeground,
+                        visitStartedAt = visitStartedAt,
+                        observation = observation
+                    )
+                ) {
                     revokePackageWithoutCancellingSelf(target)
                     return
                 }
@@ -215,7 +238,9 @@ object PasswordTargetAccessGrant {
         var latestForegroundPackage: String? = null
         var latestForegroundAt = Long.MIN_VALUE
         var latestTargetForegroundAt = Long.MIN_VALUE
-        var latestTargetBackgroundAt = Long.MIN_VALUE
+        var latestNonTargetForegroundAt = Long.MIN_VALUE
+        var latestTargetPackageBackgroundAt = Long.MIN_VALUE
+        var latestTargetStoppedAt = Long.MIN_VALUE
 
         while (events.hasNextEvent()) {
             events.getNextEvent(event)
@@ -227,30 +252,35 @@ object PasswordTargetAccessGrant {
                 latestForegroundAt = event.timeStamp
                 latestForegroundPackage = event.packageName
             }
-            if (
-                foregroundEvent &&
-                event.packageName == target &&
-                event.timeStamp >= latestTargetForegroundAt
-            ) {
-                latestTargetForegroundAt = event.timeStamp
+            if (foregroundEvent && event.packageName == target) {
+                latestTargetForegroundAt = maxOf(latestTargetForegroundAt, event.timeStamp)
+            } else if (foregroundEvent && event.packageName != target) {
+                latestNonTargetForegroundAt = maxOf(latestNonTargetForegroundAt, event.timeStamp)
             }
 
-            val backgroundEvent = event.eventType == UsageEvents.Event.MOVE_TO_BACKGROUND ||
-                event.eventType == UsageEvents.Event.ACTIVITY_PAUSED ||
-                event.eventType == UsageEvents.Event.ACTIVITY_STOPPED
             if (
-                backgroundEvent &&
                 event.packageName == target &&
-                event.timeStamp >= latestTargetBackgroundAt
+                event.eventType == UsageEvents.Event.MOVE_TO_BACKGROUND
             ) {
-                latestTargetBackgroundAt = event.timeStamp
+                latestTargetPackageBackgroundAt = maxOf(
+                    latestTargetPackageBackgroundAt,
+                    event.timeStamp
+                )
+            }
+            if (
+                event.packageName == target &&
+                event.eventType == UsageEvents.Event.ACTIVITY_STOPPED
+            ) {
+                latestTargetStoppedAt = maxOf(latestTargetStoppedAt, event.timeStamp)
             }
         }
 
         return AppVisitObservation(
             latestForegroundPackage = latestForegroundPackage,
             latestTargetForegroundAt = latestTargetForegroundAt,
-            latestTargetBackgroundAt = latestTargetBackgroundAt
+            latestNonTargetForegroundAt = latestNonTargetForegroundAt,
+            latestTargetPackageBackgroundAt = latestTargetPackageBackgroundAt,
+            latestTargetStoppedAt = latestTargetStoppedAt
         )
     }
 
