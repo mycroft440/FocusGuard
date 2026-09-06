@@ -184,7 +184,9 @@ class BlockNoticeActivity : AppCompatActivity() {
                     redirectBrowserPackage = payload.redirectBrowserPackage,
                     authManager = authManager,
                     blockingSessionManager = blockingSessionManager,
-                    onReturnToTarget = ::finish,
+                    onReturnToTarget = {
+                        returnToAuthenticatedTarget(payload.blockedPackage)
+                    },
                     onRedirectBlockedWebsite = ::redirectBlockedWebsite,
                     onGoToPomodoroLock = ::goToPomodoroLock
                 )
@@ -303,6 +305,51 @@ class BlockNoticeActivity : AppCompatActivity() {
         CurtainDestinationReadyCoordinator.notifyReady(generation)
         routeToUsageImpactIfReady()
         return true
+    }
+
+    /**
+     * A successful PASSWORD credential grants one visit. Do not rely on whatever
+     * happened to be below this Activity in the task stack: Device Owner suspension
+     * or a launcher interception may mean the target never reached foreground at
+     * all. Bring its real launcher Activity forward explicitly while the temporary
+     * grant is active. The grant monitor revokes it as soon as that visit ends.
+     */
+    private fun returnToAuthenticatedTarget(blockedPackage: String?) {
+        val packageName = blockedPackage?.takeIf(String::isNotBlank)
+        if (packageName == null) {
+            finish()
+            return
+        }
+
+        val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+        if (launchIntent == null) {
+            FocusGuardLogger.log(
+                "BlockNotice",
+                "App autenticado não possui Activity de launcher: $packageName"
+            )
+            goHome()
+            return
+        }
+
+        val launched = runCatching {
+            launchIntent.addFlags(
+                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            )
+            startActivity(launchIntent)
+        }.onFailure { error ->
+            FocusGuardLogger.logError(
+                "BlockNotice",
+                "Falha ao restaurar app autenticado $packageName",
+                error
+            )
+        }.isSuccess
+
+        if (launched) {
+            finish()
+        } else {
+            goHome()
+        }
     }
 
     private fun redirectBlockedWebsite(@Suppress("UNUSED_PARAMETER") browserPackageName: String) {
@@ -487,7 +534,7 @@ private fun BlockNoticeContent(
                         )
                     }
                     LaunchedEffect(Unit) {
-                        delay(250L)
+                        delay(180L)
                         onReturnToTarget()
                     }
                 }
