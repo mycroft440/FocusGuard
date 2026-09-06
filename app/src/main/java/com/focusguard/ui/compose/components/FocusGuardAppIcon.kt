@@ -229,4 +229,7 @@ private fun fallbackBrandColor(packageName: String): Color = when {
 
 private const val APP_ICON_SIZE_PX = 256
 private const val REMOTE_ICON_SIZE_PX = 256
-private val appIconCache = object : LruCache<String, Bitmap>(128) {}
+private const val APP_ICON_CACHE_MAX_BYTES = 12 * 1024 * 1024
+private val appIconCache = object : LruCache<String, Bitmap>(APP_ICON_CACHE_MAX_BYTES) {
+    override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
+}
