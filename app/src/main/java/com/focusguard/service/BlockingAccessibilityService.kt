@@ -3882,9 +3882,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         redirectBrowserPackage: String? = null,
         eventUptimeMillis: Long = SystemClock.uptimeMillis()
     ): Boolean {
-        // Every attempt renews the touch-blocking curtain and eviction. Activity
-        // flags coalesce the already-drawn notice; no cooldown is allowed to leave
-        // a newly foregrounded blocked app uncovered.
+        // Every attempt renews the touch-blocking curtain. BlockNoticeActivity
+        // becomes the safe foreground surface; HOME eviction is reserved for the
+        // existing fail-safe path when that surface cannot be presented.
         val generation = showInstantBlockCurtain(mode = CurtainMode.BLOCK_NOTICE)
         awaitingSafeSurfaceGeneration = generation
         if (shouldEvictBlockedAppBeforeNotice(blockedPackage)) {
@@ -4169,10 +4169,14 @@ class BlockingAccessibilityService : AccessibilityService() {
         val protectedSettingsPackages = SettingsInterceptionPolicy.settingsPackages +
             SettingsInterceptionPolicy.packageInstallerPackages
         windows.forEach { window ->
-            // A blocked task may remain underneath the full-screen FocusGuard
-            // credential Activity. Only a currently active/focused window can
-            // make the safe-surface handshake unsafe.
-            if (!window.isActive && !window.isFocused) return@forEach
+            // During an app block, the protected task may remain underneath the
+            // full-screen FocusGuard credential Activity. Ignore that inactive
+            // background task only in BLOCK_NOTICE mode. SELF_PROTECTION keeps
+            // scanning every settings/installer window fail-closed.
+            if (
+                instantBlockCurtainMode == CurtainMode.BLOCK_NOTICE &&
+                !window.isActive && !window.isFocused
+            ) return@forEach
             val root = runCatching { window.root }.getOrNull() ?: return@forEach
             try {
                 val visiblePackage = root.packageName?.toString().orEmpty()
