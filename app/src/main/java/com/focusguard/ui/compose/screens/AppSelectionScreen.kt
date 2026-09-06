@@ -327,8 +327,8 @@ fun AppSelectionItem(
                 packageName = app.packageName,
                 appName = app.appName,
                 iconUrl = app.iconUrl,
-                modifier = Modifier.size(40.dp),
-                cornerRadius = 10.dp
+                modifier = Modifier.size(44.dp),
+                cornerRadius = 11.dp
             )
 
             Spacer(modifier = Modifier.width(12.dp))
