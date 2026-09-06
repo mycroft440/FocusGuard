@@ -139,11 +139,11 @@ internal fun PasswordProtectedTargetUnlockPanel(
                     return@launch
                 }
 
-                // A target credential is weaker than an irreversible protection.
-                // Before unsuspending/whitelisting anything, independently verify
-                // that the same target is not also held by a Dopamine Fast or an
-                // active Focus Mode session. This keeps overlapping persisted
-                // rules fail-closed even if an older database contains a conflict.
+                // A target credential is weaker than an irreversible protection or
+                // a separately configured daily limit. Before unsuspending anything,
+                // independently verify that no stronger/parallel rule owns the same
+                // target. This also keeps legacy databases with overlapping rules
+                // fail-closed while the one-visit grant is recognized by Accessibility.
                 val overview = sessionManager.getBlockOverview()
                 val heldByDopamineFast = if (!blockedPackage.isNullOrBlank()) {
                     overview.dopamineFastEntries.any {
@@ -158,6 +158,19 @@ internal fun PasswordProtectedTargetUnlockPanel(
                         )
                     }
                 }
+                val heldByDailyLimit = if (!blockedPackage.isNullOrBlank()) {
+                    overview.dailyLimitEntries.any {
+                        !it.isWebsite && it.identifier == blockedPackage
+                    }
+                } else {
+                    val candidate = blockedDomain ?: websiteRule.orEmpty()
+                    overview.dailyLimitEntries.any { entry ->
+                        entry.isWebsite && WebsiteBlocker.isUrlBlocked(
+                            candidate,
+                            listOf(entry.identifier)
+                        )
+                    }
+                }
                 val heldByFocusMode = blockedPackage
                     ?.takeIf(String::isNotBlank)
                     ?.let { packageName ->
@@ -166,7 +179,7 @@ internal fun PasswordProtectedTargetUnlockPanel(
                             ?.blockedPackages
                             ?.contains(packageName) == true
                     } == true
-                if (heldByDopamineFast || heldByFocusMode) {
+                if (heldByDopamineFast || heldByDailyLimit || heldByFocusMode) {
                     error = failureMessage
                     onInvalid?.invoke()
                     return@launch
