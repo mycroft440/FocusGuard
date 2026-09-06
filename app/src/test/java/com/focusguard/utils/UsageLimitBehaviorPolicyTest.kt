@@ -121,4 +121,48 @@ class UsageLimitBehaviorPolicyTest {
         assertEquals(packageName, UsageLimitBehaviorPolicy.identifierFrom(pause))
         assertEquals(packageName, UsageLimitBehaviorPolicy.identifierFrom(tomorrow))
     }
+
+    @Test
+    fun `editing only allowance or behavior preserves exact existing deadline`() {
+        val existingDeadline = 9_876_543_210L
+        val roundedReplacement = 9_999_999_999L
+
+        assertEquals(
+            existingDeadline,
+            UsageLimitBehaviorPolicy.resolveRuleEndForEdit(
+                existingRuleEndMillis = existingDeadline,
+                durationEdited = false,
+                calculatedRuleEndMillis = roundedReplacement
+            )
+        )
+    }
+
+    @Test
+    fun `editing duration uses recalculated deadline`() {
+        val existingDeadline = 9_876_543_210L
+        val replacement = 10_123_456_789L
+
+        assertEquals(
+            replacement,
+            UsageLimitBehaviorPolicy.resolveRuleEndForEdit(
+                existingRuleEndMillis = existingDeadline,
+                durationEdited = true,
+                calculatedRuleEndMillis = replacement
+            )
+        )
+    }
+
+    @Test
+    fun `new rule uses calculated deadline`() {
+        val calculated = 10_123_456_789L
+
+        assertEquals(
+            calculated,
+            UsageLimitBehaviorPolicy.resolveRuleEndForEdit(
+                existingRuleEndMillis = null,
+                durationEdited = false,
+                calculatedRuleEndMillis = calculated
+            )
+        )
+    }
 }
