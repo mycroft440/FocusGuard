@@ -18,4 +18,5 @@
     <string name="limits_rule_expired">Período da regra encerrado</string>
     <string name="limits_pause_notice">Você atingiu o limite diário. Faça uma pausa de 30 minutos antes de usar este app novamente.</string>
     <string name="limits_daily_lock_notice">Você atingiu o limite diário. Este app ficará disponível novamente amanhã.</string>
+    <string name="limits_continue_to_behavior">Continuar para o modo de bloqueio</string>
 </resources>
