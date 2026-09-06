@@ -43,9 +43,10 @@ import kotlinx.coroutines.withContext
  * 3) bundled brand artwork when available;
  * 4) branded local fallback as the last resort.
  *
- * The remote lookup only starts after PackageManager has proved that the app is not
- * installed. That guarantees an installed app is never visually replaced by a web
- * favicon and also avoids unnecessary network requests for installed targets.
+ * Installed icons are rendered on a transparent container. This is important for
+ * adaptive/legacy launcher artwork with transparent corners: placing FocusGuard's
+ * fallback color underneath the bitmap changes the icon's apparent background and
+ * no longer looks like the icon the user sees in the Android launcher.
  */
 @Composable
 fun FocusGuardAppIcon(
@@ -73,9 +74,6 @@ fun FocusGuardAppIcon(
 
         val loaded = withContext(Dispatchers.IO) {
             runCatching {
-                // Decode at a density-independent high resolution instead of the old
-                // 96 px thumbnail. This keeps launcher artwork crisp on xxhdpi/xxxhdpi
-                // devices and preserves details in modern adaptive icons.
                 context.packageManager.getApplicationIcon(packageName)
                     .toBitmap(APP_ICON_SIZE_PX, APP_ICON_SIZE_PX)
             }.getOrNull()
@@ -88,44 +86,44 @@ fun FocusGuardAppIcon(
         localLookupFinished = true
     }
 
+    val shape = RoundedCornerShape(cornerRadius)
+    val installed = installedBitmap
+
+    // Installed apps must look exactly like Android's launcher artwork. Do not
+    // paint a FocusGuard background/fallback beneath transparent icon pixels.
+    if (installed != null) {
+        val bitmap = remember(installed) { installed.asImageBitmap() }
+        Image(
+            bitmap = bitmap,
+            contentDescription = appName,
+            contentScale = ContentScale.Fit,
+            modifier = modifier.clip(shape)
+        )
+        return
+    }
+
     val bundledIcon = remember(packageName) { bundledPredefinedIcon(packageName) }
     val remoteIconUrl = remember(packageName, iconUrl, allowRemoteFallback) {
         if (!allowRemoteFallback) {
             null
         } else {
-            // For catalogued apps, prefer the known official domain over an arbitrary
-            // caller URL. Callers can still provide a URL for uncatalogued targets.
             predefinedFaviconUrl(packageName)
                 ?: highResolutionCallerIconUrl(iconUrl)
         }
     }
-    val shape = RoundedCornerShape(cornerRadius)
 
+    // This styled container is intentionally restricted to apps that PackageManager
+    // could not resolve as installed. It keeps the attractive catalog fallback for
+    // preventive/uninstalled apps without contaminating original installed icons.
     Box(
         modifier = modifier
             .clip(shape)
             .background(Color(0xFF111820)),
         contentAlignment = Alignment.Center
     ) {
-        // Kept underneath every other layer so image decoding/loading never leaves
-        // a blank square on screen.
         BrandedAppFallback(packageName = packageName, appName = appName)
 
         when {
-            installedBitmap != null -> {
-                val bitmap = remember(installedBitmap) {
-                    requireNotNull(installedBitmap).asImageBitmap()
-                }
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = appName,
-                    // Fit preserves the complete original icon. Crop could cut the
-                    // outer mask/artwork of adaptive and legacy launcher icons.
-                    contentScale = ContentScale.Fit,
-                    modifier = Modifier.fillMaxSize()
-                )
-            }
-
             localLookupFinished && remoteIconUrl != null && !remoteLoadFailed -> {
                 AsyncImage(
                     model = remoteIconUrl,
