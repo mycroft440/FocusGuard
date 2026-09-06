@@ -8,7 +8,7 @@ class AppUpdateUnlockResetPolicyTest {
     @Test
     fun `password limit with temporary release is reset`() {
         assertThat(
-            AppUpdateUnlockResetPolicy.shouldReset(
+            AppUpdateUnlockResetPolicy.shouldResetPasswordRelease(
                 lockMode = "PASSWORD",
                 lockUntilTimestamp = 123_456L
             )
@@ -18,7 +18,7 @@ class AppUpdateUnlockResetPolicyTest {
     @Test
     fun `password mode comparison is case insensitive`() {
         assertThat(
-            AppUpdateUnlockResetPolicy.shouldReset(
+            AppUpdateUnlockResetPolicy.shouldResetPasswordRelease(
                 lockMode = "password",
                 lockUntilTimestamp = 123_456L
             )
@@ -28,7 +28,7 @@ class AppUpdateUnlockResetPolicyTest {
     @Test
     fun `password limit that is already locked has nothing to reset`() {
         assertThat(
-            AppUpdateUnlockResetPolicy.shouldReset(
+            AppUpdateUnlockResetPolicy.shouldResetPasswordRelease(
                 lockMode = "PASSWORD",
                 lockUntilTimestamp = null
             )
@@ -38,7 +38,7 @@ class AppUpdateUnlockResetPolicyTest {
     @Test
     fun `time hardening deadline survives app update`() {
         assertThat(
-            AppUpdateUnlockResetPolicy.shouldReset(
+            AppUpdateUnlockResetPolicy.shouldResetPasswordRelease(
                 lockMode = "TIME",
                 lockUntilTimestamp = 123_456L
             )
@@ -46,22 +46,34 @@ class AppUpdateUnlockResetPolicyTest {
     }
 
     @Test
-    fun `daily pause rule deadline survives app update`() {
+    fun `daily pause rule deadline survives while its release state is reset`() {
+        val mode = "PAUSE_30:com.example.app"
+
         assertThat(
-            AppUpdateUnlockResetPolicy.shouldReset(
-                lockMode = "PAUSE_30:com.example.app",
+            AppUpdateUnlockResetPolicy.shouldResetPasswordRelease(
+                lockMode = mode,
                 lockUntilTimestamp = 123_456L
             )
         ).isFalse()
+        assertThat(AppUpdateUnlockResetPolicy.shouldResetPauseRelease(mode)).isTrue()
     }
 
     @Test
-    fun `block until tomorrow rule deadline survives app update`() {
+    fun `block until tomorrow rule deadline and behavior survive update`() {
+        val mode = "BLOCK_UNTIL_TOMORROW:com.example.app"
+
         assertThat(
-            AppUpdateUnlockResetPolicy.shouldReset(
-                lockMode = "BLOCK_UNTIL_TOMORROW:com.example.app",
+            AppUpdateUnlockResetPolicy.shouldResetPasswordRelease(
+                lockMode = mode,
                 lockUntilTimestamp = 123_456L
             )
         ).isFalse()
+        assertThat(AppUpdateUnlockResetPolicy.shouldResetPauseRelease(mode)).isFalse()
+    }
+
+    @Test
+    fun `password and time modes are not mistaken for pause state`() {
+        assertThat(AppUpdateUnlockResetPolicy.shouldResetPauseRelease("PASSWORD")).isFalse()
+        assertThat(AppUpdateUnlockResetPolicy.shouldResetPauseRelease("TIME")).isFalse()
     }
 }
