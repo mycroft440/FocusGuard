@@ -236,9 +236,13 @@ private fun fallbackBrandColor(packageName: String): Color = when {
     else -> Color(packageName.hashCode()).copy(alpha = 1f)
 }
 
-private const val APP_ICON_SIZE_PX = 256
+// The app currently renders installed icons at roughly 42-48dp in Compose.
+// 192px still covers xxxhdpi for that range while cutting each ARGB bitmap from
+// 256 KiB to 144 KiB. An 8 MiB cache therefore holds about 56 icons versus about
+// 48 with the former 256px/12 MiB setup, reducing peak heap while improving hit rate.
+private const val APP_ICON_SIZE_PX = 192
 private const val REMOTE_ICON_SIZE_PX = 256
-private const val APP_ICON_CACHE_MAX_BYTES = 12 * 1024 * 1024
+private const val APP_ICON_CACHE_MAX_BYTES = 8 * 1024 * 1024
 private val appIconCache = object : LruCache<String, Bitmap>(APP_ICON_CACHE_MAX_BYTES) {
     override fun sizeOf(key: String, value: Bitmap): Int = value.byteCount
 }

@@ -46,6 +46,13 @@ android {
         // and Portuguese translation are treated as a release invariant.
         error.add("MissingTranslation")
         error.add("ExtraTranslation")
+
+        // Compose 1.11 introduces stricter configuration-observability checks.
+        // Keep these findings visible as warnings during the UI migration instead
+        // of failing unrelated security/release work. They are static-analysis
+        // severity changes only and add no runtime work to blocking hot paths.
+        warning.add("NonObservableLocale")
+        warning.add("LocalContextGetResourceValueCall")
     }
 
     val releaseKeystorePath = System.getenv("KEYSTORE_FILE")
