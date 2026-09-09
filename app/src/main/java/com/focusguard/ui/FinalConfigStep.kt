@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.clearText
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -28,7 +30,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedSecureTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -36,6 +38,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -43,13 +46,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
@@ -71,6 +75,7 @@ import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.launch
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
@@ -124,11 +129,11 @@ fun FinalConfigStep(
         biometricAvailability = AppUnlockBiometricAuthenticator.availability(context)
     }
 
-    // Credenciais são intencionalmente mantidas apenas em memória e nunca no SavedState.
-    // O composable raiz guarda somente os objetos de estado, sem observar seus valores.
-    // Assim cada tecla invalida apenas PasswordCredentialEditor, e não o Scaffold inteiro.
-    val unlockPasswordState = remember { mutableStateOf("") }
-    val unlockPasswordConfirmationState = remember { mutableStateOf("") }
+    // Credentials intentionally live only in memory and are never put in SavedState.
+    // TextFieldState keeps IME editing synchronized without routing every key through
+    // value/onValueChange and without invalidating the Scaffold tree.
+    val unlockPasswordState = remember { TextFieldState() }
+    val unlockPasswordConfirmationState = remember { TextFieldState() }
     var patternCredential by remember { mutableStateOf("") }
     var hidePatternTrace by rememberSaveable { mutableStateOf(false) }
     var showPatternDialog by remember { mutableStateOf(false) }
@@ -149,8 +154,8 @@ fun FinalConfigStep(
 
     fun returnToMethodSelection() {
         unlockModeName = null
-        unlockPasswordState.value = ""
-        unlockPasswordConfirmationState.value = ""
+        unlockPasswordState.clearText()
+        unlockPasswordConfirmationState.clearText()
         patternCredential = ""
         hidePatternTrace = false
         showPatternDialog = false
@@ -402,18 +407,18 @@ fun FinalConfigStep(
                                     androidBiometricAvailable = biometricReadyNow,
                                     appBiometricUnlockEnabled = biometricAppUnlockEnabledNow
                                 )
+                            val password = unlockPasswordState.text.toString()
+                            val passwordConfirmation =
+                                unlockPasswordConfirmationState.text.toString()
                             val validationError = when (selectedMode) {
                                 PasswordAppUnlockMode.PASSWORD -> when {
-                                    !PasswordAppUnlockStore.isPasswordValid(
-                                        unlockPasswordState.value
-                                    ) ->
+                                    !PasswordAppUnlockStore.isPasswordValid(password) ->
                                         context.getString(
                                             R.string.password_app_unlock_password_invalid,
                                             PasswordAppUnlockStore.MIN_PASSWORD_LENGTH
                                         )
 
-                                    unlockPasswordState.value !=
-                                        unlockPasswordConfirmationState.value ->
+                                    password != passwordConfirmation ->
                                         context.getString(
                                             R.string.password_app_unlock_password_mismatch
                                         )
@@ -447,7 +452,7 @@ fun FinalConfigStep(
                             }
 
                             val targetCredential = when (selectedMode) {
-                                PasswordAppUnlockMode.PASSWORD -> unlockPasswordState.value
+                                PasswordAppUnlockMode.PASSWORD -> password
                                 PasswordAppUnlockMode.PATTERN -> patternCredential
                                 PasswordAppUnlockMode.BIOMETRIC_ONLY -> null
                             }
@@ -528,33 +533,21 @@ fun FinalConfigStep(
 
 @Composable
 private fun PasswordCredentialEditor(
-    passwordState: androidx.compose.runtime.MutableState<String>,
-    confirmationState: androidx.compose.runtime.MutableState<String>,
+    passwordState: TextFieldState,
+    confirmationState: TextFieldState,
     onEdited: () -> Unit
 ) {
-    OutlinedTextField(
-        value = passwordState.value,
-        onValueChange = { value ->
-            passwordState.value = value
-            onEdited()
-        },
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text(stringResource(R.string.password_app_unlock_password)) },
-        singleLine = true,
-        visualTransformation = PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+    PasswordCredentialField(
+        state = passwordState,
+        label = stringResource(R.string.password_app_unlock_password),
+        imeAction = ImeAction.Next,
+        onEdited = onEdited
     )
-    OutlinedTextField(
-        value = confirmationState.value,
-        onValueChange = { value ->
-            confirmationState.value = value
-            onEdited()
-        },
-        modifier = Modifier.fillMaxWidth(),
-        label = { Text(stringResource(R.string.password_app_unlock_password_confirm)) },
-        singleLine = true,
-        visualTransformation = PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+    PasswordCredentialField(
+        state = confirmationState,
+        label = stringResource(R.string.password_app_unlock_password_confirm),
+        imeAction = ImeAction.Done,
+        onEdited = onEdited
     )
     Text(
         stringResource(
@@ -563,6 +556,31 @@ private fun PasswordCredentialEditor(
         ),
         color = TextHint,
         fontSize = 11.sp
+    )
+}
+
+@Composable
+private fun PasswordCredentialField(
+    state: TextFieldState,
+    label: String,
+    imeAction: ImeAction,
+    onEdited: () -> Unit
+) {
+    // Observe the editing state outside the field's value pipeline. This preserves
+    // error-clearing behavior without sending every IME edit through the parent.
+    LaunchedEffect(state) {
+        snapshotFlow { state.text }
+            .collect { onEdited() }
+    }
+
+    OutlinedSecureTextField(
+        state = state,
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(label) },
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Password,
+            imeAction = imeAction
+        )
     )
 }
 
