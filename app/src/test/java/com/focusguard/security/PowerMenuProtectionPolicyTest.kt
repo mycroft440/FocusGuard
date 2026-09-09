@@ -54,6 +54,64 @@ class PowerMenuProtectionPolicyTest {
     }
 
     @Test
+    fun `samsung quick settings power shortcut plus emergency text is not power menu`() {
+        val portugueseShade = listOf(
+            "Desligar",
+            "Chamadas de emergência",
+            "Wi-Fi",
+            "Bluetooth",
+            "Saída de mídia"
+        )
+        assertThat(
+            PowerMenuProtectionPolicy.isPowerMenu(
+                packageName = "com.samsung.android.systemui",
+                className = "android.widget.FrameLayout",
+                values = portugueseShade
+            )
+        ).isFalse()
+        assertThat(
+            PowerMenuProtectionPolicy.classifyDirect(
+                packageName = "com.samsung.android.systemui",
+                className = "android.widget.FrameLayout",
+                values = portugueseShade
+            )
+        ).isEqualTo(DirectDecision.UNKNOWN)
+
+        assertThat(
+            PowerMenuProtectionPolicy.isPowerMenu(
+                packageName = "com.android.systemui",
+                className = "android.widget.FrameLayout",
+                values = listOf("Power off", "Emergency calls only", "Wi-Fi", "Bluetooth")
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `generic power menu requires both primary power actions`() {
+        assertThat(
+            PowerMenuProtectionPolicy.isPowerMenu(
+                packageName = "com.android.systemui",
+                className = "android.widget.FrameLayout",
+                values = listOf("Desligar", "Reiniciar")
+            )
+        ).isTrue()
+        assertThat(
+            PowerMenuProtectionPolicy.isPowerMenu(
+                packageName = "com.android.systemui",
+                className = "android.widget.FrameLayout",
+                values = listOf("Desligar", "Chamada de emergência")
+            )
+        ).isFalse()
+        assertThat(
+            PowerMenuProtectionPolicy.isPowerMenu(
+                packageName = "com.android.systemui",
+                className = "android.widget.FrameLayout",
+                values = listOf("Reiniciar", "Chamada de emergência")
+            )
+        ).isFalse()
+    }
+
+    @Test
     fun `ordinary system ui notification is not a power menu`() {
         assertThat(
             PowerMenuProtectionPolicy.isPowerMenu(
@@ -79,7 +137,7 @@ class PowerMenuProtectionPolicyTest {
     }
 
     @Test
-    fun `ambiguous actions dialog needs actual power actions`() {
+    fun `ambiguous actions dialog needs actual primary power actions`() {
         assertThat(
             PowerMenuProtectionPolicy.classifyDirect(
                 packageName = "com.android.systemui",
@@ -92,6 +150,13 @@ class PowerMenuProtectionPolicyTest {
                 packageName = "com.android.systemui",
                 className = "com.android.systemui.ActionsDialog",
                 values = listOf("Reiniciar")
+            )
+        ).isEqualTo(DirectDecision.UNKNOWN)
+        assertThat(
+            PowerMenuProtectionPolicy.classifyDirect(
+                packageName = "com.android.systemui",
+                className = "com.android.systemui.ActionsDialog",
+                values = listOf("Desligar", "Chamada de emergência")
             )
         ).isEqualTo(DirectDecision.UNKNOWN)
         assertThat(
