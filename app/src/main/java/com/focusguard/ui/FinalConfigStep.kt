@@ -125,8 +125,10 @@ fun FinalConfigStep(
     }
 
     // Credenciais são intencionalmente mantidas apenas em memória e nunca no SavedState.
-    var unlockPassword by remember { mutableStateOf("") }
-    var unlockPasswordConfirmation by remember { mutableStateOf("") }
+    // O composable raiz guarda somente os objetos de estado, sem observar seus valores.
+    // Assim cada tecla invalida apenas PasswordCredentialEditor, e não o Scaffold inteiro.
+    val unlockPasswordState = remember { mutableStateOf("") }
+    val unlockPasswordConfirmationState = remember { mutableStateOf("") }
     var patternCredential by remember { mutableStateOf("") }
     var hidePatternTrace by rememberSaveable { mutableStateOf(false) }
     var showPatternDialog by remember { mutableStateOf(false) }
@@ -147,8 +149,8 @@ fun FinalConfigStep(
 
     fun returnToMethodSelection() {
         unlockModeName = null
-        unlockPassword = ""
-        unlockPasswordConfirmation = ""
+        unlockPasswordState.value = ""
+        unlockPasswordConfirmationState.value = ""
         patternCredential = ""
         hidePatternTrace = false
         showPatternDialog = false
@@ -231,49 +233,12 @@ fun FinalConfigStep(
 
                         when (unlockMode) {
                             PasswordAppUnlockMode.PASSWORD -> {
-                                OutlinedTextField(
-                                    value = unlockPassword,
-                                    onValueChange = {
-                                        unlockPassword = it
-                                        configError = null
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    label = {
-                                        Text(stringResource(R.string.password_app_unlock_password))
-                                    },
-                                    singleLine = true,
-                                    visualTransformation = PasswordVisualTransformation(),
-                                    keyboardOptions = KeyboardOptions(
-                                        keyboardType = KeyboardType.Password
-                                    )
-                                )
-                                OutlinedTextField(
-                                    value = unlockPasswordConfirmation,
-                                    onValueChange = {
-                                        unlockPasswordConfirmation = it
-                                        configError = null
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    label = {
-                                        Text(
-                                            stringResource(
-                                                R.string.password_app_unlock_password_confirm
-                                            )
-                                        )
-                                    },
-                                    singleLine = true,
-                                    visualTransformation = PasswordVisualTransformation(),
-                                    keyboardOptions = KeyboardOptions(
-                                        keyboardType = KeyboardType.Password
-                                    )
-                                )
-                                Text(
-                                    stringResource(
-                                        R.string.password_app_unlock_password_requirement,
-                                        PasswordAppUnlockStore.MIN_PASSWORD_LENGTH
-                                    ),
-                                    color = TextHint,
-                                    fontSize = 11.sp
+                                PasswordCredentialEditor(
+                                    passwordState = unlockPasswordState,
+                                    confirmationState = unlockPasswordConfirmationState,
+                                    onEdited = {
+                                        if (configError != null) configError = null
+                                    }
                                 )
                             }
 
@@ -439,13 +404,16 @@ fun FinalConfigStep(
                                 )
                             val validationError = when (selectedMode) {
                                 PasswordAppUnlockMode.PASSWORD -> when {
-                                    !PasswordAppUnlockStore.isPasswordValid(unlockPassword) ->
+                                    !PasswordAppUnlockStore.isPasswordValid(
+                                        unlockPasswordState.value
+                                    ) ->
                                         context.getString(
                                             R.string.password_app_unlock_password_invalid,
                                             PasswordAppUnlockStore.MIN_PASSWORD_LENGTH
                                         )
 
-                                    unlockPassword != unlockPasswordConfirmation ->
+                                    unlockPasswordState.value !=
+                                        unlockPasswordConfirmationState.value ->
                                         context.getString(
                                             R.string.password_app_unlock_password_mismatch
                                         )
@@ -479,7 +447,7 @@ fun FinalConfigStep(
                             }
 
                             val targetCredential = when (selectedMode) {
-                                PasswordAppUnlockMode.PASSWORD -> unlockPassword
+                                PasswordAppUnlockMode.PASSWORD -> unlockPasswordState.value
                                 PasswordAppUnlockMode.PATTERN -> patternCredential
                                 PasswordAppUnlockMode.BIOMETRIC_ONLY -> null
                             }
@@ -556,6 +524,46 @@ fun FinalConfigStep(
             }
         }
     }
+}
+
+@Composable
+private fun PasswordCredentialEditor(
+    passwordState: androidx.compose.runtime.MutableState<String>,
+    confirmationState: androidx.compose.runtime.MutableState<String>,
+    onEdited: () -> Unit
+) {
+    OutlinedTextField(
+        value = passwordState.value,
+        onValueChange = { value ->
+            passwordState.value = value
+            onEdited()
+        },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(stringResource(R.string.password_app_unlock_password)) },
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+    )
+    OutlinedTextField(
+        value = confirmationState.value,
+        onValueChange = { value ->
+            confirmationState.value = value
+            onEdited()
+        },
+        modifier = Modifier.fillMaxWidth(),
+        label = { Text(stringResource(R.string.password_app_unlock_password_confirm)) },
+        singleLine = true,
+        visualTransformation = PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password)
+    )
+    Text(
+        stringResource(
+            R.string.password_app_unlock_password_requirement,
+            PasswordAppUnlockStore.MIN_PASSWORD_LENGTH
+        ),
+        color = TextHint,
+        fontSize = 11.sp
+    )
 }
 
 @Composable
