@@ -124,9 +124,31 @@ object PowerMenuProtectionPolicy {
             // shade can expose a power shortcut and text such as "Chamadas de
             // emergência" at the same time. Emergency text therefore must never be
             // identity evidence for a power menu. Outside a known global-actions
-            // class, require both primary power actions: Power off + Restart.
-            else -> hasPowerOff && hasRestart
+            // class, require distinct rendered evidence for both primary power
+            // actions. This also rejects a single QS shortcut whose accessibility
+            // label happens to say something like "Power off or restart".
+            else -> hasIndependentPrimaryPowerActions(rendered)
         }
+    }
+
+    private fun hasIndependentPrimaryPowerActions(values: Iterable<CharSequence?>): Boolean {
+        val powerOffTerms = normalizedTermsByAction.getValue(Action.POWER_OFF)
+        val restartTerms = normalizedTermsByAction.getValue(Action.RESTART)
+        var powerOffEvidence = false
+        var restartEvidence = false
+
+        for (value in values) {
+            val normalizedValue = normalize(value?.toString().orEmpty())
+            if (normalizedValue.isBlank()) continue
+            val matchesPowerOff = powerOffTerms.any(normalizedValue::contains)
+            val matchesRestart = restartTerms.any(normalizedValue::contains)
+
+            // A single combined shortcut/description is not two independent actions.
+            if (matchesPowerOff && !matchesRestart) powerOffEvidence = true
+            if (matchesRestart && !matchesPowerOff) restartEvidence = true
+            if (powerOffEvidence && restartEvidence) return true
+        }
+        return false
     }
 
     private fun normalize(value: String): String =
