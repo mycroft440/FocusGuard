@@ -26,8 +26,9 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.input.InputTransformation
 import androidx.compose.foundation.text.input.TextFieldLineLimits
 import androidx.compose.foundation.text.input.TextFieldState
-import androidx.compose.foundation.text.input.byValue
+import androidx.compose.foundation.text.input.maxLength
 import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
+import androidx.compose.foundation.text.input.then
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
@@ -60,6 +61,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -84,18 +86,28 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.drop
 
+internal const val PERF_USAGE_MINUTES_TAG = "perf_usage_minutes"
+internal const val PERF_RULE_DURATION_TAG = "perf_rule_duration"
+
 private enum class AppLimitEditorStep {
     DETAILS,
     BLOCK_MODE
 }
 
-private val DailyMinutesInputTransformation = InputTransformation.byValue { _, proposed ->
-    proposed.filter(Char::isDigit).take(4)
-}
+/**
+ * Numeric keyboards already emit digits in the common case. The explicit filter
+ * still protects paste/IME edge cases without allocating a filtered String on
+ * every edit. maxLength also publishes the limit to accessibility services.
+ */
+private fun numericInputTransformation(maxLength: Int): InputTransformation =
+    InputTransformation.maxLength(maxLength).then {
+        if (asCharSequence().any { it !in '0'..'9' }) {
+            revertAllChanges()
+        }
+    }
 
-private val RuleDurationInputTransformation = InputTransformation.byValue { _, proposed ->
-    proposed.filter(Char::isDigit).take(3)
-}
+private val DailyMinutesInputTransformation = numericInputTransformation(maxLength = 4)
+private val RuleDurationInputTransformation = numericInputTransformation(maxLength = 3)
 
 /**
  * Parses the small numeric text-field values without allocating a String on
@@ -511,7 +523,9 @@ private fun DailyMinutesEditor(dailyMinutesState: TextFieldState) {
             fontWeight = FontWeight.Bold,
             textAlign = TextAlign.Center
         ),
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(PERF_USAGE_MINUTES_TAG),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = AccentCyan,
             unfocusedBorderColor = CardBorder,
@@ -577,7 +591,9 @@ private fun RuleDurationEditor(
         lineLimits = TextFieldLineLimits.SingleLine,
         inputTransformation = RuleDurationInputTransformation,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = Modifier.width(112.dp),
+        modifier = Modifier
+            .width(112.dp)
+            .testTag(PERF_RULE_DURATION_TAG),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = AccentCyan,
             unfocusedBorderColor = CardBorder,
