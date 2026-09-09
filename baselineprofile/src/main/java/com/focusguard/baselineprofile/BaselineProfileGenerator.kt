@@ -20,4 +20,15 @@ class BaselineProfileGenerator {
         prepareFocusGuardStartup()
         startFocusGuardAndWait()
     }
+
+    @Test
+    fun criticalInputJourneys() = baselineProfileRule.collect(
+        packageName = TARGET_PACKAGE
+    ) {
+        prepareUsageLimitInputJourney()
+        exerciseUsageLimitInputJourney()
+
+        preparePasswordInputJourney()
+        exercisePasswordInputJourney()
+    }
 }
