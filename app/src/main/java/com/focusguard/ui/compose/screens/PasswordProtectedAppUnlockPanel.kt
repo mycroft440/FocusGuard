@@ -330,6 +330,14 @@ internal fun PasswordProtectedTargetUnlockPanel(
         globalBiometricUnlockEnabled = globalBiometricUnlockEnabled,
         targetBiometricEnabled = currentConfig.biometricEnabled
     )
+    val canSwitchCredentialToBiometric = currentBiometricAllowed && biometricAvailable
+
+    fun switchCredentialToBiometric() {
+        if (verifying || !canSwitchCredentialToBiometric) return
+        showCredentialDialog = false
+        error = null
+        launchBiometric()
+    }
 
     Column(modifier = Modifier.fillMaxWidth()) {
         if (currentBiometricAllowed && biometricAvailable) {
@@ -434,6 +442,8 @@ internal fun PasswordProtectedTargetUnlockPanel(
             PasswordAppUnlockMode.PASSWORD -> PasswordUnlockDialog(
                 verifying = verifying,
                 error = error,
+                allowBiometricSwitch = canSwitchCredentialToBiometric,
+                onUseBiometric = ::switchCredentialToBiometric,
                 onDismiss = {
                     if (!verifying) {
                         showCredentialDialog = false
@@ -455,6 +465,8 @@ internal fun PasswordProtectedTargetUnlockPanel(
                 hideTrace = currentConfig.hidePatternTrace,
                 verifying = verifying,
                 error = error,
+                allowBiometricSwitch = canSwitchCredentialToBiometric,
+                onUseBiometric = ::switchCredentialToBiometric,
                 onDismiss = {
                     if (!verifying) {
                         showCredentialDialog = false
@@ -501,6 +513,8 @@ internal fun PasswordProtectedAppUnlockPanel(
 private fun PasswordUnlockDialog(
     verifying: Boolean,
     error: String?,
+    allowBiometricSwitch: Boolean,
+    onUseBiometric: () -> Unit,
     onDismiss: () -> Unit,
     onSubmit: (String) -> Unit
 ) {
@@ -530,6 +544,18 @@ private fun PasswordUnlockDialog(
                     Spacer(Modifier.height(8.dp))
                     Text(it, color = DangerRed, fontSize = 12.sp)
                 }
+                if (allowBiometricSwitch) {
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(
+                        onClick = onUseBiometric,
+                        enabled = !verifying,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Fingerprint, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.password_app_unlock_with_biometric))
+                    }
+                }
             }
         },
         confirmButton = {
@@ -557,6 +583,8 @@ private fun PatternUnlockDialog(
     hideTrace: Boolean,
     verifying: Boolean,
     error: String?,
+    allowBiometricSwitch: Boolean,
+    onUseBiometric: () -> Unit,
     onDismiss: () -> Unit,
     onSubmit: (String, () -> Unit) -> Unit
 ) {
@@ -576,6 +604,18 @@ private fun PatternUnlockDialog(
                 )
                 error?.let {
                     Text(it, color = DangerRed, fontSize = 12.sp)
+                }
+                if (allowBiometricSwitch) {
+                    Spacer(Modifier.height(8.dp))
+                    TextButton(
+                        onClick = onUseBiometric,
+                        enabled = !verifying,
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Icon(Icons.Default.Fingerprint, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.password_app_unlock_with_biometric))
+                    }
                 }
             }
         },
