@@ -208,7 +208,7 @@ class PasswordAppUnlockStore(context: Context) {
         .toCollection(linkedSetOf())
 
     companion object {
-        const val MIN_PASSWORD_LENGTH = 6
+        const val MIN_PASSWORD_LENGTH = 4
         const val MIN_PATTERN_POINTS = 4
         private const val WEBSITE_TARGET_PREFIX = "site:"
         private const val KEY_NAMESPACE = "password_app_unlock."
