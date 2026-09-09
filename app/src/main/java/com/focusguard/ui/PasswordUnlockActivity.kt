@@ -278,7 +278,9 @@ class PasswordUnlockActivity : AppCompatActivity() {
 
     /**
      * A successful target credential grants one visit without deleting the block.
-     * Bring the real launcher Activity forward explicitly while that grant is live.
+     * The intercepted task is already intact immediately behind this authentication
+     * surface. Never relaunch the target's launcher Activity here: doing so destroys
+     * deep-link state such as a WhatsApp notification chat, group, or media viewer.
      */
     private fun returnToAuthenticatedTarget(packageName: String?) {
         val target = packageName?.takeIf(String::isNotBlank)
@@ -287,31 +289,26 @@ class PasswordUnlockActivity : AppCompatActivity() {
             return
         }
 
-        val launchIntent = packageManager.getLaunchIntentForPackage(target)
-        if (launchIntent == null) {
-            FocusGuardLogger.log(
-                "PasswordUnlock",
-                "App autenticado não possui Activity de launcher: $target"
-            )
-            goHome()
-            return
-        }
-
-        val launched = runCatching {
-            launchIntent.addFlags(
-                Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
-                    Intent.FLAG_ACTIVITY_SINGLE_TOP
-            )
-            startActivity(launchIntent)
+        // Background the HardBlock authentication task instead of starting any
+        // Activity inside the protected app. Android then reveals the exact task
+        // that was intercepted, preserving its current Activity/back stack/state.
+        val movedToBack = runCatching {
+            moveTaskToBack(true)
         }.onFailure { error ->
             FocusGuardLogger.logError(
                 "PasswordUnlock",
-                "Falha ao restaurar app autenticado $target",
+                "Falha ao devolver foco ao app autenticado $target",
                 error
             )
-        }.isSuccess
+        }.getOrDefault(false)
 
-        if (launched) finish() else goHome()
+        if (!movedToBack) {
+            FocusGuardLogger.log(
+                "PasswordUnlock",
+                "Task de autenticação não pôde ser movida para trás para $target"
+            )
+        }
+        finish()
     }
 
     private fun goHome() {

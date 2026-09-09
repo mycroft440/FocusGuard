@@ -56,7 +56,7 @@ class PasswordTargetAccessGrantTest {
     }
 
     @Test
-    fun `same activity reopen still ends original one visit grant`() {
+    fun `same activity lifecycle churn while package stays foreground keeps visit grant`() {
         val observation = PasswordTargetAccessGrant.AppVisitObservation(
             latestForegroundPackage = target,
             latestTargetForegroundAt = 300L,
@@ -74,7 +74,7 @@ class PasswordTargetAccessGrantTest {
                 visitStartedAt = 100L,
                 observation = observation
             )
-        ).isTrue()
+        ).isFalse()
     }
 
     @Test
@@ -98,13 +98,34 @@ class PasswordTargetAccessGrantTest {
     }
 
     @Test
-    fun `oem exit fallback revokes when target never resumes`() {
+    fun `background stop without another foreground package keeps visit grant`() {
         val observation = PasswordTargetAccessGrant.AppVisitObservation(
             latestForegroundPackage = null,
             latestTargetForegroundAt = 200L,
             latestNonTargetForegroundAt = Long.MIN_VALUE,
             latestTargetPackageBackgroundAt = 300L,
             latestTargetStoppedAt = 320L
+        )
+
+        assertThat(
+            PasswordTargetAccessGrant.shouldRevokeAppGrant(
+                target = target,
+                targetSeenForeground = true,
+                visitStartedAt = 100L,
+                observation = observation
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `leaving and reopening before next poll still ends original visit grant`() {
+        val observation = PasswordTargetAccessGrant.AppVisitObservation(
+            latestForegroundPackage = target,
+            latestTargetForegroundAt = 400L,
+            latestNonTargetForegroundAt = 300L,
+            latestTargetPackageBackgroundAt = 250L,
+            latestTargetStoppedAt = 270L,
+            latestTargetForegroundClassName = "com.example.browser.BrowserActivity"
         )
 
         assertThat(

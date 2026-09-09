@@ -212,11 +212,12 @@ object PasswordTargetAccessGrant {
     /**
      * Pure one-visit policy used by the monitor and unit tests.
      *
-     * A visit belongs to the application package, while UsageEvents also carries
-     * Activity class names. That extra component identity lets us distinguish a
-     * browser's internal Activity handoff (BrowserActivity -> HistoryActivity) from
-     * leaving and reopening the same Activity. We therefore keep legitimate
-     * History/Downloads/Settings navigation without weakening the one-visit rule.
+     * A PASSWORD visit belongs to the application package, not to one Activity.
+     * Apps such as WhatsApp legitimately pause/stop/resume Activities while opening
+     * chats, groups, media viewers, or while content is loading. Those lifecycle
+     * events must never consume the authenticated visit. The visit ends only when
+     * UsageEvents proves that another package entered the foreground after the
+     * authenticated target visit started.
      */
     internal fun shouldRevokeAppGrant(
         target: String,
@@ -228,34 +229,10 @@ object PasswordTargetAccessGrant {
             return false
         }
 
-        // Seeing any other package in foreground after this visit started is a
-        // definitive boundary, even if the target was reopened before the next poll.
-        if (observation.latestNonTargetForegroundAt > visitStartedAt) return true
-
-        if (observation.latestTargetPackageBackgroundAt > visitStartedAt) {
-            val internalHandoff = isInternalTargetActivityHandoff(
-                target = target,
-                observation = observation,
-                exitAt = observation.latestTargetPackageBackgroundAt,
-                exitClassName = observation.latestTargetBackgroundClassName
-            )
-            if (!internalHandoff) return true
-        }
-
-        if (observation.latestTargetStoppedAt > visitStartedAt) {
-            val newerTargetForeground =
-                observation.latestTargetForegroundAt > observation.latestTargetStoppedAt
-            val internalHandoff = isInternalTargetActivityHandoff(
-                target = target,
-                observation = observation,
-                exitAt = observation.latestTargetStoppedAt,
-                exitClassName = observation.latestTargetStoppedClassName
-            )
-            if (!newerTargetForeground && !internalHandoff) return true
-        }
-
-        val foreground = observation.latestForegroundPackage
-        return !foreground.isNullOrBlank() && foreground != target
+        // A real transition to another package is the one-visit boundary. Keep
+        // this true even if the target was reopened before the next 200 ms poll:
+        // leaving and re-entering is a new visit and must require authentication.
+        return observation.latestNonTargetForegroundAt > visitStartedAt
     }
 
     private fun isInternalTargetActivityHandoff(
