@@ -57,6 +57,11 @@ import kotlinx.coroutines.launch
 
 private const val BIOMETRIC_FAILURES_BEFORE_FALLBACK = 2
 
+internal fun isPasswordTargetBiometricAllowed(
+    globalBiometricUnlockEnabled: Boolean,
+    targetBiometricEnabled: Boolean
+): Boolean = globalBiometricUnlockEnabled && targetBiometricEnabled
+
 /**
  * Unlock controls for a PASSWORD session target.
  *
@@ -97,6 +102,7 @@ internal fun PasswordProtectedTargetUnlockPanel(
     var error by remember(targetId) { mutableStateOf<String?>(null) }
     var verifying by remember(targetId) { mutableStateOf(false) }
 
+    val globalBiometricUnlockEnabled = authManager.isBiometricAppUnlockEnabled()
     val biometricAvailable = activity != null &&
         AppUnlockBiometricAuthenticator.isAvailable(context)
     val failureMessage = stringResource(R.string.password_app_unlock_failed)
@@ -210,7 +216,11 @@ internal fun PasswordProtectedTargetUnlockPanel(
             onCancelled()
             return
         }
-        if (!latest.biometricEnabled || !biometricAvailable || verifying) {
+        val biometricAllowed = isPasswordTargetBiometricAllowed(
+            globalBiometricUnlockEnabled = authManager.isBiometricAppUnlockEnabled(),
+            targetBiometricEnabled = latest.biometricEnabled
+        )
+        if (!biometricAllowed || !biometricAvailable || verifying) {
             error = failureMessage
             if (!verifying) onCancelled()
             return
@@ -237,7 +247,13 @@ internal fun PasswordProtectedTargetUnlockPanel(
             cancelLabel = fallbackLabel,
             onSuccess = {
                 val rechecked = store.getTarget(targetId)
-                if (rechecked?.biometricEnabled == true) completeUnlock()
+                val biometricStillAllowed = rechecked?.let {
+                    isPasswordTargetBiometricAllowed(
+                        globalBiometricUnlockEnabled = authManager.isBiometricAppUnlockEnabled(),
+                        targetBiometricEnabled = it.biometricEnabled
+                    )
+                } == true
+                if (biometricStillAllowed) completeUnlock()
             },
             onError = { message ->
                 if (message.isNotBlank()) error = message
@@ -272,9 +288,10 @@ internal fun PasswordProtectedTargetUnlockPanel(
         }
     }
 
-    LaunchedEffect(config, biometricAvailable) {
+    LaunchedEffect(config, biometricAvailable, globalBiometricUnlockEnabled) {
         val current = config ?: return@LaunchedEffect
         if (
+            globalBiometricUnlockEnabled &&
             current.hasTypedCredential &&
             !current.biometricEnabled &&
             !current.biometricOfferShown &&
@@ -284,13 +301,22 @@ internal fun PasswordProtectedTargetUnlockPanel(
         }
     }
 
-    // Biometric, when enabled for this target, is always the first unlock surface.
-    // Password/pattern remains a fallback after two failed scans or when the user
-    // explicitly chooses the negative button in the Android biometric prompt.
-    LaunchedEffect(config?.biometricEnabled, config?.mode, biometricAvailable, targetId) {
+    // Biometric is the first unlock surface only when both the global preference
+    // and the per-target preference allow it. Otherwise password/pattern remains
+    // the available credential path and no biometric prompt is launched.
+    LaunchedEffect(
+        config?.biometricEnabled,
+        config?.mode,
+        biometricAvailable,
+        globalBiometricUnlockEnabled,
+        targetId
+    ) {
         val current = config ?: return@LaunchedEffect
         if (
-            current.biometricEnabled &&
+            isPasswordTargetBiometricAllowed(
+                globalBiometricUnlockEnabled = globalBiometricUnlockEnabled,
+                targetBiometricEnabled = current.biometricEnabled
+            ) &&
             biometricAvailable &&
             !biometricPromptLaunched
         ) {
@@ -300,9 +326,13 @@ internal fun PasswordProtectedTargetUnlockPanel(
     }
 
     val currentConfig = config ?: return
+    val currentBiometricAllowed = isPasswordTargetBiometricAllowed(
+        globalBiometricUnlockEnabled = globalBiometricUnlockEnabled,
+        targetBiometricEnabled = currentConfig.biometricEnabled
+    )
 
     Column(modifier = Modifier.fillMaxWidth()) {
-        if (currentConfig.biometricEnabled && biometricAvailable) {
+        if (currentBiometricAllowed && biometricAvailable) {
             Button(
                 onClick = { launchBiometric() },
                 enabled = !verifying,
@@ -320,7 +350,7 @@ internal fun PasswordProtectedTargetUnlockPanel(
         }
 
         if (currentConfig.hasTypedCredential) {
-            if (currentConfig.biometricEnabled && biometricAvailable) {
+            if (currentBiometricAllowed && biometricAvailable) {
                 Spacer(Modifier.height(10.dp))
             }
             OutlinedButton(
@@ -344,7 +374,7 @@ internal fun PasswordProtectedTargetUnlockPanel(
 
         if (
             currentConfig.mode == PasswordAppUnlockMode.BIOMETRIC_ONLY &&
-            !biometricAvailable
+            (!currentBiometricAllowed || !biometricAvailable)
         ) {
             Text(
                 stringResource(R.string.password_app_unlock_biometric_required),
@@ -371,7 +401,10 @@ internal fun PasswordProtectedTargetUnlockPanel(
             confirmButton = {
                 Button(
                     onClick = {
-                        if (store.setBiometricEnabledForTarget(targetId, true)) {
+                        if (
+                            authManager.isBiometricAppUnlockEnabled() &&
+                            store.setBiometricEnabledForTarget(targetId, true)
+                        ) {
                             config = store.getTarget(targetId)
                             showBiometricOffer = false
                             biometricPromptLaunched = true
