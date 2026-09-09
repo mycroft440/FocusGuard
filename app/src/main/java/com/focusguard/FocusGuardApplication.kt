@@ -2,10 +2,14 @@ package com.focusguard
 
 import android.app.Application
 import android.os.UserManager
+import androidx.lifecycle.DefaultLifecycleObserver
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.ProcessLifecycleOwner
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.manager.BlockingSessionManager
+import com.focusguard.security.AppEntryAuthSession
 import com.focusguard.security.DeviceAdminActivationWindow
 import com.focusguard.security.DeviceOwnerMaintenanceGate
 import com.focusguard.security.LegacyPasswordUsageLimitMigration
@@ -39,6 +43,19 @@ class FocusGuardApplication : Application() {
             runCatching { createDeviceProtectedStorageContext() }.getOrDefault(this)
         }
         FocusGuardLogger.init(startupContext)
+
+        // A nova geração é criada apenas quando o PROCESSO do app volta ao
+        // primeiro plano. Trocas internas de Activity e rotação não relockam a
+        // interface no meio do uso. Isso observa somente a UI e não participa
+        // dos eventos do AccessibilityService nem da decisão de bloqueio.
+        ProcessLifecycleOwner.get().lifecycle.addObserver(
+            object : DefaultLifecycleObserver {
+                override fun onStart(owner: LifecycleOwner) {
+                    AppEntryAuthSession.beginForeground()
+                }
+            }
+        )
+
         val usageLimitStateContext = runCatching {
             createDeviceProtectedStorageContext()
         }.getOrDefault(startupContext)

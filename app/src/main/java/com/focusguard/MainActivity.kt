@@ -11,6 +11,8 @@ import android.view.View
 import androidx.activity.OnBackPressedCallback
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.core.view.doOnPreDraw
 import androidx.lifecycle.Lifecycle
@@ -20,11 +22,13 @@ import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeKioskController
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.manager.PomodoroManager
+import com.focusguard.security.AppEntryAuthSession
 import com.focusguard.security.AuthManager
 import com.focusguard.security.CurtainDestinationReadyCoordinator
 import com.focusguard.security.SafeSurfaceReadinessPolicy
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.ui.PermissionsActivity
+import com.focusguard.ui.compose.AppEntryPasswordGate
 import com.focusguard.ui.compose.navigation.FocusGuardNavHost
 import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.utils.FocusGuardLogger
@@ -109,16 +113,23 @@ class MainActivity : AppCompatActivity() {
         FocusGuardLogger.log("MainActivity", "Managers inicializados com sucesso")
 
         setContent {
+            val foregroundGeneration by AppEntryAuthSession.foregroundGeneration.collectAsState()
             FocusGuardTheme {
-                FocusGuardNavHost(
-                    activity = this,
+                AppEntryPasswordGate(
+                    activity = this@MainActivity,
                     authManager = authManager,
-                    pomodoroManager = pomodoroManager,
-                    focusModeManager = focusModeManager,
-                    focusModeReturnNonce = focusModeReturnNonce.longValue,
-                    pomodoroNavigationNonce = pomodoroNavigationNonce.longValue,
-                    onEnforceFocusModeLockTask = ::enforceFocusModeLockTask
-                )
+                    foregroundGeneration = foregroundGeneration
+                ) {
+                    FocusGuardNavHost(
+                        activity = this@MainActivity,
+                        authManager = authManager,
+                        pomodoroManager = pomodoroManager,
+                        focusModeManager = focusModeManager,
+                        focusModeReturnNonce = focusModeReturnNonce.longValue,
+                        pomodoroNavigationNonce = pomodoroNavigationNonce.longValue,
+                        onEnforceFocusModeLockTask = ::enforceFocusModeLockTask
+                    )
+                }
             }
         }
         notifyCurtainWhenDrawn(intent)

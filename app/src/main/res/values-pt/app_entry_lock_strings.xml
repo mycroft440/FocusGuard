@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_entry_lock_title">HardBlock está bloqueado</string>
+    <string name="app_entry_lock_description">Há um bloqueio por senha ativo. Confirme o método de desbloqueio para abrir o HardBlock.</string>
+    <string name="app_entry_lock_password_label">Senha do bloqueio</string>
+    <string name="app_entry_lock_unlock">Desbloquear HardBlock</string>
+    <string name="app_entry_lock_wrong_credential">Senha ou padrão incorreto.</string>
+    <string name="app_entry_lock_pattern_prompt">Desenhe o padrão usado por um bloqueio por senha ativo.</string>
+    <string name="app_entry_lock_biometric">Usar digital</string>
+    <string name="app_entry_lock_loading">Verificando proteção ativa…</string>
+    <string name="app_entry_lock_unavailable">O bloqueio por senha ativo não possui um método de desbloqueio disponível. Reabra o HardBlock para tentar novamente.</string>
+</resources>
