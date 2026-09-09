@@ -50,6 +50,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -75,8 +76,12 @@ import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+
+internal const val PERF_PASSWORD_TAG = "perf_password"
+internal const val PERF_PASSWORD_CONFIRMATION_TAG = "perf_password_confirmation"
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -241,9 +246,8 @@ fun FinalConfigStep(
                                 PasswordCredentialEditor(
                                     passwordState = unlockPasswordState,
                                     confirmationState = unlockPasswordConfirmationState,
-                                    onEdited = {
-                                        if (configError != null) configError = null
-                                    }
+                                    clearErrorOnEdit = configError != null,
+                                    onEdited = { configError = null }
                                 )
                             }
 
@@ -531,22 +535,31 @@ fun FinalConfigStep(
     }
 }
 
+/**
+ * Shared with the benchmark-only fixture so Macrobenchmark measures the exact
+ * production password editor rather than a duplicated approximation.
+ */
 @Composable
-private fun PasswordCredentialEditor(
+internal fun PasswordCredentialEditor(
     passwordState: TextFieldState,
     confirmationState: TextFieldState,
+    clearErrorOnEdit: Boolean,
     onEdited: () -> Unit
 ) {
     PasswordCredentialField(
         state = passwordState,
         label = stringResource(R.string.password_app_unlock_password),
         imeAction = ImeAction.Next,
+        testTag = PERF_PASSWORD_TAG,
+        clearErrorOnEdit = clearErrorOnEdit,
         onEdited = onEdited
     )
     PasswordCredentialField(
         state = confirmationState,
         label = stringResource(R.string.password_app_unlock_password_confirm),
         imeAction = ImeAction.Done,
+        testTag = PERF_PASSWORD_CONFIRMATION_TAG,
+        clearErrorOnEdit = clearErrorOnEdit,
         onEdited = onEdited
     )
     Text(
@@ -564,18 +577,25 @@ private fun PasswordCredentialField(
     state: TextFieldState,
     label: String,
     imeAction: ImeAction,
+    testTag: String,
+    clearErrorOnEdit: Boolean,
     onEdited: () -> Unit
 ) {
-    // Observe the editing state outside the field's value pipeline. This preserves
-    // error-clearing behavior without sending every IME edit through the parent.
-    LaunchedEffect(state) {
+    // Normal typing now has no collector at all. Only while a validation error is
+    // visible do we wait for the next real edit, clear the error once, then stop.
+    LaunchedEffect(state, clearErrorOnEdit) {
+        if (!clearErrorOnEdit) return@LaunchedEffect
         snapshotFlow { state.text }
-            .collect { onEdited() }
+            .drop(1)
+            .first()
+        onEdited()
     }
 
     OutlinedSecureTextField(
         state = state,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(testTag),
         label = { Text(label) },
         keyboardOptions = KeyboardOptions(
             keyboardType = KeyboardType.Password,
