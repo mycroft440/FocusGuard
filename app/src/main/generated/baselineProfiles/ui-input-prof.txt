@@ -1,0 +1,8 @@
+# UI input hot paths. Keep separate from the intentionally small
+# self-protection profile in src/main/baseline-prof.txt.
+#
+# Device-generated rules from :app:generateBaselineProfile may add more precise
+# methods later; these two production composable classes provide immediate AOT
+# coverage for the input journeys without widening the blocking hot path.
+HPLcom/focusguard/ui/FinalConfigStepKt;->**(**)**
+HPLcom/focusguard/ui/compose/screens/UsageLimitRedesignedSheetKt;->**(**)**
