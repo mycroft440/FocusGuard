@@ -84,6 +84,16 @@ class PowerMenuProtectionPolicyTest {
                 values = listOf("Power off", "Emergency calls only", "Wi-Fi", "Bluetooth")
             )
         ).isFalse()
+
+        // Some OEMs expose the QS power shortcut with one combined accessibility
+        // description. A single node must not count as two independent actions.
+        assertThat(
+            PowerMenuProtectionPolicy.isPowerMenu(
+                packageName = "com.samsung.android.systemui",
+                className = "android.widget.FrameLayout",
+                values = listOf("Desligar ou reiniciar", "Chamadas de emergência")
+            )
+        ).isFalse()
     }
 
     @Test
