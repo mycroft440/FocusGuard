@@ -87,7 +87,7 @@ object PowerMenuProtectionPolicy {
         }
         if (ambiguousClassMarkers.any { className.contains(it, ignoreCase = true) }) {
             // `ActionsDialog` is reused by SystemUI for surfaces that are not the
-            // power menu. Require rendered power actions before accepting it.
+            // power menu. Require rendered primary power actions before accepting it.
             return if (isPowerMenu(packageName, className, values)) {
                 DirectDecision.MATCH
             } else {
@@ -110,25 +110,22 @@ object PowerMenuProtectionPolicy {
         val rendered = values.toList()
         val hasPowerOff = matchesAction(Action.POWER_OFF, rendered)
         val hasRestart = matchesAction(Action.RESTART, rendered)
-        val hasEmergency = matchesAction(Action.EMERGENCY, rendered)
         val specificClass = specificClassMarkers.any {
             className.contains(it, ignoreCase = true)
         }
-        val ambiguousClass = ambiguousClassMarkers.any {
-            className.contains(it, ignoreCase = true)
-        }
-        val evidenceCount = listOf(hasPowerOff, hasRestart, hasEmergency).count { it }
 
         return when {
             // Explicit OEM/AOSP global-actions classes are already a strong signal.
+            // Keep this fast path so actual power-menu protection still appears on
+            // the first accessibility event, before the full node tree is populated.
             specificClass -> hasPowerOff || hasRestart
-            // ActionsDialog is reused by SystemUI. One word such as “Restart” is
-            // not enough: require two independent power-menu actions.
-            ambiguousClass -> evidenceCount >= 2 && (hasPowerOff || hasRestart)
-            hasPowerOff && hasRestart -> true
-            hasPowerOff && hasEmergency -> true
-            hasRestart && hasEmergency -> true
-            else -> false
+
+            // Generic SystemUI surfaces such as Samsung's notification/quick-settings
+            // shade can expose a power shortcut and text such as "Chamadas de
+            // emergência" at the same time. Emergency text therefore must never be
+            // identity evidence for a power menu. Outside a known global-actions
+            // class, require both primary power actions: Power off + Restart.
+            else -> hasPowerOff && hasRestart
         }
     }
 
