@@ -26,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.HourglassEmpty
 import androidx.compose.material.icons.outlined.Lock
@@ -35,6 +36,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -153,6 +155,9 @@ fun BlockTypeDetailScreen(
     val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
     var entries by remember {
         mutableStateOf<List<BlockingSessionManager.BlockOverview.Entry>?>(null)
+    }
+    var removalTarget by remember(type) {
+        mutableStateOf<BlockingSessionManager.BlockOverview.Entry?>(null)
     }
 
     // O assistente de criação roda em outra Activity, então esta composição
@@ -313,7 +318,15 @@ fun BlockTypeDetailScreen(
                                     )
                                 }
                                 items(apps, key = { "app_${it.identifier}" }) { entry ->
-                                    BlockedEntryRow(entry = entry, accent = type.accent)
+                                    BlockedEntryRow(
+                                        entry = entry,
+                                        accent = type.accent,
+                                        onRemove = if (type == BlockTypeUi.PASSWORD) {
+                                            { removalTarget = entry }
+                                        } else {
+                                            null
+                                        }
+                                    )
                                 }
                             }
                             if (sites.isNotEmpty()) {
@@ -333,6 +346,20 @@ fun BlockTypeDetailScreen(
                         }
                     }
                 }
+            }
+        }
+
+        if (type == BlockTypeUi.PASSWORD) {
+            removalTarget?.let { target ->
+                PasswordBlockRemovalDialog(
+                    entry = target,
+                    sessionManager = sessionManager,
+                    onRemoved = {
+                        removalTarget = null
+                        reloadTrigger++
+                    },
+                    onDismiss = { removalTarget = null }
+                )
             }
         }
     }
@@ -622,7 +649,8 @@ private fun BlockedSectionHeader(text: String, accent: Color) {
 @Composable
 private fun BlockedEntryRow(
     entry: BlockingSessionManager.BlockOverview.Entry,
-    accent: Color
+    accent: Color,
+    onRemove: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
     val label = remember(entry.identifier) {
@@ -690,6 +718,19 @@ private fun BlockedEntryRow(
                     color = accent,
                     fontSize = 12.sp
                 )
+            }
+            onRemove?.let { remove ->
+                Spacer(Modifier.width(8.dp))
+                IconButton(
+                    onClick = remove,
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = stringResource(R.string.remove_button),
+                        tint = DangerRed
+                    )
+                }
             }
         }
     }
