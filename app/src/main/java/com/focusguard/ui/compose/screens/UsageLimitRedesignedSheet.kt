@@ -23,6 +23,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.input.InputTransformation
+import androidx.compose.foundation.text.input.TextFieldLineLimits
+import androidx.compose.foundation.text.input.TextFieldState
+import androidx.compose.foundation.text.input.byValue
+import androidx.compose.foundation.text.input.setTextAndPlaceCursorAtEnd
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.BottomSheetDefaults
 import androidx.compose.material3.Button
@@ -42,12 +47,14 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -74,10 +81,20 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.flow.collect
+import kotlinx.coroutines.flow.drop
 
 private enum class AppLimitEditorStep {
     DETAILS,
     BLOCK_MODE
+}
+
+private val DailyMinutesInputTransformation = InputTransformation.byValue { _, proposed ->
+    proposed.filter(Char::isDigit).take(4)
+}
+
+private val RuleDurationInputTransformation = InputTransformation.byValue { _, proposed ->
+    proposed.filter(Char::isDigit).take(3)
 }
 
 /**
@@ -337,21 +354,21 @@ private fun AppLimitDetailsScreen(
     onContinue: (AppLimitDetailsDraft) -> Unit
 ) {
     val dailyMinutesState = remember(initialDraft) {
-        mutableStateOf(initialDraft.minutes.takeIf { it > 0 }?.toString().orEmpty())
+        TextFieldState(initialText = initialDraft.minutes.takeIf { it > 0 }?.toString().orEmpty())
     }
     val durationAmountState = remember(initialDraft) {
-        mutableStateOf(initialDraft.duration.takeIf { it > 0 }?.toString().orEmpty())
+        TextFieldState(initialText = initialDraft.duration.takeIf { it > 0 }?.toString().orEmpty())
     }
     val durationUnitState = remember(initialDraft) { mutableStateOf(initialDraft.durationUnit) }
     val durationEditedState = remember(initialDraft) { mutableStateOf(initialDraft.durationEdited) }
 
     // This parent only observes whether the form crosses the valid/invalid boundary.
-    // Character changes that keep the same validity stay in their small editor
-    // subtree instead of recomposing both sections, the footer and the scroll host.
+    // TextFieldState keeps the IME edit pipeline internal to each field; derivedStateOf
+    // only invalidates this parent when form validity actually changes.
     val canAdvance by remember(dailyMinutesState, durationAmountState) {
         derivedStateOf {
-            (dailyMinutesState.value.toIntOrNull() ?: 0) > 0 &&
-                (durationAmountState.value.toIntOrNull() ?: 0) > 0
+            (dailyMinutesState.text.toString().toIntOrNull() ?: 0) > 0 &&
+                (durationAmountState.text.toString().toIntOrNull() ?: 0) > 0
         }
     }
     val formattedCurrentRuleEnd = remember(editMode, currentRuleEnd, nowMillis) {
@@ -435,8 +452,8 @@ private fun AppLimitDetailsScreen(
                 onClick = {
                     onContinue(
                         AppLimitDetailsDraft(
-                            minutes = dailyMinutesState.value.toIntOrNull() ?: 0,
-                            duration = durationAmountState.value.toIntOrNull() ?: 0,
+                            minutes = dailyMinutesState.text.toString().toIntOrNull() ?: 0,
+                            duration = durationAmountState.text.toString().toIntOrNull() ?: 0,
                             durationUnit = durationUnitState.value,
                             durationEdited = durationEditedState.value
                         )
@@ -464,17 +481,14 @@ private fun AppLimitDetailsScreen(
 }
 
 @Composable
-private fun DailyMinutesEditor(dailyMinutesState: MutableState<String>) {
-    val enteredMinutes = remember(dailyMinutesState.value) {
-        dailyMinutesState.value.toIntOrNull() ?: 0
-    }
+private fun DailyMinutesEditor(dailyMinutesState: TextFieldState) {
+    val enteredMinutes = dailyMinutesState.text.toString().toIntOrNull() ?: 0
+
     OutlinedTextField(
-        value = dailyMinutesState.value,
-        onValueChange = { raw ->
-            dailyMinutesState.value = raw.filter(Char::isDigit).take(4)
-        },
+        state = dailyMinutesState,
         label = { Text(stringResource(R.string.limits_daily_max_minutes_label)) },
-        singleLine = true,
+        lineLimits = TextFieldLineLimits.SingleLine,
+        inputTransformation = DailyMinutesInputTransformation,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         textStyle = androidx.compose.ui.text.TextStyle(
             color = TextPrimary,
@@ -498,7 +512,9 @@ private fun DailyMinutesEditor(dailyMinutesState: MutableState<String>) {
         listOf(15, 30, 60, 120).forEach { minutes ->
             FilterChip(
                 selected = enteredMinutes == minutes,
-                onClick = { dailyMinutesState.value = minutes.toString() },
+                onClick = {
+                    dailyMinutesState.setTextAndPlaceCursorAtEnd(minutes.toString())
+                },
                 label = { Text("$minutes min") },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = AccentCyan.copy(alpha = 0.18f),
@@ -511,18 +527,23 @@ private fun DailyMinutesEditor(dailyMinutesState: MutableState<String>) {
 
 @Composable
 private fun RuleDurationEditor(
-    durationAmountState: MutableState<String>,
+    durationAmountState: TextFieldState,
     durationUnitState: MutableState<UsageLimitBehaviorPolicy.RuleDurationUnit>,
     durationEditedState: MutableState<Boolean>
 ) {
+    // Programmatic initialization must not count as an edit. Observe only changes
+    // after the first snapshot so the existing-rule end date keeps its semantics.
+    LaunchedEffect(durationAmountState) {
+        snapshotFlow { durationAmountState.text }
+            .drop(1)
+            .collect { durationEditedState.value = true }
+    }
+
     OutlinedTextField(
-        value = durationAmountState.value,
-        onValueChange = { raw ->
-            durationEditedState.value = true
-            durationAmountState.value = raw.filter(Char::isDigit).take(3)
-        },
+        state = durationAmountState,
         label = { Text(stringResource(R.string.limits_duration_amount_label)) },
-        singleLine = true,
+        lineLimits = TextFieldLineLimits.SingleLine,
+        inputTransformation = RuleDurationInputTransformation,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
         modifier = Modifier.width(112.dp),
         colors = OutlinedTextFieldDefaults.colors(
