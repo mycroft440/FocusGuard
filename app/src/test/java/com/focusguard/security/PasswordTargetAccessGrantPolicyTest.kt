@@ -44,7 +44,7 @@ class PasswordTargetAccessGrantPolicyTest {
     }
 
     @Test
-    fun `package background revokes grant even if launcher foreground event is delayed`() {
+    fun `package lifecycle background without external foreground keeps grant`() {
         val observation = observation(
             latestForegroundPackage = target,
             latestTargetForegroundAt = 100L,
@@ -58,7 +58,7 @@ class PasswordTargetAccessGrantPolicyTest {
                 visitStartedAt = 100L,
                 observation = observation
             )
-        ).isTrue()
+        ).isFalse()
     }
 
     @Test
@@ -82,12 +82,14 @@ class PasswordTargetAccessGrantPolicyTest {
     @Test
     fun `rapid leave and reopen still revokes original visit`() {
         // The polling loop can observe all three events at once: target opened,
-        // target went to background, then target was immediately opened again.
-        // The package-background boundary must still end the original grant.
+        // another package really reached foreground, then target was reopened.
+        // That observed package transition is the one-visit boundary even though
+        // the target is already foreground again by the time the monitor polls.
         val observation = observation(
             latestForegroundPackage = target,
             latestTargetForegroundAt = 300L,
-            latestTargetPackageBackgroundAt = 200L
+            latestNonTargetForegroundAt = 200L,
+            latestTargetPackageBackgroundAt = 180L
         )
 
         assertThat(
@@ -137,7 +139,7 @@ class PasswordTargetAccessGrantPolicyTest {
     }
 
     @Test
-    fun `stopped target with no newer target foreground revokes as OEM fallback`() {
+    fun `stopped target without external foreground keeps current visit`() {
         val observation = observation(
             latestForegroundPackage = target,
             latestTargetForegroundAt = 100L,
@@ -151,7 +153,7 @@ class PasswordTargetAccessGrantPolicyTest {
                 visitStartedAt = 100L,
                 observation = observation
             )
-        ).isTrue()
+        ).isFalse()
     }
 
     private fun observation(
