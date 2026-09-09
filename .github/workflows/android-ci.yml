@@ -107,6 +107,10 @@ jobs:
         run: |
           set -o pipefail
           ./gradlew \
+            :app:compileBenchmarkReleaseKotlin \
+            :app:compileNonMinifiedReleaseKotlin \
+            :app:processBenchmarkReleaseMainManifest \
+            :app:processNonMinifiedReleaseMainManifest \
             :baselineprofile:compileBenchmarkReleaseKotlin \
             :baselineprofile:compileNonMinifiedReleaseKotlin \
             --no-daemon --stacktrace 2>&1 | tee performance-harness-gradle.log
