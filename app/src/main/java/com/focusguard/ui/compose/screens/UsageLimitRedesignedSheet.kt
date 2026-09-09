@@ -58,6 +58,7 @@ import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -79,7 +80,6 @@ import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.utils.UsageLimitBehaviorPolicy
 import java.text.SimpleDateFormat
 import java.util.Date
-import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.flow.collect
 import kotlinx.coroutines.flow.drop
@@ -95,6 +95,21 @@ private val DailyMinutesInputTransformation = InputTransformation.byValue { _, p
 
 private val RuleDurationInputTransformation = InputTransformation.byValue { _, proposed ->
     proposed.filter(Char::isDigit).take(3)
+}
+
+/**
+ * Parses the small numeric text-field values without allocating a String on
+ * every IME edit. Both fields are capped to at most four characters.
+ */
+private fun parsePositiveInt(text: CharSequence): Int {
+    if (text.isEmpty()) return 0
+
+    var result = 0
+    for (char in text) {
+        if (char !in '0'..'9') return 0
+        result = result * 10 + (char - '0')
+    }
+    return result
 }
 
 /**
@@ -367,15 +382,17 @@ private fun AppLimitDetailsScreen(
     // only invalidates this parent when form validity actually changes.
     val canAdvance by remember(dailyMinutesState, durationAmountState) {
         derivedStateOf {
-            (dailyMinutesState.text.toString().toIntOrNull() ?: 0) > 0 &&
-                (durationAmountState.text.toString().toIntOrNull() ?: 0) > 0
+            parsePositiveInt(dailyMinutesState.text) > 0 &&
+                parsePositiveInt(durationAmountState.text) > 0
         }
     }
-    val formattedCurrentRuleEnd = remember(editMode, currentRuleEnd, nowMillis) {
+    val configuration = LocalConfiguration.current
+    val currentLocale = configuration.locales[0]
+    val formattedCurrentRuleEnd = remember(editMode, currentRuleEnd, nowMillis, currentLocale) {
         currentRuleEnd
             ?.takeIf { editMode && it > nowMillis }
             ?.let { end ->
-                SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()).format(Date(end))
+                SimpleDateFormat("dd/MM/yyyy", currentLocale).format(Date(end))
             }
     }
 
@@ -452,8 +469,8 @@ private fun AppLimitDetailsScreen(
                 onClick = {
                     onContinue(
                         AppLimitDetailsDraft(
-                            minutes = dailyMinutesState.text.toString().toIntOrNull() ?: 0,
-                            duration = durationAmountState.text.toString().toIntOrNull() ?: 0,
+                            minutes = parsePositiveInt(dailyMinutesState.text),
+                            duration = parsePositiveInt(durationAmountState.text),
                             durationUnit = durationUnitState.value,
                             durationEdited = durationEditedState.value
                         )
@@ -482,8 +499,6 @@ private fun AppLimitDetailsScreen(
 
 @Composable
 private fun DailyMinutesEditor(dailyMinutesState: TextFieldState) {
-    val enteredMinutes = dailyMinutesState.text.toString().toIntOrNull() ?: 0
-
     OutlinedTextField(
         state = dailyMinutesState,
         label = { Text(stringResource(R.string.limits_daily_max_minutes_label)) },
@@ -510,19 +525,36 @@ private fun DailyMinutesEditor(dailyMinutesState: TextFieldState) {
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         listOf(15, 30, 60, 120).forEach { minutes ->
-            FilterChip(
-                selected = enteredMinutes == minutes,
-                onClick = {
-                    dailyMinutesState.setTextAndPlaceCursorAtEnd(minutes.toString())
-                },
-                label = { Text("$minutes min") },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = AccentCyan.copy(alpha = 0.18f),
-                    selectedLabelColor = AccentCyan
-                )
+            MinutePresetChip(
+                state = dailyMinutesState,
+                minutes = minutes
             )
         }
     }
+}
+
+@Composable
+private fun MinutePresetChip(
+    state: TextFieldState,
+    minutes: Int
+) {
+    // Each chip observes only its own boolean selection. Most keystrokes leave
+    // this value unchanged, so typing does not recompose/re-measure all presets.
+    val selected by remember(state, minutes) {
+        derivedStateOf { parsePositiveInt(state.text) == minutes }
+    }
+
+    FilterChip(
+        selected = selected,
+        onClick = {
+            state.setTextAndPlaceCursorAtEnd(minutes.toString())
+        },
+        label = { Text("$minutes min") },
+        colors = FilterChipDefaults.filterChipColors(
+            selectedContainerColor = AccentCyan.copy(alpha = 0.18f),
+            selectedLabelColor = AccentCyan
+        )
+    )
 }
 
 @Composable
