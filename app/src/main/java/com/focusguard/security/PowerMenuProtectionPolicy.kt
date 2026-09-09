@@ -107,28 +107,28 @@ object PowerMenuProtectionPolicy {
         values: Iterable<CharSequence?>
     ): Boolean {
         if (!isSystemUiPackage(packageName)) return false
-        val rendered = values.toList()
-        val hasPowerOff = matchesAction(Action.POWER_OFF, rendered)
-        val hasRestart = matchesAction(Action.RESTART, rendered)
         val specificClass = specificClassMarkers.any {
             className.contains(it, ignoreCase = true)
         }
 
-        return when {
+        if (specificClass) {
             // Explicit OEM/AOSP global-actions classes are already a strong signal.
             // Keep this fast path so actual power-menu protection still appears on
             // the first accessibility event, before the full node tree is populated.
-            specificClass -> hasPowerOff || hasRestart
-
-            // Generic SystemUI surfaces such as Samsung's notification/quick-settings
-            // shade can expose a power shortcut and text such as "Chamadas de
-            // emergência" at the same time. Emergency text therefore must never be
-            // identity evidence for a power menu. Outside a known global-actions
-            // class, require distinct rendered evidence for both primary power
-            // actions. This also rejects a single QS shortcut whose accessibility
-            // label happens to say something like "Power off or restart".
-            else -> hasIndependentPrimaryPowerActions(rendered)
+            return matchesAction(Action.POWER_OFF, values) ||
+                matchesAction(Action.RESTART, values)
         }
+
+        // Generic SystemUI surfaces such as Samsung's notification/quick-settings
+        // shade can expose a power shortcut and text such as "Chamadas de
+        // emergência" at the same time. Emergency text therefore must never be
+        // identity evidence for a power menu. Outside a known global-actions class,
+        // require distinct rendered evidence for both primary power actions.
+        //
+        // This is intentionally a single pass with no intermediate list allocation:
+        // the accessibility service executes this classifier on the latency-sensitive
+        // interception path.
+        return hasIndependentPrimaryPowerActions(values)
     }
 
     private fun hasIndependentPrimaryPowerActions(values: Iterable<CharSequence?>): Boolean {
