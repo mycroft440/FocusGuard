@@ -500,6 +500,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private val serviceJob = SupervisorJob()
     private val scope = CoroutineScope(serviceJob + Dispatchers.IO)
+    private val inputEventFilter = AccessibilityInputEventFilter()
     private val isRefreshing = AtomicBoolean(false)
     private val refreshRequested = AtomicBoolean(false)
     private val isRefreshingLauncherIndex = AtomicBoolean(false)
@@ -1074,22 +1075,9 @@ class BlockingAccessibilityService : AccessibilityService() {
             // the switch that disables this service, so nothing that can block runs
             // ahead of the decision to bounce them out.
             val directPackage = event.packageName?.toString().orEmpty()
-
-            // Events produced by FocusGuard's own Compose UI never need target,
-            // browser or Settings inspection. Text fields generate dense focus/text
-            // event bursts, so returning here keeps that work off the interaction path.
-            // Keep the foreground snapshot accurate so app-limit polling also takes
-            // its existing no-measurement fast path while FocusGuard is visible.
-            if (directPackage == this.packageName) {
-                foregroundPackageName = directPackage
-                if (
-                    event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
-                ) {
-                    stopWebsiteTracking()
-                }
-                return
-            }
+            val inspectWindowEarly = directPackage.isBlank() ||
+                event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+            if (consumeInputUiEvent(event, directPackage, inspectWindowEarly)) return
 
             // An in-flight website transition still consumes browser events, but
             // first gives them a chance to prove that the requested safe surface
@@ -1152,7 +1140,16 @@ class BlockingAccessibilityService : AccessibilityService() {
                 return
             }
 
+            // Known IME windows were already handled above without a lookup. For
+            // a new named keyboard window, identify its Android window type here,
+            // after the immediate self-protection/browser paths and before nodes.
+            if (!inspectWindowEarly && consumeInputUiEvent(event, directPackage, true)) return
+
             val packageName = resolveEventPackageName(event)
+            if (packageName == this.packageName) {
+                observeOwnUiEvent(event)
+                return
+            }
             // Second chance: `event.packageName` is occasionally blank, and for
             // TYPE_WINDOWS_CHANGED it can name a different window than the one that
             // actually changed. Only reached when the fast path could not decide.
@@ -1229,6 +1226,39 @@ class BlockingAccessibilityService : AccessibilityService() {
             }
         } catch (error: RuntimeException) {
             FocusGuardLogger.logError("A11y", "Erro no evento de acessibilidade", error)
+        }
+    }
+
+    private fun consumeInputUiEvent(
+        event: AccessibilityEvent,
+        directPackage: String,
+        allowWindowLookup: Boolean
+    ): Boolean = when (inputEventFilter.classify(
+        ownPackageName = packageName,
+        eventPackageName = directPackage,
+        windowId = event.windowId,
+        windowsChanged = event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED,
+        allowWindowLookup = allowWindowLookup,
+        readWindows = {
+            // Do not access window.root here: even a package-name read from that
+            // root can wait on the same UI thread that is processing the keyboard.
+            windows.map { AccessibilityInputEventFilter.Window(it.id, it.type) }
+        }
+    )) {
+        AccessibilityInputEventFilter.Decision.OWN_UI -> {
+            observeOwnUiEvent(event)
+            true
+        }
+        AccessibilityInputEventFilter.Decision.INPUT_METHOD -> true
+        AccessibilityInputEventFilter.Decision.INSPECT -> false
+    }
+
+    private fun observeOwnUiEvent(event: AccessibilityEvent) {
+        foregroundPackageName = packageName
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+            event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        ) {
+            stopWebsiteTracking()
         }
     }
 

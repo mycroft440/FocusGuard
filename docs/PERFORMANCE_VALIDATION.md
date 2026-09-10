@@ -50,6 +50,14 @@ benchmark-only host Activity:
 - daily usage-limit numeric input, including focus and IME transitions;
 - password input, including switching between the two secure fields and closing IME.
 
+For keyboard regressions, repeat these journeys with HardBlock's accessibility
+service enabled and a blocking session active. A run with the service disabled
+cannot detect synchronous accessibility reads competing with IME/UI work. Include
+an OEM keyboard on a physical device, repeated open/close cycles, and confirmation
+that keystrokes appear immediately. Inspect the main-thread trace for accessibility
+node requests and password-derivation/encrypted-preference work; report measured
+frame/latency numbers separately from unit-test and compilation results.
+
 Run only these frame benchmarks on a connected physical device with:
 
 ```bash

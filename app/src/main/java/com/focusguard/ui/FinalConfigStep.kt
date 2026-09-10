@@ -76,9 +76,11 @@ import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 internal const val PERF_PASSWORD_TAG = "perf_password"
 internal const val PERF_PASSWORD_CONFIRMATION_TAG = "perf_password_confirmation"
@@ -467,30 +469,36 @@ fun FinalConfigStep(
                             isSaving = true
                             scope.launch {
                                 try {
-                                    check(
-                                        appUnlockStore.saveForTargets(
-                                            targetIds = passwordTargetIds,
-                                            mode = selectedMode,
-                                            credential = targetCredential,
-                                            biometricEnabled = effectiveBiometricEnabled,
-                                            hidePatternTrace = hidePatternTrace
-                                        )
-                                    ) { "Não foi possível salvar o método de desbloqueio" }
+                                    // Password derivation and encrypted commit are
+                                    // blocking, even inside scope.launch (Main).
+                                    // Keep persistence and its rollback off the UI
+                                    // thread while the keyboard is being dismissed.
+                                    withContext(Dispatchers.IO) {
+                                        check(
+                                            appUnlockStore.saveForTargets(
+                                                targetIds = passwordTargetIds,
+                                                mode = selectedMode,
+                                                credential = targetCredential,
+                                                biometricEnabled = effectiveBiometricEnabled,
+                                                hidePatternTrace = hidePatternTrace
+                                            )
+                                        ) { "Não foi possível salvar o método de desbloqueio" }
 
-                                    try {
-                                        sessionManager.startPasswordSession(
-                                            isFixed24h = true,
-                                            startHour = 0,
-                                            endHour = 24,
-                                            startMinute = 0,
-                                            endMinute = 0,
-                                            daysOfWeek = "",
-                                            apps = apps,
-                                            sites = acceptedPasswordSites.toList()
-                                        )
-                                    } catch (error: Exception) {
-                                        appUnlockStore.clearTargets(passwordTargetIds)
-                                        throw error
+                                        try {
+                                            sessionManager.startPasswordSession(
+                                                isFixed24h = true,
+                                                startHour = 0,
+                                                endHour = 24,
+                                                startMinute = 0,
+                                                endMinute = 0,
+                                                daysOfWeek = "",
+                                                apps = apps,
+                                                sites = acceptedPasswordSites.toList()
+                                            )
+                                        } catch (error: Exception) {
+                                            appUnlockStore.clearTargets(passwordTargetIds)
+                                            throw error
+                                        }
                                     }
 
                                     isSaving = false
