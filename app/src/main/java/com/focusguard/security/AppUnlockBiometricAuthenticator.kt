@@ -17,6 +17,11 @@ import androidx.fragment.app.FragmentActivity
  */
 object AppUnlockBiometricAuthenticator {
 
+    fun interface AuthenticationHandle {
+        /** Cancels a discarded surface without invoking its navigation callbacks. */
+        fun cancel()
+    }
+
     enum class Availability {
         AVAILABLE,
         ENROLLMENT_REQUIRED,
@@ -81,67 +86,26 @@ object AppUnlockBiometricAuthenticator {
         onError: (String) -> Unit,
         failureThresholdBeforeFallback: Int = 0,
         onFallbackRequested: () -> Unit = {},
-        onCancelled: () -> Unit = {}
-    ) {
+        onCancelled: () -> Unit = {},
+        onFinished: () -> Unit = {}
+    ): AuthenticationHandle {
         if (!isAvailable(activity)) {
+            onFinished()
             onError("Biometria forte indisponível neste aparelho")
             if (failureThresholdBeforeFallback > 0) onFallbackRequested()
-            return
+            return AuthenticationHandle {}
         }
 
         val executor = ContextCompat.getMainExecutor(activity)
-        var consecutiveFailures = 0
         lateinit var prompt: BiometricPrompt
-        prompt = BiometricPrompt(
-            activity,
-            executor,
-            object : BiometricPrompt.AuthenticationCallback() {
-                override fun onAuthenticationSucceeded(
-                    result: BiometricPrompt.AuthenticationResult
-                ) {
-                    super.onAuthenticationSucceeded(result)
-                    consecutiveFailures = 0
-                    onSuccess()
-                }
-
-                override fun onAuthenticationFailed() {
-                    super.onAuthenticationFailed()
-                    consecutiveFailures++
-                    if (
-                        failureThresholdBeforeFallback > 0 &&
-                        consecutiveFailures >= failureThresholdBeforeFallback
-                    ) {
-                        // Cancel this prompt before opening the alternate credential
-                        // UI, otherwise both surfaces can race each other on screen.
-                        prompt.cancelAuthentication()
-                        onFallbackRequested()
-                    } else {
-                        onError("Biometria não reconhecida")
-                    }
-                }
-
-                override fun onAuthenticationError(
-                    errorCode: Int,
-                    errString: CharSequence
-                ) {
-                    super.onAuthenticationError(errorCode, errString)
-                    val cancelledByUserOrCaller =
-                        errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
-                            errorCode == BiometricPrompt.ERROR_USER_CANCELED ||
-                            errorCode == BiometricPrompt.ERROR_CANCELED
-                    if (cancelledByUserOrCaller) {
-                        onCancelled()
-                    } else {
-                        onError(errString.toString())
-                        // Lockout, timeout or another terminal biometric error
-                        // must not strand users who configured a password/pattern
-                        // fallback for this protected target.
-                        if (failureThresholdBeforeFallback > 0) {
-                            onFallbackRequested()
-                        }
-                    }
-                }
-            }
+        val callback = AppUnlockBiometricCallback(
+            failureThresholdBeforeFallback = failureThresholdBeforeFallback,
+            cancelPrompt = { prompt.cancelAuthentication() },
+            onSuccess = onSuccess,
+            onError = onError,
+            onFallbackRequested = onFallbackRequested,
+            onCancelled = onCancelled,
+            onFinished = onFinished
         )
 
         val promptInfo = BiometricPrompt.PromptInfo.Builder()
@@ -152,6 +116,74 @@ object AppUnlockBiometricAuthenticator {
             .setConfirmationRequired(false)
             .build()
 
-        prompt.authenticate(promptInfo)
+        try {
+            prompt = BiometricPrompt(activity, executor, callback)
+            prompt.authenticate(promptInfo)
+        } catch (error: RuntimeException) {
+            callback.onAuthenticationError(
+                BiometricPrompt.ERROR_HW_UNAVAILABLE,
+                error.message ?: "Biometria forte indisponível neste aparelho"
+            )
+        }
+        return AuthenticationHandle(callback::cancel)
     }
+}
+
+/** A rejected scan is non-terminal; every terminal result is delivered once. */
+internal class AppUnlockBiometricCallback(
+    private val failureThresholdBeforeFallback: Int,
+    private val cancelPrompt: () -> Unit,
+    private val onSuccess: () -> Unit,
+    private val onError: (String) -> Unit,
+    private val onFallbackRequested: () -> Unit,
+    private val onCancelled: () -> Unit,
+    private val onFinished: () -> Unit
+) : BiometricPrompt.AuthenticationCallback() {
+    private var consecutiveFailures = 0
+    private var finished = false
+
+    private fun finish(deliverResult: () -> Unit) {
+        if (finished) return
+        finished = true
+        onFinished()
+        deliverResult()
+    }
+
+    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+        finish(onSuccess)
+    }
+
+    override fun onAuthenticationFailed() {
+        if (finished) return
+        consecutiveFailures++
+        if (
+            failureThresholdBeforeFallback > 0 &&
+            consecutiveFailures >= failureThresholdBeforeFallback
+        ) {
+            finish {
+                // Ignore the later ERROR_CANCELED from this cancellation so it
+                // cannot reopen an old password dialog over a subsequent prompt.
+                cancelPrompt()
+                onFallbackRequested()
+            }
+        } else {
+            onError("Biometria não reconhecida")
+        }
+    }
+
+    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+        finish {
+            val cancelled = errorCode == BiometricPrompt.ERROR_NEGATIVE_BUTTON ||
+                errorCode == BiometricPrompt.ERROR_USER_CANCELED ||
+                errorCode == BiometricPrompt.ERROR_CANCELED
+            if (cancelled) {
+                onCancelled()
+            } else {
+                onError(errString.toString())
+                if (failureThresholdBeforeFallback > 0) onFallbackRequested()
+            }
+        }
+    }
+
+    fun cancel() = finish(cancelPrompt)
 }

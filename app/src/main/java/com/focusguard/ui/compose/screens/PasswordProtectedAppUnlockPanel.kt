@@ -20,6 +20,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -37,6 +38,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.withResumed
 import com.focusguard.R
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AppUnlockBiometricAuthenticator
@@ -99,6 +101,10 @@ internal fun PasswordProtectedTargetUnlockPanel(
     var showCredentialDialog by remember(targetId) { mutableStateOf(false) }
     var showBiometricOffer by remember(targetId) { mutableStateOf(false) }
     var biometricPromptLaunched by remember(targetId) { mutableStateOf(false) }
+    var biometricPromptInFlight by remember(targetId) { mutableStateOf(false) }
+    var biometricHandle by remember(targetId) {
+        mutableStateOf<AppUnlockBiometricAuthenticator.AuthenticationHandle?>(null)
+    }
     var error by remember(targetId) { mutableStateOf<String?>(null) }
     var verifying by remember(targetId) { mutableStateOf(false) }
 
@@ -110,6 +116,10 @@ internal fun PasswordProtectedTargetUnlockPanel(
     val promptTitle = stringResource(R.string.password_app_unlock_biometric_prompt_title)
     val promptSubtitle = stringResource(R.string.password_app_unlock_biometric_prompt_subtitle)
     val cancelLabel = stringResource(R.string.cancel)
+
+    DisposableEffect(activity, targetId) {
+        onDispose { biometricHandle?.cancel() }
+    }
 
     fun revokePendingGrant() {
         if (websiteRule != null) {
@@ -206,6 +216,7 @@ internal fun PasswordProtectedTargetUnlockPanel(
     }
 
     fun launchBiometric() {
+        if (biometricPromptInFlight || verifying) return
         val host = activity ?: run {
             error = failureMessage
             onCancelled()
@@ -240,7 +251,8 @@ internal fun PasswordProtectedTargetUnlockPanel(
             cancelLabel
         }
 
-        AppUnlockBiometricAuthenticator.authenticate(
+        biometricPromptInFlight = true
+        biometricHandle = AppUnlockBiometricAuthenticator.authenticate(
             activity = host,
             title = promptTitle,
             subtitle = promptSubtitle,
@@ -278,6 +290,9 @@ internal fun PasswordProtectedTargetUnlockPanel(
                 } else {
                     onCancelled()
                 }
+            },
+            onFinished = {
+                biometricPromptInFlight = false
             }
         )
     }
@@ -320,8 +335,10 @@ internal fun PasswordProtectedTargetUnlockPanel(
             biometricAvailable &&
             !biometricPromptLaunched
         ) {
-            biometricPromptLaunched = true
-            launchBiometric()
+            activity?.lifecycle?.withResumed {
+                biometricPromptLaunched = true
+                launchBiometric()
+            }
         }
     }
 
@@ -333,7 +350,7 @@ internal fun PasswordProtectedTargetUnlockPanel(
     val canSwitchCredentialToBiometric = currentBiometricAllowed && biometricAvailable
 
     fun switchCredentialToBiometric() {
-        if (verifying || !canSwitchCredentialToBiometric) return
+        if (verifying || biometricPromptInFlight || !canSwitchCredentialToBiometric) return
         showCredentialDialog = false
         error = null
         launchBiometric()
@@ -343,7 +360,7 @@ internal fun PasswordProtectedTargetUnlockPanel(
         if (currentBiometricAllowed && biometricAvailable) {
             Button(
                 onClick = { launchBiometric() },
-                enabled = !verifying,
+                enabled = !verifying && !biometricPromptInFlight,
                 modifier = Modifier.fillMaxWidth().height(50.dp),
                 colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
             ) {
@@ -363,7 +380,7 @@ internal fun PasswordProtectedTargetUnlockPanel(
             }
             OutlinedButton(
                 onClick = { showCredentialDialog = true },
-                enabled = !verifying,
+                enabled = !verifying && !biometricPromptInFlight,
                 modifier = Modifier.fillMaxWidth().height(50.dp)
             ) {
                 Icon(Icons.Default.LockOpen, contentDescription = null)

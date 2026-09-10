@@ -28,6 +28,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -78,13 +79,11 @@ class PasswordUnlockActivity : AppCompatActivity() {
     @Inject lateinit var blockingSessionManager: BlockingSessionManager
 
     private lateinit var intruderCaptureController: IntruderAttemptCaptureController
-    private var blockedPackage: String? = null
+    private val presentation = PasswordUnlockPresentationState()
     private var noticeDrawn = false
     private var activityResumed = false
     private var windowFocused = false
-    private var pendingCurtainGeneration = 0L
     private var freshFrameGeneration = 0L
-    private var blockAttemptId = 0L
     private var authenticationReady by mutableStateOf(false)
 
     // Accessibility can send more than one intent while the same unlock surface is
@@ -146,50 +145,58 @@ class PasswordUnlockActivity : AppCompatActivity() {
             BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION,
             0L
         )
-        val attemptId = ++blockAttemptId
         val accessAttemptId = beginOrContinueIntruderAttempt(packageName)
-
-        blockedPackage = packageName
-        pendingCurtainGeneration = curtainGeneration
+        val newAttempt = presentation.present(accessAttemptId, curtainGeneration)
+        val attemptId = presentation.attemptId
+        val curtainRequestId = presentation.curtainRequestId
+        val pendingGeneration = presentation.pendingCurtainGeneration
         freshFrameGeneration = 0L
-        noticeDrawn = false
-        authenticationReady = curtainGeneration <= 0L
+        if (newAttempt) noticeDrawn = false
+        authenticationReady = presentation.authenticationReady
 
-        val targetLabel = resolveAppLabel(packageName)
-        setContent {
-            FocusGuardTheme {
-                PasswordUnlockContent(
-                    blockAttemptId = attemptId,
-                    blockedPackage = packageName,
-                    targetLabel = targetLabel,
-                    authenticationReady = authenticationReady,
-                    authManager = authManager,
-                    blockingSessionManager = blockingSessionManager,
-                    onAuthenticationSucceeded = {
-                        intruderCaptureController.markAuthenticated(accessAttemptId)
-                        if (accessAttemptId == intruderAttemptId) {
-                            intruderAttemptAuthenticated = true
-                        }
-                    },
-                    onCredentialRejected = {
-                        intruderCaptureController.markCredentialRejected(accessAttemptId)
-                    },
-                    onUnlocked = {
-                        returnToAuthenticatedTarget(packageName)
-                    },
-                    onCancelled = ::goHome
-                )
+        // Accessibility can repeat this request for the same visible access.
+        // Keep its Compose state (and BiometricPrompt) instead of replacing the
+        // panel with a spinner and launching authentication again.
+        if (newAttempt) {
+            val targetLabel = resolveAppLabel(packageName)
+            setContent {
+                FocusGuardTheme {
+                    key(attemptId) {
+                        PasswordUnlockContent(
+                            blockAttemptId = attemptId,
+                            blockedPackage = packageName,
+                            targetLabel = targetLabel,
+                            authenticationReady = authenticationReady,
+                            authManager = authManager,
+                            blockingSessionManager = blockingSessionManager,
+                            onAuthenticationSucceeded = {
+                                intruderCaptureController.markAuthenticated(accessAttemptId)
+                                if (accessAttemptId == intruderAttemptId) {
+                                    intruderAttemptAuthenticated = true
+                                }
+                            },
+                            onCredentialRejected = {
+                                intruderCaptureController.markCredentialRejected(accessAttemptId)
+                            },
+                            onUnlocked = {
+                                returnToAuthenticatedTarget(packageName)
+                            },
+                            onCancelled = ::goHome
+                        )
+                    }
+                }
             }
         }
 
         window.decorView.doOnPreDraw {
+            if (curtainRequestId != presentation.curtainRequestId) return@doOnPreDraw
             noticeDrawn = true
             if (
-                pendingCurtainGeneration == curtainGeneration &&
+                presentation.pendingCurtainGeneration == pendingGeneration &&
                 activityResumed &&
                 window.decorView.isShown
             ) {
-                freshFrameGeneration = curtainGeneration
+                freshFrameGeneration = pendingGeneration
             }
             val detectedAt = sourceIntent.getLongExtra(
                 BlockingAccessibilityService.EXTRA_BLOCK_EVENT_UPTIME_MILLIS,
@@ -230,11 +237,10 @@ class PasswordUnlockActivity : AppCompatActivity() {
     }
 
     private fun acknowledgePendingNoticeIfPresented(): Boolean {
-        val generation = pendingCurtainGeneration
-        if (generation <= 0L) {
-            authenticationReady = true
-            return false
-        }
+        val generation = presentation.pendingCurtainGeneration
+        // No pending acknowledgement can also mean that its settle timer is
+        // still running. Focus/resume callbacks must not bypass that timer.
+        if (generation <= 0L) return false
         val decor = window.decorView
         val ready = SafeSurfaceReadinessPolicy.decide(
             alreadyDrawn = noticeDrawn,
@@ -245,20 +251,20 @@ class PasswordUnlockActivity : AppCompatActivity() {
         ) == SafeSurfaceReadinessPolicy.Decision.ACK_NOW
         if (!ready) return false
 
-        pendingCurtainGeneration = 0L
+        presentation.acknowledgeCurtain()
         freshFrameGeneration = 0L
         CurtainDestinationReadyCoordinator.notifyReady(generation)
 
         // The target panel auto-opens BiometricPrompt. Give the accessibility
         // curtain its normal safe-window settle interval first so the system prompt
         // is never born underneath a touch-consuming overlay.
-        val acknowledgedAttempt = blockAttemptId
+        val acknowledgedRequest = presentation.curtainRequestId
         decor.postDelayed(
             {
                 if (
-                    acknowledgedAttempt == blockAttemptId &&
                     !isFinishing &&
-                    !isDestroyed
+                    !isDestroyed &&
+                    presentation.finishCurtainSettle(acknowledgedRequest)
                 ) {
                     authenticationReady = true
                 }
