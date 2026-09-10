@@ -27,7 +27,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -322,6 +324,8 @@ fun AppLimitsTab(
     state: AppLimitsTabState
 ) {
     val context = LocalContext.current
+    val focusManager = LocalFocusManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
     val scope = rememberCoroutineScope()
     val db = rememberAppDatabase()
     val blockingSessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
@@ -338,6 +342,13 @@ fun AppLimitsTab(
     val credentialManager = remember(context) { DeactivationCredentialManager(context) }
 
     fun requestLimitEdit(app: UsageLimitAppUi) {
+        // A search-result tap leaves the search field focused in the Activity.
+        // End that input session before a modal takes over the window, so the
+        // search IME cannot compete with the editor's numeric fields or restart
+        // when the modal closes. Keep the query so the filtered list is preserved.
+        focusManager.clearFocus(force = true)
+        keyboardController?.hide()
+
         when (
             MasterCredentialPolicy.evaluateLimitMutation(
                 lockMode = app.lockMode,
