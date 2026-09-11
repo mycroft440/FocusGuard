@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_selection_already_blocked">Já bloqueados</string>
+    <string name="app_selection_already_blocked_hint">Estes apps já estão protegidos por outro bloqueio ativo e não podem ser selecionados novamente.</string>
+    <string name="app_selection_already_blocked_badge">Já bloqueado</string>
     <string name="app_selection_selected">Apps selecionados</string>
     <string name="app_selection_selected_hint">Estes apps entrarão no bloqueio. Toque em um para removê-lo.</string>
 </resources>

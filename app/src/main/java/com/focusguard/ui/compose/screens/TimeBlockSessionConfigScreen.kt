@@ -71,9 +71,12 @@ import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.utils.WebsiteBlocker
 import java.util.Calendar
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
+
+internal fun selectedTargetCount(appCount: Int, siteCount: Int): Int = appCount + siteCount
 
 private enum class TimeBlockConfigPage {
     TERMS,
@@ -239,6 +242,7 @@ fun TimeBlockSessionConfigScreen(
                 TimeBlockConfigPage.TERMS -> TimeBlockTermsPage(
                     appName = appName,
                     apps = apps,
+                    sites = sites,
                     termsAccepted = termsAccepted,
                     canContinue = canContinue,
                     onTermsAcceptedChange = { termsAccepted = it },
@@ -328,6 +332,7 @@ fun TimeBlockSessionConfigScreen(
 private fun TimeBlockTermsPage(
     appName: String,
     apps: List<String>,
+    sites: List<String>,
     termsAccepted: Boolean,
     canContinue: Boolean,
     onTermsAcceptedChange: (Boolean) -> Unit,
@@ -343,7 +348,8 @@ private fun TimeBlockTermsPage(
 
     SelectedAppsSummary(
         appName = appName,
-        apps = apps
+        apps = apps,
+        sites = sites
     )
 
     Spacer(modifier = Modifier.height(16.dp))
@@ -484,9 +490,11 @@ private fun TimeBlockSchedulePage(
 @Composable
 private fun SelectedAppsSummary(
     appName: String,
-    apps: List<String>
+    apps: List<String>,
+    sites: List<String>
 ) {
     val context = LocalContext.current
+    val totalTargets = selectedTargetCount(apps.size, sites.size)
     val labels = remember(apps, context) {
         apps.associateWith { packageName -> resolveAppLabel(context, packageName) }
     }
@@ -499,9 +507,9 @@ private fun SelectedAppsSummary(
         Column(modifier = Modifier.padding(18.dp)) {
             Text(
                 text = pluralStringResource(
-                    R.plurals.dopamine_selected_apps_count,
-                    apps.size,
-                    apps.size
+                    R.plurals.dopamine_selected_targets_count,
+                    totalTargets,
+                    totalTargets
                 ),
                 color = TextPrimary,
                 fontSize = 22.sp,
@@ -543,6 +551,13 @@ private fun SelectedAppsSummary(
                         )
                     }
                 }
+            } else if (sites.isNotEmpty()) {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = sites.take(4).joinToString(", ") { WebsiteBlocker.displayRule(it) },
+                    color = TextHint,
+                    fontSize = 12.sp
+                )
             } else if (appName.isNotBlank()) {
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
