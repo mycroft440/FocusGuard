@@ -1188,8 +1188,11 @@ class BlockingAccessibilityService : AccessibilityService() {
                 }
             }
 
-            if (isPomodoroStrictActive &&
-                isWindowTransition
+            if (shouldApplyStrictPomodoroToWindow(
+                    strictActive = isPomodoroStrictActive,
+                    isWindowTransition = isWindowTransition,
+                    isBrowserWindow = packageName in browserPackages
+                )
             ) {
                 handleStrictPomodoro(packageName, event.className?.toString().orEmpty())
                 return
@@ -4394,6 +4397,12 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         internal fun chromiumTabSwitcherEntryNamesForTest(): List<String> =
             CHROMIUM_TAB_SWITCHER_ENTRY_NAMES
+
+        internal fun shouldApplyStrictPomodoroToWindow(
+            strictActive: Boolean,
+            isWindowTransition: Boolean,
+            isBrowserWindow: Boolean
+        ): Boolean = strictActive && isWindowTransition && !isBrowserWindow
 
         internal fun immediateWebsiteBlockTarget(
             addressText: String?,

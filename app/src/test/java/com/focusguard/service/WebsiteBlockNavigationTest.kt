@@ -686,6 +686,24 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
+    fun `strict Pomodoro does not block browser window transitions`() {
+        assertThat(
+            BlockingAccessibilityService.shouldApplyStrictPomodoroToWindow(
+                strictActive = true,
+                isWindowTransition = true,
+                isBrowserWindow = true
+            )
+        ).isFalse()
+        assertThat(
+            BlockingAccessibilityService.shouldApplyStrictPomodoroToWindow(
+                strictActive = true,
+                isWindowTransition = true,
+                isBrowserWindow = false
+            )
+        ).isTrue()
+    }
+
+    @Test
     fun `Chromium tab closing supports Brave top and bottom tab switchers`() {
         assertThat(BlockingAccessibilityService.chromiumTabSwitcherEntryNamesForTest())
             .containsExactly("tab_switcher_button", "bottom_tab_switcher_button")
