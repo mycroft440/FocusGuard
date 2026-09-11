@@ -57,4 +57,70 @@ class BlockNoticeRoutingTest {
         assertThat(routed.component?.className)
             .isNotEqualTo(PasswordUnlockActivity::class.java.name)
     }
+
+    @Test
+    fun `duplicate target coalesces while newest curtain handshake is preserved`() {
+        val context = RuntimeEnvironment.getApplication().applicationContext
+        val first = Intent().apply {
+            putExtra(BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE, "com.example.secret")
+            putExtra(BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION, 10L)
+        }
+        val latest = Intent().apply {
+            putExtra(BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE, "com.example.secret")
+            putExtra(BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION, 11L)
+        }
+        val firstKey = BlockNoticeActivity.routeKey(first)
+        val latestKey = BlockNoticeActivity.routeKey(latest)
+
+        assertThat(
+            BlockNoticeActivity.shouldCoalesceRoute(
+                routeActive = true,
+                activeKey = firstKey,
+                incomingKey = latestKey
+            )
+        ).isTrue()
+
+        val routed = BlockNoticeActivity.createDestinationIntent(
+            context,
+            latest,
+            AppBlockSurfacePolicy.Surface.PASSWORD_UNLOCK
+        )
+        assertThat(
+            routed.getLongExtra(BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION, 0L)
+        ).isEqualTo(11L)
+    }
+
+    @Test
+    fun `different target never coalesces with active route`() {
+        val active = Intent().apply {
+            putExtra(BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE, "com.example.first")
+        }
+        val incoming = Intent().apply {
+            putExtra(BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE, "com.example.second")
+        }
+
+        assertThat(
+            BlockNoticeActivity.shouldCoalesceRoute(
+                routeActive = true,
+                activeKey = BlockNoticeActivity.routeKey(active),
+                incomingKey = BlockNoticeActivity.routeKey(incoming)
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `inactive route never coalesces even for same target`() {
+        val source = Intent().apply {
+            putExtra(BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE, "com.example.secret")
+        }
+        val key = BlockNoticeActivity.routeKey(source)
+
+        assertThat(
+            BlockNoticeActivity.shouldCoalesceRoute(
+                routeActive = false,
+                activeKey = key,
+                incomingKey = key
+            )
+        ).isFalse()
+    }
 }
