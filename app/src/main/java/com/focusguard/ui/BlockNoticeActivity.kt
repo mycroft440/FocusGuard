@@ -45,6 +45,8 @@ class BlockNoticeActivity : AppCompatActivity() {
 
     private var routeAttemptId = 0L
     private var routeJob: Job? = null
+    private var activeRouteKey: RouteKey? = null
+    private var latestRouteIntent: Intent? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -63,45 +65,70 @@ class BlockNoticeActivity : AppCompatActivity() {
     override fun onDestroy() {
         routeJob?.cancel()
         routeJob = null
+        activeRouteKey = null
+        latestRouteIntent = null
         super.onDestroy()
     }
 
     private fun route(sourceIntent: Intent) {
+        val incomingKey = routeKey(sourceIntent)
+        if (shouldCoalesceRoute(
+                routeActive = routeJob?.isActive == true,
+                activeKey = activeRouteKey,
+                incomingKey = incomingKey
+            )
+        ) {
+            // Accessibility commonly emits more than one window event for the same
+            // launch. Re-running the Room/usage classification for each event can
+            // repeatedly cancel the PASSWORD route before it reaches its UI. Keep
+            // one resolution in flight, but retain the newest curtain generation
+            // so the destination acknowledges the latest safety handshake.
+            latestRouteIntent = Intent(sourceIntent)
+            return
+        }
+
         routeJob?.cancel()
         routeJob = null
         val attemptId = ++routeAttemptId
+        activeRouteKey = incomingKey
+        latestRouteIntent = Intent(sourceIntent)
 
-        val strictBlock = sourceIntent.getBooleanExtra(
-            BlockingAccessibilityService.EXTRA_STRICT_BLOCK,
-            false
-        )
-        val blockedPackage = sourceIntent.getStringExtra(
-            BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE
-        )?.takeIf(String::isNotBlank)
-        val blockedDomain = sourceIntent.getStringExtra(
-            BlockingAccessibilityService.EXTRA_BLOCKED_DOMAIN
-        )?.takeIf(String::isNotBlank)
+        val strictBlock = incomingKey.strictBlock
+        val blockedPackage = incomingKey.blockedPackage
+        val blockedDomain = incomingKey.blockedDomain
 
         // PASSWORD sessions are app-only. Website, strict, and malformed payloads
         // never need a database round-trip before reaching their generic owner.
         if (strictBlock || blockedDomain != null || blockedPackage == null) {
             launchDestination(
-                sourceIntent = sourceIntent,
+                sourceIntent = latestRouteIntent ?: sourceIntent,
                 surface = AppBlockSurfacePolicy.Surface.GENERIC_BLOCK,
                 attemptId = attemptId
             )
+            clearRouteState(attemptId)
             return
         }
 
         routeJob = lifecycleScope.launch {
-            val resolution = try {
-                AppBlockSurfaceResolver(
+            try {
+                val resolution = AppBlockSurfaceResolver(
                     context = applicationContext,
                     sessionManager = blockingSessionManager
                 ).resolveAttempt(
                     blockedPackage = blockedPackage,
                     strictPomodoroActive = false
                 )
+
+                if (resolution.closeTargetAfterInterception) {
+                    closeTimedOrLimitedTarget(blockedPackage)
+                }
+
+                val destinationIntent = latestRouteIntent
+                    ?.takeIf {
+                        attemptId == routeAttemptId && activeRouteKey == incomingKey
+                    }
+                    ?: sourceIntent
+                launchDestination(destinationIntent, resolution.surface, attemptId)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
@@ -117,15 +144,16 @@ class BlockNoticeActivity : AppCompatActivity() {
                 if (attemptId == routeAttemptId && !isFinishing && !isDestroyed) {
                     goHome()
                 }
-                return@launch
+            } finally {
+                clearRouteState(attemptId)
             }
-
-            if (resolution.closeTargetAfterInterception) {
-                closeTimedOrLimitedTarget(blockedPackage)
-            }
-
-            launchDestination(sourceIntent, resolution.surface, attemptId)
         }
+    }
+
+    private fun clearRouteState(attemptId: Long) {
+        if (attemptId != routeAttemptId) return
+        activeRouteKey = null
+        latestRouteIntent = null
     }
 
     /**
@@ -209,6 +237,31 @@ class BlockNoticeActivity : AppCompatActivity() {
     }
 
     companion object {
+        internal data class RouteKey(
+            val strictBlock: Boolean,
+            val blockedPackage: String?,
+            val blockedDomain: String?
+        )
+
+        internal fun routeKey(sourceIntent: Intent): RouteKey = RouteKey(
+            strictBlock = sourceIntent.getBooleanExtra(
+                BlockingAccessibilityService.EXTRA_STRICT_BLOCK,
+                false
+            ),
+            blockedPackage = sourceIntent.getStringExtra(
+                BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE
+            )?.takeIf(String::isNotBlank),
+            blockedDomain = sourceIntent.getStringExtra(
+                BlockingAccessibilityService.EXTRA_BLOCKED_DOMAIN
+            )?.takeIf(String::isNotBlank)
+        )
+
+        internal fun shouldCoalesceRoute(
+            routeActive: Boolean,
+            activeKey: RouteKey?,
+            incomingKey: RouteKey
+        ): Boolean = routeActive && activeKey == incomingKey
+
         internal fun createDestinationIntent(
             context: Context,
             sourceIntent: Intent,
