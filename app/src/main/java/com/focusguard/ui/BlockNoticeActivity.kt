@@ -72,17 +72,9 @@ class BlockNoticeActivity : AppCompatActivity() {
 
     private fun route(sourceIntent: Intent) {
         val incomingKey = routeKey(sourceIntent)
-        if (shouldCoalesceRoute(
-                routeActive = routeJob?.isActive == true,
-                activeKey = activeRouteKey,
-                incomingKey = incomingKey
-            )
-        ) {
-            // Accessibility commonly emits more than one window event for the same
-            // launch. Re-running the Room/usage classification for each event can
-            // repeatedly cancel the PASSWORD route before it reaches its UI. Keep
-            // one resolution in flight, but retain the newest curtain generation
-            // so the destination acknowledges the latest safety handshake.
+        if (shouldCoalesceRoute(routeJob?.isActive == true, activeRouteKey, incomingKey)) {
+            // Keep the newest curtain handshake without restarting the expensive
+            // classification already running for this exact target.
             latestRouteIntent = Intent(sourceIntent)
             return
         }
@@ -110,32 +102,17 @@ class BlockNoticeActivity : AppCompatActivity() {
         }
 
         routeJob = lifecycleScope.launch {
-            try {
-                val resolution = AppBlockSurfaceResolver(
+            val resolution = try {
+                AppBlockSurfaceResolver(
                     context = applicationContext,
                     sessionManager = blockingSessionManager
                 ).resolveAttempt(
                     blockedPackage = blockedPackage,
                     strictPomodoroActive = false
                 )
-
-                if (resolution.closeTargetAfterInterception) {
-                    closeTimedOrLimitedTarget(blockedPackage)
-                }
-
-                val destinationIntent = latestRouteIntent
-                    ?.takeIf {
-                        attemptId == routeAttemptId && activeRouteKey == incomingKey
-                    }
-                    ?: sourceIntent
-                launchDestination(destinationIntent, resolution.surface, attemptId)
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
-                // An app-routing failure must fail closed without ever inventing a
-                // generic owner for a possible PASSWORD target. Sending the user
-                // home closes the intercepted app and preserves the invariant that
-                // the generic screen never substitutes for password authentication.
                 FocusGuardLogger.logError(
                     "BlockRouter",
                     "Falha ao resolver superfície para $blockedPackage; saindo para Home",
@@ -144,9 +121,19 @@ class BlockNoticeActivity : AppCompatActivity() {
                 if (attemptId == routeAttemptId && !isFinishing && !isDestroyed) {
                     goHome()
                 }
-            } finally {
                 clearRouteState(attemptId)
+                return@launch
             }
+
+            if (resolution.closeTargetAfterInterception) {
+                closeTimedOrLimitedTarget(blockedPackage)
+            }
+
+            val destinationIntent = latestRouteIntent
+                ?.takeIf { attemptId == routeAttemptId && activeRouteKey == incomingKey }
+                ?: sourceIntent
+            launchDestination(destinationIntent, resolution.surface, attemptId)
+            clearRouteState(attemptId)
         }
     }
 
