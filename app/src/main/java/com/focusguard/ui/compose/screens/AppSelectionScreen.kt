@@ -28,8 +28,22 @@ data class SelectableAppUi(
     val isSuggested: Boolean = false,
     val isInstalled: Boolean = true,
     val category: String = "",
-    val iconUrl: String? = null
+    val iconUrl: String? = null,
+    val isAlreadyBlocked: Boolean = false
 )
+
+internal fun alreadyBlockedAppsForSelection(
+    apps: List<SelectableAppUi>,
+    searchQuery: String
+): List<SelectableAppUi> = apps.asSequence()
+    .filter { it.isAlreadyBlocked }
+    .filter {
+        searchQuery.isBlank() ||
+            it.appName.contains(searchQuery, ignoreCase = true) ||
+            it.packageName.contains(searchQuery, ignoreCase = true)
+    }
+    .sortedBy { it.appName.lowercase() }
+    .toList()
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -84,13 +98,17 @@ fun AppSelectionList(
     var expandUninstalled by remember { mutableStateOf(false) }
     var expandInstalled by remember { mutableStateOf(false) }
 
+    val alreadyBlockedApps = remember(apps, searchQuery) {
+        alreadyBlockedAppsForSelection(apps, searchQuery)
+    }
     val selectedApps = remember(apps) {
-        apps.filter { it.isSelected }.sortedBy { it.appName.lowercase() }
+        apps.filter { it.isSelected && !it.isAlreadyBlocked }
+            .sortedBy { it.appName.lowercase() }
     }
     val availableApps = remember(apps, searchQuery) {
         apps
             .asSequence()
-            .filterNot { it.isSelected }
+            .filterNot { it.isSelected || it.isAlreadyBlocked }
             .filter {
                 searchQuery.isBlank() ||
                     it.appName.contains(searchQuery, ignoreCase = true) ||
@@ -140,6 +158,32 @@ fun AppSelectionList(
                 modifier = Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
             ) {
+                if (alreadyBlockedApps.isNotEmpty()) {
+                    item {
+                        Text(
+                            text = stringResource(R.string.app_selection_already_blocked),
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = TextPrimary,
+                            modifier = Modifier.padding(top = 4.dp, bottom = 4.dp, start = 4.dp)
+                        )
+                        Text(
+                            text = stringResource(R.string.app_selection_already_blocked_hint),
+                            fontSize = 12.sp,
+                            color = TextHint,
+                            modifier = Modifier.padding(start = 4.dp, bottom = 8.dp)
+                        )
+                    }
+                    items(alreadyBlockedApps, key = { "blocked_${it.packageName}" }) { blockedApp ->
+                        AppSelectionItem(app = blockedApp, onToggle = { onToggleApp(blockedApp.packageName) })
+                    }
+                    item {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        HorizontalDivider(color = CardBorder, thickness = 1.dp)
+                        Spacer(modifier = Modifier.height(12.dp))
+                    }
+                }
+
                 if (selectedApps.isNotEmpty()) {
                     item {
                         Text(
@@ -349,15 +393,24 @@ fun AppSelectionItem(
                 )
             }
 
-            Checkbox(
-                checked = app.isSelected,
-                onCheckedChange = { onToggle() },
-                colors = CheckboxDefaults.colors(
-                    checkedColor = AccentCyan,
-                    uncheckedColor = TextHint,
-                    checkmarkColor = DarkBg
+            if (app.isAlreadyBlocked) {
+                Text(
+                    text = stringResource(R.string.app_selection_already_blocked_badge),
+                    color = TextSecondary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
-            )
+            } else {
+                Checkbox(
+                    checked = app.isSelected,
+                    onCheckedChange = { onToggle() },
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = AccentCyan,
+                        uncheckedColor = TextHint,
+                        checkmarkColor = DarkBg
+                    )
+                )
+            }
         }
     }
 }

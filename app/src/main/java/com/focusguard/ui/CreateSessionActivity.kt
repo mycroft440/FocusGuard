@@ -271,7 +271,8 @@ fun AppSelectionStep(
                         appName = info.loadLabel(pm).toString(),
                         isSelected = info.packageName in initialSelectedPackages &&
                             info.packageName !in blockedPackages,
-                        isInstalled = true
+                        isInstalled = true,
+                        isAlreadyBlocked = info.packageName in blockedPackages
                     )
                 }
                 .sortedBy { it.appName.lowercase() }
@@ -291,7 +292,8 @@ fun AppSelectionStep(
                             it.packageName !in blockedPackages,
                         isInstalled = false,
                         category = it.category,
-                        iconUrl = iconUrl
+                        iconUrl = iconUrl,
+                        isAlreadyBlocked = it.packageName in blockedPackages
                     )
                 }
 

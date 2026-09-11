@@ -1,5 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="app_selection_already_blocked">Already blocked</string>
+    <string name="app_selection_already_blocked_hint">These apps are protected by another active block and cannot be selected again.</string>
+    <string name="app_selection_already_blocked_badge">Already blocked</string>
     <string name="app_selection_selected">Selected apps</string>
     <string name="app_selection_selected_hint">These apps will enter the block. Tap one to remove it.</string>
 </resources>

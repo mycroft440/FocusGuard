@@ -1,5 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <plurals name="dopamine_selected_targets_count">
+        <item quantity="one">%1$d item selected</item>
+        <item quantity="other">%1$d items selected</item>
+    </plurals>
     <plurals name="dopamine_selected_apps_count">
         <item quantity="one">%1$d app selected</item>
         <item quantity="other">%1$d apps selected</item>
