@@ -1,0 +1,130 @@
+name: Apply browser tab-only fix
+
+on:
+  push:
+    branches: ["fix/browser-close-blocked-tab-only"]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/browser-close-blocked-tab-only
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install Android 16 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+      - name: Apply browser tab-only behavior
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          service_path = Path("app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt")
+          text = service_path.read_text()
+
+          old_begin = '''            return listOf(\n                WebsiteTransitionAction.SHOW_CURTAIN,\n                WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB\n            )'''
+          new_begin = '''            return listOf(WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB)'''
+          if old_begin not in text:
+              raise SystemExit("Website transition begin block not found")
+          text = text.replace(old_begin, new_begin, 1)
+
+          start = text.index("    private fun startWebsiteBlockTransition(")
+          end = text.index("    private suspend fun completeStrictWebsiteDestination(", start)
+          replacement = '''    private fun startWebsiteBlockTransition(\n        browserPackageName: String,\n        browserWindowId: Int = INVALID_BROWSER_WINDOW_ID,\n        blockedCandidate: String? = null,\n        detectionEventUptimeMillis: Long = 0L\n    ) {\n        val expectedWindowId = resolveBrowserWindowId(browserPackageName, browserWindowId)\n        if (expectedWindowId == INVALID_BROWSER_WINDOW_ID) return\n        val transitionId = websiteBlockTransitionCounter.incrementAndGet()\n        val transition = websiteBlockTransitionGuard.tryStart(\n            browserPackageName = browserPackageName,\n            transitionId = transitionId,\n            destination = WebsiteTransitionDestination.GOOGLE,\n            expectedWindowId = expectedWindowId,\n            blockedCandidate = blockedCandidate,\n            blockedRules = blockedWebsitesDomainSet,\n            detectionEventUptimeMillis = detectionEventUptimeMillis\n        ) ?: return\n\n        scope.launch(Dispatchers.Main.immediate) {\n            try {\n                val neutralizationPolicy = WebsiteTabNeutralizationPolicy(\n                    browserPackageName = browserPackageName,\n                    expectedWindowId = expectedWindowId\n                )\n                val closeResult = closeCurrentChromiumTab(\n                    browserPackageName = browserPackageName,\n                    expectedWindowId = expectedWindowId,\n                    policy = neutralizationPolicy,\n                    transition = transition\n                )\n\n                if (closeResult.menuPossiblyOpened && !closeResult.closeActionAccepted) {\n                    dismissChromiumTabMenu(\n                        browserPackageName = browserPackageName,\n                        targetWindowId = expectedWindowId,\n                        menuWindowId = closeResult.menuWindowId,\n                        transition = transition\n                    )\n                }\n\n                if (!closeResult.closeActionAccepted) {\n                    FocusGuardLogger.log(\n                        "A11y",\n                        "Site bloqueado detectado em $browserPackageName, mas a guia atual " +\n                            "não expôs uma ação segura de fechamento; o navegador permaneceu livre"\n                    )\n                }\n            } finally {\n                websiteBlockTransitionGuard.finish(browserPackageName, transitionId)\n            }\n        }\n    }\n\n'''
+          text = text[:start] + replacement + text[end:]
+
+          for snippet in [
+              '''        if (!curtainReadyForTransition(transition)) {\n            return result()\n        }\n''',
+              '''        if (!curtainReadyForTransition(transition)) {\n            return result(menuPossiblyOpened = true)\n        }\n''',
+              '''        if (!curtainReadyForTransition(transition)) {\n            return result(closeActionAccepted = true, menuWindowId = menuWindowId)\n        }\n''',
+          ]:
+              if snippet not in text:
+                  raise SystemExit(f"Expected curtain gate not found: {snippet!r}")
+              text = text.replace(snippet, "", 1)
+
+          old_long_click = '''        val longClick = performExactNodeAction(\n            root = root,\n            expectedViewId = "$browserPackageName:id/tab_switcher_button",\n            action = AccessibilityNodeInfo.ACTION_LONG_CLICK\n        )'''
+          new_long_click = '''        val longClick = performFirstExactNodeAction(\n            root = root,\n            expectedEntryNames = CHROMIUM_TAB_SWITCHER_ENTRY_NAMES,\n            action = AccessibilityNodeInfo.ACTION_LONG_CLICK\n        )'''
+          if old_long_click not in text:
+              raise SystemExit("Chromium tab switcher long-click block not found")
+          text = text.replace(old_long_click, new_long_click, 1)
+
+          old_dismiss_start = '''    ): Boolean {\n        if (!curtainReadyForTransition(transition)) return false\n        val explicitMenu = windows.singleOrNull {'''
+          new_dismiss_start = '''    ): Boolean {\n        val explicitMenu = windows.singleOrNull {'''
+          if old_dismiss_start not in text:
+              raise SystemExit("dismissChromiumTabMenu curtain gate not found")
+          text = text.replace(old_dismiss_start, new_dismiss_start, 1)
+
+          old_dismiss_after = '''        delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)\n        if (!curtainReadyForTransition(transition)) return false\n        val restoredRoot = activeBrowserRoot(browserPackageName, targetWindowId) ?: return false'''
+          new_dismiss_after = '''        delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)\n        val restoredRoot = activeBrowserRoot(browserPackageName, targetWindowId) ?: return false'''
+          if old_dismiss_after not in text:
+              raise SystemExit("dismissChromiumTabMenu post-back curtain gate not found")
+          text = text.replace(old_dismiss_after, new_dismiss_after, 1)
+
+          helper_anchor = '''    private fun performExactNodeAction(\n        root: AccessibilityNodeInfo,'''
+          helper = '''    private fun performFirstExactNodeAction(\n        root: AccessibilityNodeInfo,\n        expectedEntryNames: List<String>,\n        action: Int\n    ): ExactNodeActionResult {\n        val rootPackage = root.packageName?.toString().orEmpty()\n        if (rootPackage.isBlank()) return ExactNodeActionResult(found = false, accepted = false)\n        var found = false\n        expectedEntryNames.forEach { entryName ->\n            val result = performExactNodeAction(\n                root = root,\n                expectedViewId = "$rootPackage:id/$entryName",\n                action = action\n            )\n            found = found || result.found\n            if (result.accepted) return result\n        }\n        return ExactNodeActionResult(found = found, accepted = false)\n    }\n\n'''
+          if helper_anchor not in text:
+              raise SystemExit("performExactNodeAction anchor not found")
+          text = text.replace(helper_anchor, helper + helper_anchor, 1)
+
+          old_opaque = '''    private fun blockOpaqueBrowser(packageName: String) {\n        opaqueBrowserFirstSeenElapsed.remove(packageName)\n        opaqueBrowserVerificationScheduled.remove(packageName)\n        stopWebsiteTracking()\n        startWebsiteBlockTransition(packageName)\n    }'''
+          new_opaque = '''    private fun blockOpaqueBrowser(packageName: String) {\n        opaqueBrowserFirstSeenElapsed.remove(packageName)\n        opaqueBrowserVerificationScheduled.remove(packageName)\n        stopWebsiteTracking()\n        FocusGuardLogger.log(\n            "A11y",\n            "Não foi possível observar a URL em $packageName; o navegador não será bloqueado " +\n                "por inteiro"\n        )\n    }'''
+          if old_opaque not in text:
+              raise SystemExit("blockOpaqueBrowser block not found")
+          text = text.replace(old_opaque, new_opaque, 1)
+
+          constants_anchor = '''        private const val SAFE_REDIRECT_URL = "https://www.google.com"\n        private const val INVALID_BROWSER_WINDOW_ID = -1'''
+          constants_replacement = '''        private const val SAFE_REDIRECT_URL = "https://www.google.com"\n        private const val INVALID_BROWSER_WINDOW_ID = -1\n        private val CHROMIUM_TAB_SWITCHER_ENTRY_NAMES = listOf(\n            "tab_switcher_button",\n            "bottom_tab_switcher_button"\n        )'''
+          if constants_anchor not in text:
+              raise SystemExit("companion constants anchor not found")
+          text = text.replace(constants_anchor, constants_replacement, 1)
+
+          test_helper_anchor = '''        internal fun immediateBrowserBlockEventTypesForTest(): Set<Int> =\n            immediateBrowserBlockEventTypes\n'''
+          test_helper_replacement = test_helper_anchor + '''\n        internal fun chromiumTabSwitcherEntryNamesForTest(): List<String> =\n            CHROMIUM_TAB_SWITCHER_ENTRY_NAMES\n'''
+          if test_helper_anchor not in text:
+              raise SystemExit("test helper anchor not found")
+          text = text.replace(test_helper_anchor, test_helper_replacement, 1)
+
+          service_path.write_text(text)
+
+          test_path = Path("app/src/test/java/com/focusguard/service/WebsiteBlockNavigationTest.kt")
+          test_text = test_path.read_text()
+          old_initial = '''        assertThat(machine.begin()).containsExactly(\n            BlockingAccessibilityService.WebsiteTransitionAction.SHOW_CURTAIN,\n            BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB\n        ).inOrder()'''
+          new_initial = '''        assertThat(machine.begin()).containsExactly(\n            BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB\n        )'''
+          if old_initial not in test_text:
+              raise SystemExit("normal transition initial assertion not found")
+          test_text = test_text.replace(old_initial, new_initial, 1)
+
+          insert_anchor = '''    @Test\n    fun `normal transition hides only after Google was sanitized`() {'''
+          new_test = '''    @Test\n    fun `Chromium tab closing supports Brave top and bottom tab switchers`() {\n        assertThat(BlockingAccessibilityService.chromiumTabSwitcherEntryNamesForTest())\n            .containsExactly("tab_switcher_button", "bottom_tab_switcher_button")\n            .inOrder()\n    }\n\n'''
+          if insert_anchor not in test_text:
+              raise SystemExit("test insertion anchor not found")
+          test_text = test_text.replace(insert_anchor, new_test + insert_anchor, 1)
+          test_path.write_text(test_text)
+          PY
+      - run: chmod +x gradlew
+      - name: Run focused unit tests
+        shell: bash
+        run: ./gradlew testDebugUnitTest --tests com.focusguard.service.WebsiteBlockNavigationTest --no-daemon --stacktrace
+      - name: Commit fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt app/src/test/java/com/focusguard/service/WebsiteBlockNavigationTest.kt
+          git commit -m "fix: close blocked browser tab without locking browser"
+          git push origin HEAD:fix/browser-close-blocked-tab-only
