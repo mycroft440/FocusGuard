@@ -7,6 +7,12 @@ build/
 *.ap_
 *.aab
 
+# CI-generated transient artifact directories
+ci-artifacts/
+build-artifacts/
+ci974-artifacts/
+release/
+
 # Local configuration (SDK path, signing debug info)
 local.properties
 
