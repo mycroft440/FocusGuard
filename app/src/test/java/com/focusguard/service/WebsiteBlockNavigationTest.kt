@@ -686,15 +686,21 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
+    fun `Chromium tab closing supports Brave top and bottom tab switchers`() {
+        assertThat(BlockingAccessibilityService.chromiumTabSwitcherEntryNamesForTest())
+            .containsExactly("tab_switcher_button", "bottom_tab_switcher_button")
+            .inOrder()
+    }
+
+    @Test
     fun `normal transition hides only after Google was sanitized`() {
         val machine = BlockingAccessibilityService.WebsiteBlockTransitionStateMachine(
             strict = false
         )
 
         assertThat(machine.begin()).containsExactly(
-            BlockingAccessibilityService.WebsiteTransitionAction.SHOW_CURTAIN,
             BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB
-        ).inOrder()
+        )
         assertThat(machine.afterGoogleSanitized()).isEqualTo(
             BlockingAccessibilityService.WebsiteTransitionAction.HIDE_CURTAIN
         )
