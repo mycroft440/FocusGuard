@@ -89,6 +89,28 @@ class DeviceOwnerMaintenanceGateTest {
     }
 
     @Test
+    fun `unknown boot identity invalidates maintenance`() {
+        assertThat(
+            DeviceOwnerMaintenanceGate.evaluateRemainingMillis(
+                automaticDateTimeEnabled = true,
+                nowElapsedMillis = 1_000L,
+                deadlineElapsedMillis = 601_000L,
+                storedBootCount = -1,
+                currentBootCount = -1
+            )
+        ).isEqualTo(0L)
+        assertThat(
+            DeviceOwnerMaintenanceGate.evaluateRemainingMillis(
+                automaticDateTimeEnabled = true,
+                nowElapsedMillis = 1_000L,
+                deadlineElapsedMillis = 601_000L,
+                storedBootCount = 9,
+                currentBootCount = -1
+            )
+        ).isEqualTo(0L)
+    }
+
+    @Test
     fun `expired deadline returns zero`() {
         val remaining = DeviceOwnerMaintenanceGate.evaluateRemainingMillis(
             automaticDateTimeEnabled = true,
