@@ -160,13 +160,21 @@ object DeviceOwnerMaintenanceGate {
         currentBootCount: Int
     ): Long {
         if (!automaticDateTimeEnabled) return 0L
+        if (storedBootCount < 0 || currentBootCount < 0) return 0L
         if (storedBootCount != currentBootCount) return 0L
         return max(0L, deadlineElapsedMillis - nowElapsedMillis)
     }
 
     private fun openWindow(context: Context, source: String, protectionArmed: Boolean) {
-        val deadline = SystemClock.elapsedRealtime() + UNLOCK_DURATION_MILLIS
         val bootCount = readBootCount(context)
+        if (bootCount < 0) {
+            publishInactiveCache()
+            preferences(context).edit().clear().commit()
+            cancelExpiry(context)
+            return
+        }
+
+        val deadline = SystemClock.elapsedRealtime() + UNLOCK_DURATION_MILLIS
         val saved = preferences(context).edit()
             .putLong(DEADLINE_ELAPSED_KEY, deadline)
             .putInt(BOOT_COUNT_KEY, bootCount)
