@@ -649,65 +649,20 @@ fun EditWebsiteLimitDialog(
     onDismiss: () -> Unit,
     onSave: (Int, Boolean, String, String?, Long?) -> Unit
 ) {
-    var extensionDays by remember { mutableStateOf("") }
-    val extraDays = extensionDays.toLongOrNull() ?: 0L
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = {
-            Text(
-                "Informações do limite: ${WebsiteBlocker.displayRule(site.domain)}",
-                color = MaterialTheme.colorScheme.onSurface,
-                fontWeight = FontWeight.Bold
-            )
-        },
-        text = {
-            Column(Modifier.verticalScroll(rememberScrollState())) {
-                PermissionWarning(permissionsMissing)
-                LimitSummary(
-                    label = stringResource(R.string.limits_daily_time_website_label),
-                    minutes = site.dailyLimitMinutes ?: 0,
-                    lockUntil = site.lockUntilTimestamp
-                )
-                OutlinedTextField(
-                    value = extensionDays,
-                    onValueChange = { if (it.all(Char::isDigit)) extensionDays = it },
-                    label = { Text(stringResource(R.string.limits_add_more_days)) },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = limitFieldColors()
-                )
-            }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = extraDays > 0L,
-                onClick = {
-                    val base = maxOf(site.lockUntilTimestamp ?: 0L, System.currentTimeMillis())
-                    onSave(
-                        site.dailyLimitMinutes ?: 0,
-                        site.isEnabled,
-                        "TIME",
-                        site.lockPasswordHash,
-                        base + TimeUnit.DAYS.toMillis(extraDays)
-                    )
-                }
-            ) {
-                Text(stringResource(R.string.limits_extend_btn), color = AccentCyan)
-            }
-        },
-        dismissButton = {
-            if (site.lockUntilTimestamp == null || site.lockUntilTimestamp <= System.currentTimeMillis()) {
-                TextButton(onClick = { onSave(0, false, "NONE", null, null) }) {
-                    Text(stringResource(R.string.sessions_remove_item), color = DangerRed)
-                }
-            } else {
-                TextButton(onClick = onDismiss) {
-                    Text(stringResource(R.string.pomodoro_cancel_btn), color = TextHint)
-                }
-            }
-        },
-        containerColor = MaterialTheme.colorScheme.surface
+    val normalizedRule = WebsiteBlocker.normalizeRule(site.domain)
+    WebsiteUsageLimitEditorSheet(
+        initialRule = normalizedRule,
+        keywordMode = WebsiteBlocker.isKeywordRule(normalizedRule),
+        permissionsMissing = permissionsMissing,
+        initialMinutes = site.dailyLimitMinutes,
+        initialLockMode = site.lockMode,
+        initialLockUntilTimestamp = site.lockUntilTimestamp,
+        allowTargetEditing = false,
+        allowRemove = true,
+        onDismiss = onDismiss,
+        onSave = { _, minutes, enabled, lockMode, lockUntil ->
+            onSave(minutes ?: 0, enabled, lockMode, null, lockUntil)
+        }
     )
 }
 
