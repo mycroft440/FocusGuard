@@ -1,0 +1,147 @@
+name: Apply maintenance special-access guard
+
+on:
+  push:
+    branches:
+      - fix-device-owner-maintenance-expiry
+    paths:
+      - .maintenance-special-access-trigger
+
+permissions:
+  contents: write
+
+jobs:
+  apply-patch:
+    if: ${{ hashFiles('.maintenance-special-access-trigger') != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-device-owner-maintenance-expiry
+          fetch-depth: 0
+      - name: Apply guarded source changes
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_exact(path: str, old: str, new: str) -> None:
+              file = Path(path)
+              text = file.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected exactly one match, found {count}")
+              file.write_text(text.replace(old, new, 1))
+
+          replace_exact(
+              "app/src/main/java/com/focusguard/security/ManagedSelfProtectionPolicy.kt",
+              '''    private val essentialSpecialAccessClassMarkers = setOf(
+                  "UsageAccessSettings",
+                  "UsageAccessDetails",
+                  "HighPowerApplicationsActivity",
+                  "HighPowerDetail",
+                  "BatteryOptimizationSettings"
+              )''',
+              '''    private val essentialSpecialAccessClassMarkers = setOf(
+                  "UsageAccessSettings",
+                  "UsageAccessDetails",
+                  "HighPowerApplicationsActivity",
+                  "HighPowerDetail",
+                  "BatteryOptimizationSettings",
+                  "AlarmsAndReminders"
+              )'''
+          )
+          replace_exact(
+              "app/src/main/java/com/focusguard/security/ManagedSelfProtectionPolicy.kt",
+              '''        "Battery optimization",
+                  "Unrestricted battery"
+              )''',
+              '''        "Battery optimization",
+                  "Unrestricted battery",
+                  "Alarmes e lembretes",
+                  "Alarms & reminders",
+                  "Alarms and reminders",
+                  "Alarmas y recordatorios"
+              )'''
+          )
+
+          replace_exact(
+              "app/src/main/java/com/focusguard/security/SettingsInterceptionPolicy.kt",
+              '''        selfProtectionEngaged: Boolean,
+                  strictPomodoroActive: Boolean,
+                  deviceAdminActivationAuthorized: Boolean,
+                  rootSignals: RootSignals
+              ): Decision {
+                  if (signals.packageName !in interceptionPackages) return Decision.IGNORE
+                  if (!selfProtectionEngaged) return Decision.IGNORE
+              ''',
+              '''        selfProtectionEngaged: Boolean,
+                  strictPomodoroActive: Boolean,
+                  deviceAdminActivationAuthorized: Boolean,
+                  maintenanceActive: Boolean = false,
+                  rootSignals: RootSignals
+              ): Decision {
+                  if (signals.packageName !in interceptionPackages) return Decision.IGNORE
+
+                  // Maintenance may relax native Device Owner policy, but it must not
+                  // expose the special accesses that keep the ten-minute expiry and
+                  // subsequent enforcement reliable. Keep this branch deliberately
+                  // narrow: FocusGuard identity plus an essential-special-access context.
+                  if (maintenanceActive) {
+                      val focusGuardTarget = signals.textMentionsFocusGuard ||
+                          rootSignals.mentionsFocusGuard()
+                      if (!focusGuardTarget) return Decision.IGNORE
+                      val essentialAccess = signals.textMentionsEssentialSpecialAccess ||
+                          rootSignals.mentionsEssentialSpecialAccess()
+                      return if (essentialAccess) {
+                          Decision.PROTECT_AND_ARM_GUARD
+                      } else {
+                          Decision.IGNORE
+                      }
+                  }
+
+                  if (!selfProtectionEngaged) return Decision.IGNORE
+              '''
+          )
+
+          replace_exact(
+              "app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt",
+              '''        // Only actual Device Owner devices can have this maintenance gate. Avoid a
+                  // DevicePolicyManager round-trip on the consumer path.
+                  if (deviceOwnerActiveCached &&
+                      com.focusguard.security.DeviceOwnerMaintenanceGate.isTemporarilyUnlocked(this)) return false
+
+                  val nowElapsed = SystemClock.elapsedRealtime()
+              ''',
+              '''        // Only actual Device Owner devices can have this maintenance gate. During
+                  // maintenance, ordinary Settings remain available, but the policy below still
+                  // protects FocusGuard's essential special accesses (including exact alarms).
+                  val deviceOwnerMaintenanceActive = deviceOwnerActiveCached &&
+                      com.focusguard.security.DeviceOwnerMaintenanceGate.isTemporarilyUnlocked(this)
+
+                  val nowElapsed = SystemClock.elapsedRealtime()
+              '''
+          )
+          replace_exact(
+              "app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt",
+              '''            strictPomodoroActive = isPomodoroStrictActive,
+                  deviceAdminActivationAuthorized = deviceAdminActivationAuthorized,
+                  rootSignals = SettingsInterceptionPolicy.RootSignals(
+              ''',
+              '''            strictPomodoroActive = isPomodoroStrictActive,
+                  deviceAdminActivationAuthorized = deviceAdminActivationAuthorized,
+                  maintenanceActive = deviceOwnerMaintenanceActive,
+                  rootSignals = SettingsInterceptionPolicy.RootSignals(
+              '''
+          )
+      - name: Commit source patch and remove helper
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/apply-maintenance-special-access-guard.yml .maintenance-special-access-trigger
+          git add app/src/main/java/com/focusguard/security/ManagedSelfProtectionPolicy.kt \
+                  app/src/main/java/com/focusguard/security/SettingsInterceptionPolicy.kt \
+                  app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+          git commit -m "Protect expiry-critical access during maintenance"
+          git push origin HEAD:fix-device-owner-maintenance-expiry
