@@ -1,0 +1,109 @@
+name: Apply internal receiver hardening patch
+
+on:
+  push:
+    branches:
+      - fix-internal-refresh-receiver-export
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix-internal-refresh-receiver-export
+
+      - name: Apply exact receiver hardening patch
+        shell: python
+        run: |
+          from pathlib import Path
+
+          service_path = Path("app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt")
+          service = service_path.read_text()
+
+          old_import = "import androidx.core.app.NotificationCompat\n"
+          new_import = old_import + "import androidx.core.content.ContextCompat\n"
+          assert service.count(old_import) == 1, "NotificationCompat import context changed"
+          service = service.replace(old_import, new_import, 1)
+
+          old_registration = '''    private fun registerRefreshReceiver() {
+              val filter = IntentFilter().apply {
+                  addAction(ACTION_REFRESH_BLOCKING)
+                  addAction(ACTION_DEV_RELINQUISH_ACCESSIBILITY)
+              }
+              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                  registerReceiver(refreshReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+              } else {
+                  @Suppress("DEPRECATION")
+                  registerReceiver(refreshReceiver, filter)
+              }
+          }
+          '''
+          new_registration = '''    private fun registerRefreshReceiver() {
+              val filter = IntentFilter().apply {
+                  addAction(ACTION_REFRESH_BLOCKING)
+                  addAction(ACTION_DEV_RELINQUISH_ACCESSIBILITY)
+              }
+              ContextCompat.registerReceiver(
+                  this,
+                  refreshReceiver,
+                  filter,
+                  internalRefreshReceiverFlags()
+              )
+          }
+          '''
+          assert service.count(old_registration) == 1, "refresh receiver registration context changed"
+          service = service.replace(old_registration, new_registration, 1)
+
+          anchor = '''        internal fun createDevelopmentRelinquishIntent(context: Context): Intent =
+              Intent(ACTION_DEV_RELINQUISH_ACCESSIBILITY).setPackage(context.packageName)
+          '''
+          replacement = '''        internal fun internalRefreshReceiverFlags(): Int =
+              ContextCompat.RECEIVER_NOT_EXPORTED
+
+          internal fun createDevelopmentRelinquishIntent(context: Context): Intent =
+              Intent(ACTION_DEV_RELINQUISH_ACCESSIBILITY).setPackage(context.packageName)
+          '''
+          assert service.count(anchor) == 1, "companion receiver anchor changed"
+          service = service.replace(anchor, replacement, 1)
+          service_path.write_text(service)
+
+          test_path = Path("app/src/test/java/com/focusguard/service/BlockingAccessibilityServiceIntentTest.kt")
+          test = test_path.read_text()
+          old_test_import = "import android.graphics.Rect\n"
+          new_test_import = old_test_import + "import androidx.core.content.ContextCompat\n"
+          assert test.count(old_test_import) == 1, "test import context changed"
+          test = test.replace(old_test_import, new_test_import, 1)
+
+          test_anchor = '''    @Test
+          fun `development relinquish broadcast is package scoped`() {
+          '''
+          test_insert = '''    @Test
+          fun `internal refresh receiver is never exported to other apps`() {
+              assertThat(BlockingAccessibilityService.internalRefreshReceiverFlags())
+                  .isEqualTo(ContextCompat.RECEIVER_NOT_EXPORTED)
+          }
+
+          @Test
+          fun `development relinquish broadcast is package scoped`() {
+          '''
+          assert test.count(test_anchor) == 1, "intent test anchor changed"
+          test = test.replace(test_anchor, test_insert, 1)
+          test_path.write_text(test)
+
+      - name: Remove temporary patch workflow
+        run: git rm .github/workflows/apply-internal-receiver-hardening.yml
+
+      - name: Commit patch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt \
+                  app/src/test/java/com/focusguard/service/BlockingAccessibilityServiceIntentTest.kt
+          git diff --cached --check
+          git commit -m "Protect internal accessibility refresh receiver"
+          git push origin HEAD:fix-internal-refresh-receiver-export
