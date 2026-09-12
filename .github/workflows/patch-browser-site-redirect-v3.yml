@@ -1,0 +1,82 @@
+name: Patch browser site redirect v3
+
+on:
+  push:
+    branches: ["fix/browser-site-redirect"]
+    paths:
+      - ".github/workflows/patch-browser-site-redirect-v3.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: fix/browser-site-redirect
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android 16 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Apply browser redirect hardening
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          workflow_path = Path('.github/workflows/patch-browser-site-redirect-v2.yml')
+          lines = workflow_path.read_text().splitlines()
+          start = next(i for i, line in enumerate(lines) if line.strip() == "python3 - <<'PY'")
+          end = next(i for i in range(start + 1, len(lines)) if lines[i].strip() == 'PY')
+          script = '\n'.join(
+              line[10:] if line.startswith('          ') else line
+              for line in lines[start + 1:end]
+          )
+          exec(compile(script, str(workflow_path), 'exec'), {})
+
+          test_path = Path('app/src/test/java/com/focusguard/service/WebsiteBlockNavigationTest.kt')
+          tests = test_path.read_text()
+          if 'import android.content.Intent\n' not in tests:
+              anchor = 'import android.content.Context\n'
+              if anchor not in tests:
+                  raise SystemExit('test import anchor not found')
+              tests = tests.replace(anchor, anchor + 'import android.content.Intent\n', 1)
+              test_path.write_text(tests)
+          PY
+
+      - name: Run targeted tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest --tests com.focusguard.service.WebsiteBlockNavigationTest --no-daemon --stacktrace
+
+      - name: Commit implementation and remove one-shot workflows
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/patch-browser-site-redirect.yml
+          rm -f .github/workflows/patch-browser-site-redirect-v2.yml
+          rm -f .github/workflows/patch-browser-site-redirect-v3.yml
+          git config user.name "FocusGuard CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Harden blocked website redirect and re-entry"
+          git push origin HEAD:fix/browser-site-redirect
