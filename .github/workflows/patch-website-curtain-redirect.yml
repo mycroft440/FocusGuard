@@ -39,6 +39,7 @@ jobs:
           set -euo pipefail
           git checkout -B fix/website-curtain-google-redirect origin/main
           python3 - <<'PY'
+          import re
           from pathlib import Path
 
           service_path = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
@@ -60,24 +61,26 @@ jobs:
               1,
           )
 
-          old_begin = '''        fun begin(): List<WebsiteTransitionAction> {
-              check(state == State.NEW)
-              state = State.SANITIZATION_PENDING
-              return listOf(WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB)
-          }
-          '''
-          new_begin = '''        fun begin(): List<WebsiteTransitionAction> {
-              check(state == State.NEW)
-              state = State.SANITIZATION_PENDING
-              return listOf(
-                  WebsiteTransitionAction.SHOW_CURTAIN,
-                  WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB
-              )
-          }
-          '''
-          if old_begin not in text:
-              raise SystemExit('website state-machine begin block not found')
-          text = text.replace(old_begin, new_begin, 1)
+          begin_pattern = re.compile(
+              r'        fun begin\(\): List<WebsiteTransitionAction> \{\n'
+              r'            check\(state == State\.NEW\)\n'
+              r'            state = State\.SANITIZATION_PENDING\n'
+              r'            return listOf\(WebsiteTransitionAction\.NEUTRALIZE_BLOCKED_TAB\)\n'
+              r'        \}'
+          )
+          begin_replacement = (
+              '        fun begin(): List<WebsiteTransitionAction> {\n'
+              '            check(state == State.NEW)\n'
+              '            state = State.SANITIZATION_PENDING\n'
+              '            return listOf(\n'
+              '                WebsiteTransitionAction.SHOW_CURTAIN,\n'
+              '                WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB\n'
+              '            )\n'
+              '        }'
+          )
+          text, count = begin_pattern.subn(begin_replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'website state-machine begin replacement count={count}')
 
           start = text.index('    private fun startWebsiteBlockTransition(')
           end = text.index('\n    private suspend fun completeStrictWebsiteDestination(', start)
@@ -128,10 +131,9 @@ jobs:
 
               scope.launch(Dispatchers.Main.immediate) {
                   try {
-                      // Give the already-warm accessibility overlay one display frame to
-                      // become opaque before touching the browser UI. The redirect itself
-                      // still starts immediately after that frame; there is no human-scale
-                      // delay between blocking and navigation.
+                      // Let the already-warm overlay commit one display frame before
+                      // touching the browser UI. This is normally only 8-17 ms and
+                      // avoids exposing a flash of the blocked page during redirect.
                       awaitNextWebsiteRedirectFrame()
 
                       val rewritePolicy = WebsiteTabNeutralizationPolicy(
@@ -145,10 +147,9 @@ jobs:
                           transition = transition
                       )
 
-                      // Older Android versions or browser UIs that cannot expose a
-                      // certifiable editable omnibox fall back to closing only the exact
-                      // blocked tab, then opening Google in that same browser. Never fail
-                      // closed by blocking the browser application itself.
+                      // If the browser/API cannot expose a certifiable editable
+                      // omnibox, close only the exact blocked tab and then open
+                      // Google in that browser. Never block the browser as an app.
                       if (!redirectRequested) {
                           restoreBlockedSurfaceAfterAddressEdit(transition)
                           redirectRequested = closeBlockedTabAndRequestSafeGoogle(
@@ -308,10 +309,12 @@ jobs:
           '''
           text = text[:start] + replacement + text[end:]
 
+          marker = '        private const val WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS = 120L\n'
+          if marker not in text:
+              raise SystemExit('google settle constant marker missing')
           text = text.replace(
-              '        private const val WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS = 120L\n',
-              '        private const val WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS = 120L\n'
-              '        internal const val WEBSITE_MIN_BLOCK_NOTICE_MILLIS = 120L\n',
+              marker,
+              marker + '        internal const val WEBSITE_MIN_BLOCK_NOTICE_MILLIS = 120L\n',
               1,
           )
 
@@ -324,56 +327,62 @@ jobs:
               '// blocked address cannot start an overlapping redirect loop.\n',
               1,
           )
-
           service_path.write_text(text)
 
           test_path = Path('app/src/test/java/com/focusguard/service/WebsiteBlockNavigationTest.kt')
           tests = test_path.read_text()
-          old_non_strict = '''        assertThat(machine.begin()).containsExactly(
-              BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB
+          non_strict_pattern = re.compile(
+              r'        assertThat\(machine\.begin\(\)\)\.containsExactly\(\n'
+              r'            BlockingAccessibilityService\.WebsiteTransitionAction\.NEUTRALIZE_BLOCKED_TAB\n'
+              r'        \)'
           )
-          '''
-          new_non_strict = '''        assertThat(machine.begin()).containsExactly(
-              BlockingAccessibilityService.WebsiteTransitionAction.SHOW_CURTAIN,
-              BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB
-          ).inOrder()
-          '''
-          if old_non_strict not in tests:
-              raise SystemExit('non-strict transition assertion not found')
-          tests = tests.replace(old_non_strict, new_non_strict, 1)
+          non_strict_replacement = (
+              '        assertThat(machine.begin()).containsExactly(\n'
+              '            BlockingAccessibilityService.WebsiteTransitionAction.SHOW_CURTAIN,\n'
+              '            BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB\n'
+              '        ).inOrder()'
+          )
+          tests, count = non_strict_pattern.subn(non_strict_replacement, tests, count=1)
+          if count != 1:
+              raise SystemExit(f'non-strict transition replacement count={count}')
 
-          old_strict = '''        assertThat(machine.begin().last()).isEqualTo(
-              BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB
+          strict_pattern = re.compile(
+              r'        assertThat\(machine\.begin\(\)\.last\(\)\)\.isEqualTo\(\n'
+              r'            BlockingAccessibilityService\.WebsiteTransitionAction\.NEUTRALIZE_BLOCKED_TAB\n'
+              r'        \)'
           )
-          '''
-          new_strict = '''        val initialActions = machine.begin()
-          assertThat(initialActions.first()).isEqualTo(
-              BlockingAccessibilityService.WebsiteTransitionAction.SHOW_CURTAIN
+          strict_replacement = (
+              '        val initialActions = machine.begin()\n'
+              '        assertThat(initialActions.first()).isEqualTo(\n'
+              '            BlockingAccessibilityService.WebsiteTransitionAction.SHOW_CURTAIN\n'
+              '        )\n'
+              '        assertThat(initialActions.last()).isEqualTo(\n'
+              '            BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB\n'
+              '        )'
           )
-          assertThat(initialActions.last()).isEqualTo(
-              BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB
-          )
-          '''
-          if old_strict not in tests:
-              raise SystemExit('strict transition assertion not found')
-          tests = tests.replace(old_strict, new_strict, 1)
+          tests, count = strict_pattern.subn(strict_replacement, tests, count=1)
+          if count != 1:
+              raise SystemExit(f'strict transition replacement count={count}')
 
-          anchor = '''    @Test
-              fun `website handoff waits for a positively confirmed destination`() {
-                  assertThat(BlockingAccessibilityService.WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS)
-                      .isGreaterThan(BlockingAccessibilityService.EVENT_NOTIFICATION_TIMEOUT_MILLIS)
-              }
-          '''
-          if anchor in tests:
-              replacement_test = anchor + '''
-
-              @Test
-              fun `website curtain has only a short perceptual minimum`() {
-                  assertThat(BlockingAccessibilityService.WEBSITE_MIN_BLOCK_NOTICE_MILLIS)
-                      .isAtMost(150L)
-              }
-          '''
-              tests = tests.replace(anchor, replacement_test, 1)
+          handoff_marker = (
+              '    @Test\n'
+              '    fun `website handoff waits for a positively confirmed destination`() {\n'
+              '        assertThat(BlockingAccessibilityService.WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS)\n'
+              '            .isGreaterThan(BlockingAccessibilityService.EVENT_NOTIFICATION_TIMEOUT_MILLIS)\n'
+              '    }\n'
+          )
+          if handoff_marker not in tests:
+              raise SystemExit('website handoff test marker missing')
+          tests = tests.replace(
+              handoff_marker,
+              handoff_marker +
+              '\n    @Test\n'
+              '    fun `website curtain perceptual minimum stays low latency`() {\n'
+              '        assertThat(BlockingAccessibilityService.WEBSITE_MIN_BLOCK_NOTICE_MILLIS)\n'
+              '            .isAtMost(150L)\n'
+              '    }\n',
+              1,
+          )
           test_path.write_text(tests)
           PY
 
