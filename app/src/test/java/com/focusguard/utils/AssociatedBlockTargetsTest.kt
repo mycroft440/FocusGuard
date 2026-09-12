@@ -17,6 +17,23 @@ class AssociatedBlockTargetsTest {
     }
 
     @Test
+    fun `multiple apps expose stable website companion options`() {
+        val companions = AssociatedBlockTargets.websiteCompanionsForApps(
+            listOf(
+                "com.google.android.youtube",
+                "com.instagram.android",
+                "com.example.unknown",
+                "com.google.android.youtube"
+            )
+        )
+
+        assertThat(companions.map { it.packageName })
+            .containsExactly("com.instagram.android", "com.google.android.youtube")
+        assertThat(companions.map { it.domain })
+            .containsExactly("instagram.com", "youtube.com")
+    }
+
+    @Test
     fun `youtube website maps to youtube app`() {
         assertThat(
             AssociatedBlockTargets.appForWebsiteRule(
