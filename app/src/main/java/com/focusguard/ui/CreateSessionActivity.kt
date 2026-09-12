@@ -41,6 +41,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -82,6 +83,7 @@ import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
+import com.focusguard.utils.AssociatedBlockTargets
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.CancellationException
@@ -148,8 +150,7 @@ fun CreateSessionWizard(
 ) {
     val pagerState = rememberPagerState(pageCount = { 2 })
     val scope = rememberCoroutineScope()
-    // O que cada bloqueio aceita como alvo é decidido por tipo, não pela tela:
-    // senha protege só aplicativos, jejum aceita apps, sites e palavras.
+    // O que cada bloqueio aceita como alvo é decidido por tipo, não pela tela.
     val kinds = remember(sessionType) { BlockTargetPolicy.forSessionType(sessionType) }
     var selectedApps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
     var selectedRules by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -204,8 +205,7 @@ fun CreateSessionWizard(
  * First page of the block wizard: what the block will hold.
  *
  * Which tabs exist is [kinds]' decision, not this screen's. With a single kind
- * the tab bar disappears entirely, so a password block still shows exactly the
- * app list it always did.
+ * the tab bar disappears entirely.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -224,6 +224,10 @@ fun AppSelectionStep(
     var configuredBlockedRules by remember { mutableStateOf<Set<String>>(emptySet()) }
     var rules by remember { mutableStateOf(initialRules) }
     var isLoading by remember { mutableStateOf(true) }
+    var pendingAppSiteOption by remember { mutableStateOf<PredefinedApps.AppInfo?>(null) }
+    var pendingSiteAppOption by remember {
+        mutableStateOf<Pair<String, PredefinedApps.AppInfo>?>(null)
+    }
 
     LaunchedEffect(initialSelectedPackages) {
         withContext(Dispatchers.IO) {
@@ -317,10 +321,95 @@ fun AppSelectionStep(
                 Toast.LENGTH_SHORT
             ).show()
         } else {
+            val wasSelected = apps.firstOrNull { it.packageName == pkg }?.isSelected == true
             apps = apps.map {
                 if (it.packageName == pkg) it.copy(isSelected = !it.isSelected) else it
             }
+
+            if (!wasSelected && kinds.websites) {
+                val companionDomain = AssociatedBlockTargets.domainForAppPackage(pkg)
+                val companionInfo = PredefinedApps.PREVENTIVE_APPS
+                    .firstOrNull { it.packageName == pkg }
+                val alreadySelected = companionDomain != null &&
+                    BlockingSessionManager.isWebsiteRuleCoveredBy(companionDomain, rules)
+                val alreadyBlocked = companionDomain != null &&
+                    BlockingSessionManager.isWebsiteRuleCoveredBy(
+                        companionDomain,
+                        configuredBlockedRules
+                    )
+
+                if (companionDomain != null &&
+                    companionInfo != null &&
+                    !alreadySelected &&
+                    !alreadyBlocked
+                ) {
+                    pendingAppSiteOption = companionInfo
+                }
+            }
         }
+    }
+
+    val onWebsiteRulesChange: (List<String>) -> Unit = { updatedRules ->
+        val previousRules = rules
+        rules = updatedRules
+
+        val addedRule = updatedRules.firstOrNull { candidate ->
+            candidate !in previousRules &&
+                !WebsiteBlocker.isKeywordRule(candidate) &&
+                !WebsiteBlocker.isPornographyRule(candidate)
+        }
+        val companionInfo = addedRule?.let(AssociatedBlockTargets::appForWebsiteRule)
+        val appAlreadySelected = companionInfo != null &&
+            apps.any { it.packageName == companionInfo.packageName && it.isSelected }
+        val appAlreadyBlocked = companionInfo?.packageName in configuredBlockedPackages
+
+        if (addedRule != null &&
+            companionInfo != null &&
+            !appAlreadySelected &&
+            !appAlreadyBlocked
+        ) {
+            pendingSiteAppOption = addedRule to companionInfo
+        }
+    }
+
+    pendingAppSiteOption?.let { appInfo ->
+        val domain = AssociatedBlockTargets.domainForAppPackage(appInfo.packageName)
+        if (domain != null) {
+            AssociatedTargetOptionDialog(
+                title = "Bloquear site do app também?",
+                message = "Você bloqueou ${appInfo.appName}. Bloquear $domain também?",
+                onDecision = { blockAlso ->
+                    if (blockAlso &&
+                        !BlockingSessionManager.isWebsiteRuleCoveredBy(domain, rules)
+                    ) {
+                        rules = (rules + domain).distinct()
+                    }
+                    pendingAppSiteOption = null
+                }
+            )
+        } else {
+            pendingAppSiteOption = null
+        }
+    }
+
+    pendingSiteAppOption?.let { (rule, appInfo) ->
+        AssociatedTargetOptionDialog(
+            title = "Bloquear app do site também?",
+            message = "Você bloqueou ${WebsiteBlocker.displayRule(rule)}. " +
+                "Bloquear ${appInfo.appName} também?",
+            onDecision = { blockAlso ->
+                if (blockAlso && appInfo.packageName !in configuredBlockedPackages) {
+                    apps = apps.map { app ->
+                        if (app.packageName == appInfo.packageName && !app.isAlreadyBlocked) {
+                            app.copy(isSelected = true)
+                        } else {
+                            app
+                        }
+                    }
+                }
+                pendingSiteAppOption = null
+            }
+        )
     }
 
     val proceed: () -> Unit = {
@@ -414,7 +503,7 @@ fun AppSelectionStep(
             BlockTargetTab.SITES -> WebsiteRulesTab(
                 rules = rules,
                 blockedRules = configuredBlockedRules,
-                onRulesChange = { rules = it },
+                onRulesChange = onWebsiteRulesChange,
                 onAlreadyBlocked = onAlreadyBlocked,
                 modifier = Modifier.padding(padding)
             )
@@ -428,6 +517,51 @@ fun AppSelectionStep(
             )
         }
     }
+}
+
+@Composable
+private fun AssociatedTargetOptionDialog(
+    title: String,
+    message: String,
+    onDecision: (Boolean) -> Unit
+) {
+    var blockAlso by remember(title, message) {
+        mutableStateOf(AssociatedBlockTargets.DEFAULT_BLOCK_COMPANION)
+    }
+
+    AlertDialog(
+        onDismissRequest = { onDecision(false) },
+        title = { Text(title, color = TextPrimary) },
+        text = {
+            Column {
+                Text(message, color = TextSecondary, fontSize = 14.sp)
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    RadioButton(
+                        selected = !blockAlso,
+                        onClick = { blockAlso = false }
+                    )
+                    Text("Não", color = TextPrimary)
+                    Spacer(modifier = Modifier.width(24.dp))
+                    RadioButton(
+                        selected = blockAlso,
+                        onClick = { blockAlso = true }
+                    )
+                    Text("Sim", color = TextPrimary)
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onDecision(blockAlso) },
+                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
+            ) {
+                Text("Continuar", color = DarkBg)
+            }
+        },
+        containerColor = DarkSurface,
+        shape = RoundedCornerShape(24.dp)
+    )
 }
 
 private enum class BlockTargetTab(val titleRes: Int) {
