@@ -27,8 +27,14 @@ object AuthenticatedRemovalWindow {
     }
 
     fun open(context: Context) {
-        val deadline = SystemClock.elapsedRealtime() + DURATION_MILLIS
         val bootCount = readBootCount(context)
+        if (bootCount < 0) {
+            invalidateCachedState()
+            clearPersistedState(context)
+            return
+        }
+
+        val deadline = SystemClock.elapsedRealtime() + DURATION_MILLIS
         val persisted = preferences(context).edit()
             .putLong(DEADLINE_KEY, deadline)
             .putInt(BOOT_COUNT_KEY, bootCount)
@@ -105,7 +111,9 @@ object AuthenticatedRemovalWindow {
         deadlineElapsedMillis: Long,
         storedBootCount: Int,
         currentBootCount: Int
-    ): Boolean = storedBootCount == currentBootCount &&
+    ): Boolean = storedBootCount >= 0 &&
+        currentBootCount >= 0 &&
+        storedBootCount == currentBootCount &&
         deadlineElapsedMillis > nowElapsedMillis
 
     private fun preferences(context: Context) = context.applicationContext
