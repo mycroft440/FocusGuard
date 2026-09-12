@@ -89,6 +89,43 @@ class DeviceOwnerMaintenanceGateTest {
     }
 
     @Test
+    fun `unknown boot identity never restores persisted maintenance`() {
+        val remaining = DeviceOwnerMaintenanceGate.evaluateRemainingMillis(
+            automaticDateTimeEnabled = true,
+            nowElapsedMillis = 1_000L,
+            deadlineElapsedMillis = 601_000L,
+            storedBootCount = -1,
+            currentBootCount = -1
+        )
+
+        assertThat(remaining).isEqualTo(0L)
+    }
+
+    @Test
+    fun `unknown boot persists only non authorizing interruption marker`() {
+        assertThat(
+            DeviceOwnerMaintenanceGate.persistedAuthorizationDeadline(
+                bootCount = -1,
+                deadlineElapsedMillis = 601_000L
+            )
+        ).isEqualTo(0L)
+        assertThat(
+            DeviceOwnerMaintenanceGate.persistedAuthorizationDeadline(
+                bootCount = 9,
+                deadlineElapsedMillis = 601_000L
+            )
+        ).isEqualTo(601_000L)
+    }
+
+    @Test
+    fun `only known boot identity may persist maintenance authorization`() {
+        assertThat(DeviceOwnerMaintenanceGate.canPersistAcrossProcess(0)).isTrue()
+        assertThat(DeviceOwnerMaintenanceGate.canPersistAcrossProcess(9)).isTrue()
+        assertThat(DeviceOwnerMaintenanceGate.canPersistAcrossProcess(-1)).isFalse()
+        assertThat(DeviceOwnerMaintenanceGate.canPersistAcrossProcess(Int.MIN_VALUE)).isFalse()
+    }
+
+    @Test
     fun `expired deadline returns zero`() {
         val remaining = DeviceOwnerMaintenanceGate.evaluateRemainingMillis(
             automaticDateTimeEnabled = true,
