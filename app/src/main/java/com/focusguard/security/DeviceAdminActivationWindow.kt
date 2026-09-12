@@ -28,6 +28,7 @@ object DeviceAdminActivationWindow {
     @Volatile private var cachedStoredBootCount = Int.MIN_VALUE
     @Volatile private var cachedCurrentBootCount = Int.MIN_VALUE
     @Volatile private var cachedAdminInactiveWhenOpened = false
+    @Volatile private var cachedMemoryOnlyWindow = false
 
     /** Loads and validates externally-backed state before an accessibility click. */
     fun preload(context: Context) {
@@ -48,18 +49,24 @@ object DeviceAdminActivationWindow {
 
         val deadline = SystemClock.elapsedRealtime() + DURATION_MILLIS
         val bootCount = readBootCount(context)
-        val persisted = preferences(context).edit()
-            .putLong(DEADLINE_KEY, deadline)
-            .putInt(BOOT_COUNT_KEY, bootCount)
-            .putBoolean(ADMIN_INACTIVE_WHEN_OPENED_KEY, true)
-            .commit()
-        if (persisted) {
-            cachedStoredBootCount = bootCount
-            cachedCurrentBootCount = bootCount
-            cachedAdminInactiveWhenOpened = true
-            cachedDeadlineElapsed = deadline
-        }
-        return persisted
+        val persisted = canPersistAcrossProcess(bootCount) && runCatching {
+            preferences(context).edit()
+                .putLong(DEADLINE_KEY, deadline)
+                .putInt(BOOT_COUNT_KEY, bootCount)
+                .putBoolean(ADMIN_INACTIVE_WHEN_OPENED_KEY, true)
+                .commit()
+        }.getOrDefault(false)
+
+        // BOOT_COUNT is what binds an elapsedRealtime deadline to this boot. If
+        // it is unavailable (or persistence fails), keep the legitimate enrollment
+        // handoff usable in this process only. Process death/reboot then fails closed.
+        if (!persisted) clearPersistedState(context)
+        cachedStoredBootCount = bootCount
+        cachedCurrentBootCount = bootCount
+        cachedAdminInactiveWhenOpened = true
+        cachedDeadlineElapsed = deadline
+        cachedMemoryOnlyWindow = !persisted
+        return true
     }
 
     /** Cheap pre-check with no DPM/Settings/Preferences read after preload/open. */
@@ -67,9 +74,18 @@ object DeviceAdminActivationWindow {
         ensureCacheLoaded(context)
         val deadline = cachedDeadlineElapsed
         if (deadline <= 0L) return false
-        val active = cachedAdminInactiveWhenOpened &&
-            cachedStoredBootCount == cachedCurrentBootCount &&
-            deadline > SystemClock.elapsedRealtime()
+        val now = SystemClock.elapsedRealtime()
+        val active = if (cachedMemoryOnlyWindow) {
+            cachedAdminInactiveWhenOpened && deadline > now
+        } else {
+            evaluate(
+                nowElapsedMillis = now,
+                deadlineElapsedMillis = deadline,
+                storedBootCount = cachedStoredBootCount,
+                currentBootCount = cachedCurrentBootCount,
+                deviceAdminActive = cachedAdminInactiveWhenOpened.not()
+            )
+        }
         if (!active) invalidateCachedState()
         return active
     }
@@ -77,6 +93,7 @@ object DeviceAdminActivationWindow {
     /** Memory-only after [preload] or [open]. */
     fun isAuthorized(context: Context): Boolean {
         if (!isPotentiallyAuthorized(context)) return false
+        if (cachedMemoryOnlyWindow) return true
         val authorized = evaluate(
             nowElapsedMillis = SystemClock.elapsedRealtime(),
             deadlineElapsedMillis = cachedDeadlineElapsed,
@@ -94,6 +111,8 @@ object DeviceAdminActivationWindow {
         clearPersistedState(context)
     }
 
+    internal fun canPersistAcrossProcess(bootCount: Int): Boolean = bootCount >= 0
+
     internal fun evaluate(
         nowElapsedMillis: Long,
         deadlineElapsedMillis: Long,
@@ -101,6 +120,8 @@ object DeviceAdminActivationWindow {
         currentBootCount: Int,
         deviceAdminActive: Boolean
     ): Boolean = deviceAdminActive.not() &&
+        canPersistAcrossProcess(storedBootCount) &&
+        canPersistAcrossProcess(currentBootCount) &&
         storedBootCount == currentBootCount &&
         deadlineElapsedMillis > nowElapsedMillis
 
@@ -111,6 +132,7 @@ object DeviceAdminActivationWindow {
             val prefs = preferences(context)
             val deadline = prefs.getLong(DEADLINE_KEY, 0L)
             if (deadline <= 0L) {
+                cachedMemoryOnlyWindow = false
                 cachedDeadlineElapsed = 0L
                 return
             }
@@ -119,15 +141,22 @@ object DeviceAdminActivationWindow {
             cachedAdminInactiveWhenOpened =
                 prefs.getBoolean(ADMIN_INACTIVE_WHEN_OPENED_KEY, false) &&
                     isDeviceAdminInactive(context)
+            cachedMemoryOnlyWindow = false
             cachedDeadlineElapsed = deadline
 
             // Restored windows are validated once here, before Accessibility's hot path.
-            // Old/stale windows then fail closed without synchronous I/O during an event.
-            if (cachedAdminInactiveWhenOpened.not() ||
-                cachedStoredBootCount != cachedCurrentBootCount ||
-                cachedDeadlineElapsed <= SystemClock.elapsedRealtime()
+            // Unknown/stale boot identity must never be accepted merely because two
+            // sentinel values happen to be equal.
+            if (!evaluate(
+                    nowElapsedMillis = SystemClock.elapsedRealtime(),
+                    deadlineElapsedMillis = cachedDeadlineElapsed,
+                    storedBootCount = cachedStoredBootCount,
+                    currentBootCount = cachedCurrentBootCount,
+                    deviceAdminActive = cachedAdminInactiveWhenOpened.not()
+                )
             ) {
                 invalidateCachedState()
+                clearPersistedState(context)
             }
         }
     }
@@ -141,6 +170,7 @@ object DeviceAdminActivationWindow {
         cachedStoredBootCount = Int.MIN_VALUE
         cachedCurrentBootCount = Int.MIN_VALUE
         cachedAdminInactiveWhenOpened = false
+        cachedMemoryOnlyWindow = false
         cachedDeadlineElapsed = 0L
     }
 
