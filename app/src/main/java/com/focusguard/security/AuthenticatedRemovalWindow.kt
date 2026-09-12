@@ -44,12 +44,16 @@ object AuthenticatedRemovalWindow {
             .putLong(DEADLINE_KEY, deadline)
             .putInt(BOOT_COUNT_KEY, bootCount)
             .commit()
-        if (persisted) {
-            cachedStoredBootCount = bootCount
-            cachedCurrentBootCount = bootCount
-            cachedDeadlineElapsed = deadline
+        if (!persisted) {
+            invalidateCachedState()
+            clearPersistedState(context)
+            return false
         }
-        return persisted
+
+        cachedStoredBootCount = bootCount
+        cachedCurrentBootCount = bootCount
+        cachedDeadlineElapsed = deadline
+        return true
     }
 
     /** Memory-only after [preload] or [open]. */
