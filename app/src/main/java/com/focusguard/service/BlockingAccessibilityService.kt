@@ -33,6 +33,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.focusguard.MainActivity
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
@@ -803,14 +804,13 @@ class BlockingAccessibilityService : AccessibilityService() {
             addAction(ACTION_REFRESH_BLOCKING)
             addAction(ACTION_DEV_RELINQUISH_ACCESSIBILITY)
         }
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            registerReceiver(refreshReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-        } else {
-            @Suppress("DEPRECATION")
-            registerReceiver(refreshReceiver, filter)
-        }
+        ContextCompat.registerReceiver(
+            this,
+            refreshReceiver,
+            filter,
+            internalRefreshReceiverFlags()
+        )
     }
-
     private fun registerScreenStateReceiver() {
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF)
@@ -4874,6 +4874,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                 putExtra(EXTRA_STRICT_POMODORO_SNAPSHOT, strictPomodoro)
             }
         }
+
+        internal fun internalRefreshReceiverFlags(): Int =
+            ContextCompat.RECEIVER_NOT_EXPORTED
 
         internal fun createDevelopmentRelinquishIntent(context: Context): Intent =
             Intent(ACTION_DEV_RELINQUISH_ACCESSIBILITY).setPackage(context.packageName)
