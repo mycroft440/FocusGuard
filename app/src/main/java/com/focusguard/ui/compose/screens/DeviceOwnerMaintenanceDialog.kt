@@ -69,6 +69,7 @@ internal fun DeviceOwnerMaintenanceDialog(
     val activeBlockRequiresMonthly = stringResource(
         R.string.device_owner_maintenance_active_block_requires_monthly
     )
+    val maintenanceUnavailable = stringResource(R.string.device_owner_diagnostics_failed_state)
     val openedMessage = stringResource(R.string.device_owner_maintenance_opened)
     val closedMessage = stringResource(R.string.device_owner_maintenance_closed)
 
@@ -90,6 +91,8 @@ internal fun DeviceOwnerMaintenanceDialog(
                 outsideWindow
             DeviceOwnerMaintenanceGate.UnlockResult.ACTIVE_BLOCK_REQUIRES_MONTHLY_WINDOW ->
                 activeBlockRequiresMonthly
+            DeviceOwnerMaintenanceGate.UnlockResult.BOOT_IDENTITY_UNAVAILABLE ->
+                maintenanceUnavailable
             // Credential maintenance is intentionally not exposed here. The
             // master password is reserved for Settings > Remove all blocks.
             DeviceOwnerMaintenanceGate.UnlockResult.CREDENTIAL_NOT_CONFIGURED,
