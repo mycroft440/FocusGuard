@@ -90,11 +90,12 @@ object AuthenticatedUninstallCoordinator {
 
         return withContext(Dispatchers.Main.immediate) {
             runCatching {
-                // Refresh the deadline after policy release. If persistence fails,
-                // the first window may still be valid; never launch without either.
-                val refreshed = AuthenticatedRemovalWindow.open(appContext)
-                check(refreshed || AuthenticatedRemovalWindow.isActive(appContext)) {
-                    "Janela autenticada de remoção indisponível"
+                // Administrative-role release is bounded to roughly five seconds,
+                // while the handoff window lasts sixty. Do not create a second
+                // persistence point after the roles are gone; just verify that the
+                // already-established authorization is still alive.
+                check(AuthenticatedRemovalWindow.isActive(appContext)) {
+                    "Janela autenticada de remoção expirou antes da desinstalação"
                 }
                 appContext.startActivity(
                     Intent(Intent.ACTION_DELETE).apply {
