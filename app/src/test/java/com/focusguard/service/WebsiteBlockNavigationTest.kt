@@ -154,6 +154,12 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
+    fun `website curtain perceptual minimum stays low latency`() {
+        assertThat(BlockingAccessibilityService.WEBSITE_MIN_BLOCK_NOTICE_MILLIS)
+            .isAtMost(150L)
+    }
+
+    @Test
     fun `website transition guard rejects overlap only for the same browser`() {
         val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
 
@@ -717,8 +723,9 @@ class WebsiteBlockNavigationTest {
         )
 
         assertThat(machine.begin()).containsExactly(
+            BlockingAccessibilityService.WebsiteTransitionAction.SHOW_CURTAIN,
             BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB
-        )
+        ).inOrder()
         assertThat(machine.afterGoogleSanitized()).isEqualTo(
             BlockingAccessibilityService.WebsiteTransitionAction.HIDE_CURTAIN
         )
@@ -761,7 +768,11 @@ class WebsiteBlockNavigationTest {
             strict = true
         )
 
-        assertThat(machine.begin().last()).isEqualTo(
+        val initialActions = machine.begin()
+        assertThat(initialActions.first()).isEqualTo(
+            BlockingAccessibilityService.WebsiteTransitionAction.SHOW_CURTAIN
+        )
+        assertThat(initialActions.last()).isEqualTo(
             BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB
         )
         assertThat(machine.afterGoogleSanitized()).isEqualTo(
