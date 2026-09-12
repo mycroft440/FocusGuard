@@ -230,8 +230,9 @@ fun UnifiedProtectionSetupWizard(
                 onBack = onFinish
             )
 
-            // Este assistente tem uma tela própria de sites (WEBSITE_PICKER),
-            // então aqui só escolhe aplicativos e ignora as regras do seletor.
+            // Este assistente tem uma tela própria de sites (WEBSITE_PICKER).
+            // O seletor de apps continua visualmente focado em apps, mas pode devolver
+            // um site companheiro quando o usuário aceitar explicitamente a opção.
             ProtectionSetupPage.APP_PICKER -> AppSelectionStep(
                 onNext = { apps, companionRules ->
                     scope.launch {
@@ -273,24 +274,7 @@ fun UnifiedProtectionSetupWizard(
                 configuredBlockedRules = configuredBlockedTargets.unavailableWebsiteRules,
                 selectedAppPackages = selectedApps.mapTo(linkedSetOf()) { it.packageName },
                 configuredBlockedPackages = configuredBlockedTargets.unavailableAppPackageNames,
-                onCompanionAppSelected = { appInfo ->
-                    if (selectedApps.none { it.packageName == appInfo.packageName } &&
-                        appInfo.packageName !in configuredBlockedTargets.unavailableAppPackageNames
-                    ) {
-                        selectedApps = selectedApps + SelectableAppUi(
-                            packageName = appInfo.packageName,
-                            appName = appInfo.appName,
-                            isSelected = true,
-                            isInstalled = context.packageManager
-                                .getLaunchIntentForPackage(appInfo.packageName) != null,
-                            category = appInfo.category,
-                            iconUrl = appInfo.domain?.let { domain ->
-                                "https://www.google.com/s2/favicons?domain=$domain&sz=128"
-                            }
-                        )
-                    }
-                },
-                onSave = { rules ->
+                onSave = { rules, optedInCompanionPackages ->
                     scope.launch {
                         val latest = refreshConfiguredBlockedTargets()
                         val availableRules = rules.filterNot {
@@ -303,6 +287,29 @@ fun UnifiedProtectionSetupWizard(
                                 Toast.LENGTH_SHORT
                             ).show()
                         }
+
+                        val companionApps = AssociatedBlockTargets.selectedAppsForWebsiteRules(
+                            rules = availableRules,
+                            optedInPackages = optedInCompanionPackages
+                        ).filterNot {
+                            it.packageName in latest.unavailableAppPackageNames
+                        }
+                        val companionRows = companionApps.map { appInfo ->
+                            SelectableAppUi(
+                                packageName = appInfo.packageName,
+                                appName = appInfo.appName,
+                                isSelected = true,
+                                isInstalled = context.packageManager
+                                    .getLaunchIntentForPackage(appInfo.packageName) != null,
+                                category = appInfo.category,
+                                iconUrl = appInfo.domain?.let { domain ->
+                                    "https://www.google.com/s2/favicons?domain=$domain&sz=128"
+                                }
+                            )
+                        }
+
+                        selectedApps = (selectedApps + companionRows)
+                            .distinctBy { it.packageName }
                         websiteRules = availableRules
                         returnToList()
                     }
@@ -614,8 +621,7 @@ private fun WebsiteRuleSelectionScreen(
     configuredBlockedRules: Set<String>,
     selectedAppPackages: Set<String>,
     configuredBlockedPackages: Set<String>,
-    onCompanionAppSelected: (PredefinedApps.AppInfo) -> Unit,
-    onSave: (List<String>) -> Unit,
+    onSave: (List<String>, Set<String>) -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -631,11 +637,23 @@ private fun WebsiteRuleSelectionScreen(
     var pendingCompanionApp by remember {
         mutableStateOf<Pair<String, PredefinedApps.AppInfo>?>(null)
     }
+    var optedInCompanionPackages by remember {
+        mutableStateOf<Set<String>>(emptySet())
+    }
+
+    fun removeRule(rule: String) {
+        val normalized = WebsiteBlocker.normalizeRule(rule)
+        rules = rules.filterNot { WebsiteBlocker.normalizeRule(it) == normalized }
+        AssociatedBlockTargets.appForWebsiteRule(normalized)?.let { appInfo ->
+            optedInCompanionPackages = optedInCompanionPackages - appInfo.packageName
+        }
+    }
 
     fun maybeOfferCompanionApp(rule: String) {
         val appInfo = AssociatedBlockTargets.appForWebsiteRule(rule) ?: return
         if (appInfo.packageName in selectedAppPackages ||
-            appInfo.packageName in configuredBlockedPackages
+            appInfo.packageName in configuredBlockedPackages ||
+            appInfo.packageName in optedInCompanionPackages
         ) return
         pendingCompanionApp = WebsiteBlocker.normalizeRule(rule) to appInfo
     }
@@ -647,7 +665,7 @@ private fun WebsiteRuleSelectionScreen(
             return
         }
         if (isWebsiteRuleAlreadyBlocked(normalized, configuredBlockedRules)) {
-            rules = rules.filterNot { WebsiteBlocker.normalizeRule(it) == normalized }
+            removeRule(normalized)
             input = ""
             invalidInput = false
             Toast.makeText(
@@ -666,9 +684,7 @@ private fun WebsiteRuleSelectionScreen(
     fun togglePresetRule(rule: String) {
         val normalized = WebsiteBlocker.normalizeRule(rule)
         if (isWebsiteRuleAlreadyBlocked(normalized, configuredBlockedRules)) {
-            rules = rules.filterNot {
-                WebsiteBlocker.normalizeRule(it) == normalized
-            }
+            removeRule(normalized)
             Toast.makeText(
                 context,
                 context.getString(R.string.site_already_blocked),
@@ -676,12 +692,12 @@ private fun WebsiteRuleSelectionScreen(
             ).show()
         } else {
             val wasSelected = normalized in rules
-            rules = if (wasSelected) {
-                rules.filterNot { it == normalized }
+            if (wasSelected) {
+                removeRule(normalized)
             } else {
-                (rules + normalized).distinct()
+                rules = (rules + normalized).distinct()
+                maybeOfferCompanionApp(normalized)
             }
-            if (!wasSelected) maybeOfferCompanionApp(normalized)
         }
     }
 
@@ -694,7 +710,9 @@ private fun WebsiteRuleSelectionScreen(
                 appInfo.appName
             ),
             onDecision = { blockAlso ->
-                if (blockAlso) onCompanionAppSelected(appInfo)
+                if (blockAlso) {
+                    optedInCompanionPackages = optedInCompanionPackages + appInfo.packageName
+                }
                 pendingCompanionApp = null
             }
         )
@@ -712,11 +730,10 @@ private fun WebsiteRuleSelectionScreen(
             Surface(color = DarkBg, tonalElevation = 8.dp) {
                 Button(
                     onClick = {
-                        onSave(
-                            rules.filterNot {
-                                isWebsiteRuleAlreadyBlocked(it, configuredBlockedRules)
-                            }
-                        )
+                        val savableRules = rules.filterNot {
+                            isWebsiteRuleAlreadyBlocked(it, configuredBlockedRules)
+                        }
+                        onSave(savableRules, optedInCompanionPackages)
                     },
                     modifier = Modifier.fillMaxWidth().padding(20.dp, 12.dp).height(54.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
@@ -822,7 +839,7 @@ private fun WebsiteRuleSelectionScreen(
                         icon = Icons.Default.Public,
                         title = WebsiteBlocker.displayRule(rule),
                         subtitle = stringResource(R.string.sessions_category_websites),
-                        onRemove = { rules = rules.filterNot { it == rule } }
+                        onRemove = { removeRule(rule) }
                     )
                 }
             }

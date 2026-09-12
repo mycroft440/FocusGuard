@@ -32,4 +32,35 @@ class AssociatedBlockTargetsTest {
         ).isNull()
         assertThat(AssociatedBlockTargets.appForWebsiteRule("example.invalid")).isNull()
     }
+
+    @Test
+    fun `website companion app is committed only when user opted in`() {
+        val apps = AssociatedBlockTargets.selectedAppsForWebsiteRules(
+            rules = listOf("youtube.com"),
+            optedInPackages = emptySet()
+        )
+
+        assertThat(apps).isEmpty()
+    }
+
+    @Test
+    fun `website companion app is committed when website is saved`() {
+        val apps = AssociatedBlockTargets.selectedAppsForWebsiteRules(
+            rules = listOf("youtube.com"),
+            optedInPackages = setOf("com.google.android.youtube")
+        )
+
+        assertThat(apps.map { it.packageName })
+            .containsExactly("com.google.android.youtube")
+    }
+
+    @Test
+    fun `removed website does not leak opted in companion app`() {
+        val apps = AssociatedBlockTargets.selectedAppsForWebsiteRules(
+            rules = emptyList(),
+            optedInPackages = setOf("com.google.android.youtube")
+        )
+
+        assertThat(apps).isEmpty()
+    }
 }

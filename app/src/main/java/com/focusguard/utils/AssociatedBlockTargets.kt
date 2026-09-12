@@ -30,4 +30,23 @@ object AssociatedBlockTargets {
                 ?.let { it == normalizedRule } == true
         }
     }
+
+    /**
+     * Resolves only companion apps whose website is still part of the final saved rules.
+     * This keeps the website picker transactional: leaving it with Back, or removing a
+     * website before Save, cannot leak its companion app into the parent draft.
+     */
+    fun selectedAppsForWebsiteRules(
+        rules: Collection<String>,
+        optedInPackages: Collection<String>
+    ): List<PredefinedApps.AppInfo> {
+        val optedIn = optedInPackages.filter(String::isNotBlank).toSet()
+        if (optedIn.isEmpty()) return emptyList()
+
+        return rules.asSequence()
+            .mapNotNull(::appForWebsiteRule)
+            .filter { it.packageName in optedIn }
+            .distinctBy { it.packageName }
+            .toList()
+    }
 }
