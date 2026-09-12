@@ -1,0 +1,396 @@
+name: Patch website curtain redirect
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/patch-website-curtain-redirect.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android 16 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Apply website curtain and redirect patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git checkout -B fix/website-curtain-google-redirect origin/main
+          python3 - <<'PY'
+          from pathlib import Path
+
+          service_path = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
+          text = service_path.read_text()
+
+          text = text.replace(
+              'import android.view.Gravity\nimport android.view.KeyEvent\n',
+              'import android.view.Choreographer\nimport android.view.Gravity\nimport android.view.KeyEvent\n',
+              1,
+          )
+          text = text.replace(
+              'import kotlinx.coroutines.launch\nimport kotlinx.coroutines.withContext\n',
+              'import kotlinx.coroutines.launch\nimport kotlinx.coroutines.suspendCancellableCoroutine\nimport kotlinx.coroutines.withContext\n',
+              1,
+          )
+          text = text.replace(
+              'import kotlinx.coroutines.withTimeoutOrNull\n',
+              'import kotlinx.coroutines.withTimeoutOrNull\nimport kotlin.coroutines.resume\n',
+              1,
+          )
+
+          old_begin = '''        fun begin(): List<WebsiteTransitionAction> {
+              check(state == State.NEW)
+              state = State.SANITIZATION_PENDING
+              return listOf(WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB)
+          }
+          '''
+          new_begin = '''        fun begin(): List<WebsiteTransitionAction> {
+              check(state == State.NEW)
+              state = State.SANITIZATION_PENDING
+              return listOf(
+                  WebsiteTransitionAction.SHOW_CURTAIN,
+                  WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB
+              )
+          }
+          '''
+          if old_begin not in text:
+              raise SystemExit('website state-machine begin block not found')
+          text = text.replace(old_begin, new_begin, 1)
+
+          start = text.index('    private fun startWebsiteBlockTransition(')
+          end = text.index('\n    private suspend fun completeStrictWebsiteDestination(', start)
+          replacement = r'''    private fun startWebsiteBlockTransition(
+              browserPackageName: String,
+              browserWindowId: Int = INVALID_BROWSER_WINDOW_ID,
+              blockedCandidate: String? = null,
+              detectionEventUptimeMillis: Long = 0L
+          ) {
+              val expectedWindowId = resolveBrowserWindowId(browserPackageName, browserWindowId)
+              if (expectedWindowId == INVALID_BROWSER_WINDOW_ID) return
+              val strict = isPomodoroStrictActive
+              val transitionId = websiteBlockTransitionCounter.incrementAndGet()
+              val transition = websiteBlockTransitionGuard.tryStart(
+                  browserPackageName = browserPackageName,
+                  transitionId = transitionId,
+                  destination = if (strict) {
+                      WebsiteTransitionDestination.POMODORO
+                  } else {
+                      WebsiteTransitionDestination.GOOGLE
+                  },
+                  expectedWindowId = expectedWindowId,
+                  blockedCandidate = blockedCandidate,
+                  blockedRules = blockedWebsitesDomainSet,
+                  detectionEventUptimeMillis = detectionEventUptimeMillis
+              ) ?: return
+              val stateMachine = WebsiteBlockTransitionStateMachine(strict = strict)
+              val initialActions = stateMachine.begin()
+              val curtainGeneration = if (
+                  WebsiteTransitionAction.SHOW_CURTAIN in initialActions
+              ) {
+                  showInstantBlockCurtain(mode = CurtainMode.BLOCK_NOTICE)
+              } else {
+                  0L
+              }
+              if (curtainGeneration <= 0L ||
+                  !websiteBlockTransitionGuard.markCurtainGeneration(
+                      browserPackageName = browserPackageName,
+                      transitionId = transitionId,
+                      curtainGeneration = curtainGeneration
+                  )
+              ) {
+                  websiteBlockTransitionGuard.finish(browserPackageName, transitionId)
+                  return
+              }
+              awaitingSafeSurfaceGeneration = curtainGeneration
+              val curtainShownAtUptimeMillis = SystemClock.uptimeMillis()
+
+              scope.launch(Dispatchers.Main.immediate) {
+                  try {
+                      // Give the already-warm accessibility overlay one display frame to
+                      // become opaque before touching the browser UI. The redirect itself
+                      // still starts immediately after that frame; there is no human-scale
+                      // delay between blocking and navigation.
+                      awaitNextWebsiteRedirectFrame()
+
+                      val rewritePolicy = WebsiteTabNeutralizationPolicy(
+                          browserPackageName = browserPackageName,
+                          expectedWindowId = expectedWindowId
+                      )
+                      var redirectRequested = requestSafeGoogleInCurrentTab(
+                          browserPackageName = browserPackageName,
+                          expectedWindowId = expectedWindowId,
+                          policy = rewritePolicy,
+                          transition = transition
+                      )
+
+                      // Older Android versions or browser UIs that cannot expose a
+                      // certifiable editable omnibox fall back to closing only the exact
+                      // blocked tab, then opening Google in that same browser. Never fail
+                      // closed by blocking the browser application itself.
+                      if (!redirectRequested) {
+                          restoreBlockedSurfaceAfterAddressEdit(transition)
+                          redirectRequested = closeBlockedTabAndRequestSafeGoogle(
+                              browserPackageName = browserPackageName,
+                              expectedWindowId = expectedWindowId,
+                              transition = transition
+                          )
+                      }
+
+                      if (!redirectRequested) {
+                          stateMachine.onFailureOrTimeout()
+                          evacuateWebsiteTransition(curtainGeneration)
+                          return@launch
+                      }
+
+                      val googleConfirmed = withTimeoutOrNull(
+                          WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS
+                      ) {
+                          transition.safeGoogleConfirmed.await()
+                          true
+                      } == true
+                      if (!googleConfirmed) {
+                          stateMachine.onFailureOrTimeout()
+                          evacuateWebsiteTransition(curtainGeneration)
+                          return@launch
+                      }
+
+                      when (stateMachine.afterGoogleSanitized()) {
+                          WebsiteTransitionAction.HIDE_CURTAIN -> {
+                              val visibleFor = SystemClock.uptimeMillis() -
+                                  curtainShownAtUptimeMillis
+                              val remaining = WEBSITE_MIN_BLOCK_NOTICE_MILLIS - visibleFor
+                              if (remaining > 0L) delay(remaining)
+                              dismissInstantBlockCurtain(curtainGeneration)
+                          }
+
+                          WebsiteTransitionAction.OPEN_POMODORO -> {
+                              if (completeStrictWebsiteDestination(
+                                      transition = transition,
+                                      curtainGeneration = curtainGeneration
+                                  )
+                              ) {
+                                  stateMachine.onPomodoroConfirmed()
+                                  dismissInstantBlockCurtain(curtainGeneration)
+                              } else {
+                                  stateMachine.onFailureOrTimeout()
+                                  evacuateWebsiteTransition(curtainGeneration)
+                              }
+                          }
+
+                          else -> {
+                              stateMachine.onFailureOrTimeout()
+                              evacuateWebsiteTransition(curtainGeneration)
+                          }
+                      }
+                  } finally {
+                      websiteBlockTransitionGuard.finish(browserPackageName, transitionId)
+                  }
+              }
+          }
+
+          private suspend fun awaitNextWebsiteRedirectFrame() {
+              suspendCancellableCoroutine<Unit> { continuation ->
+                  val choreographer = Choreographer.getInstance()
+                  val callback = Choreographer.FrameCallback {
+                      if (continuation.isActive) continuation.resume(Unit)
+                  }
+                  continuation.invokeOnCancellation {
+                      choreographer.removeFrameCallback(callback)
+                  }
+                  choreographer.postFrameCallback(callback)
+              }
+          }
+
+          private suspend fun requestSafeGoogleInCurrentTab(
+              browserPackageName: String,
+              expectedWindowId: Int,
+              policy: WebsiteTabNeutralizationPolicy,
+              transition: WebsiteBlockTransitionHandle
+          ): Boolean {
+              if (!canUseCertifiableImeSubmit(Build.VERSION.SDK_INT)) return false
+              val setRequestedAt = prepareSafeAddressBar(
+                  browserPackageName = browserPackageName,
+                  expectedWindowId = expectedWindowId,
+                  policy = policy,
+                  transition = transition,
+                  phaseStartedAtUptimeMillis = transition.detectionEventUptimeMillis
+              )
+              if (afterSafeAddressSet(setRequestedAt > 0L) !=
+                  WebsiteSanitizationDecision.SUBMIT_ADDRESS_BAR
+              ) return false
+
+              policy.markSafeAddressSet(setRequestedAt)
+              val submitRequestedAt = submitSafeAddressBar(
+                  browserPackageName = browserPackageName,
+                  expectedWindowId = expectedWindowId,
+                  policy = policy,
+                  transition = transition
+              )
+              if (afterSafeAddressSubmit(submitRequestedAt > 0L) !=
+                  WebsiteSanitizationDecision.AWAIT_GOOGLE_CONFIRMATION
+              ) return false
+
+              policy.markRedirectRequested()
+              return websiteBlockTransitionGuard.markSanitizationRequested(
+                  browserPackageName = browserPackageName,
+                  transitionId = transition.id,
+                  requestedAtUptimeMillis = submitRequestedAt
+              )
+          }
+
+          private suspend fun restoreBlockedSurfaceAfterAddressEdit(
+              transition: WebsiteBlockTransitionHandle
+          ): Boolean {
+              if (transition.activatedAddressViewId == null &&
+                  transition.editorAddressViewId == null
+              ) return true
+              if (!performGlobalAction(GLOBAL_ACTION_BACK)) return false
+              delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
+              val root = activeBrowserRoot(
+                  transition.browserPackageName,
+                  transition.expectedWindowId
+              ) ?: return false
+              val restored = rootStillShowsDetectedBlockedTarget(root, transition)
+              recycleSafely(root)
+              transition.activatedAddressViewId = null
+              transition.editorAddressViewId = null
+              return restored
+          }
+
+          private suspend fun closeBlockedTabAndRequestSafeGoogle(
+              browserPackageName: String,
+              expectedWindowId: Int,
+              transition: WebsiteBlockTransitionHandle
+          ): Boolean {
+              val fallbackPolicy = WebsiteTabNeutralizationPolicy(
+                  browserPackageName = browserPackageName,
+                  expectedWindowId = expectedWindowId
+              )
+              val closeResult = closeCurrentChromiumTab(
+                  browserPackageName = browserPackageName,
+                  expectedWindowId = expectedWindowId,
+                  policy = fallbackPolicy,
+                  transition = transition
+              )
+              if (closeResult.menuPossiblyOpened && !closeResult.closeActionAccepted) {
+                  dismissChromiumTabMenu(
+                      browserPackageName = browserPackageName,
+                      targetWindowId = expectedWindowId,
+                      menuWindowId = closeResult.menuWindowId,
+                      transition = transition
+                  )
+              }
+              if (!closeResult.closeConfirmed) return false
+              return requestSafeGoogleAfterConfirmedClose(transition)
+          }
+          '''
+          text = text[:start] + replacement + text[end:]
+
+          text = text.replace(
+              '        private const val WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS = 120L\n',
+              '        private const val WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS = 120L\n'
+              '        internal const val WEBSITE_MIN_BLOCK_NOTICE_MILLIS = 120L\n',
+              1,
+          )
+
+          text = text.replace(
+              '// Tab neutralization and the safe redirect are asynchronous. Ignore the\n'
+              '// browser\'s follow-up events until that handoff finishes so a stale\n'
+              '// blocked address cannot start an overlapping redirect loop.\n',
+              '// The curtain + same-tab Google redirect are asynchronous. Ignore the\n'
+              '// browser\'s follow-up events until that handoff finishes so a stale\n'
+              '// blocked address cannot start an overlapping redirect loop.\n',
+              1,
+          )
+
+          service_path.write_text(text)
+
+          test_path = Path('app/src/test/java/com/focusguard/service/WebsiteBlockNavigationTest.kt')
+          tests = test_path.read_text()
+          old_non_strict = '''        assertThat(machine.begin()).containsExactly(
+              BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB
+          )
+          '''
+          new_non_strict = '''        assertThat(machine.begin()).containsExactly(
+              BlockingAccessibilityService.WebsiteTransitionAction.SHOW_CURTAIN,
+              BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB
+          ).inOrder()
+          '''
+          if old_non_strict not in tests:
+              raise SystemExit('non-strict transition assertion not found')
+          tests = tests.replace(old_non_strict, new_non_strict, 1)
+
+          old_strict = '''        assertThat(machine.begin().last()).isEqualTo(
+              BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB
+          )
+          '''
+          new_strict = '''        val initialActions = machine.begin()
+          assertThat(initialActions.first()).isEqualTo(
+              BlockingAccessibilityService.WebsiteTransitionAction.SHOW_CURTAIN
+          )
+          assertThat(initialActions.last()).isEqualTo(
+              BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB
+          )
+          '''
+          if old_strict not in tests:
+              raise SystemExit('strict transition assertion not found')
+          tests = tests.replace(old_strict, new_strict, 1)
+
+          anchor = '''    @Test
+              fun `website handoff waits for a positively confirmed destination`() {
+                  assertThat(BlockingAccessibilityService.WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS)
+                      .isGreaterThan(BlockingAccessibilityService.EVENT_NOTIFICATION_TIMEOUT_MILLIS)
+              }
+          '''
+          if anchor in tests:
+              replacement_test = anchor + '''
+
+              @Test
+              fun `website curtain has only a short perceptual minimum`() {
+                  assertThat(BlockingAccessibilityService.WEBSITE_MIN_BLOCK_NOTICE_MILLIS)
+                      .isAtMost(150L)
+              }
+          '''
+              tests = tests.replace(anchor, replacement_test, 1)
+          test_path.write_text(tests)
+          PY
+
+      - name: Run website blocking unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest --tests com.focusguard.service.WebsiteBlockNavigationTest --no-daemon --stacktrace
+
+      - name: Push implementation branch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "FocusGuard CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt \
+                  app/src/test/java/com/focusguard/service/WebsiteBlockNavigationTest.kt
+          git commit -m "Restore instant website curtain and Google redirect"
+          git push --force-with-lease origin HEAD:refs/heads/fix/website-curtain-google-redirect
