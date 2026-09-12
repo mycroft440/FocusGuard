@@ -54,6 +54,7 @@ import com.focusguard.ui.compose.components.limits.WebsiteLimitItem
 import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.utils.AppUsageLimitActivationUsage
+import com.focusguard.utils.UsageLimitBehaviorPolicy
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -198,6 +199,10 @@ fun UsageLimitsScreen(
                     hasMasterCredential = hasMasterCredential,
                     onConfigureMasterPassword = openMasterPassword,
                     onPermissionsRequired = onPermissionsRequired,
+                    onWebsiteLimitCreated = {
+                        websiteLimitsState.hasLoaded = false
+                        websiteLimitsState.isLoading.value = true
+                    },
                     state = appLimitsState
                 )
                 1 -> WebsiteLimitsTab(
@@ -321,6 +326,7 @@ fun AppLimitsTab(
     hasMasterCredential: Boolean,
     onConfigureMasterPassword: () -> Unit,
     onPermissionsRequired: () -> Unit,
+    onWebsiteLimitCreated: () -> Unit,
     state: AppLimitsTabState
 ) {
     val context = LocalContext.current
@@ -587,7 +593,7 @@ fun AppLimitsTab(
             hasMasterCredential = hasMasterCredential,
             onConfigureMasterPassword = onConfigureMasterPassword,
             onDismiss = { showDialog = false },
-            onSave = { minutes, enabled, lockMode, _, lockUntil ->
+            onSave = { minutes, enabled, lockMode, _, lockUntil, companionDomains ->
                 val appToSave = selectedApp ?: return@AppLimitRedesignedSheet
                 val monetizedAction: () -> Unit = {
                     scope.launch(Dispatchers.IO) {
@@ -596,6 +602,7 @@ fun AppLimitsTab(
                             return@launch
                         }
                         val limitDao = db.appUsageLimitDao()
+                        var companionWebsiteCreated = false
                         val updated = if (minutes != null && minutes > 0) {
                             limitDao.insert(
                                 AppUsageLimit(
@@ -610,6 +617,44 @@ fun AppLimitsTab(
                                     unlockWithPassword = lockMode.equals("PASSWORD", ignoreCase = true)
                                 )
                             )
+
+                            if (companionDomains.isNotEmpty()) {
+                                val websiteDao = db.websiteUsageLimitDao()
+                                val existingWebsiteRules = websiteDao.getAllStatic()
+                                    .mapTo(mutableSetOf()) {
+                                        WebsiteBlocker.normalizeRule(it.domain)
+                                    }
+                                companionDomains
+                                    .map(WebsiteBlocker::normalizeRule)
+                                    .filter(String::isNotEmpty)
+                                    .distinct()
+                                    .forEach { domain ->
+                                        if (domain !in existingWebsiteRules) {
+                                            val websiteLockMode = when {
+                                                UsageLimitBehaviorPolicy.isPauseMode(lockMode) ->
+                                                    UsageLimitBehaviorPolicy.pauseModeFor(domain)
+                                                UsageLimitBehaviorPolicy
+                                                    .isBlockUntilTomorrowMode(lockMode) ->
+                                                    UsageLimitBehaviorPolicy
+                                                        .blockUntilTomorrowModeFor(domain)
+                                                else -> lockMode
+                                            }
+                                            websiteDao.insert(
+                                                WebsiteUsageLimit(
+                                                    domain = domain,
+                                                    dailyLimitMinutes = minutes,
+                                                    isEnabled = enabled,
+                                                    lockMode = websiteLockMode,
+                                                    lockPasswordHash = null,
+                                                    lockUntilTimestamp = lockUntil
+                                                )
+                                            )
+                                            existingWebsiteRules += domain
+                                            companionWebsiteCreated = true
+                                        }
+                                    }
+                            }
+
                             appToSave.copy(
                                 currentLimitMinutes = minutes,
                                 isEnabled = enabled,
@@ -634,6 +679,7 @@ fun AppLimitsTab(
                         withContext(Dispatchers.Main) {
                             apps = apps.map { if (it.packageName == updated.packageName) updated else it }
                             selectedApp = updated
+                            if (companionWebsiteCreated) onWebsiteLimitCreated()
                             showDialog = false
                         }
                     }
@@ -820,8 +866,8 @@ fun WebsiteLimitsTab(
                 .map { WebsiteBlocker.normalizeRule("keyword:$it") }
                 .filter(String::isNotEmpty)
         } else {
-            PredefinedWebsites.ALL_PRESETS
-                .map { WebsiteBlocker.normalizeRule(it.domain) }
+            PredefinedWebsites.SITE_SELECTION_RULES
+                .map(WebsiteBlocker::normalizeRule)
                 .filter(String::isNotEmpty)
         }
     }
