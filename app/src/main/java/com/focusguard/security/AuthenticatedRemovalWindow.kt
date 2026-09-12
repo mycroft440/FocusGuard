@@ -20,6 +20,7 @@ object AuthenticatedRemovalWindow {
     @Volatile private var cachedDeadlineElapsed = UNINITIALIZED_DEADLINE
     @Volatile private var cachedStoredBootCount = Int.MIN_VALUE
     @Volatile private var cachedCurrentBootCount = Int.MIN_VALUE
+    @Volatile private var cachedMemoryOnlyWindow = false
 
     /** Loads the common inactive state before the first accessibility event. */
     fun preload(context: Context) {
@@ -29,15 +30,23 @@ object AuthenticatedRemovalWindow {
     fun open(context: Context) {
         val deadline = SystemClock.elapsedRealtime() + DURATION_MILLIS
         val bootCount = readBootCount(context)
-        val persisted = preferences(context).edit()
-            .putLong(DEADLINE_KEY, deadline)
-            .putInt(BOOT_COUNT_KEY, bootCount)
-            .commit()
-        if (persisted) {
-            cachedStoredBootCount = bootCount
-            cachedCurrentBootCount = bootCount
-            cachedDeadlineElapsed = deadline
-        }
+        val persisted = canPersistAcrossProcess(bootCount) && runCatching {
+            preferences(context).edit()
+                .putLong(DEADLINE_KEY, deadline)
+                .putInt(BOOT_COUNT_KEY, bootCount)
+                .commit()
+        }.getOrDefault(false)
+
+        // BOOT_COUNT is the only proof that an elapsedRealtime deadline belongs
+        // to this boot. If Android/OEM cannot provide it (or persistence fails),
+        // keep the authenticated hand-off usable only in this process. Process
+        // death or reboot then drops the authorization instead of reviving an old
+        // elapsedRealtime deadline on a new boot.
+        if (!persisted) clearPersistedState(context)
+        cachedStoredBootCount = bootCount
+        cachedCurrentBootCount = bootCount
+        cachedDeadlineElapsed = deadline
+        cachedMemoryOnlyWindow = !persisted
     }
 
     /** Memory-only after [preload] or [open]. */
@@ -45,12 +54,17 @@ object AuthenticatedRemovalWindow {
         ensureCacheLoaded(context)
         val deadline = cachedDeadlineElapsed
         if (deadline <= 0L) return false
-        val active = evaluate(
-            nowElapsedMillis = SystemClock.elapsedRealtime(),
-            deadlineElapsedMillis = deadline,
-            storedBootCount = cachedStoredBootCount,
-            currentBootCount = cachedCurrentBootCount
-        )
+        val now = SystemClock.elapsedRealtime()
+        val active = if (cachedMemoryOnlyWindow) {
+            deadline > now
+        } else {
+            evaluate(
+                nowElapsedMillis = now,
+                deadlineElapsedMillis = deadline,
+                storedBootCount = cachedStoredBootCount,
+                currentBootCount = cachedCurrentBootCount
+            )
+        }
         if (!active) invalidateCachedState()
         return active
     }
@@ -67,11 +81,13 @@ object AuthenticatedRemovalWindow {
             val prefs = preferences(context)
             val deadline = prefs.getLong(DEADLINE_KEY, 0L)
             if (deadline <= 0L) {
+                cachedMemoryOnlyWindow = false
                 cachedDeadlineElapsed = 0L
                 return
             }
             cachedStoredBootCount = prefs.getInt(BOOT_COUNT_KEY, Int.MIN_VALUE)
             cachedCurrentBootCount = readBootCount(context)
+            cachedMemoryOnlyWindow = false
             cachedDeadlineElapsed = deadline
             if (!evaluate(
                     nowElapsedMillis = SystemClock.elapsedRealtime(),
@@ -90,6 +106,7 @@ object AuthenticatedRemovalWindow {
     private fun invalidateCachedState() {
         cachedStoredBootCount = Int.MIN_VALUE
         cachedCurrentBootCount = Int.MIN_VALUE
+        cachedMemoryOnlyWindow = false
         cachedDeadlineElapsed = 0L
     }
 
@@ -100,12 +117,16 @@ object AuthenticatedRemovalWindow {
         }
     }
 
+    internal fun canPersistAcrossProcess(bootCount: Int): Boolean = bootCount >= 0
+
     internal fun evaluate(
         nowElapsedMillis: Long,
         deadlineElapsedMillis: Long,
         storedBootCount: Int,
         currentBootCount: Int
-    ): Boolean = storedBootCount == currentBootCount &&
+    ): Boolean = canPersistAcrossProcess(storedBootCount) &&
+        canPersistAcrossProcess(currentBootCount) &&
+        storedBootCount == currentBootCount &&
         deadlineElapsedMillis > nowElapsedMillis
 
     private fun preferences(context: Context) = context.applicationContext
