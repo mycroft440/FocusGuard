@@ -136,9 +136,29 @@ object SettingsInterceptionPolicy {
         selfProtectionEngaged: Boolean,
         strictPomodoroActive: Boolean,
         deviceAdminActivationAuthorized: Boolean,
+        maintenanceActive: Boolean = false,
         rootSignals: RootSignals
     ): Decision {
         if (signals.packageName !in interceptionPackages) return Decision.IGNORE
+
+        // Maintenance relaxes selected Device Owner policy, but the special
+        // accesses that guarantee expiry/enforcement must remain protected.
+        // Keep ordinary Settings available by requiring both HardBlock identity
+        // and an essential-special-access context.
+        if (maintenanceActive) {
+            val focusGuardTarget = signals.textMentionsFocusGuard ||
+                rootSignals.mentionsFocusGuard()
+            if (!focusGuardTarget) return Decision.IGNORE
+            val essentialAccess = signals.classTargetsEssentialSpecialAccess ||
+                signals.textMentionsEssentialSpecialAccess ||
+                rootSignals.mentionsEssentialSpecialAccess()
+            return if (essentialAccess) {
+                Decision.PROTECT_AND_ARM_GUARD
+            } else {
+                Decision.IGNORE
+            }
+        }
+
         if (!selfProtectionEngaged) return Decision.IGNORE
 
         // Android owns these System UI surfaces. Keep this branch closed to the

@@ -57,7 +57,8 @@ object ManagedSelfProtectionPolicy {
         "UsageAccessDetails",
         "HighPowerApplicationsActivity",
         "HighPowerDetail",
-        "BatteryOptimizationSettings"
+        "BatteryOptimizationSettings",
+        "AlarmsAndReminders"
     )
 
     internal val deviceAdminSearchTerms = listOf(
@@ -169,7 +170,11 @@ object ManagedSelfProtectionPolicy {
         "Uso irrestrito da bateria",
         "Sem restrições de bateria",
         "Battery optimization",
-        "Unrestricted battery"
+        "Unrestricted battery",
+        "Alarmes e lembretes",
+        "Alarms & reminders",
+        "Alarms and reminders",
+        "Alarmas y recordatorios"
     )
 
     private val normalizedDeviceAdminSearchTerms = deviceAdminSearchTerms.map(::normalize)
