@@ -46,8 +46,14 @@ object DeviceAdminActivationWindow {
             return false
         }
 
-        val deadline = SystemClock.elapsedRealtime() + DURATION_MILLIS
         val bootCount = readBootCount(context)
+        if (bootCount < 0) {
+            invalidateCachedState()
+            clearPersistedState(context)
+            return false
+        }
+
+        val deadline = SystemClock.elapsedRealtime() + DURATION_MILLIS
         val persisted = preferences(context).edit()
             .putLong(DEADLINE_KEY, deadline)
             .putInt(BOOT_COUNT_KEY, bootCount)
@@ -68,6 +74,8 @@ object DeviceAdminActivationWindow {
         val deadline = cachedDeadlineElapsed
         if (deadline <= 0L) return false
         val active = cachedAdminInactiveWhenOpened &&
+            cachedStoredBootCount >= 0 &&
+            cachedCurrentBootCount >= 0 &&
             cachedStoredBootCount == cachedCurrentBootCount &&
             deadline > SystemClock.elapsedRealtime()
         if (!active) invalidateCachedState()
@@ -101,6 +109,8 @@ object DeviceAdminActivationWindow {
         currentBootCount: Int,
         deviceAdminActive: Boolean
     ): Boolean = deviceAdminActive.not() &&
+        storedBootCount >= 0 &&
+        currentBootCount >= 0 &&
         storedBootCount == currentBootCount &&
         deadlineElapsedMillis > nowElapsedMillis
 
@@ -124,6 +134,8 @@ object DeviceAdminActivationWindow {
             // Restored windows are validated once here, before Accessibility's hot path.
             // Old/stale windows then fail closed without synchronous I/O during an event.
             if (cachedAdminInactiveWhenOpened.not() ||
+                cachedStoredBootCount < 0 ||
+                cachedCurrentBootCount < 0 ||
                 cachedStoredBootCount != cachedCurrentBootCount ||
                 cachedDeadlineElapsed <= SystemClock.elapsedRealtime()
             ) {
