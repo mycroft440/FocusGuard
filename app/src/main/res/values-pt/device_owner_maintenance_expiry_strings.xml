@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="device_owner_maintenance_exact_expiry_required">A manutenção só pode ser aberta quando o Android puder garantir o encerramento automático exato. Permita Alarmes e lembretes ou remova a otimização de bateria do HardBlock e tente novamente.</string>
+</resources>
