@@ -190,6 +190,8 @@ object DeviceOwnerMaintenanceGate {
             .commit()
         if (!saved) {
             publishInactiveCache()
+            preferences(context).edit().clear().commit()
+            cancelExpiry(context)
             return false
         }
 
