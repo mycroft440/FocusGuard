@@ -26,12 +26,17 @@ object AuthenticatedRemovalWindow {
         ensureCacheLoaded(context)
     }
 
-    fun open(context: Context) {
-        val bootCount = readBootCount(context)
+    /**
+     * Opens a removal hand-off only when the current boot can be identified.
+     * Returning false is load-bearing: callers must not release administrative
+     * protection unless this window was actually persisted.
+     */
+    fun open(context: Context): Boolean {
+        val bootCount = cachedCurrentBootCount.takeIf { it >= 0 } ?: readBootCount(context)
         if (bootCount < 0) {
             invalidateCachedState()
             clearPersistedState(context)
-            return
+            return false
         }
 
         val deadline = SystemClock.elapsedRealtime() + DURATION_MILLIS
@@ -44,6 +49,7 @@ object AuthenticatedRemovalWindow {
             cachedCurrentBootCount = bootCount
             cachedDeadlineElapsed = deadline
         }
+        return persisted
     }
 
     /** Memory-only after [preload] or [open]. */
