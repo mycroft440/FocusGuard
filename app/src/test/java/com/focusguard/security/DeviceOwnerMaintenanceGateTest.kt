@@ -118,6 +118,16 @@ class DeviceOwnerMaintenanceGateTest {
     }
 
     @Test
+    fun `direct boot consumes interruption marker before preload`() {
+        assertThat(
+            DeviceOwnerMaintenanceGate.shouldPreloadBeforeDirectBoot(userUnlocked = false)
+        ).isFalse()
+        assertThat(
+            DeviceOwnerMaintenanceGate.shouldPreloadBeforeDirectBoot(userUnlocked = true)
+        ).isTrue()
+    }
+
+    @Test
     fun `only known boot identity may persist maintenance authorization`() {
         assertThat(DeviceOwnerMaintenanceGate.canPersistAcrossProcess(0)).isTrue()
         assertThat(DeviceOwnerMaintenanceGate.canPersistAcrossProcess(9)).isTrue()
