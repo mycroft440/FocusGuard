@@ -65,6 +65,7 @@ internal fun DeviceOwnerMaintenanceDialog(
     }
 
     val automaticTimeRequired = stringResource(R.string.device_owner_maintenance_auto_time_required)
+    val exactExpiryRequired = stringResource(R.string.device_owner_maintenance_exact_expiry_required)
     val outsideWindow = stringResource(R.string.device_owner_maintenance_outside_window)
     val activeBlockRequiresMonthly = stringResource(
         R.string.device_owner_maintenance_active_block_requires_monthly
@@ -86,6 +87,8 @@ internal fun DeviceOwnerMaintenanceDialog(
             }
             DeviceOwnerMaintenanceGate.UnlockResult.AUTOMATIC_DATE_TIME_REQUIRED ->
                 automaticTimeRequired
+            DeviceOwnerMaintenanceGate.UnlockResult.EXACT_EXPIRY_REQUIRED ->
+                exactExpiryRequired
             DeviceOwnerMaintenanceGate.UnlockResult.OUTSIDE_MONTHLY_WINDOW ->
                 outsideWindow
             DeviceOwnerMaintenanceGate.UnlockResult.ACTIVE_BLOCK_REQUIRES_MONTHLY_WINDOW ->

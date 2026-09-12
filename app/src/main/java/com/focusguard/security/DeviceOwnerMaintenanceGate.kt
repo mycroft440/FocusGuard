@@ -26,6 +26,7 @@ object DeviceOwnerMaintenanceGate {
     enum class UnlockResult {
         UNLOCKED,
         AUTOMATIC_DATE_TIME_REQUIRED,
+        EXACT_EXPIRY_REQUIRED,
         ACTIVE_BLOCK_REQUIRES_MONTHLY_WINDOW,
         CREDENTIAL_NOT_CONFIGURED,
         INVALID_CREDENTIAL,
@@ -70,12 +71,18 @@ object DeviceOwnerMaintenanceGate {
         if (protectionArmed) {
             return UnlockResult.ACTIVE_BLOCK_REQUIRES_MONTHLY_WINDOW
         }
+        if (!canScheduleExactExpiry(context)) {
+            return UnlockResult.EXACT_EXPIRY_REQUIRED
+        }
 
         return when (DeactivationCredentialManager(context).verify(credential)) {
             DeactivationCredentialManager.VerificationResult.PASSWORD_ACCEPTED,
             DeactivationCredentialManager.VerificationResult.RECOVERY_ACCEPTED -> {
-                openWindow(context, "credential", protectionArmed = false)
-                UnlockResult.UNLOCKED
+                if (openWindow(context, "credential", protectionArmed = false)) {
+                    UnlockResult.UNLOCKED
+                } else {
+                    UnlockResult.EXACT_EXPIRY_REQUIRED
+                }
             }
             DeactivationCredentialManager.VerificationResult.NOT_CONFIGURED ->
                 UnlockResult.CREDENTIAL_NOT_CONFIGURED
@@ -101,9 +108,15 @@ object DeviceOwnerMaintenanceGate {
         ) {
             return UnlockResult.OUTSIDE_MONTHLY_WINDOW
         }
+        if (!canScheduleExactExpiry(context)) {
+            return UnlockResult.EXACT_EXPIRY_REQUIRED
+        }
 
-        openWindow(context, "monthly_window", protectionArmed)
-        return UnlockResult.UNLOCKED
+        return if (openWindow(context, "monthly_window", protectionArmed)) {
+            UnlockResult.UNLOCKED
+        } else {
+            UnlockResult.EXACT_EXPIRY_REQUIRED
+        }
     }
 
     /** Memory-only after [preload] or the first controlled maintenance operation. */
@@ -166,6 +179,20 @@ object DeviceOwnerMaintenanceGate {
         deadlineElapsedMillis: Long
     ): Long = if (canPersistAcrossProcess(bootCount)) deadlineElapsedMillis else 0L
 
+    /**
+     * Before Android 12 exact alarms require no special access. Android 12+ must
+     * explicitly report exact-alarm capability (permission or battery exemption).
+     */
+    internal fun canGuaranteeExactExpiry(
+        sdkInt: Int,
+        exactAlarmCapability: Boolean
+    ): Boolean = sdkInt < Build.VERSION_CODES.S || exactAlarmCapability
+
+    internal fun shouldRestorePersistedMaintenance(
+        remainingMillis: Long,
+        exactExpiryAvailable: Boolean
+    ): Boolean = remainingMillis > 0L && exactExpiryAvailable
+
     internal fun evaluateRemainingMillis(
         automaticDateTimeEnabled: Boolean,
         nowElapsedMillis: Long,
@@ -181,8 +208,14 @@ object DeviceOwnerMaintenanceGate {
         return max(0L, deadlineElapsedMillis - nowElapsedMillis)
     }
 
-    private fun openWindow(context: Context, source: String, protectionArmed: Boolean) {
+    private fun openWindow(
+        context: Context,
+        source: String,
+        protectionArmed: Boolean
+    ): Boolean {
         val deadline = SystemClock.elapsedRealtime() + UNLOCK_DURATION_MILLIS
+        if (!scheduleExpiry(context, deadline)) return false
+
         val bootCount = readBootCount(context)
         val persistedDeadline = persistedAuthorizationDeadline(bootCount, deadline)
         val saved = preferences(context).edit()
@@ -194,14 +227,17 @@ object DeviceOwnerMaintenanceGate {
             .putString(UNLOCK_SOURCE_KEY, source)
             .putBoolean(PROTECTION_ARMED_WHEN_OPENED_KEY, protectionArmed)
             .commit()
-        check(saved) { "Não foi possível abrir a janela de manutenção" }
+        if (!saved) {
+            cancelExpiry(context)
+            return false
+        }
 
         cachedDeadlineElapsed = deadline
         cachedStoredBootCount = bootCount
         cachedCurrentBootCount = bootCount
         cachedAutomaticDateTimeEnabled = true
         cachedMemoryOnlyWindow = persistedDeadline <= 0L
-        scheduleExpiry(context, deadline)
+        return true
     }
 
     private fun cachedRemainingMillis(): Long {
@@ -224,22 +260,36 @@ object DeviceOwnerMaintenanceGate {
         return remaining
     }
 
-    private fun scheduleExpiry(context: Context, deadlineElapsed: Long) {
+    /**
+     * Maintenance weakens native Device Owner policy, so an inexact alarm is not
+     * an acceptable fallback: the Android contract permits it to be delivered late.
+     */
+    private fun scheduleExpiry(context: Context, deadlineElapsed: Long): Boolean {
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
-        val operation = expiryPendingIntent(context)
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && alarmManager.canScheduleExactAlarms()) {
+        val exactCapability = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            runCatching { alarmManager.canScheduleExactAlarms() }.getOrDefault(false)
+        } else {
+            true
+        }
+        if (!canGuaranteeExactExpiry(Build.VERSION.SDK_INT, exactCapability)) return false
+
+        return runCatching {
             alarmManager.setExactAndAllowWhileIdle(
                 AlarmManager.ELAPSED_REALTIME_WAKEUP,
                 deadlineElapsed,
-                operation
+                expiryPendingIntent(context)
             )
+        }.isSuccess
+    }
+
+    private fun canScheduleExactExpiry(context: Context): Boolean {
+        val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
+        val exactCapability = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            runCatching { alarmManager.canScheduleExactAlarms() }.getOrDefault(false)
         } else {
-            alarmManager.setAndAllowWhileIdle(
-                AlarmManager.ELAPSED_REALTIME_WAKEUP,
-                deadlineElapsed,
-                operation
-            )
+            true
         }
+        return canGuaranteeExactExpiry(Build.VERSION.SDK_INT, exactCapability)
     }
 
     private fun cancelExpiry(context: Context) {
@@ -289,11 +339,16 @@ object DeviceOwnerMaintenanceGate {
                 storedBootCount = storedBootCount,
                 currentBootCount = currentBootCount
             )
+            val exactExpiryAvailable = canScheduleExactExpiry(context)
 
             cachedAutomaticDateTimeEnabled = automaticDateTimeEnabled
             cachedCurrentBootCount = currentBootCount
             cachedMemoryOnlyWindow = false
-            if (remaining > 0L) {
+            if (shouldRestorePersistedMaintenance(remaining, exactExpiryAvailable) &&
+                scheduleExpiry(context, deadline)
+            ) {
+                // Re-arm the exact alarm on process/package restart. Scheduling the
+                // same PendingIntent replaces an existing alarm without widening it.
                 cachedDeadlineElapsed = deadline
                 cachedStoredBootCount = storedBootCount
             } else {

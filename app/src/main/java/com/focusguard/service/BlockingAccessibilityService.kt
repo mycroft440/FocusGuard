@@ -1856,10 +1856,10 @@ class BlockingAccessibilityService : AccessibilityService() {
         // state remains as a fail-closed fallback for process recreation.
         if (!isSelfProtectionEngagedNow()) return false
 
-        // Only actual Device Owner devices can have this maintenance gate. Avoid a
-        // DevicePolicyManager round-trip on the consumer path.
-        if (deviceOwnerActiveCached &&
-            com.focusguard.security.DeviceOwnerMaintenanceGate.isTemporarilyUnlocked(this)) return false
+        // During maintenance ordinary Settings stay available, but expiry-critical
+        // special accesses are still evaluated by SettingsInterceptionPolicy.
+        val deviceOwnerMaintenanceActive = deviceOwnerActiveCached &&
+            com.focusguard.security.DeviceOwnerMaintenanceGate.isTemporarilyUnlocked(this)
 
         val nowElapsed = SystemClock.elapsedRealtime()
         val isSystemUi = packageName in SettingsInterceptionPolicy.systemUiPackages
@@ -2076,6 +2076,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             selfProtectionEngaged = true,
             strictPomodoroActive = isPomodoroStrictActive,
             deviceAdminActivationAuthorized = deviceAdminActivationAuthorized,
+            maintenanceActive = deviceOwnerMaintenanceActive,
             rootSignals = SettingsInterceptionPolicy.RootSignals(
                 mentionsAccessibility = ::rootMentionsAccessibility,
                 mentionsDeviceAdmin = ::rootMentionsDeviceAdmin,
