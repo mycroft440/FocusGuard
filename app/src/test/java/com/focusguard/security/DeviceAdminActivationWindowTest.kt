@@ -46,4 +46,26 @@ class DeviceAdminActivationWindowTest {
             )
         ).isFalse()
     }
+
+    @Test
+    fun unknownBootIdentityNeverAuthorizesDeviceAdminSurface() {
+        assertThat(
+            DeviceAdminActivationWindow.evaluate(
+                nowElapsedMillis = 100L,
+                deadlineElapsedMillis = 300_000L,
+                storedBootCount = -1,
+                currentBootCount = -1,
+                deviceAdminActive = false
+            )
+        ).isFalse()
+        assertThat(
+            DeviceAdminActivationWindow.evaluate(
+                nowElapsedMillis = 100L,
+                deadlineElapsedMillis = 300_000L,
+                storedBootCount = 7,
+                currentBootCount = -1,
+                deviceAdminActive = false
+            )
+        ).isFalse()
+    }
 }
