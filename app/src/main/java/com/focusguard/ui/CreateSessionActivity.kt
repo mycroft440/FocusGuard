@@ -215,8 +215,7 @@ fun AppSelectionStep(
     initialSelectedPackages: Set<String> = emptySet(),
     allowCompatibleProtection: Boolean = false,
     kinds: BlockTargetPolicy.Kinds = BlockTargetPolicy.APPS_ONLY,
-    initialRules: List<String> = emptyList(),
-    offerWebsiteCompanion: Boolean = kinds.websites
+    initialRules: List<String> = emptyList()
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val pm = context.packageManager
@@ -225,7 +224,6 @@ fun AppSelectionStep(
     var configuredBlockedRules by remember { mutableStateOf<Set<String>>(emptySet()) }
     var rules by remember { mutableStateOf(initialRules) }
     var isLoading by remember { mutableStateOf(true) }
-    var pendingAppSiteOption by remember { mutableStateOf<PredefinedApps.AppInfo?>(null) }
     var pendingSiteAppOption by remember {
         mutableStateOf<Pair<String, PredefinedApps.AppInfo>?>(null)
     }
@@ -322,30 +320,8 @@ fun AppSelectionStep(
                 Toast.LENGTH_SHORT
             ).show()
         } else {
-            val wasSelected = apps.firstOrNull { it.packageName == pkg }?.isSelected == true
             apps = apps.map {
                 if (it.packageName == pkg) it.copy(isSelected = !it.isSelected) else it
-            }
-
-            if (!wasSelected && offerWebsiteCompanion) {
-                val companionDomain = AssociatedBlockTargets.domainForAppPackage(pkg)
-                val companionInfo = PredefinedApps.PREVENTIVE_APPS
-                    .firstOrNull { it.packageName == pkg }
-                val alreadySelected = companionDomain != null &&
-                    BlockingSessionManager.isWebsiteRuleCoveredBy(companionDomain, rules)
-                val alreadyBlocked = companionDomain != null &&
-                    BlockingSessionManager.isWebsiteRuleCoveredBy(
-                        companionDomain,
-                        configuredBlockedRules
-                    )
-
-                if (companionDomain != null &&
-                    companionInfo != null &&
-                    !alreadySelected &&
-                    !alreadyBlocked
-                ) {
-                    pendingAppSiteOption = companionInfo
-                }
             }
         }
     }
@@ -370,30 +346,6 @@ fun AppSelectionStep(
             !appAlreadyBlocked
         ) {
             pendingSiteAppOption = addedRule to companionInfo
-        }
-    }
-
-    pendingAppSiteOption?.let { appInfo ->
-        val domain = AssociatedBlockTargets.domainForAppPackage(appInfo.packageName)
-        if (domain != null) {
-            AssociatedTargetOptionDialog(
-                title = stringResource(R.string.associated_target_block_site_title),
-                message = stringResource(
-                    R.string.associated_target_block_site_message,
-                    appInfo.appName,
-                    domain
-                ),
-                onDecision = { blockAlso ->
-                    if (blockAlso &&
-                        !BlockingSessionManager.isWebsiteRuleCoveredBy(domain, rules)
-                    ) {
-                        rules = (rules + domain).distinct()
-                    }
-                    pendingAppSiteOption = null
-                }
-            )
-        } else {
-            pendingAppSiteOption = null
         }
     }
 

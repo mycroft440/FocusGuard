@@ -44,6 +44,16 @@ object PredefinedWebsites {
     }
 
     /**
+     * Ordered rules shared by every full site picker. Keeping the pornography
+     * category and every predefined domain in one catalogue prevents the time
+     * block and usage-limit screens from silently drifting apart while each flow
+     * remains free to enforce the selected rule with its own blocking semantics.
+     */
+    val SITE_SELECTION_RULES: List<String> by lazy {
+        (listOf(PORNOGRAPHY_RULE) + ALL_PRESETS.map { it.domain }).distinct()
+    }
+
+    /**
      * Palavras que bloqueiam qualquer domínio que as contenha.
      *
      * É a metade que alcança o que nenhuma lista alcança: domínio novo, espelho,

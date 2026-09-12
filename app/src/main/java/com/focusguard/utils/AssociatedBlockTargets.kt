@@ -12,12 +12,39 @@ import com.focusguard.data.PredefinedApps
 object AssociatedBlockTargets {
     const val DEFAULT_BLOCK_COMPANION = false
 
+    data class WebsiteCompanion(
+        val packageName: String,
+        val appName: String,
+        val domain: String
+    )
+
     fun domainForAppPackage(packageName: String): String? {
         return PredefinedApps.PREVENTIVE_APPS
             .firstOrNull { it.packageName == packageName }
             ?.domain
             ?.let(WebsiteBlocker::normalizeRule)
             ?.takeIf(String::isNotEmpty)
+    }
+
+    fun websiteCompanionsForApps(packageNames: Collection<String>): List<WebsiteCompanion> {
+        if (packageNames.isEmpty()) return emptyList()
+
+        val requestedPackages = packageNames.filter(String::isNotBlank).toSet()
+        if (requestedPackages.isEmpty()) return emptyList()
+
+        return PredefinedApps.PREVENTIVE_APPS.asSequence()
+            .filter { it.packageName in requestedPackages }
+            .mapNotNull { app ->
+                domainForAppPackage(app.packageName)?.let { domain ->
+                    WebsiteCompanion(
+                        packageName = app.packageName,
+                        appName = app.appName,
+                        domain = domain
+                    )
+                }
+            }
+            .distinctBy { it.domain }
+            .toList()
     }
 
     fun appForWebsiteRule(rule: String): PredefinedApps.AppInfo? {

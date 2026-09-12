@@ -40,6 +40,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -70,11 +71,14 @@ import com.focusguard.ui.compose.theme.DarkCard
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
+import com.focusguard.utils.AssociatedBlockTargets
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
 import java.util.Calendar
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 internal fun selectedTargetCount(appCount: Int, siteCount: Int): Int = appCount + siteCount
 
@@ -112,8 +116,39 @@ fun TimeBlockSessionConfigScreen(
     val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
 
     var page by remember { mutableStateOf(TimeBlockConfigPage.TERMS) }
-    val availableUnits = remember(apps, sites) {
-        BlockDurationPolicy.availableUnits(rules = sites, hasApps = apps.isNotEmpty())
+    val companionOptions = remember(apps) {
+        AssociatedBlockTargets.websiteCompanionsForApps(apps)
+    }
+    var configuredBlockedRules by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedCompanionDomains by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    LaunchedEffect(apps, sites) {
+        configuredBlockedRules = withContext(Dispatchers.IO) {
+            runCatching { sessionManager.getConfiguredBlockedTargets().allWebsiteRules }
+                .getOrDefault(emptySet())
+        }
+    }
+
+    val availableCompanionOptions = remember(companionOptions, sites, configuredBlockedRules) {
+        companionOptions.filterNot { option ->
+            BlockingSessionManager.isWebsiteRuleCoveredBy(option.domain, sites) ||
+                BlockingSessionManager.isWebsiteRuleCoveredBy(
+                    option.domain,
+                    configuredBlockedRules
+                )
+        }
+    }
+    val availableCompanionDomains = remember(availableCompanionOptions) {
+        availableCompanionOptions.mapTo(linkedSetOf()) { it.domain }.toSet()
+    }
+    if (!availableCompanionDomains.containsAll(selectedCompanionDomains)) {
+        selectedCompanionDomains = selectedCompanionDomains.intersect(availableCompanionDomains)
+    }
+    val effectiveSites = remember(sites, selectedCompanionDomains) {
+        (sites + selectedCompanionDomains).distinct()
+    }
+    val availableUnits = remember(apps, effectiveSites) {
+        BlockDurationPolicy.availableUnits(rules = effectiveSites, hasApps = apps.isNotEmpty())
     }
     var durationUnit by remember { mutableStateOf(BlockDurationPolicy.Unit.DAYS) }
     if (durationUnit !in availableUnits) {
@@ -136,7 +171,7 @@ fun TimeBlockSessionConfigScreen(
             .filter { it.calendarDay in selectedDays }
             .joinToString(",") { it.calendarDay.toString() }
     }
-    val hasTargets = apps.isNotEmpty() || sites.isNotEmpty()
+    val hasTargets = apps.isNotEmpty() || effectiveSites.isNotEmpty()
     val canContinue = termsAccepted && hasTargets
     val canSave = duration != null &&
         termsAccepted &&
@@ -255,10 +290,13 @@ fun TimeBlockSessionConfigScreen(
                     amountText = amountText,
                     availableUnits = availableUnits,
                     selectedDays = selectedDays,
+                    companionOptions = availableCompanionOptions,
+                    selectedCompanionDomains = selectedCompanionDomains,
                     isSaving = isSaving,
                     canSave = canSave,
                     onDurationUnitChange = { durationUnit = it },
                     onAmountChange = { amountText = it },
+                    onSelectedCompanionDomainsChange = { selectedCompanionDomains = it },
                     onToggleDay = { day ->
                         selectedDays = if (day in selectedDays) {
                             selectedDays - day
@@ -291,7 +329,7 @@ fun TimeBlockSessionConfigScreen(
                                     endMinute = 0,
                                     daysOfWeek = selectedDaysSerialized,
                                     apps = apps,
-                                    sites = sites
+                                    sites = effectiveSites
                                 )
                                 isSaving = false
                                 Toast.makeText(
@@ -395,10 +433,13 @@ private fun TimeBlockSchedulePage(
     amountText: String,
     availableUnits: List<BlockDurationPolicy.Unit>,
     selectedDays: Set<Int>,
+    companionOptions: List<AssociatedBlockTargets.WebsiteCompanion>,
+    selectedCompanionDomains: Set<String>,
     isSaving: Boolean,
     canSave: Boolean,
     onDurationUnitChange: (BlockDurationPolicy.Unit) -> Unit,
     onAmountChange: (String) -> Unit,
+    onSelectedCompanionDomainsChange: (Set<String>) -> Unit,
     onToggleDay: (Int) -> Unit,
     onActivate: () -> Unit,
     onBack: () -> Unit
@@ -462,6 +503,15 @@ private fun TimeBlockSchedulePage(
                 )
             }
         }
+    }
+
+    if (companionOptions.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(16.dp))
+        AssociatedWebsiteOptionsCard(
+            options = companionOptions,
+            selectedDomains = selectedCompanionDomains,
+            onSelectedDomainsChange = onSelectedCompanionDomainsChange
+        )
     }
 
     Spacer(modifier = Modifier.height(24.dp))

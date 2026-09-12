@@ -79,6 +79,7 @@ import com.focusguard.ui.compose.theme.DarkSurface
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
+import com.focusguard.utils.AssociatedBlockTargets
 import com.focusguard.utils.UsageLimitBehaviorPolicy
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -142,10 +143,10 @@ private data class AppLimitDetailsDraft(
 /**
  * Two-screen app-limit editor.
  *
- * Screen 1 owns the allowance and the overall rule duration. Screen 2 owns the
- * post-limit behavior exclusively. Keeping the behavior on its own screen makes
- * the two materially different outcomes explicit before the rule is persisted,
- * while preserving the existing callback contract and database semantics.
+ * Screen 1 owns the allowance, overall rule duration and optional companion
+ * website. Screen 2 owns the post-limit behavior exclusively. Keeping the
+ * behavior on its own screen makes the two materially different outcomes
+ * explicit before the rule is persisted.
  */
 @Suppress("UNUSED_PARAMETER")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -156,9 +157,15 @@ fun AppLimitRedesignedSheet(
     hasMasterCredential: Boolean,
     onConfigureMasterPassword: () -> Unit,
     onDismiss: () -> Unit,
-    onSave: (Int?, Boolean, String, String?, Long?) -> Unit
+    onSave: (Int?, Boolean, String, String?, Long?, Set<String>) -> Unit
 ) {
     val editMode = app.currentLimitMinutes != null
+    val companionOptions = remember(app.packageName) {
+        AssociatedBlockTargets.websiteCompanionsForApps(listOf(app.packageName))
+    }
+    var selectedCompanionDomains by remember(app.packageName) {
+        mutableStateOf<Set<String>>(emptySet())
+    }
     val now = remember(app.packageName, app.lockUntilTimestamp) {
         System.currentTimeMillis()
     }
@@ -292,7 +299,12 @@ fun AppLimitRedesignedSheet(
                         nowMillis = now,
                         editMode = editMode,
                         currentRuleEnd = app.lockUntilTimestamp,
-                        onRemove = { onSave(null, false, "NONE", null, null) },
+                        companionOptions = companionOptions,
+                        selectedCompanionDomains = selectedCompanionDomains,
+                        onSelectedCompanionDomainsChange = { selectedCompanionDomains = it },
+                        onRemove = {
+                            onSave(null, false, "NONE", null, null, emptySet())
+                        },
                         onDismiss = onDismiss,
                         onContinue = { draft ->
                             // Commit the local text-field state once, instead of
@@ -322,7 +334,14 @@ fun AppLimitRedesignedSheet(
                             } else {
                                 UsageLimitBehaviorPolicy.blockUntilTomorrowModeFor(app.packageName)
                             }
-                            onSave(detailsDraft.minutes, true, persistedMode, null, ruleEnd)
+                            onSave(
+                                detailsDraft.minutes,
+                                true,
+                                persistedMode,
+                                null,
+                                ruleEnd,
+                                selectedCompanionDomains
+                            )
                         }
                     )
                 }
@@ -376,6 +395,9 @@ private fun AppLimitDetailsScreen(
     nowMillis: Long,
     editMode: Boolean,
     currentRuleEnd: Long?,
+    companionOptions: List<AssociatedBlockTargets.WebsiteCompanion>,
+    selectedCompanionDomains: Set<String>,
+    onSelectedCompanionDomainsChange: (Set<String>) -> Unit,
     onRemove: () -> Unit,
     onDismiss: () -> Unit,
     onContinue: (AppLimitDetailsDraft) -> Unit
@@ -425,12 +447,21 @@ private fun AppLimitDetailsScreen(
 
             UsageLimitDecisionBlock(
                 title = stringResource(R.string.limits_rule_duration_title),
-                showDivider = false
+                showDivider = companionOptions.isNotEmpty()
             ) {
                 RuleDurationEditor(
                     durationAmountState = durationAmountState,
                     durationUnitState = durationUnitState,
                     durationEditedState = durationEditedState
+                )
+            }
+
+            if (companionOptions.isNotEmpty()) {
+                AssociatedWebsiteOptionsCard(
+                    options = companionOptions,
+                    selectedDomains = selectedCompanionDomains,
+                    onSelectedDomainsChange = onSelectedCompanionDomainsChange,
+                    modifier = Modifier.padding(bottom = 18.dp)
                 )
             }
 
