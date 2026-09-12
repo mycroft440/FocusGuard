@@ -17,6 +17,13 @@ class AssociatedBlockTargetsTest {
     }
 
     @Test
+    fun `whatsapp app maps to whatsapp website`() {
+        assertThat(
+            AssociatedBlockTargets.domainForAppPackage("com.whatsapp")
+        ).isEqualTo("whatsapp.com")
+    }
+
+    @Test
     fun `multiple apps expose stable website companion options`() {
         val companions = AssociatedBlockTargets.websiteCompanionsForApps(
             listOf(
