@@ -136,6 +136,64 @@ class DeviceOwnerMaintenanceGateTest {
     }
 
     @Test
+    fun `android before 12 can always schedule exact maintenance expiry`() {
+        assertThat(
+            DeviceOwnerMaintenanceGate.canGuaranteeExactExpiry(
+                sdkInt = 30,
+                exactAlarmCapability = false
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun `android 12 plus refuses maintenance without exact alarm capability`() {
+        assertThat(
+            DeviceOwnerMaintenanceGate.canGuaranteeExactExpiry(
+                sdkInt = 31,
+                exactAlarmCapability = false
+            )
+        ).isFalse()
+        assertThat(
+            DeviceOwnerMaintenanceGate.canGuaranteeExactExpiry(
+                sdkInt = 35,
+                exactAlarmCapability = false
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `android 12 plus accepts maintenance with exact alarm capability`() {
+        assertThat(
+            DeviceOwnerMaintenanceGate.canGuaranteeExactExpiry(
+                sdkInt = 31,
+                exactAlarmCapability = true
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun `restored maintenance requires remaining time and exact expiry`() {
+        assertThat(
+            DeviceOwnerMaintenanceGate.shouldRestorePersistedMaintenance(
+                remainingMillis = 60_000L,
+                exactExpiryAvailable = true
+            )
+        ).isTrue()
+        assertThat(
+            DeviceOwnerMaintenanceGate.shouldRestorePersistedMaintenance(
+                remainingMillis = 60_000L,
+                exactExpiryAvailable = false
+            )
+        ).isFalse()
+        assertThat(
+            DeviceOwnerMaintenanceGate.shouldRestorePersistedMaintenance(
+                remainingMillis = 0L,
+                exactExpiryAvailable = true
+            )
+        ).isFalse()
+    }
+
+    @Test
     fun `expired deadline returns zero`() {
         val remaining = DeviceOwnerMaintenanceGate.evaluateRemainingMillis(
             automaticDateTimeEnabled = true,
