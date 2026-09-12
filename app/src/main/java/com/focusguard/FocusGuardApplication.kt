@@ -61,11 +61,14 @@ class FocusGuardApplication : Application() {
         }.getOrDefault(startupContext)
         UsageLimitPauseStateStore.initialize(usageLimitStateContext)
 
-        // Warm externally-backed authorization state before Accessibility can receive
-        // its first event. Subsequent maintenance/admin decisions are memory-only in
-        // the overwhelmingly common path instead of consulting Settings/Preferences.
-        DeviceOwnerMaintenanceGate.preload(startupContext)
+        // Device Admin has no Direct-Boot interruption marker, so it can always
+        // warm its cache here. Device Owner maintenance is different: while the
+        // user is still locked, applyDirectBootShield() must consume the persisted
+        // interruption marker before preload is allowed to discard stale deadlines.
         DeviceAdminActivationWindow.preload(startupContext)
+        if (DeviceOwnerMaintenanceGate.shouldPreloadBeforeDirectBoot(userUnlocked)) {
+            DeviceOwnerMaintenanceGate.preload(startupContext)
+        }
 
         val deviceOwnerManager = DeviceOwnerManager.getInstance(this)
         if (userUnlocked) {
