@@ -29,7 +29,8 @@ object DeviceOwnerMaintenanceGate {
         ACTIVE_BLOCK_REQUIRES_MONTHLY_WINDOW,
         CREDENTIAL_NOT_CONFIGURED,
         INVALID_CREDENTIAL,
-        OUTSIDE_MONTHLY_WINDOW
+        OUTSIDE_MONTHLY_WINDOW,
+        BOOT_IDENTITY_UNAVAILABLE
     }
 
     const val UNLOCK_DURATION_MILLIS: Long = 10 * 60 * 1_000L
@@ -73,8 +74,11 @@ object DeviceOwnerMaintenanceGate {
         return when (DeactivationCredentialManager(context).verify(credential)) {
             DeactivationCredentialManager.VerificationResult.PASSWORD_ACCEPTED,
             DeactivationCredentialManager.VerificationResult.RECOVERY_ACCEPTED -> {
-                openWindow(context, "credential", protectionArmed = false)
-                UnlockResult.UNLOCKED
+                if (openWindow(context, "credential", protectionArmed = false)) {
+                    UnlockResult.UNLOCKED
+                } else {
+                    UnlockResult.BOOT_IDENTITY_UNAVAILABLE
+                }
             }
             DeactivationCredentialManager.VerificationResult.NOT_CONFIGURED ->
                 UnlockResult.CREDENTIAL_NOT_CONFIGURED
@@ -101,8 +105,11 @@ object DeviceOwnerMaintenanceGate {
             return UnlockResult.OUTSIDE_MONTHLY_WINDOW
         }
 
-        openWindow(context, "monthly_window", protectionArmed)
-        return UnlockResult.UNLOCKED
+        return if (openWindow(context, "monthly_window", protectionArmed)) {
+            UnlockResult.UNLOCKED
+        } else {
+            UnlockResult.BOOT_IDENTITY_UNAVAILABLE
+        }
     }
 
     /** Memory-only after [preload] or the first controlled maintenance operation. */
@@ -165,13 +172,13 @@ object DeviceOwnerMaintenanceGate {
         return max(0L, deadlineElapsedMillis - nowElapsedMillis)
     }
 
-    private fun openWindow(context: Context, source: String, protectionArmed: Boolean) {
+    private fun openWindow(context: Context, source: String, protectionArmed: Boolean): Boolean {
         val bootCount = readBootCount(context)
         if (bootCount < 0) {
             publishInactiveCache()
             preferences(context).edit().clear().commit()
             cancelExpiry(context)
-            return
+            return false
         }
 
         val deadline = SystemClock.elapsedRealtime() + UNLOCK_DURATION_MILLIS
@@ -181,13 +188,17 @@ object DeviceOwnerMaintenanceGate {
             .putString(UNLOCK_SOURCE_KEY, source)
             .putBoolean(PROTECTION_ARMED_WHEN_OPENED_KEY, protectionArmed)
             .commit()
-        check(saved) { "Não foi possível abrir a janela de manutenção" }
+        if (!saved) {
+            publishInactiveCache()
+            return false
+        }
 
         cachedDeadlineElapsed = deadline
         cachedStoredBootCount = bootCount
         cachedCurrentBootCount = bootCount
         cachedAutomaticDateTimeEnabled = true
         scheduleExpiry(context, deadline)
+        return true
     }
 
     private fun cachedRemainingMillis(): Long {
