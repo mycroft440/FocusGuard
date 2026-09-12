@@ -18,6 +18,12 @@ object AssociatedBlockTargets {
         val domain: String
     )
 
+    data class AppCompanion(
+        val packageName: String,
+        val appName: String,
+        val domain: String
+    )
+
     fun domainForAppPackage(packageName: String): String? {
         return PredefinedApps.PREVENTIVE_APPS
             .firstOrNull { it.packageName == packageName }
@@ -49,13 +55,35 @@ object AssociatedBlockTargets {
 
     fun appForWebsiteRule(rule: String): PredefinedApps.AppInfo? {
         val normalizedRule = WebsiteBlocker.normalizeRule(rule)
-        if (normalizedRule.isEmpty() || WebsiteBlocker.isKeywordRule(normalizedRule)) return null
+        if (
+            normalizedRule.isEmpty() ||
+            WebsiteBlocker.isKeywordRule(normalizedRule) ||
+            WebsiteBlocker.isPornographyRule(normalizedRule)
+        ) return null
 
         return PredefinedApps.PREVENTIVE_APPS.firstOrNull { app ->
             app.domain
                 ?.let(WebsiteBlocker::normalizeRule)
                 ?.let { it == normalizedRule } == true
         }
+    }
+
+    fun appCompanionsForWebsiteRules(rules: Collection<String>): List<AppCompanion> {
+        if (rules.isEmpty()) return emptyList()
+
+        return rules.asSequence()
+            .mapNotNull(::appForWebsiteRule)
+            .mapNotNull { app ->
+                domainForAppPackage(app.packageName)?.let { domain ->
+                    AppCompanion(
+                        packageName = app.packageName,
+                        appName = app.appName,
+                        domain = domain
+                    )
+                }
+            }
+            .distinctBy { it.packageName }
+            .toList()
     }
 
     /**
