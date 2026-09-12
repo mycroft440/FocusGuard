@@ -4,6 +4,20 @@ import java.util.Locale
 
 /** Regra única para decidir quando um limite diário de site vira bloqueio. */
 object WebsiteUsageLimitPolicy {
+    private const val ACTIVATION_BASELINE_PREFIX = "__focusguard_website_limit_baseline__:"
+
+    /**
+     * Marker persisted in daily_usage_stats when a website rule is created.
+     *
+     * Website usage is stored as a day-wide aggregate. Without a baseline, deleting
+     * and recreating a rule on the same day would immediately inherit the usage from
+     * the previous activation. Keeping the offset in the same date bucket avoids a
+     * schema migration and preserves the raw usage rows for analytics.
+     */
+    fun activationBaselineIdentifier(rule: String): String {
+        val normalized = WebsiteBlocker.normalizeRule(rule)
+        return if (normalized.isEmpty()) "" else ACTIVATION_BASELINE_PREFIX + normalized
+    }
 
     fun aggregateUsageByRule(
         usageByIdentifier: Iterable<Pair<String, Long>>,
@@ -12,14 +26,46 @@ object WebsiteUsageLimitPolicy {
         val normalizedRules = WebsiteBlocker.normalizeRules(configuredRules)
         if (normalizedRules.isEmpty()) return emptyMap()
 
+        val rawTotals = aggregateRawUsageByRule(usageByIdentifier, normalizedRules)
+        val baselines = mutableMapOf<String, Long>()
+        usageByIdentifier.forEach { (identifier, timeSpentMs) ->
+            val baselineRule = baselineRuleFromIdentifier(identifier) ?: return@forEach
+            if (baselineRule !in normalizedRules) return@forEach
+            baselines[baselineRule] = maxOf(
+                baselines[baselineRule] ?: 0L,
+                timeSpentMs.coerceAtLeast(0L)
+            )
+        }
+
+        return normalizedRules.associateWith { rule ->
+            ((rawTotals[rule] ?: 0L) - (baselines[rule] ?: 0L)).coerceAtLeast(0L)
+        }.filterValues { it > 0L }
+    }
+
+    /** Raw day total, deliberately ignoring activation-baseline marker rows. */
+    fun aggregateRawUsageByRule(
+        usageByIdentifier: Iterable<Pair<String, Long>>,
+        configuredRules: Collection<String>
+    ): Map<String, Long> {
+        val normalizedRules = WebsiteBlocker.normalizeRules(configuredRules)
+        if (normalizedRules.isEmpty()) return emptyMap()
+
         val totals = mutableMapOf<String, Long>()
         usageByIdentifier.forEach { (identifier, timeSpentMs) ->
-            if (timeSpentMs <= 0L) return@forEach
+            if (timeSpentMs <= 0L || baselineRuleFromIdentifier(identifier) != null) {
+                return@forEach
+            }
             WebsiteBlocker.findMatchingRules(identifier, normalizedRules).forEach { rule ->
                 totals[rule] = (totals[rule] ?: 0L) + timeSpentMs
             }
         }
         return totals
+    }
+
+    internal fun baselineRuleFromIdentifier(identifier: String): String? {
+        if (!identifier.startsWith(ACTIVATION_BASELINE_PREFIX)) return null
+        return WebsiteBlocker.normalizeRule(identifier.removePrefix(ACTIVATION_BASELINE_PREFIX))
+            .takeIf(String::isNotEmpty)
     }
 
     fun shouldBlock(

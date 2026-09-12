@@ -7,6 +7,11 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Transaction
 import androidx.room.Update
+import com.focusguard.utils.WebsiteBlocker
+import com.focusguard.utils.WebsiteUsageLimitPolicy
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.flow.Flow
 
 @Dao
@@ -196,7 +201,60 @@ interface AppUsageLimitDao {
 @Dao
 interface WebsiteUsageLimitDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insert(limit: WebsiteUsageLimit)
+    suspend fun insertRaw(limit: WebsiteUsageLimit)
+
+    @Query("SELECT * FROM daily_usage_stats WHERE date = :date")
+    suspend fun getDailyStatsForDateStatic(date: String): List<DailyUsageStat>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertActivationBaseline(stat: DailyUsageStat)
+
+    @Query("DELETE FROM daily_usage_stats WHERE date = :date AND identifier = :identifier")
+    suspend fun deleteActivationBaseline(date: String, identifier: String)
+
+    /**
+     * Edits retain the original activation timestamp and allowance. A true new
+     * activation captures the raw usage already accumulated today as an offset,
+     * so remove-and-readd starts with a fresh allowance without deleting analytics.
+     */
+    @Transaction
+    suspend fun insert(limit: WebsiteUsageLimit) {
+        val normalizedRule = WebsiteBlocker.normalizeRule(limit.domain)
+        if (normalizedRule.isEmpty()) return
+
+        val existing = getAllStatic().firstOrNull {
+            WebsiteBlocker.normalizeRule(it.domain) == normalizedRule
+        }
+        if (existing != null) {
+            insertRaw(
+                limit.copy(
+                    domain = normalizedRule,
+                    createdAt = existing.createdAt
+                )
+            )
+            return
+        }
+
+        val activation = limit.copy(domain = normalizedRule)
+        val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date(activation.createdAt))
+        val stats = getDailyStatsForDateStatic(date)
+        val rawUsage = WebsiteUsageLimitPolicy.aggregateRawUsageByRule(
+            usageByIdentifier = stats.map { it.identifier to it.timeSpentMs },
+            configuredRules = listOf(normalizedRule)
+        )[normalizedRule] ?: 0L
+        val marker = WebsiteUsageLimitPolicy.activationBaselineIdentifier(normalizedRule)
+        if (marker.isNotEmpty()) {
+            deleteActivationBaseline(date, marker)
+            insertActivationBaseline(
+                DailyUsageStat(
+                    identifier = marker,
+                    date = date,
+                    timeSpentMs = rawUsage
+                )
+            )
+        }
+        insertRaw(activation)
+    }
 
     @Query("SELECT * FROM website_usage_limits")
     fun getAll(): Flow<List<WebsiteUsageLimit>>
