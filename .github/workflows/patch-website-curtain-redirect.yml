@@ -33,58 +33,22 @@ jobs:
           set -euo pipefail
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Apply website curtain and redirect patch
+      - name: Refine implementation
         shell: bash
         run: |
           set -euo pipefail
-          git checkout -B fix/website-curtain-google-redirect origin/main
+          git checkout -B fix/website-curtain-google-redirect origin/fix/website-curtain-google-redirect
           python3 - <<'PY'
-          import re
+          import textwrap
           from pathlib import Path
 
-          service_path = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
-          text = service_path.read_text()
-
-          text = text.replace(
-              'import android.view.Gravity\nimport android.view.KeyEvent\n',
-              'import android.view.Choreographer\nimport android.view.Gravity\nimport android.view.KeyEvent\n',
-              1,
-          )
-          text = text.replace(
-              'import kotlinx.coroutines.launch\nimport kotlinx.coroutines.withContext\n',
-              'import kotlinx.coroutines.launch\nimport kotlinx.coroutines.suspendCancellableCoroutine\nimport kotlinx.coroutines.withContext\n',
-              1,
-          )
-          text = text.replace(
-              'import kotlinx.coroutines.withTimeoutOrNull\n',
-              'import kotlinx.coroutines.withTimeoutOrNull\nimport kotlin.coroutines.resume\n',
-              1,
-          )
-
-          begin_pattern = re.compile(
-              r'        fun begin\(\): List<WebsiteTransitionAction> \{\n'
-              r'            check\(state == State\.NEW\)\n'
-              r'            state = State\.SANITIZATION_PENDING\n'
-              r'            return listOf\(WebsiteTransitionAction\.NEUTRALIZE_BLOCKED_TAB\)\n'
-              r'        \}'
-          )
-          begin_replacement = (
-              '        fun begin(): List<WebsiteTransitionAction> {\n'
-              '            check(state == State.NEW)\n'
-              '            state = State.SANITIZATION_PENDING\n'
-              '            return listOf(\n'
-              '                WebsiteTransitionAction.SHOW_CURTAIN,\n'
-              '                WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB\n'
-              '            )\n'
-              '        }'
-          )
-          text, count = begin_pattern.subn(begin_replacement, text, count=1)
-          if count != 1:
-              raise SystemExit(f'website state-machine begin replacement count={count}')
-
+          path = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
+          text = path.read_text()
           start = text.index('    private fun startWebsiteBlockTransition(')
           end = text.index('\n    private suspend fun completeStrictWebsiteDestination(', start)
-          replacement = r'''    private fun startWebsiteBlockTransition(
+
+          raw = r'''
+          private fun startWebsiteBlockTransition(
               browserPackageName: String,
               browserWindowId: Int = INVALID_BROWSER_WINDOW_ID,
               blockedCandidate: String? = null,
@@ -148,15 +112,17 @@ jobs:
                       )
 
                       // If the browser/API cannot expose a certifiable editable
-                      // omnibox, close only the exact blocked tab and then open
-                      // Google in that browser. Never block the browser as an app.
+                      // omnibox, restore and positively re-identify the original
+                      // blocked surface before trying to close only that exact tab.
                       if (!redirectRequested) {
-                          restoreBlockedSurfaceAfterAddressEdit(transition)
-                          redirectRequested = closeBlockedTabAndRequestSafeGoogle(
-                              browserPackageName = browserPackageName,
-                              expectedWindowId = expectedWindowId,
-                              transition = transition
-                          )
+                          val blockedSurfaceRestored =
+                              restoreBlockedSurfaceAfterAddressEdit(transition)
+                          redirectRequested = blockedSurfaceRestored &&
+                              closeBlockedTabAndRequestSafeGoogle(
+                                  browserPackageName = browserPackageName,
+                                  expectedWindowId = expectedWindowId,
+                                  transition = transition
+                              )
                       }
 
                       if (!redirectRequested) {
@@ -307,83 +273,9 @@ jobs:
               return requestSafeGoogleAfterConfirmedClose(transition)
           }
           '''
-          text = text[:start] + replacement + text[end:]
-
-          marker = '        private const val WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS = 120L\n'
-          if marker not in text:
-              raise SystemExit('google settle constant marker missing')
-          text = text.replace(
-              marker,
-              marker + '        internal const val WEBSITE_MIN_BLOCK_NOTICE_MILLIS = 120L\n',
-              1,
-          )
-
-          text = text.replace(
-              '// Tab neutralization and the safe redirect are asynchronous. Ignore the\n'
-              '// browser\'s follow-up events until that handoff finishes so a stale\n'
-              '// blocked address cannot start an overlapping redirect loop.\n',
-              '// The curtain + same-tab Google redirect are asynchronous. Ignore the\n'
-              '// browser\'s follow-up events until that handoff finishes so a stale\n'
-              '// blocked address cannot start an overlapping redirect loop.\n',
-              1,
-          )
-          service_path.write_text(text)
-
-          test_path = Path('app/src/test/java/com/focusguard/service/WebsiteBlockNavigationTest.kt')
-          tests = test_path.read_text()
-          non_strict_pattern = re.compile(
-              r'        assertThat\(machine\.begin\(\)\)\.containsExactly\(\n'
-              r'            BlockingAccessibilityService\.WebsiteTransitionAction\.NEUTRALIZE_BLOCKED_TAB\n'
-              r'        \)'
-          )
-          non_strict_replacement = (
-              '        assertThat(machine.begin()).containsExactly(\n'
-              '            BlockingAccessibilityService.WebsiteTransitionAction.SHOW_CURTAIN,\n'
-              '            BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB\n'
-              '        ).inOrder()'
-          )
-          tests, count = non_strict_pattern.subn(non_strict_replacement, tests, count=1)
-          if count != 1:
-              raise SystemExit(f'non-strict transition replacement count={count}')
-
-          strict_pattern = re.compile(
-              r'        assertThat\(machine\.begin\(\)\.last\(\)\)\.isEqualTo\(\n'
-              r'            BlockingAccessibilityService\.WebsiteTransitionAction\.NEUTRALIZE_BLOCKED_TAB\n'
-              r'        \)'
-          )
-          strict_replacement = (
-              '        val initialActions = machine.begin()\n'
-              '        assertThat(initialActions.first()).isEqualTo(\n'
-              '            BlockingAccessibilityService.WebsiteTransitionAction.SHOW_CURTAIN\n'
-              '        )\n'
-              '        assertThat(initialActions.last()).isEqualTo(\n'
-              '            BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB\n'
-              '        )'
-          )
-          tests, count = strict_pattern.subn(strict_replacement, tests, count=1)
-          if count != 1:
-              raise SystemExit(f'strict transition replacement count={count}')
-
-          handoff_marker = (
-              '    @Test\n'
-              '    fun `website handoff waits for a positively confirmed destination`() {\n'
-              '        assertThat(BlockingAccessibilityService.WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS)\n'
-              '            .isGreaterThan(BlockingAccessibilityService.EVENT_NOTIFICATION_TIMEOUT_MILLIS)\n'
-              '    }\n'
-          )
-          if handoff_marker not in tests:
-              raise SystemExit('website handoff test marker missing')
-          tests = tests.replace(
-              handoff_marker,
-              handoff_marker +
-              '\n    @Test\n'
-              '    fun `website curtain perceptual minimum stays low latency`() {\n'
-              '        assertThat(BlockingAccessibilityService.WEBSITE_MIN_BLOCK_NOTICE_MILLIS)\n'
-              '            .isAtMost(150L)\n'
-              '    }\n',
-              1,
-          )
-          test_path.write_text(tests)
+          block = textwrap.indent(textwrap.dedent(raw).lstrip(), '    ').rstrip()
+          text = text[:start] + block + text[end:]
+          path.write_text(text)
           PY
 
       - name: Run website blocking unit tests
@@ -393,13 +285,12 @@ jobs:
           chmod +x gradlew
           ./gradlew testDebugUnitTest --tests com.focusguard.service.WebsiteBlockNavigationTest --no-daemon --stacktrace
 
-      - name: Push implementation branch
+      - name: Push refined implementation
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "FocusGuard CI"
           git config user.email "actions@users.noreply.github.com"
-          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt \
-                  app/src/test/java/com/focusguard/service/WebsiteBlockNavigationTest.kt
-          git commit -m "Restore instant website curtain and Google redirect"
-          git push --force-with-lease origin HEAD:refs/heads/fix/website-curtain-google-redirect
+          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+          git commit -m "Harden same-tab redirect fallback"
+          git push origin HEAD:refs/heads/fix/website-curtain-google-redirect
