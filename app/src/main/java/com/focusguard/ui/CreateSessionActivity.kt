@@ -67,6 +67,7 @@ import com.focusguard.security.AuthManager
 import com.focusguard.security.BlockTargetPolicy
 import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.compose.screens.AppSelectionList
+import com.focusguard.ui.compose.screens.AssociatedTargetOptionDialog
 import com.focusguard.ui.compose.screens.AppSelectionScreen
 import com.focusguard.ui.compose.screens.KeywordRulesTab
 import com.focusguard.ui.compose.screens.SelectableAppUi
@@ -82,6 +83,7 @@ import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
+import com.focusguard.utils.AssociatedBlockTargets
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.CancellationException
@@ -148,8 +150,7 @@ fun CreateSessionWizard(
 ) {
     val pagerState = rememberPagerState(pageCount = { 2 })
     val scope = rememberCoroutineScope()
-    // O que cada bloqueio aceita como alvo é decidido por tipo, não pela tela:
-    // senha protege só aplicativos, jejum aceita apps, sites e palavras.
+    // O que cada bloqueio aceita como alvo é decidido por tipo, não pela tela.
     val kinds = remember(sessionType) { BlockTargetPolicy.forSessionType(sessionType) }
     var selectedApps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
     var selectedRules by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -204,8 +205,7 @@ fun CreateSessionWizard(
  * First page of the block wizard: what the block will hold.
  *
  * Which tabs exist is [kinds]' decision, not this screen's. With a single kind
- * the tab bar disappears entirely, so a password block still shows exactly the
- * app list it always did.
+ * the tab bar disappears entirely.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -215,7 +215,8 @@ fun AppSelectionStep(
     initialSelectedPackages: Set<String> = emptySet(),
     allowCompatibleProtection: Boolean = false,
     kinds: BlockTargetPolicy.Kinds = BlockTargetPolicy.APPS_ONLY,
-    initialRules: List<String> = emptyList()
+    initialRules: List<String> = emptyList(),
+    offerWebsiteCompanion: Boolean = kinds.websites
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val pm = context.packageManager
@@ -224,6 +225,10 @@ fun AppSelectionStep(
     var configuredBlockedRules by remember { mutableStateOf<Set<String>>(emptySet()) }
     var rules by remember { mutableStateOf(initialRules) }
     var isLoading by remember { mutableStateOf(true) }
+    var pendingAppSiteOption by remember { mutableStateOf<PredefinedApps.AppInfo?>(null) }
+    var pendingSiteAppOption by remember {
+        mutableStateOf<Pair<String, PredefinedApps.AppInfo>?>(null)
+    }
 
     LaunchedEffect(initialSelectedPackages) {
         withContext(Dispatchers.IO) {
@@ -317,10 +322,102 @@ fun AppSelectionStep(
                 Toast.LENGTH_SHORT
             ).show()
         } else {
+            val wasSelected = apps.firstOrNull { it.packageName == pkg }?.isSelected == true
             apps = apps.map {
                 if (it.packageName == pkg) it.copy(isSelected = !it.isSelected) else it
             }
+
+            if (!wasSelected && offerWebsiteCompanion) {
+                val companionDomain = AssociatedBlockTargets.domainForAppPackage(pkg)
+                val companionInfo = PredefinedApps.PREVENTIVE_APPS
+                    .firstOrNull { it.packageName == pkg }
+                val alreadySelected = companionDomain != null &&
+                    BlockingSessionManager.isWebsiteRuleCoveredBy(companionDomain, rules)
+                val alreadyBlocked = companionDomain != null &&
+                    BlockingSessionManager.isWebsiteRuleCoveredBy(
+                        companionDomain,
+                        configuredBlockedRules
+                    )
+
+                if (companionDomain != null &&
+                    companionInfo != null &&
+                    !alreadySelected &&
+                    !alreadyBlocked
+                ) {
+                    pendingAppSiteOption = companionInfo
+                }
+            }
         }
+    }
+
+    val onWebsiteRulesChange: (List<String>) -> Unit = { updatedRules ->
+        val previousRules = rules
+        rules = updatedRules
+
+        val addedRule = updatedRules.firstOrNull { candidate ->
+            candidate !in previousRules &&
+                !WebsiteBlocker.isKeywordRule(candidate) &&
+                !WebsiteBlocker.isPornographyRule(candidate)
+        }
+        val companionInfo = addedRule?.let(AssociatedBlockTargets::appForWebsiteRule)
+        val appAlreadySelected = companionInfo != null &&
+            apps.any { it.packageName == companionInfo.packageName && it.isSelected }
+        val appAlreadyBlocked = companionInfo?.packageName in configuredBlockedPackages
+
+        if (addedRule != null &&
+            companionInfo != null &&
+            !appAlreadySelected &&
+            !appAlreadyBlocked
+        ) {
+            pendingSiteAppOption = addedRule to companionInfo
+        }
+    }
+
+    pendingAppSiteOption?.let { appInfo ->
+        val domain = AssociatedBlockTargets.domainForAppPackage(appInfo.packageName)
+        if (domain != null) {
+            AssociatedTargetOptionDialog(
+                title = stringResource(R.string.associated_target_block_site_title),
+                message = stringResource(
+                    R.string.associated_target_block_site_message,
+                    appInfo.appName,
+                    domain
+                ),
+                onDecision = { blockAlso ->
+                    if (blockAlso &&
+                        !BlockingSessionManager.isWebsiteRuleCoveredBy(domain, rules)
+                    ) {
+                        rules = (rules + domain).distinct()
+                    }
+                    pendingAppSiteOption = null
+                }
+            )
+        } else {
+            pendingAppSiteOption = null
+        }
+    }
+
+    pendingSiteAppOption?.let { (rule, appInfo) ->
+        AssociatedTargetOptionDialog(
+            title = stringResource(R.string.associated_target_block_app_title),
+            message = stringResource(
+                R.string.associated_target_block_app_message,
+                WebsiteBlocker.displayRule(rule),
+                appInfo.appName
+            ),
+            onDecision = { blockAlso ->
+                if (blockAlso && appInfo.packageName !in configuredBlockedPackages) {
+                    apps = apps.map { app ->
+                        if (app.packageName == appInfo.packageName && !app.isAlreadyBlocked) {
+                            app.copy(isSelected = true)
+                        } else {
+                            app
+                        }
+                    }
+                }
+                pendingSiteAppOption = null
+            }
+        )
     }
 
     val proceed: () -> Unit = {
@@ -414,7 +511,7 @@ fun AppSelectionStep(
             BlockTargetTab.SITES -> WebsiteRulesTab(
                 rules = rules,
                 blockedRules = configuredBlockedRules,
-                onRulesChange = { rules = it },
+                onRulesChange = onWebsiteRulesChange,
                 onAlreadyBlocked = onAlreadyBlocked,
                 modifier = Modifier.padding(padding)
             )

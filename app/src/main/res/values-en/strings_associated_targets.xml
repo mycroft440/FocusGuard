@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="associated_target_block_site_title">Block the app website too?</string>
+    <string name="associated_target_block_site_message">You blocked %1$s. Block %2$s too?</string>
+    <string name="associated_target_block_app_title">Block the site app too?</string>
+    <string name="associated_target_block_app_message">You blocked %1$s. Block %2$s too?</string>
+    <string name="associated_target_no">No</string>
+    <string name="associated_target_yes">Yes</string>
+    <string name="associated_target_continue">Continue</string>
+</resources>
