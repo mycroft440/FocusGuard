@@ -1,0 +1,392 @@
+name: Format browser site redirect
+
+on:
+  push:
+    branches: ["fix/browser-site-redirect"]
+    paths:
+      - ".github/workflows/format-browser-site-redirect.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: fix/browser-site-redirect
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android 16 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Normalize inserted Kotlin blocks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
+          text = path.read_text()
+
+          def replace_once(old: str, new: str, label: str):
+              global text
+              if old not in text:
+                  raise SystemExit(f'{label} not found')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+          '''        @Synchronized
+          fun markExternalRedirectRequested(
+          browserPackageName: String,
+          transitionId: Long,
+          requestedAtUptimeMillis: Long
+          ): Boolean {
+          val transition = activeTransitions[browserPackageName] ?: return false
+          if (transition.id != transitionId || transition.destinationRequested ||
+          requestedAtUptimeMillis < transition.detectionEventUptimeMillis
+          ) return false
+          transition.sanitizationRequested = true
+          transition.sanitizationRequestedAtUptimeMillis = requestedAtUptimeMillis
+          transition.externalRedirectRequested = true
+          transition.externalRedirectRequestedAtUptimeMillis = requestedAtUptimeMillis
+          return true
+          }
+          ''',
+          '''        @Synchronized
+              fun markExternalRedirectRequested(
+                  browserPackageName: String,
+                  transitionId: Long,
+                  requestedAtUptimeMillis: Long
+              ): Boolean {
+                  val transition = activeTransitions[browserPackageName] ?: return false
+                  if (transition.id != transitionId || transition.destinationRequested ||
+                      requestedAtUptimeMillis < transition.detectionEventUptimeMillis
+                  ) return false
+                  transition.sanitizationRequested = true
+                  transition.sanitizationRequestedAtUptimeMillis = requestedAtUptimeMillis
+                  transition.externalRedirectRequested = true
+                  transition.externalRedirectRequestedAtUptimeMillis = requestedAtUptimeMillis
+                  return true
+              }
+          ''',
+          'markExternalRedirectRequested',
+          )
+
+          start = text.index('      // If the browser/API cannot expose a certifiable editable\n')
+          end = text.index('\n\n                if (!redirectRequested) {\n                    stateMachine.onFailureOrTimeout()', start)
+          fallback = '''                // If the browser/API cannot expose a certifiable editable
+                      // omnibox, restore the blocked surface and request Google through an
+                      // explicit package-scoped browser intent while the opaque curtain remains
+                      // on top. This covers Firefox, Samsung Internet and Chromium forks whose
+                      // accessibility trees do not expose the same editing actions.
+                      if (!redirectRequested) {
+                          val blockedSurfaceRestored =
+                              restoreBlockedSurfaceAfterAddressEdit(transition)
+                          redirectRequested = blockedSurfaceRestored &&
+                              requestSafeGoogleThroughBrowserIntent(transition)
+                      }
+
+                      // If even the generic browser intent cannot be launched, retain the
+                      // positively-identified Chromium close-tab fallback. HOME remains the
+                      // fail-closed escape when no safe destination can be confirmed.
+                      if (!redirectRequested) {
+                          redirectRequested = closeBlockedTabAndRequestSafeGoogle(
+                              browserPackageName = browserPackageName,
+                              expectedWindowId = expectedWindowId,
+                              transition = transition
+                          )
+                      }
+          '''
+          fallback = '\n'.join(line[10:] if line.startswith('          ') else line for line in fallback.splitlines())
+          text = text[:start] + fallback + text[end:]
+
+          replace_once(
+          '''    private fun requestSafeGoogleThroughBrowserIntent(
+          transition: WebsiteBlockTransitionHandle
+          ): Boolean {
+          if (!curtainReadyForTransition(transition) ||
+          !currentBrowserSurfaceMatchesBlockedTransition(transition)
+          ) return false
+
+          val requestedAt = SystemClock.uptimeMillis()
+          if (!websiteBlockTransitionGuard.markExternalRedirectRequested(
+          browserPackageName = transition.browserPackageName,
+          transitionId = transition.id,
+          requestedAtUptimeMillis = requestedAt
+          )
+          ) return false
+
+          return runCatching {
+          startActivity(createSafeBrowserRedirectIntent(transition.browserPackageName))
+          true
+          }.getOrElse { error ->
+          FocusGuardLogger.logError(
+          "A11y",
+          "Falha ao solicitar redirecionamento seguro no navegador",
+          error
+          )
+          false
+          }
+          }
+          ''',
+          '''    private fun requestSafeGoogleThroughBrowserIntent(
+              transition: WebsiteBlockTransitionHandle
+          ): Boolean {
+              if (!curtainReadyForTransition(transition) ||
+                  !currentBrowserSurfaceMatchesBlockedTransition(transition)
+              ) return false
+
+              val requestedAt = SystemClock.uptimeMillis()
+              if (!websiteBlockTransitionGuard.markExternalRedirectRequested(
+                      browserPackageName = transition.browserPackageName,
+                      transitionId = transition.id,
+                      requestedAtUptimeMillis = requestedAt
+                  )
+              ) return false
+
+              return runCatching {
+                  startActivity(createSafeBrowserRedirectIntent(transition.browserPackageName))
+                  true
+              }.getOrElse { error ->
+                  FocusGuardLogger.logError(
+                      "A11y",
+                      "Falha ao solicitar redirecionamento seguro no navegador",
+                      error
+                  )
+                  false
+              }
+          }
+          ''',
+          'requestSafeGoogleThroughBrowserIntent',
+          )
+
+          replace_once(
+          '''    private fun currentBrowserSurfaceMatchesBlockedTransition(
+          transition: WebsiteBlockTransitionHandle
+          ): Boolean {
+          val root = activeBrowserRoot(
+          transition.browserPackageName,
+          transition.expectedWindowId
+          ) ?: return false
+          val currentAddress = try {
+          WebsiteBlocker.extractUrlFromRoot(
+          root,
+          transition.browserPackageName,
+          isVerifiedHttpsHandler(transition.browserPackageName)
+          ) ?: WebsiteBlocker.extractAddressBarTextFromRoot(
+          root,
+          transition.browserPackageName,
+          isVerifiedHttpsHandler(transition.browserPackageName)
+          )
+          } finally {
+          recycleSafely(root)
+          }
+          val detected = transition.blockedCandidate?.takeIf(String::isNotBlank)
+          ?: return false
+          val detectedRule = WebsiteBlocker.findMatchingRule(
+          detected,
+          transition.blockedRules
+          ) ?: return false
+          val currentRule = currentAddress?.let {
+          WebsiteBlocker.findMatchingRule(it, transition.blockedRules)
+          } ?: return false
+          return detectedRule == currentRule
+          }
+          ''',
+          '''    private fun currentBrowserSurfaceMatchesBlockedTransition(
+              transition: WebsiteBlockTransitionHandle
+          ): Boolean {
+              val root = activeBrowserRoot(
+                  transition.browserPackageName,
+                  transition.expectedWindowId
+              ) ?: return false
+              val currentAddress = try {
+                  WebsiteBlocker.extractUrlFromRoot(
+                      root,
+                      transition.browserPackageName,
+                      isVerifiedHttpsHandler(transition.browserPackageName)
+                  ) ?: WebsiteBlocker.extractAddressBarTextFromRoot(
+                      root,
+                      transition.browserPackageName,
+                      isVerifiedHttpsHandler(transition.browserPackageName)
+                  )
+              } finally {
+                  recycleSafely(root)
+              }
+              val detected = transition.blockedCandidate?.takeIf(String::isNotBlank)
+                  ?: return false
+              val detectedRule = WebsiteBlocker.findMatchingRule(
+                  detected,
+                  transition.blockedRules
+              ) ?: return false
+              val currentRule = currentAddress?.let {
+                  WebsiteBlocker.findMatchingRule(it, transition.blockedRules)
+              } ?: return false
+              return detectedRule == currentRule
+          }
+          ''',
+          'currentBrowserSurfaceMatchesBlockedTransition',
+          )
+
+          replace_once(
+          '''        internal fun createSafeBrowserRedirectIntent(
+          browserPackageName: String
+          ): Intent {
+          require(browserPackageName.isNotBlank())
+          return Intent(Intent.ACTION_VIEW, Uri.parse(SAFE_REDIRECT_URL)).apply {
+          addCategory(Intent.CATEGORY_BROWSABLE)
+          setPackage(browserPackageName)
+          addFlags(
+          Intent.FLAG_ACTIVITY_NEW_TASK or
+          Intent.FLAG_ACTIVITY_CLEAR_TOP or
+          Intent.FLAG_ACTIVITY_SINGLE_TOP
+          )
+          }
+          }
+          ''',
+          '''        internal fun createSafeBrowserRedirectIntent(
+              browserPackageName: String
+          ): Intent {
+              require(browserPackageName.isNotBlank())
+              return Intent(Intent.ACTION_VIEW, Uri.parse(SAFE_REDIRECT_URL)).apply {
+                  addCategory(Intent.CATEGORY_BROWSABLE)
+                  setPackage(browserPackageName)
+                  addFlags(
+                      Intent.FLAG_ACTIVITY_NEW_TASK or
+                          Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                          Intent.FLAG_ACTIVITY_SINGLE_TOP
+                  )
+              }
+          }
+          ''',
+          'createSafeBrowserRedirectIntent',
+          )
+
+          path.write_text(text)
+
+          test_path = Path('app/src/test/java/com/focusguard/service/WebsiteBlockNavigationTest.kt')
+          tests = test_path.read_text()
+          start = tests.index('@Test\nfun `browser intent redirect may confirm on a fresh window from the same browser`()')
+          end = tests.index('    @Test\n    fun `Chromium capability policy is package based and rejects stale surfaces`()', start)
+          replacement = '''    @Test
+              fun `browser intent redirect may confirm on a fresh window from the same browser`() {
+                  val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
+                  val transition = guard.tryStart(
+                      FIREFOX_PACKAGE,
+                      transitionId = 25L,
+                      destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+                      expectedWindowId = 7,
+                      blockedCandidate = "https://facebook.com/feed",
+                      blockedRules = setOf("facebook.com"),
+                      detectionEventUptimeMillis = 100L
+                  )!!
+                  assertThat(
+                      guard.markExternalRedirectRequested(
+                          FIREFOX_PACKAGE,
+                          transitionId = 25L,
+                          requestedAtUptimeMillis = 110L
+                      )
+                  ).isTrue()
+
+                  guard.observeBrowserEvent(
+                      browserPackageName = FIREFOX_PACKAGE,
+                      windowId = 8,
+                      eventUptimeMillis = 111L,
+                      eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                  )
+                  assertThat(
+                      guard.transitionForConfirmation(
+                          FIREFOX_PACKAGE,
+                          windowId = 8,
+                          eventUptimeMillis = 111L,
+                          eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+                      )
+                  ).isSameInstanceAs(transition)
+                  assertThat(
+                      guard.rebindPostCloseGoogleWindow(
+                          FIREFOX_PACKAGE,
+                          transitionId = 25L,
+                          windowId = 8,
+                          eventUptimeMillis = 111L
+                      )
+                  ).isTrue()
+                  assertThat(guard.confirmGoogle(FIREFOX_PACKAGE, 8, 111L)).isTrue()
+              }
+
+              @Test
+              fun `finished website transition re-arms the same browser for Back navigation`() {
+                  val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
+                  assertThat(
+                      guard.tryStart(
+                          CHROME_PACKAGE,
+                          transitionId = 26L,
+                          destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+                          expectedWindowId = 7,
+                          detectionEventUptimeMillis = 100L
+                      )
+                  ).isNotNull()
+                  assertThat(guard.finish(CHROME_PACKAGE, transitionId = 26L)).isTrue()
+                  assertThat(
+                      guard.tryStart(
+                          CHROME_PACKAGE,
+                          transitionId = 27L,
+                          destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+                          expectedWindowId = 7,
+                          detectionEventUptimeMillis = 200L
+                      )
+                  ).isNotNull()
+              }
+
+              @Test
+              fun `safe redirect intent stays inside the browser that exposed the blocked site`() {
+                  val intent = BlockingAccessibilityService.createSafeBrowserRedirectIntent(
+                      FIREFOX_PACKAGE
+                  )
+                  assertThat(intent.action).isEqualTo(Intent.ACTION_VIEW)
+                  assertThat(intent.data?.toString()).isEqualTo("https://www.google.com")
+                  assertThat(intent.`package`).isEqualTo(FIREFOX_PACKAGE)
+                  assertThat(intent.categories).contains(Intent.CATEGORY_BROWSABLE)
+                  assertThat(intent.flags and Intent.FLAG_ACTIVITY_NEW_TASK).isNotEqualTo(0)
+                  assertThat(intent.flags and Intent.FLAG_ACTIVITY_CLEAR_TOP).isNotEqualTo(0)
+                  assertThat(intent.flags and Intent.FLAG_ACTIVITY_SINGLE_TOP).isNotEqualTo(0)
+              }
+
+          '''
+          replacement = '\n'.join(line[10:] if line.startswith('          ') else line for line in replacement.splitlines())
+          tests = tests[:start] + replacement + '\n' + tests[end:]
+          test_path.write_text(tests)
+          PY
+
+      - name: Run targeted tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest --tests com.focusguard.service.WebsiteBlockNavigationTest --no-daemon
+
+      - name: Commit formatting and remove one-shot workflow
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/format-browser-site-redirect.yml
+          git config user.name "FocusGuard CI"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git commit -m "Normalize website redirect implementation"
+          git push origin HEAD:fix/browser-site-redirect
