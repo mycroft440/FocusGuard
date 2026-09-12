@@ -21,6 +21,7 @@ object PredefinedApps {
         AppInfo("com.snapchat.android", "Snapchat", "Redes Sociais", "snapchat.com"),
         AppInfo("com.pinterest", "Pinterest", "Redes Sociais", "pinterest.com"),
         AppInfo("com.reddit.frontpage", "Reddit", "Redes Sociais", "reddit.com"),
+        AppInfo("com.whatsapp", "WhatsApp", "Comunicação", "whatsapp.com"),
         AppInfo("org.telegram.messenger", "Telegram", "Comunicação", "telegram.org"),
         AppInfo("com.discord", "Discord", "Comunicação", "discord.com"),
 
