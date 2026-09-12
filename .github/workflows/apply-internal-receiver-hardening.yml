@@ -28,46 +28,50 @@ jobs:
           old_import = "import androidx.core.app.NotificationCompat\n"
           new_import = old_import + "import androidx.core.content.ContextCompat\n"
           assert service.count(old_import) == 1, "NotificationCompat import context changed"
+          assert "import androidx.core.content.ContextCompat\n" not in service, "ContextCompat already imported"
           service = service.replace(old_import, new_import, 1)
 
-          old_registration = '''    private fun registerRefreshReceiver() {
-              val filter = IntentFilter().apply {
-                  addAction(ACTION_REFRESH_BLOCKING)
-                  addAction(ACTION_DEV_RELINQUISH_ACCESSIBILITY)
-              }
-              if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                  registerReceiver(refreshReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
-              } else {
-                  @Suppress("DEPRECATION")
-                  registerReceiver(refreshReceiver, filter)
-              }
-          }
-          '''
-          new_registration = '''    private fun registerRefreshReceiver() {
-              val filter = IntentFilter().apply {
-                  addAction(ACTION_REFRESH_BLOCKING)
-                  addAction(ACTION_DEV_RELINQUISH_ACCESSIBILITY)
-              }
-              ContextCompat.registerReceiver(
-                  this,
-                  refreshReceiver,
-                  filter,
-                  internalRefreshReceiverFlags()
-              )
-          }
-          '''
-          assert service.count(old_registration) == 1, "refresh receiver registration context changed"
-          service = service.replace(old_registration, new_registration, 1)
+          start_marker = "    private fun registerRefreshReceiver() {\n"
+          end_marker = "\n    private fun registerScreenStateReceiver() {"
+          assert service.count(start_marker) == 1, "refresh receiver function count changed"
+          start = service.index(start_marker)
+          end = service.index(end_marker, start)
+          old_registration = service[start:end]
+          required_fragments = (
+              "addAction(ACTION_REFRESH_BLOCKING)",
+              "addAction(ACTION_DEV_RELINQUISH_ACCESSIBILITY)",
+              "registerReceiver(refreshReceiver, filter, Context.RECEIVER_NOT_EXPORTED)",
+              "registerReceiver(refreshReceiver, filter)",
+          )
+          for fragment in required_fragments:
+              assert fragment in old_registration, f"refresh receiver context missing: {fragment}"
 
-          anchor = '''        internal fun createDevelopmentRelinquishIntent(context: Context): Intent =
-              Intent(ACTION_DEV_RELINQUISH_ACCESSIBILITY).setPackage(context.packageName)
-          '''
-          replacement = '''        internal fun internalRefreshReceiverFlags(): Int =
-              ContextCompat.RECEIVER_NOT_EXPORTED
+          new_registration = (
+              "    private fun registerRefreshReceiver() {\n"
+              "        val filter = IntentFilter().apply {\n"
+              "            addAction(ACTION_REFRESH_BLOCKING)\n"
+              "            addAction(ACTION_DEV_RELINQUISH_ACCESSIBILITY)\n"
+              "        }\n"
+              "        ContextCompat.registerReceiver(\n"
+              "            this,\n"
+              "            refreshReceiver,\n"
+              "            filter,\n"
+              "            internalRefreshReceiverFlags()\n"
+              "        )\n"
+              "    }"
+          )
+          service = service[:start] + new_registration + service[end:]
 
-          internal fun createDevelopmentRelinquishIntent(context: Context): Intent =
-              Intent(ACTION_DEV_RELINQUISH_ACCESSIBILITY).setPackage(context.packageName)
-          '''
+          anchor = (
+              "        internal fun createDevelopmentRelinquishIntent(context: Context): Intent =\n"
+              "            Intent(ACTION_DEV_RELINQUISH_ACCESSIBILITY).setPackage(context.packageName)\n"
+          )
+          replacement = (
+              "        internal fun internalRefreshReceiverFlags(): Int =\n"
+              "            ContextCompat.RECEIVER_NOT_EXPORTED\n\n"
+              "        internal fun createDevelopmentRelinquishIntent(context: Context): Intent =\n"
+              "            Intent(ACTION_DEV_RELINQUISH_ACCESSIBILITY).setPackage(context.packageName)\n"
+          )
           assert service.count(anchor) == 1, "companion receiver anchor changed"
           service = service.replace(anchor, replacement, 1)
           service_path.write_text(service)
@@ -77,20 +81,22 @@ jobs:
           old_test_import = "import android.graphics.Rect\n"
           new_test_import = old_test_import + "import androidx.core.content.ContextCompat\n"
           assert test.count(old_test_import) == 1, "test import context changed"
+          assert "import androidx.core.content.ContextCompat\n" not in test, "test ContextCompat already imported"
           test = test.replace(old_test_import, new_test_import, 1)
 
-          test_anchor = '''    @Test
-          fun `development relinquish broadcast is package scoped`() {
-          '''
-          test_insert = '''    @Test
-          fun `internal refresh receiver is never exported to other apps`() {
-              assertThat(BlockingAccessibilityService.internalRefreshReceiverFlags())
-                  .isEqualTo(ContextCompat.RECEIVER_NOT_EXPORTED)
-          }
-
-          @Test
-          fun `development relinquish broadcast is package scoped`() {
-          '''
+          test_anchor = (
+              "    @Test\n"
+              "    fun `development relinquish broadcast is package scoped`() {\n"
+          )
+          test_insert = (
+              "    @Test\n"
+              "    fun `internal refresh receiver is never exported to other apps`() {\n"
+              "        assertThat(BlockingAccessibilityService.internalRefreshReceiverFlags())\n"
+              "            .isEqualTo(ContextCompat.RECEIVER_NOT_EXPORTED)\n"
+              "    }\n\n"
+              "    @Test\n"
+              "    fun `development relinquish broadcast is package scoped`() {\n"
+          )
           assert test.count(test_anchor) == 1, "intent test anchor changed"
           test = test.replace(test_anchor, test_insert, 1)
           test_path.write_text(test)
