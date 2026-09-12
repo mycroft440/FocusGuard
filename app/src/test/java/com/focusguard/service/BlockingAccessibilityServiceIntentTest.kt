@@ -1,6 +1,7 @@
 package com.focusguard.service
 
 import android.graphics.Rect
+import androidx.core.content.ContextCompat
 import com.focusguard.security.SelfProtectionStateStore
 import com.google.common.truth.Truth.assertThat
 import org.junit.Before
@@ -20,6 +21,12 @@ class BlockingAccessibilityServiceIntentTest {
             RuntimeEnvironment.getApplication().applicationContext,
             false
         )
+    }
+
+    @Test
+    fun `internal refresh receiver is never exported to other apps`() {
+        assertThat(BlockingAccessibilityService.internalRefreshReceiverFlags())
+            .isEqualTo(ContextCompat.RECEIVER_NOT_EXPORTED)
     }
 
     @Test
