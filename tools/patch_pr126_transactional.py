@@ -1,0 +1,351 @@
+from pathlib import Path
+
+screen_path = Path('app/src/main/java/com/focusguard/ui/compose/screens/ProtectionSetupScreen.kt')
+text = screen_path.read_text()
+
+old = '''            // Este assistente tem uma tela própria de sites (WEBSITE_PICKER),
+            // então aqui só escolhe aplicativos e ignora as regras do seletor.
+'''
+new = '''            // Este assistente tem uma tela própria de sites (WEBSITE_PICKER).
+            // O seletor de apps continua visualmente focado em apps, mas pode devolver
+            // um site companheiro quando o usuário aceitar explicitamente a opção.
+'''
+assert old in text
+text = text.replace(old, new, 1)
+
+old = '''            ProtectionSetupPage.WEBSITE_PICKER -> WebsiteRuleSelectionScreen(
+                initialRules = websiteRules,
+                configuredBlockedRules = configuredBlockedTargets.unavailableWebsiteRules,
+                selectedAppPackages = selectedApps.mapTo(linkedSetOf()) { it.packageName },
+                configuredBlockedPackages = configuredBlockedTargets.unavailableAppPackageNames,
+                onCompanionAppSelected = { appInfo ->
+                    if (selectedApps.none { it.packageName == appInfo.packageName } &&
+                        appInfo.packageName !in configuredBlockedTargets.unavailableAppPackageNames
+                    ) {
+                        selectedApps = selectedApps + SelectableAppUi(
+                            packageName = appInfo.packageName,
+                            appName = appInfo.appName,
+                            isSelected = true,
+                            isInstalled = context.packageManager
+                                .getLaunchIntentForPackage(appInfo.packageName) != null,
+                            category = appInfo.category,
+                            iconUrl = appInfo.domain?.let { domain ->
+                                "https://www.google.com/s2/favicons?domain=$domain&sz=128"
+                            }
+                        )
+                    }
+                },
+                onSave = { rules ->
+                    scope.launch {
+                        val latest = refreshConfiguredBlockedTargets()
+                        val availableRules = rules.filterNot {
+                            isWebsiteRuleAlreadyBlocked(it, latest.unavailableWebsiteRules)
+                        }
+                        if (availableRules.size != rules.size) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.site_already_blocked),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                        websiteRules = availableRules
+                        returnToList()
+                    }
+                },
+                onBack = ::returnToList
+            )
+'''
+new = '''            ProtectionSetupPage.WEBSITE_PICKER -> WebsiteRuleSelectionScreen(
+                initialRules = websiteRules,
+                configuredBlockedRules = configuredBlockedTargets.unavailableWebsiteRules,
+                selectedAppPackages = selectedApps.mapTo(linkedSetOf()) { it.packageName },
+                configuredBlockedPackages = configuredBlockedTargets.unavailableAppPackageNames,
+                onSave = { rules, optedInCompanionPackages ->
+                    scope.launch {
+                        val latest = refreshConfiguredBlockedTargets()
+                        val availableRules = rules.filterNot {
+                            isWebsiteRuleAlreadyBlocked(it, latest.unavailableWebsiteRules)
+                        }
+                        if (availableRules.size != rules.size) {
+                            Toast.makeText(
+                                context,
+                                context.getString(R.string.site_already_blocked),
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+
+                        val companionApps = AssociatedBlockTargets.selectedAppsForWebsiteRules(
+                            rules = availableRules,
+                            optedInPackages = optedInCompanionPackages
+                        ).filterNot {
+                            it.packageName in latest.unavailableAppPackageNames
+                        }
+                        val companionRows = companionApps.map { appInfo ->
+                            SelectableAppUi(
+                                packageName = appInfo.packageName,
+                                appName = appInfo.appName,
+                                isSelected = true,
+                                isInstalled = context.packageManager
+                                    .getLaunchIntentForPackage(appInfo.packageName) != null,
+                                category = appInfo.category,
+                                iconUrl = appInfo.domain?.let { domain ->
+                                    "https://www.google.com/s2/favicons?domain=$domain&sz=128"
+                                }
+                            )
+                        }
+
+                        selectedApps = (selectedApps + companionRows)
+                            .distinctBy { it.packageName }
+                        websiteRules = availableRules
+                        returnToList()
+                    }
+                },
+                onBack = ::returnToList
+            )
+'''
+assert old in text
+text = text.replace(old, new, 1)
+
+old = '''private fun WebsiteRuleSelectionScreen(
+    initialRules: List<String>,
+    configuredBlockedRules: Set<String>,
+    selectedAppPackages: Set<String>,
+    configuredBlockedPackages: Set<String>,
+    onCompanionAppSelected: (PredefinedApps.AppInfo) -> Unit,
+    onSave: (List<String>) -> Unit,
+    onBack: () -> Unit
+) {
+'''
+new = '''private fun WebsiteRuleSelectionScreen(
+    initialRules: List<String>,
+    configuredBlockedRules: Set<String>,
+    selectedAppPackages: Set<String>,
+    configuredBlockedPackages: Set<String>,
+    onSave: (List<String>, Set<String>) -> Unit,
+    onBack: () -> Unit
+) {
+'''
+assert old in text
+text = text.replace(old, new, 1)
+
+old = '''    var pendingCompanionApp by remember {
+        mutableStateOf<Pair<String, PredefinedApps.AppInfo>?>(null)
+    }
+
+    fun maybeOfferCompanionApp(rule: String) {
+        val appInfo = AssociatedBlockTargets.appForWebsiteRule(rule) ?: return
+        if (appInfo.packageName in selectedAppPackages ||
+            appInfo.packageName in configuredBlockedPackages
+        ) return
+        pendingCompanionApp = WebsiteBlocker.normalizeRule(rule) to appInfo
+    }
+'''
+new = '''    var pendingCompanionApp by remember {
+        mutableStateOf<Pair<String, PredefinedApps.AppInfo>?>(null)
+    }
+    var optedInCompanionPackages by remember {
+        mutableStateOf<Set<String>>(emptySet())
+    }
+
+    fun removeRule(rule: String) {
+        val normalized = WebsiteBlocker.normalizeRule(rule)
+        rules = rules.filterNot { WebsiteBlocker.normalizeRule(it) == normalized }
+        AssociatedBlockTargets.appForWebsiteRule(normalized)?.let { appInfo ->
+            optedInCompanionPackages = optedInCompanionPackages - appInfo.packageName
+        }
+    }
+
+    fun maybeOfferCompanionApp(rule: String) {
+        val appInfo = AssociatedBlockTargets.appForWebsiteRule(rule) ?: return
+        if (appInfo.packageName in selectedAppPackages ||
+            appInfo.packageName in configuredBlockedPackages ||
+            appInfo.packageName in optedInCompanionPackages
+        ) return
+        pendingCompanionApp = WebsiteBlocker.normalizeRule(rule) to appInfo
+    }
+'''
+assert old in text
+text = text.replace(old, new, 1)
+
+old = '''        if (isWebsiteRuleAlreadyBlocked(normalized, configuredBlockedRules)) {
+            rules = rules.filterNot { WebsiteBlocker.normalizeRule(it) == normalized }
+            input = ""
+'''
+new = '''        if (isWebsiteRuleAlreadyBlocked(normalized, configuredBlockedRules)) {
+            removeRule(normalized)
+            input = ""
+'''
+assert old in text
+text = text.replace(old, new, 1)
+
+old = '''        if (isWebsiteRuleAlreadyBlocked(normalized, configuredBlockedRules)) {
+            rules = rules.filterNot {
+                WebsiteBlocker.normalizeRule(it) == normalized
+            }
+            Toast.makeText(
+'''
+new = '''        if (isWebsiteRuleAlreadyBlocked(normalized, configuredBlockedRules)) {
+            removeRule(normalized)
+            Toast.makeText(
+'''
+assert old in text
+text = text.replace(old, new, 1)
+
+old = '''            val wasSelected = normalized in rules
+            rules = if (wasSelected) {
+                rules.filterNot { it == normalized }
+            } else {
+                (rules + normalized).distinct()
+            }
+            if (!wasSelected) maybeOfferCompanionApp(normalized)
+'''
+new = '''            val wasSelected = normalized in rules
+            if (wasSelected) {
+                removeRule(normalized)
+            } else {
+                rules = (rules + normalized).distinct()
+                maybeOfferCompanionApp(normalized)
+            }
+'''
+assert old in text
+text = text.replace(old, new, 1)
+
+old = '''            onDecision = { blockAlso ->
+                if (blockAlso) onCompanionAppSelected(appInfo)
+                pendingCompanionApp = null
+            }
+'''
+new = '''            onDecision = { blockAlso ->
+                if (blockAlso) {
+                    optedInCompanionPackages = optedInCompanionPackages + appInfo.packageName
+                }
+                pendingCompanionApp = null
+            }
+'''
+assert old in text
+text = text.replace(old, new, 1)
+
+old = '''                    onClick = {
+                        onSave(
+                            rules.filterNot {
+                                isWebsiteRuleAlreadyBlocked(it, configuredBlockedRules)
+                            }
+                        )
+                    },
+'''
+new = '''                    onClick = {
+                        val savableRules = rules.filterNot {
+                            isWebsiteRuleAlreadyBlocked(it, configuredBlockedRules)
+                        }
+                        onSave(savableRules, optedInCompanionPackages)
+                    },
+'''
+assert old in text
+text = text.replace(old, new, 1)
+
+old = '''                        onRemove = { rules = rules.filterNot { it == rule } }
+'''
+new = '''                        onRemove = { removeRule(rule) }
+'''
+assert old in text
+text = text.replace(old, new, 1)
+
+screen_path.write_text(text)
+
+helper_path = Path('app/src/main/java/com/focusguard/utils/AssociatedBlockTargets.kt')
+text = helper_path.read_text()
+old = '''    fun appForWebsiteRule(rule: String): PredefinedApps.AppInfo? {
+        val normalizedRule = WebsiteBlocker.normalizeRule(rule)
+        if (normalizedRule.isEmpty() || WebsiteBlocker.isKeywordRule(normalizedRule)) return null
+
+        return PredefinedApps.PREVENTIVE_APPS.firstOrNull { app ->
+            app.domain
+                ?.let(WebsiteBlocker::normalizeRule)
+                ?.let { it == normalizedRule } == true
+        }
+    }
+'''
+new = '''    fun appForWebsiteRule(rule: String): PredefinedApps.AppInfo? {
+        val normalizedRule = WebsiteBlocker.normalizeRule(rule)
+        if (normalizedRule.isEmpty() || WebsiteBlocker.isKeywordRule(normalizedRule)) return null
+
+        return PredefinedApps.PREVENTIVE_APPS.firstOrNull { app ->
+            app.domain
+                ?.let(WebsiteBlocker::normalizeRule)
+                ?.let { it == normalizedRule } == true
+        }
+    }
+
+    /**
+     * Resolves only companion apps whose website is still part of the final saved rules.
+     * This keeps the website picker transactional: leaving it with Back, or removing a
+     * website before Save, cannot leak its companion app into the parent draft.
+     */
+    fun selectedAppsForWebsiteRules(
+        rules: Collection<String>,
+        optedInPackages: Collection<String>
+    ): List<PredefinedApps.AppInfo> {
+        val optedIn = optedInPackages.filter(String::isNotBlank).toSet()
+        if (optedIn.isEmpty()) return emptyList()
+
+        return rules.asSequence()
+            .mapNotNull(::appForWebsiteRule)
+            .filter { it.packageName in optedIn }
+            .distinctBy { it.packageName }
+            .toList()
+    }
+'''
+assert old in text
+helper_path.write_text(text.replace(old, new, 1))
+
+test_path = Path('app/src/test/java/com/focusguard/utils/AssociatedBlockTargetsTest.kt')
+text = test_path.read_text()
+old = '''    @Test
+    fun `unknown targets do not invent companions`() {
+        assertThat(
+            AssociatedBlockTargets.domainForAppPackage("com.example.unknown")
+        ).isNull()
+        assertThat(AssociatedBlockTargets.appForWebsiteRule("example.invalid")).isNull()
+    }
+'''
+new = '''    @Test
+    fun `unknown targets do not invent companions`() {
+        assertThat(
+            AssociatedBlockTargets.domainForAppPackage("com.example.unknown")
+        ).isNull()
+        assertThat(AssociatedBlockTargets.appForWebsiteRule("example.invalid")).isNull()
+    }
+
+    @Test
+    fun `website companion app is committed only when user opted in`() {
+        val apps = AssociatedBlockTargets.selectedAppsForWebsiteRules(
+            rules = listOf("youtube.com"),
+            optedInPackages = emptySet()
+        )
+
+        assertThat(apps).isEmpty()
+    }
+
+    @Test
+    fun `website companion app is committed when website is saved`() {
+        val apps = AssociatedBlockTargets.selectedAppsForWebsiteRules(
+            rules = listOf("youtube.com"),
+            optedInPackages = setOf("com.google.android.youtube")
+        )
+
+        assertThat(apps.map { it.packageName })
+            .containsExactly("com.google.android.youtube")
+    }
+
+    @Test
+    fun `removed website does not leak opted in companion app`() {
+        val apps = AssociatedBlockTargets.selectedAppsForWebsiteRules(
+            rules = emptyList(),
+            optedInPackages = setOf("com.google.android.youtube")
+        )
+
+        assertThat(apps).isEmpty()
+    }
+'''
+assert old in text
+test_path.write_text(text.replace(old, new, 1))
