@@ -59,13 +59,17 @@ object DeviceAdminActivationWindow {
             .putInt(BOOT_COUNT_KEY, bootCount)
             .putBoolean(ADMIN_INACTIVE_WHEN_OPENED_KEY, true)
             .commit()
-        if (persisted) {
-            cachedStoredBootCount = bootCount
-            cachedCurrentBootCount = bootCount
-            cachedAdminInactiveWhenOpened = true
-            cachedDeadlineElapsed = deadline
+        if (!persisted) {
+            invalidateCachedState()
+            clearPersistedState(context)
+            return false
         }
-        return persisted
+
+        cachedStoredBootCount = bootCount
+        cachedCurrentBootCount = bootCount
+        cachedAdminInactiveWhenOpened = true
+        cachedDeadlineElapsed = deadline
+        return true
     }
 
     /** Cheap pre-check with no DPM/Settings/Preferences read after preload/open. */
