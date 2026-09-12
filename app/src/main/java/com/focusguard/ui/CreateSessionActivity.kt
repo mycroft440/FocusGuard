@@ -41,7 +41,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
-import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
@@ -68,6 +67,7 @@ import com.focusguard.security.AuthManager
 import com.focusguard.security.BlockTargetPolicy
 import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.compose.screens.AppSelectionList
+import com.focusguard.ui.compose.screens.AssociatedTargetOptionDialog
 import com.focusguard.ui.compose.screens.AppSelectionScreen
 import com.focusguard.ui.compose.screens.KeywordRulesTab
 import com.focusguard.ui.compose.screens.SelectableAppUi
@@ -215,7 +215,8 @@ fun AppSelectionStep(
     initialSelectedPackages: Set<String> = emptySet(),
     allowCompatibleProtection: Boolean = false,
     kinds: BlockTargetPolicy.Kinds = BlockTargetPolicy.APPS_ONLY,
-    initialRules: List<String> = emptyList()
+    initialRules: List<String> = emptyList(),
+    offerWebsiteCompanion: Boolean = kinds.websites
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val pm = context.packageManager
@@ -326,7 +327,7 @@ fun AppSelectionStep(
                 if (it.packageName == pkg) it.copy(isSelected = !it.isSelected) else it
             }
 
-            if (!wasSelected && kinds.websites) {
+            if (!wasSelected && offerWebsiteCompanion) {
                 val companionDomain = AssociatedBlockTargets.domainForAppPackage(pkg)
                 val companionInfo = PredefinedApps.PREVENTIVE_APPS
                     .firstOrNull { it.packageName == pkg }
@@ -376,8 +377,12 @@ fun AppSelectionStep(
         val domain = AssociatedBlockTargets.domainForAppPackage(appInfo.packageName)
         if (domain != null) {
             AssociatedTargetOptionDialog(
-                title = "Bloquear site do app também?",
-                message = "Você bloqueou ${appInfo.appName}. Bloquear $domain também?",
+                title = stringResource(R.string.associated_target_block_site_title),
+                message = stringResource(
+                    R.string.associated_target_block_site_message,
+                    appInfo.appName,
+                    domain
+                ),
                 onDecision = { blockAlso ->
                     if (blockAlso &&
                         !BlockingSessionManager.isWebsiteRuleCoveredBy(domain, rules)
@@ -394,9 +399,12 @@ fun AppSelectionStep(
 
     pendingSiteAppOption?.let { (rule, appInfo) ->
         AssociatedTargetOptionDialog(
-            title = "Bloquear app do site também?",
-            message = "Você bloqueou ${WebsiteBlocker.displayRule(rule)}. " +
-                "Bloquear ${appInfo.appName} também?",
+            title = stringResource(R.string.associated_target_block_app_title),
+            message = stringResource(
+                R.string.associated_target_block_app_message,
+                WebsiteBlocker.displayRule(rule),
+                appInfo.appName
+            ),
             onDecision = { blockAlso ->
                 if (blockAlso && appInfo.packageName !in configuredBlockedPackages) {
                     apps = apps.map { app ->
@@ -517,51 +525,6 @@ fun AppSelectionStep(
             )
         }
     }
-}
-
-@Composable
-private fun AssociatedTargetOptionDialog(
-    title: String,
-    message: String,
-    onDecision: (Boolean) -> Unit
-) {
-    var blockAlso by remember(title, message) {
-        mutableStateOf(AssociatedBlockTargets.DEFAULT_BLOCK_COMPANION)
-    }
-
-    AlertDialog(
-        onDismissRequest = { onDecision(false) },
-        title = { Text(title, color = TextPrimary) },
-        text = {
-            Column {
-                Text(message, color = TextSecondary, fontSize = 14.sp)
-                Spacer(modifier = Modifier.height(16.dp))
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    RadioButton(
-                        selected = !blockAlso,
-                        onClick = { blockAlso = false }
-                    )
-                    Text("Não", color = TextPrimary)
-                    Spacer(modifier = Modifier.width(24.dp))
-                    RadioButton(
-                        selected = blockAlso,
-                        onClick = { blockAlso = true }
-                    )
-                    Text("Sim", color = TextPrimary)
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onDecision(blockAlso) },
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan)
-            ) {
-                Text("Continuar", color = DarkBg)
-            }
-        },
-        containerColor = DarkSurface,
-        shape = RoundedCornerShape(24.dp)
-    )
 }
 
 private enum class BlockTargetTab(val titleRes: Int) {
