@@ -97,6 +97,6 @@ private fun UsageLimitPerformanceContent() {
         hasMasterCredential = true,
         onConfigureMasterPassword = {},
         onDismiss = {},
-        onSave = { _, _, _, _, _ -> }
+        onSave = { _, _, _, _, _, _ -> }
     )
 }
