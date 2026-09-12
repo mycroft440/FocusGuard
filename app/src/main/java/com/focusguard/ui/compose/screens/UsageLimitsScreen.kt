@@ -793,6 +793,8 @@ fun WebsiteLimitsTab(
     var showSafetyModeAlert by remember { mutableStateOf(false) }
     var showCredentialMissingAlert by remember { mutableStateOf(false) }
     var pendingAction: (() -> Unit)? by remember { mutableStateOf(null) }
+    var siteInput by remember { mutableStateOf("") }
+    var invalidSiteInput by remember { mutableStateOf(false) }
     val credentialManager = remember(context) { DeactivationCredentialManager(context) }
 
     fun requestSiteMutation(site: WebsiteLimitUi, promptRes: Int, action: () -> Unit) {
@@ -818,6 +820,51 @@ fun WebsiteLimitsTab(
                 showMasterCredentialConfirm = true
             }
             MasterCredentialPolicy.MutationGate.ALLOWED -> action()
+        }
+    }
+
+    fun requestRuleEditor(rule: String) {
+        val normalized = WebsiteBlocker.normalizeRule(rule)
+        if (normalized.isEmpty()) return
+        val configured = sites.firstOrNull {
+            WebsiteBlocker.normalizeRule(it.domain) == normalized
+        }
+        if (configured == null) {
+            initialRuleForAdd = normalized
+            showAddDialog = true
+        } else {
+            requestSiteMutation(
+                configured,
+                R.string.master_credential_required_to_change_limit
+            ) {
+                selectedSite = configured
+                showEditDialog = true
+            }
+        }
+    }
+
+    fun requestSiteDelete(site: WebsiteLimitUi) {
+        val normalized = WebsiteBlocker.normalizeRule(site.domain)
+        if (normalized.isEmpty()) return
+        requestSiteMutation(
+            site,
+            R.string.master_credential_required_to_remove_limit
+        ) {
+            scope.launch(Dispatchers.IO) {
+                val dao = db.websiteUsageLimitDao()
+                dao.getAllStatic()
+                    .firstOrNull {
+                        WebsiteBlocker.normalizeRule(it.domain) == normalized
+                    }
+                    ?.let { dao.delete(it) }
+                blockingSessionManager.checkAndEnforce()
+                withContext(Dispatchers.Main) {
+                    sites = sites.filterNot {
+                        WebsiteBlocker.normalizeRule(it.domain) == normalized
+                    }
+                    allConfiguredCount = (allConfiguredCount - 1).coerceAtLeast(0)
+                }
+            }
         }
     }
 
@@ -860,110 +907,172 @@ fun WebsiteLimitsTab(
         }
     }
 
-    val presetRules = remember(keywordMode) {
-        if (keywordMode) {
-            PredefinedWebsites.PORNOGRAPHY_KEYWORDS
-                .map { WebsiteBlocker.normalizeRule("keyword:$it") }
-                .filter(String::isNotEmpty)
-        } else {
-            PredefinedWebsites.SITE_SELECTION_RULES
-                .map(WebsiteBlocker::normalizeRule)
-                .filter(String::isNotEmpty)
-        }
+    val keywordPresetRules = remember {
+        PredefinedWebsites.PORNOGRAPHY_KEYWORDS
+            .map { WebsiteBlocker.normalizeRule("keyword:$it") }
+            .filter(String::isNotEmpty)
     }
-    val orderedRules = remember(presetRules, sites) {
-        (presetRules + sites.map { WebsiteBlocker.normalizeRule(it.domain) })
+    val orderedKeywordRules = remember(keywordPresetRules, sites) {
+        (keywordPresetRules + sites.map { WebsiteBlocker.normalizeRule(it.domain) })
             .filter(String::isNotEmpty)
             .distinct()
     }
+    val configuredByRule = remember(sites) {
+        sites.associateBy { WebsiteBlocker.normalizeRule(it.domain) }
+    }
 
-    Column(Modifier.fillMaxSize()) {
-        Button(
-            onClick = {
-                initialRuleForAdd = null
-                showAddDialog = true
-            },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp).height(48.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Icon(Icons.Default.Add, null, tint = DarkBg, modifier = Modifier.size(20.dp))
-            Spacer(Modifier.width(8.dp))
-            Text(
-                stringResource(
-                    if (keywordMode) R.string.limits_add_keyword_btn else R.string.limits_add_site_btn
-                ),
-                color = DarkBg,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
+    if (!keywordMode) {
         if (isLoading) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 CircularProgressIndicator(color = AccentCyan)
             }
         } else {
+            // Keep this catalogue on the exact same visual primitives as the
+            // passwordless timed-block picker. Usage Limits only changes what a
+            // tap does: it opens the daily-limit editor instead of selecting a
+            // session target.
+            val pornographyRule = WebsiteBlocker.normalizeRule(
+                PredefinedWebsites.PORNOGRAPHY_RULE
+            )
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 item {
-                    UsageLimitSectionHeader(
-                        stringResource(
-                            if (keywordMode) R.string.limits_common_keywords_section
-                            else R.string.limits_common_sites_section
-                        ),
-                        accent = true
+                    PornographyPresetRow(
+                        selected = configuredByRule[pornographyRule]?.isEnabled == true,
+                        onToggle = { requestRuleEditor(pornographyRule) }
                     )
                 }
-                items(orderedRules, key = { "rule_$it" }) { rule ->
-                    val configured = sites.firstOrNull {
-                        WebsiteBlocker.normalizeRule(it.domain) == rule
+                item { SectionLabel(stringResource(R.string.protection_sites_add_new)) }
+                item {
+                    RuleInputRow(
+                        value = siteInput,
+                        onValueChange = {
+                            siteInput = it
+                            invalidSiteInput = false
+                        },
+                        placeholder = stringResource(R.string.block_targets_site_placeholder),
+                        icon = Icons.Default.Public,
+                        isError = invalidSiteInput,
+                        onAdd = {
+                            val domain = WebsiteBlocker.extractDomain(siteInput)
+                            if (domain.isEmpty()) {
+                                invalidSiteInput = true
+                            } else {
+                                siteInput = ""
+                                invalidSiteInput = false
+                                requestRuleEditor(domain)
+                            }
+                        }
+                    )
+                }
+                item {
+                    Text(
+                        text = if (invalidSiteInput) {
+                            stringResource(R.string.block_targets_site_invalid)
+                        } else {
+                            stringResource(R.string.block_targets_site_helper)
+                        },
+                        color = if (invalidSiteInput) DangerRed else TextHint,
+                        fontSize = 12.sp
+                    )
+                }
+                item { SectionLabel(stringResource(R.string.protection_sites_common)) }
+                items(
+                    PredefinedWebsites.ALL_PRESETS,
+                    key = { "limit_preset_${it.domain}" }
+                ) { website ->
+                    val normalized = WebsiteBlocker.normalizeRule(website.domain)
+                    WebsitePresetRow(
+                        website = website,
+                        selected = configuredByRule[normalized]?.isEnabled == true,
+                        onToggle = { requestRuleEditor(normalized) }
+                    )
+                }
+
+                item {
+                    SelectedSectionHeader(stringResource(R.string.protection_sites_selected))
+                }
+                if (sites.isEmpty()) {
+                    item {
+                        Text(
+                            stringResource(R.string.protection_sites_none),
+                            color = TextHint,
+                            modifier = Modifier.padding(vertical = 12.dp)
+                        )
                     }
-                    if (configured != null) {
+                } else {
+                    items(
+                        sites.sortedBy { WebsiteBlocker.displayRule(it.domain).lowercase() },
+                        key = { "configured_${WebsiteBlocker.normalizeRule(it.domain)}" }
+                    ) { configured ->
                         WebsiteLimitItem(
                             site = configured,
-                            onClick = {
-                                requestSiteMutation(
-                                    configured,
-                                    R.string.master_credential_required_to_change_limit
-                                ) {
-                                    selectedSite = configured
-                                    showEditDialog = true
-                                }
-                            },
-                            onDelete = {
-                                requestSiteMutation(
-                                    configured,
-                                    R.string.master_credential_required_to_remove_limit
-                                ) {
-                                    scope.launch(Dispatchers.IO) {
-                                        val dao = db.websiteUsageLimitDao()
-                                        dao.getAllStatic()
-                                            .firstOrNull {
-                                                WebsiteBlocker.normalizeRule(it.domain) == rule
-                                            }
-                                            ?.let { dao.delete(it) }
-                                        blockingSessionManager.checkAndEnforce()
-                                        withContext(Dispatchers.Main) {
-                                            sites = sites.filterNot {
-                                                WebsiteBlocker.normalizeRule(it.domain) == rule
-                                            }
-                                            allConfiguredCount = (allConfiguredCount - 1).coerceAtLeast(0)
-                                        }
-                                    }
-                                }
-                            }
+                            onClick = { requestRuleEditor(configured.domain) },
+                            onDelete = { requestSiteDelete(configured) }
                         )
-                    } else {
-                        UsageLimitPresetRow(
-                            rule = rule,
-                            keywordMode = keywordMode,
-                            onClick = {
-                                initialRuleForAdd = rule
-                                showAddDialog = true
-                            }
+                    }
+                }
+            }
+        }
+    } else {
+        Column(Modifier.fillMaxSize()) {
+            Button(
+                onClick = {
+                    initialRuleForAdd = null
+                    showAddDialog = true
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                    .height(48.dp),
+                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Icon(Icons.Default.Add, null, tint = DarkBg, modifier = Modifier.size(20.dp))
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    stringResource(R.string.limits_add_keyword_btn),
+                    color = DarkBg,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            if (isLoading) {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = AccentCyan)
+                }
+            } else {
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    item {
+                        UsageLimitSectionHeader(
+                            stringResource(R.string.limits_common_keywords_section),
+                            accent = true
                         )
+                    }
+                    items(orderedKeywordRules, key = { "rule_$it" }) { rule ->
+                        val configured = configuredByRule[rule]
+                        if (configured != null) {
+                            WebsiteLimitItem(
+                                site = configured,
+                                onClick = { requestRuleEditor(rule) },
+                                onDelete = { requestSiteDelete(configured) }
+                            )
+                        } else {
+                            UsageLimitPresetRow(
+                                rule = rule,
+                                keywordMode = true,
+                                onClick = {
+                                    initialRuleForAdd = rule
+                                    showAddDialog = true
+                                }
+                            )
+                        }
                     }
                 }
             }

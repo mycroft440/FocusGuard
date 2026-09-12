@@ -248,7 +248,7 @@ fun KeywordRulesTab(
 }
 
 @Composable
-private fun RuleInputRow(
+internal fun RuleInputRow(
     value: String,
     onValueChange: (String) -> Unit,
     placeholder: String,
@@ -288,7 +288,7 @@ private fun RuleInputRow(
 }
 
 @Composable
-private fun SectionLabel(text: String) {
+internal fun SectionLabel(text: String) {
     Text(
         text.uppercase(),
         color = TextSecondary,
@@ -299,7 +299,7 @@ private fun SectionLabel(text: String) {
 }
 
 @Composable
-private fun SelectedSectionHeader(text: String) {
+internal fun SelectedSectionHeader(text: String) {
     Column {
         HorizontalDivider(color = CardBorder, modifier = Modifier.padding(vertical = 8.dp))
         SectionLabel(text)
