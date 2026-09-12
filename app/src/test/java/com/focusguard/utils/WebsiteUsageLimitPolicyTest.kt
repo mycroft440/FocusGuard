@@ -123,4 +123,61 @@ class WebsiteUsageLimitPolicyTest {
             "example.com", 15_000L
         )
     }
+
+    @Test
+    fun `activation baseline excludes usage from before a recreated limit`() {
+        val rule = "youtube.com"
+        val baselineMarker = WebsiteUsageLimitPolicy.activationBaselineIdentifier(rule)
+
+        val totalsAtReactivation = WebsiteUsageLimitPolicy.aggregateUsageByRule(
+            usageByIdentifier = listOf(
+                rule to 50 * 60_000L,
+                baselineMarker to 50 * 60_000L
+            ),
+            configuredRules = listOf(rule)
+        )
+        val totalsAfterNewUsage = WebsiteUsageLimitPolicy.aggregateUsageByRule(
+            usageByIdentifier = listOf(
+                rule to 65 * 60_000L,
+                baselineMarker to 50 * 60_000L
+            ),
+            configuredRules = listOf(rule)
+        )
+
+        assertThat(totalsAtReactivation[rule] ?: 0L).isEqualTo(0L)
+        assertThat(totalsAfterNewUsage[rule]).isEqualTo(15 * 60_000L)
+    }
+
+    @Test
+    fun `raw aggregation ignores activation marker rows`() {
+        val rule = "category:pornography"
+        val marker = WebsiteUsageLimitPolicy.activationBaselineIdentifier(rule)
+
+        val raw = WebsiteUsageLimitPolicy.aggregateRawUsageByRule(
+            usageByIdentifier = listOf(
+                "pornhub.com" to 12_000L,
+                marker to 9_000L
+            ),
+            configuredRules = listOf(rule)
+        )
+
+        assertThat(raw[rule]).isEqualTo(12_000L)
+    }
+
+    @Test
+    fun `duplicate baseline markers cannot subtract allowance twice`() {
+        val rule = "example.com"
+        val marker = WebsiteUsageLimitPolicy.activationBaselineIdentifier(rule)
+
+        val totals = WebsiteUsageLimitPolicy.aggregateUsageByRule(
+            usageByIdentifier = listOf(
+                rule to 30_000L,
+                marker to 10_000L,
+                marker to 10_000L
+            ),
+            configuredRules = listOf(rule)
+        )
+
+        assertThat(totals[rule]).isEqualTo(20_000L)
+    }
 }
