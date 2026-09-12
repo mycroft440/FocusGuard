@@ -57,7 +57,12 @@ object AuthenticatedUninstallCoordinator {
             return Outcome.AUTHORIZATION_REQUIRED
         }
 
-        AuthenticatedRemovalWindow.open(appContext)
+        // Establish the fail-closed system-UI handoff before releasing any
+        // administrative role. If the current boot cannot be identified, no
+        // protection is removed.
+        if (!AuthenticatedRemovalWindow.open(appContext)) {
+            return Outcome.RELEASE_FAILED
+        }
 
         val released = try {
             withContext(Dispatchers.IO) {
@@ -85,7 +90,12 @@ object AuthenticatedUninstallCoordinator {
 
         return withContext(Dispatchers.Main.immediate) {
             runCatching {
-                AuthenticatedRemovalWindow.open(appContext)
+                // Refresh the deadline after policy release. If persistence fails,
+                // the first window may still be valid; never launch without either.
+                val refreshed = AuthenticatedRemovalWindow.open(appContext)
+                check(refreshed || AuthenticatedRemovalWindow.isActive(appContext)) {
+                    "Janela autenticada de remoção indisponível"
+                }
                 appContext.startActivity(
                     Intent(Intent.ACTION_DELETE).apply {
                         data = Uri.parse("package:${appContext.packageName}")
