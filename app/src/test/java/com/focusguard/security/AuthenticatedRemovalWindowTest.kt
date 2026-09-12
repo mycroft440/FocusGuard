@@ -31,4 +31,32 @@ class AuthenticatedRemovalWindowTest {
             )
         ).isFalse()
     }
+
+    @Test
+    fun `unknown boot identity never reuses persisted removal window`() {
+        assertThat(
+            AuthenticatedRemovalWindow.evaluate(
+                nowElapsedMillis = 100L,
+                deadlineElapsedMillis = 60_000L,
+                storedBootCount = -1,
+                currentBootCount = -1
+            )
+        ).isFalse()
+        assertThat(
+            AuthenticatedRemovalWindow.evaluate(
+                nowElapsedMillis = 100L,
+                deadlineElapsedMillis = 60_000L,
+                storedBootCount = 7,
+                currentBootCount = -1
+            )
+        ).isFalse()
+        assertThat(
+            AuthenticatedRemovalWindow.evaluate(
+                nowElapsedMillis = 100L,
+                deadlineElapsedMillis = 60_000L,
+                storedBootCount = -1,
+                currentBootCount = 7
+            )
+        ).isFalse()
+    }
 }
