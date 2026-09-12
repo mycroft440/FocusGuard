@@ -153,6 +153,12 @@ object DeviceOwnerMaintenanceGate {
         return currentMinute in startMinute until endMinute
     }
 
+    /**
+     * Direct Boot must inspect the persisted interruption marker before preload
+     * gets a chance to discard a stale/foreign-boot deadline.
+     */
+    internal fun shouldPreloadBeforeDirectBoot(userUnlocked: Boolean): Boolean = userUnlocked
+
     internal fun canPersistAcrossProcess(bootCount: Int): Boolean = bootCount >= 0
 
     internal fun persistedAuthorizationDeadline(
