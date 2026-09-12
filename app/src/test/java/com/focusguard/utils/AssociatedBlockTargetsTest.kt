@@ -63,4 +63,14 @@ class AssociatedBlockTargetsTest {
 
         assertThat(apps).isEmpty()
     }
+
+    @Test
+    fun `stale opt in does not attach app to a different saved website`() {
+        val apps = AssociatedBlockTargets.selectedAppsForWebsiteRules(
+            rules = listOf("instagram.com"),
+            optedInPackages = setOf("com.google.android.youtube")
+        )
+
+        assertThat(apps).isEmpty()
+    }
 }
