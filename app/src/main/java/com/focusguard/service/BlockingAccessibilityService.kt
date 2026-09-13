@@ -39,6 +39,7 @@ import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.AppDatabase
+import com.focusguard.database.BlockSession
 import com.focusguard.focusmode.FocusModeKioskController
 import com.focusguard.focusmode.FocusModePolicy
 import com.focusguard.focusmode.FocusModeStore
@@ -537,6 +538,8 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     @Volatile private var blockedAppsSet: Set<String> = emptySet()
     @Volatile private var blockedWebsitesDomainSet: Set<String> = emptySet()
+    @Volatile private var passwordWebsiteDomainSet: Set<String> = emptySet()
+    @Volatile private var strongerWebsiteDomainSet: Set<String> = emptySet()
     @Volatile private var blockedWebsiteAppDomains: Map<String, String> = emptyMap()
     @Volatile private var limitedWebsiteDomains: Set<String> = emptySet()
     @Volatile private var hardLimitedWebsiteDomains: Set<String> = emptySet()
@@ -598,6 +601,8 @@ class BlockingAccessibilityService : AccessibilityService() {
     @Volatile private var trackedSinceMillis = 0L
     private var websiteTrackingJob: Job? = null
     private var appLimitMonitoringJob: Job? = null
+    private var hierarchyBoundaryJob: Job? = null
+    @Volatile private var hierarchyBoundaryAtMillis = Long.MIN_VALUE
     private val opaqueBrowserFirstSeenElapsed = mutableMapOf<String, Long>()
     private val opaqueBrowserVerificationScheduled = mutableSetOf<String>()
     private val websiteBlockTransitionCounter = AtomicLong(0L)
@@ -1304,8 +1309,16 @@ class BlockingAccessibilityService : AccessibilityService() {
         val sites = WebsiteBlocker.normalizeRules(
             intent.getStringArrayListExtra(EXTRA_BLOCKED_SITES_SNAPSHOT).orEmpty()
         )
+        val passwordSites = WebsiteBlocker.normalizeRules(
+            intent.getStringArrayListExtra(EXTRA_PASSWORD_SITES_SNAPSHOT).orEmpty()
+        )
+        val strongerSites = WebsiteBlocker.normalizeRules(
+            intent.getStringArrayListExtra(EXTRA_STRONGER_SITES_SNAPSHOT).orEmpty()
+        )
         blockedAppsSet = apps
         blockedWebsitesDomainSet = sites
+        passwordWebsiteDomainSet = passwordSites
+        strongerWebsiteDomainSet = strongerSites
         blockedWebsiteAppDomains = WebsiteBlocker.appPackageDomainsFor(sites)
         isPomodoroStrictActive = intent.getBooleanExtra(
             EXTRA_STRICT_POMODORO_SNAPSHOT,
@@ -1317,6 +1330,64 @@ class BlockingAccessibilityService : AccessibilityService() {
         )
         syncWarmOverlays()
         lastLoadTime = System.currentTimeMillis()
+        enforceCurrentForegroundFromSnapshot()
+    }
+
+    private fun enforceCurrentForegroundFromSnapshot() {
+        val currentPackage = foregroundPackageName?.takeIf(String::isNotBlank) ?: return
+        if (currentPackage == packageName ||
+            currentPackage == defaultLauncherPackage ||
+            currentPackage in focusModeAllowedAppsSet
+        ) return
+
+        if (currentPackage in browserPackages && blockedWebsitesDomainSet.isNotEmpty()) {
+            val root = rootInActiveWindow ?: return
+            val windowId = root.windowId
+            val rootPackage = runCatching {
+                root.packageName?.toString().orEmpty()
+            }.getOrDefault("")
+            val candidate = try {
+                if (rootPackage != currentPackage) {
+                    null
+                } else {
+                    WebsiteBlocker.extractUrlFromRoot(
+                        root,
+                        currentPackage,
+                        isVerifiedHttpsHandler(currentPackage)
+                    ) ?: WebsiteBlocker.extractAddressBarTextFromRoot(
+                        root,
+                        currentPackage,
+                        isVerifiedHttpsHandler(currentPackage)
+                    )
+                }
+            } finally {
+                recycleSafely(root)
+            }
+            val blockedCandidate = candidate?.takeIf(String::isNotBlank) ?: return
+            if (WebsiteBlocker.findMatchingRule(
+                    blockedCandidate,
+                    blockedWebsitesDomainSet
+                ) == null
+            ) return
+            routeWebsiteBlockByHierarchy(
+                browserPackageName = currentPackage,
+                browserWindowId = windowId,
+                blockedCandidate = blockedCandidate,
+                detectionEventUptimeMillis = SystemClock.uptimeMillis()
+            )
+            return
+        }
+
+        if (currentPackage !in blockedAppsSet ||
+            PasswordTargetAccessGrant.isPackageGranted(currentPackage)
+        ) return
+        val root = rootInActiveWindow ?: return
+        val targetStillForeground = try {
+            root.packageName?.toString() == currentPackage
+        } finally {
+            recycleSafely(root)
+        }
+        if (targetStillForeground) blockApp(currentPackage)
     }
 
     private fun relinquishAccessibilityForDevelopment() {
@@ -1325,6 +1396,8 @@ class BlockingAccessibilityService : AccessibilityService() {
         runCatching {
             blockedAppsSet = emptySet()
             blockedWebsitesDomainSet = emptySet()
+            passwordWebsiteDomainSet = emptySet()
+            strongerWebsiteDomainSet = emptySet()
             blockedWebsiteAppDomains = emptyMap()
             limitedWebsiteDomains = emptySet()
             hardLimitedWebsiteDomains = emptySet()
@@ -1398,6 +1471,42 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
+    private fun scheduleHierarchyBoundaryRefresh(
+        sessions: Collection<BlockSession>,
+        nowMillis: Long = System.currentTimeMillis()
+    ) {
+        val nextBoundary = HierarchyBoundaryPolicy.nextBoundary(sessions, nowMillis)
+        if (nextBoundary == null) {
+            hierarchyBoundaryAtMillis = Long.MIN_VALUE
+            hierarchyBoundaryJob?.cancel()
+            hierarchyBoundaryJob = null
+            return
+        }
+        if (hierarchyBoundaryAtMillis == nextBoundary &&
+            hierarchyBoundaryJob?.isActive == true
+        ) return
+
+        hierarchyBoundaryJob?.cancel()
+        hierarchyBoundaryAtMillis = nextBoundary
+        hierarchyBoundaryJob = scope.launch {
+            delay(
+                HierarchyBoundaryPolicy.delayMillis(
+                    boundaryMillis = nextBoundary,
+                    nowMillis = System.currentTimeMillis()
+                )
+            )
+            if (hierarchyBoundaryAtMillis != nextBoundary) return@launch
+            hierarchyBoundaryAtMillis = Long.MIN_VALUE
+            hierarchyBoundaryJob = null
+
+            // AlarmManager remains the process-death/doze fallback. While the
+            // accessibility service is alive, this handoff runs at the actual
+            // TIME start/end boundary instead of the platform's inexact-alarm window.
+            sessionManager.checkAndEnforce()
+            refreshData()
+        }
+    }
+
     private fun refreshData() {
         refreshRequested.set(true)
         if (!isRefreshing.compareAndSet(false, true)) return
@@ -1432,15 +1541,28 @@ class BlockingAccessibilityService : AccessibilityService() {
                         val focusAllowedApps = focusModeSession?.allowedPackages.orEmpty()
 
                         val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
+                        scheduleHierarchyBoundaryRefresh(activeSessions)
                         val enforcingSessions = activeSessions.filter {
                             BlockingSessionManager.participatesInBlocking(it) &&
                                 sessionManager.isCurrentlyInBlockingWindow(it)
                         }
                         val enforcingIds = enforcingSessions.map { it.id }
+                        val passwordSessionIds = enforcingSessions
+                            .filter { it.sessionType.equals("PASSWORD", ignoreCase = true) }
+                            .map { it.id }
+                        val strongerSessionIds = enforcingSessions
+                            .filter { !it.sessionType.equals("PASSWORD", ignoreCase = true) }
+                            .map { it.id }
 
                         val sessionApps = getAppsForSessions(enforcingIds).toSet()
                         val sessionSites = WebsiteBlocker.normalizeRules(
                             getSitesForSessions(enforcingIds)
+                        )
+                        val passwordSessionSites = WebsiteBlocker.normalizeRules(
+                            getSitesForSessions(passwordSessionIds)
+                        )
+                        val strongerSessionSites = WebsiteBlocker.normalizeRules(
+                            getSitesForSessions(strongerSessionIds)
                         )
 
                         val activeAppLimits = database.appUsageLimitDao()
@@ -1461,6 +1583,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                             }.map { it.domain }
                         )
                         val exceededWebsiteDomains = calculateExceededWebsiteLimits(websiteLimits)
+                        val strongerWebsiteDomains = WebsiteBlocker.normalizeRules(
+                            strongerSessionSites + exceededWebsiteDomains + adultRules
+                        )
                         val blockedWebsiteDomains = WebsiteBlocker.normalizeRules(
                             sessionSites + exceededWebsiteDomains + adultRules
                         )
@@ -1505,6 +1630,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                             focusModeAllowedAppsSet = focusAllowedApps
                             blockedAppsSet = accessibilityApps
                             blockedWebsitesDomainSet = blockedWebsiteDomains
+                            passwordWebsiteDomainSet = passwordSessionSites
+                            strongerWebsiteDomainSet = strongerWebsiteDomains
                             blockedWebsiteAppDomains = blockedWebsiteApps
                             limitedWebsiteDomains = configuredWebsiteDomains
                             hardLimitedWebsiteDomains = hardConfiguredWebsiteDomains
@@ -2823,7 +2950,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 blockedRules = blockedWebsitesDomainSet
             ) ?: return false
 
-        blockWebsite(
+        routeWebsiteBlockByHierarchy(
             browserPackageName = packageName,
             browserWindowId = event.windowId,
             blockedCandidate = url ?: addressText ?: blockedCandidate,
@@ -2882,7 +3009,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 blockedRules = blockedWebsitesDomainSet
             )
         if (blockedCandidate != null) {
-            blockWebsite(
+            routeWebsiteBlockByHierarchy(
                 browserPackageName = packageName,
                 browserWindowId = event.windowId,
                 blockedCandidate = url ?: addressText ?: blockedCandidate,
@@ -3014,7 +3141,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun updateWebsiteTracking(urlOrDomain: String, packageName: String, now: Long) {
-        val matchingRules = WebsiteBlocker.findMatchingRules(
+        val matchingRules = WebsiteBlocker.findMatchingRulesIgnoringGrants(
             urlOrDomain,
             limitedWebsiteDomains
         )
@@ -3140,7 +3267,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             )
             val limits = database.websiteUsageLimitDao().getAllStatic()
                 .filter { it.isEnabled }
-            val matchingRules = WebsiteBlocker.findMatchingRules(
+            val matchingRules = WebsiteBlocker.findMatchingRulesIgnoringGrants(
                 usage.domain,
                 WebsiteBlocker.normalizeRules(limits.map { it.domain })
             )
@@ -3214,6 +3341,42 @@ class BlockingAccessibilityService : AccessibilityService() {
             blockedPackage = packageName,
             blockedDomain = null,
             eventUptimeMillis = eventUptimeMillis
+        )
+    }
+
+    private fun routeWebsiteBlockByHierarchy(
+        browserPackageName: String,
+        browserWindowId: Int,
+        blockedCandidate: String,
+        detectionEventUptimeMillis: Long
+    ) {
+        if (!isPomodoroStrictActive) {
+            val resolution = WebsiteProtectionHierarchyPolicy.resolve(
+                candidate = blockedCandidate,
+                passwordRules = passwordWebsiteDomainSet,
+                strongerRules = strongerWebsiteDomainSet
+            )
+            if (resolution.owner == WebsiteProtectionHierarchyPolicy.Owner.PASSWORD) {
+                stopWebsiteTracking()
+                launchBlockNotice(
+                    blockedPackage = null,
+                    blockedDomain = WebsiteBlocker.displayRule(
+                        resolution.matchedRule ?: blockedCandidate
+                    ),
+                    redirectBrowserPackage = browserPackageName,
+                    eventUptimeMillis = detectionEventUptimeMillis
+                )
+                return
+            }
+        }
+
+        // HARD or stale/unknown ownership stays fail-closed and uses the
+        // existing opaque-curtain + safe-browser redirect pipeline.
+        blockWebsite(
+            browserPackageName = browserPackageName,
+            browserWindowId = browserWindowId,
+            blockedCandidate = blockedCandidate,
+            detectionEventUptimeMillis = detectionEventUptimeMillis
         )
     }
 
@@ -4655,6 +4818,8 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal const val EXTRA_BLOCKING_SNAPSHOT_PRESENT = "BLOCKING_SNAPSHOT_PRESENT"
         internal const val EXTRA_BLOCKED_APPS_SNAPSHOT = "BLOCKED_APPS_SNAPSHOT"
         internal const val EXTRA_BLOCKED_SITES_SNAPSHOT = "BLOCKED_SITES_SNAPSHOT"
+        internal const val EXTRA_PASSWORD_SITES_SNAPSHOT = "PASSWORD_SITES_SNAPSHOT"
+        internal const val EXTRA_STRONGER_SITES_SNAPSHOT = "STRONGER_SITES_SNAPSHOT"
         internal const val EXTRA_BLOCKING_ACTIVE_SNAPSHOT = "BLOCKING_ACTIVE_SNAPSHOT"
         internal const val EXTRA_STRICT_POMODORO_SNAPSHOT = "STRICT_POMODORO_SNAPSHOT"
 
@@ -4946,10 +5111,14 @@ class BlockingAccessibilityService : AccessibilityService() {
             blockedApps: Collection<String>,
             blockedSites: Collection<String>,
             blockingActive: Boolean,
-            strictPomodoro: Boolean
+            strictPomodoro: Boolean,
+            passwordSites: Collection<String> = emptyList(),
+            strongerSites: Collection<String> = emptyList()
         ): Intent {
             val normalizedApps = blockedApps.filter(String::isNotBlank).distinct()
             val normalizedSites = WebsiteBlocker.normalizeRules(blockedSites)
+            val normalizedPasswordSites = WebsiteBlocker.normalizeRules(passwordSites)
+            val normalizedStrongerSites = WebsiteBlocker.normalizeRules(strongerSites)
             SelfProtectionStateStore.setSnapshot(
                 context = context,
                 armed = blockingActive,
@@ -4968,6 +5137,14 @@ class BlockingAccessibilityService : AccessibilityService() {
                 putStringArrayListExtra(
                     EXTRA_BLOCKED_SITES_SNAPSHOT,
                     ArrayList(normalizedSites)
+                )
+                putStringArrayListExtra(
+                    EXTRA_PASSWORD_SITES_SNAPSHOT,
+                    ArrayList(normalizedPasswordSites)
+                )
+                putStringArrayListExtra(
+                    EXTRA_STRONGER_SITES_SNAPSHOT,
+                    ArrayList(normalizedStrongerSites)
                 )
                 putExtra(EXTRA_BLOCKING_ACTIVE_SNAPSHOT, blockingActive)
                 putExtra(EXTRA_STRICT_POMODORO_SNAPSHOT, strictPomodoro)

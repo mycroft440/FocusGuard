@@ -1494,6 +1494,7 @@ class BlockingSessionManager @Inject constructor(
                     getAppsForSessions(enforcingIds)
                 }
                 val sessionSites = getSitesForSessions(enforcingIds)
+                val passwordSessionSites = getSitesForSessions(passwordSessionIds)
                 val passwordSessionApps = getAppsForSessions(passwordSessionIds)
                 val strongerSessionApps = if (strictPomodoro) {
                     sessionApps
@@ -1680,7 +1681,9 @@ class BlockingSessionManager @Inject constructor(
                         blockedApps = accessibilityAppsToBlock,
                         blockedSites = sitesToBlock,
                         blockingActive = selfProtectionRequired,
-                        strictPomodoro = strictPomodoro
+                        strictPomodoro = strictPomodoro,
+                        passwordSites = passwordSessionSites,
+                        strongerSites = strongerWebsiteRules
                     )
                 )
         }

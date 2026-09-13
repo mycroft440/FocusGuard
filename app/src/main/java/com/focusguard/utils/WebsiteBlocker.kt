@@ -351,6 +351,25 @@ object WebsiteBlocker {
         return findDirectMatchingRules(urlOrDomain, setOf(rule)).isNotEmpty()
     }
 
+    /**
+     * Matches configured rules without applying a temporary PASSWORD visit grant.
+     *
+     * Blocking decisions must use [findMatchingRules], which deliberately honors
+     * an authenticated visit. Usage accounting and hierarchy ownership are
+     * different: they must keep seeing the rule while PASSWORD is temporarily
+     * released so the daily allowance can continue advancing underneath it.
+     */
+    fun findMatchingRulesIgnoringGrants(
+        urlOrDomain: String,
+        configuredRules: Collection<String>
+    ): Set<String> {
+        val normalizedRules = normalizeRules(configuredRules)
+        if (normalizedRules.isEmpty()) return emptySet()
+        return normalizedRules.filterTo(linkedSetOf()) { rule ->
+            matchesRuleIgnoringGrants(urlOrDomain, rule)
+        }
+    }
+
     private fun findDirectMatchingRules(
         urlOrDomain: String,
         normalizedBlockedDomains: Set<String>
