@@ -1,25 +1,36 @@
-# Plano de implementação — gerenciamento de sites protegidos por senha
+# Plano de implementação — widget compacto e controles do Pomodoro
 
 ## Objetivo
-Corrigir a tela **Proteja apps com senha** para que sites protegidos possam ser removidos com a própria credencial do alvo e para que a lista use ícones de site equivalentes aos exibidos no seletor.
+Deixar o widget do Pomodoro mais compacto e útil: **iniciar/parar o Pomodoro**, **alterar o número de sessões**, abrir o **dial giratório** a partir do relógio e usar por padrão a largura completa de uma grade de 4 colunas, mantendo redimensionamento horizontal e vertical.
 
 ## Diagnóstico
-- [x] Confirmar que as linhas de aplicativos PASSWORD recebem a ação de remoção, enquanto as linhas de sites são renderizadas sem `onRemove`.
-- [x] Confirmar que o diálogo de remoção atual trata qualquer entrada como pacote de aplicativo (`blockedPackage`) e consulta a credencial usando a chave de app, portanto apenas exibir a lixeira no site não seria suficiente.
-- [x] Confirmar que `BlockingSessionManager.unlockPasswordSessionTarget` já aceita `blockedDomain` e remove somente o alvo responsável, preservando outras camadas e outros alvos da sessão.
-- [x] Confirmar que o seletor de sites usa o catálogo `PredefinedWebsites` e favicons, enquanto a lista de bloqueados reduz sites à primeira letra do rótulo.
+- [x] O `AppWidget` usa `RemoteViews`; o launcher não entrega gestos contínuos de arraste para um relógio customizado como uma tela Compose entrega.
+- [x] Já existe `PomodoroWidgetDialActivity`, que reutiliza `PomodoroDurationDial`, o mesmo controle giratório usado pelo app, mas o relógio do widget não estava ligado a essa Activity.
+- [x] `PomodoroManager.stopSession()` já encerra o Pomodoro com a limpeza correta; não é necessário duplicar lógica de parada.
+- [x] `PomodoroPlanConfig.targetSessions` já representa o número de sessões no intervalo `0..5`; `0` significa “até eu parar”.
+- [x] `PomodoroPlanConfig.normalized()` já força `strictBlocking = false`; o modo rigoroso não precisa de rota especial no widget/dial e deve permanecer desativado.
+- [x] O widget anterior reservava altura mínima excessiva (`340dp`, resize mínimo `330dp`), deixando espaço vazio que o launcher não permitia reduzir.
 
 ## Implementação
-- [ ] Expor a ação de remoção também nas linhas de sites quando o tipo da tela for PASSWORD.
-- [ ] Tornar o fluxo de autenticação/remoção consciente do tipo de alvo, usando a chave de credencial de website e `blockedDomain` para sites, sem alterar o caminho existente de apps.
-- [ ] Reutilizar o domínio de ícone dos presets e o mesmo serviço de favicon do seletor; manter fallback local para categorias, palavras-chave e falha de rede.
-- [ ] Cobrir por testes a resolução do ícone e o roteamento app/site da remoção.
+- [x] Fazer o botão principal alternar entre `Iniciar` e `Parar`, sempre reutilizando `PomodoroManager.startPlan(...)`/`stopSession()`.
+- [x] Remover a exceção de parada para Pomodoro rigoroso no widget.
+- [x] Remover verificações e imports específicos de Pomodoro rigoroso da tela de dial do widget e persistir sempre `strictBlocking = false`.
+- [x] Tornar o relógio clicável e abrir `PomodoroWidgetDialActivity` quando o Pomodoro estiver parado.
+- [x] Reutilizar `PomodoroDurationDial` nessa Activity para permitir girar o relógio exatamente com o controle Compose já existente.
+- [x] Manter controles `− / Sessões / +` diretamente no widget, limitados a `0..5` e bloqueados durante um runtime ativo.
+- [x] Reduzir relógio, paddings e botões para eliminar espaço vertical ocioso.
+- [x] Definir `targetCellWidth=4` e largura mínima de `320dp` para favorecer largura completa em launchers de quatro colunas, mantendo `minResizeWidth=200dp` para permitir ajuste posterior.
+- [x] Reduzir altura padrão/mínima e permitir resize vertical até `230dp`.
+- [x] Preservar `Configurar`, fases, pausas, notificações e demais regras normais do Pomodoro.
 
 ## Validação
-- [ ] Executar testes unitários.
-- [ ] Executar Android Lint.
-- [ ] Revisar o diff para garantir que a precedência TIME > limite esgotado > PASSWORD e a remoção isolada de alvos não foram alteradas.
-- [ ] Confirmar por CI/build que os novos composables e imports compilam.
+- [x] Confirmar que o relógio abre o dial somente quando não existe Pomodoro ativo.
+- [x] Confirmar que o botão principal inicia quando parado e para quando ativo.
+- [x] Confirmar limites das sessões: `0` não diminui e `5` não aumenta.
+- [x] Confirmar que a edição de sessões fica bloqueada durante runtime ativo.
+- [x] Confirmar que a configuração de widget continua redimensionável nos dois eixos.
+- [x] Confirmar que a mudança permanece concentrada no widget/dial e não altera Modo Foco ou mecanismos gerais de bloqueio.
+- [ ] Executar CI com Android Lint, testes unitários e compilação do performance harness.
 
 ## Critério de conclusão
-Na tela de bloqueio por senha, um site deve mostrar a ação de remoção, exigir a credencial configurada para aquele site e ser removido sem afetar proteções independentes. Sites predefinidos devem exibir seu favicon/ícone de marca; regras sem favicon significativo devem continuar com fallback seguro e legível.
+O widget deve ocupar por padrão quatro colunas em launchers compatíveis, poder ser reduzido depois, não reservar grande área vazia, permitir escolher `0..5` sessões, iniciar/parar o Pomodoro e abrir pelo próprio relógio o dial giratório existente para ajustar minutos. O Pomodoro rigoroso deve permanecer desativado e sem tratamento especial no fluxo do widget.
