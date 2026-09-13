@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -26,21 +27,29 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.security.DeactivationCredentialManager
+import com.focusguard.security.MasterCredentialConfigurationManager
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.launch
 
 @Composable
 internal fun DeactivationCredentialDialog(
     managementLocked: Boolean,
+    configureCredential: suspend (String) -> String,
     onDismiss: () -> Unit,
     onCredentialChanged: () -> Unit
 ) {
     val context = LocalContext.current
     val manager = remember(context) { DeactivationCredentialManager(context) }
+    val coroutineScope = rememberCoroutineScope()
     var wasConfigured by remember { mutableStateOf(manager.hasCredential()) }
     var currentCredential by remember { mutableStateOf("") }
     var newPassword by remember { mutableStateOf("") }
     var confirmation by remember { mutableStateOf("") }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var recoveryCode by remember { mutableStateOf<String?>(null) }
+    var blockedDuringSave by remember { mutableStateOf(false) }
+    var isSaving by remember { mutableStateOf(false) }
+    val effectiveManagementLocked = managementLocked || blockedDuringSave
 
     val invalidCredentialMessage = stringResource(R.string.deactivation_password_invalid)
     val passwordTooShortMessage = stringResource(
@@ -56,7 +65,7 @@ internal fun DeactivationCredentialDialog(
         title = {
             Text(
                 when {
-                    managementLocked -> stringResource(R.string.deactivation_password_title)
+                    effectiveManagementLocked -> stringResource(R.string.deactivation_password_title)
                     recoveryCode != null -> stringResource(R.string.deactivation_recovery_title)
                     wasConfigured -> stringResource(R.string.deactivation_password_change_title)
                     else -> stringResource(R.string.deactivation_password_create_title)
@@ -65,7 +74,7 @@ internal fun DeactivationCredentialDialog(
         },
         text = {
             when {
-                managementLocked -> {
+                effectiveManagementLocked -> {
                     Text(
                         text = stringResource(R.string.deactivation_password_locked_description),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -135,7 +144,7 @@ internal fun DeactivationCredentialDialog(
         },
         confirmButton = {
             when {
-                managementLocked -> {
+                effectiveManagementLocked -> {
                     TextButton(onClick = onDismiss) {
                         Text(stringResource(R.string.status_close))
                     }
@@ -152,7 +161,9 @@ internal fun DeactivationCredentialDialog(
                 }
                 else -> {
                     TextButton(
-                        enabled = newPassword.isNotBlank() && confirmation.isNotBlank(),
+                        enabled = !isSaving &&
+                            newPassword.isNotBlank() &&
+                            confirmation.isNotBlank(),
                         onClick = {
                             if (!DeactivationCredentialManager.isPasswordValid(newPassword)) {
                                 errorMessage = passwordTooShortMessage
@@ -176,13 +187,24 @@ internal fun DeactivationCredentialDialog(
                                 }
                             }
 
-                            recoveryCode = runCatching {
-                                manager.configure(newPassword)
-                            }.getOrElse {
-                                errorMessage = context.getString(
-                                    R.string.deactivation_password_save_failed
-                                )
-                                null
+                            isSaving = true
+                            coroutineScope.launch {
+                                try {
+                                    recoveryCode = configureCredential(newPassword)
+                                } catch (
+                                    error: MasterCredentialConfigurationManager.ConfigurationBlockedException
+                                ) {
+                                    blockedDuringSave = true
+                                    errorMessage = null
+                                } catch (error: CancellationException) {
+                                    throw error
+                                } catch (error: Throwable) {
+                                    errorMessage = context.getString(
+                                        R.string.deactivation_password_save_failed
+                                    )
+                                } finally {
+                                    isSaving = false
+                                }
                             }
                         }
                     ) {
@@ -192,7 +214,7 @@ internal fun DeactivationCredentialDialog(
             }
         },
         dismissButton = {
-            if (!managementLocked && recoveryCode == null) {
+            if (!effectiveManagementLocked && recoveryCode == null) {
                 TextButton(onClick = onDismiss) {
                     Text(stringResource(R.string.cancel))
                 }
