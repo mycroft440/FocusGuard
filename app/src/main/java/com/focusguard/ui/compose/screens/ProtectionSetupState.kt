@@ -43,29 +43,27 @@ internal fun isWebsiteRuleAlreadyBlocked(
 }
 
 /**
- * Password protection and daily limits are compatible. A target is rejected
- * only when it already has the mode being selected or an exclusive protection.
+ * The three protection modes are independent layers. A target is unavailable for
+ * a mode only when that same mode is already configured for it. Other configured
+ * layers remain selectable so PASSWORD, daily limit and TIME can coexist and let
+ * the runtime hierarchy decide which one owns access at each instant.
  */
 internal fun configuredAppPackagesForMode(
     mode: ProtectionMode,
     configured: BlockingSessionManager.ConfiguredBlockedTargets
 ): Set<String> = when (mode) {
-    ProtectionMode.LIMIT ->
-        configured.limitedAppPackageNames + configured.exclusiveAppPackageNames
-    ProtectionMode.PASSWORD ->
-        configured.passwordAppPackageNames + configured.exclusiveAppPackageNames
-    ProtectionMode.DOPAMINE_FAST -> configured.allAppPackageNames
+    ProtectionMode.LIMIT -> configured.limitedAppPackageNames
+    ProtectionMode.PASSWORD -> configured.passwordAppPackageNames
+    ProtectionMode.DOPAMINE_FAST -> configured.exclusiveAppPackageNames
 }
 
 internal fun configuredWebsiteRulesForMode(
     mode: ProtectionMode,
     configured: BlockingSessionManager.ConfiguredBlockedTargets
 ): Set<String> = when (mode) {
-    ProtectionMode.LIMIT ->
-        configured.limitedWebsiteRules + configured.exclusiveWebsiteRules
-    ProtectionMode.PASSWORD ->
-        configured.passwordWebsiteRules + configured.exclusiveWebsiteRules
-    ProtectionMode.DOPAMINE_FAST -> configured.allWebsiteRules
+    ProtectionMode.LIMIT -> configured.limitedWebsiteRules
+    ProtectionMode.PASSWORD -> configured.passwordWebsiteRules
+    ProtectionMode.DOPAMINE_FAST -> configured.exclusiveWebsiteRules
 }
 
 /** Converte a duração informada na UI em um limite diário válido de até 24 horas. */
