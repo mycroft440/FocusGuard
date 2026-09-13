@@ -31,6 +31,7 @@ import com.focusguard.security.DopamineStartPolicy
 import com.focusguard.security.MasterCredentialPolicy
 import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.security.PasswordAppUnlockStore
+import com.focusguard.security.PasswordTargetAccessGrant
 import com.focusguard.security.SelfProtectionStateStore
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.service.PomodoroForegroundService
@@ -248,6 +249,15 @@ class BlockingSessionManager @Inject constructor(
         FAILED
     }
 
+    /** Runtime owner for a website attempt, in descending hierarchy order. */
+    enum class ActiveWebsiteProtection {
+        TIME,
+        DAILY_LIMIT,
+        OTHER_HARD_BLOCK,
+        PASSWORD,
+        NONE
+    }
+
     companion object {
         private const val STATE_PREFERENCES = "blocking_session_manager_state"
         private const val PREVIOUS_DND_FILTER_KEY = "previous_dnd_filter"
@@ -305,17 +315,19 @@ class BlockingSessionManager @Inject constructor(
             val allWebsiteRules = WebsiteBlocker.normalizeRules(
                 passwordWebsiteRules + normalizedLimitedWebsiteRules + exclusiveWebsiteRules
             )
+
+            // A seleção inicial só fica indisponível quando os três modos já
+            // existem. Ter uma ou duas camadas nunca impede adicionar a restante.
             val unavailableWebsiteRules = allWebsiteRules.filterTo(linkedSetOf()) { candidate ->
-                isWebsiteRuleCoveredBy(candidate, exclusiveWebsiteRules) ||
-                    (
-                        isWebsiteRuleCoveredBy(candidate, passwordWebsiteRules) &&
-                            isWebsiteRuleCoveredBy(candidate, normalizedLimitedWebsiteRules)
-                        )
+                isWebsiteRuleCoveredBy(candidate, passwordWebsiteRules) &&
+                    isWebsiteRuleCoveredBy(candidate, normalizedLimitedWebsiteRules) &&
+                    isWebsiteRuleCoveredBy(candidate, exclusiveWebsiteRules)
             }
-            val unavailableAppPackageNames = (
-                exclusiveAppPackageNames +
-                    passwordAppPackageNames.intersect(normalizedLimitedAppPackages)
-                ).filter(String::isNotBlank).toSet()
+            val unavailableAppPackageNames = passwordAppPackageNames
+                .intersect(normalizedLimitedAppPackages)
+                .intersect(exclusiveAppPackageNames)
+                .filter(String::isNotBlank)
+                .toSet()
 
             return ConfiguredBlockedTargets(
                 passwordAppPackageNames = passwordAppPackageNames,
@@ -343,10 +355,15 @@ class BlockingSessionManager @Inject constructor(
             val normalizedConfigured = WebsiteBlocker.normalizeRules(configuredRules)
             if (normalizedCandidate in normalizedConfigured) return true
 
-            return WebsiteBlocker.findMatchingRule(
-                normalizedCandidate,
-                normalizedConfigured
-            ) != null
+            // Configuration ownership must not change just because a PASSWORD
+            // target has a temporary visit grant. Ignore grants when comparing
+            // the persistent rule sets.
+            return normalizedConfigured.any { configuredRule ->
+                WebsiteBlocker.matchesRuleIgnoringGrants(
+                    urlOrDomain = normalizedCandidate,
+                    normalizedRule = configuredRule
+                )
+            }
         }
 
         internal fun participatesInBlocking(session: BlockSession): Boolean {
@@ -360,8 +377,12 @@ class BlockingSessionManager @Inject constructor(
             sessionSites: Collection<String>
         ): Boolean {
             return (!blockedPackage.isNullOrBlank() && blockedPackage in sessionApps) ||
-                (!blockedDomain.isNullOrBlank() &&
-                WebsiteBlocker.isUrlBlocked(blockedDomain, sessionSites))
+                (!blockedDomain.isNullOrBlank() && sessionSites.any { configuredRule ->
+                    WebsiteBlocker.matchesRuleIgnoringGrants(
+                        blockedDomain,
+                        WebsiteBlocker.normalizeRule(configuredRule)
+                    )
+                })
         }
 
         internal fun shouldArmSelfProtection(
@@ -478,9 +499,9 @@ class BlockingSessionManager @Inject constructor(
     /**
      * Returns targets grouped by protection mode.
      *
-     * Password and daily-limit protection may coexist. Time/Pomodoro sessions are
-     * exclusive, and targets that already have both compatible modes are exposed
-     * as unavailable for an additional protection.
+     * PASSWORD, daily limit and TIME are independent layers. The setup may attach
+     * all three to one target; runtime precedence decides which layer owns access.
+     * A target is globally unavailable only after all three layers exist.
      */
     suspend fun getConfiguredBlockedTargets(): ConfiguredBlockedTargets =
         withContext(Dispatchers.IO) {
@@ -508,6 +529,57 @@ class BlockingSessionManager @Inject constructor(
                     .filter { it.isEnabled }
                     .map { it.domain }
             )
+        }
+
+    /**
+     * Resolves the live website owner using the same hierarchy as app blocking:
+     * TIME/hard blocks first, an exhausted daily limit second, PASSWORD third.
+     * A configured limit with allowance remaining is deliberately invisible.
+     */
+    suspend fun activeWebsiteProtection(blockedDomain: String?): ActiveWebsiteProtection =
+        withContext(Dispatchers.IO) {
+            val candidate = blockedDomain?.trim().orEmpty()
+            if (candidate.isBlank()) return@withContext ActiveWebsiteProtection.NONE
+
+            val now = System.currentTimeMillis()
+            val enforcingSessions = database.blockSessionDao()
+                .getAllActiveSessionsStatic()
+                .filter { participatesInBlocking(it) && isCurrentlyInBlockingWindow(it) }
+
+            val strongerSessionIds = enforcingSessions
+                .filter { !it.sessionType.equals("PASSWORD", ignoreCase = true) }
+                .map { it.id }
+            val strongerSessionSites = getSitesForSessions(strongerSessionIds)
+            if (matchesAnyWebsiteRuleIgnoringGrants(candidate, strongerSessionSites)) {
+                return@withContext ActiveWebsiteProtection.TIME
+            }
+
+            val activeWebsiteLimits = database.websiteUsageLimitDao()
+                .getAllStatic()
+                .filter { it.isEnabled }
+            val blockingLimitRules = getBlockingWebsiteLimitRules(activeWebsiteLimits, now)
+            if (matchesAnyWebsiteRuleIgnoringGrants(candidate, blockingLimitRules)) {
+                return@withContext ActiveWebsiteProtection.DAILY_LIMIT
+            }
+
+            if (AuthManager.isAdultFilterConfigured(context) &&
+                matchesAnyWebsiteRuleIgnoringGrants(
+                    candidate,
+                    listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
+                )
+            ) {
+                return@withContext ActiveWebsiteProtection.OTHER_HARD_BLOCK
+            }
+
+            val passwordSessionIds = enforcingSessions
+                .filter { it.sessionType.equals("PASSWORD", ignoreCase = true) }
+                .map { it.id }
+            val passwordSessionSites = getSitesForSessions(passwordSessionIds)
+            if (matchesAnyWebsiteRuleIgnoringGrants(candidate, passwordSessionSites)) {
+                return@withContext ActiveWebsiteProtection.PASSWORD
+            }
+
+            ActiveWebsiteProtection.NONE
         }
 
     /**
@@ -612,21 +684,13 @@ class BlockingSessionManager @Inject constructor(
         try {
             ensureBlockingPermissionsReady()
             ensureMasterCredentialFor("PASSWORD")
-            // Bloqueio por senha vale só para aplicativos: sua saída é a tela de
-            // senha que o app coloca na frente do alvo, e isso só é confiável
-            // para um app detectado em primeiro plano. Filtrado aqui, e não só
-            // na UI, para nenhum caminho de criação armar um bloqueio que
-            // promete uma senha que nunca aparece — ver BlockTargetPolicy.
+            // PASSWORD accepts apps and explicit website rules. Keywords remain
+            // excluded by BlockTargetPolicy because a credential must map to one
+            // stable target, not to an arbitrary substring across the web.
             val normalizedSites = BlockTargetPolicy.acceptedRulesForSessionType(
                 sessionType = BlockTargetPolicy.SESSION_TYPE_PASSWORD,
                 rules = sites
             )
-            if (sites.isNotEmpty()) {
-                FocusGuardLogger.log(
-                    "BlockingSessionManager",
-                    "Bloqueio por senha ignora ${sites.size} regra(s) de site/palavra"
-                )
-            }
             database.withTransaction {
                 val session = BlockSession(
                     startTime = System.currentTimeMillis(),
@@ -746,7 +810,6 @@ class BlockingSessionManager @Inject constructor(
             throw error
         }
     }
-
 
     /**
      * Ativa, de uma só vez, o compromisso final da jornada AntiPorn:
@@ -948,6 +1011,8 @@ class BlockingSessionManager @Inject constructor(
                 check(AuthManager.disableAdultFilterForDevelopmentExit(context)) {
                     "Não foi possível persistir a desativação do filtro adulto"
                 }
+                PasswordTargetAccessGrant.updateStrongerAppPackages(emptyList())
+                PasswordTargetAccessGrant.updateStrongerWebsiteRules(emptyList())
                 StrictPomodoroLock.clear(context)
                 PomodoroForegroundService.stop(context)
                 check(SelfProtectionStateStore.setArmed(context, false)) {
@@ -998,22 +1063,7 @@ class BlockingSessionManager @Inject constructor(
             }
         if (passwordWebsiteLimits.isEmpty()) return@withContext false
 
-        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now)
-        val usageByWebsite = WebsiteUsageLimitPolicy.aggregateUsageByRule(
-            usageByIdentifier = database.dailyUsageStatDao()
-                .getStatsForDateStatic(today)
-                .map { it.identifier to it.timeSpentMs },
-            configuredRules = passwordWebsiteLimits.map { it.domain }
-        )
-        passwordWebsiteLimits.any { limit ->
-            WebsiteUsageLimitPolicy.shouldBlock(
-                usedMillis = usageByWebsite[WebsiteBlocker.normalizeRule(limit.domain)] ?: 0L,
-                dailyLimitMinutes = limit.dailyLimitMinutes,
-                lockMode = limit.lockMode,
-                lockUntilTimestamp = limit.lockUntilTimestamp,
-                nowMillis = now
-            )
-        }
+        getBlockingWebsiteLimitRules(passwordWebsiteLimits, now).isNotEmpty()
     }
 
     suspend fun hasTimeSession(): Boolean {
@@ -1164,7 +1214,10 @@ class BlockingSessionManager @Inject constructor(
                     val sessionSites = database.sessionWebsiteCrossRefDao()
                         .getWebsitesForSessions(listOf(sessionId))
                     sessionSites.filter { configuredRule ->
-                        WebsiteBlocker.isUrlBlocked(domain, listOf(configuredRule))
+                        WebsiteBlocker.matchesRuleIgnoringGrants(
+                            domain,
+                            WebsiteBlocker.normalizeRule(configuredRule)
+                        )
                     }.forEach { configuredRule ->
                         database.sessionWebsiteCrossRefDao()
                             .deleteSpecificWebsite(sessionId, configuredRule)
@@ -1189,6 +1242,11 @@ class BlockingSessionManager @Inject constructor(
 
             blockedPackage?.takeIf(String::isNotBlank)?.let { packageName ->
                 PasswordAppUnlockStore(context).clearPackages(listOf(packageName))
+            }
+            blockedDomain?.takeIf(String::isNotBlank)?.let { domain ->
+                PasswordAppUnlockStore(context).websiteRuleForObservedTarget(domain)?.let { rule ->
+                    PasswordAppUnlockStore(context).clearWebsites(listOf(rule))
+                }
             }
             checkAndEnforceOrThrow()
             EndSessionResult.ENDED
@@ -1331,34 +1389,17 @@ class BlockingSessionManager @Inject constructor(
                             now
                         )
                 }
-            val websiteUsage = WebsiteUsageLimitPolicy.aggregateUsageByRule(
-                usageByIdentifier = database.dailyUsageStatDao()
-                    .getStatsForDateStatic(SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now))
-                    .map { it.identifier to it.timeSpentMs },
-                configuredRules = websiteLimits.map { it.domain }
-            )
-            val blockingWebsiteLimits = websiteLimits.filter { limit ->
-                WebsiteUsageLimitPolicy.shouldBlock(
-                    usedMillis = websiteUsage[WebsiteBlocker.normalizeRule(limit.domain)] ?: 0L,
-                    dailyLimitMinutes = limit.dailyLimitMinutes,
-                    lockMode = limit.lockMode,
-                    lockUntilTimestamp = limit.lockUntilTimestamp,
-                    nowMillis = now
-                )
-            }
+            val blockingWebsiteRules = getBlockingWebsiteLimitRules(websiteLimits, now)
             val matchingRules = blockedDomain
                 ?.takeIf(String::isNotBlank)
-                ?.let {
-                    WebsiteBlocker.findMatchingRules(
-                        it,
-                        WebsiteBlocker.normalizeRules(blockingWebsiteLimits.map { limit ->
-                            limit.domain
-                        })
-                    )
+                ?.let { candidate ->
+                    blockingWebsiteRules.filter { rule ->
+                        WebsiteBlocker.matchesRuleIgnoringGrants(candidate, rule)
+                    }
                 }
                 .orEmpty()
             val matchingWebsiteLimits = matchingRules.mapNotNull { rule ->
-                blockingWebsiteLimits.firstOrNull {
+                websiteLimits.firstOrNull {
                     WebsiteBlocker.normalizeRule(it.domain) == rule
                 }
             }
@@ -1503,26 +1544,7 @@ class BlockingSessionManager @Inject constructor(
                         ),
                     nowMillis = now
                 )
-                val activeWebsiteDomains = WebsiteBlocker.normalizeRules(
-                    activeWebsiteLimits.map { it.domain }
-                )
-                val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now)
-                val usageByWebsite = WebsiteUsageLimitPolicy.aggregateUsageByRule(
-                    usageByIdentifier = database.dailyUsageStatDao()
-                        .getStatsForDateStatic(today)
-                        .map { it.identifier to it.timeSpentMs },
-                    configuredRules = activeWebsiteDomains
-                )
-                val limitSites = activeWebsiteLimits.filter { limit ->
-                    val normalizedDomain = WebsiteBlocker.normalizeRule(limit.domain)
-                    WebsiteUsageLimitPolicy.shouldBlock(
-                        usedMillis = usageByWebsite[normalizedDomain] ?: 0L,
-                        dailyLimitMinutes = limit.dailyLimitMinutes,
-                        lockMode = limit.lockMode,
-                        lockUntilTimestamp = limit.lockUntilTimestamp,
-                        nowMillis = now
-                    )
-                }.map { WebsiteBlocker.normalizeRule(it.domain) }
+                val limitSites = getBlockingWebsiteLimitRules(activeWebsiteLimits, now)
 
                 val appFamilySites = WebsiteBlocker.domainRulesForAppPackages(
                     sessionApps + limitApps
@@ -1539,8 +1561,17 @@ class BlockingSessionManager @Inject constructor(
                 } else {
                     emptyList()
                 }
-                val strongerWebsiteApps = WebsiteBlocker.appPackageDomainsFor(
+
+                // Publish website ownership before deriving associated native-app
+                // packages. A PASSWORD visit grant for the same site must not hide
+                // a TIME/limit rule from that derivation.
+                val strongerWebsiteRules = WebsiteBlocker.normalizeRules(
                     strongerSessionSites + limitSites + adultFilterRules
+                )
+                PasswordTargetAccessGrant.updateStrongerWebsiteRules(strongerWebsiteRules)
+
+                val strongerWebsiteApps = WebsiteBlocker.appPackageDomainsFor(
+                    strongerWebsiteRules
                 ).keys.filter(::isPackageInstalled)
                 val sitesToBlock = (sessionSites + limitSites + appFamilySites + adultFilterRules)
                     .map(WebsiteBlocker::normalizeRule)
@@ -1560,11 +1591,16 @@ class BlockingSessionManager @Inject constructor(
                     focusModeBlockedPackages = focusModeApps,
                     focusModeAllowedPackages = focusModeSession?.allowedPackages.orEmpty()
                 ).toList()
+
+                val strongerAppPackages = (
+                    strongerSessionApps + limitApps + strongerWebsiteApps + focusModeApps
+                ).filter { packageName -> packageName in appsToBlock }.toSet()
+                PasswordTargetAccessGrant.updateStrongerAppPackages(strongerAppPackages)
+
                 val deviceOwnerAppsToSuspend = packagesForDeviceOwnerSuspension(
                     enforcedPackages = appsToBlock,
                     passwordSessionPackages = passwordSessionApps,
-                    strongerProtectionPackages =
-                        strongerSessionApps + limitApps + strongerWebsiteApps + focusModeApps,
+                    strongerProtectionPackages = strongerAppPackages,
                     strictPomodoro = strictPomodoro
                 )
                 val nativeFocusLockdownActive = focusModeSession != null &&
@@ -1680,7 +1716,7 @@ class BlockingSessionManager @Inject constructor(
     }
 
     private fun getExceededAppLimits(
-        limits: List<com.focusguard.database.AppUsageLimit>,
+        limits: List<AppUsageLimit>,
         now: Long
     ): List<String> {
         if (limits.isEmpty()) return emptyList()
@@ -1718,6 +1754,39 @@ class BlockingSessionManager @Inject constructor(
         }.map { it.packageName }
     }
 
+    private suspend fun getBlockingWebsiteLimitRules(
+        limits: List<WebsiteUsageLimit>,
+        now: Long
+    ): List<String> {
+        if (limits.isEmpty()) return emptyList()
+        val activeRules = WebsiteBlocker.normalizeRules(limits.map { it.domain })
+        if (activeRules.isEmpty()) return emptyList()
+
+        val today = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(now)
+        val usageByWebsite = WebsiteUsageLimitPolicy.aggregateUsageByRule(
+            usageByIdentifier = database.dailyUsageStatDao()
+                .getStatsForDateStatic(today)
+                .map { it.identifier to it.timeSpentMs },
+            configuredRules = activeRules
+        )
+        return limits.filter { limit ->
+            val normalizedDomain = WebsiteBlocker.normalizeRule(limit.domain)
+            WebsiteUsageLimitPolicy.shouldBlock(
+                usedMillis = usageByWebsite[normalizedDomain] ?: 0L,
+                dailyLimitMinutes = limit.dailyLimitMinutes,
+                lockMode = limit.lockMode,
+                lockUntilTimestamp = limit.lockUntilTimestamp,
+                nowMillis = now
+            )
+        }.map { WebsiteBlocker.normalizeRule(it.domain) }
+    }
+
+    private fun matchesAnyWebsiteRuleIgnoringGrants(
+        candidate: String,
+        rules: Collection<String>
+    ): Boolean = WebsiteBlocker.normalizeRules(rules).any { rule ->
+        WebsiteBlocker.matchesRuleIgnoringGrants(candidate, rule)
+    }
 
     /**
      * Combina redes conhecidas (inclusive ainda não instaladas) com apps de
