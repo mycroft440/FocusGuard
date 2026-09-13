@@ -34,12 +34,18 @@ import kotlinx.coroutines.launch
 @Composable
 internal fun DeactivationCredentialDialog(
     managementLocked: Boolean,
-    configureCredential: suspend (String) -> String,
+    configureCredential: (suspend (String) -> String)? = null,
     onDismiss: () -> Unit,
     onCredentialChanged: () -> Unit
 ) {
     val context = LocalContext.current
     val manager = remember(context) { DeactivationCredentialManager(context) }
+    val fallbackConfigurationManager = remember(context) {
+        MasterCredentialConfigurationManager(context)
+    }
+    val credentialWriter: suspend (String) -> String = configureCredential ?: { password ->
+        fallbackConfigurationManager.configure(password)
+    }
     val coroutineScope = rememberCoroutineScope()
     var wasConfigured by remember { mutableStateOf(manager.hasCredential()) }
     var currentCredential by remember { mutableStateOf("") }
@@ -190,7 +196,7 @@ internal fun DeactivationCredentialDialog(
                             isSaving = true
                             coroutineScope.launch {
                                 try {
-                                    recoveryCode = configureCredential(newPassword)
+                                    recoveryCode = credentialWriter(newPassword)
                                 } catch (
                                     error: MasterCredentialConfigurationManager.ConfigurationBlockedException
                                 ) {
