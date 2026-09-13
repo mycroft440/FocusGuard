@@ -42,8 +42,33 @@ import com.focusguard.ui.compose.components.PatternLockInput
 import com.focusguard.ui.compose.theme.DangerRed
 import kotlinx.coroutines.launch
 
+internal data class PasswordRemovalTarget(
+    val targetId: String?,
+    val blockedPackage: String?,
+    val blockedDomain: String?
+)
+
+internal fun passwordRemovalTargetFor(
+    entry: BlockingSessionManager.BlockOverview.Entry
+): PasswordRemovalTarget {
+    val identifier = entry.identifier.takeIf(String::isNotBlank)
+    return if (entry.isWebsite) {
+        PasswordRemovalTarget(
+            targetId = PasswordAppUnlockStore.targetIdForWebsite(identifier),
+            blockedPackage = null,
+            blockedDomain = identifier
+        )
+    } else {
+        PasswordRemovalTarget(
+            targetId = PasswordAppUnlockStore.targetIdForPackage(identifier),
+            blockedPackage = identifier,
+            blockedDomain = null
+        )
+    }
+}
+
 /**
- * Authenticates an explicit request to remove one app from a PASSWORD session.
+ * Authenticates an explicit request to remove one target from a PASSWORD session.
  *
  * This UI is intentionally separate from the Accessibility/blocking hot path.
  * Nothing runs until the user taps the remove affordance on the management screen.
@@ -64,22 +89,29 @@ internal fun PasswordBlockRemovalDialog(
     val scope = rememberCoroutineScope()
     val store = remember(context) { PasswordAppUnlockStore(context) }
     val authManager = remember(context) { AuthManager(context) }
-    val config = remember(entry.identifier) { store.get(entry.identifier) }
-    val label = remember(entry.identifier) {
+    val target = remember(entry.identifier, entry.isWebsite) {
+        passwordRemovalTargetFor(entry)
+    }
+    val config = remember(target.targetId) { store.getTarget(target.targetId) }
+    val label = remember(entry.identifier, entry.isWebsite) {
         blockedEntryLabel(
             identifier = entry.identifier,
-            isWebsite = false,
-            installedLabel = runCatching {
-                val pm = context.packageManager
-                pm.getApplicationLabel(pm.getApplicationInfo(entry.identifier, 0)).toString()
-            }.getOrNull()
+            isWebsite = entry.isWebsite,
+            installedLabel = if (entry.isWebsite) {
+                null
+            } else {
+                runCatching {
+                    val pm = context.packageManager
+                    pm.getApplicationLabel(pm.getApplicationInfo(entry.identifier, 0)).toString()
+                }.getOrNull()
+            }
         )
     }
 
-    var password by remember(entry.identifier) { mutableStateOf("") }
-    var error by remember(entry.identifier) { mutableStateOf<String?>(null) }
-    var busy by remember(entry.identifier) { mutableStateOf(false) }
-    var patternResetKey by remember(entry.identifier) { mutableIntStateOf(0) }
+    var password by remember(target.targetId) { mutableStateOf("") }
+    var error by remember(target.targetId) { mutableStateOf<String?>(null) }
+    var busy by remember(target.targetId) { mutableStateOf(false) }
+    var patternResetKey by remember(target.targetId) { mutableIntStateOf(0) }
 
     val biometricAllowed = activity != null &&
         config?.biometricEnabled == true &&
@@ -98,8 +130,8 @@ internal fun PasswordBlockRemovalDialog(
             try {
                 when (
                     sessionManager.unlockPasswordSessionTarget(
-                        blockedPackage = entry.identifier,
-                        blockedDomain = null
+                        blockedPackage = target.blockedPackage,
+                        blockedDomain = target.blockedDomain
                     )
                 ) {
                     BlockingSessionManager.EndSessionResult.ENDED,
@@ -119,7 +151,7 @@ internal fun PasswordBlockRemovalDialog(
             error = biometricFailureMessage
             return
         }
-        val latest = store.get(entry.identifier)
+        val latest = store.getTarget(target.targetId)
         val stillAllowed = latest?.biometricEnabled == true &&
             authManager.isBiometricAppUnlockEnabled() &&
             AppUnlockBiometricAuthenticator.isAvailable(context)
@@ -134,7 +166,7 @@ internal fun PasswordBlockRemovalDialog(
             subtitle = label,
             cancelLabel = host.getString(R.string.cancel),
             onSuccess = {
-                val rechecked = store.get(entry.identifier)
+                val rechecked = store.getTarget(target.targetId)
                 val remainsAllowed = rechecked?.biometricEnabled == true &&
                     authManager.isBiometricAppUnlockEnabled()
                 if (remainsAllowed) {
@@ -179,7 +211,7 @@ internal fun PasswordBlockRemovalDialog(
                             ),
                             keyboardActions = KeyboardActions(
                                 onDone = {
-                                    if (!busy && store.verify(entry.identifier, password)) {
+                                    if (!busy && store.verifyTarget(target.targetId, password)) {
                                         completeRemoval()
                                     } else if (!busy) {
                                         error = wrongCredentialMessage
@@ -197,7 +229,7 @@ internal fun PasswordBlockRemovalDialog(
                             enabled = !busy,
                             resetKey = patternResetKey,
                             onPatternComplete = { pattern ->
-                                if (store.verify(entry.identifier, pattern)) {
+                                if (store.verifyTarget(target.targetId, pattern)) {
                                     completeRemoval()
                                 } else {
                                     error = wrongCredentialMessage
@@ -247,7 +279,7 @@ internal fun PasswordBlockRemovalDialog(
             if (config?.mode == PasswordAppUnlockMode.PASSWORD) {
                 Button(
                     onClick = {
-                        if (store.verify(entry.identifier, password)) {
+                        if (store.verifyTarget(target.targetId, password)) {
                             completeRemoval()
                         } else {
                             error = wrongCredentialMessage
