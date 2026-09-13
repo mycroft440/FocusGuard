@@ -44,14 +44,11 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
-import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.manager.PomodoroManager
 import com.focusguard.pomodoro.PomodoroNotificationController
 import com.focusguard.pomodoro.PomodoroPlanConfig
 import com.focusguard.pomodoro.PomodoroPlanStore
-import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.service.FocusModeNotificationService
-import com.focusguard.ui.PermissionsActivity
 import com.focusguard.ui.compose.screens.PomodoroDurationDial
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
@@ -82,14 +79,16 @@ class PomodoroWidgetDialActivity : AppCompatActivity() {
         val store = remember { PomodoroPlanStore(context) }
         val manager = remember { PomodoroManager.getInstance(context) }
         val notificationController = remember { PomodoroNotificationController(context) }
-        var config by remember { mutableStateOf(store.loadConfig()) }
+        var config by remember {
+            mutableStateOf(store.loadConfig().copy(strictBlocking = false))
+        }
         var focusText by remember(config.focusMinutes) {
             mutableStateOf(config.focusMinutes.toString())
         }
         var error by remember { mutableStateOf<String?>(null) }
 
         fun persist(updated: PomodoroPlanConfig) {
-            config = store.saveConfig(updated.normalized())
+            config = store.saveConfig(updated.copy(strictBlocking = false).normalized())
             focusText = config.focusMinutes.toString()
             PomodoroWidgetProvider.requestUpdate(context)
             error = null
@@ -100,12 +99,6 @@ class PomodoroWidgetDialActivity : AppCompatActivity() {
                 store.readRuntime()?.active == true -> {
                     error = context.getString(R.string.fg_pomodoro_already_running)
                     PomodoroWidgetProvider.requestUpdate(context)
-                }
-                config.strictBlocking && FocusModeStore.isActive(context) -> {
-                    error = context.getString(R.string.fg_pomodoro_disable_focus_strict)
-                }
-                config.strictBlocking && !ProtectionPermissionGate.read(context).isReady -> {
-                    startActivity(PermissionsActivity.createPendingProtectionIntent(context))
                 }
                 config.silenceNotifications && !notificationController.hasPolicyAccess() -> {
                     startActivity(notificationController.policyAccessIntent())
@@ -122,7 +115,7 @@ class PomodoroWidgetDialActivity : AppCompatActivity() {
                 }
                 else -> scope.launch {
                     try {
-                        manager.startPlan(config)
+                        manager.startPlan(config.copy(strictBlocking = false))
                         PomodoroWidgetProvider.requestUpdate(context)
                         onClose()
                     } catch (cancelled: CancellationException) {
