@@ -1,0 +1,161 @@
+name: Harden instant hierarchy handoff
+
+on:
+  push:
+    branches:
+      - fix/instant-layer-handoffs
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/instant-layer-handoffs
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Consume PASSWORD grants at the strong-layer edge
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{path}: expected one anchor, found {count}')
+              p.write_text(text.replace(old, new, 1))
+
+          grant = 'app/src/main/java/com/focusguard/security/PasswordTargetAccessGrant.kt'
+          anchor = '''    /** Same ownership hand-off as [updateStrongerAppPackages], for website rules. */
+          '''
+          insertion = '''    /**
+           * Publishes one newly-detected strong app owner before the full policy
+           * reconciliation finishes. This closes the sub-second edge where an
+           * already-authenticated PASSWORD visit could otherwise survive the
+           * exact pulse that discovers an exhausted limit.
+           */
+          fun claimStrongerAppProtection(packageName: String) {
+              val target = packageName.takeIf(String::isNotBlank) ?: return
+              strongerAppPackages.add(target)
+              dropPackageGrantForStrongerProtection(target)
+          }
+
+          /** Same immediate ownership claim for a website rule. */
+          fun claimStrongerWebsiteProtection(ruleOrDomain: String) {
+              val rule = WebsiteBlocker.normalizeRule(ruleOrDomain)
+                  .takeIf(String::isNotBlank) ?: return
+              strongerWebsiteRules.add(rule)
+              websiteExpiryElapsed.keys.toList().forEach { grantedRule ->
+                  if (websiteRulesOverlap(grantedRule, rule)) {
+                      dropWebsiteGrantForStrongerProtection(grantedRule)
+                  }
+              }
+          }
+
+          internal fun isAppStronglyProtected(packageName: String): Boolean =
+              packageName.isNotBlank() && packageName in strongerAppPackages
+
+          internal fun isWebsiteStronglyProtected(ruleOrDomain: String): Boolean {
+              val candidate = WebsiteBlocker.normalizeRule(ruleOrDomain)
+              if (candidate.isBlank()) return false
+              return strongerWebsiteRules.any { strongerRule ->
+                  websiteRulesOverlap(candidate, strongerRule)
+              }
+          }
+
+          '''
+          replace_once(grant, anchor, insertion + anchor)
+
+          service = 'app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt'
+          replace_once(
+              service,
+              '''                    if (!shouldEnforce) continue
+
+                      withContext(Dispatchers.Main) {
+          ''',
+              '''                    if (!shouldEnforce) continue
+
+                      // Publish the stronger owner before rendering its block. A
+                      // PASSWORD visit already in progress must stop on this pulse,
+                      // not on the later full reconciliation.
+                      PasswordTargetAccessGrant.claimStrongerAppProtection(packageName)
+                      withContext(Dispatchers.Main) {
+          '''
+          )
+          replace_once(
+              service,
+              '''            blockedWebsitesDomainSet = blockedWebsitesDomainSet + exceededRules
+              if (usage.packageName in browserPackages) {
+          ''',
+              '''            strongerWebsiteDomainSet = WebsiteBlocker.normalizeRules(
+                  strongerWebsiteDomainSet + exceededRules
+              )
+              exceededRules.forEach(PasswordTargetAccessGrant::claimStrongerWebsiteProtection)
+              blockedWebsitesDomainSet = blockedWebsitesDomainSet + exceededRules
+              if (usage.packageName in browserPackages) {
+          '''
+          )
+
+          test = 'app/src/test/java/com/focusguard/security/PasswordTargetAccessGrantHierarchyTest.kt'
+          p = Path(test)
+          text = p.read_text()
+          marker = '\n}\n'
+          additions = '''
+
+              @Test
+              fun `new strong app owner is visible immediately`() {
+                  PasswordTargetAccessGrant.clear()
+                  try {
+                      PasswordTargetAccessGrant.claimStrongerAppProtection("com.example.target")
+                      assertThat(
+                          PasswordTargetAccessGrant.isAppStronglyProtected("com.example.target")
+                      ).isTrue()
+                  } finally {
+                      PasswordTargetAccessGrant.clear()
+                  }
+              }
+
+              @Test
+              fun `new strong website owner covers the password rule immediately`() {
+                  PasswordTargetAccessGrant.clear()
+                  try {
+                      PasswordTargetAccessGrant.claimStrongerWebsiteProtection("youtube.com")
+                      assertThat(
+                          PasswordTargetAccessGrant.isWebsiteStronglyProtected(
+                              "https://m.youtube.com/watch?v=1"
+                          )
+                      ).isTrue()
+                  } finally {
+                      PasswordTargetAccessGrant.clear()
+                  }
+              }
+          '''
+          if not text.endswith(marker):
+              raise SystemExit('test class closing marker not found')
+          p.write_text(text[:-len(marker)] + additions + marker)
+          PY
+
+      - name: Run hierarchy regression tests
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest --tests 'com.focusguard.security.PasswordTargetAccessGrantHierarchyTest' --tests 'com.focusguard.service.HierarchyBoundaryPolicyTest' --tests 'com.focusguard.service.WebsiteProtectionHierarchyPolicyTest' --tests 'com.focusguard.utils.WebsiteBlockerGrantIndependentMatchingTest' --tests 'com.focusguard.service.AppBlockSurfaceResolverClosureTest'
+
+      - name: Commit hardening
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm -f .github/workflows/harden-instant-handoff.yml
+          git add app/src/main/java app/src/test/java
+          git commit -m 'Close password grant handoff races'
+          git push origin HEAD:fix/instant-layer-handoffs
