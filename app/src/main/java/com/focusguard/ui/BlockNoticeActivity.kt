@@ -26,7 +26,7 @@ import kotlinx.coroutines.launch
  * original extras (including the curtain generation handshake) are forwarded to
  * exactly one owner Activity:
  *
- *  - [PasswordUnlockActivity] for a plain PASSWORD-session app target;
+ *  - [PasswordUnlockActivity] for a plain PASSWORD-session app or website target;
  *  - [GenericBlockNoticeActivity] for every non-password/stronger protection.
  *
  * TIME commitments and active usage limits have a second invariant: on a Device
@@ -36,7 +36,7 @@ import kotlinx.coroutines.launch
  * alive as a background task. Plain PASSWORD visits deliberately skip that step.
  *
  * Keeping the router UI-free prevents the generic hard-block screen from ever
- * being shown for a password-protected app, even while Room is being queried.
+ * being shown for a password-protected target, even while Room is being queried.
  */
 @AndroidEntryPoint
 class BlockNoticeActivity : AppCompatActivity() {
@@ -89,9 +89,7 @@ class BlockNoticeActivity : AppCompatActivity() {
         val blockedPackage = incomingKey.blockedPackage
         val blockedDomain = incomingKey.blockedDomain
 
-        // PASSWORD sessions are app-only. Website, strict, and malformed payloads
-        // never need a database round-trip before reaching their generic owner.
-        if (strictBlock || blockedDomain != null || blockedPackage == null) {
+        if (strictBlock || (blockedDomain == null && blockedPackage == null)) {
             launchDestination(
                 sourceIntent = latestRouteIntent ?: sourceIntent,
                 surface = AppBlockSurfacePolicy.Surface.GENERIC_BLOCK,
@@ -103,19 +101,38 @@ class BlockNoticeActivity : AppCompatActivity() {
 
         routeJob = lifecycleScope.launch {
             val resolution = try {
-                AppBlockSurfaceResolver(
-                    context = applicationContext,
-                    sessionManager = blockingSessionManager
-                ).resolveAttempt(
-                    blockedPackage = blockedPackage,
-                    strictPomodoroActive = false
-                )
+                if (blockedDomain != null) {
+                    val websiteOwner = blockingSessionManager.activeWebsiteProtection(blockedDomain)
+                    WebsiteRouteResolution(
+                        surface = if (
+                            websiteOwner == BlockingSessionManager.ActiveWebsiteProtection.PASSWORD
+                        ) {
+                            AppBlockSurfacePolicy.Surface.PASSWORD_UNLOCK
+                        } else {
+                            AppBlockSurfacePolicy.Surface.GENERIC_BLOCK
+                        }
+                    )
+                } else {
+                    val packageName = checkNotNull(blockedPackage)
+                    val appResolution = AppBlockSurfaceResolver(
+                        context = applicationContext,
+                        sessionManager = blockingSessionManager
+                    ).resolveAttempt(
+                        blockedPackage = packageName,
+                        strictPomodoroActive = false
+                    )
+                    WebsiteRouteResolution(
+                        surface = appResolution.surface,
+                        closeTargetAfterInterception = appResolution.closeTargetAfterInterception
+                    )
+                }
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (error: Exception) {
                 FocusGuardLogger.logError(
                     "BlockRouter",
-                    "Falha ao resolver superfície para $blockedPackage; saindo para Home",
+                    "Falha ao resolver superfície para ${blockedDomain ?: blockedPackage}; " +
+                        "saindo para Home",
                     error
                 )
                 if (attemptId == routeAttemptId && !isFinishing && !isDestroyed) {
@@ -125,7 +142,7 @@ class BlockNoticeActivity : AppCompatActivity() {
                 return@launch
             }
 
-            if (resolution.closeTargetAfterInterception) {
+            if (resolution.closeTargetAfterInterception && blockedPackage != null) {
                 closeTimedOrLimitedTarget(blockedPackage)
             }
 
@@ -222,6 +239,11 @@ class BlockNoticeActivity : AppCompatActivity() {
         }
         finish()
     }
+
+    private data class WebsiteRouteResolution(
+        val surface: AppBlockSurfacePolicy.Surface,
+        val closeTargetAfterInterception: Boolean = false
+    )
 
     companion object {
         internal data class RouteKey(
