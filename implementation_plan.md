@@ -23,3 +23,39 @@ Corrigir a tela **Proteja apps com senha** para que sites protegidos possam ser 
 
 ## Critério de conclusão
 Na tela de bloqueio por senha, um site deve mostrar a ação de remoção, exigir a credencial configurada para aquele site e ser removido sem afetar proteções independentes. Sites predefinidos devem exibir seu favicon/ícone de marca; regras sem favicon significativo devem continuar com fallback seguro e legível.
+
+---
+
+# Plano de implementação — senha mestre antes de bloqueios irreversíveis
+
+## Objetivo
+Impedir a criação ou troca da senha mestre depois que já existir um bloqueio `TIME` ativo ou um limite de uso habilitado, sem impedir a configuração quando existirem apenas bloqueios `PASSWORD`.
+
+## Diagnóstico
+- [x] Confirmar que `MasterPasswordActivity` atualmente força `managementLocked = false`, permitindo configurar a senha mestre mesmo com bloqueios existentes.
+- [x] Confirmar que `DeactivationCredentialDialog` grava diretamente em `DeactivationCredentialManager.configure`.
+- [x] Confirmar que `BlockSession.sessionType` separa `PASSWORD` de `TIME` e que limites de app/site têm `isEnabled` próprio.
+- [x] Confirmar que `BlockingSessionManager` já centraliza acesso às sessões e aos limites de uso.
+- [x] Confirmar que `MasterCredentialPolicyTest` é o ponto unitário existente para regras da senha mestre.
+
+## Implementação
+- [ ] Adicionar uma regra explícita em `MasterCredentialPolicy` para autorizar configuração da senha mestre somente sem sessão `TIME` e sem limite de uso habilitado; `PASSWORD` e `POMODORO` ficam fora desta nova restrição.
+- [ ] Fazer `BlockingSessionManager` calcular o gate com o estado persistido e fornecer um caminho de configuração que revalide imediatamente antes de gravar a credencial.
+- [ ] Alterar `MasterPasswordActivity`/`DeactivationCredentialDialog` para consumir o gate e salvar somente através do manager, removendo o bypass atual de UI.
+- [ ] Cobrir a política por testes para estado vazio, apenas `PASSWORD`, `TIME`, limite de uso e combinação de proteções.
+
+## Riscos e critérios de segurança
+- Limites desabilitados não podem bloquear a configuração.
+- Sessões `PASSWORD` não podem bloquear a configuração.
+- Uma sessão `TIME` ativa deve bloquear criação e troca da senha mestre.
+- A validação precisa acontecer também no clique de salvar para evitar a corrida de abrir a tela antes de criar um bloqueio.
+- Nenhuma regra de criação/remoção de bloqueios existentes deve ser alterada.
+
+## Validação
+- [ ] Executar os testes unitários relacionados à política da senha mestre.
+- [ ] Executar a suíte unitária disponível e Android Lint, se o ambiente permitir.
+- [ ] Revisar o diff para confirmar que não houve mudanças fora do escopo.
+- [ ] Verificar o status de CI/build da branch/PR quando disponível.
+
+## Critério de conclusão
+A senha mestre pode ser criada ou trocada quando não há bloqueio `TIME` nem limite de uso habilitado, inclusive se houver bloqueios `PASSWORD`; depois que um `TIME` ativo ou um limite habilitado existir, a tela não permite a alteração e a camada de negócio recusa a gravação mesmo em caso de estado concorrente.
