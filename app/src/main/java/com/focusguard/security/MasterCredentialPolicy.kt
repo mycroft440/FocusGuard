@@ -1,6 +1,7 @@
 package com.focusguard.security
 
 import com.focusguard.database.AppUsageLimit
+import com.focusguard.database.BlockSession
 
 /**
  * Central policy for irreversible protection and the master credential boundary.
@@ -46,6 +47,39 @@ object MasterCredentialPolicy {
         sessionType: String,
         hasMasterCredential: Boolean
     ): CreationGate = CreationGate.ALLOWED
+
+    // ----------------------------------------------- credential configuration
+
+    enum class ConfigurationGate {
+        ALLOWED,
+        BLOCKED_BY_TIME_BLOCK,
+        BLOCKED_BY_USAGE_LIMIT
+    }
+
+    /**
+     * The master credential must be chosen before an irreversible TIME block or
+     * an enabled usage limit already exists. PASSWORD sessions are deliberately
+     * ignored because their target credentials are independent from the master
+     * credential. Pomodoro is also outside this gate: only the explicit TIME
+     * blocking mode requested by this boundary prevents configuration.
+     */
+    fun evaluateCredentialConfiguration(
+        activeSessions: Iterable<BlockSession>,
+        hasActiveUsageLimit: Boolean,
+        nowMillis: Long = System.currentTimeMillis()
+    ): ConfigurationGate {
+        val hasActiveTimeBlock = activeSessions.any { session ->
+            isTimeCommitmentActive(
+                sessionType = session.sessionType,
+                isActive = session.isActive,
+                endTime = session.endTime,
+                nowMillis = nowMillis
+            )
+        }
+        if (hasActiveTimeBlock) return ConfigurationGate.BLOCKED_BY_TIME_BLOCK
+        if (hasActiveUsageLimit) return ConfigurationGate.BLOCKED_BY_USAGE_LIMIT
+        return ConfigurationGate.ALLOWED
+    }
 
     // -------------------------------------------------------- limit mutation
 
