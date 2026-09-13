@@ -53,7 +53,6 @@ import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
 import com.focusguard.ui.compose.theme.TextSecondary
-import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.launch
 
@@ -147,11 +146,9 @@ internal fun PasswordProtectedTargetUnlockPanel(
                 }
 
                 // Re-resolve ownership after the target credential has already been
-                // accepted. This closes the race where a daily allowance expires
-                // while the password/biometric UI is open. A configured limit with
-                // quota remaining is intentionally invisible here; only a limit or
-                // TIME protection that is blocking at this exact instant may take
-                // ownership away from PASSWORD.
+                // accepted. This closes the race where a daily allowance expires or
+                // a TIME layer starts while password/biometric UI is open. A limit
+                // with quota remaining is intentionally invisible here.
                 if (!blockedPackage.isNullOrBlank()) {
                     val resolution = AppBlockSurfaceResolver(
                         context = context,
@@ -166,24 +163,10 @@ internal fun PasswordProtectedTargetUnlockPanel(
                         return@launch
                     }
                 } else {
-                    // PASSWORD sessions are app-only in current builds. Keep the
-                    // legacy website path fail-closed for old databases rather than
-                    // weakening a historical overlapping rule.
-                    val overview = sessionManager.getBlockOverview()
-                    val candidate = blockedDomain ?: websiteRule.orEmpty()
-                    val heldByDopamineFast = overview.dopamineFastEntries.any { entry ->
-                        entry.isWebsite && WebsiteBlocker.isUrlBlocked(
-                            candidate,
-                            listOf(entry.identifier)
-                        )
-                    }
-                    val heldByDailyLimit = overview.dailyLimitEntries.any { entry ->
-                        entry.isWebsite && WebsiteBlocker.isUrlBlocked(
-                            candidate,
-                            listOf(entry.identifier)
-                        )
-                    }
-                    if (heldByDopamineFast || heldByDailyLimit) {
+                    val websiteOwner = sessionManager.activeWebsiteProtection(
+                        blockedDomain ?: websiteRule
+                    )
+                    if (websiteOwner != BlockingSessionManager.ActiveWebsiteProtection.PASSWORD) {
                         error = failureMessage
                         onInvalid?.invoke()
                         return@launch
@@ -192,6 +175,11 @@ internal fun PasswordProtectedTargetUnlockPanel(
 
                 if (websiteRule != null) {
                     PasswordTargetAccessGrant.grantWebsite(context, websiteRule)
+                    if (!PasswordTargetAccessGrant.isWebsiteRuleGranted(websiteRule)) {
+                        error = failureMessage
+                        onInvalid?.invoke()
+                        return@launch
+                    }
                 } else {
                     val packageName = blockedPackage?.takeIf(String::isNotBlank)
                         ?: run {
@@ -200,6 +188,11 @@ internal fun PasswordProtectedTargetUnlockPanel(
                             return@launch
                         }
                     PasswordTargetAccessGrant.grantPackage(context, packageName)
+                    if (!PasswordTargetAccessGrant.isPackageGranted(packageName)) {
+                        error = failureMessage
+                        onInvalid?.invoke()
+                        return@launch
+                    }
                 }
                 showCredentialDialog = false
                 onUnlocked()
