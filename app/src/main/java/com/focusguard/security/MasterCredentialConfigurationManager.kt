@@ -13,9 +13,9 @@ import kotlinx.coroutines.withContext
  * Coordinates configuration of the master credential with persisted protections.
  *
  * The credential itself remains stored by [DeactivationCredentialManager]. This
- * manager owns the business rule that the credential must already exist before a
- * TIME block or an enabled usage limit is configured. PASSWORD blocks are
- * independent and deliberately do not close this configuration path.
+ * manager owns the business rule that it can only be created or changed while no
+ * TIME block or enabled usage limit exists. PASSWORD blocks are independent and
+ * deliberately do not close this configuration path.
  */
 @Singleton
 class MasterCredentialConfigurationManager @Inject constructor(
@@ -37,28 +37,34 @@ class MasterCredentialConfigurationManager @Inject constructor(
     suspend fun getConfigurationGate(): MasterCredentialPolicy.ConfigurationGate =
         withContext(Dispatchers.IO) {
             database.withTransaction {
-                val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
-                val hasActiveUsageLimit =
-                    database.appUsageLimitDao().getAllActiveLimitsStatic().isNotEmpty() ||
-                        database.websiteUsageLimitDao().getAllStatic().any { it.isEnabled }
-
-                MasterCredentialPolicy.evaluateCredentialConfiguration(
-                    activeSessions = activeSessions,
-                    hasActiveUsageLimit = hasActiveUsageLimit
-                )
+                evaluateConfigurationGate()
             }
         }
 
     /**
-     * Re-checks the persisted protection state immediately before saving so a
-     * screen opened earlier cannot keep an obsolete permission to configure the
-     * master credential.
+     * Re-checks the persisted protection state and keeps the Room transaction open
+     * through the credential write. That prevents a concurrent protection write in
+     * the same database from being inserted between the gate check and the save.
      */
     suspend fun configure(password: String): String = withContext(Dispatchers.IO) {
-        val gate = getConfigurationGate()
-        if (gate != MasterCredentialPolicy.ConfigurationGate.ALLOWED) {
-            throw ConfigurationBlockedException(gate)
+        database.withTransaction {
+            val gate = evaluateConfigurationGate()
+            if (gate != MasterCredentialPolicy.ConfigurationGate.ALLOWED) {
+                throw ConfigurationBlockedException(gate)
+            }
+            deactivationCredentialManager.configure(password)
         }
-        deactivationCredentialManager.configure(password)
+    }
+
+    private suspend fun evaluateConfigurationGate(): MasterCredentialPolicy.ConfigurationGate {
+        val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
+        val hasActiveUsageLimit =
+            database.appUsageLimitDao().getAllActiveLimitsStatic().isNotEmpty() ||
+                database.websiteUsageLimitDao().getAllStatic().any { it.isEnabled }
+
+        return MasterCredentialPolicy.evaluateCredentialConfiguration(
+            activeSessions = activeSessions,
+            hasActiveUsageLimit = hasActiveUsageLimit
+        )
     }
 }
