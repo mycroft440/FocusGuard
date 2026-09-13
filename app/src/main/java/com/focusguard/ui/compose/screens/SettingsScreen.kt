@@ -44,7 +44,6 @@ import com.focusguard.R
 import com.focusguard.data.UserProfile
 import com.focusguard.monetization.AdsConsentManager
 import com.focusguard.ui.MasterPasswordActivity
-import com.focusguard.ui.MasterRemovalActivity
 import com.focusguard.ui.RemoveAllBlocksActivity
 import com.focusguard.ui.compose.layout.FocusGuardScreenScaffold
 import com.focusguard.ui.compose.layout.FocusGuardScrollableContent
@@ -116,25 +115,7 @@ fun SettingsScreen(
             }
 
             Spacer(Modifier.height(24.dp))
-            FocusGuardSectionHeader(
-                stringResource(R.string.settings_category_danger),
-                color = DangerRed
-            )
-            SettingsItem(
-                Icons.Default.DeleteForever,
-                stringResource(R.string.uninstall_app_title),
-                stringResource(R.string.uninstall_app_subtitle_no_master),
-                iconTint = DangerRed,
-                titleColor = DangerRed,
-                onClick = {
-                    context.startActivity(
-                        MasterRemovalActivity.createIntent(
-                            context,
-                            MasterRemovalActivity.Target.UNINSTALL
-                        )
-                    )
-                }
-            )
+            FocusGuardSectionHeader(stringResource(R.string.settings_category_blocking))
             SettingsItem(
                 Icons.Default.Lock,
                 stringResource(R.string.master_password_settings_title),
