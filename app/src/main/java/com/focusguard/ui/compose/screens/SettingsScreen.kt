@@ -19,9 +19,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Security
-import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -29,7 +27,6 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -44,7 +41,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.BuildConfig
 import com.focusguard.R
-import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.data.UserProfile
 import com.focusguard.monetization.AdsConsentManager
 import com.focusguard.ui.MasterPasswordActivity
@@ -60,7 +56,6 @@ import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.FocusCard
 import com.focusguard.ui.compose.theme.TextHint
-import kotlin.math.ceil
 
 @Composable
 fun SettingsScreen(
@@ -74,12 +69,6 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val activity = context as? ComponentActivity
-    val deviceOwnerManager = remember(context) {
-        DeviceOwnerManager.getInstance(context)
-    }
-    var showDeviceOwnerMaintenanceDialog by remember { mutableStateOf(false) }
-    var showDeviceOwnerSetupGuideDialog by remember { mutableStateOf(false) }
-    var deviceOwnerRevision by remember { mutableIntStateOf(0) }
     var privacyOptionsRequired by remember {
         mutableStateOf(AdsConsentManager.isPrivacyOptionsRequired(context))
     }
@@ -92,49 +81,6 @@ fun SettingsScreen(
         AdsConsentManager.refresh(host) {
             privacyOptionsRequired = AdsConsentManager.isPrivacyOptionsRequired(host)
         }
-    }
-
-    val isDeviceOwnerActive = remember(deviceOwnerRevision) {
-        deviceOwnerManager.isDeviceOwnerActive()
-    }
-    val deviceOwnerMaintenanceRemaining = remember(deviceOwnerRevision) {
-        deviceOwnerManager.maintenanceRemainingMillis()
-    }
-    val deviceOwnerMaintenanceSubtitle = when {
-        !isDeviceOwnerActive -> stringResource(
-            R.string.device_owner_maintenance_owner_required
-        )
-        deviceOwnerMaintenanceRemaining > 0L -> {
-            val remainingMinutes = ceil(
-                deviceOwnerMaintenanceRemaining / 60_000.0
-            ).toInt().coerceAtLeast(1)
-            stringResource(
-                R.string.device_owner_maintenance_active_subtitle,
-                remainingMinutes
-            )
-        }
-        else -> stringResource(R.string.device_owner_maintenance_subtitle)
-    }
-    val deviceOwnerSubtitle = stringResource(
-        when {
-            isDeviceOwnerActive -> R.string.device_owner_status_active
-            deviceOwnerManager.isDeviceAdminActive() -> R.string.device_admin_status_only
-            else -> R.string.device_owner_status_inactive
-        }
-    )
-
-    if (showDeviceOwnerMaintenanceDialog) {
-        DeviceOwnerMaintenanceDialog(
-            onDismiss = { showDeviceOwnerMaintenanceDialog = false },
-            onStateChanged = { deviceOwnerRevision++ }
-        )
-    }
-
-    if (showDeviceOwnerSetupGuideDialog) {
-        DeviceOwnerSetupGuideDialog(
-            onDismiss = { showDeviceOwnerSetupGuideDialog = false },
-            onStateChanged = { deviceOwnerRevision++ }
-        )
     }
 
     FocusGuardScreenScaffold(
@@ -170,7 +116,25 @@ fun SettingsScreen(
             }
 
             Spacer(Modifier.height(24.dp))
-            FocusGuardSectionHeader(stringResource(R.string.settings_category_blocking))
+            FocusGuardSectionHeader(
+                stringResource(R.string.settings_category_danger),
+                color = DangerRed
+            )
+            SettingsItem(
+                Icons.Default.DeleteForever,
+                stringResource(R.string.uninstall_app_title),
+                stringResource(R.string.uninstall_app_subtitle_no_master),
+                iconTint = DangerRed,
+                titleColor = DangerRed,
+                onClick = {
+                    context.startActivity(
+                        MasterRemovalActivity.createIntent(
+                            context,
+                            MasterRemovalActivity.Target.UNINSTALL
+                        )
+                    )
+                }
+            )
             SettingsItem(
                 Icons.Default.Lock,
                 stringResource(R.string.master_password_settings_title),
@@ -188,58 +152,6 @@ fun SettingsScreen(
                 onClick = {
                     context.startActivity(
                         android.content.Intent(context, RemoveAllBlocksActivity::class.java)
-                    )
-                }
-            )
-            SettingsItem(
-                Icons.Default.Palette,
-                stringResource(R.string.block_customization),
-                stringResource(R.string.settings_block_customization_subtitle),
-                onClick = onBlockCustomizationClick
-            )
-
-            Spacer(Modifier.height(24.dp))
-            FocusGuardSectionHeader(stringResource(R.string.settings_category_advanced_security))
-            SettingsItem(
-                Icons.Default.Security,
-                stringResource(R.string.limits_and_security),
-                stringResource(R.string.settings_limits_subtitle),
-                onClick = onLimitsClick
-            )
-
-            Spacer(Modifier.height(24.dp))
-            FocusGuardSectionHeader(
-                stringResource(R.string.settings_category_danger),
-                color = DangerRed
-            )
-            SettingsItem(
-                Icons.Default.Security,
-                stringResource(R.string.device_owner_maintenance_title),
-                deviceOwnerMaintenanceSubtitle,
-                iconTint = DangerRed,
-                titleColor = DangerRed,
-                onClick = { showDeviceOwnerMaintenanceDialog = true }
-            )
-            SettingsItem(
-                Icons.Default.Warning,
-                stringResource(R.string.nuclear_protection),
-                deviceOwnerSubtitle,
-                iconTint = DangerRed,
-                titleColor = DangerRed,
-                onClick = { showDeviceOwnerSetupGuideDialog = true }
-            )
-            SettingsItem(
-                Icons.Default.DeleteForever,
-                stringResource(R.string.uninstall_app_title),
-                stringResource(R.string.uninstall_app_subtitle_no_master),
-                iconTint = DangerRed,
-                titleColor = DangerRed,
-                onClick = {
-                    context.startActivity(
-                        MasterRemovalActivity.createIntent(
-                            context,
-                            MasterRemovalActivity.Target.UNINSTALL
-                        )
                     )
                 }
             )
