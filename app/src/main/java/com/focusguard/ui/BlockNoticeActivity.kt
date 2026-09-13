@@ -18,6 +18,16 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 
+internal fun websiteSurfaceFor(
+    protection: BlockingSessionManager.ActiveWebsiteProtection
+): AppBlockSurfacePolicy.Surface = if (
+    protection == BlockingSessionManager.ActiveWebsiteProtection.PASSWORD
+) {
+    AppBlockSurfacePolicy.Surface.PASSWORD_UNLOCK
+} else {
+    AppBlockSurfacePolicy.Surface.GENERIC_BLOCK
+}
+
 /**
  * Thin entrypoint used by Accessibility to route a block attempt.
  *
@@ -103,15 +113,7 @@ class BlockNoticeActivity : AppCompatActivity() {
             val resolution = try {
                 if (blockedDomain != null) {
                     val websiteOwner = blockingSessionManager.activeWebsiteProtection(blockedDomain)
-                    WebsiteRouteResolution(
-                        surface = if (
-                            websiteOwner == BlockingSessionManager.ActiveWebsiteProtection.PASSWORD
-                        ) {
-                            AppBlockSurfacePolicy.Surface.PASSWORD_UNLOCK
-                        } else {
-                            AppBlockSurfacePolicy.Surface.GENERIC_BLOCK
-                        }
-                    )
+                    WebsiteRouteResolution(surface = websiteSurfaceFor(websiteOwner))
                 } else {
                     val packageName = checkNotNull(blockedPackage)
                     val appResolution = AppBlockSurfaceResolver(
