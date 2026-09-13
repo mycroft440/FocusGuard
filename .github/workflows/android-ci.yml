@@ -2,7 +2,7 @@ name: Android CI Pro
 
 on:
   push:
-    branches: ["main", "master"]
+    branches: ["main", "master", "fix/website-block-detection-latency"]
   pull_request:
     branches: ["main", "master"]
   workflow_dispatch:
@@ -12,11 +12,38 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
   checks: write
   pull-requests: write
 
 jobs:
+  apply-website-latency-patch:
+    name: Apply website latency patch
+    if: github.event_name == 'push' && github.ref_name == 'fix/website-block-detection-latency'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Apply scoped service patch
+        run: python3 scripts/apply_website_latency_patch.py
+      - name: Commit scoped patch
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          if git diff --quiet; then
+            echo "No patch commit needed."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+          git diff --cached --check
+          git commit -m "fix: reduce website block detection latency"
+          git push origin HEAD:fix/website-block-detection-latency
+
   static-analysis:
     name: Android Lint
     runs-on: ubuntu-latest
