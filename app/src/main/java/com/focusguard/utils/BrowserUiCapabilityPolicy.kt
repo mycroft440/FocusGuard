@@ -152,8 +152,13 @@ internal object BrowserUiCapabilityPolicy {
             id.contains("url") || id.contains("uri") || id.contains("omnibox") ||
                 id.contains("address") || id.contains("location_bar")
         }
-        return node.editable && browserOwnedResource &&
-            (node.uriInput || idLooksNative)
+        val displayLooksAddressLike = node.text.orEmpty().trim().let { value ->
+            value.isNotEmpty() &&
+                value.none(Char::isWhitespace) &&
+                (value.contains("://") || value.contains('.'))
+        }
+        return browserOwnedResource && idLooksNative &&
+            (node.editable || node.uriInput || displayLooksAddressLike)
     }
 
     fun isActionableAddressBarNode(
