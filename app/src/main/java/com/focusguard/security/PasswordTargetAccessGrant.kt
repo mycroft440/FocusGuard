@@ -81,6 +81,41 @@ object PasswordTargetAccessGrant {
         }
     }
 
+    /**
+     * Publishes one newly-detected strong app owner before the full policy
+     * reconciliation finishes. This closes the sub-second edge where an
+     * already-authenticated PASSWORD visit could otherwise survive the
+     * exact pulse that discovers an exhausted limit.
+     */
+    fun claimStrongerAppProtection(packageName: String) {
+        val target = packageName.takeIf(String::isNotBlank) ?: return
+        strongerAppPackages.add(target)
+        dropPackageGrantForStrongerProtection(target)
+    }
+
+    /** Same immediate ownership claim for a website rule. */
+    fun claimStrongerWebsiteProtection(ruleOrDomain: String) {
+        val rule = WebsiteBlocker.normalizeRule(ruleOrDomain)
+            .takeIf(String::isNotBlank) ?: return
+        strongerWebsiteRules.add(rule)
+        websiteExpiryElapsed.keys.toList().forEach { grantedRule ->
+            if (websiteRulesOverlap(grantedRule, rule)) {
+                dropWebsiteGrantForStrongerProtection(grantedRule)
+            }
+        }
+    }
+
+    internal fun isAppStronglyProtected(packageName: String): Boolean =
+        packageName.isNotBlank() && packageName in strongerAppPackages
+
+    internal fun isWebsiteStronglyProtected(ruleOrDomain: String): Boolean {
+        val candidate = WebsiteBlocker.normalizeRule(ruleOrDomain)
+        if (candidate.isBlank()) return false
+        return strongerWebsiteRules.any { strongerRule ->
+            websiteRulesOverlap(candidate, strongerRule)
+        }
+    }
+
     /** Same ownership hand-off as [updateStrongerAppPackages], for website rules. */
     fun updateStrongerWebsiteRules(rules: Collection<String>) {
         val normalized = WebsiteBlocker.normalizeRules(rules)

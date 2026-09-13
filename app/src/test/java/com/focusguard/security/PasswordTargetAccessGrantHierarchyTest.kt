@@ -40,4 +40,32 @@ class PasswordTargetAccessGrantHierarchyTest {
             )
         ).isFalse()
     }
+    @Test
+    fun `new strong app owner is visible immediately`() {
+        PasswordTargetAccessGrant.clear()
+        try {
+            PasswordTargetAccessGrant.claimStrongerAppProtection("com.example.target")
+            assertThat(
+                PasswordTargetAccessGrant.isAppStronglyProtected("com.example.target")
+            ).isTrue()
+        } finally {
+            PasswordTargetAccessGrant.clear()
+        }
+    }
+
+    @Test
+    fun `new strong website owner covers the password rule immediately`() {
+        PasswordTargetAccessGrant.clear()
+        try {
+            PasswordTargetAccessGrant.claimStrongerWebsiteProtection("youtube.com")
+            assertThat(
+                PasswordTargetAccessGrant.isWebsiteStronglyProtected(
+                    "https://m.youtube.com/watch?v=1"
+                )
+            ).isTrue()
+        } finally {
+            PasswordTargetAccessGrant.clear()
+        }
+    }
+
 }
