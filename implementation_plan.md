@@ -1,25 +1,42 @@
-# Plano de implementação — gerenciamento de sites protegidos por senha
+# Plano de implementação — simplificação e ordem das Configurações
 
 ## Objetivo
-Corrigir a tela **Proteja apps com senha** para que sites protegidos possam ser removidos com a própria credencial do alvo e para que a lista use ícones de site equivalentes aos exibidos no seletor.
+Simplificar a tela **Configurações** do HardBlock, remover opções que não devem mais ser exibidas e garantir que as três últimas ações permaneçam, nesta ordem: **Senha mestre**, **Remover todos os bloqueios** e **Meu Instagram**.
 
 ## Diagnóstico
-- [x] Confirmar que as linhas de aplicativos PASSWORD recebem a ação de remoção, enquanto as linhas de sites são renderizadas sem `onRemove`.
-- [x] Confirmar que o diálogo de remoção atual trata qualquer entrada como pacote de aplicativo (`blockedPackage`) e consulta a credencial usando a chave de app, portanto apenas exibir a lixeira no site não seria suficiente.
-- [x] Confirmar que `BlockingSessionManager.unlockPasswordSessionTarget` já aceita `blockedDomain` e remove somente o alvo responsável, preservando outras camadas e outros alvos da sessão.
-- [x] Confirmar que o seletor de sites usa o catálogo `PredefinedWebsites` e favicons, enquanto a lista de bloqueados reduz sites à primeira letra do rótulo.
+- [x] Confirmar que as opções solicitadas estão concentradas em `SettingsScreen.kt`.
+- [x] Confirmar a ordem atual: Senha mestre → Remover todos os bloqueios → Personalizar bloqueio → Limites e segurança → Manutenção do Device Owner → Proteção nuclear → Desinstalar aplicativo → Meu Instagram.
+- [x] Confirmar que Manutenção do Device Owner e Proteção nuclear mantêm estado e diálogos próprios dentro da tela de Configurações.
+- [x] Confirmar que Personalizar bloqueio e Limites e segurança são rotas de navegação disparadas por callbacks da tela; removê-las da lista não exige apagar as implementações internas.
+- [x] Preservar Meu Instagram como a última entrada.
+
+## Ordem final planejada
+1. Perfil.
+2. Idioma.
+3. Opções de privacidade de anúncios, somente quando exigidas pelo consentimento.
+4. Desinstalar aplicativo.
+5. Senha mestre.
+6. Remover todos os bloqueios.
+7. Meu Instagram.
+
+## Remoções da tela
+- [ ] Personalizar bloqueio.
+- [ ] Limites e segurança.
+- [ ] Manutenção do Device Owner.
+- [ ] Proteção nuclear.
 
 ## Implementação
-- [ ] Expor a ação de remoção também nas linhas de sites quando o tipo da tela for PASSWORD.
-- [ ] Tornar o fluxo de autenticação/remoção consciente do tipo de alvo, usando a chave de credencial de website e `blockedDomain` para sites, sem alterar o caminho existente de apps.
-- [ ] Reutilizar o domínio de ícone dos presets e o mesmo serviço de favicon do seletor; manter fallback local para categorias, palavras-chave e falha de rede.
-- [ ] Cobrir por testes a resolução do ícone e o roteamento app/site da remoção.
+- [ ] Remover os quatro cards da composição de `SettingsScreen`.
+- [ ] Remover estado, cálculos, diálogos e imports que existiam apenas para Manutenção do Device Owner e Proteção nuclear.
+- [ ] Reordenar Desinstalar aplicativo, Senha mestre e Remover todos os bloqueios para que fiquem imediatamente antes de Meu Instagram.
+- [ ] Preservar as Activities/rotas e lógica interna não solicitadas, evitando regressões fora da tela de Configurações.
 
 ## Validação
-- [ ] Executar testes unitários.
-- [ ] Executar Android Lint.
-- [ ] Revisar o diff para garantir que a precedência TIME > limite esgotado > PASSWORD e a remoção isolada de alvos não foram alteradas.
-- [ ] Confirmar por CI/build que os novos composables e imports compilam.
+- [ ] Revisar o arquivo final para confirmar que não existe referência visual às quatro opções removidas.
+- [ ] Confirmar que Meu Instagram continua sendo o último item clicável.
+- [ ] Confirmar que Remover todos os bloqueios é o penúltimo item clicável.
+- [ ] Confirmar que Senha mestre é o antepenúltimo item clicável.
+- [ ] Verificar compilação/CI disponível para a branch.
 
 ## Critério de conclusão
-Na tela de bloqueio por senha, um site deve mostrar a ação de remoção, exigir a credencial configurada para aquele site e ser removido sem afetar proteções independentes. Sites predefinidos devem exibir seu favicon/ícone de marca; regras sem favicon significativo devem continuar com fallback seguro e legível.
+A tela Configurações deve mostrar somente as opções mantidas, sem os quatro cards removidos, e terminar exatamente com **Senha mestre → Remover todos os bloqueios → Meu Instagram**, sem alterar a lógica de bloqueio, Device Owner ou as implementações internas que deixaram de ter entrada nessa tela.
