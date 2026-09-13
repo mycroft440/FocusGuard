@@ -28,122 +28,116 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
 
-          def replace_once(path, old, new):
-              p = Path(path)
-              text = p.read_text()
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f'{path}: expected one anchor, found {count}')
-              p.write_text(text.replace(old, new, 1))
+          grant_path = Path('app/src/main/java/com/focusguard/security/PasswordTargetAccessGrant.kt')
+          text = grant_path.read_text()
+          anchor = '    /** Same ownership hand-off as [updateStrongerAppPackages], for website rules. */\n'
+          if text.count(anchor) != 1:
+              raise SystemExit(f'grant anchor count={text.count(anchor)}')
+          insertion = '\n'.join([
+              '    /**',
+              '     * Publishes one newly-detected strong app owner before the full policy',
+              '     * reconciliation finishes. This closes the sub-second edge where an',
+              '     * already-authenticated PASSWORD visit could otherwise survive the',
+              '     * exact pulse that discovers an exhausted limit.',
+              '     */',
+              '    fun claimStrongerAppProtection(packageName: String) {',
+              '        val target = packageName.takeIf(String::isNotBlank) ?: return',
+              '        strongerAppPackages.add(target)',
+              '        dropPackageGrantForStrongerProtection(target)',
+              '    }',
+              '',
+              '    /** Same immediate ownership claim for a website rule. */',
+              '    fun claimStrongerWebsiteProtection(ruleOrDomain: String) {',
+              '        val rule = WebsiteBlocker.normalizeRule(ruleOrDomain)',
+              '            .takeIf(String::isNotBlank) ?: return',
+              '        strongerWebsiteRules.add(rule)',
+              '        websiteExpiryElapsed.keys.toList().forEach { grantedRule ->',
+              '            if (websiteRulesOverlap(grantedRule, rule)) {',
+              '                dropWebsiteGrantForStrongerProtection(grantedRule)',
+              '            }',
+              '        }',
+              '    }',
+              '',
+              '    internal fun isAppStronglyProtected(packageName: String): Boolean =',
+              '        packageName.isNotBlank() && packageName in strongerAppPackages',
+              '',
+              '    internal fun isWebsiteStronglyProtected(ruleOrDomain: String): Boolean {',
+              '        val candidate = WebsiteBlocker.normalizeRule(ruleOrDomain)',
+              '        if (candidate.isBlank()) return false',
+              '        return strongerWebsiteRules.any { strongerRule ->',
+              '            websiteRulesOverlap(candidate, strongerRule)',
+              '        }',
+              '    }',
+              '',
+          ]) + '\n'
+          grant_path.write_text(text.replace(anchor, insertion + anchor, 1))
 
-          grant = 'app/src/main/java/com/focusguard/security/PasswordTargetAccessGrant.kt'
-          anchor = '''    /** Same ownership hand-off as [updateStrongerAppPackages], for website rules. */
-          '''
-          insertion = '''    /**
-           * Publishes one newly-detected strong app owner before the full policy
-           * reconciliation finishes. This closes the sub-second edge where an
-           * already-authenticated PASSWORD visit could otherwise survive the
-           * exact pulse that discovers an exhausted limit.
-           */
-          fun claimStrongerAppProtection(packageName: String) {
-              val target = packageName.takeIf(String::isNotBlank) ?: return
-              strongerAppPackages.add(target)
-              dropPackageGrantForStrongerProtection(target)
-          }
+          service_path = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
+          lines = service_path.read_text().splitlines(keepends=True)
 
-          /** Same immediate ownership claim for a website rule. */
-          fun claimStrongerWebsiteProtection(ruleOrDomain: String) {
-              val rule = WebsiteBlocker.normalizeRule(ruleOrDomain)
-                  .takeIf(String::isNotBlank) ?: return
-              strongerWebsiteRules.add(rule)
-              websiteExpiryElapsed.keys.toList().forEach { grantedRule ->
-                  if (websiteRulesOverlap(grantedRule, rule)) {
-                      dropWebsiteGrantForStrongerProtection(grantedRule)
-                  }
-              }
-          }
+          app_anchor = '                    if (!shouldEnforce) continue\n'
+          indices = [i for i, line in enumerate(lines) if line == app_anchor]
+          if len(indices) != 1:
+              raise SystemExit(f'app threshold anchor count={len(indices)}')
+          i = indices[0]
+          app_insert = [
+              '\n',
+              '                    // Claim the stronger owner before rendering the block.\n',
+              '                    // A live PASSWORD grant must stop on this threshold pulse.\n',
+              '                    PasswordTargetAccessGrant.claimStrongerAppProtection(packageName)\n',
+          ]
+          lines[i + 1:i + 1] = app_insert
 
-          internal fun isAppStronglyProtected(packageName: String): Boolean =
-              packageName.isNotBlank() && packageName in strongerAppPackages
+          web_anchor = '            blockedWebsitesDomainSet = blockedWebsitesDomainSet + exceededRules\n'
+          indices = [i for i, line in enumerate(lines) if line == web_anchor]
+          if len(indices) != 1:
+              raise SystemExit(f'website threshold anchor count={len(indices)}')
+          i = indices[0]
+          web_insert = [
+              '            strongerWebsiteDomainSet = WebsiteBlocker.normalizeRules(\n',
+              '                strongerWebsiteDomainSet + exceededRules\n',
+              '            )\n',
+              '            exceededRules.forEach(PasswordTargetAccessGrant::claimStrongerWebsiteProtection)\n',
+          ]
+          lines[i:i] = web_insert
+          service_path.write_text(''.join(lines))
 
-          internal fun isWebsiteStronglyProtected(ruleOrDomain: String): Boolean {
-              val candidate = WebsiteBlocker.normalizeRule(ruleOrDomain)
-              if (candidate.isBlank()) return false
-              return strongerWebsiteRules.any { strongerRule ->
-                  websiteRulesOverlap(candidate, strongerRule)
-              }
-          }
-
-          '''
-          replace_once(grant, anchor, insertion + anchor)
-
-          service = 'app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt'
-          replace_once(
-              service,
-              '''                    if (!shouldEnforce) continue
-
-                      withContext(Dispatchers.Main) {
-          ''',
-              '''                    if (!shouldEnforce) continue
-
-                      // Publish the stronger owner before rendering its block. A
-                      // PASSWORD visit already in progress must stop on this pulse,
-                      // not on the later full reconciliation.
-                      PasswordTargetAccessGrant.claimStrongerAppProtection(packageName)
-                      withContext(Dispatchers.Main) {
-          '''
-          )
-          replace_once(
-              service,
-              '''            blockedWebsitesDomainSet = blockedWebsitesDomainSet + exceededRules
-              if (usage.packageName in browserPackages) {
-          ''',
-              '''            strongerWebsiteDomainSet = WebsiteBlocker.normalizeRules(
-                  strongerWebsiteDomainSet + exceededRules
-              )
-              exceededRules.forEach(PasswordTargetAccessGrant::claimStrongerWebsiteProtection)
-              blockedWebsitesDomainSet = blockedWebsitesDomainSet + exceededRules
-              if (usage.packageName in browserPackages) {
-          '''
-          )
-
-          test = 'app/src/test/java/com/focusguard/security/PasswordTargetAccessGrantHierarchyTest.kt'
-          p = Path(test)
-          text = p.read_text()
-          marker = '\n}\n'
-          additions = '''
-
-              @Test
-              fun `new strong app owner is visible immediately`() {
-                  PasswordTargetAccessGrant.clear()
-                  try {
-                      PasswordTargetAccessGrant.claimStrongerAppProtection("com.example.target")
-                      assertThat(
-                          PasswordTargetAccessGrant.isAppStronglyProtected("com.example.target")
-                      ).isTrue()
-                  } finally {
-                      PasswordTargetAccessGrant.clear()
-                  }
-              }
-
-              @Test
-              fun `new strong website owner covers the password rule immediately`() {
-                  PasswordTargetAccessGrant.clear()
-                  try {
-                      PasswordTargetAccessGrant.claimStrongerWebsiteProtection("youtube.com")
-                      assertThat(
-                          PasswordTargetAccessGrant.isWebsiteStronglyProtected(
-                              "https://m.youtube.com/watch?v=1"
-                          )
-                      ).isTrue()
-                  } finally {
-                      PasswordTargetAccessGrant.clear()
-                  }
-              }
-          '''
-          if not text.endswith(marker):
+          test_path = Path('app/src/test/java/com/focusguard/security/PasswordTargetAccessGrantHierarchyTest.kt')
+          text = test_path.read_text()
+          closing = '\n}\n'
+          if not text.endswith(closing):
               raise SystemExit('test class closing marker not found')
-          p.write_text(text[:-len(marker)] + additions + marker)
+          additions = '\n'.join([
+              '',
+              '    @Test',
+              '    fun `new strong app owner is visible immediately`() {',
+              '        PasswordTargetAccessGrant.clear()',
+              '        try {',
+              '            PasswordTargetAccessGrant.claimStrongerAppProtection("com.example.target")',
+              '            assertThat(',
+              '                PasswordTargetAccessGrant.isAppStronglyProtected("com.example.target")',
+              '            ).isTrue()',
+              '        } finally {',
+              '            PasswordTargetAccessGrant.clear()',
+              '        }',
+              '    }',
+              '',
+              '    @Test',
+              '    fun `new strong website owner covers the password rule immediately`() {',
+              '        PasswordTargetAccessGrant.clear()',
+              '        try {',
+              '            PasswordTargetAccessGrant.claimStrongerWebsiteProtection("youtube.com")',
+              '            assertThat(',
+              '                PasswordTargetAccessGrant.isWebsiteStronglyProtected(',
+              '                    "https://m.youtube.com/watch?v=1"',
+              '                )',
+              '            ).isTrue()',
+              '        } finally {',
+              '            PasswordTargetAccessGrant.clear()',
+              '        }',
+              '    }',
+          ]) + '\n'
+          test_path.write_text(text[:-len(closing)] + additions + closing)
           PY
 
       - name: Run hierarchy regression tests
