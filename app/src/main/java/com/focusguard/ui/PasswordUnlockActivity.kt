@@ -60,17 +60,19 @@ import com.focusguard.ui.compose.theme.SuccessGreen
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
 import com.focusguard.utils.FocusGuardLogger
+import com.focusguard.utils.WebsiteBlocker
 import dagger.hilt.android.AndroidEntryPoint
 import javax.inject.Inject
 import kotlinx.coroutines.delay
 
 /**
- * Exclusive authentication surface for PASSWORD-session app targets.
+ * Exclusive authentication surface for PASSWORD-session targets.
  *
  * This Activity owns target password, pattern, biometric fallback, the one-visit
- * grant, and the lifecycle of the optional intruder selfie. Generic hard-block UI
- * has no access to any of those states. Cancelling authentication exits to Home so
- * the protected app is no longer visible behind the authentication surface.
+ * grant, and the lifecycle of the optional intruder selfie for app attempts.
+ * Generic hard-block UI has no access to those states. Cancelling authentication
+ * exits to Home so the protected app/browser is no longer visible behind the
+ * authentication surface.
  */
 @AndroidEntryPoint
 class PasswordUnlockActivity : AppCompatActivity() {
@@ -87,11 +89,14 @@ class PasswordUnlockActivity : AppCompatActivity() {
     private var authenticationReady by mutableStateOf(false)
 
     // Accessibility can send more than one intent while the same unlock surface is
-    // visible. The selfie must represent the real access attempt, not each event.
-    private var intruderAttemptId = 0L
-    private var intruderAttemptPackage: String? = null
-    private var intruderAttemptBackgrounded = false
-    private var intruderAttemptAuthenticated = false
+    // visible. Keep a stable access id for apps and websites. Intruder capture is
+    // armed only for actual app targets; a website attempt still needs the stable id
+    // so duplicate browser events do not recreate the credential panel.
+    private var accessAttemptId = 0L
+    private var accessAttemptTargetKey: String? = null
+    private var accessAttemptBackgrounded = false
+    private var accessAttemptAuthenticated = false
+    private var intruderCaptureArmedForAttempt = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -114,8 +119,12 @@ class PasswordUnlockActivity : AppCompatActivity() {
         super.onResume()
         activityResumed = true
         acknowledgePendingNoticeIfPresented()
-        if (intruderAttemptId > 0L && !intruderAttemptAuthenticated) {
-            intruderCaptureController.startCaptureIfEligible(intruderAttemptId)
+        if (
+            accessAttemptId > 0L &&
+            intruderCaptureArmedForAttempt &&
+            !accessAttemptAuthenticated
+        ) {
+            intruderCaptureController.startCaptureIfEligible(accessAttemptId)
         }
     }
 
@@ -125,8 +134,8 @@ class PasswordUnlockActivity : AppCompatActivity() {
     }
 
     override fun onStop() {
-        if (!intruderAttemptAuthenticated) {
-            intruderAttemptBackgrounded = true
+        if (!accessAttemptAuthenticated) {
+            accessAttemptBackgrounded = true
         }
         super.onStop()
     }
@@ -141,12 +150,15 @@ class PasswordUnlockActivity : AppCompatActivity() {
         val packageName = sourceIntent.getStringExtra(
             BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE
         )?.takeIf(String::isNotBlank)
+        val blockedDomain = sourceIntent.getStringExtra(
+            BlockingAccessibilityService.EXTRA_BLOCKED_DOMAIN
+        )?.takeIf(String::isNotBlank)
         val curtainGeneration = sourceIntent.getLongExtra(
             BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION,
             0L
         )
-        val accessAttemptId = beginOrContinueIntruderAttempt(packageName)
-        val newAttempt = presentation.present(accessAttemptId, curtainGeneration)
+        val currentAccessAttemptId = beginOrContinueAccessAttempt(packageName, blockedDomain)
+        val newAttempt = presentation.present(currentAccessAttemptId, curtainGeneration)
         val attemptId = presentation.attemptId
         val curtainRequestId = presentation.curtainRequestId
         val pendingGeneration = presentation.pendingCurtainGeneration
@@ -159,27 +171,37 @@ class PasswordUnlockActivity : AppCompatActivity() {
         // panel with a spinner and launching authentication again.
         if (newAttempt) {
             val targetLabel = resolveAppLabel(packageName)
+                ?: blockedDomain?.let(WebsiteBlocker::displayRule)
             setContent {
                 FocusGuardTheme {
                     key(attemptId) {
                         PasswordUnlockContent(
                             blockAttemptId = attemptId,
                             blockedPackage = packageName,
+                            blockedDomain = blockedDomain,
                             targetLabel = targetLabel,
                             authenticationReady = authenticationReady,
                             authManager = authManager,
                             blockingSessionManager = blockingSessionManager,
                             onAuthenticationSucceeded = {
-                                intruderCaptureController.markAuthenticated(accessAttemptId)
-                                if (accessAttemptId == intruderAttemptId) {
-                                    intruderAttemptAuthenticated = true
+                                if (intruderCaptureArmedForAttempt) {
+                                    intruderCaptureController.markAuthenticated(
+                                        currentAccessAttemptId
+                                    )
+                                }
+                                if (currentAccessAttemptId == accessAttemptId) {
+                                    accessAttemptAuthenticated = true
                                 }
                             },
                             onCredentialRejected = {
-                                intruderCaptureController.markCredentialRejected(accessAttemptId)
+                                if (intruderCaptureArmedForAttempt) {
+                                    intruderCaptureController.markCredentialRejected(
+                                        currentAccessAttemptId
+                                    )
+                                }
                             },
                             onUnlocked = {
-                                returnToAuthenticatedTarget(packageName)
+                                returnToAuthenticatedTarget(packageName, blockedDomain)
                             },
                             onCancelled = ::goHome
                         )
@@ -214,26 +236,39 @@ class PasswordUnlockActivity : AppCompatActivity() {
 
         // onNewIntent can start a genuinely new access while this singleTop Activity
         // is already resumed. Do not wait for another lifecycle callback to stage it.
-        if (activityResumed && accessAttemptId > 0L && !intruderAttemptAuthenticated) {
-            intruderCaptureController.startCaptureIfEligible(accessAttemptId)
+        if (
+            activityResumed &&
+            currentAccessAttemptId > 0L &&
+            intruderCaptureArmedForAttempt &&
+            !accessAttemptAuthenticated
+        ) {
+            intruderCaptureController.startCaptureIfEligible(currentAccessAttemptId)
         }
     }
 
-    private fun beginOrContinueIntruderAttempt(packageName: String?): Long {
-        val target = packageName?.takeIf(String::isNotBlank) ?: return 0L
+    private fun beginOrContinueAccessAttempt(
+        packageName: String?,
+        blockedDomain: String?
+    ): Long {
+        val targetKey = packageName?.takeIf(String::isNotBlank)?.let { "app:$it" }
+            ?: blockedDomain?.takeIf(String::isNotBlank)?.let { "site:${WebsiteBlocker.normalizeRule(it)}" }
+            ?: return 0L
         val sameVisibleAttempt =
-            intruderAttemptId > 0L &&
-                intruderAttemptPackage == target &&
-                !intruderAttemptBackgrounded &&
-                !intruderAttemptAuthenticated
-        if (sameVisibleAttempt) return intruderAttemptId
+            accessAttemptId > 0L &&
+                accessAttemptTargetKey == targetKey &&
+                !accessAttemptBackgrounded &&
+                !accessAttemptAuthenticated
+        if (sameVisibleAttempt) return accessAttemptId
 
-        intruderAttemptId += 1L
-        intruderAttemptPackage = target
-        intruderAttemptBackgrounded = false
-        intruderAttemptAuthenticated = false
-        intruderCaptureController.beginAttempt(intruderAttemptId)
-        return intruderAttemptId
+        accessAttemptId += 1L
+        accessAttemptTargetKey = targetKey
+        accessAttemptBackgrounded = false
+        accessAttemptAuthenticated = false
+        intruderCaptureArmedForAttempt = !packageName.isNullOrBlank()
+        if (intruderCaptureArmedForAttempt) {
+            intruderCaptureController.beginAttempt(accessAttemptId)
+        }
+        return accessAttemptId
     }
 
     private fun acknowledgePendingNoticeIfPresented(): Boolean {
@@ -284,26 +319,27 @@ class PasswordUnlockActivity : AppCompatActivity() {
 
     /**
      * A successful target credential grants one visit without deleting the block.
-     * The intercepted task is already intact immediately behind this authentication
-     * surface. Never relaunch the target's launcher Activity here: doing so destroys
-     * deep-link state such as a WhatsApp notification chat, group, or media viewer.
+     * The intercepted app/browser task is already intact immediately behind this
+     * authentication surface. Never relaunch it here: moving this task to the back
+     * preserves the exact deep-link/page/back-stack that was intercepted.
      */
-    private fun returnToAuthenticatedTarget(packageName: String?) {
+    private fun returnToAuthenticatedTarget(
+        packageName: String?,
+        blockedDomain: String?
+    ) {
         val target = packageName?.takeIf(String::isNotBlank)
+            ?: blockedDomain?.takeIf(String::isNotBlank)
         if (target == null) {
             goHome()
             return
         }
 
-        // Background the HardBlock authentication task instead of starting any
-        // Activity inside the protected app. Android then reveals the exact task
-        // that was intercepted, preserving its current Activity/back stack/state.
         val movedToBack = runCatching {
             moveTaskToBack(true)
         }.onFailure { error ->
             FocusGuardLogger.logError(
                 "PasswordUnlock",
-                "Falha ao devolver foco ao app autenticado $target",
+                "Falha ao devolver foco ao alvo autenticado $target",
                 error
             )
         }.getOrDefault(false)
@@ -332,6 +368,7 @@ class PasswordUnlockActivity : AppCompatActivity() {
 private fun PasswordUnlockContent(
     blockAttemptId: Long,
     blockedPackage: String?,
+    blockedDomain: String?,
     targetLabel: String?,
     authenticationReady: Boolean,
     authManager: AuthManager,
@@ -342,8 +379,13 @@ private fun PasswordUnlockContent(
     onCancelled: () -> Unit
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
-    val config = remember(blockAttemptId, blockedPackage) {
-        PasswordAppUnlockStore(context).get(blockedPackage)
+    val store = remember(context) { PasswordAppUnlockStore(context) }
+    val targetId = remember(blockAttemptId, blockedPackage, blockedDomain) {
+        PasswordAppUnlockStore.targetIdForPackage(blockedPackage)
+            ?: store.resolveWebsiteTargetId(blockedDomain)
+    }
+    val config = remember(blockAttemptId, targetId) {
+        store.getTarget(targetId)
     }
     var unlocked by remember(blockAttemptId) { mutableStateOf(false) }
     var biometricAvailability by remember(blockAttemptId) {
@@ -360,15 +402,15 @@ private fun PasswordUnlockContent(
 
     // A malformed/missing PASSWORD target must not strand the user on a dead
     // authentication screen and must never fall through to the generic block UI.
-    LaunchedEffect(blockAttemptId, blockedPackage, config) {
-        if (blockedPackage.isNullOrBlank() || config == null) {
+    LaunchedEffect(blockAttemptId, targetId, config) {
+        if (targetId.isNullOrBlank() || config == null) {
             onCancelled()
         }
     }
 
     // Re-check after the opaque curtain hands control to this Activity. This
     // closes the race where the user removes the enrolled biometric after the
-    // block was configured but before the next protected-app attempt.
+    // block was configured but before the next protected-target attempt.
     LaunchedEffect(blockAttemptId, authenticationReady) {
         if (authenticationReady) {
             biometricAvailability = AppUnlockBiometricAuthenticator.availability(context)
@@ -410,7 +452,7 @@ private fun PasswordUnlockContent(
             )
             Spacer(Modifier.height(10.dp))
             Text(
-                text = targetLabel ?: blockedPackage.orEmpty(),
+                text = targetLabel ?: blockedPackage ?: blockedDomain.orEmpty(),
                 color = TextSecondary,
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center
@@ -444,7 +486,7 @@ private fun PasswordUnlockContent(
                         onUnlocked()
                     }
                 }
-                blockedPackage.isNullOrBlank() || config == null -> {
+                targetId.isNullOrBlank() || config == null -> {
                     Text(
                         text = stringResource(R.string.password_unlock_configuration_missing),
                         color = DangerRed,
@@ -490,7 +532,7 @@ private fun PasswordUnlockContent(
                 else -> {
                     PasswordProtectedTargetUnlockPanel(
                         blockedPackage = blockedPackage,
-                        blockedDomain = null,
+                        blockedDomain = blockedDomain,
                         authManager = authManager,
                         sessionManager = blockingSessionManager,
                         onUnlocked = {

@@ -8,65 +8,47 @@ import org.junit.Test
 class BlockingSessionManagerTargetsTest {
 
     @Test
-    fun `password and daily limit targets can coexist while exclusive targets cannot`() {
+    fun `one or two protection layers keep target available for the missing layer`() {
         val targets = BlockingSessionManager.combineConfiguredBlockedTargets(
-            passwordSessionAppPackages = listOf("com.example.password", "com.example.both"),
-            passwordSessionWebsiteRules = listOf("youtube.com", "keyword:porn"),
-            exclusiveSessionAppPackages = listOf("com.example.dopamine"),
-            exclusiveSessionWebsiteRules = listOf("reddit.com"),
-            limitedAppPackages = listOf("com.example.limit", "com.example.both"),
-            limitedWebsiteRules = listOf("https://www.youtube.com/watch?v=1")
+            passwordSessionAppPackages = listOf(
+                "com.example.password",
+                "com.example.passwordLimit"
+            ),
+            passwordSessionWebsiteRules = listOf("youtube.com", "reddit.com"),
+            exclusiveSessionAppPackages = listOf(
+                "com.example.time",
+                "com.example.passwordTime"
+            ),
+            exclusiveSessionWebsiteRules = listOf("instagram.com", "reddit.com"),
+            limitedAppPackages = listOf(
+                "com.example.limit",
+                "com.example.passwordLimit"
+            ),
+            limitedWebsiteRules = listOf("youtube.com", "instagram.com")
         )
 
-        assertThat(targets.passwordAppPackageNames).containsAtLeast(
-            "com.example.password",
-            "com.example.both"
-        )
-        assertThat(targets.passwordAppPackageNames)
-            .doesNotContain("com.google.android.youtube")
-        assertThat(targets.limitedAppPackageNames).containsAtLeast(
-            "com.example.limit",
-            "com.example.both"
-        )
-        assertThat(targets.limitedAppPackageNames)
-            .doesNotContain("com.google.android.youtube")
-        assertThat(targets.exclusiveAppPackageNames).contains("com.example.dopamine")
-        assertThat(targets.unavailableAppPackageNames).containsAtLeast(
-            "com.example.both",
-            "com.example.dopamine"
-        )
-        assertThat(targets.unavailableAppPackageNames)
-            .doesNotContain("com.google.android.youtube")
-        assertThat(targets.unavailableWebsiteRules).containsExactly(
-            "youtube.com",
-            "reddit.com"
-        )
-        assertThat(targets.unavailableWebsiteRules).doesNotContain("keyword:porn")
-    }
-
-    @Test
-    fun `password-only and limit-only targets remain available for compatible protection`() {
-        val targets = BlockingSessionManager.combineConfiguredBlockedTargets(
-            passwordSessionAppPackages = listOf("com.example.password"),
-            passwordSessionWebsiteRules = listOf("keyword:porn"),
-            exclusiveSessionAppPackages = emptyList(),
-            exclusiveSessionWebsiteRules = emptyList(),
-            limitedAppPackages = listOf("com.example.limit"),
-            limitedWebsiteRules = listOf("reddit.com")
-        )
-
-        assertThat(targets.allAppPackageNames).containsAtLeast(
-            "com.example.password",
-            "com.example.limit"
-        )
-        assertThat(targets.unavailableAppPackageNames).doesNotContain("com.example.password")
-        assertThat(targets.unavailableAppPackageNames).doesNotContain("com.example.limit")
+        assertThat(targets.unavailableAppPackageNames).isEmpty()
         assertThat(targets.unavailableWebsiteRules).isEmpty()
     }
 
     @Test
-    fun `semantic overlap between password keyword and limited domain is unavailable`() {
+    fun `target becomes globally unavailable only after all three layers exist`() {
         val targets = BlockingSessionManager.combineConfiguredBlockedTargets(
+            passwordSessionAppPackages = listOf("com.example.all", "com.example.password"),
+            passwordSessionWebsiteRules = listOf("youtube.com", "reddit.com"),
+            exclusiveSessionAppPackages = listOf("com.example.all", "com.example.time"),
+            exclusiveSessionWebsiteRules = listOf("youtube.com", "instagram.com"),
+            limitedAppPackages = listOf("com.example.all", "com.example.limit"),
+            limitedWebsiteRules = listOf("https://www.youtube.com/watch?v=1", "tiktok.com")
+        )
+
+        assertThat(targets.unavailableAppPackageNames).containsExactly("com.example.all")
+        assertThat(targets.unavailableWebsiteRules).containsExactly("youtube.com")
+    }
+
+    @Test
+    fun `semantic website coverage requires all three layers before becoming unavailable`() {
+        val twoLayers = BlockingSessionManager.combineConfiguredBlockedTargets(
             passwordSessionAppPackages = emptyList(),
             passwordSessionWebsiteRules = listOf("keyword:porn"),
             exclusiveSessionAppPackages = emptyList(),
@@ -74,9 +56,18 @@ class BlockingSessionManagerTargetsTest {
             limitedAppPackages = emptyList(),
             limitedWebsiteRules = listOf("example-porn-site.com")
         )
+        assertThat(twoLayers.unavailableWebsiteRules).isEmpty()
 
-        assertThat(targets.unavailableWebsiteRules).containsExactly("example-porn-site.com")
-        assertThat(targets.unavailableWebsiteRules).doesNotContain("keyword:porn")
+        val threeLayers = BlockingSessionManager.combineConfiguredBlockedTargets(
+            passwordSessionAppPackages = emptyList(),
+            passwordSessionWebsiteRules = listOf("keyword:porn"),
+            exclusiveSessionAppPackages = emptyList(),
+            exclusiveSessionWebsiteRules = listOf("example-porn-site.com"),
+            limitedAppPackages = emptyList(),
+            limitedWebsiteRules = listOf("example-porn-site.com")
+        )
+        assertThat(threeLayers.unavailableWebsiteRules)
+            .containsExactly("example-porn-site.com")
     }
 
     @Test
@@ -108,6 +99,8 @@ class BlockingSessionManagerTargetsTest {
 
         assertThat(targets.allAppPackageNames).containsExactly("com.example.app")
         assertThat(targets.allWebsiteRules).containsExactly("youtube.com")
+        assertThat(targets.unavailableAppPackageNames).isEmpty()
+        assertThat(targets.unavailableWebsiteRules).isEmpty()
     }
 
     @Test
