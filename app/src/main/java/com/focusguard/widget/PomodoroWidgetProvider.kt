@@ -78,7 +78,8 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
 
     private suspend fun stopPomodoro(context: Context) {
         val store = PomodoroPlanStore(context)
-        if (store.readRuntime()?.active != true) return
+        val runtime = store.readRuntime()?.takeIf { it.active } ?: return
+        if (runtime.config.strictBlocking) return
 
         val manager = PomodoroManager.getInstance(context.applicationContext)
         manager.stopSession()
@@ -243,13 +244,21 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
             )
 
             val isRunning = runtime != null
+            val canStop = isRunning && runtime?.config?.strictBlocking != true
+            val primaryLabel = when {
+                !isRunning -> R.string.fg_pomodoro_start
+                canStop -> R.string.fg_pomodoro_stop
+                else -> R.string.fg_pomodoro_running
+            }
             views.setTextViewText(
                 R.id.widget_pomodoro_start,
-                context.getString(
-                    if (isRunning) R.string.fg_pomodoro_stop else R.string.fg_pomodoro_start
-                )
+                context.getString(primaryLabel)
             )
-            views.setBoolean(R.id.widget_pomodoro_start, "setEnabled", true)
+            views.setBoolean(
+                R.id.widget_pomodoro_start,
+                "setEnabled",
+                !isRunning || canStop
+            )
 
             val primaryIntent = Intent(context, PomodoroWidgetProvider::class.java)
                 .setAction(if (isRunning) ACTION_STOP_POMODORO else ACTION_START_POMODORO)
