@@ -1769,6 +1769,10 @@ class BlockingAccessibilityService : AccessibilityService() {
                     )
                     if (!shouldEnforce) continue
 
+                    // Claim the stronger owner before rendering the block.
+                    // A live PASSWORD grant must stop on this threshold pulse.
+                    PasswordTargetAccessGrant.claimStrongerAppProtection(packageName)
+
                     withContext(Dispatchers.Main) {
                         if (foregroundPackageName != packageName) return@withContext
                         blockedAppsSet = blockedAppsSet + packageName
@@ -3317,6 +3321,10 @@ class BlockingAccessibilityService : AccessibilityService() {
             }
             if (!stillActive) return@launch
 
+            strongerWebsiteDomainSet = WebsiteBlocker.normalizeRules(
+                strongerWebsiteDomainSet + exceededRules
+            )
+            exceededRules.forEach(PasswordTargetAccessGrant::claimStrongerWebsiteProtection)
             blockedWebsitesDomainSet = blockedWebsitesDomainSet + exceededRules
             if (usage.packageName in browserPackages) {
                 blockWebsite(
