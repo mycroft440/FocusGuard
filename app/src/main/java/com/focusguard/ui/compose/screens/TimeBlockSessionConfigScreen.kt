@@ -62,6 +62,7 @@ import com.focusguard.data.PredefinedApps
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.manager.BlockingSessionManager.BlockingProtectionUnavailableException
 import com.focusguard.security.BlockDurationPolicy
+import com.focusguard.security.MasterCredentialConfigurationManager
 import com.focusguard.ui.PermissionsActivity
 import com.focusguard.ui.compose.components.FocusGuardAppIcon
 import com.focusguard.ui.compose.theme.AccentCyan
@@ -114,6 +115,9 @@ fun TimeBlockSessionConfigScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
+    val credentialConfigurationManager = remember(context) {
+        MasterCredentialConfigurationManager(context)
+    }
 
     var page by remember { mutableStateOf(TimeBlockConfigPage.TERMS) }
     val websiteCompanionOptions = remember(apps) {
@@ -224,6 +228,7 @@ fun TimeBlockSessionConfigScreen(
     if (showMasterCredentialSetup) {
         DeactivationCredentialDialog(
             managementLocked = false,
+            configureCredential = credentialConfigurationManager::configure,
             onDismiss = { showMasterCredentialSetup = false },
             onCredentialChanged = { showMasterCredentialSetup = false }
         )
@@ -389,13 +394,12 @@ fun TimeBlockSessionConfigScreen(
                                 )
                                 Toast.makeText(
                                     context,
-                                    context.getString(R.string.erro_ao_iniciar_sessao),
+                                    context.getString(R.string.blocking_failed_generic),
                                     Toast.LENGTH_LONG
                                 ).show()
                             }
                         }
-                    },
-                    onBack = { page = TimeBlockConfigPage.TERMS }
+                    }
                 )
             }
         }
@@ -413,53 +417,74 @@ private fun TimeBlockTermsPage(
     onContinue: () -> Unit,
     onBack: () -> Unit
 ) {
-    DopamineHowItWorksCard(
-        termsAccepted = termsAccepted,
-        onTermsAcceptedChange = onTermsAcceptedChange
-    )
-
-    Spacer(modifier = Modifier.height(16.dp))
-
-    SelectedAppsSummary(
-        appName = appName,
-        apps = apps,
-        sites = sites
-    )
-
-    Spacer(modifier = Modifier.height(16.dp))
-
-    Surface(
-        color = AccentCyan.copy(alpha = 0.10f),
-        shape = RoundedCornerShape(14.dp)
-    ) {
-        Text(
-            text = stringResource(R.string.dopamine_simple_mode_info),
-            color = TextSecondary,
-            modifier = Modifier.fillMaxWidth().padding(12.dp),
-            fontSize = 13.sp
+    val totalTargets = selectedTargetCount(apps.size, sites.size)
+    val resolvedAppName = resolveDisplayName(LocalContext.current, appName, apps)
+    val targetSummary = if (sites.isEmpty()) {
+        resolvedAppName
+    } else {
+        pluralStringResource(
+            R.plurals.dopamine_target_count,
+            totalTargets,
+            totalTargets
         )
     }
 
-    Spacer(modifier = Modifier.height(24.dp))
-
-    Button(
-        onClick = onContinue,
-        enabled = canContinue,
-        modifier = Modifier.fillMaxWidth().height(56.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-        shape = RoundedCornerShape(16.dp)
-    ) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(
-            stringResource(R.string.dopamine_continue_to_schedule),
-            color = DarkBg,
+            text = stringResource(R.string.dopamine_terms_title),
+            color = TextPrimary,
+            fontSize = 20.sp,
             fontWeight = FontWeight.Bold
         )
-    }
-
-    Spacer(modifier = Modifier.height(10.dp))
-
-    TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
-        Text(stringResource(R.string.common_back), color = TextSecondary)
+        Text(
+            text = targetSummary,
+            color = AccentCyan,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Text(
+            text = stringResource(R.string.dopamine_terms_warning),
+            color = DangerRed,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold
+        )
+        Text(
+            text = stringResource(R.string.dopamine_terms_irreversible),
+            color = TextSecondary,
+            fontSize = 13.sp
+        )
+        Card(
+            colors = CardDefaults.cardColors(containerColor = DarkCard),
+            border = BorderStroke(1.dp, DangerRed.copy(alpha = 0.45f))
+        ) {
+            Row(
+                modifier = Modifier.padding(14.dp),
+                verticalAlignment = Alignment.Top
+            ) {
+                Checkbox(
+                    checked = termsAccepted,
+                    onCheckedChange = onTermsAcceptedChange,
+                    colors = CheckboxDefaults.colors(checkedColor = DangerRed)
+                )
+                Spacer(Modifier.size(8.dp))
+                Text(
+                    text = stringResource(R.string.dopamine_terms_accept),
+                    color = TextPrimary,
+                    fontSize = 13.sp
+                )
+            }
+        }
+        Button(
+            onClick = onContinue,
+            enabled = canContinue,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = DangerRed)
+        ) {
+            Text(stringResource(R.string.dopamine_continue))
+        }
+        TextButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterHorizontally)) {
+            Text(stringResource(R.string.status_close), color = TextHint)
+        }
     }
 }
 
@@ -469,9 +494,9 @@ private fun TimeBlockSchedulePage(
     amountText: String,
     availableUnits: List<BlockDurationPolicy.Unit>,
     selectedDays: Set<Int>,
-    websiteCompanionOptions: List<AssociatedBlockTargets.WebsiteCompanion>,
+    websiteCompanionOptions: List<AssociatedBlockTargets.WebsiteOption>,
     selectedCompanionDomains: Set<String>,
-    appCompanionOptions: List<AssociatedBlockTargets.AppCompanion>,
+    appCompanionOptions: List<AssociatedBlockTargets.AppOption>,
     selectedCompanionPackages: Set<String>,
     isSaving: Boolean,
     canSave: Boolean,
@@ -480,337 +505,203 @@ private fun TimeBlockSchedulePage(
     onSelectedCompanionDomainsChange: (Set<String>) -> Unit,
     onSelectedCompanionPackagesChange: (Set<String>) -> Unit,
     onToggleDay: (Int) -> Unit,
-    onActivate: () -> Unit,
-    onBack: () -> Unit
+    onActivate: () -> Unit
 ) {
-    Text(
-        text = stringResource(R.string.dopamine_schedule_config_title),
-        color = TextPrimary,
-        fontSize = 22.sp,
-        fontWeight = FontWeight.Bold
-    )
-    Spacer(modifier = Modifier.height(6.dp))
-    Text(
-        text = stringResource(R.string.dopamine_schedule_config_subtitle),
-        color = TextSecondary,
-        fontSize = 13.sp
-    )
-
-    Spacer(modifier = Modifier.height(18.dp))
-
-    DopamineWeekdaySelector(
-        selectedDays = selectedDays,
-        onToggleDay = onToggleDay
-    )
-
-    Spacer(modifier = Modifier.height(16.dp))
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Text(
-                text = stringResource(R.string.dopamine_duration_days_question),
-                color = TextPrimary,
-                fontWeight = FontWeight.SemiBold
-            )
-            Spacer(modifier = Modifier.height(14.dp))
-            BlockDurationPicker(
-                unit = durationUnit,
-                amountText = amountText,
-                onUnitChange = onDurationUnitChange,
-                onAmountChange = onAmountChange,
-                accent = DangerRed,
-                units = availableUnits
-            )
-            Spacer(modifier = Modifier.height(14.dp))
-            Surface(
-                color = DangerRed.copy(alpha = 0.10f),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Text(
-                    text = if (durationUnit == BlockDurationPolicy.Unit.FOREVER) {
-                        stringResource(R.string.dopamine_duration_forever_warning)
-                    } else {
-                        stringResource(R.string.dopamine_warning)
-                    },
-                    color = DangerRed,
-                    modifier = Modifier.padding(12.dp),
-                    textAlign = TextAlign.Start
-                )
-            }
-        }
-    }
-
-    if (websiteCompanionOptions.isNotEmpty()) {
-        Spacer(modifier = Modifier.height(16.dp))
-        AssociatedWebsiteOptionsCard(
-            options = websiteCompanionOptions,
-            selectedDomains = selectedCompanionDomains,
-            onSelectedDomainsChange = onSelectedCompanionDomainsChange
-        )
-    }
-
-    if (appCompanionOptions.isNotEmpty()) {
-        Spacer(modifier = Modifier.height(16.dp))
-        AssociatedAppOptionsCard(
-            options = appCompanionOptions,
-            selectedPackages = selectedCompanionPackages,
-            onSelectedPackagesChange = onSelectedCompanionPackagesChange
-        )
-    }
-
-    Spacer(modifier = Modifier.height(24.dp))
-
-    Button(
-        onClick = onActivate,
-        enabled = canSave && !isSaving,
-        modifier = Modifier.fillMaxWidth().height(56.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-        shape = RoundedCornerShape(16.dp)
-    ) {
+    Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
         Text(
-            stringResource(R.string.dopamine_activate),
-            color = DarkBg,
+            text = stringResource(R.string.dopamine_schedule_title),
+            color = TextPrimary,
+            fontSize = 20.sp,
             fontWeight = FontWeight.Bold
         )
-    }
-
-    Spacer(modifier = Modifier.height(10.dp))
-
-    TextButton(onClick = onBack, modifier = Modifier.fillMaxWidth()) {
-        Text(stringResource(R.string.common_back), color = TextSecondary)
+        Text(
+            text = stringResource(R.string.dopamine_schedule_subtitle),
+            color = TextSecondary,
+            fontSize = 13.sp
+        )
+        DurationSelector(
+            durationUnit = durationUnit,
+            amountText = amountText,
+            availableUnits = availableUnits,
+            onDurationUnitChange = onDurationUnitChange,
+            onAmountChange = onAmountChange
+        )
+        if (websiteCompanionOptions.isNotEmpty()) {
+            CompanionWebsitePicker(
+                options = websiteCompanionOptions,
+                selectedDomains = selectedCompanionDomains,
+                onSelectionChange = onSelectedCompanionDomainsChange
+            )
+        }
+        if (appCompanionOptions.isNotEmpty()) {
+            CompanionAppPicker(
+                options = appCompanionOptions,
+                selectedPackages = selectedCompanionPackages,
+                onSelectionChange = onSelectedCompanionPackagesChange
+            )
+        }
+        WeekdaySelector(
+            selectedDays = selectedDays,
+            onToggleDay = onToggleDay
+        )
+        Button(
+            onClick = onActivate,
+            enabled = canSave && !isSaving,
+            modifier = Modifier.fillMaxWidth(),
+            colors = ButtonDefaults.buttonColors(containerColor = DangerRed)
+        ) {
+            Text(
+                if (isSaving) {
+                    stringResource(R.string.dopamine_activating)
+                } else {
+                    stringResource(R.string.dopamine_activate)
+                }
+            )
+        }
     }
 }
 
 @Composable
-private fun SelectedAppsSummary(
-    appName: String,
-    apps: List<String>,
-    sites: List<String>
+private fun DurationSelector(
+    durationUnit: BlockDurationPolicy.Unit,
+    amountText: String,
+    availableUnits: List<BlockDurationPolicy.Unit>,
+    onDurationUnitChange: (BlockDurationPolicy.Unit) -> Unit,
+    onAmountChange: (String) -> Unit
 ) {
-    val context = LocalContext.current
-    val totalTargets = selectedTargetCount(apps.size, sites.size)
-    val labels = remember(apps, context) {
-        apps.associateWith { packageName -> resolveAppLabel(context, packageName) }
-    }
+    val units = listOf(
+        BlockDurationPolicy.Unit.HOURS to R.string.unit_hours,
+        BlockDurationPolicy.Unit.DAYS to R.string.unit_days,
+        BlockDurationPolicy.Unit.MONTHS to R.string.unit_months,
+        BlockDurationPolicy.Unit.YEARS to R.string.unit_years,
+        BlockDurationPolicy.Unit.FOREVER to R.string.unit_forever
+    )
 
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Text(
-                text = pluralStringResource(
-                    R.plurals.dopamine_selected_targets_count,
-                    totalTargets,
-                    totalTargets
-                ),
-                color = TextPrimary,
-                fontSize = 22.sp,
-                fontWeight = FontWeight.Bold
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = stringResource(R.string.dopamine_schedule_description),
-                color = TextSecondary,
-                fontSize = 13.sp
-            )
-
-            if (apps.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(14.dp))
-                Box(
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = stringResource(R.string.dopamine_duration_label),
+            color = TextPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            units.forEach { (unit, labelRes) ->
+                val enabled = unit in availableUnits
+                Surface(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .clipToBounds(),
-                    contentAlignment = Alignment.CenterStart
+                        .weight(1f)
+                        .alpha(if (enabled) 1f else 0.35f)
+                        .clickable(enabled = enabled) { onDurationUnitChange(unit) },
+                    color = if (durationUnit == unit) AccentCyan.copy(alpha = 0.18f) else DarkCard,
+                    shape = RoundedCornerShape(12.dp),
+                    border = BorderStroke(
+                        1.dp,
+                        if (durationUnit == unit) AccentCyan else TextHint.copy(alpha = 0.35f)
+                    )
                 ) {
-                    apps.take(8).forEachIndexed { index, packageName ->
-                        val fade = when (index) {
-                            0, 1, 2, 3 -> 1f
-                            4 -> 0.70f
-                            5 -> 0.44f
-                            6 -> 0.24f
-                            else -> 0.12f
-                        }
-                        FocusGuardAppIcon(
-                            packageName = packageName,
-                            appName = labels[packageName] ?: packageName,
-                            modifier = Modifier
-                                .offset(x = (index * 38).dp)
-                                .size(44.dp)
-                                .alpha(fade),
-                            cornerRadius = 11.dp,
-                            allowRemoteFallback = true
+                    Box(
+                        modifier = Modifier.padding(vertical = 10.dp, horizontal = 4.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = stringResource(labelRes),
+                            color = if (durationUnit == unit) AccentCyan else TextSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            textAlign = TextAlign.Center
                         )
                     }
                 }
-            } else if (sites.isNotEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = sites.take(4).joinToString(", ") { WebsiteBlocker.displayRule(it) },
-                    color = TextHint,
-                    fontSize = 12.sp
-                )
-            } else if (appName.isNotBlank()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.dopamine_configure_for, appName),
-                    color = TextHint,
-                    fontSize = 12.sp
-                )
             }
+        }
+        if (durationUnit != BlockDurationPolicy.Unit.FOREVER) {
+            DurationAmountField(
+                amountText = amountText,
+                onAmountChange = onAmountChange
+            )
         }
     }
 }
 
 @Composable
-private fun DopamineHowItWorksCard(
-    termsAccepted: Boolean,
-    onTermsAcceptedChange: (Boolean) -> Unit
+private fun DurationAmountField(
+    amountText: String,
+    onAmountChange: (String) -> Unit
 ) {
-    Card(
+    androidx.compose.material3.OutlinedTextField(
+        value = amountText,
+        onValueChange = { raw ->
+            if (raw.length <= 4 && raw.all(Char::isDigit)) onAmountChange(raw)
+        },
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Text(
-                text = stringResource(R.string.dopamine_terms_title),
-                color = TextPrimary,
-                fontWeight = FontWeight.Bold,
-                fontSize = 16.sp
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            listOf(
-                R.string.dopamine_terms_intro,
-                R.string.dopamine_schedule_terms_how,
-                R.string.dopamine_terms_escape
-            ).forEach { paragraph ->
-                Text(
-                    text = stringResource(paragraph),
-                    color = TextSecondary,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(bottom = 10.dp)
-                )
-            }
-            Text(
-                text = stringResource(R.string.dopamine_terms_question),
-                color = TextPrimary,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 14.sp
-            )
-            Spacer(modifier = Modifier.height(12.dp))
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onTermsAcceptedChange(!termsAccepted) },
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Checkbox(
-                    checked = termsAccepted,
-                    onCheckedChange = onTermsAcceptedChange,
-                    colors = CheckboxDefaults.colors(checkedColor = DangerRed)
-                )
-                Spacer(modifier = Modifier.padding(horizontal = 2.dp))
-                Text(
-                    text = stringResource(R.string.dopamine_terms_accept),
-                    color = TextPrimary,
-                    fontSize = 13.sp
-                )
-            }
-        }
-    }
+        singleLine = true,
+        label = { Text(stringResource(R.string.dopamine_duration_amount)) },
+        colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+            focusedTextColor = TextPrimary,
+            unfocusedTextColor = TextPrimary,
+            cursorColor = AccentCyan,
+            focusedBorderColor = AccentCyan,
+            unfocusedBorderColor = TextHint.copy(alpha = 0.5f),
+            focusedLabelColor = AccentCyan,
+            unfocusedLabelColor = TextHint
+        )
+    )
 }
 
 @Composable
-private fun DopamineWeekdaySelector(
+private fun WeekdaySelector(
     selectedDays: Set<Int>,
     onToggleDay: (Int) -> Unit
 ) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(containerColor = DarkCard),
-        shape = RoundedCornerShape(20.dp)
-    ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Text(
-                text = stringResource(R.string.dopamine_weekdays_question),
-                color = TextPrimary,
-                fontWeight = FontWeight.SemiBold,
-                fontSize = 16.sp
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                text = stringResource(R.string.dopamine_weekdays_hint),
-                color = TextHint,
-                fontSize = 12.sp
-            )
-            Spacer(modifier = Modifier.height(14.dp))
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(5.dp)
-            ) {
-                DOPAMINE_WEEKDAYS.forEach { weekday ->
-                    val selected = weekday.calendarDay in selectedDays
-                    Surface(
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(44.dp)
-                            .clickable { onToggleDay(weekday.calendarDay) },
-                        color = if (selected) {
-                            AccentCyan.copy(alpha = 0.18f)
-                        } else {
-                            DarkBg
-                        },
-                        shape = RoundedCornerShape(11.dp),
-                        border = BorderStroke(
-                            1.dp,
-                            if (selected) AccentCyan else TextHint.copy(alpha = 0.30f)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = stringResource(R.string.dopamine_weekdays_label),
+            color = TextPrimary,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.SemiBold
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            DOPAMINE_WEEKDAYS.forEach { day ->
+                val selected = day.calendarDay in selectedDays
+                Surface(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clickable { onToggleDay(day.calendarDay) },
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (selected) AccentCyan.copy(alpha = 0.2f) else DarkCard,
+                    border = BorderStroke(
+                        1.dp,
+                        if (selected) AccentCyan else TextHint.copy(alpha = 0.35f)
+                    )
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            text = stringResource(day.labelRes),
+                            color = if (selected) AccentCyan else TextSecondary,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
                         )
-                    ) {
-                        Box(contentAlignment = Alignment.Center) {
-                            Text(
-                                text = stringResource(weekday.labelRes),
-                                color = if (selected) AccentCyan else TextHint,
-                                fontSize = 11.sp,
-                                fontWeight = if (selected) {
-                                    FontWeight.Bold
-                                } else {
-                                    FontWeight.Medium
-                                },
-                                maxLines = 1
-                            )
-                        }
                     }
                 }
-            }
-            if (selectedDays.isEmpty()) {
-                Spacer(modifier = Modifier.height(8.dp))
-                Text(
-                    text = stringResource(R.string.dopamine_weekdays_required),
-                    color = DangerRed,
-                    fontSize = 12.sp
-                )
             }
         }
     }
 }
 
-private fun resolveAppLabel(context: Context, packageName: String): String {
-    val installed = runCatching {
-        val pm = context.packageManager
-        pm.getApplicationLabel(pm.getApplicationInfo(packageName, 0)).toString()
-    }.getOrNull()
-    if (!installed.isNullOrBlank()) return installed
-
-    return PredefinedApps.PREVENTIVE_APPS
-        .firstOrNull { it.packageName == packageName }
-        ?.appName
-        ?.takeIf(String::isNotBlank)
-        ?: packageName.substringAfterLast('.').ifBlank { packageName }
+private fun resolveDisplayName(
+    context: Context,
+    appName: String,
+    packages: List<String>
+): String {
+    if (appName.isNotBlank()) return appName
+    val packageName = packages.firstOrNull().orEmpty()
+    val predefined = PredefinedApps.getAppByPackage(packageName)?.name
+    if (!predefined.isNullOrBlank()) return predefined
+    return runCatching {
+        val info = context.packageManager.getApplicationInfo(packageName, 0)
+        context.packageManager.getApplicationLabel(info).toString()
+    }.getOrDefault(packageName)
 }
