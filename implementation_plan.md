@@ -1,25 +1,32 @@
-# Plano de implementação — gerenciamento de sites protegidos por senha
+# Plano de implementação — controles do Pomodoro no widget
 
 ## Objetivo
-Corrigir a tela **Proteja apps com senha** para que sites protegidos possam ser removidos com a própria credencial do alvo e para que a lista use ícones de site equivalentes aos exibidos no seletor.
+Permitir controlar o Pomodoro diretamente pelo widget da tela inicial: **parar uma sessão em execução** e **alterar o número de sessões planejadas** sem precisar abrir a tela completa do app.
 
 ## Diagnóstico
-- [x] Confirmar que as linhas de aplicativos PASSWORD recebem a ação de remoção, enquanto as linhas de sites são renderizadas sem `onRemove`.
-- [x] Confirmar que o diálogo de remoção atual trata qualquer entrada como pacote de aplicativo (`blockedPackage`) e consulta a credencial usando a chave de app, portanto apenas exibir a lixeira no site não seria suficiente.
-- [x] Confirmar que `BlockingSessionManager.unlockPasswordSessionTarget` já aceita `blockedDomain` e remove somente o alvo responsável, preservando outras camadas e outros alvos da sessão.
-- [x] Confirmar que o seletor de sites usa o catálogo `PredefinedWebsites` e favicons, enquanto a lista de bloqueados reduz sites à primeira letra do rótulo.
+- [x] O widget atual possui apenas `Configurar` e `Iniciar`.
+- [x] Quando existe runtime ativo, o botão principal muda para “em execução”, mas é desabilitado; portanto não há caminho para parar pelo widget.
+- [x] `PomodoroManager.stopSession()` já encerra o plano com a limpeza correta; não é necessário criar uma segunda lógica de parada.
+- [x] O número de sessões já pertence a `PomodoroPlanConfig.targetSessions`, normalizado no intervalo `0..5`; `0` significa “até eu parar”.
+- [x] `PomodoroPlanStore.saveConfig()` já persiste a configuração e atualiza os widgets.
+- [x] Alterar `targetSessions` durante um runtime ativo exigiria sincronizar também o estado em memória do plano; para evitar uma mudança de regra não solicitada, os controles serão editáveis apenas quando o Pomodoro estiver parado.
 
 ## Implementação
-- [ ] Expor a ação de remoção também nas linhas de sites quando o tipo da tela for PASSWORD.
-- [ ] Tornar o fluxo de autenticação/remoção consciente do tipo de alvo, usando a chave de credencial de website e `blockedDomain` para sites, sem alterar o caminho existente de apps.
-- [ ] Reutilizar o domínio de ícone dos presets e o mesmo serviço de favicon do seletor; manter fallback local para categorias, palavras-chave e falha de rede.
-- [ ] Cobrir por testes a resolução do ícone e o roteamento app/site da remoção.
+- [ ] Fazer o botão principal alternar entre `Iniciar` e `Parar` conforme o runtime.
+- [ ] Roteá-lo para `startPlan(...)` quando ocioso e `stopSession()` quando ativo.
+- [ ] Adicionar ao layout do widget uma linha compacta `−  Sessões  +`.
+- [ ] Exibir `Até eu parar` quando `targetSessions == 0`, reutilizando as strings já existentes.
+- [ ] Permitir reduzir/aumentar `targetSessions` entre 0 e 5 e persistir pelo `PomodoroPlanStore`.
+- [ ] Desabilitar `−/+` durante um Pomodoro ativo, mantendo o valor visível e evitando alterar o plano em execução.
+- [ ] Manter o botão `Configurar`, o relógio, o fluxo de permissões e a lógica do Pomodoro intactos.
 
 ## Validação
-- [ ] Executar testes unitários.
-- [ ] Executar Android Lint.
-- [ ] Revisar o diff para garantir que a precedência TIME > limite esgotado > PASSWORD e a remoção isolada de alvos não foram alteradas.
-- [ ] Confirmar por CI/build que os novos composables e imports compilam.
+- [ ] Revisar o diff para garantir que as mudanças estão limitadas ao widget e ao plano desta tarefa.
+- [ ] Confirmar que o botão principal continua iniciando quando parado.
+- [ ] Confirmar que o mesmo botão para o Pomodoro quando ativo.
+- [ ] Confirmar limites das sessões: 0 não diminui e 5 não aumenta.
+- [ ] Confirmar que a edição de sessões fica bloqueada durante runtime ativo.
+- [ ] Executar CI com Android Lint, testes unitários e compilação do performance harness.
 
 ## Critério de conclusão
-Na tela de bloqueio por senha, um site deve mostrar a ação de remoção, exigir a credencial configurada para aquele site e ser removido sem afetar proteções independentes. Sites predefinidos devem exibir seu favicon/ícone de marca; regras sem favicon significativo devem continuar com fallback seguro e legível.
+No widget, o usuário deve conseguir escolher de `0` a `5` sessões antes de iniciar (`0 = até eu parar`), iniciar o plano e, durante a execução, usar o botão principal para parar o Pomodoro. Nenhuma outra regra do Pomodoro ou área do app deve ser alterada.
