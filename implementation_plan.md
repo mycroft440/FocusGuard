@@ -1,28 +1,25 @@
-# Plano de implementação — fluidez do bloqueio por senha
+# Plano de implementação — gerenciamento de sites protegidos por senha
 
 ## Objetivo
-Eliminar os engasgos percebidos na etapa **Configurar bloqueio por senha**, especialmente ao focar, digitar e alternar entre os campos de senha e confirmação com o teclado aberto.
+Corrigir a tela **Proteja apps com senha** para que sites protegidos possam ser removidos com a própria credencial do alvo e para que a lista use ícones de site equivalentes aos exibidos no seletor.
 
 ## Diagnóstico
-- `FinalConfigStep` mantinha `unlockPassword` e `unlockPasswordConfirmation` como estados observados diretamente pelo composable raiz.
-- Cada caractere digitado invalidava um escopo que também monta `Scaffold`, card de configuração, lógica de biometria, estado do padrão, mensagens de validação, botão de ativação e host de rolagem.
-- O `AccessibilityService` já ignora eventos cujo pacote de origem é o próprio FocusGuard antes de inspecionar janelas, navegador ou árvore de acessibilidade; portanto esse pipeline não é a causa contínua desta tela.
-- Validação da senha, persistência da credencial e criação da sessão só são necessárias quando o usuário toca em **Ativar bloqueio**, não durante a digitação.
+- [x] Confirmar que as linhas de aplicativos PASSWORD recebem a ação de remoção, enquanto as linhas de sites são renderizadas sem `onRemove`.
+- [x] Confirmar que o diálogo de remoção atual trata qualquer entrada como pacote de aplicativo (`blockedPackage`) e consulta a credencial usando a chave de app, portanto apenas exibir a lixeira no site não seria suficiente.
+- [x] Confirmar que `BlockingSessionManager.unlockPasswordSessionTarget` já aceita `blockedDomain` e remove somente o alvo responsável, preservando outras camadas e outros alvos da sessão.
+- [x] Confirmar que o seletor de sites usa o catálogo `PredefinedWebsites` e favicons, enquanto a lista de bloqueados reduz sites à primeira letra do rótulo.
 
-## Alterações
-1. Manter as duas credenciais apenas em memória, como antes, mas armazenar no composable raiz somente os objetos `MutableState` sem observar seus valores durante composição.
-2. Isolar `Senha de desbloqueio` e `Confirmar senha` no subcomposable `PasswordCredentialEditor`, limitando a recomposição por caractere ao pequeno subtree dos campos.
-3. Ler os valores das credenciais no fluxo principal somente ao validar/ativar o bloqueio e ao limpar o método ao voltar.
-4. Limpar `configError` na primeira edição necessária sem propagar uma mutação de estado do pai em todas as teclas seguintes.
-5. Preservar integralmente requisitos de senha, confirmação, biometria, hash/persistência, alvos protegidos e criação da sessão PASSWORD.
-6. Não adicionar `imePadding`, pois a `MainActivity` já usa `adjustResize`; evitar dupla aplicação de inset do teclado.
+## Implementação
+- [ ] Expor a ação de remoção também nas linhas de sites quando o tipo da tela for PASSWORD.
+- [ ] Tornar o fluxo de autenticação/remoção consciente do tipo de alvo, usando a chave de credencial de website e `blockedDomain` para sites, sem alterar o caminho existente de apps.
+- [ ] Reutilizar o domínio de ícone dos presets e o mesmo serviço de favicon do seletor; manter fallback local para categorias, palavras-chave e falha de rede.
+- [ ] Cobrir por testes a resolução do ícone e o roteamento app/site da remoção.
 
 ## Validação
-- Compilar APK e AAB da branch final.
-- Executar testes unitários e Android Lint.
-- Confirmar que os valores digitados continuam sendo validados somente ao ativar e que senhas divergentes continuam sendo rejeitadas.
-- Confirmar em dispositivo que digitação, mudança de foco e abertura/fechamento do teclado permanecem fluidos nessa etapa.
-- Confirmar que voltar para a seleção do método limpa as credenciais mantidas em memória.
+- [ ] Executar testes unitários.
+- [ ] Executar Android Lint.
+- [ ] Revisar o diff para garantir que a precedência TIME > limite esgotado > PASSWORD e a remoção isolada de alvos não foram alteradas.
+- [ ] Confirmar por CI/build que os novos composables e imports compilam.
 
 ## Critério de conclusão
-A etapa de senha deve responder continuamente durante digitação e troca de foco, sem recompor a estrutura completa de `FinalConfigStep` a cada caractere e sem alterar qualquer semântica de autenticação ou bloqueio.
+Na tela de bloqueio por senha, um site deve mostrar a ação de remoção, exigir a credencial configurada para aquele site e ser removido sem afetar proteções independentes. Sites predefinidos devem exibir seu favicon/ícone de marca; regras sem favicon significativo devem continuar com fallback seguro e legível.

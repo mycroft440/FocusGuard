@@ -71,4 +71,21 @@ class BlockedEntryLabelTest {
 
         assertThat(label).isEqualTo(PredefinedWebsites.PORNOGRAPHY_NAME)
     }
+
+    @Test
+    fun `predefined website reuses the icon domain from the picker`() {
+        assertThat(blockedWebsiteIconDomain("youtube.com")).isEqualTo("youtube.com")
+        assertThat(blockedWebsiteIconDomain("twitter.com")).isEqualTo("x.com")
+    }
+
+    @Test
+    fun `custom domain uses its own favicon domain`() {
+        assertThat(blockedWebsiteIconDomain("example.com")).isEqualTo("example.com")
+    }
+
+    @Test
+    fun `category and keyword rules keep the local icon fallback`() {
+        assertThat(blockedWebsiteIconDomain(PredefinedWebsites.PORNOGRAPHY_RULE)).isNull()
+        assertThat(blockedWebsiteIconDomain("keyword:aposta")).isNull()
+    }
 }
