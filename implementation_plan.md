@@ -39,10 +39,10 @@ Impedir a criação ou troca da senha mestre depois que já existir um bloqueio 
 - [x] Confirmar que `MasterCredentialPolicyTest` é o ponto unitário existente para regras da senha mestre.
 
 ## Implementação
-- [ ] Adicionar uma regra explícita em `MasterCredentialPolicy` para autorizar configuração da senha mestre somente sem sessão `TIME` e sem limite de uso habilitado; `PASSWORD` e `POMODORO` ficam fora desta nova restrição.
-- [ ] Fazer `BlockingSessionManager` calcular o gate com o estado persistido e fornecer um caminho de configuração que revalide imediatamente antes de gravar a credencial.
-- [ ] Alterar `MasterPasswordActivity`/`DeactivationCredentialDialog` para consumir o gate e salvar somente através do manager, removendo o bypass atual de UI.
-- [ ] Cobrir a política por testes para estado vazio, apenas `PASSWORD`, `TIME`, limite de uso e combinação de proteções.
+- [x] Adicionar uma regra explícita em `MasterCredentialPolicy` para autorizar configuração da senha mestre somente sem sessão `TIME` e sem limite de uso habilitado; `PASSWORD` e `POMODORO` ficam fora desta nova restrição.
+- [x] Adicionar `MasterCredentialConfigurationManager` para calcular o gate com o estado persistido e revalidar imediatamente antes de gravar a credencial, sem ampliar o `BlockingSessionManager`.
+- [x] Alterar `MasterPasswordActivity`/`DeactivationCredentialDialog` para consumir o gate e salvar somente através do coordenador, removendo o bypass atual de UI.
+- [x] Cobrir a política por testes para estado vazio, apenas `PASSWORD`, `TIME`, limite de uso e combinação de proteções.
 
 ## Riscos e critérios de segurança
 - Limites desabilitados não podem bloquear a configuração.
@@ -54,7 +54,7 @@ Impedir a criação ou troca da senha mestre depois que já existir um bloqueio 
 ## Validação
 - [ ] Executar os testes unitários relacionados à política da senha mestre.
 - [ ] Executar a suíte unitária disponível e Android Lint, se o ambiente permitir.
-- [ ] Revisar o diff para confirmar que não houve mudanças fora do escopo.
+- [x] Revisar o diff para confirmar que não houve mudanças fora do escopo.
 - [ ] Verificar o status de CI/build da branch/PR quando disponível.
 
 ## Critério de conclusão
