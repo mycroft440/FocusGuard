@@ -44,6 +44,66 @@ fun AssociatedWebsiteOptionsCard(
 ) {
     if (options.isEmpty()) return
 
+    CompanionOptionsCard(
+        title = stringResource(R.string.associated_target_block_site_title),
+        rows = options.map { option ->
+            CompanionOptionRow(
+                id = option.domain,
+                title = option.appName,
+                subtitle = option.domain
+            )
+        },
+        selectedIds = selectedDomains,
+        onSelectedIdsChange = onSelectedDomainsChange,
+        modifier = modifier
+    )
+}
+
+/**
+ * Reverse of [AssociatedWebsiteOptionsCard]: when the user selected a website,
+ * offer its known native app in the configuration screen instead of interrupting
+ * target selection with a modal.
+ */
+@Composable
+fun AssociatedAppOptionsCard(
+    options: List<AssociatedBlockTargets.AppCompanion>,
+    selectedPackages: Set<String>,
+    onSelectedPackagesChange: (Set<String>) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (options.isEmpty()) return
+
+    CompanionOptionsCard(
+        title = stringResource(R.string.associated_target_block_app_title),
+        rows = options.map { option ->
+            CompanionOptionRow(
+                id = option.packageName,
+                title = option.appName,
+                subtitle = option.domain
+            )
+        },
+        selectedIds = selectedPackages,
+        onSelectedIdsChange = onSelectedPackagesChange,
+        modifier = modifier
+    )
+}
+
+private data class CompanionOptionRow(
+    val id: String,
+    val title: String,
+    val subtitle: String
+)
+
+@Composable
+private fun CompanionOptionsCard(
+    title: String,
+    rows: List<CompanionOptionRow>,
+    selectedIds: Set<String>,
+    onSelectedIdsChange: (Set<String>) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (rows.isEmpty()) return
+
     Card(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -55,23 +115,23 @@ fun AssociatedWebsiteOptionsCard(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                stringResource(R.string.associated_target_block_site_title),
+                title,
                 color = TextPrimary,
                 fontWeight = FontWeight.Bold,
                 fontSize = 15.sp
             )
 
-            options.forEach { option ->
-                val selected = option.domain in selectedDomains
+            rows.forEach { option ->
+                val selected = option.id in selectedIds
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable {
-                            onSelectedDomainsChange(
+                            onSelectedIdsChange(
                                 if (selected) {
-                                    selectedDomains - option.domain
+                                    selectedIds - option.id
                                 } else {
-                                    selectedDomains + option.domain
+                                    selectedIds + option.id
                                 }
                             )
                         }
@@ -80,13 +140,13 @@ fun AssociatedWebsiteOptionsCard(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = option.appName,
+                            text = option.title,
                             color = TextPrimary,
                             fontWeight = FontWeight.SemiBold,
                             fontSize = 14.sp
                         )
                         Text(
-                            text = option.domain,
+                            text = option.subtitle,
                             color = TextSecondary,
                             fontSize = 12.sp
                         )
@@ -94,11 +154,11 @@ fun AssociatedWebsiteOptionsCard(
                     Checkbox(
                         checked = selected,
                         onCheckedChange = { checked ->
-                            onSelectedDomainsChange(
+                            onSelectedIdsChange(
                                 if (checked) {
-                                    selectedDomains + option.domain
+                                    selectedIds + option.id
                                 } else {
-                                    selectedDomains - option.domain
+                                    selectedIds - option.id
                                 }
                             )
                         },

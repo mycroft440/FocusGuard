@@ -67,7 +67,6 @@ import com.focusguard.security.AuthManager
 import com.focusguard.security.BlockTargetPolicy
 import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.compose.screens.AppSelectionList
-import com.focusguard.ui.compose.screens.AssociatedTargetOptionDialog
 import com.focusguard.ui.compose.screens.AppSelectionScreen
 import com.focusguard.ui.compose.screens.KeywordRulesTab
 import com.focusguard.ui.compose.screens.SelectableAppUi
@@ -83,7 +82,6 @@ import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
-import com.focusguard.utils.AssociatedBlockTargets
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.CancellationException
@@ -224,9 +222,6 @@ fun AppSelectionStep(
     var configuredBlockedRules by remember { mutableStateOf<Set<String>>(emptySet()) }
     var rules by remember { mutableStateOf(initialRules) }
     var isLoading by remember { mutableStateOf(true) }
-    var pendingSiteAppOption by remember {
-        mutableStateOf<Pair<String, PredefinedApps.AppInfo>?>(null)
-    }
 
     LaunchedEffect(initialSelectedPackages) {
         withContext(Dispatchers.IO) {
@@ -326,52 +321,6 @@ fun AppSelectionStep(
         }
     }
 
-    val onWebsiteRulesChange: (List<String>) -> Unit = { updatedRules ->
-        val previousRules = rules
-        rules = updatedRules
-
-        val addedRule = updatedRules.firstOrNull { candidate ->
-            candidate !in previousRules &&
-                !WebsiteBlocker.isKeywordRule(candidate) &&
-                !WebsiteBlocker.isPornographyRule(candidate)
-        }
-        val companionInfo = addedRule?.let(AssociatedBlockTargets::appForWebsiteRule)
-        val appAlreadySelected = companionInfo != null &&
-            apps.any { it.packageName == companionInfo.packageName && it.isSelected }
-        val appAlreadyBlocked = companionInfo?.packageName in configuredBlockedPackages
-
-        if (addedRule != null &&
-            companionInfo != null &&
-            !appAlreadySelected &&
-            !appAlreadyBlocked
-        ) {
-            pendingSiteAppOption = addedRule to companionInfo
-        }
-    }
-
-    pendingSiteAppOption?.let { (rule, appInfo) ->
-        AssociatedTargetOptionDialog(
-            title = stringResource(R.string.associated_target_block_app_title),
-            message = stringResource(
-                R.string.associated_target_block_app_message,
-                WebsiteBlocker.displayRule(rule),
-                appInfo.appName
-            ),
-            onDecision = { blockAlso ->
-                if (blockAlso && appInfo.packageName !in configuredBlockedPackages) {
-                    apps = apps.map { app ->
-                        if (app.packageName == appInfo.packageName && !app.isAlreadyBlocked) {
-                            app.copy(isSelected = true)
-                        } else {
-                            app
-                        }
-                    }
-                }
-                pendingSiteAppOption = null
-            }
-        )
-    }
-
     val proceed: () -> Unit = {
         onNext(
             apps.filter { it.isSelected && it.packageName !in configuredBlockedPackages },
@@ -463,7 +412,7 @@ fun AppSelectionStep(
             BlockTargetTab.SITES -> WebsiteRulesTab(
                 rules = rules,
                 blockedRules = configuredBlockedRules,
-                onRulesChange = onWebsiteRulesChange,
+                onRulesChange = { rules = it },
                 onAlreadyBlocked = onAlreadyBlocked,
                 modifier = Modifier.padding(padding)
             )

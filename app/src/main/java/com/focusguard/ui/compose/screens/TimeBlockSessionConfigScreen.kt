@@ -116,39 +116,72 @@ fun TimeBlockSessionConfigScreen(
     val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
 
     var page by remember { mutableStateOf(TimeBlockConfigPage.TERMS) }
-    val companionOptions = remember(apps) {
+    val websiteCompanionOptions = remember(apps) {
         AssociatedBlockTargets.websiteCompanionsForApps(apps)
     }
-    var configuredBlockedRules by remember { mutableStateOf<Set<String>>(emptySet()) }
+    val appCompanionOptions = remember(sites) {
+        AssociatedBlockTargets.appCompanionsForWebsiteRules(sites)
+    }
+    var configuredBlockedTargets by remember {
+        mutableStateOf(BlockingSessionManager.ConfiguredBlockedTargets())
+    }
     var selectedCompanionDomains by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var selectedCompanionPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
 
     LaunchedEffect(apps, sites) {
-        configuredBlockedRules = withContext(Dispatchers.IO) {
-            runCatching { sessionManager.getConfiguredBlockedTargets().allWebsiteRules }
-                .getOrDefault(emptySet())
+        configuredBlockedTargets = withContext(Dispatchers.IO) {
+            runCatching { sessionManager.getConfiguredBlockedTargets() }
+                .getOrDefault(BlockingSessionManager.ConfiguredBlockedTargets())
         }
     }
 
-    val availableCompanionOptions = remember(companionOptions, sites, configuredBlockedRules) {
-        companionOptions.filterNot { option ->
+    val availableWebsiteCompanionOptions = remember(
+        websiteCompanionOptions,
+        sites,
+        configuredBlockedTargets
+    ) {
+        websiteCompanionOptions.filterNot { option ->
             BlockingSessionManager.isWebsiteRuleCoveredBy(option.domain, sites) ||
                 BlockingSessionManager.isWebsiteRuleCoveredBy(
                     option.domain,
-                    configuredBlockedRules
+                    configuredBlockedTargets.allWebsiteRules
                 )
         }
     }
-    val availableCompanionDomains = remember(availableCompanionOptions) {
-        availableCompanionOptions.mapTo(linkedSetOf()) { it.domain }.toSet()
+    val availableAppCompanionOptions = remember(
+        appCompanionOptions,
+        apps,
+        configuredBlockedTargets
+    ) {
+        appCompanionOptions.filterNot { option ->
+            option.packageName in apps ||
+                option.packageName in configuredBlockedTargets.allAppPackageNames
+        }
     }
-    if (!availableCompanionDomains.containsAll(selectedCompanionDomains)) {
+    val availableCompanionDomains = remember(availableWebsiteCompanionOptions) {
+        availableWebsiteCompanionOptions.mapTo(linkedSetOf()) { it.domain }.toSet()
+    }
+    val availableCompanionPackages = remember(availableAppCompanionOptions) {
+        availableAppCompanionOptions.mapTo(linkedSetOf()) { it.packageName }.toSet()
+    }
+    LaunchedEffect(availableCompanionDomains) {
         selectedCompanionDomains = selectedCompanionDomains.intersect(availableCompanionDomains)
     }
+    LaunchedEffect(availableCompanionPackages) {
+        selectedCompanionPackages = selectedCompanionPackages.intersect(availableCompanionPackages)
+    }
+
     val effectiveSites = remember(sites, selectedCompanionDomains) {
         (sites + selectedCompanionDomains).distinct()
     }
-    val availableUnits = remember(apps, effectiveSites) {
-        BlockDurationPolicy.availableUnits(rules = effectiveSites, hasApps = apps.isNotEmpty())
+    val effectiveApps = remember(apps, selectedCompanionPackages) {
+        (apps + selectedCompanionPackages).distinct()
+    }
+    val availableUnits = remember(effectiveApps, effectiveSites) {
+        BlockDurationPolicy.availableUnits(
+            rules = effectiveSites,
+            hasApps = effectiveApps.isNotEmpty()
+        )
     }
     var durationUnit by remember { mutableStateOf(BlockDurationPolicy.Unit.DAYS) }
     if (durationUnit !in availableUnits) {
@@ -171,7 +204,7 @@ fun TimeBlockSessionConfigScreen(
             .filter { it.calendarDay in selectedDays }
             .joinToString(",") { it.calendarDay.toString() }
     }
-    val hasTargets = apps.isNotEmpty() || effectiveSites.isNotEmpty()
+    val hasTargets = effectiveApps.isNotEmpty() || effectiveSites.isNotEmpty()
     val canContinue = termsAccepted && hasTargets
     val canSave = duration != null &&
         termsAccepted &&
@@ -290,13 +323,16 @@ fun TimeBlockSessionConfigScreen(
                     amountText = amountText,
                     availableUnits = availableUnits,
                     selectedDays = selectedDays,
-                    companionOptions = availableCompanionOptions,
+                    websiteCompanionOptions = availableWebsiteCompanionOptions,
                     selectedCompanionDomains = selectedCompanionDomains,
+                    appCompanionOptions = availableAppCompanionOptions,
+                    selectedCompanionPackages = selectedCompanionPackages,
                     isSaving = isSaving,
                     canSave = canSave,
                     onDurationUnitChange = { durationUnit = it },
                     onAmountChange = { amountText = it },
                     onSelectedCompanionDomainsChange = { selectedCompanionDomains = it },
+                    onSelectedCompanionPackagesChange = { selectedCompanionPackages = it },
                     onToggleDay = { day ->
                         selectedDays = if (day in selectedDays) {
                             selectedDays - day
@@ -328,7 +364,7 @@ fun TimeBlockSessionConfigScreen(
                                     startMinute = 0,
                                     endMinute = 0,
                                     daysOfWeek = selectedDaysSerialized,
-                                    apps = apps,
+                                    apps = effectiveApps,
                                     sites = effectiveSites
                                 )
                                 isSaving = false
@@ -433,13 +469,16 @@ private fun TimeBlockSchedulePage(
     amountText: String,
     availableUnits: List<BlockDurationPolicy.Unit>,
     selectedDays: Set<Int>,
-    companionOptions: List<AssociatedBlockTargets.WebsiteCompanion>,
+    websiteCompanionOptions: List<AssociatedBlockTargets.WebsiteCompanion>,
     selectedCompanionDomains: Set<String>,
+    appCompanionOptions: List<AssociatedBlockTargets.AppCompanion>,
+    selectedCompanionPackages: Set<String>,
     isSaving: Boolean,
     canSave: Boolean,
     onDurationUnitChange: (BlockDurationPolicy.Unit) -> Unit,
     onAmountChange: (String) -> Unit,
     onSelectedCompanionDomainsChange: (Set<String>) -> Unit,
+    onSelectedCompanionPackagesChange: (Set<String>) -> Unit,
     onToggleDay: (Int) -> Unit,
     onActivate: () -> Unit,
     onBack: () -> Unit
@@ -505,12 +544,21 @@ private fun TimeBlockSchedulePage(
         }
     }
 
-    if (companionOptions.isNotEmpty()) {
+    if (websiteCompanionOptions.isNotEmpty()) {
         Spacer(modifier = Modifier.height(16.dp))
         AssociatedWebsiteOptionsCard(
-            options = companionOptions,
+            options = websiteCompanionOptions,
             selectedDomains = selectedCompanionDomains,
             onSelectedDomainsChange = onSelectedCompanionDomainsChange
+        )
+    }
+
+    if (appCompanionOptions.isNotEmpty()) {
+        Spacer(modifier = Modifier.height(16.dp))
+        AssociatedAppOptionsCard(
+            options = appCompanionOptions,
+            selectedPackages = selectedCompanionPackages,
+            onSelectedPackagesChange = onSelectedCompanionPackagesChange
         )
     }
 

@@ -50,6 +50,32 @@ class AssociatedBlockTargetsTest {
     }
 
     @Test
+    fun `website rules expose stable app companion options`() {
+        val companions = AssociatedBlockTargets.appCompanionsForWebsiteRules(
+            listOf(
+                "youtube.com",
+                "https://instagram.com/reels",
+                "example.invalid",
+                "youtube.com"
+            )
+        )
+
+        assertThat(companions.map { it.packageName })
+            .containsExactly("com.google.android.youtube", "com.instagram.android")
+        assertThat(companions.map { it.domain })
+            .containsExactly("youtube.com", "instagram.com")
+    }
+
+    @Test
+    fun `keyword and pornography rules never invent app companions`() {
+        assertThat(
+            AssociatedBlockTargets.appCompanionsForWebsiteRules(
+                listOf("keyword:youtube", "category:pornography")
+            )
+        ).isEmpty()
+    }
+
+    @Test
     fun `unknown targets do not invent companions`() {
         assertThat(
             AssociatedBlockTargets.domainForAppPackage("com.example.unknown")
