@@ -340,7 +340,15 @@ fun BlockTypeDetailScreen(
                                     )
                                 }
                                 items(sites, key = { "site_${it.identifier}" }) { entry ->
-                                    BlockedEntryRow(entry = entry, accent = type.accent)
+                                    BlockedEntryRow(
+                                        entry = entry,
+                                        accent = type.accent,
+                                        onRemove = if (type == BlockTypeUi.PASSWORD) {
+                                            { removalTarget = entry }
+                                        } else {
+                                            null
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -678,24 +686,11 @@ private fun BlockedEntryRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (entry.isWebsite) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(accent.copy(alpha = 0.14f))
-                        .border(
-                            1.dp,
-                            accent.copy(alpha = 0.24f),
-                            RoundedCornerShape(10.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = label.take(1).uppercase(),
-                        color = accent,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                BlockedWebsiteIcon(
+                    identifier = entry.identifier,
+                    label = label,
+                    accent = accent
+                )
             } else {
                 FocusGuardAppIcon(
                     packageName = entry.identifier,
