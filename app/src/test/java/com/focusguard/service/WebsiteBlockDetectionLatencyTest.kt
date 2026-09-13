@@ -38,6 +38,14 @@ class WebsiteBlockDetectionLatencyTest {
             )
         ).isFalse()
         assertThat(
+            BrowserUiCapabilityPolicy.isReadOnlyAddressBarNode(
+                display.copy(windowId = WINDOW_ID + 1),
+                BROWSER_PACKAGE,
+                WINDOW_ID,
+                httpsHandlerRecognized = true
+            )
+        ).isFalse()
+        assertThat(
             BrowserUiCapabilityPolicy.isActionableAddressBarNode(
                 display,
                 BROWSER_PACKAGE,
