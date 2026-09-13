@@ -22,9 +22,9 @@ internal data class ProtectionDraft(
 
 /**
  * A domain is already covered when it exactly matches an existing rule or is
- * matched by an existing parent-domain/keyword rule. Broader new rules remain
- * available (for example, adding `keyword:video` when only one video site is
- * configured), because they protect additional targets.
+ * matched by an existing parent-domain/keyword/category rule. This is a
+ * configuration comparison, so temporary PASSWORD visit grants are deliberately
+ * ignored. Broader new rules remain available because they protect extra targets.
  */
 internal fun isWebsiteRuleAlreadyBlocked(
     candidate: String,
@@ -36,10 +36,12 @@ internal fun isWebsiteRuleAlreadyBlocked(
     val normalizedConfigured = WebsiteBlocker.normalizeRules(configuredRules)
     if (normalizedCandidate in normalizedConfigured) return true
 
-    return WebsiteBlocker.findMatchingRule(
-        normalizedCandidate,
-        normalizedConfigured
-    ) != null
+    return normalizedConfigured.any { configuredRule ->
+        WebsiteBlocker.matchesRuleIgnoringGrants(
+            urlOrDomain = normalizedCandidate,
+            normalizedRule = configuredRule
+        )
+    }
 }
 
 /**
