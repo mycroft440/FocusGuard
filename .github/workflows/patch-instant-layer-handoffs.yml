@@ -39,7 +39,7 @@ jobs:
         run: |
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git rm .github/workflows/patch-instant-layer-handoffs.yml tools/patch_instant_layer_handoffs.py tools/fix_patch_script.py
+          git rm -f .github/workflows/patch-instant-layer-handoffs.yml tools/patch_instant_layer_handoffs.py tools/fix_patch_script.py
           git add app/src/main/java app/src/test/java
           git commit -m 'Make protection hierarchy handoffs immediate'
           git push origin HEAD:fix/instant-layer-handoffs
