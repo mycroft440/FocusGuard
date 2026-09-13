@@ -5,6 +5,8 @@ on:
     branches: ["fix/website-block-detection-latency"]
     paths:
       - ".github/workflows/apply-website-block-latency-patch.yml"
+  pull_request:
+    branches: ["main"]
 
 permissions:
   contents: write
