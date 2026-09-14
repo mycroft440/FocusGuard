@@ -1,0 +1,70 @@
+name: Format site redirect block
+
+on:
+  push:
+    branches: ["fix/same-tab-site-redirect"]
+
+permissions:
+  contents: write
+
+jobs:
+  format-redirect-block:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Normalize touched redirect block indentation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt")
+          source = path.read_text(encoding="utf-8")
+          old = (
+              "                // Keep the redirect in the current tab whenever the address bar is editable.\n"
+              "            // Otherwise restore the exact blocked surface and neutralize that tab before\n"
+              "            // requesting Google, so the blocked page cannot survive beside the safe page.\n"
+              "            if (!redirectRequested) {\n"
+              "                val blockedSurfaceRestored =\n"
+              "                    restoreBlockedSurfaceAfterAddressEdit(transition)\n"
+              "                redirectRequested = blockedSurfaceRestored &&\n"
+              "                    closeBlockedTabAndRequestSafeGoogle(\n"
+              "                        browserPackageName = browserPackageName,\n"
+              "                        expectedWindowId = expectedWindowId,\n"
+              "                        transition = transition\n"
+              "                    )\n"
+              "            }\n"
+          )
+          new = (
+              "                // Keep the redirect in the current tab whenever the address bar is editable.\n"
+              "                // Otherwise restore the exact blocked surface and neutralize that tab before\n"
+              "                // requesting Google, so the blocked page cannot survive beside the safe page.\n"
+              "                if (!redirectRequested) {\n"
+              "                    val blockedSurfaceRestored =\n"
+              "                        restoreBlockedSurfaceAfterAddressEdit(transition)\n"
+              "                    redirectRequested = blockedSurfaceRestored &&\n"
+              "                        closeBlockedTabAndRequestSafeGoogle(\n"
+              "                            browserPackageName = browserPackageName,\n"
+              "                            expectedWindowId = expectedWindowId,\n"
+              "                            transition = transition\n"
+              "                        )\n"
+              "                }\n"
+          )
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(f"Expected one touched redirect block, found {count}")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8")
+          PY
+
+      - name: Commit source-only formatting
+        shell: bash
+        run: |
+          rm .github/workflows/format-site-redirect-block.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt .github/workflows/format-site-redirect-block.yml
+          git diff --cached --check
+          git commit -m "Normalize touched website redirect block"
+          git push origin HEAD:${{ github.ref_name }}
