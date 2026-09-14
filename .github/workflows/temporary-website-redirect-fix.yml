@@ -17,8 +17,9 @@ jobs:
           ref: ${{ github.ref_name }}
 
       - name: Apply scoped website redirect patch
-        shell: python
+        shell: bash
         run: |
+          python - <<'PY'
           from pathlib import Path
 
           path = Path("app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt")
@@ -67,8 +68,10 @@ jobs:
           if source.count(old) != 1:
               raise SystemExit("Expected website redirect block matched more than once")
           path.write_text(source.replace(old, new, 1), encoding="utf-8")
+          PY
 
       - name: Commit scoped patch
+        shell: bash
         run: |
           if git diff --quiet -- app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt; then
             exit 0
