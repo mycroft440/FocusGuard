@@ -148,17 +148,30 @@ internal object BrowserUiCapabilityPolicy {
             }
         ) return true
 
-        val idLooksNative = entryName.lowercase(Locale.ROOT).let { id ->
+        val normalizedEntryName = entryName.lowercase(Locale.ROOT)
+        val idLooksNative = normalizedEntryName.let { id ->
             id.contains("url") || id.contains("uri") || id.contains("omnibox") ||
                 id.contains("address") || id.contains("location_bar")
         }
+        val editableAddressField = node.editable && browserOwnedResource &&
+            (node.uriInput || idLooksNative)
+        if (editableAddressField) return true
+
+        val idLooksReadOnlyDisplay = normalizedEntryName == "current_url" ||
+            normalizedEntryName == "current_uri" ||
+            normalizedEntryName == "url_display" ||
+            normalizedEntryName == "uri_display" ||
+            normalizedEntryName.startsWith("current_url_") ||
+            normalizedEntryName.startsWith("current_uri_") ||
+            normalizedEntryName.startsWith("address_bar_") ||
+            normalizedEntryName.startsWith("location_bar_") ||
+            normalizedEntryName.startsWith("omnibox_")
         val displayLooksAddressLike = node.text.orEmpty().trim().let { value ->
             value.isNotEmpty() &&
                 value.none(Char::isWhitespace) &&
                 (value.contains("://") || value.contains('.'))
         }
-        return browserOwnedResource && idLooksNative &&
-            (node.editable || node.uriInput || displayLooksAddressLike)
+        return browserOwnedResource && idLooksReadOnlyDisplay && displayLooksAddressLike
     }
 
     fun isActionableAddressBarNode(
