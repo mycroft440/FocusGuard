@@ -59,3 +59,38 @@ Impedir a criação ou troca da senha mestre depois que já existir um bloqueio 
 
 ## Critério de conclusão
 A senha mestre pode ser criada ou trocada quando não há bloqueio `TIME` nem limite de uso habilitado, inclusive se houver bloqueios `PASSWORD`; depois que um `TIME` ativo ou um limite habilitado existir, a tela não permite a alteração e a camada de negócio recusa a gravação mesmo em caso de estado concorrente.
+
+---
+
+# Plano de implementação — detecção mais rápida de sites bloqueados
+
+## Objetivo
+Reduzir a latência entre a navegação para um site configurado (especialmente YouTube) e a exibição da proteção, preservando a identificação fail-closed da barra de endereço e o redirecionamento seguro existente.
+
+## Diagnóstico
+- [x] Confirmar que `youtube.com` já cobre subdomínios e aliases como `youtu.be` e `youtube-nocookie.com`; o matcher de domínio não é a origem do atraso.
+- [x] Confirmar que o caminho imediato só decide sem árvore quando `event.source` já é reconhecido como barra de endereço.
+- [x] Confirmar que o fallback de `handleBrowserEvent` pode percorrer a árvore para obter a URL e depois percorrê-la novamente para obter o texto cru antes de decidir um bloqueio de domínio.
+- [x] Confirmar que `startWebsiteBlockTransition` revalida `windows/window.root` antes de mostrar a cortina mesmo quando a janela já foi validada pela fonte/root usada na detecção.
+- [x] Confirmar que eventos relevantes já têm `notificationTimeout = 0` e `browserDebounceMillis = 0`, portanto não há debounce configurado a remover.
+
+## Implementação
+- [ ] Ampliar somente a classificação read-only de barras de endereço para nós visíveis, pertencentes a navegadores HTTPS verificados, com IDs browser-owned de semântica URL/URI/omnibox/address, sem ampliar capacidades de automação.
+- [ ] Em `handleBrowserEvent`, decidir e bloquear imediatamente quando a URL já encontrada casar uma regra, antes de uma segunda busca de texto na árvore.
+- [ ] Propagar explicitamente quando o `windowId` foi validado pela barra/root e, nesses casos, evitar a leitura síncrona redundante de `windows/window.root` antes de exibir a cortina.
+- [ ] Manter a resolução atual de janela como fallback para bloqueios disparados sem janela validada, como limite de uso.
+- [ ] Cobrir a identificação read-only e o caminho de YouTube por testes de regressão.
+
+## Riscos e critérios de segurança
+- Nós de conteúdo comuns nunca podem virar barras acionáveis.
+- Uma identificação read-only expandida exige pacote/janela corretos, navegador HTTPS reconhecido, nó visível e recurso pertencente ao próprio browser.
+- O texto identificado ainda precisa ser uma URL/domínio válido e casar uma regra configurada antes de bloquear.
+- O redirecionamento seguro, a confirmação de Google e a hierarquia PASSWORD/HARD/POMODORO permanecem inalterados.
+
+## Validação
+- [ ] Executar testes unitários de `BrowserUiCapabilityPolicy`, `WebsiteBlocker` e `WebsiteBlockNavigation`.
+- [ ] Executar a suíte unitária, Android Lint e compilação do harness pelo CI.
+- [ ] Revisar o diff agregado para confirmar que não houve alteração no matcher de aliases, duração da cortina ou configuração global de eventos.
+
+## Critério de conclusão
+Um domínio bloqueado já visível na barra de endereço deve acionar a cortina no primeiro evento/árvore em que a URL puder ser identificada, sem uma segunda varredura ou revalidação de janela redundante; YouTube e seus aliases continuam sendo reconhecidos pela mesma regra e navegadores sem evidência suficiente continuam falhando de forma segura.

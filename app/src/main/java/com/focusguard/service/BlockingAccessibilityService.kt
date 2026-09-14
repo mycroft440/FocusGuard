@@ -1373,7 +1373,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                 browserPackageName = currentPackage,
                 browserWindowId = windowId,
                 blockedCandidate = blockedCandidate,
-                detectionEventUptimeMillis = SystemClock.uptimeMillis()
+                detectionEventUptimeMillis = SystemClock.uptimeMillis(),
+                browserWindowIdValidated = true
             )
             return
         }
@@ -2958,7 +2959,8 @@ class BlockingAccessibilityService : AccessibilityService() {
             browserPackageName = packageName,
             browserWindowId = event.windowId,
             blockedCandidate = url ?: addressText ?: blockedCandidate,
-            detectionEventUptimeMillis = event.eventTime
+            detectionEventUptimeMillis = event.eventTime,
+            browserWindowIdValidated = true
         )
         return true
     }
@@ -2985,39 +2987,79 @@ class BlockingAccessibilityService : AccessibilityService() {
                 packageName,
                 isVerifiedHttpsHandler(packageName)
             )
+        // Direct omnibox evidence can be classified before any active-root read.
+        val fastBlockedCandidate = immediateWebsiteBlockTarget(
+            addressText = fastAddressText,
+            url = fastUrl,
+            blockedRules = blockedWebsitesDomainSet
+        )
+        if (fastBlockedCandidate != null) {
+            routeWebsiteBlockByHierarchy(
+                browserPackageName = packageName,
+                browserWindowId = event.windowId,
+                blockedCandidate = fastUrl ?: fastAddressText ?: fastBlockedCandidate,
+                detectionEventUptimeMillis = event.eventTime,
+                browserWindowIdValidated = true
+            )
+            return
+        }
+
         val root = if (fastUrl == null) rootInActiveWindow ?: event.source else null
         val url = fastUrl ?: WebsiteBlocker.extractUrlFromRoot(
             root,
             packageName,
             isVerifiedHttpsHandler(packageName)
         )
+        val detectedWindowId = if (fastUrl != null) {
+            event.windowId
+        } else {
+            root?.windowId ?: event.windowId
+        }
+
+        // Normal URL/domain rules do not need a second tree traversal for raw text.
+        val urlBlockedCandidate = immediateWebsiteBlockTarget(
+            addressText = null,
+            url = url,
+            blockedRules = blockedWebsitesDomainSet
+        )
+        if (urlBlockedCandidate != null) {
+            routeWebsiteBlockByHierarchy(
+                browserPackageName = packageName,
+                browserWindowId = detectedWindowId,
+                blockedCandidate = url ?: urlBlockedCandidate,
+                detectionEventUptimeMillis = event.eventTime,
+                browserWindowIdValidated = true
+            )
+            recycleSafely(root)
+            return
+        }
+
         val addressText = fastAddressText
             ?: WebsiteBlocker.extractAddressBarTextFromRoot(
                 root,
                 packageName,
                 isVerifiedHttpsHandler(packageName)
             )
-        val addressBarObservable = fastAddressText != null ||
+        val addressBarObservable = addressText != null ||
             url != null || WebsiteBlocker.hasAddressBarNode(
                 root,
                 packageName,
                 isVerifiedHttpsHandler(packageName)
             )
 
-        // Even on the root-fallback path, the block decision outranks tracking,
-        // policy refreshes and observability bookkeeping. Once the URL is known,
-        // cover the page immediately just like blockApp() covers an app window.
+        // Raw text remains necessary for category/search rules that are not URLs.
         val blockedCandidate = immediateWebsiteBlockTarget(
-                addressText = addressText,
-                url = url,
-                blockedRules = blockedWebsitesDomainSet
-            )
+            addressText = addressText,
+            url = url,
+            blockedRules = blockedWebsitesDomainSet
+        )
         if (blockedCandidate != null) {
             routeWebsiteBlockByHierarchy(
                 browserPackageName = packageName,
-                browserWindowId = event.windowId,
+                browserWindowId = detectedWindowId,
                 blockedCandidate = url ?: addressText ?: blockedCandidate,
-                detectionEventUptimeMillis = event.eventTime
+                detectionEventUptimeMillis = event.eventTime,
+                browserWindowIdValidated = true
             )
             recycleSafely(root)
             return
@@ -3041,9 +3083,10 @@ class BlockingAccessibilityService : AccessibilityService() {
             if (googlePageFieldHasBlockedSearch) {
                 blockWebsite(
                     browserPackageName = packageName,
-                    browserWindowId = event.windowId,
+                    browserWindowId = detectedWindowId,
                     blockedCandidate = url,
-                    detectionEventUptimeMillis = event.eventTime
+                    detectionEventUptimeMillis = event.eventTime,
+                    browserWindowIdValidated = true
                 )
                 recycleSafely(root)
                 return
@@ -3356,7 +3399,8 @@ class BlockingAccessibilityService : AccessibilityService() {
         browserPackageName: String,
         browserWindowId: Int,
         blockedCandidate: String,
-        detectionEventUptimeMillis: Long
+        detectionEventUptimeMillis: Long,
+        browserWindowIdValidated: Boolean = false
     ) {
         if (!isPomodoroStrictActive) {
             val resolution = WebsiteProtectionHierarchyPolicy.resolve(
@@ -3384,7 +3428,8 @@ class BlockingAccessibilityService : AccessibilityService() {
             browserPackageName = browserPackageName,
             browserWindowId = browserWindowId,
             blockedCandidate = blockedCandidate,
-            detectionEventUptimeMillis = detectionEventUptimeMillis
+            detectionEventUptimeMillis = detectionEventUptimeMillis,
+            browserWindowIdValidated = browserWindowIdValidated
         )
     }
 
@@ -3392,15 +3437,17 @@ class BlockingAccessibilityService : AccessibilityService() {
         browserPackageName: String,
         browserWindowId: Int = INVALID_BROWSER_WINDOW_ID,
         blockedCandidate: String? = null,
-        detectionEventUptimeMillis: Long = 0L
+        detectionEventUptimeMillis: Long = 0L,
+        browserWindowIdValidated: Boolean = false
     ) {
         val now = System.currentTimeMillis()
         stopWebsiteTracking(now)
         startWebsiteBlockTransition(
-            browserPackageName,
-            browserWindowId,
-            blockedCandidate,
-            detectionEventUptimeMillis
+            browserPackageName = browserPackageName,
+            browserWindowId = browserWindowId,
+            blockedCandidate = blockedCandidate,
+            detectionEventUptimeMillis = detectionEventUptimeMillis,
+            browserWindowIdValidated = browserWindowIdValidated
         )
     }
 
@@ -3416,9 +3463,14 @@ class BlockingAccessibilityService : AccessibilityService() {
         browserPackageName: String,
         browserWindowId: Int = INVALID_BROWSER_WINDOW_ID,
         blockedCandidate: String? = null,
-        detectionEventUptimeMillis: Long = 0L
+        detectionEventUptimeMillis: Long = 0L,
+        browserWindowIdValidated: Boolean = false
     ) {
-        val expectedWindowId = resolveBrowserWindowId(browserPackageName, browserWindowId)
+        val expectedWindowId = if (browserWindowIdValidated && browserWindowId >= 0) {
+            browserWindowId
+        } else {
+            resolveBrowserWindowId(browserPackageName, browserWindowId)
+        }
         if (expectedWindowId == INVALID_BROWSER_WINDOW_ID) return
         val strict = isPomodoroStrictActive
         val transitionId = websiteBlockTransitionCounter.incrementAndGet()
