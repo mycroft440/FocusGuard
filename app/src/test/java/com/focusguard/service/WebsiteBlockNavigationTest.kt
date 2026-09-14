@@ -155,11 +155,9 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
-    fun `website curtain remains visible while redirect starts immediately`() {
+    fun `website curtain remains visible for one second while redirect starts immediately`() {
         assertThat(BlockingAccessibilityService.WEBSITE_MIN_BLOCK_NOTICE_MILLIS)
-            .isAtLeast(400L)
-        assertThat(BlockingAccessibilityService.WEBSITE_MIN_BLOCK_NOTICE_MILLIS)
-            .isAtMost(1_000L)
+            .isEqualTo(1_000L)
     }
 
     @Test
@@ -549,6 +547,14 @@ class WebsiteBlockNavigationTest {
                 latestWindowTransitionEventUptimeMillis = 101L
             )
         ).isFalse()
+        assertThat(
+            policy.mayActivateBlockedAddressBar(
+                arbitraryChromiumPackage,
+                activeWindowId = 7,
+                phaseStartedAtUptimeMillis = 100L,
+                latestWindowTransitionEventUptimeMillis = 101L
+            )
+        ).isTrue()
         assertThat(policy.mayTouchBlockedTab(arbitraryChromiumPackage, 8)).isFalse()
         assertThat(policy.mayTouchBlockedTab(CHROME_PACKAGE, 7)).isFalse()
         policy.markSafeAddressSet(200L)
@@ -566,7 +572,7 @@ class WebsiteBlockNavigationTest {
                 activeWindowId = 7,
                 latestWindowTransitionEventUptimeMillis = 201L
             )
-        ).isFalse()
+        ).isTrue()
         policy.markRedirectRequested()
         assertThat(
             policy.maySubmitSafeAddress(
@@ -671,15 +677,22 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
-    fun `set or submit failure evacuates Home instead of ACTION_VIEW`() {
+    fun `set or submit failure aborts redirect without closing or leaving browser`() {
         assertThat(BlockingAccessibilityService.afterSafeAddressSet(false)).isEqualTo(
-            BlockingAccessibilityService.WebsiteSanitizationDecision.EVACUATE_HOME
+            BlockingAccessibilityService.WebsiteSanitizationDecision.ABORT_REDIRECT
         )
         assertThat(BlockingAccessibilityService.afterSafeAddressSubmit(false)).isEqualTo(
-            BlockingAccessibilityService.WebsiteSanitizationDecision.EVACUATE_HOME
+            BlockingAccessibilityService.WebsiteSanitizationDecision.ABORT_REDIRECT
         )
         assertThat(BlockingAccessibilityService.canUseCertifiableImeSubmit(29)).isFalse()
         assertThat(BlockingAccessibilityService.canUseCertifiableImeSubmit(30)).isTrue()
+    }
+
+    @Test
+    fun `website transition actions contain no browser eviction action`() {
+        assertThat(
+            BlockingAccessibilityService.WebsiteTransitionAction.values().map { it.name }
+        ).doesNotContain("EVACUATE_HOME")
     }
 
     @Test
@@ -817,25 +830,25 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
-    fun `confirmation timeout evacuates Home without hiding directly`() {
+    fun `confirmation timeout keeps the browser open and releases only the curtain`() {
         val machine = BlockingAccessibilityService.WebsiteBlockTransitionStateMachine(
             strict = false
         )
         machine.begin()
 
         assertThat(machine.onFailureOrTimeout()).isEqualTo(
-            BlockingAccessibilityService.WebsiteTransitionAction.EVACUATE_HOME
+            BlockingAccessibilityService.WebsiteTransitionAction.HIDE_CURTAIN
         )
     }
 
     @Test
-    fun `sanitization or destination failure evacuates Home`() {
+    fun `sanitization or destination failure never requests browser eviction`() {
         val sanitizationFailure = BlockingAccessibilityService.WebsiteBlockTransitionStateMachine(
             strict = false
         )
         sanitizationFailure.begin()
         assertThat(sanitizationFailure.onFailureOrTimeout()).isEqualTo(
-            BlockingAccessibilityService.WebsiteTransitionAction.EVACUATE_HOME
+            BlockingAccessibilityService.WebsiteTransitionAction.HIDE_CURTAIN
         )
 
         val launchFailure = BlockingAccessibilityService.WebsiteBlockTransitionStateMachine(
@@ -843,7 +856,7 @@ class WebsiteBlockNavigationTest {
         )
         launchFailure.begin()
         assertThat(launchFailure.onFailureOrTimeout()).isEqualTo(
-            BlockingAccessibilityService.WebsiteTransitionAction.EVACUATE_HOME
+            BlockingAccessibilityService.WebsiteTransitionAction.HIDE_CURTAIN
         )
     }
 
