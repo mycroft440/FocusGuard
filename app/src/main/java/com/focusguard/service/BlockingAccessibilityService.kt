@@ -3527,15 +3527,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                     transition = transition
                 )
 
-                // If the browser/API cannot expose a certifiable editable
-            // omnibox, restore the blocked surface and request Google through an
-            // explicit package-scoped browser intent while the opaque curtain remains
-            // on top. This covers Firefox, Samsung Internet and Chromium forks whose
-            // accessibility trees do not expose the same editing actions.
-            // Keep the redirect in the tab that exposed the blocked site.
-            // If direct address-bar replacement is unavailable, restore the exact
-            // blocked surface and neutralize that tab before requesting Google.
-            // Never launch a generic browser intent while the blocked tab is alive.
+                // Keep the redirect in the current tab whenever the address bar is editable.
+            // Otherwise restore the exact blocked surface and neutralize that tab before
+            // requesting Google, so the blocked page cannot survive beside the safe page.
             if (!redirectRequested) {
                 val blockedSurfaceRestored =
                     restoreBlockedSurfaceAfterAddressEdit(transition)
