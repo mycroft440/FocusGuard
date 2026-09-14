@@ -3528,18 +3528,18 @@ class BlockingAccessibilityService : AccessibilityService() {
                 )
 
                 // Keep the redirect in the current tab whenever the address bar is editable.
-            // Otherwise restore the exact blocked surface and neutralize that tab before
-            // requesting Google, so the blocked page cannot survive beside the safe page.
-            if (!redirectRequested) {
-                val blockedSurfaceRestored =
-                    restoreBlockedSurfaceAfterAddressEdit(transition)
-                redirectRequested = blockedSurfaceRestored &&
-                    closeBlockedTabAndRequestSafeGoogle(
-                        browserPackageName = browserPackageName,
-                        expectedWindowId = expectedWindowId,
-                        transition = transition
-                    )
-            }
+                // Otherwise restore the exact blocked surface and neutralize that tab before
+                // requesting Google, so the blocked page cannot survive beside the safe page.
+                if (!redirectRequested) {
+                    val blockedSurfaceRestored =
+                        restoreBlockedSurfaceAfterAddressEdit(transition)
+                    redirectRequested = blockedSurfaceRestored &&
+                        closeBlockedTabAndRequestSafeGoogle(
+                            browserPackageName = browserPackageName,
+                            expectedWindowId = expectedWindowId,
+                            transition = transition
+                        )
+                }
 
                 if (!redirectRequested) {
                     stateMachine.onFailureOrTimeout()
