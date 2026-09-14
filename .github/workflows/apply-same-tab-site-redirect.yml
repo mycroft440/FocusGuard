@@ -1,0 +1,86 @@
+name: Apply same-tab site redirect fix
+
+on:
+  push:
+    branches:
+      - fix/same-tab-site-redirect
+    paths:
+      - .github/workflows/apply-same-tab-site-redirect.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply scoped redirect fix
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
+          source = path.read_text()
+          old = '''            if (!redirectRequested) {
+                val blockedSurfaceRestored =
+                    restoreBlockedSurfaceAfterAddressEdit(transition)
+                redirectRequested = blockedSurfaceRestored &&
+                    requestSafeGoogleThroughBrowserIntent(transition)
+            }
+
+            // If even the generic browser intent cannot be launched, retain the
+            // positively-identified Chromium close-tab fallback. HOME remains the
+            // fail-closed escape when no safe destination can be confirmed.
+            if (!redirectRequested) {
+                redirectRequested = closeBlockedTabAndRequestSafeGoogle(
+                    browserPackageName = browserPackageName,
+                    expectedWindowId = expectedWindowId,
+                    transition = transition
+                )
+            }
+'''
+          new = '''            // Never use a generic browser ACTION_VIEW while the blocked tab is
+            // still alive: Chromium-based browsers may open Google in a new tab and
+            // leave the blocked page behind. Restore the blocked surface first, then
+            // neutralize that exact tab before requesting the safe destination.
+            if (!redirectRequested) {
+                val blockedSurfaceRestored =
+                    restoreBlockedSurfaceAfterAddressEdit(transition)
+                redirectRequested = blockedSurfaceRestored &&
+                    closeBlockedTabAndRequestSafeGoogle(
+                        browserPackageName = browserPackageName,
+                        expectedWindowId = expectedWindowId,
+                        transition = transition
+                    )
+            }
+'''
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(f'expected exactly one redirect fallback block, found {count}')
+          source = source.replace(old, new, 1)
+          if 'requestSafeGoogleThroughBrowserIntent(transition)' in source:
+              raise SystemExit('pre-close generic browser redirect call is still present')
+          if 'EVENT_NOTIFICATION_TIMEOUT_MILLIS: Long = 0L' not in source:
+              raise SystemExit('latency-sensitive accessibility timeout changed unexpectedly')
+          path.write_text(source)
+          PY
+
+      - name: Run focused website navigation tests
+        run: ./gradlew :app:testDebugUnitTest --tests "com.focusguard.service.WebsiteBlockNavigationTest"
+
+      - name: Commit only the requested source change
+        shell: bash
+        run: |
+          rm .github/workflows/apply-same-tab-site-redirect.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt .github/workflows/apply-same-tab-site-redirect.yml
+          git diff --cached --check
+          git commit -m "Keep blocked site redirect in current browser flow"
+          git push origin HEAD:fix/same-tab-site-redirect
