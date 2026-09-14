@@ -1,0 +1,56 @@
+name: Cleanup site redirect comment
+
+on:
+  push:
+    branches: ["fix/same-tab-site-redirect"]
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup-comment:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+
+      - name: Align redirect comment with implementation
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path("app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt")
+          source = path.read_text(encoding="utf-8")
+          old = (
+              "            // If the browser/API cannot expose a certifiable editable\n"
+              "            // omnibox, restore the blocked surface and request Google through an\n"
+              "            // explicit package-scoped browser intent while the opaque curtain remains\n"
+              "            // on top. This covers Firefox, Samsung Internet and Chromium forks whose\n"
+              "            // accessibility trees do not expose the same editing actions.\n"
+              "            // Keep the redirect in the tab that exposed the blocked site.\n"
+              "            // If direct address-bar replacement is unavailable, restore the exact\n"
+              "            // blocked surface and neutralize that tab before requesting Google.\n"
+              "            // Never launch a generic browser intent while the blocked tab is alive.\n"
+          )
+          new = (
+              "            // Keep the redirect in the current tab whenever the address bar is editable.\n"
+              "            // Otherwise restore the exact blocked surface and neutralize that tab before\n"
+              "            // requesting Google, so the blocked page cannot survive beside the safe page.\n"
+          )
+          count = source.count(old)
+          if count != 1:
+              raise SystemExit(f"Expected one redirect comment block, found {count}")
+          path.write_text(source.replace(old, new, 1), encoding="utf-8")
+          PY
+
+      - name: Commit source-only cleanup
+        shell: bash
+        run: |
+          rm .github/workflows/cleanup-site-redirect-comment.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt .github/workflows/cleanup-site-redirect-comment.yml
+          git diff --cached --check
+          git commit -m "Align website redirect fallback comment"
+          git push origin HEAD:${{ github.ref_name }}
