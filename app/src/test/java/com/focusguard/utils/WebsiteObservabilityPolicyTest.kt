@@ -5,9 +5,9 @@ import org.junit.Test
 
 class WebsiteObservabilityPolicyTest {
     @Test
-    fun `opaque browser fails closed after grace while protection is active`() {
+    fun `opaque browser reaches observation fallback after grace while protection is active`() {
         assertThat(
-            WebsiteObservabilityPolicy.shouldBlockOpaqueBrowser(
+            WebsiteObservabilityPolicy.shouldStopObservingOpaqueBrowser(
                 websiteProtectionRequiresObservation = true,
                 browserStillForeground = true,
                 addressBarObservable = false,
@@ -19,9 +19,9 @@ class WebsiteObservabilityPolicyTest {
     }
 
     @Test
-    fun `observable browser and inactive protection never fail closed`() {
+    fun `observable browser and inactive protection never reach opaque fallback`() {
         assertThat(
-            WebsiteObservabilityPolicy.shouldBlockOpaqueBrowser(
+            WebsiteObservabilityPolicy.shouldStopObservingOpaqueBrowser(
                 websiteProtectionRequiresObservation = true,
                 browserStillForeground = true,
                 addressBarObservable = true,
@@ -30,7 +30,7 @@ class WebsiteObservabilityPolicyTest {
             )
         ).isFalse()
         assertThat(
-            WebsiteObservabilityPolicy.shouldBlockOpaqueBrowser(
+            WebsiteObservabilityPolicy.shouldStopObservingOpaqueBrowser(
                 websiteProtectionRequiresObservation = false,
                 browserStillForeground = true,
                 addressBarObservable = false,
@@ -41,9 +41,9 @@ class WebsiteObservabilityPolicyTest {
     }
 
     @Test
-    fun `opaque browser gets its grace window before blocking`() {
+    fun `opaque browser gets its grace window before observation fallback`() {
         assertThat(
-            WebsiteObservabilityPolicy.shouldBlockOpaqueBrowser(
+            WebsiteObservabilityPolicy.shouldStopObservingOpaqueBrowser(
                 websiteProtectionRequiresObservation = true,
                 browserStillForeground = true,
                 addressBarObservable = false,
@@ -52,5 +52,28 @@ class WebsiteObservabilityPolicyTest {
                 graceMillis = 800L
             )
         ).isFalse()
+    }
+
+    @Test
+    fun `legacy block decision name keeps the same fallback threshold`() {
+        assertThat(
+            WebsiteObservabilityPolicy.shouldBlockOpaqueBrowser(
+                websiteProtectionRequiresObservation = true,
+                browserStillForeground = true,
+                addressBarObservable = false,
+                firstUnobservableElapsed = 1_000L,
+                nowElapsed = 1_800L,
+                graceMillis = 800L
+            )
+        ).isEqualTo(
+            WebsiteObservabilityPolicy.shouldStopObservingOpaqueBrowser(
+                websiteProtectionRequiresObservation = true,
+                browserStillForeground = true,
+                addressBarObservable = false,
+                firstUnobservableElapsed = 1_000L,
+                nowElapsed = 1_800L,
+                graceMillis = 800L
+            )
+        )
     }
 }
