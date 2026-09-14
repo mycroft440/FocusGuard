@@ -3532,22 +3532,19 @@ class BlockingAccessibilityService : AccessibilityService() {
             // explicit package-scoped browser intent while the opaque curtain remains
             // on top. This covers Firefox, Samsung Internet and Chromium forks whose
             // accessibility trees do not expose the same editing actions.
+            // Keep the redirect in the tab that exposed the blocked site.
+            // If direct address-bar replacement is unavailable, restore the exact
+            // blocked surface and neutralize that tab before requesting Google.
+            // Never launch a generic browser intent while the blocked tab is alive.
             if (!redirectRequested) {
                 val blockedSurfaceRestored =
                     restoreBlockedSurfaceAfterAddressEdit(transition)
                 redirectRequested = blockedSurfaceRestored &&
-                    requestSafeGoogleThroughBrowserIntent(transition)
-            }
-
-            // If even the generic browser intent cannot be launched, retain the
-            // positively-identified Chromium close-tab fallback. HOME remains the
-            // fail-closed escape when no safe destination can be confirmed.
-            if (!redirectRequested) {
-                redirectRequested = closeBlockedTabAndRequestSafeGoogle(
-                    browserPackageName = browserPackageName,
-                    expectedWindowId = expectedWindowId,
-                    transition = transition
-                )
+                    closeBlockedTabAndRequestSafeGoogle(
+                        browserPackageName = browserPackageName,
+                        expectedWindowId = expectedWindowId,
+                        transition = transition
+                    )
             }
 
                 if (!redirectRequested) {
