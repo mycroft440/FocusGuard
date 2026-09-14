@@ -3527,28 +3527,19 @@ class BlockingAccessibilityService : AccessibilityService() {
                     transition = transition
                 )
 
-                // If the browser/API cannot expose a certifiable editable
-            // omnibox, restore the blocked surface and request Google through an
-            // explicit package-scoped browser intent while the opaque curtain remains
-            // on top. This covers Firefox, Samsung Internet and Chromium forks whose
-            // accessibility trees do not expose the same editing actions.
-            if (!redirectRequested) {
-                val blockedSurfaceRestored =
-                    restoreBlockedSurfaceAfterAddressEdit(transition)
-                redirectRequested = blockedSurfaceRestored &&
-                    requestSafeGoogleThroughBrowserIntent(transition)
-            }
-
-            // If even the generic browser intent cannot be launched, retain the
-            // positively-identified Chromium close-tab fallback. HOME remains the
-            // fail-closed escape when no safe destination can be confirmed.
-            if (!redirectRequested) {
-                redirectRequested = closeBlockedTabAndRequestSafeGoogle(
-                    browserPackageName = browserPackageName,
-                    expectedWindowId = expectedWindowId,
-                    transition = transition
-                )
-            }
+                // Keep the redirect in the current tab whenever the address bar is editable.
+                // Otherwise restore the exact blocked surface and neutralize that tab before
+                // requesting Google, so the blocked page cannot survive beside the safe page.
+                if (!redirectRequested) {
+                    val blockedSurfaceRestored =
+                        restoreBlockedSurfaceAfterAddressEdit(transition)
+                    redirectRequested = blockedSurfaceRestored &&
+                        closeBlockedTabAndRequestSafeGoogle(
+                            browserPackageName = browserPackageName,
+                            expectedWindowId = expectedWindowId,
+                            transition = transition
+                        )
+                }
 
                 if (!redirectRequested) {
                     stateMachine.onFailureOrTimeout()
