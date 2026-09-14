@@ -14,8 +14,6 @@ def replace_once(text: str, old: str, new: str, label: str) -> str:
     return text.replace(old, new, 1)
 
 
-# Remove website-specific HOME semantics entirely. Blocking a site must keep the
-# browser open even when same-tab sanitization cannot be confirmed.
 service = replace_once(
     service,
     """    internal enum class WebsiteTransitionAction {
@@ -132,8 +130,6 @@ service = replace_once(
     "address-bar retry deadline",
 )
 
-# These functions were only reachable from the old website HOME fallback. Remove
-# them so a future refactor cannot accidentally reintroduce browser eviction here.
 service = replace_once(
     service,
     """    private suspend fun evacuateWebsiteTransition(expectedGeneration: Long) {
@@ -164,7 +160,7 @@ service = replace_once(
     }
 
 """,
-    """,
+    "",
     "website browser-evacuation helpers",
 )
 
