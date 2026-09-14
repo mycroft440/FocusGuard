@@ -55,7 +55,7 @@ class WebsiteBlockDetectionLatencyTest {
     }
 
     @Test
-    fun `url named browser node without address shaped value stays rejected`() {
+    fun `unrelated url named browser node stays rejected even with a real url`() {
         val unrelated = BrowserUiCapabilityPolicy.Node(
             packageName = BROWSER_PACKAGE,
             windowId = WINDOW_ID,
@@ -65,7 +65,7 @@ class WebsiteBlockDetectionLatencyTest {
             focused = false,
             focusable = false,
             uriInput = false,
-            text = "YouTube",
+            text = "https://m.youtube.com/watch?v=1",
             actions = emptySet()
         )
 
