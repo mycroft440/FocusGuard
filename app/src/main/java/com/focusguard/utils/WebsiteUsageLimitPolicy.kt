@@ -42,7 +42,15 @@ object WebsiteUsageLimitPolicy {
         }.filterValues { it > 0L }
     }
 
-    /** Raw day total, deliberately ignoring activation-baseline marker rows. */
+    /**
+     * Raw day total, deliberately ignoring activation-baseline marker rows.
+     *
+     * Historical aggregation must never participate in the PASSWORD visit lifecycle.
+     * The identifiers below are stored usage rows, not observations of the browser's
+     * current navigation. Using the grant-aware matcher here could revoke an active
+     * one-visit grant merely because an older row belongs to another website, and it
+     * could also stop counting usage for a rule while that visit is temporarily open.
+     */
     fun aggregateRawUsageByRule(
         usageByIdentifier: Iterable<Pair<String, Long>>,
         configuredRules: Collection<String>
@@ -55,7 +63,10 @@ object WebsiteUsageLimitPolicy {
             if (timeSpentMs <= 0L || baselineRuleFromIdentifier(identifier) != null) {
                 return@forEach
             }
-            WebsiteBlocker.findMatchingRules(identifier, normalizedRules).forEach { rule ->
+            WebsiteBlocker.findMatchingRulesIgnoringGrants(
+                identifier,
+                normalizedRules
+            ).forEach { rule ->
                 totals[rule] = (totals[rule] ?: 0L) + timeSpentMs
             }
         }
