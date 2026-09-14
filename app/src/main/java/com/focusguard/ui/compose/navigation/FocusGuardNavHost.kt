@@ -405,9 +405,7 @@ fun FocusGuardNavHost(
                 FocusGuardRoute.Settings -> SettingsScreen(
                     profile = userProfile,
                     onProfileClick = { currentRoute = FocusGuardRoute.Profile },
-                    onLimitsClick = { currentRoute = FocusGuardRoute.Limits },
                     onLanguageClick = { currentRoute = FocusGuardRoute.Language },
-                    onBlockCustomizationClick = { currentRoute = FocusGuardRoute.BlockCustomization },
                     onCreatorInstagramClick = { openCreatorInstagram(activity) },
                     onBack = { currentRoute = FocusGuardRoute.Home }
                 )
