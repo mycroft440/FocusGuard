@@ -1,0 +1,12 @@
+name: Temp Probe
+
+on:
+  push:
+    branches: ["fix/website-redirect-settings-cleanup"]
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Probe
+        run: echo ok
