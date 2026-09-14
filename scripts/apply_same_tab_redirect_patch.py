@@ -182,8 +182,8 @@ old_failure = """                            stateMachine.onFailureOrTimeout()
                             evacuateWebsiteTransition(curtainGeneration)
 """
 count = service.count(old_failure)
-if count != 2:
-    raise RuntimeError(f"pomodoro/transition failure paths: expected 2 matches, found {count}")
+if count != 1:
+    raise RuntimeError(f"pomodoro/transition failure paths: expected 1 match, found {count}")
 service = service.replace(
     old_failure,
     """                            stateMachine.onFailureOrTimeout()
