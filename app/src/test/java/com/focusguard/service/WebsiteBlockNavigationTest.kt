@@ -677,15 +677,22 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
-    fun `set or submit failure evacuates Home instead of ACTION_VIEW`() {
+    fun `set or submit failure aborts redirect without closing or leaving browser`() {
         assertThat(BlockingAccessibilityService.afterSafeAddressSet(false)).isEqualTo(
-            BlockingAccessibilityService.WebsiteSanitizationDecision.EVACUATE_HOME
+            BlockingAccessibilityService.WebsiteSanitizationDecision.ABORT_REDIRECT
         )
         assertThat(BlockingAccessibilityService.afterSafeAddressSubmit(false)).isEqualTo(
-            BlockingAccessibilityService.WebsiteSanitizationDecision.EVACUATE_HOME
+            BlockingAccessibilityService.WebsiteSanitizationDecision.ABORT_REDIRECT
         )
         assertThat(BlockingAccessibilityService.canUseCertifiableImeSubmit(29)).isFalse()
         assertThat(BlockingAccessibilityService.canUseCertifiableImeSubmit(30)).isTrue()
+    }
+
+    @Test
+    fun `website transition actions contain no browser eviction action`() {
+        assertThat(
+            BlockingAccessibilityService.WebsiteTransitionAction.values().map { it.name }
+        ).doesNotContain("EVACUATE_HOME")
     }
 
     @Test

@@ -118,14 +118,13 @@ class BlockingAccessibilityService : AccessibilityService() {
         SHOW_CURTAIN,
         NEUTRALIZE_BLOCKED_TAB,
         OPEN_POMODORO,
-        HIDE_CURTAIN,
-        EVACUATE_HOME
+        HIDE_CURTAIN
     }
 
     internal enum class WebsiteSanitizationDecision {
         SUBMIT_ADDRESS_BAR,
         AWAIT_GOOGLE_CONFIRMATION,
-        EVACUATE_HOME
+        ABORT_REDIRECT
     }
 
     internal enum class WebsiteCloseFollowUp {
@@ -198,7 +197,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal var curtainGeneration: Long = 0L
     )
 
-    /** Keeps destructive browser UI actions ahead of the safe redirect request. */
+    /** Keeps same-tab address-bar actions bound to the detected browser window. */
     internal class WebsiteTabNeutralizationPolicy(
         private val browserPackageName: String,
         private val expectedWindowId: Int
@@ -210,7 +209,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
 
         private var state = State.BLOCKED_TAB
-        private var safeAddressSetAtUptimeMillis = 0L
 
         fun mayTouchBlockedTab(activePackageName: String, activeWindowId: Int): Boolean =
             state == State.BLOCKED_TAB &&
@@ -245,7 +243,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         fun markSafeAddressSet(setAtUptimeMillis: Long) {
             check(state == State.BLOCKED_TAB)
             check(setAtUptimeMillis > 0L)
-            safeAddressSetAtUptimeMillis = setAtUptimeMillis
             state = State.SAFE_ADDRESS_SET
         }
 
@@ -3558,7 +3555,10 @@ class BlockingAccessibilityService : AccessibilityService() {
                             )
                         ) {
                             stateMachine.onPomodoroConfirmed()
-                            dismissInstantBlockCurtain(curtainGeneration)
+                            releaseWebsiteCurtainAfterMinimumNotice(
+                                curtainGeneration = curtainGeneration,
+                                curtainShownAtUptimeMillis = curtainShownAtUptimeMillis
+                            )
                         } else {
                             stateMachine.onFailureOrTimeout()
                             releaseWebsiteCurtainAfterMinimumNotice(
@@ -3570,7 +3570,10 @@ class BlockingAccessibilityService : AccessibilityService() {
 
                     else -> {
                         stateMachine.onFailureOrTimeout()
-                        evacuateWebsiteTransition(curtainGeneration)
+                        releaseWebsiteCurtainAfterMinimumNotice(
+                            curtainGeneration = curtainGeneration,
+                            curtainShownAtUptimeMillis = curtainShownAtUptimeMillis
+                        )
                     }
                 }
             } finally {
@@ -3991,7 +3994,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         transition.activatedAddressViewId = activationResult.selectedViewId
 
         delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
-        val editDeadline = SystemClock.uptimeMillis() +
+        val editDeadline = activationRequestedAt +
             WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS
         while (curtainReadyForTransition(transition) &&
             SystemClock.uptimeMillis() <= editDeadline
@@ -4237,33 +4240,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         if (matches.size == 1) return matches.single()
         matches.forEach(::recycleSafely)
         return null
-    }
-
-    private suspend fun evacuateWebsiteTransition(expectedGeneration: Long) {
-        if (curtainReadyForTabAction(
-                attached = instantBlockCurtainAttached,
-                visible = instantBlockCurtainVisible,
-                currentGeneration = instantBlockCurtainGeneration,
-                expectedGeneration = expectedGeneration
-            )
-        ) {
-            beginCurtainEvacuationBeforeHide(expectedGeneration)
-            awaitWebsiteCurtainEvacuation(expectedGeneration)
-        } else {
-            evictBlockedAppFromForeground(forceLauncherFallback = true)
-        }
-    }
-
-    private suspend fun awaitWebsiteCurtainEvacuation(expectedGeneration: Long) {
-        // The failsafe keeps requesting HOME/launcher while the browser remains a
-        // visible unsafe window. Keep its per-browser guard alive until that exact
-        // curtain is hidden or superseded; clearing it on a fixed timer could make
-        // a late browser frame look safe.
-        while (instantBlockCurtainGeneration == expectedGeneration &&
-            instantBlockCurtainVisible
-        ) {
-            delay(UNSAFE_WINDOW_RECHECK_MILLIS)
-        }
     }
 
     private fun launchPomodoroLockForWebsiteTransition(curtainGeneration: Long): Boolean {
@@ -5010,7 +4986,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         ): WebsiteSanitizationDecision = if (accepted) {
             WebsiteSanitizationDecision.SUBMIT_ADDRESS_BAR
         } else {
-            WebsiteSanitizationDecision.EVACUATE_HOME
+            WebsiteSanitizationDecision.ABORT_REDIRECT
         }
 
         internal fun afterSafeAddressSubmit(
@@ -5018,7 +4994,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         ): WebsiteSanitizationDecision = if (accepted) {
             WebsiteSanitizationDecision.AWAIT_GOOGLE_CONFIRMATION
         } else {
-            WebsiteSanitizationDecision.EVACUATE_HOME
+            WebsiteSanitizationDecision.ABORT_REDIRECT
         }
 
         internal fun afterChromiumCloseAttempt(
