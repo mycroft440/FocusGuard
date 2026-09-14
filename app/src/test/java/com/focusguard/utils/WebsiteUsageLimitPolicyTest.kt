@@ -1,6 +1,13 @@
 package com.focusguard.utils
 
+import com.focusguard.security.PasswordTargetAccessGrant
 import com.google.common.truth.Truth.assertThat
+import io.mockk.Runs
+import io.mockk.every
+import io.mockk.just
+import io.mockk.mockkObject
+import io.mockk.unmockkObject
+import io.mockk.verify
 import org.junit.Test
 
 class WebsiteUsageLimitPolicyTest {
@@ -122,6 +129,35 @@ class WebsiteUsageLimitPolicyTest {
             "news.example.com", 10_000L,
             "example.com", 15_000L
         )
+    }
+
+    @Test
+    fun `historical usage aggregation never participates in password grant lifecycle`() {
+        mockkObject(PasswordTargetAccessGrant)
+        try {
+            every {
+                PasswordTargetAccessGrant.onWebsiteCandidateObserved(any(), any())
+            } just Runs
+            every { PasswordTargetAccessGrant.isWebsiteRuleGranted(any()) } returns false
+
+            val totals = WebsiteUsageLimitPolicy.aggregateRawUsageByRule(
+                usageByIdentifier = listOf(
+                    "youtube.com" to 10_000L,
+                    "instagram.com" to 20_000L
+                ),
+                configuredRules = listOf("youtube.com")
+            )
+
+            assertThat(totals).containsExactly("youtube.com", 10_000L)
+            verify(exactly = 0) {
+                PasswordTargetAccessGrant.onWebsiteCandidateObserved(any(), any())
+            }
+            verify(exactly = 0) {
+                PasswordTargetAccessGrant.isWebsiteRuleGranted(any())
+            }
+        } finally {
+            unmockkObject(PasswordTargetAccessGrant)
+        }
     }
 
     @Test
