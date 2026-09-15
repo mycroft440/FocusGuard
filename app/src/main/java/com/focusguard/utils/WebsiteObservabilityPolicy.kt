@@ -1,5 +1,7 @@
 package com.focusguard.utils
 
+import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
+
 /**
  * Fail-closed policy for browsers that hide their current URL from Accessibility.
  *
@@ -7,6 +9,9 @@ package com.focusguard.utils
  * URL is open. A short grace period allows transient toolbar animations to settle;
  * after that, an opaque foreground browser must be blocked while website protection
  * still requires trustworthy URL observation.
+ *
+ * Browser-owned native chrome is different from an opaque web document: menus and
+ * Settings/Preferences screens intentionally have no URL bar and must stay usable.
  */
 object WebsiteObservabilityPolicy {
     const val OPAQUE_BROWSER_GRACE_MILLIS = 200L
@@ -17,10 +22,12 @@ object WebsiteObservabilityPolicy {
         addressBarObservable: Boolean,
         firstUnobservableElapsed: Long?,
         nowElapsed: Long,
-        graceMillis: Long = OPAQUE_BROWSER_GRACE_MILLIS
+        graceMillis: Long = OPAQUE_BROWSER_GRACE_MILLIS,
+        nativeBrowserUiObserved: Boolean =
+            BrowserCompatibilityStore.latestUnobservableSurfaceHasNativeUiEvidence()
     ): Boolean {
         if (!websiteProtectionRequiresObservation || !browserStillForeground) return false
-        if (addressBarObservable) return false
+        if (addressBarObservable || nativeBrowserUiObserved) return false
         val firstSeen = firstUnobservableElapsed ?: return false
         return nowElapsed - firstSeen >= graceMillis.coerceAtLeast(0L)
     }
@@ -32,13 +39,16 @@ object WebsiteObservabilityPolicy {
         addressBarObservable: Boolean,
         firstUnobservableElapsed: Long?,
         nowElapsed: Long,
-        graceMillis: Long = OPAQUE_BROWSER_GRACE_MILLIS
+        graceMillis: Long = OPAQUE_BROWSER_GRACE_MILLIS,
+        nativeBrowserUiObserved: Boolean =
+            BrowserCompatibilityStore.latestUnobservableSurfaceHasNativeUiEvidence()
     ): Boolean = shouldBlockOpaqueBrowser(
         websiteProtectionRequiresObservation = websiteProtectionRequiresObservation,
         browserStillForeground = browserStillForeground,
         addressBarObservable = addressBarObservable,
         firstUnobservableElapsed = firstUnobservableElapsed,
         nowElapsed = nowElapsed,
-        graceMillis = graceMillis
+        graceMillis = graceMillis,
+        nativeBrowserUiObserved = nativeBrowserUiObserved
     )
 }

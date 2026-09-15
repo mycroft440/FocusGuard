@@ -120,6 +120,15 @@ internal object BrowserUiCapabilityPolicy {
         "endereço da página"
     )
 
+    private val nativeSettingsLabels: Set<String> = setOf(
+        "settings",
+        "setting",
+        "preferences",
+        "preference",
+        "configurações",
+        "configuracoes"
+    )
+
     fun isStrongAddressBarResource(
         viewIdResourceName: String,
         expectedBrowserPackage: String
@@ -134,6 +143,43 @@ internal object BrowserUiCapabilityPolicy {
         return entryName in strongAddressBarEntryNames
     }
 
+    /**
+     * Detects browser-owned native chrome that intentionally has no address bar,
+     * such as Chromium/Brave's app menu and Settings/Preferences screens.
+     *
+     * This is deliberately narrower than a generic text match: evidence must be
+     * owned by the browser package and either use a settings/preference resource
+     * id or expose an exact settings label from a menu/title-like native view.
+     */
+    internal fun isNativeBrowserUiNode(
+        node: Node,
+        expectedBrowserPackage: String,
+        expectedWindowId: Int
+    ): Boolean {
+        if (!node.visible || node.editable ||
+            expectedBrowserPackage.isBlank() ||
+            node.packageName != expectedBrowserPackage ||
+            node.windowId != expectedWindowId
+        ) return false
+
+        val prefix = "$expectedBrowserPackage:id/"
+        val viewId = node.viewIdResourceName
+        if (!viewId.startsWith(prefix) || viewId.length <= prefix.length) return false
+        val entryName = viewId.substring(prefix.length).lowercase(Locale.ROOT)
+
+        if (entryName.contains("settings") || entryName.contains("preference")) return true
+
+        val nativeLabel = sequenceOf(node.text, node.contentDescription, node.hintText)
+            .mapNotNull { it?.trim()?.lowercase(Locale.ROOT)?.takeIf(String::isNotEmpty) }
+            .any { it in nativeSettingsLabels }
+        if (!nativeLabel) return false
+
+        return entryName.contains("menu") ||
+            entryName == "title" ||
+            entryName.endsWith("_title") ||
+            entryName.contains("toolbar")
+    }
+
     fun isReadOnlyAddressBarNode(
         node: Node,
         expectedBrowserPackage: String,
@@ -144,6 +190,14 @@ internal object BrowserUiCapabilityPolicy {
             node.packageName != expectedBrowserPackage ||
             node.windowId != expectedWindowId
         ) return false
+
+        // Native browser menus/settings are a legitimate no-address-bar surface.
+        // Record that fact for the opaque-browser policy, but never pretend this
+        // node is an address bar or authorize browser automation against it.
+        if (isNativeBrowserUiNode(node, expectedBrowserPackage, expectedWindowId)) {
+            BrowserCompatibilityStore.recordNativeUiEvidence(expectedBrowserPackage)
+            return false
+        }
 
         if (isStrongAddressBarResource(node.viewIdResourceName, expectedBrowserPackage)) {
             return !isDuckDuckGoNativeInput(node) || isDuckDuckGoAddressInput(node)

@@ -1,7 +1,9 @@
 package com.focusguard.accessibility.website.compatibility
 
 import android.content.Context
+import android.content.Intent
 import android.content.SharedPreferences
+import android.net.Uri
 import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -65,6 +67,7 @@ internal object BrowserCompatibilityStore {
     private const val SUPPORTED_FAILURE_THRESHOLD = 3
     private const val REDIRECTION_FAILURE_THRESHOLD = 2
     private const val REDIRECTION_FAILURE_DEBOUNCE_MILLIS = 150L
+    private const val NATIVE_UI_EVIDENCE_MAX_AGE_NANOS = 1_500_000_000L
 
     private val lock = Any()
     private var prefs: SharedPreferences? = null
@@ -72,6 +75,10 @@ internal object BrowserCompatibilityStore {
     private val pendingRedirects = mutableMapOf<String, PendingRedirect>()
     private val firstObservationFailureAt = mutableMapOf<String, Long>()
     private val lastRedirectionFailureAt = mutableMapOf<String, Long>()
+    private var verifiedHttpsHandlerPackages: Set<String> = emptySet()
+    private var lastUnobservablePackage: String? = null
+    private var lastNativeUiPackage: String? = null
+    private var lastNativeUiEvidenceAtNanos: Long = 0L
     private val _testedRecords = MutableStateFlow<List<BrowserCompatibilityRecord>>(emptyList())
 
     val testedRecords: StateFlow<List<BrowserCompatibilityRecord>> = _testedRecords.asStateFlow()
@@ -85,9 +92,22 @@ internal object BrowserCompatibilityStore {
         synchronized(lock) {
             if (prefs != null) return
             prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            verifiedHttpsHandlerPackages = queryHttpsHandlerPackages(context)
             val packageNames = prefs?.getStringSet(KEY_PACKAGES, emptySet()).orEmpty()
+            val stalePackages = linkedSetOf<String>()
             packageNames.sorted().forEach { packageName ->
-                readRecord(packageName)?.let { cache[packageName] = it }
+                val record = readRecord(packageName)
+                if (record != null && shouldRetainRecord(record, verifiedHttpsHandlerPackages)) {
+                    cache[packageName] = record
+                } else {
+                    stalePackages += packageName
+                }
+            }
+            if (stalePackages.isNotEmpty()) {
+                val retainedPackages = packageNames - stalePackages
+                val editor = prefs?.edit()?.putStringSet(KEY_PACKAGES, retainedPackages)
+                stalePackages.forEach { packageName -> editor?.remove(KEY_PREFIX + packageName) }
+                editor?.apply()
             }
             publishLocked()
         }
@@ -128,6 +148,11 @@ internal object BrowserCompatibilityStore {
         if (packageName.isBlank()) return
         synchronized(lock) {
             firstObservationFailureAt.remove(packageName)
+            if (lastUnobservablePackage == packageName) lastUnobservablePackage = null
+            if (lastNativeUiPackage == packageName) {
+                lastNativeUiPackage = null
+                lastNativeUiEvidenceAtNanos = 0L
+            }
             val previous = recordForLocked(packageName)
             val entryName = browserOwnedEntryName(packageName, viewIdResourceName)
                 ?: previous.preferredAddressBarEntryName
@@ -208,10 +233,23 @@ internal object BrowserCompatibilityStore {
      * Called after one complete address-bar lookup returned no match. Transient
      * browser UI states inside the same 200 ms observability grace do not mark a
      * browser unsupported; the failure must persist across that grace window.
+     *
+     * Speculative recognition also calls this lookup for foreground packages that
+     * have not yet been proven to be browsers. Those misses must stay side-effect
+     * free, otherwise System UI, launchers, keyboards and other native components
+     * become fake "unsupported browsers" in the settings screen.
      */
     fun recordUnobservableFailure(packageName: String) {
         if (packageName.isBlank()) return
         synchronized(lock) {
+            lastUnobservablePackage = packageName
+            val existing = cache[packageName]
+            if (packageName !in verifiedHttpsHandlerPackages &&
+                existing?.hasPositiveBrowserEvidence() != true
+            ) {
+                return
+            }
+
             val now = System.currentTimeMillis()
             val firstFailureAt = firstObservationFailureAt.getOrPut(packageName) { now }
             val previous = recordForLocked(packageName)
@@ -233,6 +271,23 @@ internal object BrowserCompatibilityStore {
                 )
             )
         }
+    }
+
+    /** Marks browser-owned native menu/settings UI without pretending it is a URL bar. */
+    fun recordNativeUiEvidence(packageName: String) {
+        if (packageName.isBlank()) return
+        synchronized(lock) {
+            lastNativeUiPackage = packageName
+            lastNativeUiEvidenceAtNanos = System.nanoTime()
+        }
+    }
+
+    fun latestUnobservableSurfaceHasNativeUiEvidence(): Boolean = synchronized(lock) {
+        val failedPackage = lastUnobservablePackage ?: return@synchronized false
+        if (failedPackage != lastNativeUiPackage) return@synchronized false
+        val observedAt = lastNativeUiEvidenceAtNanos
+        observedAt > 0L &&
+            System.nanoTime() - observedAt in 0L..NATIVE_UI_EVIDENCE_MAX_AGE_NANOS
     }
 
     /**
@@ -303,6 +358,7 @@ internal object BrowserCompatibilityStore {
         _testedRecords.value = cache.values
             .asSequence()
             .filter { it.status != BrowserCompatibilityStatus.UNKNOWN }
+            .filter { shouldRetainRecord(it, verifiedHttpsHandlerPackages) }
             .sortedWith(compareBy({ it.status.name }, { it.packageName }))
             .toList()
     }
@@ -369,6 +425,28 @@ internal object BrowserCompatibilityStore {
         .removePrefix("http://")
         .removePrefix("www.")
         .trimEnd('/')
+
+    private fun BrowserCompatibilityRecord.hasPositiveBrowserEvidence(): Boolean =
+        !preferredAddressBarEntryName.isNullOrBlank() ||
+            identificationMethod != null ||
+            activationMethod != null ||
+            writeMethod != null ||
+            submitMethod != null
+
+    internal fun shouldRetainRecord(
+        record: BrowserCompatibilityRecord,
+        verifiedHttpsHandlers: Set<String>
+    ): Boolean = record.packageName in verifiedHttpsHandlers || record.hasPositiveBrowserEvidence()
+
+    private fun queryHttpsHandlerPackages(context: Context): Set<String> = runCatching {
+        val browserIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://example.com")).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+        }
+        @Suppress("DEPRECATION")
+        context.packageManager.queryIntentActivities(browserIntent, 0)
+            .mapNotNull { it.activityInfo?.packageName }
+            .toSet()
+    }.getOrDefault(emptySet())
 
     private inline fun <reified T : Enum<T>> enumOrNull(value: String): T? =
         value.takeIf(String::isNotBlank)?.let { raw ->

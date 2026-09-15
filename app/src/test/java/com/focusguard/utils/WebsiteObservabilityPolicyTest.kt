@@ -13,7 +13,8 @@ class WebsiteObservabilityPolicyTest {
                 addressBarObservable = false,
                 firstUnobservableElapsed = 1_000L,
                 nowElapsed = 1_800L,
-                graceMillis = 800L
+                graceMillis = 800L,
+                nativeBrowserUiObserved = false
             )
         ).isTrue()
     }
@@ -26,7 +27,22 @@ class WebsiteObservabilityPolicyTest {
                 browserStillForeground = true,
                 addressBarObservable = true,
                 firstUnobservableElapsed = 1_000L,
-                nowElapsed = 9_000L
+                nowElapsed = 9_000L,
+                nativeBrowserUiObserved = false
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `native browser settings never enter opaque fail closed fallback`() {
+        assertThat(
+            WebsiteObservabilityPolicy.shouldBlockOpaqueBrowser(
+                websiteProtectionRequiresObservation = true,
+                browserStillForeground = true,
+                addressBarObservable = false,
+                firstUnobservableElapsed = 1_000L,
+                nowElapsed = 9_000L,
+                nativeBrowserUiObserved = true
             )
         ).isFalse()
     }
@@ -39,7 +55,8 @@ class WebsiteObservabilityPolicyTest {
                 browserStillForeground = true,
                 addressBarObservable = false,
                 firstUnobservableElapsed = 1_000L,
-                nowElapsed = 9_000L
+                nowElapsed = 9_000L,
+                nativeBrowserUiObserved = false
             )
         ).isFalse()
         assertThat(
@@ -48,7 +65,8 @@ class WebsiteObservabilityPolicyTest {
                 browserStillForeground = false,
                 addressBarObservable = false,
                 firstUnobservableElapsed = 1_000L,
-                nowElapsed = 9_000L
+                nowElapsed = 9_000L,
+                nativeBrowserUiObserved = false
             )
         ).isFalse()
     }
@@ -62,7 +80,8 @@ class WebsiteObservabilityPolicyTest {
                 addressBarObservable = false,
                 firstUnobservableElapsed = 1_000L,
                 nowElapsed = 1_799L,
-                graceMillis = 800L
+                graceMillis = 800L,
+                nativeBrowserUiObserved = false
             )
         ).isFalse()
     }
@@ -76,7 +95,8 @@ class WebsiteObservabilityPolicyTest {
                 addressBarObservable = false,
                 firstUnobservableElapsed = 1_000L,
                 nowElapsed = 1_800L,
-                graceMillis = 800L
+                graceMillis = 800L,
+                nativeBrowserUiObserved = false
             )
         ).isEqualTo(
             WebsiteObservabilityPolicy.shouldBlockOpaqueBrowser(
@@ -85,7 +105,8 @@ class WebsiteObservabilityPolicyTest {
                 addressBarObservable = false,
                 firstUnobservableElapsed = 1_000L,
                 nowElapsed = 1_800L,
-                graceMillis = 800L
+                graceMillis = 800L,
+                nativeBrowserUiObserved = false
             )
         )
     }
