@@ -1,4 +1,5 @@
 name: Fresh APK + AAB
+# Signed artifact workflow for the current main branch.
 
 on:
   push:
