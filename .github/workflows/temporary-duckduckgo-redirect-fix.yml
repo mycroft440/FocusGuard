@@ -22,14 +22,52 @@ jobs:
           fetch-depth: 0
 
       - name: Apply DuckDuckGo redirect fix
-        run: python .github/scripts/apply_duckduckgo_redirect_fix.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          # The two top-level transition failures share one exact indentation;
+          # two nested strict-destination failures are patched in the next step.
+          sed -i 's/transition_notice_count < 4/transition_notice_count < 2/' \
+            .github/scripts/apply_duckduckgo_redirect_fix.py
+          python .github/scripts/apply_duckduckgo_redirect_fix.py
+
+      - name: Reuse curtain for nested transition failures
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          path = Path("app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt")
+          text = path.read_text()
+          pattern = re.compile(
+              r'(?m)^(?P<indent>[ \t]*)launchOpaqueBrowserFailClosedNotice\(\n'
+              r'(?P<arg>[ \t]+)browserPackageName = browserPackageName,\n'
+              r'(?P=arg)eventUptimeMillis = SystemClock\.uptimeMillis\(\)\n'
+              r'(?P=indent)\)'
+          )
+
+          def replacement(match):
+              indent = match.group('indent')
+              arg = match.group('arg')
+              return (
+                  f"{indent}launchOpaqueBrowserFailClosedNotice(\n"
+                  f"{arg}browserPackageName = browserPackageName,\n"
+                  f"{arg}eventUptimeMillis = SystemClock.uptimeMillis(),\n"
+                  f"{arg}curtainGeneration = transition.curtainGeneration\n"
+                  f"{indent})"
+              )
+
+          text, replacements = pattern.subn(replacement, text)
+          if replacements != 2:
+              raise SystemExit(f"expected 2 nested fail-closed calls, patched {replacements}")
+          path.write_text(text)
 
       - name: Verify and commit patch
         run: |
           set -euo pipefail
           git diff --check
           grep -q "DUCKDUCKGO_PACKAGE" app/src/main/java/com/focusguard/utils/BrowserUiCapabilityPolicy.kt
-          grep -q "curtainGeneration = transition.curtainGeneration" app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+          test "$(grep -c 'curtainGeneration = transition.curtainGeneration' app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt)" -ge 4
           grep -q "DuckDuckGo legacy omnibar can be clicked" app/src/test/java/com/focusguard/utils/BrowserUiCapabilityPolicyTest.kt
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
