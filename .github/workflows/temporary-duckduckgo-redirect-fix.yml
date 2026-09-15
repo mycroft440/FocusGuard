@@ -1,0 +1,42 @@
+name: Temporary DuckDuckGo redirect fix
+
+on:
+  push:
+    branches:
+      - fix/duckduckgo-redirect-flicker
+    paths:
+      - .github/workflows/temporary-duckduckgo-redirect-fix.yml
+      - .github/scripts/apply_duckduckgo_redirect_fix.py
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout patch branch
+        uses: actions/checkout@v4
+        with:
+          ref: fix/duckduckgo-redirect-flicker
+          fetch-depth: 0
+
+      - name: Apply DuckDuckGo redirect fix
+        run: python .github/scripts/apply_duckduckgo_redirect_fix.py
+
+      - name: Verify and commit patch
+        run: |
+          set -euo pipefail
+          git diff --check
+          grep -q "DUCKDUCKGO_PACKAGE" app/src/main/java/com/focusguard/utils/BrowserUiCapabilityPolicy.kt
+          grep -q "curtainGeneration = transition.curtainGeneration" app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+          grep -q "DuckDuckGo legacy omnibar can be clicked" app/src/test/java/com/focusguard/utils/BrowserUiCapabilityPolicyTest.kt
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/focusguard/utils/BrowserUiCapabilityPolicy.kt
+          git add app/src/main/java/com/focusguard/utils/WebsiteBlocker.kt
+          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+          git add app/src/test/java/com/focusguard/utils/BrowserUiCapabilityPolicyTest.kt
+          git add docs/WEBSITE_BLOCKING.md
+          git commit -m "Fix DuckDuckGo same-tab redirect flicker"
+          git push origin HEAD:fix/duckduckgo-redirect-flicker
