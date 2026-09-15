@@ -163,9 +163,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         fun onFailureOrTimeout(): WebsiteTransitionAction {
             check(state != State.FINISHED)
             state = State.FINISHED
-            // Website blocking must never close the browser or evict it to HOME.
-            // If same-tab sanitization cannot be confirmed, release only the curtain;
-            // the still-blocked URL will be intercepted again on the next browser event.
+            // Failure is terminal for this transition, but the caller must not reveal
+            // an unsafe browser surface. It routes to FocusGuard's generic fail-closed
+            // notice whenever same-tab sanitization or destination confirmation fails.
             return WebsiteTransitionAction.HIDE_CURTAIN
         }
     }
@@ -1329,7 +1329,11 @@ class BlockingAccessibilityService : AccessibilityService() {
         ) return
 
         if (currentPackage in browserPackages && blockedWebsitesDomainSet.isNotEmpty()) {
-            val root = rootInActiveWindow ?: return
+            val root = rootInActiveWindow
+            if (root == null) {
+                handleBrowserObservability(currentPackage, addressBarObservable = false)
+                return
+            }
             val windowId = root.windowId
             val rootPackage = runCatching {
                 root.packageName?.toString().orEmpty()
@@ -1351,7 +1355,11 @@ class BlockingAccessibilityService : AccessibilityService() {
             } finally {
                 recycleSafely(root)
             }
-            val blockedCandidate = candidate?.takeIf(String::isNotBlank) ?: return
+            val blockedCandidate = candidate?.takeIf(String::isNotBlank)
+            if (blockedCandidate == null) {
+                handleBrowserObservability(currentPackage, addressBarObservable = false)
+                return
+            }
             if (WebsiteBlocker.findMatchingRule(
                     blockedCandidate,
                     blockedWebsitesDomainSet
@@ -3168,10 +3176,32 @@ class BlockingAccessibilityService : AccessibilityService() {
         opaqueBrowserFirstSeenElapsed.remove(packageName)
         opaqueBrowserVerificationScheduled.remove(packageName)
         stopWebsiteTracking()
+        if (!websiteObservationRequired() || foregroundPackageName != packageName) return
         FocusGuardLogger.log(
             "A11y",
-            "Não foi possível observar a URL em $packageName; o navegador não será bloqueado " +
-                "por inteiro"
+            "URL não observável em $packageName; bloqueando o navegador fail-closed " +
+                "enquanto a proteção de sites exige observação"
+        )
+        launchOpaqueBrowserFailClosedNotice(
+            browserPackageName = packageName,
+            eventUptimeMillis = SystemClock.uptimeMillis()
+        )
+    }
+
+    private fun launchOpaqueBrowserFailClosedNotice(
+        browserPackageName: String,
+        eventUptimeMillis: Long
+    ) {
+        FocusGuardLogger.log(
+            "A11y",
+            "Bloqueio fail-closed do navegador $browserPackageName: " +
+                "uma superfície segura não pôde ser certificada"
+        )
+        launchBlockNotice(
+            blockedPackage = null,
+            blockedDomain = null,
+            redirectBrowserPackage = null,
+            eventUptimeMillis = eventUptimeMillis
         )
     }
 
@@ -3543,13 +3573,13 @@ class BlockingAccessibilityService : AccessibilityService() {
                 if (!redirectRequested) {
                     FocusGuardLogger.log(
                         "A11y",
-                        "Navegador preservado: redirecionamento na mesma aba não pôde ser certificado " +
-                            "para $browserPackageName (API ${Build.VERSION.SDK_INT})"
+                        "Redirecionamento na mesma aba não pôde ser certificado para " +
+                            "$browserPackageName (API ${Build.VERSION.SDK_INT}); bloqueando fail-closed"
                     )
                     stateMachine.onFailureOrTimeout()
-                    releaseWebsiteCurtainAfterMinimumNotice(
-                        curtainGeneration = curtainGeneration,
-                        curtainShownAtUptimeMillis = curtainShownAtUptimeMillis
+                    launchOpaqueBrowserFailClosedNotice(
+                        browserPackageName = browserPackageName,
+                        eventUptimeMillis = SystemClock.uptimeMillis()
                     )
                     return@launch
                 }
@@ -3562,9 +3592,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                 } == true
                 if (!googleConfirmed) {
                     stateMachine.onFailureOrTimeout()
-                    releaseWebsiteCurtainAfterMinimumNotice(
-                        curtainGeneration = curtainGeneration,
-                        curtainShownAtUptimeMillis = curtainShownAtUptimeMillis
+                    launchOpaqueBrowserFailClosedNotice(
+                        browserPackageName = browserPackageName,
+                        eventUptimeMillis = SystemClock.uptimeMillis()
                     )
                     return@launch
                 }
@@ -3590,18 +3620,18 @@ class BlockingAccessibilityService : AccessibilityService() {
                             )
                         } else {
                             stateMachine.onFailureOrTimeout()
-                            releaseWebsiteCurtainAfterMinimumNotice(
-                                curtainGeneration = curtainGeneration,
-                                curtainShownAtUptimeMillis = curtainShownAtUptimeMillis
+                            launchOpaqueBrowserFailClosedNotice(
+                                browserPackageName = browserPackageName,
+                                eventUptimeMillis = SystemClock.uptimeMillis()
                             )
                         }
                     }
 
                     else -> {
                         stateMachine.onFailureOrTimeout()
-                        releaseWebsiteCurtainAfterMinimumNotice(
-                            curtainGeneration = curtainGeneration,
-                            curtainShownAtUptimeMillis = curtainShownAtUptimeMillis
+                        launchOpaqueBrowserFailClosedNotice(
+                            browserPackageName = browserPackageName,
+                            eventUptimeMillis = SystemClock.uptimeMillis()
                         )
                     }
                 }
