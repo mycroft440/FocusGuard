@@ -4069,26 +4069,39 @@ class BlockingAccessibilityService : AccessibilityService() {
             return 0L
         }
         val activationRequestedAt = SystemClock.uptimeMillis()
-        val focusResult = WebsiteBlocker.performUniqueAddressBarAction(
+        val preferClick = BrowserUiCapabilityPolicy.prefersClickAddressBarActivation(
+            browserPackageName
+        )
+        val primaryAction = if (preferClick) {
+            BrowserUiCapabilityPolicy.NodeAction.CLICK
+        } else {
+            BrowserUiCapabilityPolicy.NodeAction.FOCUS
+        }
+        val secondaryAction = if (preferClick) {
+            BrowserUiCapabilityPolicy.NodeAction.FOCUS
+        } else {
+            BrowserUiCapabilityPolicy.NodeAction.CLICK
+        }
+        val primaryResult = WebsiteBlocker.performUniqueAddressBarAction(
             root = root,
             browserPackageName = browserPackageName,
             expectedWindowId = expectedWindowId,
-            requiredAction = BrowserUiCapabilityPolicy.NodeAction.FOCUS,
+            requiredAction = primaryAction,
             httpsHandlerRecognized = isVerifiedHttpsHandler(browserPackageName)
         )
         val activationResult = if (
-            !focusResult.accepted &&
-            focusResult.status != WebsiteBlocker.AddressBarActionStatus.AMBIGUOUS
+            !primaryResult.accepted &&
+            primaryResult.status != WebsiteBlocker.AddressBarActionStatus.AMBIGUOUS
         ) {
             WebsiteBlocker.performUniqueAddressBarAction(
                 root = root,
                 browserPackageName = browserPackageName,
                 expectedWindowId = expectedWindowId,
-                requiredAction = BrowserUiCapabilityPolicy.NodeAction.CLICK,
+                requiredAction = secondaryAction,
                 httpsHandlerRecognized = isVerifiedHttpsHandler(browserPackageName)
             )
         } else {
-            focusResult
+            primaryResult
         }
         recycleSafely(root)
         if (!activationResult.accepted) return 0L

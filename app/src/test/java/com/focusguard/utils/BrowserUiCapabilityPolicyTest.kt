@@ -380,6 +380,18 @@ class BrowserUiCapabilityPolicyTest {
     }
 
     @Test
+    fun `DuckDuckGo prefers click activation while other browsers prefer focus`() {
+        assertThat(
+            BrowserUiCapabilityPolicy.prefersClickAddressBarActivation(
+                "com.duckduckgo.mobile.android"
+            )
+        ).isTrue()
+        assertThat(
+            BrowserUiCapabilityPolicy.prefersClickAddressBarActivation(BROWSER_PACKAGE)
+        ).isFalse()
+    }
+
+    @Test
     fun `API below 30 has no certifiable IME submit`() {
         assertThat(BrowserUiCapabilityPolicy.canUseImeEnter(26)).isFalse()
         assertThat(BrowserUiCapabilityPolicy.canUseImeEnter(29)).isFalse()

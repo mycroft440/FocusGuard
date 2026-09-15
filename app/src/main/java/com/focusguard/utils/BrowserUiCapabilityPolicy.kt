@@ -317,6 +317,9 @@ internal object BrowserUiCapabilityPolicy {
 
     fun canUseImeEnter(apiLevel: Int): Boolean = apiLevel >= IME_ENTER_MIN_API
 
+    fun prefersClickAddressBarActivation(expectedBrowserPackage: String): Boolean =
+        expectedBrowserPackage == DUCKDUCKGO_PACKAGE
+
     fun mayRewriteBlockedTabAfterCloseAttempt(
         closeActionAccepted: Boolean,
         originalBlockedSurfaceStillCurrent: Boolean
