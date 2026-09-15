@@ -855,7 +855,8 @@ object WebsiteBlocker {
                     BrowserUiCapabilityPolicy.NodeAction.CLICK
                 else -> null
             }
-        }.toSet()
+        }.toSet(),
+        hintText = hintText?.toString()
     )
 
     private fun BrowserUiCapabilityPolicy.NodeAction.androidActionId(): Int? = when (this) {

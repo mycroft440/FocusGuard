@@ -3190,13 +3190,48 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun launchOpaqueBrowserFailClosedNotice(
         browserPackageName: String,
-        eventUptimeMillis: Long
+        eventUptimeMillis: Long,
+        curtainGeneration: Long = 0L
     ) {
         FocusGuardLogger.log(
             "A11y",
             "Bloqueio fail-closed do navegador $browserPackageName: " +
                 "uma superfície segura não pôde ser certificada"
         )
+
+        // A website transition already owns an opaque curtain. Reusing that exact
+        // generation avoids a visible detach/attach flash when the browser cannot
+        // complete a certifiable same-tab redirect (notably DuckDuckGo omnibar UI
+        // transitions). The destination Activity acknowledges this same generation.
+        val canReuseCurtain = curtainGeneration > 0L &&
+            instantBlockCurtainAttached &&
+            instantBlockCurtainVisible &&
+            instantBlockCurtainGeneration == curtainGeneration
+        if (canReuseCurtain) {
+            awaitingSafeSurfaceGeneration = curtainGeneration
+            val launched = runCatching {
+                startActivity(
+                    createBlockNoticeIntent(
+                        context = this,
+                        strictBlock = isPomodoroStrictActive,
+                        blockedPackage = null,
+                        blockedDomain = null,
+                        redirectBrowserPackage = null,
+                        curtainGeneration = curtainGeneration,
+                        eventUptimeMillis = eventUptimeMillis
+                    )
+                )
+            }.onFailure { error ->
+                FocusGuardLogger.logError(
+                    "A11y",
+                    "Falha ao abrir superfície fail-closed com cortina existente",
+                    error
+                )
+            }.isSuccess
+            if (!launched) beginCurtainEvacuationBeforeHide(curtainGeneration)
+            return
+        }
+
         launchBlockNotice(
             blockedPackage = null,
             blockedDomain = null,
@@ -3579,7 +3614,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                     stateMachine.onFailureOrTimeout()
                     launchOpaqueBrowserFailClosedNotice(
                         browserPackageName = browserPackageName,
-                        eventUptimeMillis = SystemClock.uptimeMillis()
+                        eventUptimeMillis = SystemClock.uptimeMillis(),
+                        curtainGeneration = transition.curtainGeneration
                     )
                     return@launch
                 }
@@ -3594,7 +3630,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                     stateMachine.onFailureOrTimeout()
                     launchOpaqueBrowserFailClosedNotice(
                         browserPackageName = browserPackageName,
-                        eventUptimeMillis = SystemClock.uptimeMillis()
+                        eventUptimeMillis = SystemClock.uptimeMillis(),
+                        curtainGeneration = transition.curtainGeneration
                     )
                     return@launch
                 }
@@ -3622,7 +3659,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                             stateMachine.onFailureOrTimeout()
                             launchOpaqueBrowserFailClosedNotice(
                                 browserPackageName = browserPackageName,
-                                eventUptimeMillis = SystemClock.uptimeMillis()
+                                eventUptimeMillis = SystemClock.uptimeMillis(),
+                                curtainGeneration = transition.curtainGeneration
                             )
                         }
                     }
@@ -3631,7 +3669,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                         stateMachine.onFailureOrTimeout()
                         launchOpaqueBrowserFailClosedNotice(
                             browserPackageName = browserPackageName,
-                            eventUptimeMillis = SystemClock.uptimeMillis()
+                            eventUptimeMillis = SystemClock.uptimeMillis(),
+                            curtainGeneration = transition.curtainGeneration
                         )
                     }
                 }
@@ -4030,25 +4069,39 @@ class BlockingAccessibilityService : AccessibilityService() {
             return 0L
         }
         val activationRequestedAt = SystemClock.uptimeMillis()
-        val focusResult = WebsiteBlocker.performUniqueAddressBarAction(
+        val preferClick = BrowserUiCapabilityPolicy.prefersClickAddressBarActivation(
+            browserPackageName
+        )
+        val primaryAction = if (preferClick) {
+            BrowserUiCapabilityPolicy.NodeAction.CLICK
+        } else {
+            BrowserUiCapabilityPolicy.NodeAction.FOCUS
+        }
+        val secondaryAction = if (preferClick) {
+            BrowserUiCapabilityPolicy.NodeAction.FOCUS
+        } else {
+            BrowserUiCapabilityPolicy.NodeAction.CLICK
+        }
+        val primaryResult = WebsiteBlocker.performUniqueAddressBarAction(
             root = root,
             browserPackageName = browserPackageName,
             expectedWindowId = expectedWindowId,
-            requiredAction = BrowserUiCapabilityPolicy.NodeAction.FOCUS,
+            requiredAction = primaryAction,
             httpsHandlerRecognized = isVerifiedHttpsHandler(browserPackageName)
         )
         val activationResult = if (
-            focusResult.status == WebsiteBlocker.AddressBarActionStatus.NOT_FOUND
+            !primaryResult.accepted &&
+            primaryResult.status != WebsiteBlocker.AddressBarActionStatus.AMBIGUOUS
         ) {
             WebsiteBlocker.performUniqueAddressBarAction(
                 root = root,
                 browserPackageName = browserPackageName,
                 expectedWindowId = expectedWindowId,
-                requiredAction = BrowserUiCapabilityPolicy.NodeAction.CLICK,
+                requiredAction = secondaryAction,
                 httpsHandlerRecognized = isVerifiedHttpsHandler(browserPackageName)
             )
         } else {
-            focusResult
+            primaryResult
         }
         recycleSafely(root)
         if (!activationResult.accepted) return 0L
