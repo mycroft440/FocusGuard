@@ -72,9 +72,7 @@ private fun BrowserList(
     }
 
     Column {
-        records.forEach { record ->
-            BrowserCompatibilityRow(record)
-        }
+        records.forEach { record -> BrowserCompatibilityRow(record) }
     }
 }
 
@@ -96,24 +94,14 @@ private fun BrowserCompatibilityRow(record: BrowserCompatibilityRecord) {
         shape = RoundedCornerShape(14.dp),
         border = BorderStroke(1.dp, CardBorder)
     ) {
-        Column(
+        Text(
+            text = label,
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 13.dp)
-        ) {
-            Text(
-                text = label,
-                fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            if (label != record.packageName) {
-                Text(
-                    text = record.packageName,
-                    fontSize = 12.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
+                .padding(horizontal = 16.dp, vertical = 13.dp),
+            fontSize = 16.sp,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface
+        )
     }
 }
