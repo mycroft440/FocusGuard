@@ -285,6 +285,10 @@ internal object BrowserCompatibilityStore {
         cache[packageName] ?: BrowserCompatibilityRecord(packageName = packageName)
 
     private fun saveLocked(record: BrowserCompatibilityRecord) {
+        val previous = cache[record.packageName]
+        if (previous != null && previous.copy(updatedAtMillis = record.updatedAtMillis) == record) {
+            return
+        }
         cache[record.packageName] = record
         val targetPrefs = prefs ?: return publishLocked()
         val packages = targetPrefs.getStringSet(KEY_PACKAGES, emptySet()).orEmpty().toMutableSet()
