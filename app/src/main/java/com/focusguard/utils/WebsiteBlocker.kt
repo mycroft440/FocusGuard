@@ -6,6 +6,8 @@ import android.os.Bundle
 import android.text.InputType
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.focusguard.accessibility.website.redirection.AddressBarRedirectionActions
+import com.focusguard.accessibility.website.redirection.ClipboardPasteFallback
 import com.focusguard.data.PredefinedApps
 import com.focusguard.data.PredefinedWebsites
 import com.focusguard.security.PasswordTargetAccessGrant
@@ -741,14 +743,43 @@ object WebsiteBlocker {
                 textPredicate = textPredicate,
                 httpsHandlerRecognized = httpsHandlerRecognized
             )
-            val selectedIndex = selection.index ?: return AddressBarActionResult(
-                status = when (selection.status) {
-                    BrowserUiCapabilityPolicy.SelectionStatus.AMBIGUOUS ->
-                        AddressBarActionStatus.AMBIGUOUS
-                    else -> AddressBarActionStatus.NOT_FOUND
+            val selectedIndex = selection.index
+            if (selectedIndex == null) {
+                if (selection.status == BrowserUiCapabilityPolicy.SelectionStatus.AMBIGUOUS) {
+                    return AddressBarActionResult(AddressBarActionStatus.AMBIGUOUS)
                 }
-            )
+                return when (requiredAction) {
+                    BrowserUiCapabilityPolicy.NodeAction.SET_TEXT -> attemptPasteFallback(
+                        root = root,
+                        browserPackageName = browserPackageName,
+                        expectedWindowId = expectedWindowId,
+                        arguments = arguments,
+                        httpsHandlerRecognized = httpsHandlerRecognized
+                    )
+                    BrowserUiCapabilityPolicy.NodeAction.IME_ENTER -> attemptSubmitFallback(
+                        root = root,
+                        browserPackageName = browserPackageName,
+                        expectedWindowId = expectedWindowId,
+                        textPredicate = textPredicate,
+                        httpsHandlerRecognized = httpsHandlerRecognized
+                    )
+                    else -> AddressBarActionResult(AddressBarActionStatus.NOT_FOUND)
+                }
+            }
+
             val selected = nodes[selectedIndex]
+            if (requiredAction == BrowserUiCapabilityPolicy.NodeAction.SET_TEXT) {
+                val selectionResult = AddressBarRedirectionActions.selectAll(
+                    root = root,
+                    browserPackageName = browserPackageName,
+                    expectedWindowId = expectedWindowId,
+                    httpsHandlerRecognized = httpsHandlerRecognized
+                )
+                if (selectionResult.status == AddressBarRedirectionActions.Status.AMBIGUOUS) {
+                    return AddressBarActionResult(AddressBarActionStatus.AMBIGUOUS)
+                }
+            }
+
             val accepted = if (
                 requiredAction == BrowserUiCapabilityPolicy.NodeAction.FOCUS &&
                 selected.isFocused
@@ -756,22 +787,113 @@ object WebsiteBlocker {
                 true
             } else {
                 val androidAction = requiredAction.androidActionId()
-                    ?: return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+                if (androidAction == null) {
+                    return when (requiredAction) {
+                        BrowserUiCapabilityPolicy.NodeAction.IME_ENTER -> attemptSubmitFallback(
+                            root = root,
+                            browserPackageName = browserPackageName,
+                            expectedWindowId = expectedWindowId,
+                            textPredicate = textPredicate,
+                            httpsHandlerRecognized = httpsHandlerRecognized
+                        )
+                        else -> AddressBarActionResult(AddressBarActionStatus.REJECTED)
+                    }
+                }
                 runCatching { selected.performAction(androidAction, arguments) }
                     .getOrDefault(false)
             }
-            AddressBarActionResult(
-                status = if (accepted) {
-                    AddressBarActionStatus.ACCEPTED
-                } else {
-                    AddressBarActionStatus.REJECTED
-                },
-                selectedViewId = selected.viewIdResourceName
-            )
+
+            if (accepted) {
+                return AddressBarActionResult(
+                    status = AddressBarActionStatus.ACCEPTED,
+                    selectedViewId = selected.viewIdResourceName
+                )
+            }
+
+            when (requiredAction) {
+                BrowserUiCapabilityPolicy.NodeAction.SET_TEXT -> attemptPasteFallback(
+                    root = root,
+                    browserPackageName = browserPackageName,
+                    expectedWindowId = expectedWindowId,
+                    arguments = arguments,
+                    httpsHandlerRecognized = httpsHandlerRecognized
+                )
+                BrowserUiCapabilityPolicy.NodeAction.IME_ENTER -> attemptSubmitFallback(
+                    root = root,
+                    browserPackageName = browserPackageName,
+                    expectedWindowId = expectedWindowId,
+                    textPredicate = textPredicate,
+                    httpsHandlerRecognized = httpsHandlerRecognized
+                )
+                else -> AddressBarActionResult(
+                    status = AddressBarActionStatus.REJECTED,
+                    selectedViewId = selected.viewIdResourceName
+                )
+            }
         } finally {
             nodes.forEach(::recycleSafely)
         }
     }
+
+    private fun attemptPasteFallback(
+        root: AccessibilityNodeInfo,
+        browserPackageName: String,
+        expectedWindowId: Int,
+        arguments: Bundle?,
+        httpsHandlerRecognized: Boolean
+    ): AddressBarActionResult {
+        val replacement = arguments?.getCharSequence(
+            AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE
+        )?.toString()?.takeIf(String::isNotBlank)
+            ?: return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+
+        return ClipboardPasteFallback.pasteSafely(replacement) {
+            AddressBarRedirectionActions.paste(
+                root = root,
+                browserPackageName = browserPackageName,
+                expectedWindowId = expectedWindowId,
+                httpsHandlerRecognized = httpsHandlerRecognized
+            )
+        }.toLegacyAddressBarActionResult()
+    }
+
+    private fun attemptSubmitFallback(
+        root: AccessibilityNodeInfo,
+        browserPackageName: String,
+        expectedWindowId: Int,
+        textPredicate: ((String?) -> Boolean)?,
+        httpsHandlerRecognized: Boolean
+    ): AddressBarActionResult {
+        val announced = AddressBarRedirectionActions.submitAnnouncedEditorAction(
+            root = root,
+            browserPackageName = browserPackageName,
+            expectedWindowId = expectedWindowId,
+            textPredicate = textPredicate,
+            httpsHandlerRecognized = httpsHandlerRecognized
+        )
+        if (announced.status == AddressBarRedirectionActions.Status.ACCEPTED ||
+            announced.status == AddressBarRedirectionActions.Status.AMBIGUOUS
+        ) {
+            return announced.toLegacyAddressBarActionResult()
+        }
+
+        return AddressBarRedirectionActions.clickCertifiedGoButton(
+            root = root,
+            browserPackageName = browserPackageName,
+            expectedWindowId = expectedWindowId
+        ).toLegacyAddressBarActionResult()
+    }
+
+    private fun AddressBarRedirectionActions.Result.toLegacyAddressBarActionResult(): AddressBarActionResult =
+        AddressBarActionResult(
+            status = when (status) {
+                AddressBarRedirectionActions.Status.ACCEPTED -> AddressBarActionStatus.ACCEPTED
+                AddressBarRedirectionActions.Status.NOT_FOUND -> AddressBarActionStatus.NOT_FOUND
+                AddressBarRedirectionActions.Status.AMBIGUOUS -> AddressBarActionStatus.AMBIGUOUS
+                AddressBarRedirectionActions.Status.REJECTED -> AddressBarActionStatus.REJECTED
+            },
+            selectedViewId = selectedViewId
+        )
 
     private fun collectSemanticActionAddressBarNodes(
         node: AccessibilityNodeInfo,
