@@ -377,7 +377,7 @@ internal object BrowserUiCapabilityPolicy {
                 value == label ||
                     value.startsWith("$label,") ||
                     value.startsWith("$label.") ||
-                    value.startsWith("$label " )
+                    value.startsWith("$label ")
             }
         }
     }
