@@ -41,16 +41,13 @@ internal class WebsiteRedirectionCoordinator(
     suspend fun redirect(): Outcome {
         var attempt = 1
         while (attempt <= WebsiteRedirectionPlan.MAX_SAME_TAB_ATTEMPTS) {
-            if (runAttempt()?.let { method ->
-                    onPhase(WebsiteRedirectionPhase.VERIFY_DESTINATION)
-                    if (verifyDestination()) {
-                        onPhase(WebsiteRedirectionPhase.REDIRECT_CONFIRMED)
-                        return Outcome.Redirected(attempt, method)
-                    }
-                    false
-                } == true
-            ) {
-                error("unreachable")
+            val submissionMethod = runAttempt()
+            if (submissionMethod != null) {
+                onPhase(WebsiteRedirectionPhase.VERIFY_DESTINATION)
+                if (verifyDestination()) {
+                    onPhase(WebsiteRedirectionPhase.REDIRECT_CONFIRMED)
+                    return Outcome.Redirected(attempt, submissionMethod)
+                }
             }
 
             if (!WebsiteRedirectionPlan.canRetry(attempt)) break
