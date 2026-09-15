@@ -64,7 +64,7 @@ internal object WebsiteIdentificationEngine {
                 evidence += WebsiteIdentificationLayer.FIELD_SEMANTICS
             }
             return WebsiteIdentificationResult(
-                status = if (url != null || rawText.isNotBlank()) {
+                status = if (url != null || !rawText.isNullOrBlank()) {
                     WebsiteIdentificationStatus.IDENTIFIED
                 } else {
                     WebsiteIdentificationStatus.ADDRESS_BAR_OBSERVABLE
