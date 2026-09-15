@@ -7,7 +7,7 @@ import java.util.Locale
  *
  * Read-only observation deliberately accepts more evidence than UI automation.
  * A node can help identify/read an address bar without ever being authorized for
- * focus, selection, text replacement, paste, submission or tab closing.
+ * focus, text replacement, submission or tab closing.
  */
 internal object BrowserUiCapabilityPolicy {
 
@@ -17,9 +17,7 @@ internal object BrowserUiCapabilityPolicy {
 
     enum class NodeAction {
         FOCUS,
-        SET_SELECTION,
         SET_TEXT,
-        PASTE,
         IME_ENTER,
         LONG_CLICK,
         CLICK
@@ -343,12 +341,8 @@ internal object BrowserUiCapabilityPolicy {
     private fun supports(node: Node, action: NodeAction): Boolean = when (action) {
         NodeAction.FOCUS -> node.focused ||
             (node.focusable && NodeAction.FOCUS in node.actions)
-        NodeAction.SET_SELECTION -> node.editable && node.focused &&
-            NodeAction.SET_SELECTION in node.actions
         NodeAction.SET_TEXT -> node.editable && node.focused &&
             NodeAction.SET_TEXT in node.actions
-        NodeAction.PASTE -> node.editable && node.focused &&
-            NodeAction.PASTE in node.actions
         NodeAction.IME_ENTER -> node.editable && node.focused &&
             NodeAction.IME_ENTER in node.actions
         NodeAction.LONG_CLICK -> NodeAction.LONG_CLICK in node.actions
@@ -363,9 +357,7 @@ internal object BrowserUiCapabilityPolicy {
             entryName(node) in editorEntryNames -> 30
             else -> 20
         }
-        NodeAction.SET_SELECTION,
         NodeAction.SET_TEXT,
-        NodeAction.PASTE,
         NodeAction.IME_ENTER -> if (entryName(node) in editorEntryNames) 50 else 30
         NodeAction.CLICK -> 40
         NodeAction.LONG_CLICK -> 30
