@@ -4,6 +4,8 @@ import android.os.Build
 import android.os.Bundle
 import android.text.InputType
 import android.view.accessibility.AccessibilityNodeInfo
+import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
+import com.focusguard.accessibility.website.compatibility.BrowserSubmitMethod
 import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.focusguard.utils.WebsiteBlocker
 import java.util.Locale
@@ -134,28 +136,39 @@ internal object AddressBarRedirectionActions {
             root, browserPackageName, expectedWindowId, httpsHandlerRecognized
         )
         return try {
-            val candidates = nodes.filter { node ->
-                val fact = runCatching { node.toFact() }.getOrNull() ?: return@filter false
-                node.isEditable && node.isFocused &&
+            val preferredEntryName = BrowserCompatibilityStore
+                .preferredAddressBarEntryName(browserPackageName)
+            val candidates = nodes.mapNotNull { node ->
+                val fact = runCatching { node.toFact() }.getOrNull() ?: return@mapNotNull null
+                val valid = node.isEditable && node.isFocused &&
                     BrowserUiCapabilityPolicy.isActionableAddressBarNode(
                         fact, browserPackageName, expectedWindowId, httpsHandlerRecognized
                     ) &&
                     (textPredicate == null || textPredicate(node.text?.toString())) &&
                     node.actionList.count(::isCertifiedEditorAction) == 1
+                if (!valid) return@mapNotNull null
+                val entryName = node.viewIdResourceName.orEmpty().substringAfter(":id/", "")
+                val cachedBonus = if (entryName == preferredEntryName) 100 else 0
+                node to (editorRank(node.viewIdResourceName.orEmpty()) + cachedBonus)
             }
-            when (candidates.size) {
-                0 -> Result(Status.NOT_FOUND)
-                1 -> {
-                    val selected = candidates.single()
-                    val action = selected.actionList.single(::isCertifiedEditorAction)
-                    Result(
-                        if (runCatching { selected.performAction(action.id) }.getOrDefault(false))
-                            Status.ACCEPTED else Status.REJECTED,
-                        selected.viewIdResourceName
-                    )
-                }
-                else -> Result(Status.AMBIGUOUS)
+            if (candidates.isEmpty()) return Result(Status.NOT_FOUND)
+            val bestRank = candidates.maxOf { it.second }
+            val winners = candidates.filter { it.second == bestRank }
+            if (winners.size != 1) return Result(Status.AMBIGUOUS)
+            val selected = winners.single().first
+            val action = selected.actionList.single(::isCertifiedEditorAction)
+            val accepted = runCatching { selected.performAction(action.id) }.getOrDefault(false)
+            if (accepted) {
+                BrowserCompatibilityStore.recordSubmitAccepted(
+                    packageName = browserPackageName,
+                    viewIdResourceName = selected.viewIdResourceName,
+                    method = BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION
+                )
             }
+            Result(
+                if (accepted) Status.ACCEPTED else Status.REJECTED,
+                selected.viewIdResourceName
+            )
         } finally {
             nodes.forEach(::recycleSafely)
         }
@@ -185,11 +198,18 @@ internal object AddressBarRedirectionActions {
                 0 -> Result(Status.NOT_FOUND)
                 1 -> {
                     val selected = candidates.single()
+                    val accepted = runCatching {
+                        selected.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    }.getOrDefault(false)
+                    if (accepted) {
+                        BrowserCompatibilityStore.recordSubmitAccepted(
+                            packageName = browserPackageName,
+                            viewIdResourceName = null,
+                            method = BrowserSubmitMethod.CERTIFIED_GO_BUTTON
+                        )
+                    }
                     Result(
-                        if (runCatching {
-                                selected.performAction(AccessibilityNodeInfo.ACTION_CLICK)
-                            }.getOrDefault(false)
-                        ) Status.ACCEPTED else Status.REJECTED,
+                        if (accepted) Status.ACCEPTED else Status.REJECTED,
                         selected.viewIdResourceName
                     )
                 }
@@ -241,6 +261,8 @@ internal object AddressBarRedirectionActions {
             root, browserPackageName, expectedWindowId, httpsHandlerRecognized
         )
         return try {
+            val preferredEntryName = BrowserCompatibilityStore
+                .preferredAddressBarEntryName(browserPackageName)
             val candidates = nodes.mapNotNull { node ->
                 val fact = runCatching { node.toFact() }.getOrNull() ?: return@mapNotNull null
                 if (!node.isEditable || !node.isFocused ||
@@ -248,7 +270,13 @@ internal object AddressBarRedirectionActions {
                     !BrowserUiCapabilityPolicy.isActionableAddressBarNode(
                         fact, browserPackageName, expectedWindowId, httpsHandlerRecognized
                     )
-                ) null else node to editorRank(node.viewIdResourceName.orEmpty())
+                ) {
+                    null
+                } else {
+                    val entryName = node.viewIdResourceName.orEmpty().substringAfter(":id/", "")
+                    val cachedBonus = if (entryName == preferredEntryName) 100 else 0
+                    node to (editorRank(node.viewIdResourceName.orEmpty()) + cachedBonus)
+                }
             }
             if (candidates.isEmpty()) return Result(Status.NOT_FOUND)
             val bestRank = candidates.maxOf { it.second }
@@ -275,7 +303,10 @@ internal object AddressBarRedirectionActions {
     ): MutableList<AccessibilityNodeInfo> {
         if (!rootMatches(root, browserPackageName, expectedWindowId)) return mutableListOf()
         val output = mutableListOf<AccessibilityNodeInfo>()
-        BrowserUiCapabilityPolicy.strongAddressBarEntryNames.forEach { entry ->
+        BrowserCompatibilityStore.prioritizeAddressBarEntryNames(
+            packageName = browserPackageName,
+            defaults = BrowserUiCapabilityPolicy.strongAddressBarEntryNames
+        ).forEach { entry ->
             output += runCatching {
                 root.findAccessibilityNodeInfosByViewId("$browserPackageName:id/$entry")
             }.getOrDefault(emptyList())
