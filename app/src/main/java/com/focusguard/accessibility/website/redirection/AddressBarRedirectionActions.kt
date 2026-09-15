@@ -22,6 +22,17 @@ internal object AddressBarRedirectionActions {
         val accepted: Boolean get() = status == Status.ACCEPTED
     }
 
+    /**
+     * A certified redirect value is enough to keep submission fallbacks eligible
+     * after a browser collapses editor focus in response to an accepted no-op.
+     * Without that exact-text proof, focus remains mandatory.
+     */
+    internal fun canUseEditorForCertifiedSubmission(
+        editable: Boolean,
+        focused: Boolean,
+        textCertified: Boolean
+    ): Boolean = editable && (focused || textCertified)
+
     private val certifiedEditorActionLabels = setOf(
         "go", "ir", "navigate", "navegar", "enter", "search", "pesquisar", "done",
         "concluído", "concluido"
@@ -70,6 +81,12 @@ internal object AddressBarRedirectionActions {
     ): Result = legacyAction(root, browserPackageName, expectedWindowId, action,
         httpsHandlerRecognized = httpsHandlerRecognized)
 
+    /**
+     * The historical name is retained because callers use this as their submitter
+     * guard. With no text predicate it still requires focus. When an exact redirect
+     * predicate is supplied, an unfocused editor is accepted only while it still
+     * contains that certified replacement address.
+     */
     fun hasFocusedAddressEditor(
         root: AccessibilityNodeInfo,
         browserPackageName: String,
@@ -82,10 +99,16 @@ internal object AddressBarRedirectionActions {
         return try {
             nodes.count { node ->
                 val fact = node.toFact()
-                fact.editable && fact.focused &&
+                val textMatches = textPredicate == null || textPredicate(fact.text)
+                val exactTextCertified = textPredicate != null && textMatches
+                canUseEditorForCertifiedSubmission(
+                    editable = fact.editable,
+                    focused = fact.focused,
+                    textCertified = exactTextCertified
+                ) &&
                     BrowserUiCapabilityPolicy.isActionableAddressBarNode(
                         fact, browserPackageName, expectedWindowId, httpsHandlerRecognized
-                    ) && (textPredicate == null || textPredicate(fact.text))
+                    ) && textMatches
             }.let { count -> if (requireUnique) count == 1 else count > 0 }
         } finally { nodes.forEach(::recycleSafely) }
     }
@@ -170,11 +193,17 @@ internal object AddressBarRedirectionActions {
                 .preferredAddressBarEntryName(browserPackageName)
             val candidates = nodes.mapNotNull { node ->
                 val fact = runCatching { node.toFact() }.getOrNull() ?: return@mapNotNull null
-                val valid = node.isEditable && node.isFocused &&
+                val textMatches = textPredicate == null || textPredicate(node.text?.toString())
+                val exactTextCertified = textPredicate != null && textMatches
+                val valid = canUseEditorForCertifiedSubmission(
+                    editable = node.isEditable,
+                    focused = node.isFocused,
+                    textCertified = exactTextCertified
+                ) &&
                     BrowserUiCapabilityPolicy.isActionableAddressBarNode(
                         fact, browserPackageName, expectedWindowId, httpsHandlerRecognized
                     ) &&
-                    (textPredicate == null || textPredicate(node.text?.toString())) &&
+                    textMatches &&
                     node.actionList.count(::isCertifiedEditorAction) == 1
                 if (!valid) return@mapNotNull null
                 val entryName = node.viewIdResourceName.orEmpty().substringAfter(":id/", "")
