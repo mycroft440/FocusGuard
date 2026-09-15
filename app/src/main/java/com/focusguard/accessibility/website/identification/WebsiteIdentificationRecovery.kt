@@ -71,7 +71,8 @@ internal class WebsiteIdentificationRecovery(
             }
         }
         delay(160L)
-        return read().also { remember(it, lastAccepted) }
+        val finalResult = read().also { remember(it, lastAccepted) }
+        return BrowserSiteOnlyBlockingPolicy.applyAfterRecovery(finalResult)
     }
 
     private fun resolved(result: WebsiteIdentificationResult): Boolean =
