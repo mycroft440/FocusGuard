@@ -17,7 +17,9 @@ jobs:
           ref: ${{ github.ref_name }}
 
       - name: Apply report-driven patch
-        run: python .github/scripts/apply_browser_redirection_report.py
+        run: |
+          python .github/scripts/apply_browser_redirection_report.py
+          python .github/scripts/fix_browser_redirection_patch.py
 
       - name: Check patch formatting
         run: git diff --check
@@ -35,5 +37,5 @@ jobs:
             app/src/main/java/com/focusguard/utils/WebsiteBlocker.kt \
             app/src/test/java/com/focusguard/utils/BrowserSemanticActionPolicyTest.kt \
             docs/WEBSITE_BLOCKING.md
-          git commit -m "Harden Android browser same-tab redirection"
+          git commit -m "Fix semantic browser action validation"
           git push origin HEAD:${{ github.ref_name }}
