@@ -122,15 +122,12 @@ internal object WebsiteIdentificationEngine {
             )
         }
         val evidence = linkedSetOf(WebsiteIdentificationLayer.BROWSER_PACKAGE_AND_WINDOW)
-        val strongId = hasStrongAddressBarId(root, browserPackageName, expectedWindowId)
-        if (strongId) evidence += WebsiteIdentificationLayer.STRONG_ADDRESS_BAR_ID
-
         val url = WebsiteBlocker.extractUrlFromRoot(
             root = root,
             browserPackageName = browserPackageName,
             httpsHandlerRecognized = httpsHandlerRecognized
         )
-        val rawText = WebsiteBlocker.extractAddressBarTextFromRoot(
+        val rawText = url ?: WebsiteBlocker.extractAddressBarTextFromRoot(
             root = root,
             browserPackageName = browserPackageName,
             httpsHandlerRecognized = httpsHandlerRecognized
@@ -142,7 +139,7 @@ internal object WebsiteIdentificationEngine {
         )
 
         if (!rawText.isNullOrBlank()) evidence += WebsiteIdentificationLayer.ADDRESS_BAR_TEXT
-        if (observable && !strongId) evidence += WebsiteIdentificationLayer.FIELD_SEMANTICS
+        if (observable) evidence += WebsiteIdentificationLayer.FIELD_SEMANTICS
 
         return WebsiteIdentificationResult(
             status = when {

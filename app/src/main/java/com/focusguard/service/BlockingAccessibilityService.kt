@@ -34,6 +34,14 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
+import com.focusguard.accessibility.website.identification.WebsiteIdentificationRecovery
+import com.focusguard.accessibility.website.identification.WebsiteIdentificationStatus
+import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
+import com.focusguard.accessibility.website.compatibility.BrowserActivationMethod
+import com.focusguard.accessibility.website.compatibility.BrowserWriteMethod
+import com.focusguard.accessibility.website.compatibility.BrowserSubmitMethod
+import com.focusguard.accessibility.website.redirection.AddressBarRedirectionActions
+import com.focusguard.accessibility.website.redirection.ClipboardPasteFallback
 import com.focusguard.MainActivity
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
@@ -593,6 +601,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private val opaqueBrowserFirstSeenElapsed = mutableMapOf<String, Long>()
     private val opaqueBrowserWindowIds = mutableMapOf<String, Int>()
     private val opaqueBrowserVerificationScheduled = mutableSetOf<String>()
+    private val opaqueBrowserRecoveriesRunning = mutableSetOf<String>()
     private val websiteBlockTransitionCounter = AtomicLong(0L)
     private val websiteBlockTransitionGuard = WebsiteBlockTransitionGuard()
 
@@ -1415,6 +1424,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             opaqueBrowserFirstSeenElapsed.clear()
             opaqueBrowserWindowIds.clear()
             opaqueBrowserVerificationScheduled.clear()
+            opaqueBrowserRecoveriesRunning.clear()
             isBlockingSessionActive = false
             focusModeSessionActive = false
             focusModeFallbackActive = false
@@ -1654,6 +1664,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                                 opaqueBrowserFirstSeenElapsed.clear()
                                 opaqueBrowserWindowIds.clear()
                                 opaqueBrowserVerificationScheduled.clear()
+                                opaqueBrowserRecoveriesRunning.clear()
                             }
                             activeAppLimitsByPackage = activeAppLimits.associateBy { it.packageName }
                             hasActiveAppLimits = activeAppLimits.isNotEmpty()
@@ -2826,11 +2837,12 @@ class BlockingAccessibilityService : AccessibilityService() {
                 !curtainReadyForTransition(current) ||
                 !currentBrowserSurfaceIsSafeGoogle(current)
             ) return@launch
-            websiteBlockTransitionGuard.confirmGoogle(
-                browserPackageName = current.browserPackageName,
-                windowId = current.expectedWindowId,
-                eventUptimeMillis = eventUptimeMillis
-            )
+            if (websiteBlockTransitionGuard.confirmGoogle(
+                    browserPackageName = current.browserPackageName,
+                    windowId = current.expectedWindowId,
+                    eventUptimeMillis = eventUptimeMillis
+                )
+            ) BrowserCompatibilityStore.recordNavigationConfirmed(current.browserPackageName)
         }
     }
 
@@ -2842,6 +2854,11 @@ class BlockingAccessibilityService : AccessibilityService() {
             transition.expectedWindowId
         ) ?: return false
         val currentAddress = try {
+            if (BrowserSurfaceInspector.inspect(root, transition.browserPackageName) != BrowserSurfaceInspector.Surface.WEB_CONTENT ||
+                AddressBarRedirectionActions.hasFocusedAddressEditor(root, transition.browserPackageName,
+                    transition.expectedWindowId, isVerifiedHttpsHandler(transition.browserPackageName),
+                    requireUnique = false)
+            ) return false
             WebsiteBlocker.extractUrlFromRoot(
                 root,
                 transition.browserPackageName,
@@ -3131,12 +3148,17 @@ class BlockingAccessibilityService : AccessibilityService() {
         opaqueBrowserFirstSeenElapsed.remove(packageName)
         opaqueBrowserWindowIds.remove(packageName)
         opaqueBrowserVerificationScheduled.remove(packageName)
+        opaqueBrowserRecoveriesRunning.remove(packageName)
     }
 
     private fun handleBrowserObservability(
         packageName: String,
         addressBarObservable: Boolean
     ): Boolean {
+        if (packageName in opaqueBrowserRecoveriesRunning &&
+            foregroundPackageName == packageName && websiteObservationRequired() &&
+            !websiteBlockTransitionGuard.isActive(packageName)
+        ) return false
         if (!websiteObservationRequired() || addressBarObservable ||
             foregroundPackageName != packageName ||
             websiteBlockTransitionGuard.isActive(packageName)
@@ -3177,19 +3199,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
         val nowElapsed = SystemClock.elapsedRealtime()
         val firstSeen = opaqueBrowserFirstSeenElapsed.getOrPut(packageName) { nowElapsed }
-        if (WebsiteObservabilityPolicy.shouldBlockOpaqueBrowser(
-                websiteProtectionRequiresObservation = true,
-                browserStillForeground = foregroundPackageName == packageName,
-                addressBarObservable = false,
-                firstUnobservableElapsed = firstSeen,
-                nowElapsed = nowElapsed,
-                nativeBrowserUiObserved = false
-            )
-        ) {
-            blockOpaqueBrowser(packageName)
-            return true
-        }
-
         if (opaqueBrowserVerificationScheduled.add(packageName)) {
             val delayMillis = (
                 WebsiteObservabilityPolicy.OPAQUE_BROWSER_GRACE_MILLIS -
@@ -3207,12 +3216,55 @@ class BlockingAccessibilityService : AccessibilityService() {
         expectedFirstSeen: Long,
         expectedWindowId: Int
     ) {
-        // A callback from a previous window must not cancel a newer observation.
-        if (opaqueBrowserFirstSeenElapsed[packageName] != expectedFirstSeen ||
-            opaqueBrowserWindowIds[packageName] != expectedWindowId
-        ) return
-        opaqueBrowserVerificationScheduled.remove(packageName)
-        handleBrowserObservability(packageName, addressBarObservable = false)
+        fun observationCurrent(): Boolean =
+            opaqueBrowserFirstSeenElapsed[packageName] == expectedFirstSeen &&
+                opaqueBrowserWindowIds[packageName] == expectedWindowId &&
+                foregroundPackageName == packageName && websiteObservationRequired() &&
+                !websiteBlockTransitionGuard.isActive(packageName)
+        if (!observationCurrent() || !opaqueBrowserRecoveriesRunning.add(packageName)) return
+        // Keep the scheduled marker until recovery ends: content events must not
+        // launch overlapping attempts or block while alternatives are in flight.
+        scope.launch(Dispatchers.Main.immediate) {
+            try {
+                val identification = WebsiteIdentificationRecovery(
+                    browserPackage = packageName,
+                    windowId = expectedWindowId,
+                    httpsHandlerRecognized = isVerifiedHttpsHandler(packageName),
+                    rootProvider = { activeBrowserRoot(packageName, expectedWindowId) },
+                    isCurrent = ::observationCurrent
+                ).recover()
+                if (!observationCurrent()) return@launch
+                val candidate = identification.bestCandidate
+                if (candidate != null) {
+                    clearOpaqueBrowserObservation(packageName)
+                    val blocked = immediateWebsiteBlockTarget(
+                        identification.rawAddressText, identification.urlCandidate, blockedWebsitesDomainSet
+                    )
+                    if (blocked != null) {
+                        routeWebsiteBlockByHierarchy(packageName, expectedWindowId, candidate,
+                            SystemClock.uptimeMillis(), browserWindowIdValidated = true)
+                    } else if (identification.urlCandidate != null) {
+                        updateWebsiteTracking(identification.urlCandidate, packageName, System.currentTimeMillis())
+                    }
+                } else if (identification.webContentObserved && !identification.addressBarObservable &&
+                    identification.status != WebsiteIdentificationStatus.REJECTED_CONTEXT
+                ) {
+                    // Only a fresh, same-window web document after all applicable
+                    // recovery phases can reach the opaque-page protection.
+                    blockOpaqueBrowser(packageName)
+                } else {
+                    clearOpaqueBrowserObservation(packageName)
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: RuntimeException) {
+                FocusGuardLogger.logError("A11y", "Falha ao recuperar a barra de endereço", error)
+            } finally {
+                if (opaqueBrowserFirstSeenElapsed[packageName] == expectedFirstSeen &&
+                    opaqueBrowserWindowIds[packageName] == expectedWindowId
+                ) clearOpaqueBrowserObservation(packageName)
+            }
+        }
     }
 
     private fun blockOpaqueBrowser(packageName: String) {
@@ -3717,6 +3769,10 @@ class BlockingAccessibilityService : AccessibilityService() {
                     }
                 }
             } finally {
+                if (!transition.safeGoogleConfirmed.isCompleted) {
+                    BrowserCompatibilityStore.recordRedirectionFailure(browserPackageName)
+                }
+                BrowserCompatibilityStore.finishRedirection(browserPackageName)
                 websiteBlockTransitionGuard.finish(browserPackageName, transitionId)
             }
         }
@@ -3751,7 +3807,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         policy: WebsiteTabNeutralizationPolicy,
         transition: WebsiteBlockTransitionHandle
     ): Boolean {
-        if (!canUseCertifiableImeSubmit(Build.VERSION.SDK_INT)) return false
         val setRequestedAt = prepareSafeAddressBar(
             browserPackageName = browserPackageName,
             expectedWindowId = expectedWindowId,
@@ -4097,96 +4152,79 @@ class BlockingAccessibilityService : AccessibilityService() {
         transition: WebsiteBlockTransitionHandle,
         phaseStartedAtUptimeMillis: Long
     ): Long {
-        if (!curtainReadyForTransition(transition)) return 0L
-        val root = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
-        if (!policy.mayActivateBlockedAddressBar(
-                activePackageName = root.packageName?.toString().orEmpty(),
-                activeWindowId = root.windowId,
-                phaseStartedAtUptimeMillis = phaseStartedAtUptimeMillis,
-                latestWindowTransitionEventUptimeMillis =
-                    transition.latestWindowTransitionEventUptimeMillis
-            ) || !rootStillShowsDetectedBlockedTarget(root, transition)
-        ) {
-            recycleSafely(root)
-            return 0L
-        }
-        val activationRequestedAt = SystemClock.uptimeMillis()
-        val preferClick = BrowserUiCapabilityPolicy.prefersClickAddressBarActivation(
-            browserPackageName
-        )
-        val primaryAction = if (preferClick) {
-            BrowserUiCapabilityPolicy.NodeAction.CLICK
-        } else {
-            BrowserUiCapabilityPolicy.NodeAction.FOCUS
-        }
-        val secondaryAction = if (preferClick) {
-            BrowserUiCapabilityPolicy.NodeAction.FOCUS
-        } else {
-            BrowserUiCapabilityPolicy.NodeAction.CLICK
-        }
-        val primaryResult = WebsiteBlocker.performUniqueAddressBarAction(
-            root = root,
-            browserPackageName = browserPackageName,
-            expectedWindowId = expectedWindowId,
-            requiredAction = primaryAction,
-            httpsHandlerRecognized = isVerifiedHttpsHandler(browserPackageName)
-        )
-        val activationResult = if (
-            !primaryResult.accepted &&
-            primaryResult.status != WebsiteBlocker.AddressBarActionStatus.AMBIGUOUS
-        ) {
-            WebsiteBlocker.performUniqueAddressBarAction(
-                root = root,
-                browserPackageName = browserPackageName,
-                expectedWindowId = expectedWindowId,
-                requiredAction = secondaryAction,
-                httpsHandlerRecognized = isVerifiedHttpsHandler(browserPackageName)
-            )
-        } else {
-            primaryResult
-        }
-        recycleSafely(root)
-        if (!activationResult.accepted) return 0L
-        transition.activatedAddressViewId = activationResult.selectedViewId
-
-        delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
-        val editDeadline = activationRequestedAt +
-            WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS
-        while (curtainReadyForTransition(transition) &&
-            SystemClock.uptimeMillis() <= editDeadline
-        ) {
-            val editRoot = activeBrowserRoot(browserPackageName, expectedWindowId)
-            if (editRoot != null) {
-                if (!policy.mayTouchBlockedTab(
-                        activePackageName = editRoot.packageName?.toString().orEmpty(),
-                        activeWindowId = editRoot.windowId
-                    )
-                ) {
-                    recycleSafely(editRoot)
-                    return 0L
+        val https = isVerifiedHttpsHandler(browserPackageName)
+        val clickFirst = BrowserUiCapabilityPolicy.prefersClickAddressBarActivation(browserPackageName)
+        val activations = if (clickFirst) listOf(BrowserUiCapabilityPolicy.NodeAction.CLICK, BrowserUiCapabilityPolicy.NodeAction.FOCUS)
+            else listOf(BrowserUiCapabilityPolicy.NodeAction.FOCUS, BrowserUiCapabilityPolicy.NodeAction.CLICK)
+        var activated = false
+        for (action in activations) {
+            if (!curtainReadyForTransition(transition)) return 0L
+            val root = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
+            val result = try {
+                if (!policy.mayActivateBlockedAddressBar(browserPackageName, root.windowId,
+                        phaseStartedAtUptimeMillis, transition.latestWindowTransitionEventUptimeMillis) ||
+                    (!activated && !rootStillShowsDetectedBlockedTarget(root, transition)) ||
+                    BrowserSurfaceInspector.inspect(root, browserPackageName) == BrowserSurfaceInspector.Surface.NATIVE_PANEL
+                ) return 0L
+                AddressBarRedirectionActions.activate(root, browserPackageName, expectedWindowId, action, https)
+            } finally { recycleSafely(root) }
+            if (result.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L
+            activated = activated || result.accepted
+            if (result.accepted) transition.activatedAddressViewId = result.selectedViewId
+            val deadline = SystemClock.uptimeMillis() + WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS
+            var editorReady = false
+            while (curtainReadyForTransition(transition) && SystemClock.uptimeMillis() <= deadline) {
+                delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
+                val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: continue
+                editorReady = try {
+                    AddressBarRedirectionActions.hasFocusedAddressEditor(fresh, browserPackageName, expectedWindowId, https)
+                } finally { recycleSafely(fresh) }
+                if (editorReady) break
+            }
+            if (!editorReady) continue // Accepted focus/click without an editor is not success.
+            val writes = (listOfNotNull(BrowserCompatibilityStore.preferredWriteMethod(browserPackageName)) +
+                listOf(BrowserWriteMethod.SET_TEXT, BrowserWriteMethod.PASTE)).distinct()
+            for (method in writes) {
+                if (!curtainReadyForTransition(transition)) return 0L
+                if (method == BrowserWriteMethod.PASTE) {
+                    val selectionRoot = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
+                    val selection = try {
+                        AddressBarRedirectionActions.selectAll(selectionRoot, browserPackageName, expectedWindowId, https)
+                    } finally { recycleSafely(selectionRoot) }
+                    if (selection.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L
+                    if (!selection.accepted) continue // Never append the safe URL to existing text.
+                    delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
                 }
-                val arguments = Bundle().apply {
-                    putCharSequence(
-                        AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,
-                        SAFE_REDIRECT_URL
-                    )
-                }
-                val setRequestedAt = SystemClock.uptimeMillis()
-                val replaced = WebsiteBlocker.performUniqueAddressBarAction(
-                    root = editRoot,
-                    browserPackageName = browserPackageName,
-                    expectedWindowId = expectedWindowId,
-                    requiredAction = BrowserUiCapabilityPolicy.NodeAction.SET_TEXT,
-                    arguments = arguments,
-                    httpsHandlerRecognized = isVerifiedHttpsHandler(browserPackageName)
-                )
-                recycleSafely(editRoot)
-                if (replaced.accepted) {
-                    transition.editorAddressViewId = replaced.selectedViewId
-                    return setRequestedAt
+                val editRoot = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
+                val writtenAt = SystemClock.uptimeMillis()
+                val written = try {
+                    if (!policy.mayTouchBlockedTab(browserPackageName, editRoot.windowId)) return 0L
+                    when (method) {
+                        BrowserWriteMethod.SET_TEXT -> AddressBarRedirectionActions.setText(
+                            editRoot, browserPackageName, expectedWindowId, SAFE_REDIRECT_URL, https)
+                        BrowserWriteMethod.PASTE -> ClipboardPasteFallback.pasteSafely(SAFE_REDIRECT_URL) {
+                            AddressBarRedirectionActions.paste(editRoot, browserPackageName, expectedWindowId, https)
+                        }
+                    }
+                } finally { recycleSafely(editRoot) }
+                if (written.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L
+                val writeDeadline = SystemClock.uptimeMillis() + WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS
+                while (curtainReadyForTransition(transition) && SystemClock.uptimeMillis() <= writeDeadline) {
+                    delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
+                    val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: continue
+                    val verified = try {
+                        AddressBarRedirectionActions.hasFocusedAddressEditor(fresh, browserPackageName,
+                            expectedWindowId, https, ::isSafeGoogleRedirectSurface)
+                    } finally { recycleSafely(fresh) }
+                    if (verified) {
+                        transition.editorAddressViewId = written.selectedViewId
+                        BrowserCompatibilityStore.recordActivationSuccess(browserPackageName, result.selectedViewId,
+                            if (action == BrowserUiCapabilityPolicy.NodeAction.CLICK) BrowserActivationMethod.CLICK else BrowserActivationMethod.FOCUS)
+                        BrowserCompatibilityStore.recordWriteSuccess(browserPackageName, written.selectedViewId, method, SAFE_REDIRECT_URL)
+                        return writtenAt
+                    }
                 }
             }
-            delay(WEBSITE_ADDRESS_BAR_ACTION_RETRY_MILLIS)
         }
         return 0L
     }
@@ -4197,39 +4235,50 @@ class BlockingAccessibilityService : AccessibilityService() {
         policy: WebsiteTabNeutralizationPolicy,
         transition: WebsiteBlockTransitionHandle
     ): Long {
-        if (!canUseCertifiableImeSubmit(Build.VERSION.SDK_INT) ||
-            !curtainReadyForTransition(transition)
-        ) return 0L
-        val submitDeadline = SystemClock.uptimeMillis() +
-            WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS
-        while (curtainReadyForTransition(transition) &&
-            SystemClock.uptimeMillis() <= submitDeadline
-        ) {
-            val root = activeBrowserRoot(browserPackageName, expectedWindowId)
-            if (root != null) {
-                if (!policy.maySubmitSafeAddress(
-                        activePackageName = root.packageName?.toString().orEmpty(),
-                        activeWindowId = root.windowId,
-                        latestWindowTransitionEventUptimeMillis =
-                            transition.latestWindowTransitionEventUptimeMillis
-                    )
-                ) {
-                    recycleSafely(root)
-                    return 0L
+        val https = isVerifiedHttpsHandler(browserPackageName)
+        val methods = (listOfNotNull(BrowserCompatibilityStore.preferredSubmitMethod(browserPackageName)) +
+            listOf(BrowserSubmitMethod.IME_ENTER, BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION,
+                BrowserSubmitMethod.CERTIFIED_GO_BUTTON)).distinct()
+        for (method in methods) {
+            if (method == BrowserSubmitMethod.IME_ENTER && !canUseCertifiableImeSubmit(Build.VERSION.SDK_INT)) continue
+            if (!curtainReadyForTransition(transition)) return 0L
+            val root = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
+            val submittedAt = SystemClock.uptimeMillis()
+            val submitted = try {
+                if (!policy.maySubmitSafeAddress(browserPackageName, root.windowId,
+                        transition.latestWindowTransitionEventUptimeMillis) ||
+                    !AddressBarRedirectionActions.hasFocusedAddressEditor(root, browserPackageName,
+                        expectedWindowId, https, ::isSafeGoogleRedirectSurface)
+                ) return 0L
+                when (method) {
+                    BrowserSubmitMethod.IME_ENTER -> AddressBarRedirectionActions.submitImeEnter(
+                        root, browserPackageName, expectedWindowId, ::isSafeGoogleRedirectSurface, https)
+                    BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION -> AddressBarRedirectionActions.submitAnnouncedEditorAction(
+                        root, browserPackageName, expectedWindowId, ::isSafeGoogleRedirectSurface, https)
+                    BrowserSubmitMethod.CERTIFIED_GO_BUTTON -> AddressBarRedirectionActions.clickCertifiedGoButton(
+                        root, browserPackageName, expectedWindowId)
                 }
-                val submitRequestedAt = SystemClock.uptimeMillis()
-                val submitted = WebsiteBlocker.performUniqueAddressBarAction(
-                    root = root,
-                    browserPackageName = browserPackageName,
-                    expectedWindowId = expectedWindowId,
-                    requiredAction = BrowserUiCapabilityPolicy.NodeAction.IME_ENTER,
-                    textPredicate = ::isSafeGoogleRedirectSurface,
-                    httpsHandlerRecognized = isVerifiedHttpsHandler(browserPackageName)
-                )
-                recycleSafely(root)
-                if (submitted.accepted) return submitRequestedAt
+            } finally { recycleSafely(root) }
+            if (submitted.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L
+            if (!submitted.accepted) {
+                delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
+                continue
             }
-            delay(WEBSITE_ADDRESS_BAR_ACTION_RETRY_MILLIS)
+            BrowserCompatibilityStore.recordSubmitAccepted(browserPackageName, submitted.selectedViewId, method)
+            websiteBlockTransitionGuard.markSanitizationRequested(browserPackageName, transition.id, submittedAt)
+            val deadline = SystemClock.uptimeMillis() + WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS
+            while (curtainReadyForTransition(transition) && SystemClock.uptimeMillis() <= deadline) {
+                if (transition.safeGoogleConfirmed.isCompleted) return submittedAt
+                delay(WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS)
+            }
+            // An accepted action can be a no-op. Try the next method only if a
+            // fresh, unique editor still contains the exact safe replacement.
+            val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
+            val stillEditing = try {
+                AddressBarRedirectionActions.hasFocusedAddressEditor(fresh, browserPackageName,
+                    expectedWindowId, https, ::isSafeGoogleRedirectSurface)
+            } finally { recycleSafely(fresh) }
+            if (!stillEditing) return submittedAt // Navigation began; never submit against another surface.
         }
         return 0L
     }

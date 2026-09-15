@@ -26,8 +26,8 @@ bloqueio combina as duas camadas nativas disponíveis no Android:
      declare `textUri` e anuncie explicitamente a ação solicitada. Ids fracos e
      descrições localizadas continuam servindo apenas para observação.
    - Sob uma cortina opaca e consumidora de toque, a neutralização substitui a
-     URL na própria aba bloqueada e a envia somente quando `ACTION_SET_TEXT` e
-     `ACTION_IME_ENTER` podem ser certificados no mesmo campo/janela. A cortina
+     URL na própria aba bloqueada e a envia somente após certificar a escrita
+     e um método de envio disponível no mesmo campo/janela. A cortina
      só é liberada depois de um evento posterior confirmar uma raiz segura do
      Google.
    - Se a primeira tentativa coincidir com uma animação/foco transitório do
@@ -36,9 +36,9 @@ bloqueio combina as duas camadas nativas disponíveis no Android:
      handles de nós de acessibilidade antigos.
    - O fluxo de site não fecha guia, não fecha navegador, não abre um segundo
      documento por `ACTION_VIEW` e não evacua para HOME. Em Android 8 a 10
-     (API 26–29), onde `ACTION_IME_ENTER` ainda não existe, o FocusGuard mantém
-     a detecção e a cortina de bloqueio, mas não finge conseguir certificar uma
-     submissão universal na mesma aba.
+     (API 26–29), ignora somente o método `ACTION_IME_ENTER` indisponível e tenta
+     a ação de envio anunciada pelo editor e o botão nativo certificado.
+     Se nenhum método aplicável comprovar o destino, mantém a proteção.
 
 ## Regras de domínio
 
@@ -166,7 +166,7 @@ Com uma sessão ativa bloqueando `example.com`, validar:
 
 ## Navegadores sem URL observável (fail-closed)
 
-Quando uma proteção de site ou um limite rígido exige conhecer a URL atual, o FocusGuard primeiro classifica a janela atual. Somente conteúdo web confirmado sem uma barra observável inicia a tolerância de 1,5 segundo. Ao terminar esse prazo, uma nova leitura precisa confirmar conteúdo web sem barra no mesmo pacote e janela antes de exibir a proteção. Uma URL identificada que corresponda a uma regra continua sendo bloqueada imediatamente, sem aguardar esse prazo.
+Quando uma proteção de site ou um limite rígido exige conhecer a URL atual, o FocusGuard primeiro classifica a janela atual. Somente conteúdo web confirmado sem uma barra observável inicia a tolerância de 1,5 segundo. Ao terminar esse prazo, executa recuperação com releituras, clique/foco em barra certificada e uma tentativa de rolar o viewport web para trás para revelar a barra recolhida. Há no máximo duas passagens, com nova leitura após cada ação. Só após esgotar as fases aplicáveis uma nova leitura pode confirmar conteúdo web sem barra no mesmo pacote/janela e exibir a proteção. Uma URL identificada que corresponda a uma regra continua sendo bloqueada imediatamente, sem aguardar esse prazo.
 
 Menus, configurações, seletor de abas, favoritos, histórico, downloads e nova aba são interfaces do navegador, não evidência de site bloqueado. A classificação usa estrutura nativa fora dos contêineres web e não reutiliza uma exceção global de outro menu, aba ou navegador. Janela de teclado, diálogo do sistema, árvore ausente ou incompleta são estados inconclusivos: isoladamente não autorizam bloquear o navegador inteiro. Eventos posteriores retomam a identificação.
 
@@ -187,3 +187,14 @@ Se a neutralização na mesma aba ainda falhar, o handoff fail-closed reutiliza 
 ## Registro desta correção
 
 Revisão estática do código, sem execução de testes, build ou validação em aparelho, conforme solicitado. A classificação distingue evidência nativa, conteúdo web e estado inconclusivo; ela não promete inspecionar superfícies que o navegador não expõe ao Android.
+
+
+## Memória do método de URL e recuperação
+
+O método de leitura, o id nativo que forneceu uma URL válida e a estratégia de recuperação que funcionou ficam persistidos por pacote do navegador. O próximo acesso prioriza essa identificação; se ela falhar, a busca completa continua na mesma leitura e aprende a alternativa bem-sucedida. Interfaces sem URL, hints, menus e ações aceitas sem resultado não comprovam identificação de URL. O endereço visitado não é salvo no perfil.
+
+A preferência de leitura é separada dos ids e métodos usados para editar a barra, evitando que um editor temporário substitua a identificação do endereço exibido. Se uma atualização mudar a interface, o perfil pode reaprender sem impedir o fallback. A recuperação tenta o método anteriormente bem-sucedido antes das outras ações, sempre na janela atual; não fecha abas, não usa Back e não digita URLs durante a identificação.
+
+No redirecionamento, aceitar um clique/foco sem produzir editor não encerra a busca: a ativação alternativa continua disponível. A substituição por texto e a colagem são tentadas em ordem aprendida, e a colagem exige seleção do texto antes de substituir. Uma nova leitura confirma o endereço seguro antes de permitir o envio. A ação IME (quando disponível), a ação anunciada pelo editor e o botão nativo são tentados com raízes novas; uma ação de envio aceita que não navegar permite tentar a seguinte apenas se o editor ainda contiver o endereço seguro.
+
+A confirmação requer evento posterior ao envio, endereço seguro numa superfície web atual e ausência de editor de endereço focado. Só então o perfil recebe confirmação de redirecionamento e a cortina pode ser liberada. Ambiguidade de alvo, mudança de janela ou ausência de ações certificáveis interrompem a automação; não são motivo para clicar em controles arbitrários.

@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
+import com.focusguard.utils.WebsiteBlocker
 import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -22,6 +23,8 @@ internal enum class BrowserIdentificationMethod {
     STRONG_RESOURCE_ID,
     SEMANTIC_TREE
 }
+
+internal enum class BrowserUrlRecoveryMethod { CLICK, FOCUS, REVEAL_TOOLBAR }
 
 internal enum class BrowserActivationMethod {
     FOCUS,
@@ -44,6 +47,9 @@ internal data class BrowserCompatibilityRecord(
     val status: BrowserCompatibilityStatus = BrowserCompatibilityStatus.UNKNOWN,
     val preferredAddressBarEntryName: String? = null,
     val identificationMethod: BrowserIdentificationMethod? = null,
+    val preferredUrlEntryName: String? = null,
+    val preferredUrlMethod: BrowserIdentificationMethod? = null,
+    val urlRecoveryMethod: BrowserUrlRecoveryMethod? = null,
     val activationMethod: BrowserActivationMethod? = null,
     val writeMethod: BrowserWriteMethod? = null,
     val submitMethod: BrowserSubmitMethod? = null,
@@ -117,6 +123,44 @@ internal object BrowserCompatibilityStore {
         cache[packageName]?.preferredAddressBarEntryName?.takeIf(String::isNotBlank)
     }
 
+    fun preferredUrlEntryName(packageName: String): String? =
+        synchronized(lock) { cache[packageName]?.preferredUrlEntryName }
+
+    fun preferredUrlMethod(packageName: String): BrowserIdentificationMethod? =
+        synchronized(lock) { cache[packageName]?.preferredUrlMethod }
+
+    fun preferredUrlRecoveryMethod(packageName: String): BrowserUrlRecoveryMethod? =
+        synchronized(lock) { cache[packageName]?.urlRecoveryMethod }
+
+    fun prioritizeUrlEntryNames(packageName: String, defaults: Iterable<String>): List<String> =
+        synchronized(lock) {
+            listOfNotNull(cache[packageName]?.preferredUrlEntryName)
+                .plus(defaults).filter(String::isNotBlank).distinct()
+        }
+
+    fun recordUrlRecoverySuccess(packageName: String, method: BrowserUrlRecoveryMethod) {
+        synchronized(lock) {
+            val previous = recordForLocked(packageName)
+            saveLocked(previous.copy(urlRecoveryMethod = method, updatedAtMillis = System.currentTimeMillis()))
+        }
+    }
+
+    /** Acceptance of a submit action is not proof that the page navigated. */
+    fun recordNavigationConfirmed(packageName: String) {
+        synchronized(lock) {
+            val pending = pendingRedirects[packageName] ?: return
+            if (!pending.submitted) return
+            pendingRedirects.remove(packageName)
+            val previous = recordForLocked(packageName)
+            saveLocked(previous.copy(status = BrowserCompatibilityStatus.SUPPORTED,
+                consecutiveRedirectionFailures = 0, updatedAtMillis = System.currentTimeMillis()))
+        }
+    }
+
+    fun finishRedirection(packageName: String) {
+        synchronized(lock) { pendingRedirects.remove(packageName) }
+    }
+
     fun preferredActivationMethod(packageName: String): BrowserActivationMethod? =
         synchronized(lock) { cache[packageName]?.activationMethod }
 
@@ -156,26 +200,16 @@ internal object BrowserCompatibilityStore {
             val previous = recordForLocked(packageName)
             val entryName = browserOwnedEntryName(packageName, viewIdResourceName)
                 ?: previous.preferredAddressBarEntryName
-            val pending = pendingRedirects[packageName]
-            val redirectVerified = pending?.submitted == true &&
-                observedValueMatchesTarget(observedValue, pending.normalizedTarget)
-            if (redirectVerified) pendingRedirects.remove(packageName)
-
+            val validUrl = pendingRedirects[packageName] == null &&
+                observedValue?.let(WebsiteBlocker::extractUrlCandidate) != null
+            val urlEntry = browserOwnedEntryName(packageName, viewIdResourceName)
             saveLocked(
                 previous.copy(
-                    status = if (redirectVerified) {
-                        BrowserCompatibilityStatus.SUPPORTED
-                    } else {
-                        previous.status
-                    },
                     preferredAddressBarEntryName = entryName,
                     identificationMethod = method,
+                    preferredUrlEntryName = if (validUrl) urlEntry else previous.preferredUrlEntryName,
+                    preferredUrlMethod = if (validUrl) method else previous.preferredUrlMethod,
                     consecutiveObservationFailures = 0,
-                    consecutiveRedirectionFailures = if (redirectVerified) {
-                        0
-                    } else {
-                        previous.consecutiveRedirectionFailures
-                    },
                     updatedAtMillis = System.currentTimeMillis()
                 )
             )
@@ -376,6 +410,9 @@ internal object BrowserCompatibilityStore {
                 identificationMethod = enumOrNull<BrowserIdentificationMethod>(
                     json.optString("identification")
                 ),
+                preferredUrlEntryName = json.optString("url_entry").takeIf(String::isNotBlank),
+                preferredUrlMethod = enumOrNull<BrowserIdentificationMethod>(json.optString("url_method")),
+                urlRecoveryMethod = enumOrNull<BrowserUrlRecoveryMethod>(json.optString("url_recovery")),
                 activationMethod = enumOrNull<BrowserActivationMethod>(
                     json.optString("activation")
                 ),
@@ -392,6 +429,9 @@ internal object BrowserCompatibilityStore {
         put("status", record.status.name)
         record.preferredAddressBarEntryName?.let { put("preferred_entry", it) }
         record.identificationMethod?.let { put("identification", it.name) }
+        record.preferredUrlEntryName?.let { put("url_entry", it) }
+        record.preferredUrlMethod?.let { put("url_method", it.name) }
+        record.urlRecoveryMethod?.let { put("url_recovery", it.name) }
         record.activationMethod?.let { put("activation", it.name) }
         record.writeMethod?.let { put("write", it.name) }
         record.submitMethod?.let { put("submit", it.name) }

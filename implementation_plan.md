@@ -104,3 +104,12 @@ Um domínio bloqueado já visível na barra de endereço deve acionar a cortina 
 - Reavaliar a janela antes do bloqueio por URL não observável; interfaces nativas e árvores indisponíveis não são prova de site bloqueado.
 - Aprimorar ativação da barra em Chrome, Samsung Internet, Via e Yandex; manter confirmação real de navegação.
 - Revisar o código e enviar diretamente para main. Não executar testes nem builds, conforme solicitado.
+
+## Complemento — recuperação completa e memória do método de URL
+
+- Executar releituras, ativação por clique/foco e revelação da barra recolhida antes de concluir que uma página não tem URL observável.
+- Manter cada recuperação vinculada ao pacote/janela, com número finito de tentativas e cancelamento ao mudar de contexto.
+- Separar a memória persistida de leitura de URL da memória de edição; aprender apenas após obter uma URL válida e priorizar o método bem-sucedido nas próximas visitas.
+- Remover gates globais de API 30 do redirecionamento; tentar envio IME quando disponível, ação anunciada e botão nativo certificado.
+- Revalidar a escrita antes do envio e confirmar navegação após envio; tentar a ativação alternativa mesmo quando a primeira ação foi aceita sem produzir editor.
+- Publicar na main, sem testes ou build, conforme orientação do usuário.

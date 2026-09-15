@@ -496,8 +496,7 @@ object WebsiteBlocker {
                 }
                 ?: sanitizeText(source.contentDescription?.toString().orEmpty())
                     .takeIf(String::isNotEmpty)
-                ?: sanitizeText(source.hintText?.toString().orEmpty())
-                    .takeIf(String::isNotEmpty)
+
             if (text != null) {
                 BrowserCompatibilityStore.recordIdentificationSuccess(
                     packageName = browserPackageName,
@@ -538,7 +537,17 @@ object WebsiteBlocker {
     ): String? {
         if (root == null || browserPackageName.isBlank()) return null
 
-        addressBarEntryNamesFor(browserPackageName).forEach { entryName ->
+        // A successful semantic-only reader can run first without probing every id.
+        if (BrowserCompatibilityStore.preferredUrlMethod(browserPackageName) ==
+            BrowserIdentificationMethod.SEMANTIC_TREE &&
+            BrowserCompatibilityStore.preferredUrlEntryName(browserPackageName) == null
+        ) {
+            findAddressBarValue(root, browserPackageName, root.windowId,
+                httpsHandlerRecognized, 0, intArrayOf(0))?.let { return it }
+        }
+        BrowserCompatibilityStore.prioritizeUrlEntryNames(
+            browserPackageName, addressBarEntryNamesFor(browserPackageName)
+        ).forEach { entryName ->
             val fullId = "$browserPackageName:id/$entryName"
             val nodes = runCatching { root.findAccessibilityNodeInfosByViewId(fullId) }
                 .getOrNull()
@@ -776,11 +785,10 @@ object WebsiteBlocker {
     private fun extractCandidateFromNode(node: AccessibilityNodeInfo): String? {
         return extractUrlCandidate(node.text?.toString().orEmpty())
             ?: extractUrlCandidate(node.contentDescription?.toString().orEmpty())
-            ?: extractUrlCandidate(node.hintText?.toString().orEmpty())
     }
 
     private fun extractTextFromNode(node: AccessibilityNodeInfo): String? {
-        return sequenceOf(node.text, node.contentDescription, node.hintText)
+        return sequenceOf(node.text, node.contentDescription)
             .map { value -> sanitizeText(value?.toString().orEmpty()) }
             .firstOrNull(String::isNotEmpty)
     }
@@ -798,13 +806,14 @@ object WebsiteBlocker {
         requiredAction: BrowserUiCapabilityPolicy.NodeAction,
         arguments: Bundle? = null,
         textPredicate: ((String?) -> Boolean)? = null,
-        httpsHandlerRecognized: Boolean = false
+        httpsHandlerRecognized: Boolean = false,
+        allowFallbacks: Boolean = true
     ): AddressBarActionResult {
         if (root.packageName?.toString() != browserPackageName ||
             root.windowId != expectedWindowId
         ) return AddressBarActionResult(AddressBarActionStatus.NOT_FOUND)
 
-        if (requiredAction == BrowserUiCapabilityPolicy.NodeAction.SET_TEXT &&
+        if (allowFallbacks && requiredAction == BrowserUiCapabilityPolicy.NodeAction.SET_TEXT &&
             BrowserCompatibilityStore.preferredWriteMethod(browserPackageName) ==
             BrowserWriteMethod.PASTE
         ) {
@@ -819,7 +828,7 @@ object WebsiteBlocker {
                 return cachedPaste
             }
         }
-        if (requiredAction == BrowserUiCapabilityPolicy.NodeAction.IME_ENTER) {
+        if (allowFallbacks && requiredAction == BrowserUiCapabilityPolicy.NodeAction.IME_ENTER) {
             val cachedSubmit = attemptCachedSubmitFallback(
                 root = root,
                 browserPackageName = browserPackageName,
@@ -870,6 +879,7 @@ object WebsiteBlocker {
                 if (selection.status == BrowserUiCapabilityPolicy.SelectionStatus.AMBIGUOUS) {
                     return AddressBarActionResult(AddressBarActionStatus.AMBIGUOUS)
                 }
+                if (!allowFallbacks) return AddressBarActionResult(AddressBarActionStatus.NOT_FOUND)
                 val fallback = when (requiredAction) {
                     BrowserUiCapabilityPolicy.NodeAction.SET_TEXT -> attemptPasteFallback(
                         root = root,
@@ -897,7 +907,7 @@ object WebsiteBlocker {
             }
 
             val selected = nodes[selectedIndex]
-            if (requiredAction == BrowserUiCapabilityPolicy.NodeAction.SET_TEXT) {
+            if (allowFallbacks && requiredAction == BrowserUiCapabilityPolicy.NodeAction.SET_TEXT) {
                 val selectionResult = AddressBarRedirectionActions.selectAll(
                     root = root,
                     browserPackageName = browserPackageName,
@@ -917,6 +927,7 @@ object WebsiteBlocker {
             } else {
                 val androidAction = requiredAction.androidActionId()
                 if (androidAction == null) {
+                    if (!allowFallbacks) return AddressBarActionResult(AddressBarActionStatus.NOT_FOUND)
                     val fallback = when (requiredAction) {
                         BrowserUiCapabilityPolicy.NodeAction.IME_ENTER -> attemptSubmitFallback(
                             root = root,
@@ -939,7 +950,7 @@ object WebsiteBlocker {
             }
 
             if (accepted) {
-                recordAddressBarActionSuccess(
+                if (allowFallbacks) recordAddressBarActionSuccess(
                     browserPackageName = browserPackageName,
                     selectedViewId = selected.viewIdResourceName,
                     requiredAction = requiredAction,
@@ -951,6 +962,7 @@ object WebsiteBlocker {
                 )
             }
 
+            if (!allowFallbacks) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
             val fallback = when (requiredAction) {
                 BrowserUiCapabilityPolicy.NodeAction.SET_TEXT -> attemptPasteFallback(
                     root = root,

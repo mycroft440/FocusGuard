@@ -61,6 +61,35 @@ internal object AddressBarRedirectionActions {
         )
     }
 
+    fun activate(
+        root: AccessibilityNodeInfo,
+        browserPackageName: String,
+        expectedWindowId: Int,
+        action: BrowserUiCapabilityPolicy.NodeAction,
+        httpsHandlerRecognized: Boolean
+    ): Result = legacyAction(root, browserPackageName, expectedWindowId, action,
+        httpsHandlerRecognized = httpsHandlerRecognized)
+
+    fun hasFocusedAddressEditor(
+        root: AccessibilityNodeInfo,
+        browserPackageName: String,
+        expectedWindowId: Int,
+        httpsHandlerRecognized: Boolean,
+        textPredicate: ((String?) -> Boolean)? = null,
+        requireUnique: Boolean = true
+    ): Boolean {
+        val nodes = collectAddressBarNodes(root, browserPackageName, expectedWindowId, httpsHandlerRecognized)
+        return try {
+            nodes.count { node ->
+                val fact = node.toFact()
+                fact.editable && fact.focused &&
+                    BrowserUiCapabilityPolicy.isActionableAddressBarNode(
+                        fact, browserPackageName, expectedWindowId, httpsHandlerRecognized
+                    ) && (textPredicate == null || textPredicate(fact.text))
+            }.let { count -> if (requireUnique) count == 1 else count > 0 }
+        } finally { nodes.forEach(::recycleSafely) }
+    }
+
     fun selectAll(
         root: AccessibilityNodeInfo,
         browserPackageName: String,
@@ -237,7 +266,8 @@ internal object AddressBarRedirectionActions {
             requiredAction = action,
             arguments = arguments,
             textPredicate = textPredicate,
-            httpsHandlerRecognized = httpsHandlerRecognized
+            httpsHandlerRecognized = httpsHandlerRecognized,
+            allowFallbacks = false
         )
         return Result(
             status = when (result.status) {
