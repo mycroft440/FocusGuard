@@ -1,5 +1,5 @@
 name: Fresh APK + AAB
-# Signed artifact workflow for the current main branch; refreshed after Via browser fix.
+# Signed artifact workflow for the current main branch; refreshed after DuckDuckGo redirect fix.
 
 on:
   push:
