@@ -13,6 +13,24 @@ import android.os.Build
  * On API 26-27 an empty clipboard cannot be restored exactly, so paste is skipped.
  */
 internal object ClipboardPasteFallback {
+    @Volatile
+    private var applicationContext: Context? = null
+
+    fun initialize(context: Context) {
+        applicationContext = context.applicationContext
+    }
+
+    fun pasteSafely(
+        text: String,
+        pasteAction: () -> AddressBarRedirectionActions.Result
+    ): AddressBarRedirectionActions.Result {
+        val context = applicationContext
+            ?: return AddressBarRedirectionActions.Result(
+                AddressBarRedirectionActions.Status.NOT_FOUND
+            )
+        return pasteSafely(context, text, pasteAction)
+    }
+
     fun pasteSafely(
         context: Context,
         text: String,
