@@ -12,6 +12,8 @@ import java.util.Locale
 internal object BrowserUiCapabilityPolicy {
 
     private const val IME_ENTER_MIN_API = 30
+    private const val DUCKDUCKGO_PACKAGE = "com.duckduckgo.mobile.android"
+    private const val DUCKDUCKGO_NATIVE_INPUT_ENTRY = "inputField"
 
     enum class NodeAction {
         FOCUS,
@@ -38,7 +40,8 @@ internal object BrowserUiCapabilityPolicy {
         val uriInput: Boolean,
         val text: String?,
         val contentDescription: String? = null,
-        val actions: Set<NodeAction>
+        val actions: Set<NodeAction>,
+        val hintText: String? = null
     )
 
     data class Selection(
@@ -57,6 +60,9 @@ internal object BrowserUiCapabilityPolicy {
         "url_edit_text",
         "omnibarTextInput",
         "omnibox_text",
+        // DuckDuckGo's native input rollout. Authorization remains package- and
+        // semantics-gated below because the id itself is intentionally generic.
+        DUCKDUCKGO_NATIVE_INPUT_ENTRY,
         // Gecko/Fenix toolbars.
         "mozac_browser_toolbar_url_view",
         "mozac_browser_toolbar_edit_url_view",
@@ -77,6 +83,7 @@ internal object BrowserUiCapabilityPolicy {
         "url_edit_text",
         "omnibarTextInput",
         "omnibox_text",
+        DUCKDUCKGO_NATIVE_INPUT_ENTRY,
         "mozac_browser_toolbar_edit_url_view"
     )
 
@@ -87,7 +94,12 @@ internal object BrowserUiCapabilityPolicy {
         "url_field",
         "mozac_browser_toolbar_url_view",
         "browser_toolbar_url_view",
-        "address_bar"
+        "address_bar",
+        // DuckDuckGo requires an explicit tap before its editor reliably accepts
+        // replacement text. The native input id is authorized only after the
+        // package-specific address-mode check in isActionableAddressBarNode().
+        "omnibarTextInput",
+        DUCKDUCKGO_NATIVE_INPUT_ENTRY
     )
 
     private val readOnlyAddressBarDescriptions: Set<String> = setOf(
@@ -96,6 +108,8 @@ internal object BrowserUiCapabilityPolicy {
         "barra de endereço e pesquisa",
         "search or type web address",
         "pesquisar ou digitar endereço web",
+        "search or enter address",
+        "pesquisar ou inserir endereço",
         "url bar",
         "barra de url",
         "address bar",
@@ -111,7 +125,11 @@ internal object BrowserUiCapabilityPolicy {
         if (expectedBrowserPackage.isBlank()) return false
         val prefix = "$expectedBrowserPackage:id/"
         if (!viewIdResourceName.startsWith(prefix)) return false
-        return viewIdResourceName.substring(prefix.length) in strongAddressBarEntryNames
+        val entryName = viewIdResourceName.substring(prefix.length)
+        if (entryName == DUCKDUCKGO_NATIVE_INPUT_ENTRY) {
+            return expectedBrowserPackage == DUCKDUCKGO_PACKAGE
+        }
+        return entryName in strongAddressBarEntryNames
     }
 
     fun isReadOnlyAddressBarNode(
@@ -126,7 +144,7 @@ internal object BrowserUiCapabilityPolicy {
         ) return false
 
         if (isStrongAddressBarResource(node.viewIdResourceName, expectedBrowserPackage)) {
-            return true
+            return !isDuckDuckGoNativeInput(node) || isDuckDuckGoAddressInput(node)
         }
         if (!httpsHandlerRecognized) return false
 
@@ -201,16 +219,22 @@ internal object BrowserUiCapabilityPolicy {
         expectedBrowserPackage: String,
         expectedWindowId: Int,
         httpsHandlerRecognized: Boolean = false
-    ): Boolean = node.visible &&
-        node.packageName == expectedBrowserPackage &&
-        node.windowId == expectedWindowId &&
-        (isStrongAddressBarResource(node.viewIdResourceName, expectedBrowserPackage) ||
-            isSemanticActionableAddressBarNode(
-                node = node,
-                expectedBrowserPackage = expectedBrowserPackage,
-                expectedWindowId = expectedWindowId,
-                httpsHandlerRecognized = httpsHandlerRecognized
-            ))
+    ): Boolean {
+        if (!node.visible ||
+            node.packageName != expectedBrowserPackage ||
+            node.windowId != expectedWindowId
+        ) return false
+
+        if (isStrongAddressBarResource(node.viewIdResourceName, expectedBrowserPackage)) {
+            return !isDuckDuckGoNativeInput(node) || isDuckDuckGoAddressInput(node)
+        }
+        return isSemanticActionableAddressBarNode(
+            node = node,
+            expectedBrowserPackage = expectedBrowserPackage,
+            expectedWindowId = expectedWindowId,
+            httpsHandlerRecognized = httpsHandlerRecognized
+        )
+    }
 
     fun resolveUniqueAddressBarNode(
         nodes: List<Node>,
@@ -334,6 +358,25 @@ internal object BrowserUiCapabilityPolicy {
         NodeAction.IME_ENTER -> if (entryName(node) in editorEntryNames) 50 else 30
         NodeAction.CLICK -> 40
         NodeAction.LONG_CLICK -> 30
+    }
+
+    private fun isDuckDuckGoNativeInput(node: Node): Boolean =
+        node.packageName == DUCKDUCKGO_PACKAGE &&
+            entryName(node) == DUCKDUCKGO_NATIVE_INPUT_ENTRY
+
+    private fun isDuckDuckGoAddressInput(node: Node): Boolean {
+        if (!isDuckDuckGoNativeInput(node) || !node.editable) return false
+        if (node.uriInput) return true
+        val labels = sequenceOf(node.contentDescription, node.hintText)
+            .mapNotNull { it?.trim()?.lowercase(Locale.ROOT)?.takeIf(String::isNotEmpty) }
+        return labels.any { value ->
+            readOnlyAddressBarDescriptions.any { label ->
+                value == label ||
+                    value.startsWith("$label,") ||
+                    value.startsWith("$label.") ||
+                    value.startsWith("$label " )
+            }
+        }
     }
 
     private fun entryName(node: Node): String =

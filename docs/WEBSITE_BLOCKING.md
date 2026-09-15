@@ -169,3 +169,10 @@ Com uma sessão ativa bloqueando `example.com`, validar:
 Quando uma proteção de site ou um limite rígido exige conhecer a URL atual, o FocusGuard concede apenas uma janela curta para a barra de endereço aparecer na árvore de acessibilidade. Se o navegador continuar opaco, ele é bloqueado por uma superfície genérica do FocusGuard em vez de continuar utilizável sem fiscalização. Isso fecha o bypass de navegadores que ocultam a URL, inclusive o Via quando sua interface não expõe um endereço confiável.
 
 O mesmo princípio vale para a neutralização de uma página já identificada como bloqueada: se a reescrita na mesma aba ou a confirmação do destino seguro não puder ser certificada, o FocusGuard mantém o fluxo fail-closed e mostra a superfície de bloqueio; ele não devolve a página bloqueada ao usuário.
+
+
+## Compatibilidade com DuckDuckGo Android
+
+O DuckDuckGo Android usa o pacote `com.duckduckgo.mobile.android` e, conforme a geração da interface, pode expor a barra como `omnibarTextInput` ou como o campo nativo `inputField`. O FocusGuard trata `omnibarTextInput` como uma barra que pode exigir `ACTION_CLICK` antes de aceitar `ACTION_SET_TEXT`. O id genérico `inputField` só é autorizado para automação no pacote oficial do DuckDuckGo e apenas quando o próprio nó se identifica semanticamente como campo de endereço (por exemplo, `Search or enter address` / `Pesquisar ou inserir endereço`); campos de Duck.ai com o mesmo id continuam rejeitados.
+
+Se a neutralização na mesma aba ainda falhar, o handoff fail-closed reutiliza a geração da cortina já visível. Isso evita destacar/desanexar e recriar a cortina durante a falha, reduzindo o efeito de tela de bloqueio piscando enquanto a superfície genérica segura assume o primeiro plano.
