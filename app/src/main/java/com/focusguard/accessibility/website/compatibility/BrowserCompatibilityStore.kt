@@ -63,7 +63,7 @@ internal object BrowserCompatibilityStore {
     private const val KEY_PREFIX = "record:"
     private const val OBSERVATION_FAILURE_MIN_SPAN_MILLIS = 200L
     private const val SUPPORTED_FAILURE_THRESHOLD = 3
-    private const val REDIRECTION_FAILURE_THRESHOLD = 3
+    private const val REDIRECTION_FAILURE_THRESHOLD = 2
     private const val REDIRECTION_FAILURE_DEBOUNCE_MILLIS = 150L
 
     private val lock = Any()
@@ -185,7 +185,6 @@ internal object BrowserCompatibilityStore {
         previous.copy(
             preferredAddressBarEntryName = entryName,
             writeMethod = method,
-            consecutiveRedirectionFailures = 0,
             updatedAtMillis = System.currentTimeMillis()
         )
     }
@@ -201,7 +200,6 @@ internal object BrowserCompatibilityStore {
         previous.copy(
             preferredAddressBarEntryName = entryName,
             submitMethod = method,
-            consecutiveRedirectionFailures = 0,
             updatedAtMillis = System.currentTimeMillis()
         )
     }
@@ -238,8 +236,9 @@ internal object BrowserCompatibilityStore {
     }
 
     /**
-     * Failed redirection calls can happen repeatedly inside one retry window, so
-     * failures are debounced before they are allowed to change the public status.
+     * The active website transition currently performs two full same-tab attempts.
+     * A failed phase is debounced so repeated calls inside one UI frame do not count
+     * twice; exhausting both attempts classifies the browser as unsupported.
      */
     fun recordRedirectionFailure(packageName: String) {
         if (packageName.isBlank()) return
@@ -359,7 +358,8 @@ internal object BrowserCompatibilityStore {
         if (observed.isEmpty()) return false
         return observed == normalizedTarget ||
             observed.startsWith("$normalizedTarget/") ||
-            observed.contains(normalizedTarget)
+            observed.startsWith("$normalizedTarget?") ||
+            observed.startsWith("$normalizedTarget#")
     }
 
     private fun normalizeAddress(value: String?): String = value.orEmpty()
