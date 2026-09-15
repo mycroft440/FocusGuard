@@ -174,28 +174,59 @@ internal object BrowserUiCapabilityPolicy {
         return browserOwnedResource && idLooksReadOnlyDisplay && displayLooksAddressLike
     }
 
+    fun isSemanticActionableAddressBarNode(
+        node: Node,
+        expectedBrowserPackage: String,
+        expectedWindowId: Int,
+        httpsHandlerRecognized: Boolean
+    ): Boolean {
+        if (!httpsHandlerRecognized ||
+            !node.visible || !node.editable || !node.uriInput ||
+            node.packageName != expectedBrowserPackage ||
+            node.windowId != expectedWindowId
+        ) return false
+
+        val prefix = "$expectedBrowserPackage:id/"
+        val viewId = node.viewIdResourceName
+        if (!viewId.startsWith(prefix) || viewId.length <= prefix.length) return false
+
+        val entryName = viewId.substring(prefix.length).lowercase(Locale.ROOT)
+        return entryName.contains("url") || entryName.contains("uri") ||
+            entryName.contains("omnibox") || entryName.contains("address") ||
+            entryName.contains("location") || entryName.contains("navigation")
+    }
+
     fun isActionableAddressBarNode(
         node: Node,
         expectedBrowserPackage: String,
-        expectedWindowId: Int
+        expectedWindowId: Int,
+        httpsHandlerRecognized: Boolean = false
     ): Boolean = node.visible &&
         node.packageName == expectedBrowserPackage &&
         node.windowId == expectedWindowId &&
-        isStrongAddressBarResource(node.viewIdResourceName, expectedBrowserPackage)
+        (isStrongAddressBarResource(node.viewIdResourceName, expectedBrowserPackage) ||
+            isSemanticActionableAddressBarNode(
+                node = node,
+                expectedBrowserPackage = expectedBrowserPackage,
+                expectedWindowId = expectedWindowId,
+                httpsHandlerRecognized = httpsHandlerRecognized
+            ))
 
     fun resolveUniqueAddressBarNode(
         nodes: List<Node>,
         expectedBrowserPackage: String,
         expectedWindowId: Int,
         requiredAction: NodeAction,
-        textPredicate: ((String?) -> Boolean)? = null
+        textPredicate: ((String?) -> Boolean)? = null,
+        httpsHandlerRecognized: Boolean = false
     ): Selection {
         val ranked = nodes.indices.mapNotNull { index ->
             val node = nodes[index]
             if (!isActionableAddressBarNode(
                     node,
                     expectedBrowserPackage,
-                    expectedWindowId
+                    expectedWindowId,
+                    httpsHandlerRecognized = httpsHandlerRecognized
                 ) || !supports(node, requiredAction) ||
                 (textPredicate != null && !textPredicate(node.text))
             ) {
@@ -218,7 +249,7 @@ internal object BrowserUiCapabilityPolicy {
         nodes: List<Node>,
         expectedBrowserPackage: String,
         expectedWindowId: Int,
-        @Suppress("UNUSED_PARAMETER") httpsHandlerRecognized: Boolean,
+        httpsHandlerRecognized: Boolean,
         requiredAction: NodeAction? = null,
         expectedText: String? = null
     ): Int? {
@@ -226,7 +257,8 @@ internal object BrowserUiCapabilityPolicy {
             isActionableAddressBarNode(
                 nodes[index],
                 expectedBrowserPackage,
-                expectedWindowId
+                expectedWindowId,
+                httpsHandlerRecognized = httpsHandlerRecognized
             )
         }.singleOrNull()
         return resolveUniqueAddressBarNode(
@@ -236,7 +268,8 @@ internal object BrowserUiCapabilityPolicy {
             requiredAction = action,
             textPredicate = expectedText?.let { expected ->
                 { actual: String? -> actual?.trim() == expected.trim() }
-            }
+            },
+            httpsHandlerRecognized = httpsHandlerRecognized
         ).index
     }
 
