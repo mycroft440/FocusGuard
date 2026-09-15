@@ -17,6 +17,7 @@ internal enum class WebsiteIdentificationLayer {
 internal enum class WebsiteIdentificationStatus {
     IDENTIFIED,
     ADDRESS_BAR_OBSERVABLE,
+    NATIVE_BROWSER_UI,
     UNOBSERVABLE,
     REJECTED_CONTEXT
 }
@@ -31,7 +32,8 @@ internal data class WebsiteIdentificationResult(
     val urlCandidate: String? = null,
     val browserPackageName: String? = null,
     val windowId: Int? = null,
-    val evidence: Set<WebsiteIdentificationLayer> = emptySet()
+    val evidence: Set<WebsiteIdentificationLayer> = emptySet(),
+    val webContentObserved: Boolean = false
 ) {
     val addressBarObservable: Boolean
         get() = status == WebsiteIdentificationStatus.IDENTIFIED ||

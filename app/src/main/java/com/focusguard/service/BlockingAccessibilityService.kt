@@ -65,6 +65,7 @@ import com.focusguard.ui.BlockNoticeActivity
 import com.focusguard.ui.MasterRemovalActivity
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.AppUsageLimitActivationUsage
+import com.focusguard.utils.BrowserSurfaceInspector
 import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
@@ -590,6 +591,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var hierarchyBoundaryJob: Job? = null
     @Volatile private var hierarchyBoundaryAtMillis = Long.MIN_VALUE
     private val opaqueBrowserFirstSeenElapsed = mutableMapOf<String, Long>()
+    private val opaqueBrowserWindowIds = mutableMapOf<String, Int>()
     private val opaqueBrowserVerificationScheduled = mutableSetOf<String>()
     private val websiteBlockTransitionCounter = AtomicLong(0L)
     private val websiteBlockTransitionGuard = WebsiteBlockTransitionGuard()
@@ -666,6 +668,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         "com.vivaldi.browser.snapshot",
         "com.ecosia.android",
         "com.yandex.browser",
+        "com.yandex.browser.beta",
+        "com.yandex.browser.alpha",
+        "com.yandex.browser.lite",
         "com.UCMobile.intl",
         "com.UCMobile.intl.mi",
         "org.mozilla.firefox",
@@ -680,6 +685,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         "com.opera.gx",
         "com.sec.android.app.sbrowser",
         "com.sec.android.app.sbrowser.beta",
+        "mark.via",
         "mark.via.gp",
         "com.duckduckgo.mobile.android",
         "com.google.android.googlequicksearchbox"
@@ -1339,6 +1345,13 @@ class BlockingAccessibilityService : AccessibilityService() {
                 root.packageName?.toString().orEmpty()
             }.getOrDefault("")
             val candidate = try {
+                if (BrowserSurfaceInspector.inspect(root, currentPackage) ==
+                    BrowserSurfaceInspector.Surface.NATIVE_PANEL
+                ) {
+                    clearOpaqueBrowserObservation(currentPackage)
+                    stopWebsiteTracking()
+                    return
+                }
                 if (rootPackage != currentPackage) {
                     null
                 } else {
@@ -1400,6 +1413,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             hardLimitedWebsiteDomains = emptySet()
             limitedWebsiteAppDomains = emptyMap()
             opaqueBrowserFirstSeenElapsed.clear()
+            opaqueBrowserWindowIds.clear()
             opaqueBrowserVerificationScheduled.clear()
             isBlockingSessionActive = false
             focusModeSessionActive = false
@@ -1638,6 +1652,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                                 hardConfiguredWebsiteDomains.isEmpty()
                             ) {
                                 opaqueBrowserFirstSeenElapsed.clear()
+                                opaqueBrowserWindowIds.clear()
                                 opaqueBrowserVerificationScheduled.clear()
                             }
                             activeAppLimitsByPackage = activeAppLimits.associateBy { it.packageName }
@@ -3001,6 +3016,16 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
 
         val root = if (fastUrl == null) rootInActiveWindow ?: event.source else null
+        // A menu/tab overview can leave the previous page and its omnibox in
+        // the same tree. Do not treat that background address as the open screen.
+        if (BrowserSurfaceInspector.inspect(root, packageName) ==
+            BrowserSurfaceInspector.Surface.NATIVE_PANEL
+        ) {
+            clearOpaqueBrowserObservation(packageName)
+            stopWebsiteTracking()
+            recycleSafely(root)
+            return
+        }
         val url = fastUrl ?: WebsiteBlocker.extractUrlFromRoot(
             root,
             packageName,
@@ -3102,16 +3127,54 @@ class BlockingAccessibilityService : AccessibilityService() {
     private fun websiteObservationRequired(): Boolean =
         blockedWebsitesDomainSet.isNotEmpty() || hardLimitedWebsiteDomains.isNotEmpty()
 
+    private fun clearOpaqueBrowserObservation(packageName: String) {
+        opaqueBrowserFirstSeenElapsed.remove(packageName)
+        opaqueBrowserWindowIds.remove(packageName)
+        opaqueBrowserVerificationScheduled.remove(packageName)
+    }
+
     private fun handleBrowserObservability(
         packageName: String,
         addressBarObservable: Boolean
     ): Boolean {
-        if (!websiteObservationRequired() || addressBarObservable) {
-            opaqueBrowserFirstSeenElapsed.remove(packageName)
-            opaqueBrowserVerificationScheduled.remove(packageName)
+        if (!websiteObservationRequired() || addressBarObservable ||
+            foregroundPackageName != packageName ||
+            websiteBlockTransitionGuard.isActive(packageName)
+        ) {
+            clearOpaqueBrowserObservation(packageName)
             return false
         }
 
+        // Missing URL text is not evidence of a web page. Reacquire the complete
+        // current window: an event source may be just a toolbar button, and the
+        // active window may temporarily belong to a keyboard or system dialog.
+        val root = rootInActiveWindow
+        val windowId: Int
+        val surface: BrowserSurfaceInspector.Surface
+        try {
+            if (root == null || root.packageName?.toString() != packageName) {
+                clearOpaqueBrowserObservation(packageName)
+                return false
+            }
+            windowId = root.windowId
+            surface = BrowserSurfaceInspector.inspect(root, packageName)
+            if (surface != BrowserSurfaceInspector.Surface.WEB_CONTENT ||
+                WebsiteBlocker.hasAddressBarNode(
+                    root, packageName, isVerifiedHttpsHandler(packageName)
+                )
+            ) {
+                clearOpaqueBrowserObservation(packageName)
+                if (surface.isNativeUi) stopWebsiteTracking()
+                return false
+            }
+        } finally {
+            recycleSafely(root)
+        }
+
+        if (opaqueBrowserWindowIds[packageName] != windowId) {
+            clearOpaqueBrowserObservation(packageName)
+            opaqueBrowserWindowIds[packageName] = windowId
+        }
         val nowElapsed = SystemClock.elapsedRealtime()
         val firstSeen = opaqueBrowserFirstSeenElapsed.getOrPut(packageName) { nowElapsed }
         if (WebsiteObservabilityPolicy.shouldBlockOpaqueBrowser(
@@ -3119,7 +3182,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                 browserStillForeground = foregroundPackageName == packageName,
                 addressBarObservable = false,
                 firstUnobservableElapsed = firstSeen,
-                nowElapsed = nowElapsed
+                nowElapsed = nowElapsed,
+                nativeBrowserUiObserved = false
             )
         ) {
             blockOpaqueBrowser(packageName)
@@ -3131,50 +3195,28 @@ class BlockingAccessibilityService : AccessibilityService() {
                 WebsiteObservabilityPolicy.OPAQUE_BROWSER_GRACE_MILLIS -
                     (nowElapsed - firstSeen)
                 ).coerceAtLeast(1L)
-            mainHandler.postDelayed({ verifyOpaqueBrowser(packageName, firstSeen) }, delayMillis)
+            mainHandler.postDelayed(
+                { verifyOpaqueBrowser(packageName, firstSeen, windowId) }, delayMillis
+            )
         }
         return false
     }
 
-    private fun verifyOpaqueBrowser(packageName: String, expectedFirstSeen: Long) {
+    private fun verifyOpaqueBrowser(
+        packageName: String,
+        expectedFirstSeen: Long,
+        expectedWindowId: Int
+    ) {
+        // A callback from a previous window must not cancel a newer observation.
+        if (opaqueBrowserFirstSeenElapsed[packageName] != expectedFirstSeen ||
+            opaqueBrowserWindowIds[packageName] != expectedWindowId
+        ) return
         opaqueBrowserVerificationScheduled.remove(packageName)
-        if (opaqueBrowserFirstSeenElapsed[packageName] != expectedFirstSeen) return
-        if (!websiteObservationRequired() || foregroundPackageName != packageName) {
-            opaqueBrowserFirstSeenElapsed.remove(packageName)
-            return
-        }
-
-        val root = rootInActiveWindow
-        val observable = try {
-            WebsiteBlocker.hasAddressBarNode(
-                root,
-                packageName,
-                isVerifiedHttpsHandler(packageName)
-            )
-        } finally {
-            recycleSafely(root)
-        }
-        if (observable) {
-            opaqueBrowserFirstSeenElapsed.remove(packageName)
-            return
-        }
-
-        val nowElapsed = SystemClock.elapsedRealtime()
-        if (WebsiteObservabilityPolicy.shouldBlockOpaqueBrowser(
-                websiteProtectionRequiresObservation = true,
-                browserStillForeground = foregroundPackageName == packageName,
-                addressBarObservable = false,
-                firstUnobservableElapsed = expectedFirstSeen,
-                nowElapsed = nowElapsed
-            )
-        ) {
-            blockOpaqueBrowser(packageName)
-        }
+        handleBrowserObservability(packageName, addressBarObservable = false)
     }
 
     private fun blockOpaqueBrowser(packageName: String) {
-        opaqueBrowserFirstSeenElapsed.remove(packageName)
-        opaqueBrowserVerificationScheduled.remove(packageName)
+        clearOpaqueBrowserObservation(packageName)
         stopWebsiteTracking()
         if (!websiteObservationRequired() || foregroundPackageName != packageName) return
         FocusGuardLogger.log(

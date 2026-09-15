@@ -6,6 +6,7 @@ import android.text.InputType
 import android.view.accessibility.AccessibilityNodeInfo
 import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
 import com.focusguard.accessibility.website.compatibility.BrowserSubmitMethod
+import com.focusguard.utils.BrowserSurfaceInspector
 import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.focusguard.utils.WebsiteBlocker
 import java.util.Locale
@@ -189,7 +190,7 @@ internal object AddressBarRedirectionActions {
         }
         return try {
             val candidates = nodes.filter { node ->
-                node.isVisibleToUser &&
+                node.isVisibleToUser && BrowserSurfaceInspector.isNativeNode(node) &&
                     node.packageName?.toString() == browserPackageName &&
                     node.windowId == expectedWindowId &&
                     node.actionList.any { it.id == AccessibilityNodeInfo.ACTION_CLICK }
@@ -327,7 +328,9 @@ internal object AddressBarRedirectionActions {
         depth: Int,
         visited: IntArray
     ) {
-        if (depth >= MAX_TREE_DEPTH || visited[0] >= MAX_TREE_NODES) return
+        if (depth >= MAX_TREE_DEPTH || visited[0] >= MAX_TREE_NODES ||
+            BrowserSurfaceInspector.isWebContainer(node)
+        ) return
         for (index in 0 until node.childCount) {
             if (visited[0] >= MAX_TREE_NODES) return
             val child = node.getChild(index) ?: continue
@@ -386,7 +389,8 @@ internal object AddressBarRedirectionActions {
                     else -> null
                 }
             }.toSet(),
-            hintText = hintText?.toString()
+            hintText = hintText?.toString(),
+            inWebContent = !BrowserSurfaceInspector.isNativeNode(this)
         )
     }
 

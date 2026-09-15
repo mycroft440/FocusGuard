@@ -14,12 +14,15 @@ internal object WebsiteIdentificationFailClosedPolicy {
         firstUnobservableElapsed: Long?,
         nowElapsed: Long,
         graceMillis: Long = WebsiteObservabilityPolicy.OPAQUE_BROWSER_GRACE_MILLIS
-    ): Boolean = WebsiteObservabilityPolicy.shouldBlockOpaqueBrowser(
-        websiteProtectionRequiresObservation = websiteProtectionRequiresObservation,
-        browserStillForeground = browserStillForeground,
-        addressBarObservable = identification.addressBarObservable,
-        firstUnobservableElapsed = firstUnobservableElapsed,
-        nowElapsed = nowElapsed,
-        graceMillis = graceMillis
-    )
+    ): Boolean = identification.webContentObserved &&
+        WebsiteObservabilityPolicy.shouldBlockOpaqueBrowser(
+            websiteProtectionRequiresObservation = websiteProtectionRequiresObservation,
+            browserStillForeground = browserStillForeground,
+            addressBarObservable = identification.addressBarObservable,
+            firstUnobservableElapsed = firstUnobservableElapsed,
+            nowElapsed = nowElapsed,
+            graceMillis = graceMillis,
+            nativeBrowserUiObserved =
+                identification.status == WebsiteIdentificationStatus.NATIVE_BROWSER_UI
+        )
 }

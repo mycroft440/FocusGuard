@@ -1,7 +1,5 @@
 package com.focusguard.utils
 
-import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
-
 /**
  * Fail-closed policy for browsers that hide their current URL from Accessibility.
  *
@@ -14,7 +12,7 @@ import com.focusguard.accessibility.website.compatibility.BrowserCompatibilitySt
  * Settings/Preferences screens intentionally have no URL bar and must stay usable.
  */
 object WebsiteObservabilityPolicy {
-    const val OPAQUE_BROWSER_GRACE_MILLIS = 200L
+    const val OPAQUE_BROWSER_GRACE_MILLIS = 1_500L
 
     fun shouldBlockOpaqueBrowser(
         websiteProtectionRequiresObservation: Boolean,
@@ -23,8 +21,7 @@ object WebsiteObservabilityPolicy {
         firstUnobservableElapsed: Long?,
         nowElapsed: Long,
         graceMillis: Long = OPAQUE_BROWSER_GRACE_MILLIS,
-        nativeBrowserUiObserved: Boolean =
-            BrowserCompatibilityStore.latestUnobservableSurfaceHasNativeUiEvidence()
+        nativeBrowserUiObserved: Boolean = false
     ): Boolean {
         if (!websiteProtectionRequiresObservation || !browserStillForeground) return false
         if (addressBarObservable || nativeBrowserUiObserved) return false
@@ -40,8 +37,7 @@ object WebsiteObservabilityPolicy {
         firstUnobservableElapsed: Long?,
         nowElapsed: Long,
         graceMillis: Long = OPAQUE_BROWSER_GRACE_MILLIS,
-        nativeBrowserUiObserved: Boolean =
-            BrowserCompatibilityStore.latestUnobservableSurfaceHasNativeUiEvidence()
+        nativeBrowserUiObserved: Boolean = false
     ): Boolean = shouldBlockOpaqueBrowser(
         websiteProtectionRequiresObservation = websiteProtectionRequiresObservation,
         browserStillForeground = browserStillForeground,

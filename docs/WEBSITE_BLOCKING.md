@@ -166,7 +166,13 @@ Com uma sessão ativa bloqueando `example.com`, validar:
 
 ## Navegadores sem URL observável (fail-closed)
 
-Quando uma proteção de site ou um limite rígido exige conhecer a URL atual, o FocusGuard concede apenas uma janela curta para a barra de endereço aparecer na árvore de acessibilidade. Se o navegador continuar opaco, ele é bloqueado por uma superfície genérica do FocusGuard em vez de continuar utilizável sem fiscalização. Isso fecha o bypass de navegadores que ocultam a URL, inclusive o Via quando sua interface não expõe um endereço confiável.
+Quando uma proteção de site ou um limite rígido exige conhecer a URL atual, o FocusGuard primeiro classifica a janela atual. Somente conteúdo web confirmado sem uma barra observável inicia a tolerância de 1,5 segundo. Ao terminar esse prazo, uma nova leitura precisa confirmar conteúdo web sem barra no mesmo pacote e janela antes de exibir a proteção. Uma URL identificada que corresponda a uma regra continua sendo bloqueada imediatamente, sem aguardar esse prazo.
+
+Menus, configurações, seletor de abas, favoritos, histórico, downloads e nova aba são interfaces do navegador, não evidência de site bloqueado. A classificação usa estrutura nativa fora dos contêineres web e não reutiliza uma exceção global de outro menu, aba ou navegador. Janela de teclado, diálogo do sistema, árvore ausente ou incompleta são estados inconclusivos: isoladamente não autorizam bloquear o navegador inteiro. Eventos posteriores retomam a identificação.
+
+A busca semântica não percorre documentos WebView/ContentView/GeckoView. Mesmo nas buscas diretas por id, um nó dentro de conteúdo web não pode ser usado como barra de endereço, editor ou botão de envio. Isso também evita consumir todo o limite de busca no conteúdo de uma página antes de encontrar a barra nativa.
+
+Chrome, Samsung Internet, Via (pacotes `mark.via` e `mark.via.gp`) e variantes Yandex têm ativação por clique como primeira tentativa quando não existe preferência aprendida. Os ids de omnibox Yandex e rótulos de endereço em campos nativos URI também participam da seleção. O app continua exigindo ações anunciadas pelo editor e confirmação posterior do destino; reconhecer o pacote não comprova suporte universal a redirecionamento. A disponibilidade real depende da versão do navegador e da árvore que ele publica à acessibilidade.
 
 O mesmo princípio vale para a neutralização de uma página já identificada como bloqueada: se a reescrita na mesma aba ou a confirmação do destino seguro não puder ser certificada, o FocusGuard mantém o fluxo fail-closed e mostra a superfície de bloqueio; ele não devolve a página bloqueada ao usuário.
 
@@ -176,3 +182,8 @@ O mesmo princípio vale para a neutralização de uma página já identificada c
 O DuckDuckGo Android usa o pacote `com.duckduckgo.mobile.android` e, conforme a geração da interface, pode expor a barra como `omnibarTextInput` ou como o campo nativo `inputField`. O FocusGuard trata `omnibarTextInput` como uma barra que pode exigir `ACTION_CLICK` antes de aceitar `ACTION_SET_TEXT`. O id genérico `inputField` só é autorizado para automação no pacote oficial do DuckDuckGo e apenas quando o próprio nó se identifica semanticamente como campo de endereço (por exemplo, `Search or enter address` / `Pesquisar ou inserir endereço`); campos de Duck.ai com o mesmo id continuam rejeitados.
 
 Se a neutralização na mesma aba ainda falhar, o handoff fail-closed reutiliza a geração da cortina já visível. Isso evita destacar/desanexar e recriar a cortina durante a falha, reduzindo o efeito de tela de bloqueio piscando enquanto a superfície genérica segura assume o primeiro plano.
+
+
+## Registro desta correção
+
+Revisão estática do código, sem execução de testes, build ou validação em aparelho, conforme solicitado. A classificação distingue evidência nativa, conteúdo web e estado inconclusivo; ela não promete inspecionar superfícies que o navegador não expõe ao Android.

@@ -2,6 +2,7 @@ package com.focusguard.accessibility.website.identification
 
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.focusguard.utils.BrowserSurfaceInspector
 import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.focusguard.utils.WebsiteBlocker
 
@@ -111,6 +112,15 @@ internal object WebsiteIdentificationEngine {
             )
         }
 
+        val surface = BrowserSurfaceInspector.inspect(root, browserPackageName)
+        if (surface == BrowserSurfaceInspector.Surface.NATIVE_PANEL) {
+            return WebsiteIdentificationResult(
+                status = WebsiteIdentificationStatus.NATIVE_BROWSER_UI,
+                browserPackageName = browserPackageName,
+                windowId = expectedWindowId,
+                evidence = setOf(WebsiteIdentificationLayer.BROWSER_PACKAGE_AND_WINDOW)
+            )
+        }
         val evidence = linkedSetOf(WebsiteIdentificationLayer.BROWSER_PACKAGE_AND_WINDOW)
         val strongId = hasStrongAddressBarId(root, browserPackageName, expectedWindowId)
         if (strongId) evidence += WebsiteIdentificationLayer.STRONG_ADDRESS_BAR_ID
@@ -138,13 +148,16 @@ internal object WebsiteIdentificationEngine {
             status = when {
                 url != null || !rawText.isNullOrBlank() -> WebsiteIdentificationStatus.IDENTIFIED
                 observable -> WebsiteIdentificationStatus.ADDRESS_BAR_OBSERVABLE
+                surface.isNativeUi ->
+                    WebsiteIdentificationStatus.NATIVE_BROWSER_UI
                 else -> WebsiteIdentificationStatus.UNOBSERVABLE
             },
             rawAddressText = rawText,
             urlCandidate = url,
             browserPackageName = browserPackageName,
             windowId = expectedWindowId,
-            evidence = evidence
+            evidence = evidence,
+            webContentObserved = surface == BrowserSurfaceInspector.Surface.WEB_CONTENT
         )
     }
 
@@ -186,7 +199,8 @@ internal object WebsiteIdentificationEngine {
     ): Boolean {
         val source = runCatching { event.source }.getOrNull() ?: return false
         return try {
-            source.packageName?.toString() == browserPackageName &&
+            BrowserSurfaceInspector.isNativeNode(source) &&
+                source.packageName?.toString() == browserPackageName &&
                 source.windowId == event.windowId &&
                 BrowserUiCapabilityPolicy.isStrongAddressBarResource(
                     source.viewIdResourceName.orEmpty(),
@@ -209,7 +223,7 @@ internal object WebsiteIdentificationEngine {
             try {
                 if (nodes.any { node ->
                         runCatching {
-                            node.isVisibleToUser &&
+                            node.isVisibleToUser && BrowserSurfaceInspector.isNativeNode(node) &&
                                 node.packageName?.toString() == browserPackageName &&
                                 node.windowId == expectedWindowId &&
                                 BrowserUiCapabilityPolicy.isStrongAddressBarResource(

@@ -646,7 +646,10 @@ object WebsiteBlocker {
             return true
         }
 
-        BrowserCompatibilityStore.recordUnobservableFailure(browserPackageName)
+        // A native screen without an omnibox is not a failed browser capability.
+        if (BrowserSurfaceInspector.inspect(root, browserPackageName) ==
+            BrowserSurfaceInspector.Surface.WEB_CONTENT
+        ) BrowserCompatibilityStore.recordUnobservableFailure(browserPackageName)
         return false
     }
 
@@ -1178,7 +1181,9 @@ object WebsiteBlocker {
         depth: Int,
         visitedNodes: IntArray
     ) {
-        if (depth >= MAX_TREE_DEPTH || visitedNodes[0] >= MAX_TREE_NODES) return
+        if (depth >= MAX_TREE_DEPTH || visitedNodes[0] >= MAX_TREE_NODES ||
+            BrowserSurfaceInspector.isWebContainer(node)
+        ) return
         for (index in 0 until node.childCount) {
             if (visitedNodes[0] >= MAX_TREE_NODES) return
             val child = node.getChild(index) ?: continue
@@ -1253,7 +1258,8 @@ object WebsiteBlocker {
                 else -> null
             }
         }.toSet(),
-        hintText = hintText?.toString()
+        hintText = hintText?.toString(),
+        inWebContent = !BrowserSurfaceInspector.isNativeNode(this)
     )
 
     private fun BrowserUiCapabilityPolicy.NodeAction.androidActionId(): Int? = when (this) {
@@ -1278,7 +1284,9 @@ object WebsiteBlocker {
         depth: Int,
         visitedNodes: IntArray
     ): String? {
-        if (node == null || depth > MAX_TREE_DEPTH) return null
+        if (node == null || depth > MAX_TREE_DEPTH ||
+            BrowserSurfaceInspector.isWebContainer(node)
+        ) return null
         visitedNodes[0] += 1
         if (visitedNodes[0] > MAX_TREE_NODES) return null
         return try {
@@ -1319,7 +1327,9 @@ object WebsiteBlocker {
         depth: Int,
         visitedNodes: IntArray
     ): String? {
-        if (node == null || depth > MAX_TREE_DEPTH) return null
+        if (node == null || depth > MAX_TREE_DEPTH ||
+            BrowserSurfaceInspector.isWebContainer(node)
+        ) return null
         visitedNodes[0] += 1
         if (visitedNodes[0] > MAX_TREE_NODES) return null
 
@@ -1372,7 +1382,9 @@ object WebsiteBlocker {
         depth: Int,
         visitedNodes: IntArray
     ): String? {
-        if (node == null || depth > MAX_TREE_DEPTH) return null
+        if (node == null || depth > MAX_TREE_DEPTH ||
+            BrowserSurfaceInspector.isWebContainer(node)
+        ) return null
         visitedNodes[0] += 1
         if (visitedNodes[0] > MAX_TREE_NODES) return null
 

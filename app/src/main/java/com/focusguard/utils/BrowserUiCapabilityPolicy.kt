@@ -43,7 +43,8 @@ internal object BrowserUiCapabilityPolicy {
         val text: String?,
         val contentDescription: String? = null,
         val actions: Set<NodeAction>,
-        val hintText: String? = null
+        val hintText: String? = null,
+        val inWebContent: Boolean = false
     )
 
     data class Selection(
@@ -71,7 +72,9 @@ internal object BrowserUiCapabilityPolicy {
         "browser_toolbar_url_view",
         // Samsung Internet and compact browsers such as Via use variants above
         // plus this generic browser-owned id.
-        "address_bar"
+        "address_bar",
+        "bro_omnibox_address_title",
+        "bro_omnibox_address_bar"
     )
 
     val weakReadOnlyAddressBarEntryNames: Set<String> = setOf(
@@ -97,6 +100,8 @@ internal object BrowserUiCapabilityPolicy {
         "mozac_browser_toolbar_url_view",
         "browser_toolbar_url_view",
         "address_bar",
+        "bro_omnibox_address_title",
+        "bro_omnibox_address_bar",
         // DuckDuckGo requires an explicit tap before its editor reliably accepts
         // replacement text. The native input id is authorized only after the
         // package-specific address-mode check in isActionableAddressBarNode().
@@ -156,7 +161,7 @@ internal object BrowserUiCapabilityPolicy {
         expectedBrowserPackage: String,
         expectedWindowId: Int
     ): Boolean {
-        if (!node.visible || node.editable ||
+        if (node.inWebContent || !node.visible || node.editable ||
             expectedBrowserPackage.isBlank() ||
             node.packageName != expectedBrowserPackage ||
             node.windowId != expectedWindowId
@@ -186,16 +191,15 @@ internal object BrowserUiCapabilityPolicy {
         expectedWindowId: Int,
         httpsHandlerRecognized: Boolean
     ): Boolean {
-        if (!node.visible ||
+        if (node.inWebContent || !node.visible ||
             node.packageName != expectedBrowserPackage ||
             node.windowId != expectedWindowId
         ) return false
 
         // Native browser menus/settings are a legitimate no-address-bar surface.
-        // Record that fact for the opaque-browser policy, but never pretend this
-        // node is an address bar or authorize browser automation against it.
+        // Never pretend this node is an address bar or authorize automation
+        // against it. Whole-window classification is handled separately.
         if (isNativeBrowserUiNode(node, expectedBrowserPackage, expectedWindowId)) {
-            BrowserCompatibilityStore.recordNativeUiEvidence(expectedBrowserPackage)
             return false
         }
 
@@ -213,14 +217,7 @@ internal object BrowserUiCapabilityPolicy {
             node.editable
         ) return true
 
-        val description = node.contentDescription.orEmpty().trim().lowercase(Locale.ROOT)
-        if (readOnlyAddressBarDescriptions.any { label ->
-                description == label ||
-                    description.startsWith("$label,") ||
-                    description.startsWith("$label.") ||
-                    description.startsWith("$label ")
-            }
-        ) return true
+        if (hasAddressBarLabel(node)) return true
 
         val normalizedEntryName = entryName.lowercase(Locale.ROOT)
         val idLooksNative = normalizedEntryName.let { id ->
@@ -254,7 +251,7 @@ internal object BrowserUiCapabilityPolicy {
         expectedWindowId: Int,
         httpsHandlerRecognized: Boolean
     ): Boolean {
-        if (!httpsHandlerRecognized ||
+        if (node.inWebContent || !httpsHandlerRecognized ||
             !node.visible || !node.editable || !node.uriInput ||
             node.packageName != expectedBrowserPackage ||
             node.windowId != expectedWindowId
@@ -267,7 +264,8 @@ internal object BrowserUiCapabilityPolicy {
         val entryName = viewId.substring(prefix.length).lowercase(Locale.ROOT)
         return entryName.contains("url") || entryName.contains("uri") ||
             entryName.contains("omnibox") || entryName.contains("address") ||
-            entryName.contains("location") || entryName.contains("navigation")
+            entryName.contains("location") || entryName.contains("navigation") ||
+            hasAddressBarLabel(node)
     }
 
     fun isActionableAddressBarNode(
@@ -276,7 +274,7 @@ internal object BrowserUiCapabilityPolicy {
         expectedWindowId: Int,
         httpsHandlerRecognized: Boolean = false
     ): Boolean {
-        if (!node.visible ||
+        if (node.inWebContent || !node.visible ||
             node.packageName != expectedBrowserPackage ||
             node.windowId != expectedWindowId
         ) return false
@@ -383,7 +381,13 @@ internal object BrowserUiCapabilityPolicy {
     ) {
         BrowserActivationMethod.CLICK -> true
         BrowserActivationMethod.FOCUS -> false
-        null -> expectedBrowserPackage == DUCKDUCKGO_PACKAGE
+        null -> expectedBrowserPackage == DUCKDUCKGO_PACKAGE ||
+            expectedBrowserPackage in setOf(
+                "com.android.chrome", "com.chrome.beta", "com.chrome.dev", "com.chrome.canary",
+                "com.sec.android.app.sbrowser", "com.sec.android.app.sbrowser.beta",
+                "mark.via", "mark.via.gp", "com.yandex.browser", "com.yandex.browser.beta",
+                "com.yandex.browser.alpha", "com.yandex.browser.lite"
+            )
     }
 
     fun mayRewriteBlockedTabAfterCloseAttempt(
@@ -412,8 +416,7 @@ internal object BrowserUiCapabilityPolicy {
         NodeAction.IME_ENTER -> node.editable && node.focused &&
             NodeAction.IME_ENTER in node.actions
         NodeAction.LONG_CLICK -> NodeAction.LONG_CLICK in node.actions
-        NodeAction.CLICK -> entryName(node) in clickableDisplayEntryNames &&
-            NodeAction.CLICK in node.actions
+        NodeAction.CLICK -> NodeAction.CLICK in node.actions
     }
 
     private fun actionRank(node: Node, action: NodeAction): Int = when (action) {
@@ -428,6 +431,15 @@ internal object BrowserUiCapabilityPolicy {
         NodeAction.CLICK -> 40
         NodeAction.LONG_CLICK -> 30
     }
+
+    private fun hasAddressBarLabel(node: Node): Boolean =
+        sequenceOf(node.contentDescription, node.hintText).filterNotNull().any { raw ->
+            val value = raw.trim().lowercase(Locale.ROOT)
+            readOnlyAddressBarDescriptions.any { label ->
+                value == label || value.startsWith("$label,") ||
+                    value.startsWith("$label.") || value.startsWith("$label ")
+            }
+        }
 
     private fun isDuckDuckGoNativeInput(node: Node): Boolean =
         node.packageName == DUCKDUCKGO_PACKAGE &&

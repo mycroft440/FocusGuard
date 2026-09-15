@@ -94,3 +94,13 @@ Reduzir a latência entre a navegação para um site configurado (especialmente 
 
 ## Critério de conclusão
 Um domínio bloqueado já visível na barra de endereço deve acionar a cortina no primeiro evento/árvore em que a URL puder ser identificada, sem uma segunda varredura ou revalidação de janela redundante; YouTube e seus aliases continuam sendo reconhecidos pela mesma regra e navegadores sem evidência suficiente continuam falhando de forma segura.
+
+---
+
+# Correção — interface nativa versus página web dos navegadores
+
+- Classificar a janela atual como interface nativa, conteúdo web ou desconhecida, sem reutilizar evidência global de menus.
+- Excluir WebViews e seus descendentes da leitura e automação da barra de endereço.
+- Reavaliar a janela antes do bloqueio por URL não observável; interfaces nativas e árvores indisponíveis não são prova de site bloqueado.
+- Aprimorar ativação da barra em Chrome, Samsung Internet, Via e Yandex; manter confirmação real de navegação.
+- Revisar o código e enviar diretamente para main. Não executar testes nem builds, conforme solicitado.
