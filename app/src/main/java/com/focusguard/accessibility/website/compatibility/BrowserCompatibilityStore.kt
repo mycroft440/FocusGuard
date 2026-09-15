@@ -318,10 +318,14 @@ internal object BrowserCompatibilityStore {
                     ?: BrowserCompatibilityStatus.UNKNOWN,
                 preferredAddressBarEntryName = json.optString("preferred_entry")
                     .takeIf(String::isNotBlank),
-                identificationMethod = enumOrNull(json.optString("identification")),
-                activationMethod = enumOrNull(json.optString("activation")),
-                writeMethod = enumOrNull(json.optString("write")),
-                submitMethod = enumOrNull(json.optString("submit")),
+                identificationMethod = enumOrNull<BrowserIdentificationMethod>(
+                    json.optString("identification")
+                ),
+                activationMethod = enumOrNull<BrowserActivationMethod>(
+                    json.optString("activation")
+                ),
+                writeMethod = enumOrNull<BrowserWriteMethod>(json.optString("write")),
+                submitMethod = enumOrNull<BrowserSubmitMethod>(json.optString("submit")),
                 consecutiveObservationFailures = json.optInt("observation_failures", 0),
                 consecutiveRedirectionFailures = json.optInt("redirection_failures", 0),
                 updatedAtMillis = json.optLong("updated_at", 0L)
