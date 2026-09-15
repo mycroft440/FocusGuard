@@ -790,7 +790,7 @@ object WebsiteBlocker {
                 visitedNodes[0] += 1
                 val facts = runCatching { child.toBrowserUiNode() }.getOrNull()
                 val semanticCandidate = facts != null &&
-                    !isStrongAddressBarResource(
+                    !BrowserUiCapabilityPolicy.isStrongAddressBarResource(
                         facts.viewIdResourceName,
                         browserPackageName
                     ) &&

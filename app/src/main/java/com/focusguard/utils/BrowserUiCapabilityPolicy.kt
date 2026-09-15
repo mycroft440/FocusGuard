@@ -188,7 +188,12 @@ internal object BrowserUiCapabilityPolicy {
 
         val prefix = "$expectedBrowserPackage:id/"
         val viewId = node.viewIdResourceName
-        return viewId.startsWith(prefix) && viewId.length > prefix.length
+        if (!viewId.startsWith(prefix) || viewId.length <= prefix.length) return false
+
+        val entryName = viewId.substring(prefix.length).lowercase(Locale.ROOT)
+        return entryName.contains("url") || entryName.contains("uri") ||
+            entryName.contains("omnibox") || entryName.contains("address") ||
+            entryName.contains("location") || entryName.contains("navigation")
     }
 
     fun isActionableAddressBarNode(
@@ -220,7 +225,7 @@ internal object BrowserUiCapabilityPolicy {
             if (!isActionableAddressBarNode(
                     node,
                     expectedBrowserPackage,
-                    expectedWindowId
+                    expectedWindowId,
                     httpsHandlerRecognized = httpsHandlerRecognized
                 ) || !supports(node, requiredAction) ||
                 (textPredicate != null && !textPredicate(node.text))
