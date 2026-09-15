@@ -1,5 +1,7 @@
 package com.focusguard.utils
 
+import com.focusguard.accessibility.website.compatibility.BrowserActivationMethod
+import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
 import java.util.Locale
 
 /**
@@ -244,6 +246,8 @@ internal object BrowserUiCapabilityPolicy {
         textPredicate: ((String?) -> Boolean)? = null,
         httpsHandlerRecognized: Boolean = false
     ): Selection {
+        val preferredEntryName = BrowserCompatibilityStore
+            .preferredAddressBarEntryName(expectedBrowserPackage)
         val ranked = nodes.indices.mapNotNull { index ->
             val node = nodes[index]
             if (!isActionableAddressBarNode(
@@ -256,7 +260,10 @@ internal object BrowserUiCapabilityPolicy {
             ) {
                 null
             } else {
-                index to actionRank(node, requiredAction)
+                val cachedPreferenceBonus = if (
+                    preferredEntryName != null && entryName(node) == preferredEntryName
+                ) 100 else 0
+                index to (actionRank(node, requiredAction) + cachedPreferenceBonus)
             }
         }
         if (ranked.isEmpty()) return Selection(SelectionStatus.NOT_FOUND)
@@ -317,8 +324,13 @@ internal object BrowserUiCapabilityPolicy {
 
     fun canUseImeEnter(apiLevel: Int): Boolean = apiLevel >= IME_ENTER_MIN_API
 
-    fun prefersClickAddressBarActivation(expectedBrowserPackage: String): Boolean =
-        expectedBrowserPackage == DUCKDUCKGO_PACKAGE
+    fun prefersClickAddressBarActivation(expectedBrowserPackage: String): Boolean = when (
+        BrowserCompatibilityStore.preferredActivationMethod(expectedBrowserPackage)
+    ) {
+        BrowserActivationMethod.CLICK -> true
+        BrowserActivationMethod.FOCUS -> false
+        null -> expectedBrowserPackage == DUCKDUCKGO_PACKAGE
+    }
 
     fun mayRewriteBlockedTabAfterCloseAttempt(
         closeActionAccepted: Boolean,
