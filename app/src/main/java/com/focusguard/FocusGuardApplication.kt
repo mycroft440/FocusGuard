@@ -5,6 +5,7 @@ import android.os.UserManager
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
 import com.focusguard.accessibility.website.redirection.ClipboardPasteFallback
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeManager
@@ -44,6 +45,10 @@ class FocusGuardApplication : Application() {
         } else {
             runCatching { createDeviceProtectedStorageContext() }.getOrDefault(this)
         }
+        val browserCompatibilityContext = runCatching {
+            createDeviceProtectedStorageContext()
+        }.getOrDefault(startupContext)
+        BrowserCompatibilityStore.initialize(browserCompatibilityContext)
         FocusGuardLogger.init(startupContext)
 
         // A nova geração é criada apenas quando o PROCESSO do app volta ao
