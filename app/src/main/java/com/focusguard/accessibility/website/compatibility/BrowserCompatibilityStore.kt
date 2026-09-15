@@ -2,6 +2,7 @@ package com.focusguard.accessibility.website.compatibility
 
 import android.content.Context
 import android.content.SharedPreferences
+import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -60,6 +61,7 @@ internal object BrowserCompatibilityStore {
     private const val PREFS_NAME = "browser_compatibility_cache_v1"
     private const val KEY_PACKAGES = "packages"
     private const val KEY_PREFIX = "record:"
+    private const val OBSERVATION_FAILURE_MIN_SPAN_MILLIS = 200L
     private const val SUPPORTED_FAILURE_THRESHOLD = 3
     private const val REDIRECTION_FAILURE_THRESHOLD = 3
     private const val REDIRECTION_FAILURE_DEBOUNCE_MILLIS = 150L
@@ -68,6 +70,7 @@ internal object BrowserCompatibilityStore {
     private var prefs: SharedPreferences? = null
     private val cache = linkedMapOf<String, BrowserCompatibilityRecord>()
     private val pendingRedirects = mutableMapOf<String, PendingRedirect>()
+    private val firstObservationFailureAt = mutableMapOf<String, Long>()
     private val lastRedirectionFailureAt = mutableMapOf<String, Long>()
     private val _testedRecords = MutableStateFlow<List<BrowserCompatibilityRecord>>(emptyList())
 
@@ -124,6 +127,7 @@ internal object BrowserCompatibilityStore {
     ) {
         if (packageName.isBlank()) return
         synchronized(lock) {
+            firstObservationFailureAt.remove(packageName)
             val previous = recordForLocked(packageName)
             val entryName = browserOwnedEntryName(packageName, viewIdResourceName)
                 ?: previous.preferredAddressBarEntryName
@@ -202,14 +206,23 @@ internal object BrowserCompatibilityStore {
         )
     }
 
-    /** Called only after the complete observable-address-bar search returned no match. */
+    /**
+     * Called after one complete address-bar lookup returned no match. Transient
+     * browser UI states inside the same 200 ms observability grace do not mark a
+     * browser unsupported; the failure must persist across that grace window.
+     */
     fun recordUnobservableFailure(packageName: String) {
         if (packageName.isBlank()) return
         synchronized(lock) {
+            val now = System.currentTimeMillis()
+            val firstFailureAt = firstObservationFailureAt.getOrPut(packageName) { now }
             val previous = recordForLocked(packageName)
             val failures = previous.consecutiveObservationFailures + 1
-            val unsupported = previous.status != BrowserCompatibilityStatus.SUPPORTED ||
-                failures >= SUPPORTED_FAILURE_THRESHOLD
+            val sustainedFailure = now - firstFailureAt >= OBSERVATION_FAILURE_MIN_SPAN_MILLIS
+            val unsupported = sustainedFailure && (
+                previous.status != BrowserCompatibilityStatus.SUPPORTED ||
+                    failures >= SUPPORTED_FAILURE_THRESHOLD
+                )
             saveLocked(
                 previous.copy(
                     status = if (unsupported) {
@@ -218,7 +231,7 @@ internal object BrowserCompatibilityStore {
                         previous.status
                     },
                     consecutiveObservationFailures = failures,
-                    updatedAtMillis = System.currentTimeMillis()
+                    updatedAtMillis = now
                 )
             )
         }
@@ -343,7 +356,7 @@ internal object BrowserCompatibilityStore {
 
     private fun normalizeAddress(value: String?): String = value.orEmpty()
         .trim()
-        .lowercase()
+        .lowercase(Locale.ROOT)
         .removePrefix("https://")
         .removePrefix("http://")
         .removePrefix("www.")
