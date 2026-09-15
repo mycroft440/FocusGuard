@@ -5,43 +5,17 @@ import org.junit.Test
 
 class BrowserSiteOnlyBlockingPolicyTest {
     @Test
-    fun `supported browsers stay accessible when URL recovery ends unobservable`() {
+    fun `recognized browser stays accessible when URL recovery ends unobservable`() {
         val opaqueWebSurface = WebsiteIdentificationResult(
             status = WebsiteIdentificationStatus.UNOBSERVABLE,
             webContentObserved = true
         )
 
-        listOf(
-            "com.android.chrome",
-            "mark.via.gp",
-            "com.yandex.browser",
-            "com.brave.browser"
-        ).forEach { packageName ->
-            val adjusted = BrowserSiteOnlyBlockingPolicy.applyAfterRecovery(
-                packageName = packageName,
-                result = opaqueWebSurface
-            )
+        val adjusted = BrowserSiteOnlyBlockingPolicy.applyAfterRecovery(opaqueWebSurface)
 
-            assertThat(adjusted.status).isEqualTo(WebsiteIdentificationStatus.UNOBSERVABLE)
-            assertThat(adjusted.webContentObserved).isFalse()
-            assertThat(adjusted.bestCandidate).isNull()
-        }
-    }
-
-    @Test
-    fun `unknown browser keeps opaque fail closed evidence`() {
-        val opaqueWebSurface = WebsiteIdentificationResult(
-            status = WebsiteIdentificationStatus.UNOBSERVABLE,
-            webContentObserved = true
-        )
-
-        val adjusted = BrowserSiteOnlyBlockingPolicy.applyAfterRecovery(
-            packageName = "org.example.opaque.browser",
-            result = opaqueWebSurface
-        )
-
-        assertThat(adjusted).isEqualTo(opaqueWebSurface)
-        assertThat(adjusted.webContentObserved).isTrue()
+        assertThat(adjusted.status).isEqualTo(WebsiteIdentificationStatus.UNOBSERVABLE)
+        assertThat(adjusted.webContentObserved).isFalse()
+        assertThat(adjusted.bestCandidate).isNull()
     }
 
     @Test
@@ -53,13 +27,44 @@ class BrowserSiteOnlyBlockingPolicyTest {
             webContentObserved = true
         )
 
-        val adjusted = BrowserSiteOnlyBlockingPolicy.applyAfterRecovery(
-            packageName = "com.android.chrome",
-            result = identified
-        )
+        val adjusted = BrowserSiteOnlyBlockingPolicy.applyAfterRecovery(identified)
 
         assertThat(adjusted).isEqualTo(identified)
         assertThat(adjusted.bestCandidate).isEqualTo("https://facebook.com/feed")
         assertThat(adjusted.webContentObserved).isTrue()
+    }
+
+    @Test
+    fun `observable address bar evidence is never downgraded`() {
+        val observable = WebsiteIdentificationResult(
+            status = WebsiteIdentificationStatus.ADDRESS_BAR_OBSERVABLE,
+            rawAddressText = "example.com",
+            webContentObserved = true
+        )
+
+        assertThat(BrowserSiteOnlyBlockingPolicy.applyAfterRecovery(observable))
+            .isEqualTo(observable)
+    }
+
+    @Test
+    fun `native browser UI is never rewritten as opaque web content`() {
+        val native = WebsiteIdentificationResult(
+            status = WebsiteIdentificationStatus.NATIVE_BROWSER_UI,
+            webContentObserved = false
+        )
+
+        assertThat(BrowserSiteOnlyBlockingPolicy.applyAfterRecovery(native))
+            .isEqualTo(native)
+    }
+
+    @Test
+    fun `rejected context remains rejected`() {
+        val rejected = WebsiteIdentificationResult(
+            status = WebsiteIdentificationStatus.REJECTED_CONTEXT,
+            webContentObserved = true
+        )
+
+        assertThat(BrowserSiteOnlyBlockingPolicy.applyAfterRecovery(rejected))
+            .isEqualTo(rejected)
     }
 }
