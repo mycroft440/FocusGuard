@@ -5,6 +5,7 @@ import android.os.UserManager
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.focusguard.accessibility.website.redirection.ClipboardPasteFallback
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.focusmode.FocusModeStore
@@ -34,6 +35,7 @@ class FocusGuardApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        ClipboardPasteFallback.initialize(this)
         val userUnlocked = runCatching {
             getSystemService(UserManager::class.java).isUserUnlocked
         }.getOrDefault(true)
