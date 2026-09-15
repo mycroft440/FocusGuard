@@ -1,6 +1,5 @@
 package com.focusguard.ui.compose.screens
 
-import android.content.pm.PackageManager
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -84,12 +83,6 @@ private fun BrowserCompatibilityRow(record: BrowserCompatibilityRecord) {
     val context = LocalContext.current
     val label = remember(record.packageName) {
         runCatching {
-            val info = context.packageManager.getApplicationInfo(
-                record.packageName,
-                PackageManager.ApplicationInfoFlags.of(0)
-            )
-            context.packageManager.getApplicationLabel(info).toString()
-        }.recoverCatching {
             @Suppress("DEPRECATION")
             val info = context.packageManager.getApplicationInfo(record.packageName, 0)
             context.packageManager.getApplicationLabel(info).toString()
