@@ -917,7 +917,9 @@ class BlockingAccessibilityService : AccessibilityService() {
             val browserIntent = Intent(
                 Intent.ACTION_VIEW,
                 android.net.Uri.parse("https://example.com")
-            )
+            ).apply {
+                addCategory(Intent.CATEGORY_BROWSABLE)
+            }
             val dynamicBrowsers = packageManager.queryIntentActivities(
                 browserIntent,
                 PackageManagerCompat.MATCH_ALL
@@ -936,7 +938,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun isVerifiedHttpsHandler(packageName: String): Boolean =
-        packageName in verifiedHttpsHandlerPackages || packageName in knownBrowserPackages
+        packageName in verifiedHttpsHandlerPackages
 
     private fun calculateDefaultLauncher(): String? {
         return try {
@@ -3513,10 +3515,37 @@ class BlockingAccessibilityService : AccessibilityService() {
                     transition = transition
                 )
 
-                // Same-tab rewrite is the only website redirect path. Never close the
-                // current tab/browser as a fallback: if the browser UI is temporarily late,
-                // keep it open and let the next accessibility event retry the blocked URL.
+                // Same-tab rewrite is the only website redirect path. If the first
+                // attempt raced an editor/focus animation, restore the exact blocked surface
+                // and retry once with a fresh capability state. We still never close a tab,
+                // launch a second browser document or evict the browser to HOME.
                 if (!redirectRequested) {
+                    val blockedSurfaceRestored =
+                        restoreBlockedSurfaceAfterAddressEdit(transition)
+                    if (blockedSurfaceRestored && curtainReadyForTransition(transition)) {
+                        FocusGuardLogger.log(
+                            "A11y",
+                            "Repetindo redirecionamento seguro na mesma aba de $browserPackageName"
+                        )
+                        delay(WEBSITE_ADDRESS_BAR_ACTION_RETRY_MILLIS)
+                        redirectRequested = requestSafeGoogleInCurrentTab(
+                            browserPackageName = browserPackageName,
+                            expectedWindowId = expectedWindowId,
+                            policy = WebsiteTabNeutralizationPolicy(
+                                browserPackageName = browserPackageName,
+                                expectedWindowId = expectedWindowId
+                            ),
+                            transition = transition
+                        )
+                    }
+                }
+
+                if (!redirectRequested) {
+                    FocusGuardLogger.log(
+                        "A11y",
+                        "Navegador preservado: redirecionamento na mesma aba não pôde ser certificado " +
+                            "para $browserPackageName (API ${Build.VERSION.SDK_INT})"
+                    )
                     stateMachine.onFailureOrTimeout()
                     releaseWebsiteCurtainAfterMinimumNotice(
                         curtainGeneration = curtainGeneration,
@@ -3975,7 +4004,8 @@ class BlockingAccessibilityService : AccessibilityService() {
             root = root,
             browserPackageName = browserPackageName,
             expectedWindowId = expectedWindowId,
-            requiredAction = BrowserUiCapabilityPolicy.NodeAction.FOCUS
+            requiredAction = BrowserUiCapabilityPolicy.NodeAction.FOCUS,
+            httpsHandlerRecognized = isVerifiedHttpsHandler(browserPackageName)
         )
         val activationResult = if (
             focusResult.status == WebsiteBlocker.AddressBarActionStatus.NOT_FOUND
@@ -3984,7 +4014,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                 root = root,
                 browserPackageName = browserPackageName,
                 expectedWindowId = expectedWindowId,
-                requiredAction = BrowserUiCapabilityPolicy.NodeAction.CLICK
+                requiredAction = BrowserUiCapabilityPolicy.NodeAction.CLICK,
+                httpsHandlerRecognized = isVerifiedHttpsHandler(browserPackageName)
             )
         } else {
             focusResult
@@ -4021,7 +4052,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                     browserPackageName = browserPackageName,
                     expectedWindowId = expectedWindowId,
                     requiredAction = BrowserUiCapabilityPolicy.NodeAction.SET_TEXT,
-                    arguments = arguments
+                    arguments = arguments,
+                    httpsHandlerRecognized = isVerifiedHttpsHandler(browserPackageName)
                 )
                 recycleSafely(editRoot)
                 if (replaced.accepted) {
@@ -4066,7 +4098,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                     browserPackageName = browserPackageName,
                     expectedWindowId = expectedWindowId,
                     requiredAction = BrowserUiCapabilityPolicy.NodeAction.IME_ENTER,
-                    textPredicate = ::isSafeGoogleRedirectSurface
+                    textPredicate = ::isSafeGoogleRedirectSurface,
+                    httpsHandlerRecognized = isVerifiedHttpsHandler(browserPackageName)
                 )
                 recycleSafely(root)
                 if (submitted.accepted) return submitRequestedAt

@@ -703,7 +703,8 @@ object WebsiteBlocker {
         expectedWindowId: Int,
         requiredAction: BrowserUiCapabilityPolicy.NodeAction,
         arguments: Bundle? = null,
-        textPredicate: ((String?) -> Boolean)? = null
+        textPredicate: ((String?) -> Boolean)? = null,
+        httpsHandlerRecognized: Boolean = false
     ): AddressBarActionResult {
         if (root.packageName?.toString() != browserPackageName ||
             root.windowId != expectedWindowId
@@ -717,6 +718,16 @@ object WebsiteBlocker {
             }.getOrDefault(emptyList())
             nodes += matches
         }
+        if (httpsHandlerRecognized) {
+            collectSemanticActionAddressBarNodes(
+                node = root,
+                browserPackageName = browserPackageName,
+                expectedWindowId = expectedWindowId,
+                output = nodes,
+                depth = 0,
+                visitedNodes = intArrayOf(0)
+            )
+        }
         return try {
             val facts = runCatching { nodes.map { it.toBrowserUiNode() } }
                 .getOrElse {
@@ -727,7 +738,8 @@ object WebsiteBlocker {
                 expectedBrowserPackage = browserPackageName,
                 expectedWindowId = expectedWindowId,
                 requiredAction = requiredAction,
-                textPredicate = textPredicate
+                textPredicate = textPredicate,
+                httpsHandlerRecognized = httpsHandlerRecognized
             )
             val selectedIndex = selection.index ?: return AddressBarActionResult(
                 status = when (selection.status) {
@@ -758,6 +770,58 @@ object WebsiteBlocker {
             )
         } finally {
             nodes.forEach(::recycleSafely)
+        }
+    }
+
+    private fun collectSemanticActionAddressBarNodes(
+        node: AccessibilityNodeInfo,
+        browserPackageName: String,
+        expectedWindowId: Int,
+        output: MutableList<AccessibilityNodeInfo>,
+        depth: Int,
+        visitedNodes: IntArray
+    ) {
+        if (depth >= MAX_TREE_DEPTH || visitedNodes[0] >= MAX_TREE_NODES) return
+        for (index in 0 until node.childCount) {
+            if (visitedNodes[0] >= MAX_TREE_NODES) return
+            val child = node.getChild(index) ?: continue
+            var retained = false
+            try {
+                visitedNodes[0] += 1
+                val facts = runCatching { child.toBrowserUiNode() }.getOrNull()
+                val semanticCandidate = facts != null &&
+                    !isStrongAddressBarResource(
+                        facts.viewIdResourceName,
+                        browserPackageName
+                    ) &&
+                    BrowserUiCapabilityPolicy.isSemanticActionableAddressBarNode(
+                        node = facts,
+                        expectedBrowserPackage = browserPackageName,
+                        expectedWindowId = expectedWindowId,
+                        httpsHandlerRecognized = true
+                    )
+                if (semanticCandidate) {
+                    output += child
+                    retained = true
+                } else {
+                    collectSemanticActionAddressBarNodes(
+                        node = child,
+                        browserPackageName = browserPackageName,
+                        expectedWindowId = expectedWindowId,
+                        output = output,
+                        depth = depth + 1,
+                        visitedNodes = visitedNodes
+                    )
+                }
+            } catch (error: RuntimeException) {
+                FocusGuardLogger.logError(
+                    TAG,
+                    "Falha ao procurar campo URI acionável do navegador",
+                    error
+                )
+            } finally {
+                if (!retained) recycleSafely(child)
+            }
         }
     }
 
