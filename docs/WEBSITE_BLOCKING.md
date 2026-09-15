@@ -162,3 +162,10 @@ Com uma sessão ativa bloqueando `example.com`, validar:
 - [Política URLBlocklist do Microsoft Edge](https://learn.microsoft.com/pt-br/deployedge/microsoft-edge-policies/urlblocklist)
 - [Política InPrivate do Microsoft Edge](https://learn.microsoft.com/pt-br/deployedge/microsoft-edge-policies/inprivatemodeavailability)
 - [Filtros DNS gratuitos do CleanBrowsing](https://cleanbrowsing.org/filters)
+
+
+## Navegadores sem URL observável (fail-closed)
+
+Quando uma proteção de site ou um limite rígido exige conhecer a URL atual, o FocusGuard concede apenas uma janela curta para a barra de endereço aparecer na árvore de acessibilidade. Se o navegador continuar opaco, ele é bloqueado por uma superfície genérica do FocusGuard em vez de continuar utilizável sem fiscalização. Isso fecha o bypass de navegadores que ocultam a URL, inclusive o Via quando sua interface não expõe um endereço confiável.
+
+O mesmo princípio vale para a neutralização de uma página já identificada como bloqueada: se a reescrita na mesma aba ou a confirmação do destino seguro não puder ser certificada, o FocusGuard mantém o fluxo fail-closed e mostra a superfície de bloqueio; ele não devolve a página bloqueada ao usuário.
