@@ -1,3 +1,6 @@
+import java.security.KeyStore
+import java.security.MessageDigest
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -64,6 +67,40 @@ android {
         !releaseKeyAlias.isNullOrBlank() &&
         !releaseKeyPassword.isNullOrBlank() &&
         file(releaseKeystorePath).exists()
+    val canonicalReleaseSignerSha256 =
+        "e8da4209d0012052b052b280fa64becb788bf6929563ce54a0707cb8c3385157"
+
+    val verifyCanonicalReleaseSigningIdentity =
+        tasks.register("verifyCanonicalReleaseSigningIdentity") {
+            group = "verification"
+            description = "Verifies that production release packaging uses the canonical update key."
+            doLast {
+                check(releaseSigningAvailable) {
+                    "Production release packaging requires KEYSTORE_FILE, KEYSTORE_PASSWORD, " +
+                        "KEY_ALIAS and KEY_PASSWORD for the canonical signing key."
+                }
+
+                val keyStore = KeyStore.getInstance(
+                    file(requireNotNull(releaseKeystorePath)),
+                    requireNotNull(releaseKeystorePassword).toCharArray()
+                )
+                val certificate = requireNotNull(
+                    keyStore.getCertificate(requireNotNull(releaseKeyAlias))
+                ) {
+                    "Release keystore does not contain the configured KEY_ALIAS."
+                }
+                val actualSignerSha256 = MessageDigest.getInstance("SHA-256")
+                    .digest(certificate.encoded)
+                    .joinToString("") { byte ->
+                        (byte.toInt() and 0xff).toString(16).padStart(2, '0')
+                    }
+
+                check(actualSignerSha256.equals(canonicalReleaseSignerSha256, ignoreCase = true)) {
+                    "Release signing key does not match the canonical Hard Block update identity. " +
+                        "Refusing to package an incompatible production update."
+                }
+            }
+        }
 
     signingConfigs {
         if (releaseSigningAvailable) {
@@ -103,6 +140,19 @@ android {
                 signingConfig = signingConfigs.getByName("release")
             }
         }
+    }
+
+    // Compilation, lint and release unit tests remain usable without production
+    // secrets. Only tasks that actually package the canonical production app are
+    // gated, preventing an unsigned or differently signed com.focusguard.v2 from
+    // being generated and mistaken for an installable update.
+    val protectedReleasePackagingTasks = setOf(
+        "assembleRelease",
+        "bundleRelease",
+        "packageRelease"
+    )
+    tasks.matching { it.name in protectedReleasePackagingTasks }.configureEach {
+        dependsOn(verifyCanonicalReleaseSigningIdentity)
     }
 
     compileOptions {
