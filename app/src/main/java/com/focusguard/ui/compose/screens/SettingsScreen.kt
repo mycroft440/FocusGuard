@@ -61,6 +61,7 @@ fun SettingsScreen(
     profile: UserProfile,
     onProfileClick: () -> Unit,
     onLanguageClick: () -> Unit,
+    onTestedBrowsersClick: () -> Unit,
     onCreatorInstagramClick: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -121,6 +122,12 @@ fun SettingsScreen(
                 onClick = {
                     masterPasswordLauncher.launch(MasterPasswordActivity.createIntent(context))
                 }
+            )
+            SettingsItem(
+                Icons.Default.Language,
+                stringResource(R.string.tested_browsers_settings_title),
+                stringResource(R.string.tested_browsers_settings_subtitle),
+                onClick = onTestedBrowsersClick
             )
             SettingsItem(
                 Icons.Default.DeleteForever,
