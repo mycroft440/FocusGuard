@@ -1377,6 +1377,7 @@ object WebsiteBlocker {
                 )
             ) return node.viewIdResourceName.orEmpty()
             for (index in 0 until node.childCount) {
+                if (visitedNodes[0] >= MAX_TREE_NODES) break
                 val child = node.getChild(index) ?: continue
                 try {
                     findAddressBarNode(
@@ -1430,6 +1431,7 @@ object WebsiteBlocker {
             }
 
             for (index in 0 until node.childCount) {
+                if (visitedNodes[0] >= MAX_TREE_NODES) break
                 val child = node.getChild(index) ?: continue
                 try {
                     findAddressBarValue(
@@ -1482,6 +1484,7 @@ object WebsiteBlocker {
                 }
             }
             for (index in 0 until node.childCount) {
+                if (visitedNodes[0] >= MAX_TREE_NODES) break
                 val child = node.getChild(index) ?: continue
                 try {
                     findAddressBarText(
