@@ -28,10 +28,20 @@ internal object BrowserSurfaceInspector {
             className.contains("contentview") || className.contains("geckoview")
     }
 
-    /** Exact ids and URI input types in a web document are still page content. */
+    /**
+     * Exact browser-owned address-bar resources remain browser chrome even when a
+     * browser nests its toolbar below WebView/ContentView/GeckoView in the
+     * accessibility hierarchy. Every non-exact node below those containers stays
+     * page content, so semantic page fields never gain browser UI privileges.
+     */
     fun isNativeNode(node: AccessibilityNodeInfo): Boolean {
         var ancestor: AccessibilityNodeInfo? = null
         return try {
+            if (isTrustedExactAddressBarResource(
+                    viewIdResourceName = node.viewIdResourceName.orEmpty(),
+                    packageName = node.packageName?.toString().orEmpty()
+                )
+            ) return true
             if (isWebContainer(node)) return false
             ancestor = node.parent
             var depth = 0
@@ -48,6 +58,14 @@ internal object BrowserSurfaceInspector {
             recycle(ancestor)
         }
     }
+
+    internal fun isTrustedExactAddressBarResource(
+        viewIdResourceName: String,
+        packageName: String
+    ): Boolean = BrowserUiCapabilityPolicy.isStrongAddressBarResource(
+        viewIdResourceName = viewIdResourceName,
+        expectedBrowserPackage = packageName
+    )
 
     fun inspect(root: AccessibilityNodeInfo?, browserPackage: String): Surface {
         if (root == null || browserPackage.isBlank()) return Surface.UNKNOWN
