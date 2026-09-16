@@ -37,8 +37,11 @@ import java.util.Locale
 object WebsiteBlocker {
 
     private const val TAG = "WebsiteBlocker"
-    private const val MAX_TREE_DEPTH = 12
-    private const val MAX_TREE_NODES = 256
+    // Browser toolbars can be nested below a virtualized WebView/GeckoView.
+    // Keep the walk bounded, but large enough to reach browser-owned chrome after
+    // entering those containers without turning arbitrary page text into URL evidence.
+    private const val MAX_TREE_DEPTH = 24
+    private const val MAX_TREE_NODES = 512
     private const val KEYWORD_RULE_PREFIX = "keyword:"
     private const val CATEGORY_RULE_PREFIX = "category:"
     private const val MIN_KEYWORD_LENGTH = 3
@@ -851,6 +854,18 @@ object WebsiteBlocker {
             }.getOrDefault(emptyList())
             nodes += matches
         }
+        // Some browsers expose a genuine native toolbar below their web container,
+        // while findAccessibilityNodeInfosByViewId() does not return that descendant.
+        // Traverse through the container only for exact strong browser resources.
+        // Semantic page fields never enter this action candidate list.
+        collectStrongActionAddressBarNodes(
+            node = root,
+            browserPackageName = browserPackageName,
+            expectedWindowId = expectedWindowId,
+            output = nodes,
+            depth = 0,
+            visitedNodes = intArrayOf(0)
+        )
         if (httpsHandlerRecognized) {
             collectSemanticActionAddressBarNodes(
                 node = root,
@@ -1185,6 +1200,50 @@ object WebsiteBlocker {
         }
     }
 
+    private fun collectStrongActionAddressBarNodes(
+        node: AccessibilityNodeInfo,
+        browserPackageName: String,
+        expectedWindowId: Int,
+        output: MutableList<AccessibilityNodeInfo>,
+        depth: Int,
+        visitedNodes: IntArray
+    ) {
+        if (depth > MAX_TREE_DEPTH || visitedNodes[0] >= MAX_TREE_NODES ||
+            !node.isVisibleToUser || node.windowId != expectedWindowId
+        ) return
+        visitedNodes[0] += 1
+
+        val belongsToBrowser = node.packageName?.toString() == browserPackageName
+        if (belongsToBrowser && BrowserUiCapabilityPolicy.isStrongAddressBarResource(
+                node.viewIdResourceName.orEmpty(),
+                browserPackageName
+            )
+        ) {
+            if (output.none { existing -> existing == node }) {
+                @Suppress("DEPRECATION")
+                output += AccessibilityNodeInfo.obtain(node)
+            }
+            return
+        }
+
+        for (index in 0 until node.childCount) {
+            if (visitedNodes[0] >= MAX_TREE_NODES) break
+            val child = node.getChild(index) ?: continue
+            try {
+                collectStrongActionAddressBarNodes(
+                    node = child,
+                    browserPackageName = browserPackageName,
+                    expectedWindowId = expectedWindowId,
+                    output = output,
+                    depth = depth + 1,
+                    visitedNodes = visitedNodes
+                )
+            } finally {
+                recycleSafely(child)
+            }
+        }
+    }
+
     private fun collectSemanticActionAddressBarNodes(
         node: AccessibilityNodeInfo,
         browserPackageName: String,
@@ -1296,9 +1355,7 @@ object WebsiteBlocker {
         depth: Int,
         visitedNodes: IntArray
     ): String? {
-        if (node == null || depth > MAX_TREE_DEPTH ||
-            BrowserSurfaceInspector.isWebContainer(node)
-        ) return null
+        if (node == null || depth > MAX_TREE_DEPTH) return null
         visitedNodes[0] += 1
         if (visitedNodes[0] > MAX_TREE_NODES) return null
         return try {
@@ -1339,9 +1396,7 @@ object WebsiteBlocker {
         depth: Int,
         visitedNodes: IntArray
     ): String? {
-        if (node == null || depth > MAX_TREE_DEPTH ||
-            BrowserSurfaceInspector.isWebContainer(node)
-        ) return null
+        if (node == null || depth > MAX_TREE_DEPTH) return null
         visitedNodes[0] += 1
         if (visitedNodes[0] > MAX_TREE_NODES) return null
 
@@ -1394,9 +1449,7 @@ object WebsiteBlocker {
         depth: Int,
         visitedNodes: IntArray
     ): String? {
-        if (node == null || depth > MAX_TREE_DEPTH ||
-            BrowserSurfaceInspector.isWebContainer(node)
-        ) return null
+        if (node == null || depth > MAX_TREE_DEPTH) return null
         visitedNodes[0] += 1
         if (visitedNodes[0] > MAX_TREE_NODES) return null
 

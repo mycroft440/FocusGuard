@@ -191,10 +191,22 @@ internal object BrowserUiCapabilityPolicy {
         expectedWindowId: Int,
         httpsHandlerRecognized: Boolean
     ): Boolean {
-        if (node.inWebContent || !node.visible ||
+        if (!node.visible ||
             node.packageName != expectedBrowserPackage ||
             node.windowId != expectedWindowId
         ) return false
+
+        // Exact browser-owned resources are allowed to remain readable even when
+        // a browser exposes its toolbar below a WebView/ContentView/GeckoView.
+        // This is observation only; action authorization remains stricter below.
+        if (isStrongAddressBarResource(node.viewIdResourceName, expectedBrowserPackage)) {
+            return !isDuckDuckGoNativeInput(node) || isDuckDuckGoAddressInput(node)
+        }
+
+        if (node.inWebContent) {
+            if (!httpsHandlerRecognized) return false
+            return isNestedBrowserOwnedAddressBarEvidence(node, expectedBrowserPackage)
+        }
 
         // Native browser menus/settings are a legitimate no-address-bar surface.
         // Never pretend this node is an address bar or authorize automation
@@ -203,9 +215,6 @@ internal object BrowserUiCapabilityPolicy {
             return false
         }
 
-        if (isStrongAddressBarResource(node.viewIdResourceName, expectedBrowserPackage)) {
-            return !isDuckDuckGoNativeInput(node) || isDuckDuckGoAddressInput(node)
-        }
         if (!httpsHandlerRecognized) return false
 
         val prefix = "$expectedBrowserPackage:id/"
@@ -243,6 +252,39 @@ internal object BrowserUiCapabilityPolicy {
                 (value.contains("://") || value.contains('.'))
         }
         return browserOwnedResource && idLooksReadOnlyDisplay && displayLooksAddressLike
+    }
+
+    /**
+     * Read-only escape hatch for browsers that place native address chrome below
+     * their web container. A candidate must still be an Android resource owned by
+     * the browser package and its id must explicitly describe URL/address chrome.
+     * HTML labels, arbitrary URI inputs and generic navigation fields stay rejected.
+     */
+    private fun isNestedBrowserOwnedAddressBarEvidence(
+        node: Node,
+        expectedBrowserPackage: String
+    ): Boolean {
+        val prefix = "$expectedBrowserPackage:id/"
+        val viewId = node.viewIdResourceName
+        if (!viewId.startsWith(prefix) || viewId.length <= prefix.length) return false
+
+        val entryName = viewId.substring(prefix.length).lowercase(Locale.ROOT)
+        val idLooksAddressLike = entryName.contains("url") ||
+            entryName.contains("uri") ||
+            entryName.contains("omnibox") ||
+            entryName.contains("address") ||
+            entryName.contains("location_bar")
+        if (!idLooksAddressLike) return false
+
+        if (node.editable) return node.uriInput || hasAddressBarLabel(node) || idLooksAddressLike
+
+        val displayLooksAddressLike = sequenceOf(node.text, node.contentDescription)
+            .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
+            .any { value ->
+                value.none(Char::isWhitespace) &&
+                    (value.contains("://") || value.contains('.'))
+            }
+        return displayLooksAddressLike || hasAddressBarLabel(node)
     }
 
     fun isSemanticActionableAddressBarNode(
