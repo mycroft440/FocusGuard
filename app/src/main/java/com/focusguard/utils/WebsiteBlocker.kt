@@ -852,7 +852,9 @@ object WebsiteBlocker {
             val matches = runCatching {
                 root.findAccessibilityNodeInfosByViewId(expectedId)
             }.getOrDefault(emptyList())
-            nodes += matches
+            matches.forEach { candidate ->
+                if (!retainDistinctActionNode(nodes, candidate)) recycleSafely(candidate)
+            }
         }
         // Some browsers expose a genuine native toolbar below their web container,
         // while findAccessibilityNodeInfosByViewId() does not return that descendant.
@@ -1274,8 +1276,7 @@ object WebsiteBlocker {
                         httpsHandlerRecognized = true
                     )
                 if (semanticCandidate) {
-                    output += child
-                    retained = true
+                    retained = retainDistinctActionNode(output, child)
                 } else {
                     collectSemanticActionAddressBarNodes(
                         node = child,
@@ -1296,6 +1297,15 @@ object WebsiteBlocker {
                 if (!retained) recycleSafely(child)
             }
         }
+    }
+
+    private fun retainDistinctActionNode(
+        output: MutableList<AccessibilityNodeInfo>,
+        candidate: AccessibilityNodeInfo
+    ): Boolean {
+        if (output.any { existing -> existing == candidate }) return false
+        output += candidate
+        return true
     }
 
     private fun AccessibilityNodeInfo.toBrowserUiNode(
