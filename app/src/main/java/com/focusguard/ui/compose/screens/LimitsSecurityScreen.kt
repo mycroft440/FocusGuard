@@ -3,7 +3,9 @@ package com.focusguard.ui.compose.screens
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import android.Manifest
 import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -247,16 +249,31 @@ fun LimitsSecurityScreen(authManager: AuthManager, onBack: () -> Unit) {
                                         Toast.makeText(context, context.getString(R.string.limits_nuclear_required), Toast.LENGTH_LONG).show()
                                     } else {
                                         authManager.setAdultFilterEnabled(true)
-                                        val success = deviceOwnerManager.enforceAdultDns()
-                                        if (success) {
-                                            adultFilterEnabled = true
-                                            policyScope.launch {
-                                                blockingSessionManager.checkAndEnforce()
+                                        policyScope.launch {
+                                            val success = withContext(Dispatchers.IO) {
+                                                deviceOwnerManager.enforceAdultDns()
                                             }
-                                        } else {
-                                            authManager.setAdultFilterEnabled(false)
-                                            Toast.makeText(context, context.getString(R.string.limits_dns_injection_failed), Toast.LENGTH_LONG).show()
+                                            if (success) {
+                                                adultFilterEnabled = true
+                                                withContext(Dispatchers.IO) {
+                                                    blockingSessionManager.checkAndEnforce()
+                                                }
+                                            } else {
+                                                authManager.setAdultFilterEnabled(false)
+                                                adultFilterEnabled = false
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.limits_dns_injection_failed),
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                            }
+                                            context.sendBroadcast(
+                                                android.content.Intent(
+                                                    com.focusguard.service.BlockingAccessibilityService.ACTION_REFRESH_BLOCKING
+                                                ).setPackage(context.packageName)
+                                            )
                                         }
+                                        return@Switch
                                     }
                                 } else {
                                     authManager.setAdultFilterEnabled(false)

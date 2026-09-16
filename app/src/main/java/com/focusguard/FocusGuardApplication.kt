@@ -80,7 +80,9 @@ class FocusGuardApplication : Application() {
         val deviceOwnerManager = DeviceOwnerManager.getInstance(this)
         if (userUnlocked) {
             // Reaplica as políticas oficiais e inicia dependências que usam Room/Keystore.
-            deviceOwnerManager.applyNuclearShield()
+            applicationScope.launch {
+                deviceOwnerManager.applyNuclearShield()
+            }
             AccessibilityStateMonitor.start(this)
             UsageAccessStateMonitor.start(this)
 

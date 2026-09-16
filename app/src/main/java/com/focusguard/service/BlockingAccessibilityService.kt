@@ -1610,12 +1610,11 @@ class BlockingAccessibilityService : AccessibilityService() {
                         val blockedWebsiteDomains = WebsiteBlocker.normalizeRules(
                             sessionSites + exceededWebsiteDomains + adultRules
                         )
-                        val blockedWebsiteApps = WebsiteBlocker.appPackageDomainsFor(
-                            sessionSites + exceededWebsiteDomains
-                        ).filterKeys { it !in focusAllowedApps }
-                        val limitedWebsiteApps = WebsiteBlocker.appPackageDomainsFor(
-                            configuredWebsiteDomains
-                        ).filterKeys { it !in focusAllowedApps }
+                        // Native apps are enforced only when their package was
+                        // explicitly persisted. A website rule must not silently
+                        // acquire the companion app after the user declined it.
+                        val blockedWebsiteApps = emptyMap<String, String>()
+                        val limitedWebsiteApps = emptyMap<String, String>()
                         val enforcedApps = FocusModePolicy.packagesToEnforce(
                             configuredBlockedPackages = sessionApps + limitApps,
                             focusModeBlockedPackages =
@@ -1743,8 +1742,14 @@ class BlockingAccessibilityService : AccessibilityService() {
         val usage = manager.queryAndAggregateUsageStats(startOfDay, now)
 
         return limits.filter { limit ->
-            val totalDayUsageMillis =
-                usage[limit.packageName]?.totalTimeInForeground ?: 0L
+            val stat = usage[limit.packageName]
+            val totalDayUsageMillis = UsageLimitForegroundPolicy.includeOpenForegroundInterval(
+                aggregatedForegroundMillis = stat?.totalTimeInForeground ?: 0L,
+                lastUsageEventMillis = stat?.lastTimeUsed ?: 0L,
+                nowMillis = now,
+                isCurrentForeground = foregroundPackageName == limit.packageName,
+                isDeviceInteractive = powerManager?.isInteractive == true
+            )
             val effectiveUsageMillis = AppUsageLimitActivationUsage.effectiveUsageMillis(
                 context = this,
                 usageStatsManager = manager,

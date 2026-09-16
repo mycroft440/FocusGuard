@@ -71,4 +71,41 @@ class AppUsageLimitActivationUsageTest {
         assertThat(UsageLimitForegroundPolicy.usedMinutes(beforeThreeMinutes)).isEqualTo(2L)
         assertThat(UsageLimitForegroundPolicy.usedMinutes(atThreeMinutes)).isEqualTo(3L)
     }
+
+    @Test
+    fun `event fallback cuts the baseline exactly at activation`() {
+        val start = 1_000L
+        val activation = 11_000L
+        val transitions = listOf(
+            AppUsageLimitActivationUsage.ForegroundTransition(2_000L, true, 7),
+            AppUsageLimitActivationUsage.ForegroundTransition(6_000L, false, 7),
+            AppUsageLimitActivationUsage.ForegroundTransition(8_000L, true, 8)
+        )
+
+        assertThat(
+            AppUsageLimitActivationUsage.foregroundUsageMillis(
+                transitions = transitions,
+                startMillis = start,
+                endMillis = activation
+            )
+        ).isEqualTo(7_000L)
+    }
+
+    @Test
+    fun `event fallback does not double count overlapping activities`() {
+        val transitions = listOf(
+            AppUsageLimitActivationUsage.ForegroundTransition(1_000L, true, 1),
+            AppUsageLimitActivationUsage.ForegroundTransition(2_000L, true, 2),
+            AppUsageLimitActivationUsage.ForegroundTransition(3_000L, false, 1),
+            AppUsageLimitActivationUsage.ForegroundTransition(5_000L, false, 2)
+        )
+
+        assertThat(
+            AppUsageLimitActivationUsage.foregroundUsageMillis(
+                transitions = transitions,
+                startMillis = 0L,
+                endMillis = 6_000L
+            )
+        ).isEqualTo(4_000L)
+    }
 }
