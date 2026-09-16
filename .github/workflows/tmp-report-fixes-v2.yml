@@ -3,6 +3,8 @@ name: Temporary report fixes v2
 on:
   push:
     branches: ["fix/report-bugs-2026-09-16"]
+  pull_request:
+    branches: ["main"]
 
 permissions:
   contents: write
