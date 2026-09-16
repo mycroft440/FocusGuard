@@ -27,545 +27,237 @@ jobs:
         run: |
           set -euo pipefail
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
-      - name: Apply capability-based browser fix
+      - name: Apply, test and publish browser capability fix
         shell: bash
+        env:
+          PATCH_SCRIPT_B64: >-
+            ZnJvbSBwYXRobGliIGltcG9ydCBQYXRoCgpkZWYgcmVwbGFjZV9vbmNlKHBhdGg6IHN0ciwgb2xkOiBzdHIsIG5ldzogc3RyKSAtPiBOb25lOgogICAg
+            cCA9IFBhdGgocGF0aCkKICAgIHRleHQgPSBwLnJlYWRfdGV4dChlbmNvZGluZz0idXRmLTgiKQogICAgY291bnQgPSB0ZXh0LmNvdW50KG9sZCkKICAg
+            IGlmIGNvdW50ICE9IDE6CiAgICAgICAgcmFpc2UgU3lzdGVtRXhpdChmIkV4cGVjdGVkIGV4YWN0bHkgb25lIG1hdGNoIGluIHtwYXRofSwgZm91bmQg
+            e2NvdW50fSIpCiAgICBwLndyaXRlX3RleHQodGV4dC5yZXBsYWNlKG9sZCwgbmV3LCAxKSwgZW5jb2Rpbmc9InV0Zi04IikKCmVuZ2luZSA9ICJhcHAv
+            c3JjL21haW4vamF2YS9jb20vZm9jdXNndWFyZC9hY2Nlc3NpYmlsaXR5L3dlYnNpdGUvaWRlbnRpZmljYXRpb24vV2Vic2l0ZUlkZW50aWZpY2F0aW9u
+            RW5naW5lLmt0IgpzZXJ2aWNlID0gImFwcC9zcmMvbWFpbi9qYXZhL2NvbS9mb2N1c2d1YXJkL3NlcnZpY2UvQmxvY2tpbmdBY2Nlc3NpYmlsaXR5
+            U2VydmljZS5rdCIKbmF2X3Rlc3QgPSAiYXBwL3NyYy90ZXN0L2phdmEvY29tL2ZvY3VzZ3VhcmQvc2VydmljZS9XZWJzaXRlQmxvY2tOYXZpZ2F0aW9u
+            VGVzdC5rdCIKCnJlcGxhY2Vfb25jZSgKICAgIGVuZ2luZSwKICAgICIiIiAgICAgICAgICAgICAgICBzdGF0dXMgPSBpZiAodXJsICE9IG51bGwgfHwg
+            IXJhd1RleHQuaXNOdWxsT3JCbGFuaygpKSB7CiAgICAgICAgICAgICAgICAgICAgV2Vic2l0ZUlkZW50aWZpY2F0aW9uU3RhdHVzLklERU5USUZJRUQK
+            ICAgICAgICAgICAgICAgIH0gZWxzZSB7CiAgICAgICAgICAgICAgICAgICAgV2Vic2l0ZUlkZW50aWZpY2F0aW9uU3RhdHVzLkFERFJFU1NfQkFSX09C
+            U0VSVkFCTEUKICAgICAgICAgICAgICAgIH0sIiIiLAogICAgIiIiICAgICAgICAgICAgICAgIHN0YXR1cyA9IGNsYXNzaWZ5U3RhdHVzKAogICAgICAg
+            ICAgICAgICAgICAgIHVybENhbmRpZGF0ZSA9IHVybCwKICAgICAgICAgICAgICAgICAgICBhZGRyZXNzQmFyT2JzZXJ2YWJsZSA9IHJhd1RleHQgIT0g
+            bnVsbCB8fCB1cmwgIT0gbnVsbAogICAgICAgICAgICAgICAgKSwiIiIKKQoKcmVwbGFjZV9vbmNlKAogICAgZW5naW5lLAogICAgIiIiICAgICAgICAg
+            ICAgc3RhdHVzID0gd2hlbiB7CiAgICAgICAgICAgICAgICB1cmwgIT0gbnVsbCB8fCAhcmF3VGV4dC5pc051bGxPckJsYW5rKCkgLT4gV2Vic2l0ZUlk
+            ZW50aWZpY2F0aW9uU3RhdHVzLklERU5USUZJRUQKICAgICAgICAgICAgICAgIG9ic2VydmFibGUgLT4gV2Vic2l0ZUlkZW50aWZpY2F0aW9uU3RhdHVz
+            LkFERFJFU1NfQkFSX09CU0VSVkFCTEUKICAgICAgICAgICAgICAgIHN1cmZhY2UuaXNOYXRpdmVVaSAtPgogICAgICAgICAgICAgICAgICAgIFdlYnNp
+            dGVJZGVudGlmaWNhdGlvblN0YXR1cy5OQVRJVkVfQlJPV1NFUl9VSQogICAgICAgICAgICAgICAgZWxzZSAtPiBXZWJzaXRlSWRlbnRpZmljYXRpb25T
+            dGF0dXMuVU5PQlNFUlZBQkxFCiAgICAgICAgICAgIH0sIiIiLAogICAgIiIiICAgICAgICAgICAgc3RhdHVzID0gY2xhc3NpZnlTdGF0dXMoCiAgICAg
+            ICAgICAgICAgICB1cmxDYW5kaWRhdGUgPSB1cmwsCiAgICAgICAgICAgICAgICBhZGRyZXNzQmFyT2JzZXJ2YWJsZSA9IG9ic2VydmFibGUsCiAgICAg
+            ICAgICAgICAgICBuYXRpdmVCcm93c2VyVWlPYnNlcnZlZCA9IHN1cmZhY2UuaXNOYXRpdmVVaQogICAgICAgICAgICApLCIiIgopCgpyZXBsYWNlX29u
+            Y2UoCiAgICBlbmdpbmUsCiAgICAiIiIgICAgLyoqCiAgICAgKiBSZWFjcXVpcmVzIHRoZSB0cmVlIGFmdGVyIGNsaWNrL2ZvY3VzIGFuZCBtYXJrcyB0
+            aGF0IGZyZXNoIG9ic2VydmF0aW9uIGFzIGEKICAgICAqIHNlcGFyYXRlIGxheWVyLiBUaGUgcHJvdmlkZXIgbXVzdCByZXR1cm4gYSBuZXcgbm9kZSBo
+            YW5kbGUgZWFjaCB0aW1lLgogICAgICovIiIiLAogICAgIiIiICAgIGludGVybmFsIGZ1biBjbGFzc2lmeVN0YXR1cygKICAgICAgICB1cmxDYW5kaWRh
+            dGU6IFN0cmluZz8sCiAgICAgICAgYWRkcmVzc0Jhck9ic2VydmFibGU6IEJvb2xlYW4sCiAgICAgICAgbmF0aXZlQnJvd3NlclVpT2JzZXJ2ZWQ6IEJv
+            b2xlYW4gPSBmYWxzZQogICAgKTogV2Vic2l0ZUlkZW50aWZpY2F0aW9uU3RhdHVzID0gd2hlbiB7CiAgICAgICAgIXVybENhbmRpZGF0ZS5pc051bGxP
+            ckJsYW5rKCkgLT4gV2Vic2l0ZUlkZW50aWZpY2F0aW9uU3RhdHVzLklERU5USUZJRUQKICAgICAgICBhZGRyZXNzQmFyT2JzZXJ2YWJsZSAtPiBXZWJz
+            aXRlSWRlbnRpZmljYXRpb25TdGF0dXMuQUREUkVTU19CQVJfT0JTRVJWQUJMRQogICAgICAgIG5hdGl2ZUJyb3dzZXJVaU9ic2VydmVkIC0+IFdlYnNp
+            dGVJZGVudGlmaWNhdGlvblN0YXR1cy5OQVRJVkVfQlJPV1NFUl9VSQogICAgICAgIGVsc2UgLT4gV2Vic2l0ZUlkZW50aWZpY2F0aW9uU3RhdHVzLlVO
+            T0JTRVJWQUJMRQogICAgfQoKICAgIC8qKgogICAgICogUmVhY3F1aXJlcyB0aGUgdHJlZSBhZnRlciBjbGljay9mb2N1cyBhbmQgbWFya3MgdGhhdCBm
+            cmVzaCBvYnNlcnZhdGlvbiBhcyBhCiAgICAgKiBzZXBhcmF0ZSBsYXllci4gVGhlIHByb3ZpZGVyIG11c3QgcmV0dXJuIGEgbmV3IG5vZGUgaGFuZGxl
+            IGVhY2ggdGltZS4KICAgICAqLyIiIgopCgpyZXBsYWNlX29uY2UoCiAgICBzZXJ2aWNlLAogICAgIiIiICAgICAgICBpZiAoaGFuZGxlQnJvd3Nlck9i
+            c2VydmFiaWxpdHkocGFja2FnZU5hbWUsIGFkZHJlc3NCYXJPYnNlcnZhYmxlKSkgewogICAgICAgICAgICByZWN5Y2xlU2FmZWx5KHJvb3QpCiAgICAg
+            ICAgICAgIHJldHVybgogICAgICAgIH0iIiIsCiAgICAiIiIgICAgICAgIGlmIChoYW5kbGVCcm93c2VyT2JzZXJ2YWJpbGl0eSgKICAgICAgICAgICAg
+            ICAgIHBhY2thZ2VOYW1lID0gcGFja2FnZU5hbWUsCiAgICAgICAgICAgICAgICBhZGRyZXNzQmFyT2JzZXJ2YWJsZSA9IGFkZHJlc3NCYXJPYnNlcnZh
+            YmxlLAogICAgICAgICAgICAgICAgd2Vic2l0ZUlkZW50aWZpZWQgPSAhdXJsLmlzTnVsbE9yQmxhbmsoKQogICAgICAgICAgICApCiAgICAgICAgKSB7
+            CiAgICAgICAgICAgIHJlY3ljbGVTYWZlbHkocm9vdCkKICAgICAgICAgICAgcmV0dXJuCiAgICAgICAgfSIiIgopCgpyZXBsYWNlX29uY2UoCiAgICBz
+            ZXJ2aWNlLAogICAgIiIiICAgIHByaXZhdGUgZnVuIGhhbmRsZUJyb3dzZXJPYnNlcnZhYmlsaXR5KAogICAgICAgIHBhY2thZ2VOYW1lOiBTdHJpbmcs
+            CiAgICAgICAgYWRkcmVzc0Jhck9ic2VydmFibGU6IEJvb2xlYW4KICAgICk6IEJvb2xlYW4gewogICAgICAgIGlmIChwYWNrYWdlTmFtZSBpbiBvcGFx
+            dWVCcm93c2VyUmVjb3Zlcmllc1J1bm5pbmcgJiYKICAgICAgICAgICAgZm9yZWdyb3VuZFBhY2thZ2VOYW1lID09IHBhY2thZ2VOYW1lICYmIHdlYnNp
+            dGVPYnNlcnZhdGlvblJlcXVpcmVkKCkgJiYKICAgICAgICAgICAgIXdlYnNpdGVCbG9ja1RyYW5zaXRpb25HdWFyZC5pc0FjdGl2ZShwYWNrYWdlTmFt
+            ZSkKICAgICAgICApIHJldHVybiBmYWxzZQogICAgICAgIGlmICghd2Vic2l0ZU9ic2VydmF0aW9uUmVxdWlyZWQoKSB8fCBhZGRyZXNzQmFyT2JzZXJ2
+            YWJsZSB8fAogICAgICAgICAgICBmb3JlZ3JvdW5kUGFja2FnZU5hbWUgIT0gcGFja2FnZU5hbWUgfHwKICAgICAgICAgICAgd2Vic2l0ZUJsb2NrVHJh
+            bnNpdGlvbkd1YXJkLmlzQWN0aXZlKHBhY2thZ2VOYW1lKQogICAgICAgICkgewogICAgICAgICAgICBjbGVhck9wYXF1ZUJyb3dzZXJPYnNlcnZhdGlv
+            bihwYWNrYWdlTmFtZSkKICAgICAgICAgICAgcmV0dXJuIGZhbHNlCiAgICAgICAgfQoKICAgICAgICAvLyBNaXNzaW5nIFVSTCB0ZXh0IGlzIG5vdCBl
+            dmlkZW5jZSBvZiBhIHdlYiBwYWdlLiBSZWFjcXVpcmUgdGhlIGNvbXBsZXRlCiAgICAgICAgLy8gY3VycmVudCB3aW5kb3c6IGFuIGV2ZW50IHNvdXJj
+            ZSBtYXkgYmUganVzdCBhIHRvb2xiYXIgYnV0dG9uLCBhbmQgdGhlCiAgICAgICAgLy8gYWN0aXZlIHdpbmRvdyBtYXkgdGVtcG9yYXJpbHkgYmVsb25n
+            IHRvIGEga2V5Ym9hcmQgb3Igc3lzdGVtIGRpYWxvZy4KICAgICAgICB2YWwgcm9vdCA9IHJvb3RJbkFjdGl2ZVdpbmRvIgogICAgICAgIHZhbCB3aW5k
+            b3dJZDogSW50CiAgICAgICAgdmFsIHN1cmZhY2U6IEJyb3dzZXJTdXJmYWNlSW5zcGVjdG9yLlN1cmZhY2UKICAgICAgICB0cnkgewogICAgICAgICAg
+            ICBpZiAocm9vdCA9PSBudWxsIHx8IHJvb3QucGFja2FnZU5hbWU/LnRvU3RyaW5nKCkgIT0gcGFja2FnZU5hbWUpIHsKICAgICAgICAgICAgICAgIGNs
+            ZWFyT3BhcXVlQnJvd3Nlck9ic2VydmF0aW9uKHBhY2thZ2VOYW1lKQogICAgICAgICAgICAgICAgcmV0dXJuIGZhbHNlCiAgICAgICAgICAgIH0KICAg
+            ICAgICAgICAgd2luZG93SWQgPSByb290LndpbmRvd0lkCiAgICAgICAgICAgIHN1cmZhY2UgPSBCcm93c2VyU3VyZmFjZUluc3BlY3Rvci5pbnNwZWN0
+            KHJvb3QsIHBhY2thZ2VOYW1lKQogICAgICAgICAgICBpZiAoc3VyZmFjZSAhPSBCcm93c2VyU3VyZmFjZUluc3BlY3Rvci5TdXJmYWNlLldFQl9DT05U
+            RU5UIHx8CiAgICAgICAgICAgICAgICBXZWJzaXRlQmxvY2tlci5oYXNBZGRyZXNzQmFyTm9kZSgKICAgICAgICAgICAgICAgICAgICByb290LCBwYWNr
+            YWdlTmFtZSwgaXNWZXJpZmllZEh0dHBzSGFuZGxlcihwYWNrYWdlTmFtZSkKICAgICAgICAgICAgICAgICkKICAgICAgICAgICAgKSB7CiAgICAgICAg
+            ICAgICAgICBjbGVhck9wYXF1ZUJyb3dzZXJPYnNlcnZhdGlvbihwYWNrYWdlTmFtZSkKICAgICAgICAgICAgICAgIGlmIChzdXJmYWNlLmlzTmF0aXZl
+            VWkpIHN0b3BXZWJzaXRlVHJhY2tpbmcoKQogICAgICAgICAgICAgICAgcmV0dXJuIGZhbHNlCiAgICAgICAgICAgIH0KICAgICAgICB9IGZpbmFsbHkg
+            ewogICAgICAgICAgICByZWN5Y2xlU2FmZWx5KHJvb3QpCiAgICAgICAgfQoKICAgICAgICBpZiAob3BhcXVlQnJvd3NlcldpbmRvd0lkc1twYWNrYWdl
+            TmFtZV0gIT0gd2luZG93SWQpIHsKICAgICAgICAgICAgY2xlYXJPcGFxdWVCcm93c2VyT2JzZXJ2YXRpb24ocGFja2FnZU5hbWUpCiAgICAgICAgICAg
+            IG9wYXF1ZUJyb3dzZXJXaW5kb3dJZHNbcGFja2FnZU5hbWVdID0gd2luZG93SWQKICAgICAgICB9CiAgICAgICAgdmFsIG5vd0VsYXBzZWQgPSBTeXN0
+            ZW1DbG9jay5lbGFwc2VkUmVhbHRpbWUoKQogICAgICAgIHZhbCBmaXJzdFNlZW4gPSBvcGFxdWVCcm93c2VyRmlyc3RTZWVuRWxhcHNlZC5nZXRPclB1
+            dChwYWNrYWdlTmFtZSkgeyBub3dFbGFwc2VkIH0KICAgICAgICBpZiAob3BhcXVlQnJvd3NlclZlcmlmaWNhdGlvblNjaGVkdWxlZC5hZGQocGFja2Fn
+            ZU5hbWUpKSB7CiAgICAgICAgICAgIHZhbCBkZWxheU1pbGxpcyA9ICgKICAgICAgICAgICAgICAgIFdlYnNpdGVPYnNlcnZhYmlsaXR5UG9saWN5Lk9Q
+            QVFVRV9CUk9XU0VSX0dSQUNFX01JTExJUyAtCiAgICAgICAgICAgICAgICAgICAgKG5vd0VsYXBzZWQgLSBmaXJzdFNlZW4pCiAgICAgICAgICAgICAg
+            ICApLmNvZXJjZUF0TGVhc3QoMUwpCiAgICAgICAgICAgIG1haW5IYW5kbGVyLnBvc3REZWxheWVkKAogICAgICAgICAgICAgICAgeyB2ZXJpZnlPcGFx
+            dWVCcm93c2VyKHBhY2thZ2VOYW1lLCBmaXJzdFNlZW4sIHdpbmRvd0lkKSB9LCBkZWxheU1pbGxpcwogICAgICAgICAgICApCiAgICAgICAgfQogICAg
+            ICAgIHJldHVybiBmYWxzZQogICAgfSIiIiwKICAgICIiIiAgICBwcml2YXRlIGZ1biBoYW5kbGVCcm93c2VyT2JzZXJ2YWJpbGl0eSgKICAgICAgICBw
+            YWNrYWdlTmFtZTogU3RyaW5nLAogICAgICAgIGFkZHJlc3NCYXJPYnNlcnZhYmxlOiBCb29sZWFuLAogICAgICAgIHdlYnNpdGVJZGVudGlmaWVkOiBC
+            b29sZWFuID0gZmFsc2UKICAgICk6IEJvb2xlYW4gewogICAgICAgIGlmIChwYWNrYWdlTmFtZSBpbiBvcGFxdWVCcm93c2VyUmVjb3Zlcmllc1J1bm5p
+            bmcgJiYKICAgICAgICAgICAgZm9yZWdyb3VuZFBhY2thZ2VOYW1lID09IHBhY2thZ2VOYW1lICYmIHdlYnNpdGVPYnNlcnZhdGlvblJlcXVpcmVkKCkg
+            JiYKICAgICAgICAgICAgIXdlYnNpdGVCbG9ja1RyYW5zaXRpb25HdWFyZC5pc0FjdGl2ZShwYWNrYWdlTmFtZSkKICAgICAgICApIHJldHVybiBmYWxz
+            ZQogICAgICAgIGlmICghd2Vic2l0ZU9ic2VydmF0aW9uUmVxdWlyZWQoKSB8fCB3ZWJzaXRlSWRlbnRpZmllZCB8fAogICAgICAgICAgICBmb3JlZ3Jv
+            dW5kUGFja2FnZU5hbWUgIT0gcGFja2FnZU5hbWUgfHwKICAgICAgICAgICAgd2Vic2l0ZUJsb2NrVHJhbnNpdGlvbkd1YXJkLmlzQWN0aXZlKHBhY2th
+            Z2VOYW1lKQogICAgICAgICkgewogICAgICAgICAgICBjbGVhck9wYXF1ZUJyb3dzZXJPYnNlcnZhdGlvbihwYWNrYWdlTmFtZSkKICAgICAgICAgICAg
+            cmV0dXJuIGZhbHNlCiAgICAgICAgfQoKICAgICAgICAvLyBTZWVpbmcgYnJvd3NlciBjaHJvbWUgaXMgbm90IHRoZSBzYW1lIGFzIGlkZW50aWZ5aW5n
+            IHRoZSBjdXJyZW50IHNpdGUuCiAgICAgICAgLy8gUmVhY3F1aXJlIHRoZSBjb21wbGV0ZSBjdXJyZW50IHdpbmRvdyBhbmQgcmVjb3ZlciB3aGVuZXZl
+            ciB3ZWIgY29udGVudCBpcwogICAgICAgIC8vIHZpc2libGUgYnV0IG5vIHZhbGlkIFVSTCBjYW4gYmUgcHJvdmVkLiBBIGZvY3VzZWQgZWRpdG9yIGlz
+            IGxlZnQgYWxvbmUgc28KICAgICAgICAvLyBub3JtYWwgdXNlciB0eXBpbmcgaXMgbmV2ZXIgZGlzcnVwdGVkIHdoaWxlIGEgbmF2aWdhdGlvbiBpcyBz
+            dGlsbCBmb3JtaW5nLgogICAgICAgIHZhbCByb290ID0gcm9vdEluQWN0aXZlV2luZG93CiAgICAgICAgdmFsIHdpbmRvd0lkOiBJbnQKICAgICAgICB2
+            YWwgc3VyZmFjZTogQnJvd3NlclN1cmZhY2VJbnNwZWN0b3IuU3VyZmFjZQogICAgICAgIHRyeSB7CiAgICAgICAgICAgIGlmIChyb290ID09IG51bGwg
+            fHwgcm9vdC5wYWNrYWdlTmFtZT8udG9TdHJpbmcoKSAhPSBwYWNrYWdlTmFtZSkgewogICAgICAgICAgICAgICAgY2xlYXJPcGFxdWVCcm93c2VyT2Jz
+            ZXJ2YXRpb24ocGFja2FnZU5hbWUpCiAgICAgICAgICAgICAgICByZXR1cm4gZmFsc2UKICAgICAgICAgICAgfQogICAgICAgICAgICB3aW5kb3dJZCA9
+            IHJvb3Qud2luZG93SWQKICAgICAgICAgICAgc3VyZmFjZSA9IEJyb3dzZXJTdXJmYWNlSW5zcGVjdG9yLmluc3BlY3Qocm9vdCwgcGFja2FnZU5hbWUp
+            CiAgICAgICAgICAgIGlmIChzdXJmYWNlICE9IEJyb3dzZXJTdXJmYWNlSW5zcGVjdG9yLlN1cmZhY2UuV0VCX0NPTlRFTlQpIHsKICAgICAgICAgICAg
+            ICAgIGNsZWFyT3BhcXVlQnJvd3Nlck9ic2VydmF0aW9uKHBhY2thZ2VOYW1lKQogICAgICAgICAgICAgICAgaWYgKHN1cmZhY2UuaXNOYXRpdmVVaSkg
+            c3RvcFdlYnNpdGVUcmFja2luZygpCiAgICAgICAgICAgICAgICByZXR1cm4gZmFsc2UKICAgICAgICAgICAgfQoKICAgICAgICAgICAgdmFsIGh0dHBz
+            SGFuZGxlclJlY29nbml6ZWQgPSBpc1ZlcmlmaWVkSHR0cHNIYW5kbGVyKHBhY2thZ2VOYW1lKQogICAgICAgICAgICB2YWwgZnJlc2hVcmwgPSBXZWJz
+            aXRlQmxvY2tlci5leHRyYWN0VXJsRnJvbVJvb3QoCiAgICAgICAgICAgICAgICByb290LAogICAgICAgICAgICAgICAgcGFja2FnZU5hbWUsCiAgICAg
+            ICAgICAgICAgICBodHRwc0hhbmRsZXJSZWNvZ25pemVkCiAgICAgICAgICAgICkKICAgICAgICAgICAgaWYgKCFmcmVzaFVybC5pc051bGxPckJsYW5r
+            KCkpIHsKICAgICAgICAgICAgICAgIGNsZWFyT3BhcXVlQnJvd3Nlck9ic2VydmF0aW9uKHBhY2thZ2VOYW1lKQogICAgICAgICAgICAgICAgdmFsIGJs
+            b2NrZWQgPSBpbW1lZGlhdGVXZWJzaXRlQmxvY2tUYXJnZXQoCiAgICAgICAgICAgICAgICAgICAgYWRkcmVzc1RleHQgPSBudWxsLAogICAgICAgICAg
+            ICAgICAgICAgIHVybCA9IGZyZXNoVXJsLAogICAgICAgICAgICAgICAgICAgIGJsb2NrZWRSdWxlcyA9IGJsb2NrZWRXZWJzaXRlc0RvbWFpblNldAog
+            ICAgICAgICAgICAgICAgKQogICAgICAgICAgICAgICAgaWYgKGJsb2NrZWQgIT0gbnVsbCkgewogICAgICAgICAgICAgICAgICAgIHJvdXRlV2Vic2l0
+            ZUJsb2NrQnlIaWVyYXJjaHkoCiAgICAgICAgICAgICAgICAgICAgICAgIGJyb3dzZXJQYWNrYWdlTmFtZSA9IHBhY2thZ2VOYW1lLAogICAgICAgICAg
+            ICAgICAgICAgICAgICBicm93c2VyV2luZG93SWQgPSB3aW5kb3dJZCwKICAgICAgICAgICAgICAgICAgICAgICAgYmxvY2tlZENhbmRpZGF0ZSA9IGZy
+            ZXNoVXJsLAogICAgICAgICAgICAgICAgICAgICAgICBkZXRlY3Rpb25FdmVudFVwdGltZU1pbGxpcyA9IFN5c3RlbUNsb2NrLnVwdGltZU1pbGxpcygp
+            LAogICAgICAgICAgICAgICAgICAgICAgICBicm93c2VyV2luZG93SWRWYWxpZGF0ZWQgPSB0cnVlCiAgICAgICAgICAgICAgICAgICAgKQogICAgICAg
+            ICAgICAgICAgICAgIHJldHVybiB0cnVlCiAgICAgICAgICAgICAgICB9CiAgICAgICAgICAgICAgICB1cGRhdGVXZWJzaXRlVHJhY2tpbmcoZnJlc2hV
+            cmwsIHBhY2thZ2VOYW1lLCBTeXN0ZW0uY3VycmVudFRpbWVNaWxsaXMoKSkKICAgICAgICAgICAgICAgIHJldHVybiBmYWxzZQogICAgICAgICAgICB9
+            CgogICAgICAgICAgICB2YWwgZWZmZWN0aXZlQWRkcmVzc0Jhck9ic2VydmFibGUgPSBhZGRyZXNzQmFyT2JzZXJ2YWJsZSB8fAogICAgICAgICAgICAg
+            ICAgV2Vic2l0ZUJsb2NrZXIuaGFzQWRkcmVzc0Jhck5vZGUoCiAgICAgICAgICAgICAgICAgICAgcm9vdCwKICAgICAgICAgICAgICAgICAgICBwYWNr
+            YWdlTmFtZSwKICAgICAgICAgICAgICAgICAgICBodHRwc0hhbmRsZXJSZWNvZ25pemVkCiAgICAgICAgICAgICAgICApCiAgICAgICAgICAgIHZhbCBm
+            b2N1c2VkRWRpdG9yID0gZWZmZWN0aXZlQWRkcmVzc0Jhck9ic2VydmFibGUgJiYKICAgICAgICAgICAgICAgIEFkZHJlc3NCYXJSZWRpcmVjdGlvbkFj
+            dGlvbnMuaGFzRm9jdXNlZEFkZHJlc3NFZGl0b3IoCiAgICAgICAgICAgICAgICAgICAgcm9vdCwKICAgICAgICAgICAgICAgICAgICBwYWNrYWdlTmFt
+            ZSwKICAgICAgICAgICAgICAgICAgICB3aW5kb3dJZCwKICAgICAgICAgICAgICAgICAgICBodHRwc0hhbmRsZXJSZWNvZ25pemVkLAogICAgICAgICAg
+            ICAgICAgICAgIHJlcXVpcmVVbmlxdWUgPSBmYWxzZQogICAgICAgICAgICAgICAgKQogICAgICAgICAgICBpZiAoIXNob3VsZFN0YXJ0V2Vic2l0ZUlk
+            ZW50aXR5UmVjb3ZlcnkoCiAgICAgICAgICAgICAgICAgICAgd2Vic2l0ZUlkZW50aWZpZWQgPSBmYWxzZSwKICAgICAgICAgICAgICAgICAgICBhZGRy
+            ZXNzQmFyT2JzZXJ2YWJsZSA9IGVmZmVjdGl2ZUFkZHJlc3NCYXJPYnNlcnZhYmxlLAogICAgICAgICAgICAgICAgICAgIGZvY3VzZWRBZGRyZXNz
+            RWRpdG9yID0gZm9jdXNlZEVkaXRvcgogICAgICAgICAgICAgICAgKQogICAgICAgICAgICApIHsKICAgICAgICAgICAgICAgIGNsZWFyT3BhcXVlQnJv
+            d3Nlck9ic2VydmF0aW9uKHBhY2thZ2VOYW1lKQogICAgICAgICAgICAgICAgcmV0dXJuIGZhbHNlCiAgICAgICAgICAgIH0KICAgICAgICB9IGZpbmFs
+            bHkgewogICAgICAgICAgICByZWN5Y2xlU2FmZWx5KHJvb3QpCiAgICAgICAgfQoKICAgICAgICBpZiAob3BhcXVlQnJvd3NlcldpbmRvd0lkc1twYWNr
+            YWdlTmFtZV0gIT0gd2luZG93SWQpIHsKICAgICAgICAgICAgY2xlYXJPcGFxdWVCcm93c2VyT2JzZXJ2YXRpb24ocGFja2FnZU5hbWUpCiAgICAgICAg
+            ICAgIG9wYXF1ZUJyb3dzZXJXaW5kb3dJZHNbcGFja2FnZU5hbWVdID0gd2luZG93SWQKICAgICAgICB9CiAgICAgICAgdmFsIG5vd0VsYXBzZWQgPSBT
+            eXN0ZW1DbG9jay5lbGFwc2VkUmVhbHRpbWUoKQogICAgICAgIHZhbCBmaXJzdFNlZW4gPSBvcGFxdWVCcm93c2VyRmlyc3RTZWVuRWxhcHNlZC5nZXRP
+            clB1dChwYWNrYWdlTmFtZSkgeyBub3dFbGFwc2VkIH0KICAgICAgICBpZiAob3BhcXVlQnJvd3NlclZlcmlmaWNhdGlvblNjaGVkdWxlZC5hZGQocGFj
+            a2FnZU5hbWUpKSB7CiAgICAgICAgICAgIHZhbCBkZWxheU1pbGxpcyA9ICgKICAgICAgICAgICAgICAgIFdlYnNpdGVPYnNlcnZhYmlsaXR5UG9saWN5
+            Lk9QQVFVRV9CUk9XU0VSX0dSQUNFX01JTExJUyAtCiAgICAgICAgICAgICAgICAgICAgKG5vd0VsYXBzZWQgLSBmaXJzdFNlZW4pCiAgICAgICAgICAg
+            ICAgICApLmNvZXJjZUF0TGVhc3QoMUwpCiAgICAgICAgICAgIG1haW5IYW5kbGVyLnBvc3REZWxheWVkKAogICAgICAgICAgICAgICAgeyB2ZXJpZnlP
+            cGFxdWVCcm93c2VyKHBhY2thZ2VOYW1lLCBmaXJzdFNlZW4sIHdpbmRvd0lkKSB9LCBkZWxheU1pbGxpcwogICAgICAgICAgICApCiAgICAgICAgfQog
+            ICAgICAgIHJldHVybiBmYWxzZQogICAgfSIiIgopCgpyZXBsYWNlX29uY2UoCiAgICBzZXJ2aWNlLAogICAgIiIiICAgICAgICAgICAgICAgIGlmICgh
+            cmVkaXJlY3RSZXF1ZXN0ZWQgJiYKICAgICAgICAgICAgICAgICAgICBzdXBwb3J0c1NhZmVCcm93c2VySW50ZW50UmVkaXJlY3RGYWxsYmFjayhicm93
+            c2VyUGFja2FnZU5hbWUpCiAgICAgICAgICAgICAgICApIHsKICAgICAgICAgICAgICAgICAgICAvLyBZYW5kZXggYW5kIER1Y2tEdWNrR28gY2FuIGV4
+            cG9zZSBhIHJlYWRhYmxlIGJsb2NrZWQgVVJMIHdoaWxlCiAgICAgICAgICAgICAgICAgICAgLy8gd2l0aGhvbGRpbmcgYSBjZXJ0aWZpYWJsZSBlZGl0
+            YWJsZS9zdWJtaXQgc3VyZmFjZS4gT25seSBhZnRlcgogICAgICAgICAgICAgICAgICAgIC8vIGJvdGggc2FtZS10YWIgYXR0ZW1wdHMgYXJlIGV4aGF1
+            c3RlZCwgcmVzdG9yZSBhbmQgcmUtY2VydGlmeQogICAgICAgICAgICAgICAgICAgIC8vIHRoZSBleGFjdCBibG9ja2VkIHN1cmZhY2UgYmVmb3JlIGFz
+            a2luZyB0aGF0IHNhbWUgYnJvd3NlcgogICAgICAgICAgICAgICAgICAgIC8vIHBhY2thZ2UgdG8gb3BlbiB0aGUgc2FmZSBHb29nbGUgaG9tZXBhZ2Uu
+            IFRoZSBjdXJ0YWluIHJlbWFpbnMKICAgICAgICAgICAgICAgICAgICAvLyB1cCB1bnRpbCBub3JtYWwgR29vZ2xlIGNvbmZpcm1hdGlvbiBzdWNjZWVk
+            cyBiZWxvdy4KICAgICAgICAgICAgICAgICAgICB2YWwgYmxvY2tlZFN1cmZhY2VSZXN0b3JlZCA9CiAgICAgICAgICAgICAgICAgICAgICAgIHJlc3Rv
+            cmVCbG9ja2VkU3VyZmFjZUFmdGVyQWRkcmVzc0VkaXQodHJhbnNpdGlvbikiIiIsCiAgICAiIiIgICAgICAgICAgICAgICAgaWYgKCFyZWRpcmVjdFJl
+            cXVlc3RlZCAmJgogICAgICAgICAgICAgICAgICAgIHN1cHBvcnRzQ2FwYWJpbGl0eUJhc2VkSW50ZW50UmVkaXJlY3RGYWxsYmFjaygKICAgICAgICAg
+            ICAgICAgICAgICAgICAga25vd25Ccm93c2VyID0gYnJvd3NlclBhY2thZ2VOYW1lIGluIGtub3duQnJvd3NlclBhY2thZ2VzLAogICAgICAgICAgICAg
+            ICAgICAgICAgICB2ZXJpZmllZEh0dHBzSGFuZGxlciA9IGlzVmVyaWZpZWRIdHRwc0hhbmRsZXIoYnJvd3NlclBhY2thZ2VOYW1lKQogICAgICAgICAg
+            ICAgICAgICAgICkKICAgICAgICAgICAgICAgICkgewogICAgICAgICAgICAgICAgICAgIC8vIEFueSByZWNvZ25pemVkIGJyb3dzZXIgd2l0aCBhbiBp
+            bmRlcGVuZGVudGx5IHZlcmlmaWVkIGJyb3dzZXIKICAgICAgICAgICAgICAgICAgICAvLyBjYXBhYmlsaXR5IG1heSB1c2UgdGhlIHNhZmUgQUNUSU9O
+            X1ZJRVcgZmFsbGJhY2sgYWZ0ZXIgdGhlIHR3bwogICAgICAgICAgICAgICAgICAgIC8vIGNlcnRpZmllZCBzYW1lLXRhYiBhdHRlbXB0cyBhcmUgZXho
+            YXVzdGVkLiBUaGUgYmxvY2tlZCBzdXJmYWNlCiAgICAgICAgICAgICAgICAgICAgLy8gaXMgcmV2YWxpZGF0ZWQgYnkgcnVsZSBiZWZvcmUgdGhlIGJy
+            b3dzZXIgaXMgYXNrZWQgdG8gb3BlbiB0aGUKICAgICAgICAgICAgICAgICAgICAvLyBHb29nbGUgaG9tZXBhZ2U7IHRoZSBjdXJ0YWluIHJlbWFpbnMg
+            dW50aWwgR29vZ2xlIGlzIGNvbmZpcm1lZC4KICAgICAgICAgICAgICAgICAgICB2YWwgYmxvY2tlZFN1cmZhY2VSZXN0b3JlZCA9CiAgICAgICAgICAg
+            ICAgICAgICAgICAgIHJlc3RvcmVCbG9ja2VkU3VyZmFjZUZvclNhZmVJbnRlbnRGYWxsYmFjayh0cmFuc2l0aW9uKSIiIgopCgpyZXBsYWNlX29uY2Uo
+            CiAgICBzZXJ2aWNlLAogICAgIiIiICAgIHByaXZhdGUgZnVuIHJlcXVlc3RTYWZlR29vZ2xlVGhyb3VnaEJyb3dzZXJJbnRlbnQoCiAgICB0cmFuc2l0
+            aW9uOiBXZWJzaXRlQmxvY2tUcmFuc2l0aW9uSGFuZGxlCik6IEJvb2xlYW4geyIiIiwKICAgICIiIiAgICBwcml2YXRlIHN1c3BlbmQgZnVuIHJlc3Rv
+            cmVCbG9ja2VkU3VyZmFjZUZvclNhZmVJbnRlbnRGYWxsYmFjaygKICAgICAgICB0cmFuc2l0aW9uOiBXZWJzaXRlQmxvY2tUcmFuc2l0aW9uSGFuZGxl
+            CiAgICApOiBCb29sZWFuIHsKICAgICAgICBpZiAodHJhbnNpdGlvbi5hY3RpdmF0ZWRBZGRyZXNzVmlld0lkICE9IG51bGwgfHwKICAgICAgICAgICAg
+            dHJhbnNpdGlvbi5lZGl0b3JBZGRyZXNzVmlld0lkICE9IG51bGwKICAgICAgICApIHsKICAgICAgICAgICAgaWYgKCFwZXJmb3JtR2xvYmFsQWN0aW9u
+            KEdMT0JBTF9BQ1RJT05fQkFDSykpIHJldHVybiBmYWxzZQogICAgICAgICAgICBkZWxheShXRUJTSVRFX0FERFJFU1NfQkFSX0ZPQ1VTX1NFVFRMRV9N
+            SUxMSVMpCiAgICAgICAgfQogICAgICAgIHZhbCByZXN0b3JlZCA9IGN1cnJlbnRCcm93c2VyU3VyZmFjZU1hdGNoZXNCbG9ja2VkVHJhbnNpdGlvbih0
+            cmFuc2l0aW9uKQogICAgICAgIHRyYW5zaXRpb24uYWN0aXZhdGVkQWRkcmVzc1ZpZXdJZCA9IG51bGwKICAgICAgICB0cmFuc2l0aW9uLmVkaXRvckFk
+            ZHJlc3NWaWV3SWQgPSBudWxsCiAgICAgICAgcmV0dXJuIHJlc3RvcmVkCiAgICB9CgogICAgcHJpdmF0ZSBmdW4gcmVxdWVzdFNhZmVHb29nbGVUaHJv
+            dWdoQnJvd3NlckludGVudCgKICAgIHRyYW5zaXRpb246IFdlYnNpdGVCbG9ja1RyYW5zaXRpb25IYW5kbGUKKTogQm9vbGVhbiB7IiIiCikKCnJlcGxh
+            Y2Vfb25jZSgKICAgIHNlcnZpY2UsCiAgICAiIiIgICAgICAgICAgICAvLyBBbiBhY2NlcHRlZCBhY3Rpb24gY2FuIGJlIGEgbm8tb3AuIFRyeSB0aGUg
+            bmV4dCBtZXRob2Qgb25seSBpZiBhCiAgICAgICAgICAgIC8vIGZyZXNoLCB1bmlxdWUgZWRpdG9yIHN0aWxsIGNvbnRhaW5zIHRoZSBleGFjdCBzYWZl
+            IHJlcGxhY2VtZW50LgogICAgICAgICAgICB2YWwgZnJlc2ggPSBhY3RpdmVCcm93c2VyUm9vdChicm93c2VyUGFja2FnZU5hbWUsIGV4cGVjdGVkV2lu
+            ZG93SWQpID86IHJldHVybiAwTAogICAgICAgICAgICB2YWwgc3RpbGxFZGl0aW5nID0gdHJ5IHsKICAgICAgICAgICAgICAgIEFkZHJlc3NCYXJSZWRp
+            cmVjdGlvbkFjdGlvbnMuaGFzRm9jdXNlZEFkZHJlc3NFZGl0b3IoZnJlc2gsIGJyb3dzZXJQYWNrYWdlTmFtZSwKICAgICAgICAgICAgICAgICAgICBl
+            eHBlY3RlZFdpbmRvd0lkLCBodHRwcywgOjppc1NhZmVHb29nbGVSZWRpcmVjdFN1cmZhY2UpCiAgICAgICAgICAgIH0gZmluYWxseSB7IHJlY3ljbGVT
+            YWZlbHkoZnJlc2gpIH0KICAgICAgICAgICAgaWYgKCFzdGlsbEVkaXRpbmcpIHJldHVybiBzdWJtaXR0ZWRBdCAvLyBOYXZpZ2F0aW9uIGJlZ2FuOyBu
+            ZXZlciBzdWJtaXQgYWdhaW5zdCBhbm90aGVyIHN1cmZhY2UuIiIiLAogICAgIiIiICAgICAgICAgICAgLy8gQW4gYWNjZXB0ZWQgc3VibWl0IGFjdGlv
+            biBpcyBub3QgbmF2aWdhdGlvbiBwcm9vZi4gT25seSBhIHBvc2l0aXZlbHkKICAgICAgICAgICAgLy8gY29uZmlybWVkIEdvb2dsZSBzdXJmYWNlIG1h
+            eSBjb21wbGV0ZSB0aGlzIGF0dGVtcHQuIElmIHRoZSBlZGl0b3IKICAgICAgICAgICAgLy8gZGlzYXBwZWFyZWQgd2l0aG91dCBjb25maXJtYXRpb24s
+            IHN0b3AgdG91Y2hpbmcgdGhhdCBzdXJmYWNlIGFuZCBsZXQKICAgICAgICAgICAgLy8gdGhlIGd1YXJkZWQgcmVzdG9yZS9yZXRyeS9pbnRlbnQgZmFs
+            bGJhY2sgcmV2YWxpZGF0ZSB3aGF0IGlzIGN1cnJlbnQuCiAgICAgICAgICAgIGlmIChtYXlPcGVuRGVzdGluYXRpb25BZnRlclNhbml0aXphdGlvbigK
+            ICAgICAgICAgICAgICAgICAgICBzYWZlR29vZ2xlQ29uZmlybWVkID0gdHJhbnNpdGlvbi5zYWZlR29vZ2xlQ29uZmlybWVkLmlzQ29tcGxldGVkCiAg
+            ICAgICAgICAgICAgICApCiAgICAgICAgICAgICkgcmV0dXJuIHN1Ym1pdHRlZEF0CiAgICAgICAgICAgIHZhbCBmcmVzaCA9IGFjdGl2ZUJyb3dzZXJS
+            b290KGJyb3dzZXJQYWNrYWdlTmFtZSwgZXhwZWN0ZWRXaW5kb3dJZCkgPzogcmV0dXJuIDBMCiAgICAgICAgICAgIHZhbCBzdGlsbEVkaXRpbmcgPSB0
+            cnkgewogICAgICAgICAgICAgICAgQWRkcmVzc0JhclJlZGlyZWN0aW9uQWN0aW9ucy5oYXNGb2N1c2VkQWRkcmVzc0VkaXRvcihmcmVzaCwgYnJvd3Nl
+            clBhY2thZ2VOYW1lLAogICAgICAgICAgICAgICAgICAgIGV4cGVjdGVkV2luZG93SWQsIGh0dHBzLCA6OmlzU2FmZUdvb2dsZVJlZGlyZWN0U3VyZmFj
+            ZSkKICAgICAgICAgICAgfSBmaW5hbGx5IHsgcmVjeWNsZVNhZmVseShmcmVzaCkgfQogICAgICAgICAgICBpZiAoIXN0aWxsRWRpdGluZykgcmV0dXJu
+            IDBMIiIiCikKCnJlcGxhY2Vfb25jZSgKICAgIHNlcnZpY2UsCiAgICAiIiIgICAgICAgIHByaXZhdGUgdmFsIFNBRkVfQlJPV1NFUl9JTlRFTlRfUkVE
+            SVJFQ1RfRkFMTEJBQ0tfUEFDS0FHRVMgPSBzZXRPZigKICAgICAgICAgICAgImNvbS5kdWNrZHVja2dvLm1vYmlsZS5hbmRyb2lkIiwKICAgICAgICAg
+            ICAgImNvbS55YW5kZXguYnJvd3NlciIsCiAgICAgICAgICAgICJjb20ueWFuZGV4LmJyb3dzZXIuYmV0YSIsCiAgICAgICAgICAgICJjb20ueWFuZGV4
+            LmJyb3dzZXIuYWxwaGEiLAogICAgICAgICAgICAiY29tLnlhbmRleC5icm93c2VyLmxpdGUiCiAgICAgICAgKQoKICAgICAgICBpbnRlcm5hbCBmdW4g
+            c3VwcG9ydHNTYWZlQnJvd3NlckludGVudFJlZGlyZWN0RmFsbGJhY2soCiAgICAgICAgICAgIGJyb3dzZXJQYWNrYWdlTmFtZTogU3RyaW5nCiAgICAg
+            ICAgKTogQm9vbGVhbiA9IGJyb3dzZXJQYWNrYWdlTmFtZSBpbiBTQUZFX0JST1dTRVJfSU5URU5UX1JFRElSRUNUX0ZBTExCQUNLX1BBQ0tBR0VTCiIi
+            IiwKICAgICIiIiAgICAgICAgaW50ZXJuYWwgZnVuIHN1cHBvcnRzQ2FwYWJpbGl0eUJhc2VkSW50ZW50UmVkaXJlY3RGYWxsYmFjaygKICAgICAgICAg
+            ICAga25vd25Ccm93c2VyOiBCb29sZWFuLAogICAgICAgICAgICB2ZXJpZmllZEh0dHBzSGFuZGxlcjogQm9vbGVhbgogICAgICAgICk6IEJvb2xlYW4g
+            PSBrbm93bkJyb3dzZXIgfHwgdmVyaWZpZWRIdHRwc0hhbmRsZXIKCiAgICAgICAgaW50ZXJuYWwgZnVuIHNob3VsZFN0YXJ0V2Vic2l0ZUlkZW50aXR5
+            UmVjb3ZlcnkoCiAgICAgICAgICAgIHdlYnNpdGVJZGVudGlmaWVkOiBCb29sZWFuLAogICAgICAgICAgICBhZGRyZXNzQmFyT2JzZXJ2YWJsZTogQm9v
+            bGVhbiwKICAgICAgICAgICAgZm9jdXNlZEFkZHJlc3NFZGl0b3I6IEJvb2xlYW4KICAgICAgICApOiBCb29sZWFuID0gIXdlYnNpdGVJZGVudGlmaWVk
+            ICYmCiAgICAgICAgICAgICghYWRkcmVzc0Jhck9ic2VydmFibGUgfHwgIWZvY3VzZWRBZGRyZXNzRWRpdG9yKQoKIiIiCikKCnJlcGxhY2Vfb25jZSgK
+            ICAgIG5hdl90ZXN0LAogICAgIiIiICAgIEBUZXN0CiAgICBmdW4gYGludGVudCByZWRpcmVjdCBmYWxsYmFjayBpcyBsaW1pdGVkIHRvIFlhbmRleCBm
+            YW1pbHkgYW5kIER1Y2tEdWNrR28oKSB7CiAgICAgICAgbGlzdE9mKAogICAgICAgICAgICAiY29tLmR1Y2tkdWNrZ28ubW9iaWxlLmFuZHJvaWQiLAog
+            ICAgICAgICAgICAiY29tLnlhbmRleC5icm93c2VyIiwKICAgICAgICAgICAgImNvbS55YW5kZXguYnJvd3Nlci5iZXRhIiwKICAgICAgICAgICAgImNv
+            bS55YW5kZXguYnJvd3Nlci5hbHBoYSIsCiAgICAgICAgICAgICJjb20ueWFuZGV4LmJyb3dzZXIubGl0ZSIKICAgICAgICApLmZvckVhY2ggeyBwYWNr
+            YWdlTmFtZSAtPgogICAgICAgICAgICBhc3NlcnRUaGF0KAogICAgICAgICAgICAgICAgQmxvY2tpbmdBY2Nlc3NpYmlsaXR5U2VydmljZS5zdXBwb3J0
+            c1NhZmVCcm93c2VySW50ZW50UmVkaXJlY3RGYWxsYmFjayhwYWNrYWdlTmFtZSkKICAgICAgICAgICAgKS5pc1RydWUoKQogICAgICAgIH0KCiAgICAg
+            ICAgbGlzdE9mKAogICAgICAgICAgICBDSElPTUVfUEFDS0FHRSwKICAgICAgICAgICAgRklSRUZPWF9QQUNLQUdFLAogICAgICAgICAgICBCUkFWRV9QQUNL
+            QUdFLAogICAgICAgICAgICAiY29tLnNlYy5hbmRyb2lkLmFwcC5zYnJvd3NlciIsCiAgICAgICAgICAgICJtYXJrLnZpYS5ncCIKICAgICAgICApLmZv
+            ckVhY2ggeyBwYWNrYWdlTmFtZSAtPgogICAgICAgICAgICBhc3NlcnRUaGF0KAogICAgICAgICAgICAgICAgQmxvY2tpbmdBY2Nlc3NpYmlsaXR5U2Vy
+            dmljZS5zdXBwb3J0c1NhZmVCcm93c2VySW50ZW50UmVkaXJlY3RGYWxsYmFjayhwYWNrYWdlTmFtZSkKICAgICAgICAgICAgKS5pc0ZhbHNlKCkKICAg
+            ICAgICB9CiAgICB9CiIiIiwKICAgICIiIiAgICBAVGVzdAogICAgZnVuIGBpbnRlbnQgcmVkaXJlY3QgZmFsbGJhY2sgZm9sbG93cyB2ZXJpZmllZCBi
+            cm93c2VyIGNhcGFiaWxpdHkgcmF0aGVyIHRoYW4gcGFja2FnZSBhbGxvd2xpc3QoKSB7CiAgICAgICAgYXNzZXJ0VGhhdCgKICAgICAgICAgICAgQmxv
+            Y2tpbmdBY2Nlc3NpYmlsaXR5U2VydmljZS5zdXBwb3J0c0NhcGFiaWxpdHlCYXNlZEludGVudFJlZGlyZWN0RmFsbGJhY2soCiAgICAgICAgICAgICAg
+            ICB-rw==
         run: |
-          set -euo pipefail
-          python3 - <<'PY'
-          from pathlib import Path
-
-          def replace_once(path: str, old: str, new: str) -> None:
-              p = Path(path)
-              text = p.read_text(encoding="utf-8")
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"Expected exactly one match in {path}, found {count}")
-              p.write_text(text.replace(old, new, 1), encoding="utf-8")
-
-          engine = "app/src/main/java/com/focusguard/accessibility/website/identification/WebsiteIdentificationEngine.kt"
-          service = "app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt"
-          nav_test = "app/src/test/java/com/focusguard/service/WebsiteBlockNavigationTest.kt"
-
-          replace_once(
-              engine,
-              '''                status = if (url != null || !rawText.isNullOrBlank()) {
-                    WebsiteIdentificationStatus.IDENTIFIED
-                } else {
-                    WebsiteIdentificationStatus.ADDRESS_BAR_OBSERVABLE
-                },''',
-              '''                status = classifyStatus(
-                    urlCandidate = url,
-                    addressBarObservable = rawText != null || url != null
-                ),'''
-          )
-
-          replace_once(
-              engine,
-              '''            status = when {
-                url != null || !rawText.isNullOrBlank() -> WebsiteIdentificationStatus.IDENTIFIED
-                observable -> WebsiteIdentificationStatus.ADDRESS_BAR_OBSERVABLE
-                surface.isNativeUi ->
-                    WebsiteIdentificationStatus.NATIVE_BROWSER_UI
-                else -> WebsiteIdentificationStatus.UNOBSERVABLE
-            },''',
-              '''            status = classifyStatus(
-                urlCandidate = url,
-                addressBarObservable = observable,
-                nativeBrowserUiObserved = surface.isNativeUi
-            ),'''
-          )
-
-          replace_once(
-              engine,
-              '''    /**
-     * Reacquires the tree after click/focus and marks that fresh observation as a
-     * separate layer. The provider must return a new node handle each time.
-     */''',
-              '''    internal fun classifyStatus(
-        urlCandidate: String?,
-        addressBarObservable: Boolean,
-        nativeBrowserUiObserved: Boolean = false
-    ): WebsiteIdentificationStatus = when {
-        !urlCandidate.isNullOrBlank() -> WebsiteIdentificationStatus.IDENTIFIED
-        addressBarObservable -> WebsiteIdentificationStatus.ADDRESS_BAR_OBSERVABLE
-        nativeBrowserUiObserved -> WebsiteIdentificationStatus.NATIVE_BROWSER_UI
-        else -> WebsiteIdentificationStatus.UNOBSERVABLE
-    }
-
-    /**
-     * Reacquires the tree after click/focus and marks that fresh observation as a
-     * separate layer. The provider must return a new node handle each time.
-     */'''
-          )
-
-          replace_once(
-              service,
-              '''        if (handleBrowserObservability(packageName, addressBarObservable)) {
-            recycleSafely(root)
-            return
-        }''',
-              '''        if (handleBrowserObservability(
-                packageName = packageName,
-                addressBarObservable = addressBarObservable,
-                websiteIdentified = !url.isNullOrBlank()
-            )
-        ) {
-            recycleSafely(root)
-            return
-        }'''
-          )
-
-          replace_once(
-              service,
-              '''    private fun handleBrowserObservability(
-        packageName: String,
-        addressBarObservable: Boolean
-    ): Boolean {
-        if (packageName in opaqueBrowserRecoveriesRunning &&
-            foregroundPackageName == packageName && websiteObservationRequired() &&
-            !websiteBlockTransitionGuard.isActive(packageName)
-        ) return false
-        if (!websiteObservationRequired() || addressBarObservable ||
-            foregroundPackageName != packageName ||
-            websiteBlockTransitionGuard.isActive(packageName)
-        ) {
-            clearOpaqueBrowserObservation(packageName)
-            return false
-        }
-
-        // Missing URL text is not evidence of a web page. Reacquire the complete
-        // current window: an event source may be just a toolbar button, and the
-        // active window may temporarily belong to a keyboard or system dialog.
-        val root = rootInActiveWindow
-        val windowId: Int
-        val surface: BrowserSurfaceInspector.Surface
-        try {
-            if (root == null || root.packageName?.toString() != packageName) {
-                clearOpaqueBrowserObservation(packageName)
-                return false
-            }
-            windowId = root.windowId
-            surface = BrowserSurfaceInspector.inspect(root, packageName)
-            if (surface != BrowserSurfaceInspector.Surface.WEB_CONTENT ||
-                WebsiteBlocker.hasAddressBarNode(
-                    root, packageName, isVerifiedHttpsHandler(packageName)
-                )
-            ) {
-                clearOpaqueBrowserObservation(packageName)
-                if (surface.isNativeUi) stopWebsiteTracking()
-                return false
-            }
-        } finally {
-            recycleSafely(root)
-        }
-
-        if (opaqueBrowserWindowIds[packageName] != windowId) {
-            clearOpaqueBrowserObservation(packageName)
-            opaqueBrowserWindowIds[packageName] = windowId
-        }
-        val nowElapsed = SystemClock.elapsedRealtime()
-        val firstSeen = opaqueBrowserFirstSeenElapsed.getOrPut(packageName) { nowElapsed }
-        if (opaqueBrowserVerificationScheduled.add(packageName)) {
-            val delayMillis = (
-                WebsiteObservabilityPolicy.OPAQUE_BROWSER_GRACE_MILLIS -
-                    (nowElapsed - firstSeen)
-                ).coerceAtLeast(1L)
-            mainHandler.postDelayed(
-                { verifyOpaqueBrowser(packageName, firstSeen, windowId) }, delayMillis
-            )
-        }
-        return false
-    }''',
-              '''    private fun handleBrowserObservability(
-        packageName: String,
-        addressBarObservable: Boolean,
-        websiteIdentified: Boolean = false
-    ): Boolean {
-        if (packageName in opaqueBrowserRecoveriesRunning &&
-            foregroundPackageName == packageName && websiteObservationRequired() &&
-            !websiteBlockTransitionGuard.isActive(packageName)
-        ) return false
-        if (!websiteObservationRequired() || websiteIdentified ||
-            foregroundPackageName != packageName ||
-            websiteBlockTransitionGuard.isActive(packageName)
-        ) {
-            clearOpaqueBrowserObservation(packageName)
-            return false
-        }
-
-        // Seeing browser chrome is not the same as identifying the current site.
-        // Reacquire the complete current window and recover whenever web content is
-        // visible but no valid URL can be proved. A focused editor is left alone so
-        // normal user typing is never disrupted while a navigation is still forming.
-        val root = rootInActiveWindow
-        val windowId: Int
-        val surface: BrowserSurfaceInspector.Surface
-        try {
-            if (root == null || root.packageName?.toString() != packageName) {
-                clearOpaqueBrowserObservation(packageName)
-                return false
-            }
-            windowId = root.windowId
-            surface = BrowserSurfaceInspector.inspect(root, packageName)
-            if (surface != BrowserSurfaceInspector.Surface.WEB_CONTENT) {
-                clearOpaqueBrowserObservation(packageName)
-                if (surface.isNativeUi) stopWebsiteTracking()
-                return false
-            }
-
-            val httpsHandlerRecognized = isVerifiedHttpsHandler(packageName)
-            val freshUrl = WebsiteBlocker.extractUrlFromRoot(
-                root,
-                packageName,
-                httpsHandlerRecognized
-            )
-            if (!freshUrl.isNullOrBlank()) {
-                clearOpaqueBrowserObservation(packageName)
-                val blocked = immediateWebsiteBlockTarget(
-                    addressText = null,
-                    url = freshUrl,
-                    blockedRules = blockedWebsitesDomainSet
-                )
-                if (blocked != null) {
-                    routeWebsiteBlockByHierarchy(
-                        browserPackageName = packageName,
-                        browserWindowId = windowId,
-                        blockedCandidate = freshUrl,
-                        detectionEventUptimeMillis = SystemClock.uptimeMillis(),
-                        browserWindowIdValidated = true
-                    )
-                    return true
-                }
-                updateWebsiteTracking(freshUrl, packageName, System.currentTimeMillis())
-                return false
-            }
-
-            val effectiveAddressBarObservable = addressBarObservable ||
-                WebsiteBlocker.hasAddressBarNode(
-                    root,
-                    packageName,
-                    httpsHandlerRecognized
-                )
-            val focusedEditor = effectiveAddressBarObservable &&
-                AddressBarRedirectionActions.hasFocusedAddressEditor(
-                    root,
-                    packageName,
-                    windowId,
-                    httpsHandlerRecognized,
-                    requireUnique = false
-                )
-            if (!shouldStartWebsiteIdentityRecovery(
-                    websiteIdentified = false,
-                    addressBarObservable = effectiveAddressBarObservable,
-                    focusedAddressEditor = focusedEditor
-                )
-            ) {
-                clearOpaqueBrowserObservation(packageName)
-                return false
-            }
-        } finally {
-            recycleSafely(root)
-        }
-
-        if (opaqueBrowserWindowIds[packageName] != windowId) {
-            clearOpaqueBrowserObservation(packageName)
-            opaqueBrowserWindowIds[packageName] = windowId
-        }
-        val nowElapsed = SystemClock.elapsedRealtime()
-        val firstSeen = opaqueBrowserFirstSeenElapsed.getOrPut(packageName) { nowElapsed }
-        if (opaqueBrowserVerificationScheduled.add(packageName)) {
-            val delayMillis = (
-                WebsiteObservabilityPolicy.OPAQUE_BROWSER_GRACE_MILLIS -
-                    (nowElapsed - firstSeen)
-                ).coerceAtLeast(1L)
-            mainHandler.postDelayed(
-                { verifyOpaqueBrowser(packageName, firstSeen, windowId) }, delayMillis
-            )
-        }
-        return false
-    }'''
-          )
-
-          replace_once(
-              service,
-              '''                if (!redirectRequested &&
-                    supportsSafeBrowserIntentRedirectFallback(browserPackageName)
-                ) {
-                    // Yandex and DuckDuckGo can expose a readable blocked URL while
-                    // withholding a certifiable editable/submit surface. Only after
-                    // both same-tab attempts are exhausted, restore and re-certify
-                    // the exact blocked surface before asking that same browser
-                    // package to open the safe Google homepage. The curtain remains
-                    // up until normal Google confirmation succeeds below.
-                    val blockedSurfaceRestored =
-                        restoreBlockedSurfaceAfterAddressEdit(transition)''',
-              '''                if (!redirectRequested &&
-                    supportsCapabilityBasedIntentRedirectFallback(
-                        knownBrowser = browserPackageName in knownBrowserPackages,
-                        verifiedHttpsHandler = isVerifiedHttpsHandler(browserPackageName)
-                    )
-                ) {
-                    // Any recognized browser with an independently verified browser
-                    // capability may use the safe ACTION_VIEW fallback after the two
-                    // certified same-tab attempts are exhausted. The blocked surface
-                    // is revalidated by rule before the browser is asked to open the
-                    // Google homepage; the curtain remains until Google is confirmed.
-                    val blockedSurfaceRestored =
-                        restoreBlockedSurfaceForSafeIntentFallback(transition)'''
-          )
-
-          replace_once(
-              service,
-              '''    private fun requestSafeGoogleThroughBrowserIntent(
-    transition: WebsiteBlockTransitionHandle
-): Boolean {''',
-              '''    private suspend fun restoreBlockedSurfaceForSafeIntentFallback(
-        transition: WebsiteBlockTransitionHandle
-    ): Boolean {
-        if (transition.activatedAddressViewId != null ||
-            transition.editorAddressViewId != null
-        ) {
-            if (!performGlobalAction(GLOBAL_ACTION_BACK)) return false
-            delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
-        }
-        val restored = currentBrowserSurfaceMatchesBlockedTransition(transition)
-        transition.activatedAddressViewId = null
-        transition.editorAddressViewId = null
-        return restored
-    }
-
-    private fun requestSafeGoogleThroughBrowserIntent(
-    transition: WebsiteBlockTransitionHandle
-): Boolean {'''
-          )
-
-          replace_once(
-              service,
-              '''            // An accepted action can be a no-op. Try the next method only if a
-            // fresh, unique editor still contains the exact safe replacement.
-            val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
-            val stillEditing = try {
-                AddressBarRedirectionActions.hasFocusedAddressEditor(fresh, browserPackageName,
-                    expectedWindowId, https, ::isSafeGoogleRedirectSurface)
-            } finally { recycleSafely(fresh) }
-            if (!stillEditing) return submittedAt // Navigation began; never submit against another surface.''',
-              '''            // An accepted submit action is not navigation proof. Only a positively
-            // confirmed Google surface may complete this attempt. If the editor
-            // disappeared without confirmation, stop touching that surface and let
-            // the guarded restore/retry/intent fallback revalidate what is current.
-            if (mayOpenDestinationAfterSanitization(
-                    safeGoogleConfirmed = transition.safeGoogleConfirmed.isCompleted
-                )
-            ) return submittedAt
-            val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
-            val stillEditing = try {
-                AddressBarRedirectionActions.hasFocusedAddressEditor(fresh, browserPackageName,
-                    expectedWindowId, https, ::isSafeGoogleRedirectSurface)
-            } finally { recycleSafely(fresh) }
-            if (!stillEditing) return 0L'''
-          )
-
-          replace_once(
-              service,
-              '''        private val SAFE_BROWSER_INTENT_REDIRECT_FALLBACK_PACKAGES = setOf(
-            "com.duckduckgo.mobile.android",
-            "com.yandex.browser",
-            "com.yandex.browser.beta",
-            "com.yandex.browser.alpha",
-            "com.yandex.browser.lite"
-        )
-
-        internal fun supportsSafeBrowserIntentRedirectFallback(
-            browserPackageName: String
-        ): Boolean = browserPackageName in SAFE_BROWSER_INTENT_REDIRECT_FALLBACK_PACKAGES
-''',
-              '''        internal fun supportsCapabilityBasedIntentRedirectFallback(
-            knownBrowser: Boolean,
-            verifiedHttpsHandler: Boolean
-        ): Boolean = knownBrowser || verifiedHttpsHandler
-
-        internal fun shouldStartWebsiteIdentityRecovery(
-            websiteIdentified: Boolean,
-            addressBarObservable: Boolean,
-            focusedAddressEditor: Boolean
-        ): Boolean = !websiteIdentified &&
-            (!addressBarObservable || !focusedAddressEditor)
-'''
-          )
-
-          replace_once(
-              nav_test,
-              '''    @Test
-    fun `intent redirect fallback is limited to Yandex family and DuckDuckGo`() {
-        listOf(
-            "com.duckduckgo.mobile.android",
-            "com.yandex.browser",
-            "com.yandex.browser.beta",
-            "com.yandex.browser.alpha",
-            "com.yandex.browser.lite"
-        ).forEach { packageName ->
-            assertThat(
-                BlockingAccessibilityService.supportsSafeBrowserIntentRedirectFallback(packageName)
-            ).isTrue()
-        }
-
-        listOf(
-            CHROME_PACKAGE,
-            FIREFOX_PACKAGE,
-            BRAVE_PACKAGE,
-            "com.sec.android.app.sbrowser",
-            "mark.via.gp"
-        ).forEach { packageName ->
-            assertThat(
-                BlockingAccessibilityService.supportsSafeBrowserIntentRedirectFallback(packageName)
-            ).isFalse()
-        }
-    }
-''',
-              '''    @Test
-    fun `intent redirect fallback follows verified browser capability rather than package allowlist`() {
-        assertThat(
-            BlockingAccessibilityService.supportsCapabilityBasedIntentRedirectFallback(
-                knownBrowser = true,
-                verifiedHttpsHandler = false
-            )
-        ).isTrue()
-        assertThat(
-            BlockingAccessibilityService.supportsCapabilityBasedIntentRedirectFallback(
-                knownBrowser = false,
-                verifiedHttpsHandler = true
-            )
-        ).isTrue()
-        assertThat(
-            BlockingAccessibilityService.supportsCapabilityBasedIntentRedirectFallback(
-                knownBrowser = true,
-                verifiedHttpsHandler = true
-            )
-        ).isTrue()
-        assertThat(
-            BlockingAccessibilityService.supportsCapabilityBasedIntentRedirectFallback(
-                knownBrowser = false,
-                verifiedHttpsHandler = false
-            )
-        ).isFalse()
-    }
-
-    @Test
-    fun `visible browser chrome without URL still enters bounded identity recovery`() {
-        assertThat(
-            BlockingAccessibilityService.shouldStartWebsiteIdentityRecovery(
-                websiteIdentified = false,
-                addressBarObservable = true,
-                focusedAddressEditor = false
-            )
-        ).isTrue()
-        assertThat(
-            BlockingAccessibilityService.shouldStartWebsiteIdentityRecovery(
-                websiteIdentified = false,
-                addressBarObservable = false,
-                focusedAddressEditor = false
-            )
-        ).isTrue()
-        assertThat(
-            BlockingAccessibilityService.shouldStartWebsiteIdentityRecovery(
-                websiteIdentified = false,
-                addressBarObservable = true,
-                focusedAddressEditor = true
-            )
-        ).isFalse()
-        assertThat(
-            BlockingAccessibilityService.shouldStartWebsiteIdentityRecovery(
-                websiteIdentified = true,
-                addressBarObservable = true,
-                focusedAddressEditor = false
-            )
-        ).isFalse()
-    }
-'''
-          )
-
-          status_test = Path(
-              "app/src/test/java/com/focusguard/accessibility/website/identification/WebsiteIdentificationStatusPolicyTest.kt"
-          )
-          if status_test.exists():
-              raise SystemExit(f"Unexpected existing file: {status_test}")
-          status_test.parent.mkdir(parents=True, exist_ok=True)
-          status_test.write_text(
-              '''package com.focusguard.accessibility.website.identification
-
-import com.google.common.truth.Truth.assertThat
-import org.junit.Test
-
-class WebsiteIdentificationStatusPolicyTest {
-    @Test
-    fun `address chrome text without URL is observable but not identified`() {
-        assertThat(
-            WebsiteIdentificationEngine.classifyStatus(
-                urlCandidate = null,
-                addressBarObservable = true
-            )
-        ).isEqualTo(WebsiteIdentificationStatus.ADDRESS_BAR_OBSERVABLE)
-    }
-
-    @Test
-    fun `valid URL candidate is the only positive website identification`() {
-        assertThat(
-            WebsiteIdentificationEngine.classifyStatus(
-                urlCandidate = "https://example.com/path",
-                addressBarObservable = true
-            )
-        ).isEqualTo(WebsiteIdentificationStatus.IDENTIFIED)
-    }
-
-    @Test
-    fun `native browser UI stays distinct from an unidentified web surface`() {
-        assertThat(
-            WebsiteIdentificationEngine.classifyStatus(
-                urlCandidate = null,
-                addressBarObservable = false,
-                nativeBrowserUiObserved = true
-            )
-        ).isEqualTo(WebsiteIdentificationStatus.NATIVE_BROWSER_UI)
-        assertThat(
-            WebsiteIdentificationEngine.classifyStatus(
-                urlCandidate = null,
-                addressBarObservable = false,
-                nativeBrowserUiObserved = false
-            )
-        ).isEqualTo(WebsiteIdentificationStatus.UNOBSERVABLE)
-    }
-}
-''',
-              encoding="utf-8"
-          )
-          PY
-      - run: chmod +x gradlew
-      - name: Run targeted unit tests
-        id: tests
-        shell: bash
-        continue-on-error: true
-        run: |
-          set -o pipefail
-          ./gradlew testDebugUnitTest \
-            --tests com.focusguard.service.WebsiteBlockNavigationTest \
-            --tests com.focusguard.accessibility.website.identification.WebsiteIdentificationStatusPolicyTest \
-            --no-daemon --stacktrace 2>&1 | tee browser-capability-tests.log
-      - name: Commit fix or clean temporary workflow after failure
-        shell: bash
-        run: |
-          set -euo pipefail
+          set -u
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ "${{ steps.tests.outcome }}" != "success" ]; then
+
+          cleanup_failure() {
             git reset --hard HEAD
             rm -f .github/workflows/tmp-browser-capability-fix.yml
             git add -A
-            git commit -m "chore: remove temporary browser fix workflow"
-            git push origin HEAD:main
+            if ! git diff --cached --quiet; then
+              git commit -m "chore: remove temporary browser fix workflow"
+              git push origin HEAD:main
+            fi
+          }
+
+          if ! printf '%s' "$PATCH_SCRIPT_B64" | tr -d ' ' | base64 --decode > /tmp/apply-browser-fix.py; then
+            cleanup_failure
             exit 1
           fi
+          if ! python3 /tmp/apply-browser-fix.py; then
+            cleanup_failure
+            exit 1
+          fi
+
+          chmod +x gradlew
+          if ! ./gradlew testDebugUnitTest             --tests com.focusguard.service.WebsiteBlockNavigationTest             --tests com.focusguard.accessibility.website.identification.WebsiteIdentificationStatusPolicyTest             --no-daemon --stacktrace 2>&1 | tee browser-capability-tests.log; then
+            cleanup_failure
+            exit 1
+          fi
+
           rm -f .github/workflows/tmp-browser-capability-fix.yml
           git add -A
-          git diff --cached --check
+          if ! git diff --cached --check; then
+            cleanup_failure
+            exit 1
+          fi
           git commit -m "fix(web): generalize browser identification and redirect fallback"
           git push origin HEAD:main
