@@ -59,8 +59,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private const val MAX_ANR_ENTRIES = 32
-private const val MAX_TRACE_CHARS = 80_000
+private const val ALL_EXIT_RECORDS = 0
+private const val MAX_TRACE_CHARS = 160_000
 
 /**
  * Maintenance-only surface opened from Settings.
@@ -348,12 +348,17 @@ private suspend fun collectAnrReport(context: Context): String = withContext(Dis
         Locale.getDefault()
     ).format(Date())
     val header = buildString {
-        appendLine("FocusGuard ANR report")
+        appendLine("FocusGuard ANR diagnostic report")
         appendLine("Generated: $generatedAt")
         appendLine("App: ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
         appendLine("Package: ${context.packageName}")
         appendLine("Device: ${Build.MANUFACTURER} ${Build.MODEL}")
         appendLine("Android: ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
+        appendLine("Source: Android ApplicationExitInfo historical process-exit buffer")
+        appendLine(
+            "Note: Android keeps this history and ANR traces in finite circular buffers; " +
+                "older records or traces may have been overwritten."
+        )
         appendLine()
     }
 
@@ -364,39 +369,147 @@ private suspend fun collectAnrReport(context: Context): String = withContext(Dis
     header + collectAnrEntriesApi30(context)
 }
 
+private data class TraceReadResult(
+    val text: String? = null,
+    val truncated: Boolean = false,
+    val error: String? = null
+)
+
+private data class AnrReportEntry(
+    val info: ApplicationExitInfo,
+    val trace: TraceReadResult,
+    val definitiveAnr: Boolean
+)
+
 @TargetApi(Build.VERSION_CODES.R)
 private fun collectAnrEntriesApi30(context: Context): String {
     val activityManager = context.getSystemService(ActivityManager::class.java)
-    val exits = runCatching {
+    val exitsResult = runCatching {
         activityManager.getHistoricalProcessExitReasons(
             context.packageName,
             0,
-            MAX_ANR_ENTRIES
+            ALL_EXIT_RECORDS
         )
-    }.getOrElse { emptyList() }
+    }
 
-    val anrs = exits.filter { it.reason == ApplicationExitInfo.REASON_ANR }
-    if (anrs.isEmpty()) {
-        return context.getString(R.string.dev_mode_anr_empty)
+    val exits = exitsResult.getOrElse { error ->
+        return buildString {
+            appendLine("Collection status: ERROR")
+            appendLine("Historical exits inspected: 0")
+            appendLine("Error type: ${error.javaClass.simpleName}")
+            appendLine("Error message: ${error.message ?: "No message supplied by Android"}")
+            appendLine()
+            appendLine(
+                "This is a collection failure, not proof that the device has no ANR records."
+            )
+        }
+    }
+
+    val entries = buildList {
+        exits.forEach { info ->
+            val definitiveAnr = info.reason == ApplicationExitInfo.REASON_ANR
+            val couldContainRecoveredAnrTrace =
+                info.reason != ApplicationExitInfo.REASON_CRASH_NATIVE
+
+            if (definitiveAnr) {
+                add(
+                    AnrReportEntry(
+                        info = info,
+                        trace = readAnrTrace(info),
+                        definitiveAnr = true
+                    )
+                )
+            } else if (couldContainRecoveredAnrTrace) {
+                val trace = readAnrTrace(info)
+                if (!trace.text.isNullOrBlank()) {
+                    add(
+                        AnrReportEntry(
+                            info = info,
+                            trace = trace,
+                            definitiveAnr = false
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    val definitiveCount = entries.count { it.definitiveAnr }
+    val recoveredTraceCandidates = entries.size - definitiveCount
+
+    if (entries.isEmpty()) {
+        return buildString {
+            appendLine("Collection status: OK")
+            appendLine("Historical exits inspected: ${exits.size}")
+            appendLine("Definitive ANRs: 0")
+            appendLine("Recovered-ANR trace candidates: 0")
+            appendLine()
+            appendLine(context.getString(R.string.dev_mode_anr_empty))
+        }
     }
 
     val formatter = SimpleDateFormat("yyyy-MM-dd HH:mm:ss Z", Locale.getDefault())
     return buildString {
-        anrs.forEachIndexed { index, info ->
-            appendLine("===== ANR ${index + 1} =====")
+        appendLine("Collection status: OK")
+        appendLine("Historical exits inspected: ${exits.size}")
+        appendLine("Definitive ANRs: $definitiveCount")
+        appendLine("Recovered-ANR trace candidates: $recoveredTraceCandidates")
+        if (recoveredTraceCandidates > 0) {
+            appendLine(
+                "Candidate note: these records contain a text trace compatible with a recovered " +
+                    "ANR, but their final process-exit reason was not ANR."
+            )
+        }
+        appendLine()
+
+        entries.forEachIndexed { index, entry ->
+            val info = entry.info
+            val classification = if (entry.definitiveAnr) {
+                "DEFINITIVE ANR"
+            } else {
+                "RECOVERED-ANR TRACE CANDIDATE"
+            }
+
+            appendLine("===== ANR ${index + 1} [$classification] =====")
+            appendLine("Event key: ${info.timestamp}-${info.pid}-${info.reason}")
             appendLine("Timestamp: ${formatter.format(Date(info.timestamp))}")
-            appendLine("Process: ${info.processName ?: context.packageName}")
-            appendLine("Importance: ${info.importance}")
+            appendLine("Process: ${info.processName}")
+            appendLine("PID: ${info.pid}")
+            appendLine("Reason: ${exitReasonLabel(info.reason)} (${info.reason})")
+            appendLine("Status: ${info.status}")
+            appendLine(
+                "Importance: ${importanceLabel(info.importance)} (${info.importance})"
+            )
+            appendLine("PSS: ${formatMemoryKb(info.pss)}")
+            appendLine("RSS: ${formatMemoryKb(info.rss)}")
             info.description?.takeIf { it.isNotBlank() }?.let { description ->
                 appendLine("Description: $description")
             }
 
-            val trace = readAnrTrace(info)
-            if (trace.isNullOrBlank()) {
-                appendLine("Trace: unavailable")
-            } else {
-                appendLine("Trace:")
-                appendLine(trace)
+            when {
+                !entry.trace.text.isNullOrBlank() -> {
+                    appendLine(
+                        if (entry.trace.truncated) {
+                            "Trace status: AVAILABLE (truncated at $MAX_TRACE_CHARS characters)"
+                        } else {
+                            "Trace status: AVAILABLE"
+                        }
+                    )
+                    appendLine("Trace:")
+                    appendLine(entry.trace.text)
+                }
+
+                entry.trace.error != null -> {
+                    appendLine("Trace status: READ ERROR")
+                    appendLine("Trace error: ${entry.trace.error}")
+                }
+
+                else -> {
+                    appendLine(
+                        "Trace status: UNAVAILABLE (Android may not have captured it or the " +
+                            "circular trace buffer may have overwritten it)"
+                    )
+                }
             }
             appendLine()
         }
@@ -404,20 +517,82 @@ private fun collectAnrEntriesApi30(context: Context): String {
 }
 
 @TargetApi(Build.VERSION_CODES.R)
-private fun readAnrTrace(info: ApplicationExitInfo): String? = runCatching {
-    info.traceInputStream?.bufferedReader()?.use { reader ->
-        val output = StringBuilder()
-        while (output.length < MAX_TRACE_CHARS) {
-            val line = reader.readLine() ?: break
-            val remaining = MAX_TRACE_CHARS - output.length
-            if (line.length + 1 > remaining) {
-                output.append(line.take(remaining.coerceAtLeast(0)))
-                output.appendLine()
-                output.append("[trace truncated]")
-                break
+private fun readAnrTrace(info: ApplicationExitInfo): TraceReadResult {
+    val stream = try {
+        info.traceInputStream
+    } catch (error: Exception) {
+        return TraceReadResult(error = describeError(error))
+    } ?: return TraceReadResult()
+
+    return try {
+        stream.bufferedReader(Charsets.UTF_8).use { reader ->
+            val output = StringBuilder()
+            val buffer = CharArray(4_096)
+            var truncated = false
+
+            while (output.length < MAX_TRACE_CHARS) {
+                val remaining = MAX_TRACE_CHARS - output.length
+                val read = reader.read(buffer, 0, minOf(buffer.size, remaining))
+                if (read < 0) break
+                output.append(buffer, 0, read)
             }
-            output.appendLine(line)
+
+            if (output.length >= MAX_TRACE_CHARS && reader.read() >= 0) {
+                truncated = true
+            }
+
+            TraceReadResult(
+                text = output.toString().trimEnd().takeIf { it.isNotBlank() },
+                truncated = truncated
+            )
         }
-        output.toString()
+    } catch (error: Exception) {
+        TraceReadResult(error = describeError(error))
     }
-}.getOrNull()
+}
+
+private fun describeError(error: Throwable): String = buildString {
+    append(error.javaClass.simpleName)
+    error.message?.takeIf { it.isNotBlank() }?.let { message ->
+        append(": ")
+        append(message)
+    }
+}
+
+@TargetApi(Build.VERSION_CODES.R)
+private fun exitReasonLabel(reason: Int): String = when (reason) {
+    ApplicationExitInfo.REASON_UNKNOWN -> "UNKNOWN"
+    ApplicationExitInfo.REASON_EXIT_SELF -> "EXIT_SELF"
+    ApplicationExitInfo.REASON_SIGNALED -> "SIGNALED"
+    ApplicationExitInfo.REASON_LOW_MEMORY -> "LOW_MEMORY"
+    ApplicationExitInfo.REASON_CRASH -> "CRASH"
+    ApplicationExitInfo.REASON_CRASH_NATIVE -> "CRASH_NATIVE"
+    ApplicationExitInfo.REASON_ANR -> "ANR"
+    ApplicationExitInfo.REASON_INITIALIZATION_FAILURE -> "INITIALIZATION_FAILURE"
+    ApplicationExitInfo.REASON_PERMISSION_CHANGE -> "PERMISSION_CHANGE"
+    ApplicationExitInfo.REASON_EXCESSIVE_RESOURCE_USAGE -> "EXCESSIVE_RESOURCE_USAGE"
+    ApplicationExitInfo.REASON_USER_REQUESTED -> "USER_REQUESTED"
+    ApplicationExitInfo.REASON_USER_STOPPED -> "USER_STOPPED"
+    ApplicationExitInfo.REASON_DEPENDENCY_DIED -> "DEPENDENCY_DIED"
+    ApplicationExitInfo.REASON_OTHER -> "OTHER"
+    else -> "OTHER_OR_NEWER_ANDROID_REASON"
+}
+
+private fun importanceLabel(importance: Int): String = when (importance) {
+    ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND -> "FOREGROUND"
+    ActivityManager.RunningAppProcessInfo.IMPORTANCE_FOREGROUND_SERVICE -> "FOREGROUND_SERVICE"
+    ActivityManager.RunningAppProcessInfo.IMPORTANCE_VISIBLE -> "VISIBLE"
+    ActivityManager.RunningAppProcessInfo.IMPORTANCE_PERCEPTIBLE -> "PERCEPTIBLE"
+    ActivityManager.RunningAppProcessInfo.IMPORTANCE_SERVICE -> "SERVICE"
+    ActivityManager.RunningAppProcessInfo.IMPORTANCE_TOP_SLEEPING -> "TOP_SLEEPING"
+    ActivityManager.RunningAppProcessInfo.IMPORTANCE_CANT_SAVE_STATE -> "CANT_SAVE_STATE"
+    ActivityManager.RunningAppProcessInfo.IMPORTANCE_CACHED -> "CACHED"
+    ActivityManager.RunningAppProcessInfo.IMPORTANCE_GONE -> "GONE"
+    else -> "UNKNOWN"
+}
+
+private fun formatMemoryKb(valueKb: Long): String {
+    if (valueKb <= 0L) return "$valueKb kB (not sampled or unavailable)"
+    val mib = valueKb / 1024.0
+    return String.format(Locale.US, "%d kB (%.1f MiB)", valueKb, mib)
+}
