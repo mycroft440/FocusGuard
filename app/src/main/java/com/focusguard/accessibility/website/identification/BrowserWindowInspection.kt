@@ -64,10 +64,11 @@ internal object BrowserWindowInspection {
         private val maxChildReads: Int = MAX_CHILD_READS,
         private val maxIdLookups: Int = MAX_ID_LOOKUPS,
         maxDurationMillis: Long = MAX_INSPECTION_MILLIS,
-        private val clockNanos: () -> Long = SystemClock::elapsedRealtimeNanos
+        private val clockNanos: () -> Long = { SystemClock.elapsedRealtimeNanos() }
     ) {
         private val startedAtNanos = clockNanos()
-        private val deadlineNanos = startedAtNanos + maxDurationMillis.coerceAtLeast(1L) * 1_000_000L
+        private val deadlineNanos = startedAtNanos +
+            maxDurationMillis.coerceAtLeast(1L) * 1_000_000L
         private var nodeVisits = 0
         private var childReads = 0
         private var idLookups = 0
@@ -372,12 +373,30 @@ internal object BrowserWindowInspection {
         inWebContent: Boolean,
         accumulator: Accumulator
     ) {
+        val viewId = runCatching { node.viewIdResourceName.orEmpty() }.getOrDefault("")
+        val strong = BrowserUiCapabilityPolicy.isStrongAddressBarResource(
+            viewId,
+            browserPackageName
+        )
+        if (!strong) {
+            if (!httpsHandlerRecognized) return
+            val prefix = "$browserPackageName:id/"
+            if (!viewId.startsWith(prefix) || viewId.length <= prefix.length) return
+            if (inWebContent) {
+                val entryName = viewId.substring(prefix.length).lowercase()
+                val idLooksAddressLike = entryName.contains("url") ||
+                    entryName.contains("uri") || entryName.contains("omnibox") ||
+                    entryName.contains("address") || entryName.contains("location_bar")
+                if (!idLooksAddressLike) return
+            }
+        }
+
         val fact = runCatching {
             val variation = node.inputType and InputType.TYPE_MASK_VARIATION
             BrowserUiCapabilityPolicy.Node(
                 packageName = node.packageName?.toString().orEmpty(),
                 windowId = node.windowId,
-                viewIdResourceName = node.viewIdResourceName.orEmpty(),
+                viewIdResourceName = viewId,
                 visible = node.isVisibleToUser,
                 editable = node.isEditable,
                 focused = node.isFocused,
@@ -415,10 +434,6 @@ internal object BrowserWindowInspection {
         ) return
 
         accumulator.addressBarObservable = true
-        val strong = BrowserUiCapabilityPolicy.isStrongAddressBarResource(
-            fact.viewIdResourceName,
-            browserPackageName
-        )
         if (strong) accumulator.strongAddressBarObserved = true
 
         val text = sanitizeText(fact.text).takeIf(String::isNotEmpty)
