@@ -111,8 +111,13 @@ internal object WebsiteIdentificationEngine {
             )
         }
 
-        val surface = BrowserSurfaceInspector.inspect(root, browserPackageName)
-        if (surface == BrowserSurfaceInspector.Surface.NATIVE_PANEL) {
+        val inspection = BrowserWindowInspection.inspect(
+            root = root,
+            browserPackageName = browserPackageName,
+            expectedWindowId = expectedWindowId,
+            httpsHandlerRecognized = httpsHandlerRecognized
+        )
+        if (inspection.surface == BrowserSurfaceInspector.Surface.NATIVE_PANEL) {
             return WebsiteIdentificationResult(
                 status = WebsiteIdentificationStatus.NATIVE_BROWSER_UI,
                 browserPackageName = browserPackageName,
@@ -120,38 +125,30 @@ internal object WebsiteIdentificationEngine {
                 evidence = setOf(WebsiteIdentificationLayer.BROWSER_PACKAGE_AND_WINDOW)
             )
         }
-        val evidence = linkedSetOf(WebsiteIdentificationLayer.BROWSER_PACKAGE_AND_WINDOW)
-        val url = WebsiteBlocker.extractUrlFromRoot(
-            root = root,
-            browserPackageName = browserPackageName,
-            httpsHandlerRecognized = httpsHandlerRecognized
-        )
-        val rawText = url ?: WebsiteBlocker.extractAddressBarTextFromRoot(
-            root = root,
-            browserPackageName = browserPackageName,
-            httpsHandlerRecognized = httpsHandlerRecognized
-        )
-        val observable = url != null || rawText != null || WebsiteBlocker.hasAddressBarNode(
-            root = root,
-            browserPackageName = browserPackageName,
-            httpsHandlerRecognized = httpsHandlerRecognized
-        )
 
-        if (!rawText.isNullOrBlank()) evidence += WebsiteIdentificationLayer.ADDRESS_BAR_TEXT
-        if (observable) evidence += WebsiteIdentificationLayer.FIELD_SEMANTICS
+        val evidence = linkedSetOf(WebsiteIdentificationLayer.BROWSER_PACKAGE_AND_WINDOW)
+        if (inspection.strongAddressBarObserved) {
+            evidence += WebsiteIdentificationLayer.STRONG_ADDRESS_BAR_ID
+        }
+        if (!inspection.rawAddressText.isNullOrBlank()) {
+            evidence += WebsiteIdentificationLayer.ADDRESS_BAR_TEXT
+        }
+        if (inspection.addressBarObservable) {
+            evidence += WebsiteIdentificationLayer.FIELD_SEMANTICS
+        }
 
         return WebsiteIdentificationResult(
             status = classifyStatus(
-                urlCandidate = url,
-                addressBarObservable = observable,
-                nativeBrowserUiObserved = surface.isNativeUi
+                urlCandidate = inspection.urlCandidate,
+                addressBarObservable = inspection.addressBarObservable,
+                nativeBrowserUiObserved = inspection.surface.isNativeUi
             ),
-            rawAddressText = rawText,
-            urlCandidate = url,
+            rawAddressText = inspection.rawAddressText,
+            urlCandidate = inspection.urlCandidate,
             browserPackageName = browserPackageName,
             windowId = expectedWindowId,
             evidence = evidence,
-            webContentObserved = surface == BrowserSurfaceInspector.Surface.WEB_CONTENT
+            webContentObserved = inspection.surface == BrowserSurfaceInspector.Surface.WEB_CONTENT
         )
     }
 
@@ -214,35 +211,6 @@ internal object WebsiteIdentificationEngine {
         } finally {
             recycleSafely(source)
         }
-    }
-
-    private fun hasStrongAddressBarId(
-        root: AccessibilityNodeInfo,
-        browserPackageName: String,
-        expectedWindowId: Int
-    ): Boolean {
-        BrowserUiCapabilityPolicy.strongAddressBarEntryNames.forEach { entryName ->
-            val nodes = runCatching {
-                root.findAccessibilityNodeInfosByViewId("$browserPackageName:id/$entryName")
-            }.getOrDefault(emptyList())
-            try {
-                if (nodes.any { node ->
-                        runCatching {
-                            node.isVisibleToUser && BrowserSurfaceInspector.isNativeNode(node) &&
-                                node.packageName?.toString() == browserPackageName &&
-                                node.windowId == expectedWindowId &&
-                                BrowserUiCapabilityPolicy.isStrongAddressBarResource(
-                                    node.viewIdResourceName.orEmpty(),
-                                    browserPackageName
-                                )
-                        }.getOrDefault(false)
-                    }
-                ) return true
-            } finally {
-                nodes.forEach(::recycleSafely)
-            }
-        }
-        return false
     }
 
     private fun recycleSafely(node: AccessibilityNodeInfo?) {
