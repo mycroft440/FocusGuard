@@ -1,0 +1,134 @@
+name: Temporary report fixes v2
+
+on:
+  push:
+    branches: ["fix/report-bugs-2026-09-16"]
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/report-bugs-2026-09-16
+          fetch-depth: 0
+      - uses: actions/setup-java@v4
+        with:
+          java-version: "17"
+          distribution: temurin
+      - uses: gradle/actions/setup-gradle@v4
+      - name: Install Android 16 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+      - name: Apply reviewed fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show d06aa5bceb476521d9ab99cb58dce7e9902ab34e:.github/scripts/apply-report-fixes.py > /tmp/full-fixes.py
+          sed -i 's|ROOT = Path(__file__).resolve().parents\[2\]|ROOT = Path.cwd()|' /tmp/full-fixes.py
+          set +e
+          python3 /tmp/full-fixes.py > /tmp/full-fixes-first-pass.log 2>&1
+          first_pass=$?
+          set -e
+          cat /tmp/full-fixes-first-pass.log
+          test "$first_pass" -ne 0
+          grep -q 'LimitsSecurityScreen.kt: expected exactly one match' /tmp/full-fixes-first-pass.log
+          python3 - <<'PY'
+          from pathlib import Path
+          path = Path('app/src/main/java/com/focusguard/ui/compose/screens/LimitsSecurityScreen.kt')
+          text = path.read_text()
+          old = """                                    } else {
+                                        authManager.setAdultFilterEnabled(true)
+                                        val success = deviceOwnerManager.enforceAdultDns()
+                                        if (success) {
+                                            adultFilterEnabled = true
+                                            policyScope.launch {
+                                                blockingSessionManager.checkAndEnforce()
+                                            }
+                                        } else {
+                                            authManager.setAdultFilterEnabled(false)
+                                            Toast.makeText(context, context.getString(R.string.limits_dns_injection_failed), Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                } else {
+          """
+          new = """                                    } else {
+                                        authManager.setAdultFilterEnabled(true)
+                                        policyScope.launch {
+                                            val success = withContext(Dispatchers.IO) {
+                                                deviceOwnerManager.enforceAdultDns()
+                                            }
+                                            if (success) {
+                                                adultFilterEnabled = true
+                                                withContext(Dispatchers.IO) {
+                                                    blockingSessionManager.checkAndEnforce()
+                                                }
+                                            } else {
+                                                authManager.setAdultFilterEnabled(false)
+                                                adultFilterEnabled = false
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.limits_dns_injection_failed),
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                            }
+                                            context.sendBroadcast(
+                                                android.content.Intent(
+                                                    com.focusguard.service.BlockingAccessibilityService.ACTION_REFRESH_BLOCKING
+                                                ).setPackage(context.packageName)
+                                            )
+                                        }
+                                        return@Switch
+                                    }
+                                } else {
+          """
+          if text.count(old) != 1:
+              raise SystemExit(f'LimitsSecurityScreen DNS block matches: {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
+          PY
+          python3 - <<'PY'
+          from pathlib import Path
+          full = Path('/tmp/full-fixes.py').read_text()
+          marker = 'rel = "app/src/main/java/com/focusguard/FocusGuardApplication.kt"'
+          start = full.index(marker)
+          header_end = full.index('# FG-01')
+          Path('/tmp/fixes-tail.py').write_text(full[:header_end] + full[start:])
+          PY
+          python3 /tmp/fixes-tail.py
+      - name: Review patch integrity
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          git diff --stat
+          git status --short
+      - run: chmod +x gradlew
+      - name: Run focused unit tests
+        shell: bash
+        run: |
+          set -o pipefail
+          ./gradlew testDebugUnitTest --no-daemon --stacktrace \
+            --tests 'com.focusguard.utils.UsageLimitForegroundPolicyTest' \
+            --tests 'com.focusguard.utils.AppUsageLimitActivationUsageTest' \
+            --tests 'com.focusguard.utils.UsageLimitBehaviorPolicyTest' \
+            --tests 'com.focusguard.focusmode.FocusModePolicyTest' \
+            --tests 'com.focusguard.manager.BlockingSessionManagerTargetsTest'
+      - name: Compile debug Kotlin
+        run: ./gradlew :app:compileDebugKotlin --no-daemon --stacktrace
+      - name: Commit validated fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/workflows/tmp-report-fixes.yml .github/workflows/tmp-report-fixes-v2.yml .github/scripts/apply-report-fixes.py
+          git add -A
+          git diff --cached --check
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "fix: resolve reported blocking and limit bugs"
+          git push origin HEAD:fix/report-bugs-2026-09-16
