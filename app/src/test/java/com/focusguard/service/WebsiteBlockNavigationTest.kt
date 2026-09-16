@@ -523,30 +523,63 @@ class WebsiteBlockNavigationTest {
         assertThat(intent.flags and Intent.FLAG_ACTIVITY_SINGLE_TOP).isNotEqualTo(0)
     }
     @Test
-    fun `intent redirect fallback is limited to Yandex family and DuckDuckGo`() {
-        listOf(
-            "com.duckduckgo.mobile.android",
-            "com.yandex.browser",
-            "com.yandex.browser.beta",
-            "com.yandex.browser.alpha",
-            "com.yandex.browser.lite"
-        ).forEach { packageName ->
-            assertThat(
-                BlockingAccessibilityService.supportsSafeBrowserIntentRedirectFallback(packageName)
-            ).isTrue()
-        }
+    fun `intent redirect fallback follows verified browser capability rather than package allowlist`() {
+        assertThat(
+            BlockingAccessibilityService.supportsCapabilityBasedIntentRedirectFallback(
+                knownBrowser = true,
+                verifiedHttpsHandler = false
+            )
+        ).isTrue()
+        assertThat(
+            BlockingAccessibilityService.supportsCapabilityBasedIntentRedirectFallback(
+                knownBrowser = false,
+                verifiedHttpsHandler = true
+            )
+        ).isTrue()
+        assertThat(
+            BlockingAccessibilityService.supportsCapabilityBasedIntentRedirectFallback(
+                knownBrowser = true,
+                verifiedHttpsHandler = true
+            )
+        ).isTrue()
+        assertThat(
+            BlockingAccessibilityService.supportsCapabilityBasedIntentRedirectFallback(
+                knownBrowser = false,
+                verifiedHttpsHandler = false
+            )
+        ).isFalse()
+    }
 
-        listOf(
-            CHROME_PACKAGE,
-            FIREFOX_PACKAGE,
-            BRAVE_PACKAGE,
-            "com.sec.android.app.sbrowser",
-            "mark.via.gp"
-        ).forEach { packageName ->
-            assertThat(
-                BlockingAccessibilityService.supportsSafeBrowserIntentRedirectFallback(packageName)
-            ).isFalse()
-        }
+    @Test
+    fun `visible browser chrome without URL still enters bounded identity recovery`() {
+        assertThat(
+            BlockingAccessibilityService.shouldStartWebsiteIdentityRecovery(
+                websiteIdentified = false,
+                addressBarObservable = true,
+                focusedAddressEditor = false
+            )
+        ).isTrue()
+        assertThat(
+            BlockingAccessibilityService.shouldStartWebsiteIdentityRecovery(
+                websiteIdentified = false,
+                addressBarObservable = false,
+                focusedAddressEditor = false
+            )
+        ).isTrue()
+        assertThat(
+            BlockingAccessibilityService.shouldStartWebsiteIdentityRecovery(
+                websiteIdentified = false,
+                addressBarObservable = true,
+                focusedAddressEditor = true
+            )
+        ).isFalse()
+        assertThat(
+            BlockingAccessibilityService.shouldStartWebsiteIdentityRecovery(
+                websiteIdentified = true,
+                addressBarObservable = true,
+                focusedAddressEditor = false
+            )
+        ).isFalse()
     }
 
     @Test

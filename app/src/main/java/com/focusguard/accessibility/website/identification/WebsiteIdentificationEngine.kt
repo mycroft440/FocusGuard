@@ -65,11 +65,10 @@ internal object WebsiteIdentificationEngine {
                 evidence += WebsiteIdentificationLayer.FIELD_SEMANTICS
             }
             return WebsiteIdentificationResult(
-                status = if (url != null || !rawText.isNullOrBlank()) {
-                    WebsiteIdentificationStatus.IDENTIFIED
-                } else {
-                    WebsiteIdentificationStatus.ADDRESS_BAR_OBSERVABLE
-                },
+                status = classifyStatus(
+                    urlCandidate = url,
+                    addressBarObservable = rawText != null || url != null
+                ),
                 rawAddressText = rawText,
                 urlCandidate = url,
                 browserPackageName = browserPackageName,
@@ -142,13 +141,11 @@ internal object WebsiteIdentificationEngine {
         if (observable) evidence += WebsiteIdentificationLayer.FIELD_SEMANTICS
 
         return WebsiteIdentificationResult(
-            status = when {
-                url != null || !rawText.isNullOrBlank() -> WebsiteIdentificationStatus.IDENTIFIED
-                observable -> WebsiteIdentificationStatus.ADDRESS_BAR_OBSERVABLE
-                surface.isNativeUi ->
-                    WebsiteIdentificationStatus.NATIVE_BROWSER_UI
-                else -> WebsiteIdentificationStatus.UNOBSERVABLE
-            },
+            status = classifyStatus(
+                urlCandidate = url,
+                addressBarObservable = observable,
+                nativeBrowserUiObserved = surface.isNativeUi
+            ),
             rawAddressText = rawText,
             urlCandidate = url,
             browserPackageName = browserPackageName,
@@ -156,6 +153,17 @@ internal object WebsiteIdentificationEngine {
             evidence = evidence,
             webContentObserved = surface == BrowserSurfaceInspector.Surface.WEB_CONTENT
         )
+    }
+
+    internal fun classifyStatus(
+        urlCandidate: String?,
+        addressBarObservable: Boolean,
+        nativeBrowserUiObserved: Boolean = false
+    ): WebsiteIdentificationStatus = when {
+        !urlCandidate.isNullOrBlank() -> WebsiteIdentificationStatus.IDENTIFIED
+        addressBarObservable -> WebsiteIdentificationStatus.ADDRESS_BAR_OBSERVABLE
+        nativeBrowserUiObserved -> WebsiteIdentificationStatus.NATIVE_BROWSER_UI
+        else -> WebsiteIdentificationStatus.UNOBSERVABLE
     }
 
     /**

@@ -3103,7 +3103,12 @@ class BlockingAccessibilityService : AccessibilityService() {
             return
         }
 
-        if (handleBrowserObservability(packageName, addressBarObservable)) {
+        if (handleBrowserObservability(
+                packageName = packageName,
+                addressBarObservable = addressBarObservable,
+                websiteIdentified = !url.isNullOrBlank()
+            )
+        ) {
             recycleSafely(root)
             return
         }
@@ -3153,13 +3158,14 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun handleBrowserObservability(
         packageName: String,
-        addressBarObservable: Boolean
+        addressBarObservable: Boolean,
+        websiteIdentified: Boolean = false
     ): Boolean {
         if (packageName in opaqueBrowserRecoveriesRunning &&
             foregroundPackageName == packageName && websiteObservationRequired() &&
             !websiteBlockTransitionGuard.isActive(packageName)
         ) return false
-        if (!websiteObservationRequired() || addressBarObservable ||
+        if (!websiteObservationRequired() || websiteIdentified ||
             foregroundPackageName != packageName ||
             websiteBlockTransitionGuard.isActive(packageName)
         ) {
@@ -3167,9 +3173,10 @@ class BlockingAccessibilityService : AccessibilityService() {
             return false
         }
 
-        // Missing URL text is not evidence of a web page. Reacquire the complete
-        // current window: an event source may be just a toolbar button, and the
-        // active window may temporarily belong to a keyboard or system dialog.
+        // Seeing browser chrome is not the same as identifying the current site.
+        // Reacquire the complete current window and recover whenever web content is
+        // visible but no valid URL can be proved. A focused editor is left alone so
+        // normal user typing is never disrupted while a navigation is still forming.
         val root = rootInActiveWindow
         val windowId: Int
         val surface: BrowserSurfaceInspector.Surface
@@ -3180,13 +3187,60 @@ class BlockingAccessibilityService : AccessibilityService() {
             }
             windowId = root.windowId
             surface = BrowserSurfaceInspector.inspect(root, packageName)
-            if (surface != BrowserSurfaceInspector.Surface.WEB_CONTENT ||
+            if (surface != BrowserSurfaceInspector.Surface.WEB_CONTENT) {
+                clearOpaqueBrowserObservation(packageName)
+                if (surface.isNativeUi) stopWebsiteTracking()
+                return false
+            }
+
+            val httpsHandlerRecognized = isVerifiedHttpsHandler(packageName)
+            val freshUrl = WebsiteBlocker.extractUrlFromRoot(
+                root,
+                packageName,
+                httpsHandlerRecognized
+            )
+            if (!freshUrl.isNullOrBlank()) {
+                clearOpaqueBrowserObservation(packageName)
+                val blocked = immediateWebsiteBlockTarget(
+                    addressText = null,
+                    url = freshUrl,
+                    blockedRules = blockedWebsitesDomainSet
+                )
+                if (blocked != null) {
+                    routeWebsiteBlockByHierarchy(
+                        browserPackageName = packageName,
+                        browserWindowId = windowId,
+                        blockedCandidate = freshUrl,
+                        detectionEventUptimeMillis = SystemClock.uptimeMillis(),
+                        browserWindowIdValidated = true
+                    )
+                    return true
+                }
+                updateWebsiteTracking(freshUrl, packageName, System.currentTimeMillis())
+                return false
+            }
+
+            val effectiveAddressBarObservable = addressBarObservable ||
                 WebsiteBlocker.hasAddressBarNode(
-                    root, packageName, isVerifiedHttpsHandler(packageName)
+                    root,
+                    packageName,
+                    httpsHandlerRecognized
+                )
+            val focusedEditor = effectiveAddressBarObservable &&
+                AddressBarRedirectionActions.hasFocusedAddressEditor(
+                    root,
+                    packageName,
+                    windowId,
+                    httpsHandlerRecognized,
+                    requireUnique = false
+                )
+            if (!shouldStartWebsiteIdentityRecovery(
+                    websiteIdentified = false,
+                    addressBarObservable = effectiveAddressBarObservable,
+                    focusedAddressEditor = focusedEditor
                 )
             ) {
                 clearOpaqueBrowserObservation(packageName)
-                if (surface.isNativeUi) stopWebsiteTracking()
                 return false
             }
         } finally {
@@ -3700,16 +3754,18 @@ class BlockingAccessibilityService : AccessibilityService() {
                 }
 
                 if (!redirectRequested &&
-                    supportsSafeBrowserIntentRedirectFallback(browserPackageName)
+                    supportsCapabilityBasedIntentRedirectFallback(
+                        knownBrowser = browserPackageName in knownBrowserPackages,
+                        verifiedHttpsHandler = isVerifiedHttpsHandler(browserPackageName)
+                    )
                 ) {
-                    // Yandex and DuckDuckGo can expose a readable blocked URL while
-                    // withholding a certifiable editable/submit surface. Only after
-                    // both same-tab attempts are exhausted, restore and re-certify
-                    // the exact blocked surface before asking that same browser
-                    // package to open the safe Google homepage. The curtain remains
-                    // up until normal Google confirmation succeeds below.
+                    // Any recognized browser with independently verified browser
+                    // capability may use the safe ACTION_VIEW fallback after the two
+                    // certified same-tab attempts are exhausted. The blocked surface
+                    // is revalidated by rule before the browser is asked to open the
+                    // Google homepage; the curtain remains until Google is confirmed.
                     val blockedSurfaceRestored =
-                        restoreBlockedSurfaceAfterAddressEdit(transition)
+                        restoreBlockedSurfaceForSafeIntentFallback(transition)
                     if (blockedSurfaceRestored && curtainReadyForTransition(transition)) {
                         FocusGuardLogger.log(
                             "A11y",
@@ -3871,6 +3927,21 @@ class BlockingAccessibilityService : AccessibilityService() {
         ) ?: return false
         val restored = rootStillShowsDetectedBlockedTarget(root, transition)
         recycleSafely(root)
+        transition.activatedAddressViewId = null
+        transition.editorAddressViewId = null
+        return restored
+    }
+
+    private suspend fun restoreBlockedSurfaceForSafeIntentFallback(
+        transition: WebsiteBlockTransitionHandle
+    ): Boolean {
+        if (transition.activatedAddressViewId != null ||
+            transition.editorAddressViewId != null
+        ) {
+            if (!performGlobalAction(GLOBAL_ACTION_BACK)) return false
+            delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
+        }
+        val restored = currentBrowserSurfaceMatchesBlockedTransition(transition)
         transition.activatedAddressViewId = null
         transition.editorAddressViewId = null
         return restored
@@ -4291,14 +4362,20 @@ class BlockingAccessibilityService : AccessibilityService() {
                 if (transition.safeGoogleConfirmed.isCompleted) return submittedAt
                 delay(WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS)
             }
-            // An accepted action can be a no-op. Try the next method only if a
-            // fresh, unique editor still contains the exact safe replacement.
+            // An accepted submit action is not navigation proof. Only a positively
+            // confirmed Google surface may complete this attempt. If the editor
+            // disappeared without confirmation, stop touching that surface and let
+            // the guarded restore/retry/intent fallback revalidate what is current.
+            if (mayOpenDestinationAfterSanitization(
+                    safeGoogleConfirmed = transition.safeGoogleConfirmed.isCompleted
+                )
+            ) return submittedAt
             val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
             val stillEditing = try {
                 AddressBarRedirectionActions.hasFocusedAddressEditor(fresh, browserPackageName,
                     expectedWindowId, https, ::isSafeGoogleRedirectSurface)
             } finally { recycleSafely(fresh) }
-            if (!stillEditing) return submittedAt // Navigation began; never submit against another surface.
+            if (!stillEditing) return 0L
         }
         return 0L
     }
@@ -5204,17 +5281,17 @@ class BlockingAccessibilityService : AccessibilityService() {
             }
         }
 
-        private val SAFE_BROWSER_INTENT_REDIRECT_FALLBACK_PACKAGES = setOf(
-            "com.duckduckgo.mobile.android",
-            "com.yandex.browser",
-            "com.yandex.browser.beta",
-            "com.yandex.browser.alpha",
-            "com.yandex.browser.lite"
-        )
+        internal fun supportsCapabilityBasedIntentRedirectFallback(
+            knownBrowser: Boolean,
+            verifiedHttpsHandler: Boolean
+        ): Boolean = knownBrowser || verifiedHttpsHandler
 
-        internal fun supportsSafeBrowserIntentRedirectFallback(
-            browserPackageName: String
-        ): Boolean = browserPackageName in SAFE_BROWSER_INTENT_REDIRECT_FALLBACK_PACKAGES
+        internal fun shouldStartWebsiteIdentityRecovery(
+            websiteIdentified: Boolean,
+            addressBarObservable: Boolean,
+            focusedAddressEditor: Boolean
+        ): Boolean = !websiteIdentified &&
+            (!addressBarObservable || !focusedAddressEditor)
 
         internal fun mayOpenDestinationAfterSanitization(
             safeGoogleConfirmed: Boolean
