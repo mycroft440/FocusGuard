@@ -682,6 +682,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         "com.yandex.browser.lite",
         "com.UCMobile.intl",
         "com.UCMobile.intl.mi",
+        "com.transsion.phoenix",
         "org.mozilla.firefox",
         "org.mozilla.firefox_beta",
         "org.mozilla.fenix",
