@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_revoke_permissions_title">Revoke app permissions</string>
+    <string name="settings_revoke_permissions_subtitle">Automatically disable Accessibility and legacy Device Admin</string>
+    <string name="settings_revoke_permissions_confirm_title">Revoke app permissions?</string>
+    <string name="settings_revoke_permissions_confirm_message">FocusGuard will automatically disable its Accessibility service and legacy Device Admin access. Device Owner and all other permissions will remain unchanged.</string>
+    <string name="settings_revoke_permissions_confirm_action">Revoke permissions</string>
+    <string name="settings_revoke_permissions_master_prompt">Enter the master credential to authorize revoking Accessibility and Device Admin.</string>
+    <string name="settings_revoke_permissions_progress">Revoking Accessibility and Device Admin…</string>
+    <string name="settings_revoke_permissions_success">Accessibility and Device Admin were revoked.</string>
+    <string name="settings_revoke_permissions_incomplete">FocusGuard could not automatically revoke all requested access.</string>
+    <string name="settings_revoke_permissions_none_active">Accessibility and legacy Device Admin are already disabled.</string>
+</resources>
