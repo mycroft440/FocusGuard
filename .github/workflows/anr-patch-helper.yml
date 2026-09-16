@@ -18,7 +18,7 @@ jobs:
           fetch-depth: 2
 
       - name: Apply reviewed replacements
-        run: python3 scripts/apply_anr_hardening_patch.py
+        run: python3 -m trace --trace scripts/apply_anr_hardening_patch.py
 
       - name: Validate and commit final patch
         shell: bash
