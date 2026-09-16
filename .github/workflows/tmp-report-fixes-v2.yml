@@ -1,4 +1,4 @@
-name: Temporary report fixes v2
+name: Temporary report fixes v3
 
 on:
   pull_request:
@@ -32,6 +32,7 @@ jobs:
           set -euo pipefail
           git show d06aa5bceb476521d9ab99cb58dce7e9902ab34e:.github/scripts/apply-report-fixes.py > /tmp/full-fixes.py
           sed -i 's|ROOT = Path(__file__).resolve().parents\[2\]|ROOT = Path.cwd()|' /tmp/full-fixes.py
+
           set +e
           python3 /tmp/full-fixes.py > /tmp/full-fixes-first-pass.log 2>&1
           first_pass=$?
@@ -39,14 +40,13 @@ jobs:
           cat /tmp/full-fixes-first-pass.log
           test "$first_pass" -ne 0
           grep -q 'LimitsSecurityScreen.kt: expected exactly one match' /tmp/full-fixes-first-pass.log
+
           python3 - <<'PY'
           from pathlib import Path
           path = Path('app/src/main/java/com/focusguard/ui/compose/screens/LimitsSecurityScreen.kt')
           lines = path.read_text().splitlines(keepends=True)
-          matches = [
-              index for index, line in enumerate(lines)
-              if line.strip() == 'val success = deviceOwnerManager.enforceAdultDns()'
-          ]
+          matches = [i for i, line in enumerate(lines)
+                     if line.strip() == 'val success = deviceOwnerManager.enforceAdultDns()']
           if len(matches) != 1:
               raise SystemExit(f'enforceAdultDns line matches: {len(matches)}')
           success_index = matches[0]
@@ -54,8 +54,6 @@ jobs:
           if lines[start].strip() != 'authManager.setAdultFilterEnabled(true)':
               raise SystemExit('unexpected line before enforceAdultDns')
           indent = lines[success_index][:len(lines[success_index]) - len(lines[success_index].lstrip())]
-          if len(indent) < 4:
-              raise SystemExit('unexpected DNS block indentation')
           outer_indent = indent[:-4]
           end = None
           for index in range(success_index + 1, len(lines)):
@@ -97,80 +95,47 @@ jobs:
           ]
           path.write_text(''.join(lines[:start] + replacement + lines[end:]))
           PY
+
           python3 - <<'PY'
           from pathlib import Path
           full = Path('/tmp/full-fixes.py').read_text()
           marker = 'rel = "app/src/main/java/com/focusguard/FocusGuardApplication.kt"'
           start = full.index(marker)
           header_end = full.index('# FG-01')
-          Path('/tmp/fixes-tail.py').write_text(full[:header_end] + full[start:])
+          tail = full[:header_end] + full[start:]
+          if tail.count('event.instanceId') != 1:
+              raise SystemExit(f'event.instanceId matches: {tail.count("event.instanceId")}')
+          tail = tail.replace(
+              'event.instanceId',
+              'event.className?.takeIf { it.isNotBlank() }?.hashCode()',
+              1
+          )
+          Path('/tmp/fixes-tail.py').write_text(tail)
           PY
           python3 /tmp/fixes-tail.py
 
-          # Final compatibility fixes discovered by the first compile pass.
           python3 - <<'PY'
           from pathlib import Path
-          from textwrap import dedent
-
-          receiver = Path('app/src/main/java/com/focusguard/receiver/DeviceOwnerMaintenanceExpiryReceiver.kt')
-          receiver.write_text(dedent('''
-              package com.focusguard.receiver
-
-              import android.content.BroadcastReceiver
-              import android.content.Context
-              import android.content.Intent
-              import com.focusguard.admin.DeviceOwnerManager
-              import com.focusguard.security.DeviceOwnerMaintenanceGate
-              import com.focusguard.utils.FocusGuardLogger
-              import kotlinx.coroutines.CoroutineScope
-              import kotlinx.coroutines.Dispatchers
-              import kotlinx.coroutines.SupervisorJob
-              import kotlinx.coroutines.launch
-
-              /** Reapplies Device Owner protection when the temporary maintenance window expires. */
-              class DeviceOwnerMaintenanceExpiryReceiver : BroadcastReceiver() {
-                  override fun onReceive(context: Context, intent: Intent?) {
-                      if (intent?.action != ACTION_EXPIRE_MAINTENANCE) return
-
-                      val pendingResult = goAsync()
-                      CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-                          try {
-                              DeviceOwnerMaintenanceGate.revoke(context)
-                              DeviceOwnerManager.getInstance(context.applicationContext).applyNuclearShield()
-                          } catch (error: Exception) {
-                              FocusGuardLogger.logError(
-                                  "DeviceOwnerMaintenance",
-                                  "Falha ao reaplicar políticas após expirar manutenção",
-                                  error
-                              )
-                          } finally {
-                              pendingResult.finish()
-                          }
-                      }
-                  }
-
-                  companion object {
-                      const val ACTION_EXPIRE_MAINTENANCE =
-                          "com.focusguard.action.EXPIRE_DEVICE_OWNER_MAINTENANCE"
-                  }
-              }
-          ''').lstrip())
-
-          activation = Path('app/src/main/java/com/focusguard/utils/AppUsageLimitActivationUsage.kt')
-          text = activation.read_text()
-          old = '''                val instanceId = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                      event.instanceId
-                  } else {
-                      null
-                  }
-          '''
-          new = '''                val instanceId = event.className
-                      ?.takeIf { it.isNotBlank() }
-                      ?.hashCode()
-          '''
+          path = Path('app/src/main/java/com/focusguard/receiver/DeviceOwnerMaintenanceExpiryReceiver.kt')
+          text = path.read_text()
+          old = 'if (intent?.action != DeviceOwnerMaintenanceGate.ACTION_EXPIRE_MAINTENANCE) return'
+          new = 'if (intent?.action != ACTION_EXPIRE_MAINTENANCE) return'
           if text.count(old) != 1:
-              raise SystemExit(f'instanceId compatibility block matches: {text.count(old)}')
-          activation.write_text(text.replace(old, new, 1))
+              raise SystemExit(f'maintenance action matches: {text.count(old)}')
+          text = text.replace(old, new, 1)
+          if 'companion object' in text:
+              raise SystemExit('unexpected existing receiver companion object')
+          if not text.endswith('\n}\n'):
+              raise SystemExit('unexpected receiver ending')
+          companion = '''
+
+              companion object {
+                  const val ACTION_EXPIRE_MAINTENANCE =
+                      "com.focusguard.action.EXPIRE_DEVICE_OWNER_MAINTENANCE"
+              }
+          '''
+          text = text[:-3] + companion + '\n}\n'
+          path.write_text(text)
           PY
       - name: Review patch integrity
         shell: bash
