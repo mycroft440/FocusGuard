@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_revoke_permissions_title">Revogar permissões do app</string>
+    <string name="settings_revoke_permissions_subtitle">Desative os acessos de sistema e privilégios administrativos do FocusGuard</string>
+    <string name="settings_revoke_permissions_confirm_title">Revogar permissões do app?</string>
+    <string name="settings_revoke_permissions_confirm_message">O FocusGuard pode deixar de bloquear apps e sites até que essas permissões sejam concedidas novamente. O Android abrirá cada tela relevante de Configurações para você desativar os acessos especiais.</string>
+    <string name="settings_revoke_permissions_confirm_action">Revogar permissões</string>
+    <string name="settings_revoke_permissions_master_prompt">Digite a credencial mestre para autorizar a revogação das permissões do FocusGuard.</string>
+    <string name="settings_revoke_permissions_progress">Revogando acesso administrativo…</string>
+    <string name="settings_revoke_permissions_success">As permissões do FocusGuard foram revogadas.</string>
+    <string name="settings_revoke_permissions_incomplete">Algumas permissões ainda estão ativas. Toque em “Revogar permissões do app” novamente para concluir.</string>
+    <string name="settings_revoke_permissions_none_active">Nenhuma permissão revogável do FocusGuard está ativa no momento.</string>
+    <string name="settings_revoke_permissions_settings_failed">Não foi possível abrir as Configurações do Android para esta permissão.</string>
+</resources>
