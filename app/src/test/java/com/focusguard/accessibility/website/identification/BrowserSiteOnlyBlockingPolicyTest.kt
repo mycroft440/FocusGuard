@@ -5,7 +5,7 @@ import org.junit.Test
 
 class BrowserSiteOnlyBlockingPolicyTest {
     @Test
-    fun `recognized browser stays accessible when URL recovery ends unobservable`() {
+    fun `opaque web evidence survives URL recovery failure`() {
         val opaqueWebSurface = WebsiteIdentificationResult(
             status = WebsiteIdentificationStatus.UNOBSERVABLE,
             webContentObserved = true
@@ -14,7 +14,7 @@ class BrowserSiteOnlyBlockingPolicyTest {
         val adjusted = BrowserSiteOnlyBlockingPolicy.applyAfterRecovery(opaqueWebSurface)
 
         assertThat(adjusted.status).isEqualTo(WebsiteIdentificationStatus.UNOBSERVABLE)
-        assertThat(adjusted.webContentObserved).isFalse()
+        assertThat(adjusted.webContentObserved).isTrue()
         assertThat(adjusted.bestCandidate).isNull()
     }
 
