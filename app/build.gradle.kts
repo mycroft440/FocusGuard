@@ -74,6 +74,12 @@ android {
         tasks.register("verifyCanonicalReleaseSigningIdentity") {
             group = "verification"
             description = "Verifies that production release packaging uses the canonical update key."
+            // This task intentionally reads a production keystore only when a release is
+            // packaged. Keeping it out of the configuration cache avoids serializing the
+            // build-script closure (and, more importantly, avoids persisting signing state).
+            notCompatibleWithConfigurationCache(
+                "Reads the production signing certificate at execution time."
+            )
             doLast {
                 check(releaseSigningAvailable) {
                     "Production release packaging requires KEYSTORE_FILE, KEYSTORE_PASSWORD, " +
