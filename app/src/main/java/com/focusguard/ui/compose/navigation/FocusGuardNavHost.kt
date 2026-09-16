@@ -33,9 +33,11 @@ import com.focusguard.manager.PomodoroManager
 import com.focusguard.focusmode.FocusModeIdleReturnPolicy
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.security.AuthManager
+import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.ProtectionPermission
 import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.CreateSessionActivity
+import com.focusguard.ui.MasterPasswordActivity
 import com.focusguard.ui.OfflineBookActivity
 import com.focusguard.ui.PermissionsActivity
 import com.focusguard.ui.compose.screens.BlockCustomizationScreen
@@ -102,7 +104,7 @@ fun FocusGuardNavHost(
 
     // The FocusGuard shell itself is never unlocked by the master credential.
     // Password/pattern/biometric credentials live on protected targets only;
-    // the master password is reserved for Settings > Remove all blocks.
+    // the master password is reserved for administrative protection boundaries.
 
     var currentRoute by remember { mutableStateOf(FocusGuardRoute.Home) }
     var selectedBlockType by remember { mutableStateOf(BlockTypeUi.PASSWORD) }
@@ -121,6 +123,9 @@ fun FocusGuardNavHost(
     }
     val creatorInstagramPromptStore = remember(activity.applicationContext) {
         CreatorInstagramPromptStore(activity.applicationContext)
+    }
+    val masterCredentialManager = remember(activity.applicationContext) {
+        DeactivationCredentialManager(activity.applicationContext)
     }
     var userProfile by remember { mutableStateOf(userProfileStore.load()) }
     var creatorInstagramPresented by remember {
@@ -243,6 +248,14 @@ fun FocusGuardNavHost(
                     PermissionsActivity.createPendingProtectionIntent(activity)
                 )
             }
+        }
+    }
+
+    fun withMasterCredential(onReady: () -> Unit) {
+        if (masterCredentialManager.hasCredential()) {
+            onReady()
+        } else {
+            activity.startActivity(MasterPasswordActivity.createIntent(activity))
         }
     }
 
@@ -386,16 +399,19 @@ fun FocusGuardNavHost(
                     onAddClick = {
                         withProtectionPermissions {
                             when (selectedBlockType) {
-                                BlockTypeUi.DAILY_LIMIT ->
+                                BlockTypeUi.DAILY_LIMIT -> withMasterCredential {
                                     currentRoute = FocusGuardRoute.UsageLimits
+                                }
                                 BlockTypeUi.PASSWORD -> activity.startActivity(
                                     Intent(activity, CreateSessionActivity::class.java)
                                         .putExtra("SESSION_TYPE", "PASSWORD")
                                 )
-                                BlockTypeUi.DOPAMINE_FAST -> activity.startActivity(
-                                    Intent(activity, CreateSessionActivity::class.java)
-                                        .putExtra("SESSION_TYPE", "TIME")
-                                )
+                                BlockTypeUi.DOPAMINE_FAST -> withMasterCredential {
+                                    activity.startActivity(
+                                        Intent(activity, CreateSessionActivity::class.java)
+                                            .putExtra("SESSION_TYPE", "TIME")
+                                    )
+                                }
                             }
                         }
                     },

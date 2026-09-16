@@ -29,15 +29,15 @@ import com.focusguard.ui.compose.theme.TextSecondary
 /**
  * Asks for the master credential and calls [onConfirmed] only once it verifies.
  *
- * The recovery code is accepted too, since [DeactivationCredentialManager.verify]
- * treats it as an equivalent proof — a user who lost the password must still be
- * able to manage their own limits.
+ * Recovery remains available to callers by default. Sensitive flows that explicitly
+ * require the configured master password can set [allowRecovery] to false.
  *
  * @param promptRes explains which action the credential is authorizing.
  */
 @Composable
 internal fun ConfirmMasterCredentialDialog(
     promptRes: Int,
+    allowRecovery: Boolean = true,
     onDismiss: () -> Unit,
     onConfirmed: () -> Unit
 ) {
@@ -52,9 +52,16 @@ internal fun ConfirmMasterCredentialDialog(
 
     fun confirm() {
         when (credentialManager.verify(credential)) {
-            DeactivationCredentialManager.VerificationResult.PASSWORD_ACCEPTED,
-            DeactivationCredentialManager.VerificationResult.RECOVERY_ACCEPTED -> {
+            DeactivationCredentialManager.VerificationResult.PASSWORD_ACCEPTED -> {
                 onConfirmed()
+            }
+
+            DeactivationCredentialManager.VerificationResult.RECOVERY_ACCEPTED -> {
+                if (allowRecovery) {
+                    onConfirmed()
+                } else {
+                    errorMessage = wrongMessage
+                }
             }
 
             DeactivationCredentialManager.VerificationResult.NOT_CONFIGURED ->
