@@ -1698,6 +1698,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                                 opaqueBrowserVerificationScheduled.clear()
                                 opaqueBrowserRecoveriesRunning.clear()
                             }
+                            if (blockedWebsiteDomains.isEmpty() && configuredWebsiteDomains.isEmpty()) {
+                                browserDiscoveryMisses.clear()
+                            }
                             activeAppLimitsByPackage = activeAppLimits.associateBy { it.packageName }
                             hasActiveAppLimits = activeAppLimits.isNotEmpty()
                             isBlockingSessionActive = isSelfProtectionEngaged(
@@ -5194,6 +5197,10 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal const val FAILSAFE_EVACUATION_HOLD_MILLIS = 450L
         internal const val SAFE_WINDOW_SETTLE_MILLIS = 160L
         internal const val UNSAFE_WINDOW_RECHECK_MILLIS = 240L
+        private const val SLOW_ACCESSIBILITY_CALLBACK_MILLIS = 250L
+        private const val SLOW_CALLBACK_LOG_INTERVAL_MILLIS = 5_000L
+        private const val UNKNOWN_BROWSER_DISCOVERY_RETRY_MILLIS = 750L
+        private const val MAX_BROWSER_DISCOVERY_MISSES = 32
         internal const val EVENT_NOTIFICATION_TIMEOUT_MILLIS = 0L
         /**
          * Event types that can trigger settings interception.
