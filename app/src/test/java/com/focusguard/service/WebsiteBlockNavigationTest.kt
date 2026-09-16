@@ -523,6 +523,33 @@ class WebsiteBlockNavigationTest {
         assertThat(intent.flags and Intent.FLAG_ACTIVITY_SINGLE_TOP).isNotEqualTo(0)
     }
     @Test
+    fun `intent redirect fallback is limited to Yandex family and DuckDuckGo`() {
+        listOf(
+            "com.duckduckgo.mobile.android",
+            "com.yandex.browser",
+            "com.yandex.browser.beta",
+            "com.yandex.browser.alpha",
+            "com.yandex.browser.lite"
+        ).forEach { packageName ->
+            assertThat(
+                BlockingAccessibilityService.supportsSafeBrowserIntentRedirectFallback(packageName)
+            ).isTrue()
+        }
+
+        listOf(
+            CHROME_PACKAGE,
+            FIREFOX_PACKAGE,
+            BRAVE_PACKAGE,
+            "com.sec.android.app.sbrowser",
+            "mark.via.gp"
+        ).forEach { packageName ->
+            assertThat(
+                BlockingAccessibilityService.supportsSafeBrowserIntentRedirectFallback(packageName)
+            ).isFalse()
+        }
+    }
+
+    @Test
     fun `Chromium capability policy is package based and rejects stale surfaces`() {
         val arbitraryChromiumPackage = "org.example.chromium.fork"
         val policy = BlockingAccessibilityService.WebsiteTabNeutralizationPolicy(

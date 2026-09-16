@@ -3699,10 +3699,30 @@ class BlockingAccessibilityService : AccessibilityService() {
                     }
                 }
 
+                if (!redirectRequested &&
+                    supportsSafeBrowserIntentRedirectFallback(browserPackageName)
+                ) {
+                    // Yandex and DuckDuckGo can expose a readable blocked URL while
+                    // withholding a certifiable editable/submit surface. Only after
+                    // both same-tab attempts are exhausted, restore and re-certify
+                    // the exact blocked surface before asking that same browser
+                    // package to open the safe Google homepage. The curtain remains
+                    // up until normal Google confirmation succeeds below.
+                    val blockedSurfaceRestored =
+                        restoreBlockedSurfaceAfterAddressEdit(transition)
+                    if (blockedSurfaceRestored && curtainReadyForTransition(transition)) {
+                        FocusGuardLogger.log(
+                            "A11y",
+                            "Usando fallback seguro por intent para $browserPackageName"
+                        )
+                        redirectRequested = requestSafeGoogleThroughBrowserIntent(transition)
+                    }
+                }
+
                 if (!redirectRequested) {
                     FocusGuardLogger.log(
                         "A11y",
-                        "Redirecionamento na mesma aba não pôde ser certificado para " +
+                        "Redirecionamento seguro não pôde ser certificado para " +
                             "$browserPackageName (API ${Build.VERSION.SDK_INT}); bloqueando fail-closed"
                     )
                     stateMachine.onFailureOrTimeout()
@@ -5183,6 +5203,18 @@ class BlockingAccessibilityService : AccessibilityService() {
                 uri.encodedFragment?.let { append('#').append(it) }
             }
         }
+
+        private val SAFE_BROWSER_INTENT_REDIRECT_FALLBACK_PACKAGES = setOf(
+            "com.duckduckgo.mobile.android",
+            "com.yandex.browser",
+            "com.yandex.browser.beta",
+            "com.yandex.browser.alpha",
+            "com.yandex.browser.lite"
+        )
+
+        internal fun supportsSafeBrowserIntentRedirectFallback(
+            browserPackageName: String
+        ): Boolean = browserPackageName in SAFE_BROWSER_INTENT_REDIRECT_FALLBACK_PACKAGES
 
         internal fun mayOpenDestinationAfterSanitization(
             safeGoogleConfirmed: Boolean
