@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteForever
@@ -85,11 +86,20 @@ fun SettingsScreen(
     }
     var showRevokeConfirmation by remember { mutableStateOf(false) }
     var showRevokeCredential by remember { mutableStateOf(false) }
+    var revokeAwaitingMasterSetup by remember { mutableStateOf(false) }
+    var showDeveloperMode by remember { mutableStateOf(false) }
     var revocationWorking by remember { mutableStateOf(false) }
 
     val masterPasswordLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) { }
+    ) {
+        if (revokeAwaitingMasterSetup) {
+            revokeAwaitingMasterSetup = false
+            if (credentialManager.hasCredential()) {
+                showRevokeCredential = true
+            }
+        }
+    }
 
     fun beginPermissionRevocation() {
         if (revocationWorking) return
@@ -207,6 +217,12 @@ fun SettingsScreen(
                 iconTint = Color(0xFFE1306C),
                 onClick = onCreatorInstagramClick
             )
+            SettingsItem(
+                Icons.Default.Build,
+                stringResource(R.string.settings_dev_mode_title),
+                stringResource(R.string.settings_dev_mode_subtitle),
+                onClick = { showDeveloperMode = true }
+            )
 
             Spacer(Modifier.height(32.dp))
             Text(
@@ -234,7 +250,10 @@ fun SettingsScreen(
                         if (credentialManager.hasCredential()) {
                             showRevokeCredential = true
                         } else {
-                            beginPermissionRevocation()
+                            revokeAwaitingMasterSetup = true
+                            masterPasswordLauncher.launch(
+                                MasterPasswordActivity.createIntent(context)
+                            )
                         }
                     }
                 ) {
@@ -255,11 +274,18 @@ fun SettingsScreen(
     if (showRevokeCredential) {
         ConfirmMasterCredentialDialog(
             promptRes = R.string.settings_revoke_permissions_master_prompt,
+            allowRecovery = false,
             onDismiss = { showRevokeCredential = false },
             onConfirmed = {
                 showRevokeCredential = false
                 beginPermissionRevocation()
             }
+        )
+    }
+
+    if (showDeveloperMode) {
+        DeveloperModeDialog(
+            onDismiss = { showDeveloperMode = false }
         )
     }
 
