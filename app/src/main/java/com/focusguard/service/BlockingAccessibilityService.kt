@@ -530,6 +530,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private val refreshRequested = AtomicBoolean(false)
     private val isRefreshingLauncherIndex = AtomicBoolean(false)
     private val launcherIndexRefreshRequested = AtomicBoolean(false)
+    private val lastSlowCallbackLogElapsed = AtomicLong(0L)
 
     @Volatile private var blockedAppsSet: Set<String> = emptySet()
     @Volatile private var blockedWebsitesDomainSet: Set<String> = emptySet()
@@ -659,6 +660,11 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private var browserPackages: Set<String> = emptySet()
     private var verifiedHttpsHandlerPackages: Set<String> = emptySet()
+    private data class BrowserDiscoveryMiss(
+        val windowId: Int,
+        val checkedAtElapsed: Long
+    )
+    private val browserDiscoveryMisses = mutableMapOf<String, BrowserDiscoveryMiss>()
     private val knownBrowserPackages = setOf(
         "com.android.chrome",
         "com.chrome.beta",
@@ -929,6 +935,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun calculateBrowserPackages() {
+        browserDiscoveryMisses.clear()
         browserPackages = try {
             val browserIntent = Intent(
                 Intent.ACTION_VIEW,
@@ -1256,7 +1263,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                 AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
                 AccessibilityEvent.TYPE_VIEW_FOCUSED -> {
                     val fastEvent = event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-                    if (isRecognizedBrowserSurface(event, packageName) &&
+                    if (websiteSurfaceInspectionNeeded() &&
+                        isRecognizedBrowserSurface(event, packageName) &&
                         (fastEvent || now - lastBrowserCheck >= browserDebounceMillis)
                     ) {
                         lastBrowserCheck = now
@@ -1266,6 +1274,29 @@ class BlockingAccessibilityService : AccessibilityService() {
             }
         } catch (error: RuntimeException) {
             FocusGuardLogger.logError("A11y", "Erro no evento de acessibilidade", error)
+        } finally {
+            val elapsedMillis = (
+                SystemClock.elapsedRealtimeNanos() - eventDetectedAtNanos
+            ).coerceAtLeast(0L) / 1_000_000L
+            if (elapsedMillis >= SLOW_ACCESSIBILITY_CALLBACK_MILLIS) {
+                val nowElapsed = SystemClock.elapsedRealtime()
+                val previousLog = lastSlowCallbackLogElapsed.get()
+                val shouldLog = (previousLog == 0L ||
+                    nowElapsed - previousLog >= SLOW_CALLBACK_LOG_INTERVAL_MILLIS) &&
+                    lastSlowCallbackLogElapsed.compareAndSet(previousLog, nowElapsed)
+                if (shouldLog) {
+                    val eventType = event.eventType
+                    val eventPackage = event.packageName?.toString().orEmpty()
+                    val eventWindowId = event.windowId
+                    scope.launch {
+                        FocusGuardLogger.log(
+                            "A11yPerf",
+                            "Callback lento: ${elapsedMillis}ms, type=$eventType, " +
+                                "package=$eventPackage, window=$eventWindowId"
+                        )
+                    }
+                }
+            }
         }
     }
 
@@ -1426,6 +1457,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             opaqueBrowserWindowIds.clear()
             opaqueBrowserVerificationScheduled.clear()
             opaqueBrowserRecoveriesRunning.clear()
+            browserDiscoveryMisses.clear()
             isBlockingSessionActive = false
             focusModeSessionActive = false
             focusModeFallbackActive = false
@@ -1666,6 +1698,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                                 opaqueBrowserVerificationScheduled.clear()
                                 opaqueBrowserRecoveriesRunning.clear()
                             }
+                            if (blockedWebsiteDomains.isEmpty() && configuredWebsiteDomains.isEmpty()) {
+                                browserDiscoveryMisses.clear()
+                            }
                             activeAppLimitsByPackage = activeAppLimits.associateBy { it.packageName }
                             hasActiveAppLimits = activeAppLimits.isNotEmpty()
                             isBlockingSessionActive = isSelfProtectionEngaged(
@@ -1885,8 +1920,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                 packageName = packageName,
                 now = System.currentTimeMillis()
             )
-            isRecognizedBrowserSurface(event, packageName) &&
-                (blockedWebsitesDomainSet.isNotEmpty() || limitedWebsiteDomains.isNotEmpty()) ->
+            websiteSurfaceInspectionNeeded() &&
+                isRecognizedBrowserSurface(event, packageName) ->
                 handleBrowserEvent(event, packageName)
         }
     }
@@ -2737,7 +2772,10 @@ class BlockingAccessibilityService : AccessibilityService() {
         packageName: String
     ): Boolean {
         if (packageName.isBlank()) return false
-        if (packageName in browserPackages) return true
+        if (packageName in browserPackages) {
+            browserDiscoveryMisses.remove(packageName)
+            return true
+        }
 
         if (WebsiteBlocker.extractAddressBarTextFromEvent(
                 event,
@@ -2746,6 +2784,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             ) != null
         ) {
             browserPackages = browserPackages + packageName
+            browserDiscoveryMisses.remove(packageName)
             return true
         }
 
@@ -2754,6 +2793,13 @@ class BlockingAccessibilityService : AccessibilityService() {
             event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
             event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED
         if (!canInspectRoot) return false
+
+        val nowElapsed = SystemClock.elapsedRealtime()
+        val cachedMiss = browserDiscoveryMisses[packageName]
+        if (cachedMiss != null &&
+            cachedMiss.windowId == event.windowId &&
+            nowElapsed - cachedMiss.checkedAtElapsed < UNKNOWN_BROWSER_DISCOVERY_RETRY_MILLIS
+        ) return false
 
         val root = rootInActiveWindow ?: sourceNodeForEvent(event) ?: return false
         val recognized = try {
@@ -2765,8 +2811,31 @@ class BlockingAccessibilityService : AccessibilityService() {
         } finally {
             recycleSafely(root)
         }
-        if (recognized) browserPackages = browserPackages + packageName
+        if (recognized) {
+            browserPackages = browserPackages + packageName
+            browserDiscoveryMisses.remove(packageName)
+        } else {
+            recordBrowserDiscoveryMiss(packageName, event.windowId, nowElapsed)
+        }
         return recognized
+    }
+
+    private fun recordBrowserDiscoveryMiss(
+        packageName: String,
+        windowId: Int,
+        checkedAtElapsed: Long
+    ) {
+        if (packageName !in browserDiscoveryMisses &&
+            browserDiscoveryMisses.size >= MAX_BROWSER_DISCOVERY_MISSES
+        ) {
+            browserDiscoveryMisses.minByOrNull { it.value.checkedAtElapsed }
+                ?.key
+                ?.let(browserDiscoveryMisses::remove)
+        }
+        browserDiscoveryMisses[packageName] = BrowserDiscoveryMiss(
+            windowId = windowId,
+            checkedAtElapsed = checkedAtElapsed
+        )
     }
 
     private fun observeWebsiteTransitionDestination(
@@ -3151,6 +3220,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
         recycleSafely(root)
     }
+
+    private fun websiteSurfaceInspectionNeeded(): Boolean =
+        blockedWebsitesDomainSet.isNotEmpty() || limitedWebsiteDomains.isNotEmpty()
 
     private fun websiteObservationRequired(): Boolean =
         blockedWebsitesDomainSet.isNotEmpty() || hardLimitedWebsiteDomains.isNotEmpty()
@@ -5125,6 +5197,10 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal const val FAILSAFE_EVACUATION_HOLD_MILLIS = 450L
         internal const val SAFE_WINDOW_SETTLE_MILLIS = 160L
         internal const val UNSAFE_WINDOW_RECHECK_MILLIS = 240L
+        private const val SLOW_ACCESSIBILITY_CALLBACK_MILLIS = 250L
+        private const val SLOW_CALLBACK_LOG_INTERVAL_MILLIS = 5_000L
+        private const val UNKNOWN_BROWSER_DISCOVERY_RETRY_MILLIS = 750L
+        private const val MAX_BROWSER_DISCOVERY_MISSES = 32
         internal const val EVENT_NOTIFICATION_TIMEOUT_MILLIS = 0L
         /**
          * Event types that can trigger settings interception.
