@@ -1,8 +1,6 @@
 name: Temporary report fixes v2
 
 on:
-  push:
-    branches: ["fix/report-bugs-2026-09-16"]
   pull_request:
     branches: ["main"]
 
@@ -44,55 +42,60 @@ jobs:
           python3 - <<'PY'
           from pathlib import Path
           path = Path('app/src/main/java/com/focusguard/ui/compose/screens/LimitsSecurityScreen.kt')
-          text = path.read_text()
-          old = """                                    } else {
-                                        authManager.setAdultFilterEnabled(true)
-                                        val success = deviceOwnerManager.enforceAdultDns()
-                                        if (success) {
-                                            adultFilterEnabled = true
-                                            policyScope.launch {
-                                                blockingSessionManager.checkAndEnforce()
-                                            }
-                                        } else {
-                                            authManager.setAdultFilterEnabled(false)
-                                            Toast.makeText(context, context.getString(R.string.limits_dns_injection_failed), Toast.LENGTH_LONG).show()
-                                        }
-                                    }
-                                } else {
-          """
-          new = """                                    } else {
-                                        authManager.setAdultFilterEnabled(true)
-                                        policyScope.launch {
-                                            val success = withContext(Dispatchers.IO) {
-                                                deviceOwnerManager.enforceAdultDns()
-                                            }
-                                            if (success) {
-                                                adultFilterEnabled = true
-                                                withContext(Dispatchers.IO) {
-                                                    blockingSessionManager.checkAndEnforce()
-                                                }
-                                            } else {
-                                                authManager.setAdultFilterEnabled(false)
-                                                adultFilterEnabled = false
-                                                Toast.makeText(
-                                                    context,
-                                                    context.getString(R.string.limits_dns_injection_failed),
-                                                    Toast.LENGTH_LONG
-                                                ).show()
-                                            }
-                                            context.sendBroadcast(
-                                                android.content.Intent(
-                                                    com.focusguard.service.BlockingAccessibilityService.ACTION_REFRESH_BLOCKING
-                                                ).setPackage(context.packageName)
-                                            )
-                                        }
-                                        return@Switch
-                                    }
-                                } else {
-          """
-          if text.count(old) != 1:
-              raise SystemExit(f'LimitsSecurityScreen DNS block matches: {text.count(old)}')
-          path.write_text(text.replace(old, new, 1))
+          lines = path.read_text().splitlines(keepends=True)
+          matches = [
+              index for index, line in enumerate(lines)
+              if line.strip() == 'val success = deviceOwnerManager.enforceAdultDns()'
+          ]
+          if len(matches) != 1:
+              raise SystemExit(f'enforceAdultDns line matches: {len(matches)}')
+          success_index = matches[0]
+          start = success_index - 1
+          if lines[start].strip() != 'authManager.setAdultFilterEnabled(true)':
+              raise SystemExit('unexpected line before enforceAdultDns')
+          indent = lines[success_index][:len(lines[success_index]) - len(lines[success_index].lstrip())]
+          if len(indent) < 4:
+              raise SystemExit('unexpected DNS block indentation')
+          outer_indent = indent[:-4]
+          end = None
+          for index in range(success_index + 1, len(lines)):
+              line = lines[index]
+              line_indent = line[:len(line) - len(line.lstrip())]
+              if line.strip() == '}' and line_indent == outer_indent:
+                  end = index
+                  break
+          if end is None:
+              raise SystemExit('could not find DNS branch closing brace')
+          i = indent
+          replacement = [
+              f'{i}authManager.setAdultFilterEnabled(true)\n',
+              f'{i}policyScope.launch {{\n',
+              f'{i}    val success = withContext(Dispatchers.IO) {{\n',
+              f'{i}        deviceOwnerManager.enforceAdultDns()\n',
+              f'{i}    }}\n',
+              f'{i}    if (success) {{\n',
+              f'{i}        adultFilterEnabled = true\n',
+              f'{i}        withContext(Dispatchers.IO) {{\n',
+              f'{i}            blockingSessionManager.checkAndEnforce()\n',
+              f'{i}        }}\n',
+              f'{i}    }} else {{\n',
+              f'{i}        authManager.setAdultFilterEnabled(false)\n',
+              f'{i}        adultFilterEnabled = false\n',
+              f'{i}        Toast.makeText(\n',
+              f'{i}            context,\n',
+              f'{i}            context.getString(R.string.limits_dns_injection_failed),\n',
+              f'{i}            Toast.LENGTH_LONG\n',
+              f'{i}        ).show()\n',
+              f'{i}    }}\n',
+              f'{i}    context.sendBroadcast(\n',
+              f'{i}        android.content.Intent(\n',
+              f'{i}            com.focusguard.service.BlockingAccessibilityService.ACTION_REFRESH_BLOCKING\n',
+              f'{i}        ).setPackage(context.packageName)\n',
+              f'{i}    )\n',
+              f'{i}}}\n',
+              f'{i}return@Switch\n',
+          ]
+          path.write_text(''.join(lines[:start] + replacement + lines[end:]))
           PY
           python3 - <<'PY'
           from pathlib import Path
