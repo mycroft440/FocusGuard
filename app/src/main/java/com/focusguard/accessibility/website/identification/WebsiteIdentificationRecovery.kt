@@ -6,7 +6,11 @@ import com.focusguard.accessibility.website.compatibility.BrowserUrlRecoveryMeth
 import com.focusguard.utils.BrowserSurfaceInspector
 import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.focusguard.utils.WebsiteBlocker
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 /** Bounded recovery in one live window; never types, submits, presses Back or closes tabs. */
 internal class WebsiteIdentificationRecovery(
@@ -16,15 +20,44 @@ internal class WebsiteIdentificationRecovery(
     private val rootProvider: () -> AccessibilityNodeInfo?,
     private val isCurrent: () -> Boolean
 ) {
-    private fun read(): WebsiteIdentificationResult {
-        if (!isCurrent()) return WebsiteIdentificationResult(WebsiteIdentificationStatus.REJECTED_CONTEXT)
+    /**
+     * Tree reads are the expensive Binder-facing part of recovery. Keep them off
+     * the main callback thread, then return to the caller context before any
+     * focus/click/scroll action. A fresh root is acquired for every read.
+     */
+    private suspend fun read(): WebsiteIdentificationResult = withContext(Dispatchers.IO) {
+        if (!isCurrent()) {
+            return@withContext WebsiteIdentificationResult(
+                WebsiteIdentificationStatus.REJECTED_CONTEXT,
+                browserPackageName = browserPackage,
+                windowId = windowId
+            )
+        }
         val root = rootProvider()
-        return try {
-            WebsiteIdentificationEngine.identifyFromRoot(root, browserPackage, windowId, httpsHandlerRecognized)
-        } finally { recycle(root) }
+        try {
+            WebsiteIdentificationEngine.identifyFromRoot(
+                root,
+                browserPackage,
+                windowId,
+                httpsHandlerRecognized
+            )
+        } finally {
+            recycle(root)
+        }
     }
 
-    suspend fun recover(): WebsiteIdentificationResult {
+    suspend fun recover(): WebsiteIdentificationResult = recoveryMutex.withLock {
+        if (!isCurrent()) {
+            return@withLock WebsiteIdentificationResult(
+                WebsiteIdentificationStatus.REJECTED_CONTEXT,
+                browserPackageName = browserPackage,
+                windowId = windowId
+            )
+        }
+        recoverSerially()
+    }
+
+    private suspend fun recoverSerially(): WebsiteIdentificationResult {
         var result = read()
         if (resolved(result)) return result
         val preferred = BrowserCompatibilityStore.preferredUrlRecoveryMethod(browserPackage)
@@ -40,7 +73,13 @@ internal class WebsiteIdentificationRecovery(
         // second bounded pass also retries activation after revealing the toolbar.
         repeat(2) { pass ->
             for (method in methods) {
-                if (!isCurrent()) return WebsiteIdentificationResult(WebsiteIdentificationStatus.REJECTED_CONTEXT)
+                if (!isCurrent()) {
+                    return WebsiteIdentificationResult(
+                        WebsiteIdentificationStatus.REJECTED_CONTEXT,
+                        browserPackageName = browserPackage,
+                        windowId = windowId
+                    )
+                }
                 result = read()
                 if (resolved(result)) {
                     remember(result, lastAccepted)
@@ -122,5 +161,10 @@ internal class WebsiteIdentificationRecovery(
     private fun recycle(node: AccessibilityNodeInfo?) {
         @Suppress("DEPRECATION")
         if (node != null) runCatching { node.recycle() }
+    }
+
+    private companion object {
+        /** Only one complementary browser-recovery pipeline may inspect at a time. */
+        val recoveryMutex = Mutex()
     }
 }
