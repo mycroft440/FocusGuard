@@ -86,4 +86,24 @@ class BlockingAccessibilityInputTest {
         assertThat(ReflectionHelpers.getField<String>(service, "foregroundPackageName"))
             .isEqualTo(ownPackage)
     }
+
+    @Test
+    fun `app only blocking storm never probes an unrelated app as a browser`() {
+        val service = spyk(BlockingAccessibilityService())
+        every { service.packageName } returns ownPackage
+        every { service.rootInActiveWindow } returns null
+        ReflectionHelpers.setField(service, "isBlockingSessionActive", true)
+        ReflectionHelpers.setField(service, "lastLoadTime", System.currentTimeMillis())
+
+        val spotify = event(
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+            "com.spotify.music",
+            7
+        )
+        repeat(100) { service.onAccessibilityEvent(spotify) }
+
+        verify(exactly = 0) { service.rootInActiveWindow }
+        verify(exactly = 0) { spotify.source }
+        verify(exactly = 0) { spotify.getSource(0) }
+    }
 }
