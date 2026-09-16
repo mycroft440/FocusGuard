@@ -604,6 +604,24 @@ fun AppLimitsTab(
                         val limitDao = db.appUsageLimitDao()
                         var companionWebsiteCreated = false
                         val updated = if (minutes != null && minutes > 0) {
+                            val activationTime = System.currentTimeMillis()
+                            val activationDayStart = java.util.Calendar.getInstance().apply {
+                                timeInMillis = activationTime
+                                set(java.util.Calendar.HOUR_OF_DAY, 0)
+                                set(java.util.Calendar.MINUTE, 0)
+                                set(java.util.Calendar.SECOND, 0)
+                                set(java.util.Calendar.MILLISECOND, 0)
+                            }.timeInMillis
+                            val usageStatsManager = context.getSystemService(
+                                Context.USAGE_STATS_SERVICE
+                            ) as android.app.usage.UsageStatsManager
+                            AppUsageLimitActivationUsage.captureActivationBaseline(
+                                context = context,
+                                usageStatsManager = usageStatsManager,
+                                packageName = appToSave.packageName,
+                                activatedAtMillis = activationTime,
+                                dayStartMillis = activationDayStart
+                            )
                             limitDao.insert(
                                 AppUsageLimit(
                                     packageName = appToSave.packageName,
@@ -613,6 +631,7 @@ fun AppLimitsTab(
                                     lockMode = lockMode,
                                     lockPasswordHash = null,
                                     lockUntilTimestamp = lockUntil,
+                                    createdAt = activationTime,
                                     preventOpeningAfterLimit = true,
                                     unlockWithPassword = lockMode.equals("PASSWORD", ignoreCase = true)
                                 )

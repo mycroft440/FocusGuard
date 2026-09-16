@@ -7,6 +7,7 @@ import android.content.Intent
 import android.content.pm.ApplicationInfo
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.PowerManager
 import android.widget.Toast
 import androidx.room.withTransaction
 import com.focusguard.R
@@ -35,6 +36,7 @@ import com.focusguard.security.PasswordTargetAccessGrant
 import com.focusguard.security.SelfProtectionStateStore
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.service.PomodoroForegroundService
+import com.focusguard.utils.AppUsageForegroundResolver
 import com.focusguard.utils.AppUsageLimitActivationUsage
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.UsageLimitForegroundPolicy
@@ -1547,9 +1549,6 @@ class BlockingSessionManager @Inject constructor(
                 )
                 val limitSites = getBlockingWebsiteLimitRules(activeWebsiteLimits, now)
 
-                val appFamilySites = WebsiteBlocker.domainRulesForAppPackages(
-                    sessionApps + limitApps
-                )
                 // O filtro adulto global entra aqui, e não só dentro de
                 // enforceWebsiteRestrictions: esta lista também vira o snapshot
                 // enviado ao AccessibilityService, que substitui o conjunto
@@ -1571,30 +1570,24 @@ class BlockingSessionManager @Inject constructor(
                 )
                 PasswordTargetAccessGrant.updateStrongerWebsiteRules(strongerWebsiteRules)
 
-                val strongerWebsiteApps = WebsiteBlocker.appPackageDomainsFor(
-                    strongerWebsiteRules
-                ).keys.filter(::isPackageInstalled)
-                val sitesToBlock = (sessionSites + limitSites + appFamilySites + adultFilterRules)
+                val sitesToBlock = (sessionSites + limitSites + adultFilterRules)
                     .map(WebsiteBlocker::normalizeRule)
                     .filter { it.isNotBlank() }
                     .distinct()
                 val pornographyCategoryActive =
                     WebsiteBlocker.containsPornographyRule(sitesToBlock)
                 deviceOwnerManager.setPornographyCategoryActive(pornographyCategoryActive)
-                val websiteAppsToBlock = WebsiteBlocker.appPackageDomainsFor(sitesToBlock)
-                    .keys
-                    .filter(::isPackageInstalled)
                 // A Focus Mode allowlist is an explicit temporary override:
                 // phone, SMS and the apps chosen for that session must remain
                 // fully launchable even if another FocusGuard rule also names them.
                 val appsToBlock = FocusModePolicy.packagesToEnforce(
-                    configuredBlockedPackages = sessionApps + limitApps + websiteAppsToBlock,
+                    configuredBlockedPackages = sessionApps + limitApps,
                     focusModeBlockedPackages = focusModeApps,
                     focusModeAllowedPackages = focusModeSession?.allowedPackages.orEmpty()
                 ).toList()
 
                 val strongerAppPackages = (
-                    strongerSessionApps + limitApps + strongerWebsiteApps + focusModeApps
+                    strongerSessionApps + limitApps + focusModeApps
                 ).filter { packageName -> packageName in appsToBlock }.toSet()
                 PasswordTargetAccessGrant.updateStrongerAppPackages(strongerAppPackages)
 
@@ -1620,14 +1613,9 @@ class BlockingSessionManager @Inject constructor(
                 ).toList()
 
                 val allSessionApps = getAppsForSessions(activeSessions.map { it.id })
-                val allSessionSites = getSitesForSessions(activeSessions.map { it.id })
-                val allKnownWebsiteApps = WebsiteBlocker.appPackageDomainsFor(
-                    allSessionSites + activeWebsiteLimits.map { it.domain }
-                ).keys.filter(::isPackageInstalled)
                 val allKnownApps = (
                     allSessionApps +
                         activeAppLimits.map { it.packageName } +
-                        allKnownWebsiteApps +
                         focusModeApps
                 ).distinct()
 
@@ -1734,10 +1722,27 @@ class BlockingSessionManager @Inject constructor(
             set(Calendar.MILLISECOND, 0)
         }.timeInMillis
         val usage = usageStatsManager.queryAndAggregateUsageStats(startOfDay, now)
+        val isInteractive =
+            (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive == true
+        val currentForegroundPackage = if (isInteractive) {
+            AppUsageForegroundResolver.currentForegroundPackage(
+                usageStatsManager = usageStatsManager,
+                startMillis = (startOfDay - 24L * 60L * 60L * 1_000L).coerceAtLeast(0L),
+                endMillis = now
+            )
+        } else {
+            null
+        }
 
         return limits.filter { limit ->
-            val totalDayUsageMillis =
-                usage[limit.packageName]?.totalTimeInForeground ?: 0L
+            val stat = usage[limit.packageName]
+            val totalDayUsageMillis = UsageLimitForegroundPolicy.includeOpenForegroundInterval(
+                aggregatedForegroundMillis = stat?.totalTimeInForeground ?: 0L,
+                lastUsageEventMillis = stat?.lastTimeUsed ?: 0L,
+                nowMillis = now,
+                isCurrentForeground = currentForegroundPackage == limit.packageName,
+                isDeviceInteractive = isInteractive
+            )
             val effectiveUsageMillis = AppUsageLimitActivationUsage.effectiveUsageMillis(
                 context = context,
                 usageStatsManager = usageStatsManager,

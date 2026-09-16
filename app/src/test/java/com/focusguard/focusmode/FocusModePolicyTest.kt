@@ -230,4 +230,24 @@ class FocusModePolicyTest {
         assertThat(FocusModePolicy.canPomodoroReleaseKiosk(focusModeActive = true)).isFalse()
         assertThat(FocusModePolicy.canPomodoroReleaseKiosk(focusModeActive = false)).isTrue()
     }
+
+    @Test
+    fun `newly installed launchable app is blocked when it is not allowlisted`() {
+        val allowed = setOf("com.focusguard", "com.example.allowed")
+        val beforeInstall = FocusModePolicy.packagesToBlock(
+            launchablePackages = listOf("com.focusguard", "com.example.allowed"),
+            allowedPackages = allowed
+        )
+        val afterInstall = FocusModePolicy.packagesToBlock(
+            launchablePackages = listOf(
+                "com.focusguard",
+                "com.example.allowed",
+                "com.example.new"
+            ),
+            allowedPackages = allowed
+        )
+
+        assertThat(beforeInstall).isEmpty()
+        assertThat(afterInstall).containsExactly("com.example.new")
+    }
 }

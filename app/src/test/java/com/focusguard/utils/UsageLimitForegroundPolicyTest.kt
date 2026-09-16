@@ -131,4 +131,46 @@ class UsageLimitForegroundPolicyTest {
             )
         ).isFalse()
     }
+
+    @Test
+    fun `open foreground interval advances an otherwise stale aggregate`() {
+        val now = 10 * 60_000L
+        val reported = 4 * 60_000L + 30_000L
+        val lastUsageEvent = now - 30_000L
+
+        assertThat(
+            UsageLimitForegroundPolicy.includeOpenForegroundInterval(
+                aggregatedForegroundMillis = reported,
+                lastUsageEventMillis = lastUsageEvent,
+                nowMillis = now,
+                isCurrentForeground = true,
+                isDeviceInteractive = true
+            )
+        ).isEqualTo(5 * 60_000L)
+    }
+
+    @Test
+    fun `open foreground interval is not counted for background or screen off`() {
+        val now = 600_000L
+        val reported = 300_000L
+
+        assertThat(
+            UsageLimitForegroundPolicy.includeOpenForegroundInterval(
+                aggregatedForegroundMillis = reported,
+                lastUsageEventMillis = now - 60_000L,
+                nowMillis = now,
+                isCurrentForeground = false,
+                isDeviceInteractive = true
+            )
+        ).isEqualTo(reported)
+        assertThat(
+            UsageLimitForegroundPolicy.includeOpenForegroundInterval(
+                aggregatedForegroundMillis = reported,
+                lastUsageEventMillis = now - 60_000L,
+                nowMillis = now,
+                isCurrentForeground = true,
+                isDeviceInteractive = false
+            )
+        ).isEqualTo(reported)
+    }
 }

@@ -306,13 +306,39 @@ class FocusModeManager @Inject constructor(
             return@withLock false
         }
         return@withLock try {
+            val launchablePackages = withContext(Dispatchers.IO) {
+                FocusModeAppCatalog.loadLaunchableApps(context)
+                    .mapTo(mutableSetOf()) { it.packageName }
+            }
+            val refreshedBlockedPackages = FocusModePolicy.packagesToBlock(
+                launchablePackages = launchablePackages,
+                allowedPackages = stored.allowedPackages
+            )
+            val refreshedSession = if (refreshedBlockedPackages != stored.blockedPackages) {
+                stored.copy(
+                    blockedPackages = refreshedBlockedPackages,
+                    nonSuspendablePackages =
+                        stored.nonSuspendablePackages.intersect(refreshedBlockedPackages)
+                ).also { refreshed ->
+                    check(FocusModeStore.saveSession(context, refreshed)) {
+                        "Não foi possível persistir o inventário atualizado do Modo Foco"
+                    }
+                }
+            } else {
+                stored
+            }
+
             val nativeFocusLockdownActive = FocusModePolicy.usesNativeFocusLockdown(
                 deviceOwnerActive = deviceOwnerManager.isDeviceOwnerActive(),
                 systemLockdownSupported =
                     deviceOwnerManager.isFocusModeSystemLockdownSupported()
             )
             if (nativeFocusLockdownActive) {
-                check(deviceOwnerManager.prepareFocusModeLockTaskPackages(stored.allowedPackages))
+                check(
+                    deviceOwnerManager.prepareFocusModeLockTaskPackages(
+                        refreshedSession.allowedPackages
+                    )
+                )
             }
             check(FocusModeHomeController.reconcile(context))
             check(FocusModeKioskController.reconcileSystemRestrictions(context))
@@ -320,10 +346,21 @@ class FocusModeManager @Inject constructor(
             if (nativeFocusLockdownActive) {
                 check(FocusModeHomeController.isNativeHomeConfigured(context))
             }
+            val nonSuspendable = if (nativeFocusLockdownActive) {
+                refreshedSession.blockedPackages.filterNotTo(mutableSetOf()) {
+                    deviceOwnerManager.isPackageSuspendedByFocusMode(it)
+                }
+            } else {
+                emptySet()
+            }
+            val verifiedSession = FocusModeStore.updateNonSuspendablePackages(
+                context,
+                nonSuspendable
+            ) ?: refreshedSession.copy(nonSuspendablePackages = nonSuspendable)
             FocusModeForegroundService.start(context)
-            FocusModeReceiver.scheduleExpiration(context, stored.endTimeMillis)
+            FocusModeReceiver.scheduleExpiration(context, verifiedSession.endTimeMillis)
             FocusModeNotificationService.requestRefresh(context)
-            _session.value = stored
+            _session.value = verifiedSession
             true
         } catch (cancelled: CancellationException) {
             throw cancelled
