@@ -50,8 +50,6 @@ import com.focusguard.data.UserProfile
 import com.focusguard.monetization.AdsConsentManager
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.PermissionRevocationFlow
-import com.focusguard.security.PermissionRevocationStep
-import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.MasterPasswordActivity
 import com.focusguard.ui.RemoveAllBlocksActivity
 import com.focusguard.ui.compose.layout.FocusGuardScreenScaffold
@@ -88,48 +86,36 @@ fun SettingsScreen(
     var showRevokeConfirmation by remember { mutableStateOf(false) }
     var showRevokeCredential by remember { mutableStateOf(false) }
     var revocationWorking by remember { mutableStateOf(false) }
-    var revocationFlowActive by remember { mutableStateOf(false) }
-    var pendingRevocationSteps by remember {
-        mutableStateOf<List<PermissionRevocationStep>>(emptyList())
-    }
 
     val masterPasswordLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
     ) { }
-    val revocationSettingsLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.StartActivityForResult()
-    ) {
-        if (pendingRevocationSteps.isNotEmpty()) {
-            pendingRevocationSteps = pendingRevocationSteps.drop(1)
-        }
-    }
 
     fun beginPermissionRevocation() {
-        if (revocationWorking || revocationFlowActive) return
+        if (revocationWorking) return
 
         revocationWorking = true
         coroutineScope.launch {
-            val initialState = ProtectionPermissionGate.read(context)
-            if (!PermissionRevocationFlow.hasRevocablePermissions(initialState)) {
+            try {
+                val result = runCatching {
+                    PermissionRevocationFlow.revokeRequestedAccess(context)
+                }.getOrNull()
+                val messageRes = when {
+                    result == null -> R.string.settings_revoke_permissions_incomplete
+                    !result.hadRequestedAccess ->
+                        R.string.settings_revoke_permissions_none_active
+                    result.allRequestedAccessRevoked ->
+                        R.string.settings_revoke_permissions_success
+                    else -> R.string.settings_revoke_permissions_incomplete
+                }
                 Toast.makeText(
                     context,
-                    context.getString(R.string.settings_revoke_permissions_none_active),
+                    context.getString(messageRes),
                     Toast.LENGTH_LONG
                 ).show()
+            } finally {
                 revocationWorking = false
-                return@launch
             }
-
-            runCatching {
-                PermissionRevocationFlow.revokeAdministrativeAccess(context)
-            }
-
-            val stateAfterAdministrativeRelease = ProtectionPermissionGate.read(context)
-            pendingRevocationSteps = PermissionRevocationFlow.manualSteps(
-                stateAfterAdministrativeRelease
-            )
-            revocationWorking = false
-            revocationFlowActive = true
         }
     }
 
@@ -137,46 +123,6 @@ fun SettingsScreen(
         val host = activity ?: return@LaunchedEffect
         AdsConsentManager.refresh(host) {
             privacyOptionsRequired = AdsConsentManager.isPrivacyOptionsRequired(host)
-        }
-    }
-
-    LaunchedEffect(revocationFlowActive, pendingRevocationSteps.firstOrNull()) {
-        if (!revocationFlowActive) return@LaunchedEffect
-
-        val nextStep = pendingRevocationSteps.firstOrNull()
-        if (nextStep == null) {
-            revocationFlowActive = false
-            val remaining = PermissionRevocationFlow.hasRevocablePermissions(
-                ProtectionPermissionGate.read(context)
-            )
-            Toast.makeText(
-                context,
-                context.getString(
-                    if (remaining) {
-                        R.string.settings_revoke_permissions_incomplete
-                    } else {
-                        R.string.settings_revoke_permissions_success
-                    }
-                ),
-                Toast.LENGTH_LONG
-            ).show()
-            return@LaunchedEffect
-        }
-
-        val launched = runCatching {
-            revocationSettingsLauncher.launch(
-                PermissionRevocationFlow.settingsIntent(context, nextStep)
-            )
-            true
-        }.getOrDefault(false)
-
-        if (!launched) {
-            Toast.makeText(
-                context,
-                context.getString(R.string.settings_revoke_permissions_settings_failed),
-                Toast.LENGTH_LONG
-            ).show()
-            pendingRevocationSteps = pendingRevocationSteps.drop(1)
         }
     }
 
@@ -247,7 +193,7 @@ fun SettingsScreen(
                 iconTint = DangerRed,
                 titleColor = DangerRed,
                 onClick = {
-                    if (!revocationWorking && !revocationFlowActive) {
+                    if (!revocationWorking) {
                         showRevokeConfirmation = true
                     }
                 }

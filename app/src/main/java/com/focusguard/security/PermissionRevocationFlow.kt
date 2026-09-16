@@ -1,88 +1,139 @@
 package com.focusguard.security
 
+import android.app.admin.DevicePolicyManager
 import android.content.Context
-import android.content.Intent
-import android.net.Uri
-import android.os.Build
-import android.provider.Settings
-import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.admin.FocusGuardDeviceAdminReceiver
+import com.focusguard.service.BlockingAccessibilityService
+import com.focusguard.utils.PermissionUtils
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
-enum class PermissionRevocationStep {
-    NOTIFICATIONS,
-    BATTERY_OPTIMIZATION,
-    USAGE_ACCESS,
-    ACCESSIBILITY
+data class PermissionRevocationResult(
+    val accessibilityWasActive: Boolean,
+    val accessibilityRevoked: Boolean,
+    val deviceAdminWasActive: Boolean,
+    val deviceAdminRevoked: Boolean
+) {
+    val hadRequestedAccess: Boolean
+        get() = accessibilityWasActive || deviceAdminWasActive
+
+    val allRequestedAccessRevoked: Boolean
+        get() = (!accessibilityWasActive || accessibilityRevoked) &&
+            (!deviceAdminWasActive || deviceAdminRevoked)
 }
 
 /**
- * Coordinates the user-requested removal of FocusGuard's Android access.
+ * Revokes only the two accesses explicitly managed by the Settings action:
+ * FocusGuard Accessibility and legacy Device Admin.
  *
- * Runtime/special-access permissions such as Usage Access and Accessibility
- * cannot all be revoked silently by an app. The administrative role is released
- * directly after authentication, while the remaining entries are handed back to
- * Android Settings so the user stays in control of each system-owned toggle.
+ * Device Owner is intentionally never changed here.
  */
 object PermissionRevocationFlow {
+    private const val REVOCATION_POLL_ATTEMPTS = 50
+    private const val REVOCATION_POLL_INTERVAL_MILLIS = 100L
 
-    fun manualSteps(
-        state: ProtectionPermissionState,
-        sdkInt: Int = Build.VERSION.SDK_INT
-    ): List<PermissionRevocationStep> = buildList {
-        if (sdkInt >= Build.VERSION_CODES.TIRAMISU && state.notifications) {
-            add(PermissionRevocationStep.NOTIFICATIONS)
-        }
-        if (state.batteryOptimization) {
-            add(PermissionRevocationStep.BATTERY_OPTIMIZATION)
-        }
-        if (state.usageAccess) {
-            add(PermissionRevocationStep.USAGE_ACCESS)
-        }
-        if (state.accessibility) {
-            add(PermissionRevocationStep.ACCESSIBILITY)
-        }
+    internal fun isLegacyDeviceAdminActive(
+        deviceAdminActive: Boolean,
+        deviceOwnerActive: Boolean
+    ): Boolean = deviceAdminActive && !deviceOwnerActive
+
+    fun hasRequestedAccess(context: Context): Boolean {
+        val appContext = context.applicationContext
+        return PermissionUtils.isAccessibilityServiceEnabled(appContext) ||
+            isLegacyDeviceAdminActive(appContext)
     }
 
-    fun hasRevocablePermissions(
-        state: ProtectionPermissionState,
-        sdkInt: Int = Build.VERSION.SDK_INT
-    ): Boolean = state.deviceAdmin || manualSteps(state, sdkInt).isNotEmpty()
+    suspend fun revokeRequestedAccess(context: Context): PermissionRevocationResult {
+        val appContext = context.applicationContext
+        val accessibilityWasActive = PermissionUtils.isAccessibilityServiceEnabled(appContext)
+        val deviceAdminWasActive = isLegacyDeviceAdminActive(appContext)
 
-    /**
-     * Reuses the existing full administrative-release routine so Device Owner
-     * policies are cleaned up before the Android role itself is removed.
-     */
-    suspend fun revokeAdministrativeAccess(context: Context): Boolean {
-        val manager = DeviceOwnerManager.getInstance(context.applicationContext)
-        if (!manager.isDeviceOwnerActive() && !manager.isDeviceAdminActive()) return true
-        return manager.releaseRemovalProtectionForDevelopmentExit()
-    }
+        if (!accessibilityWasActive && !deviceAdminWasActive) {
+            return PermissionRevocationResult(
+                accessibilityWasActive = false,
+                accessibilityRevoked = true,
+                deviceAdminWasActive = false,
+                deviceAdminRevoked = true
+            )
+        }
 
-    fun settingsIntent(
-        context: Context,
-        step: PermissionRevocationStep
-    ): Intent {
-        val primary = when (step) {
-            PermissionRevocationStep.NOTIFICATIONS ->
-                Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
-                    putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+        var accessibilityRevoked = !accessibilityWasActive
+        var deviceAdminRevoked = !deviceAdminWasActive
+
+        try {
+            if (accessibilityWasActive) {
+                AuthenticatedRemovalWindow.open(appContext)
+                runCatching {
+                    appContext.sendBroadcast(
+                        BlockingAccessibilityService.createDevelopmentRelinquishIntent(appContext)
+                    )
                 }
+            }
 
-            PermissionRevocationStep.BATTERY_OPTIMIZATION ->
-                Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+            if (deviceAdminWasActive) {
+                deviceAdminRevoked = revokeLegacyDeviceAdmin(appContext)
+            }
 
-            PermissionRevocationStep.USAGE_ACCESS ->
-                Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
-
-            PermissionRevocationStep.ACCESSIBILITY ->
-                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-        }
-
-        return if (primary.resolveActivity(context.packageManager) != null) {
-            primary
-        } else {
-            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = Uri.parse("package:${context.packageName}")
+            if (accessibilityWasActive) {
+                accessibilityRevoked = awaitAccessibilityDisabled(appContext)
+            }
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } finally {
+            if (accessibilityWasActive) {
+                AuthenticatedRemovalWindow.close(appContext)
             }
         }
+
+        return PermissionRevocationResult(
+            accessibilityWasActive = accessibilityWasActive,
+            accessibilityRevoked = accessibilityRevoked,
+            deviceAdminWasActive = deviceAdminWasActive,
+            deviceAdminRevoked = deviceAdminRevoked
+        )
+    }
+
+    private fun isLegacyDeviceAdminActive(context: Context): Boolean {
+        val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+        val component = FocusGuardDeviceAdminReceiver.getComponentName(context)
+        return runCatching {
+            isLegacyDeviceAdminActive(
+                deviceAdminActive = dpm.isAdminActive(component),
+                deviceOwnerActive = dpm.isDeviceOwnerApp(context.packageName)
+            )
+        }.getOrDefault(false)
+    }
+
+    @Suppress("DEPRECATION")
+    private suspend fun revokeLegacyDeviceAdmin(context: Context): Boolean =
+        withContext(Dispatchers.IO) {
+            val dpm = context.getSystemService(Context.DEVICE_POLICY_SERVICE) as DevicePolicyManager
+            val component = FocusGuardDeviceAdminReceiver.getComponentName(context)
+
+            try {
+                if (dpm.isDeviceOwnerApp(context.packageName)) return@withContext true
+                if (!dpm.isAdminActive(component)) return@withContext true
+
+                dpm.removeActiveAdmin(component)
+                repeat(REVOCATION_POLL_ATTEMPTS) {
+                    if (!dpm.isAdminActive(component)) return@withContext true
+                    delay(REVOCATION_POLL_INTERVAL_MILLIS)
+                }
+                !dpm.isAdminActive(component)
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                false
+            }
+        }
+
+    private suspend fun awaitAccessibilityDisabled(context: Context): Boolean {
+        repeat(REVOCATION_POLL_ATTEMPTS) {
+            if (!PermissionUtils.isAccessibilityServiceEnabled(context)) return true
+            delay(REVOCATION_POLL_INTERVAL_MILLIS)
+        }
+        return !PermissionUtils.isAccessibilityServiceEnabled(context)
     }
 }
