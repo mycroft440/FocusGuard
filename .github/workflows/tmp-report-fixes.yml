@@ -28,7 +28,71 @@ jobs:
           set -euo pipefail
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
       - name: Apply reviewed fixes
-        run: python3 .github/scripts/apply-report-fixes.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          git show d06aa5bceb476521d9ab99cb58dce7e9902ab34e:.github/scripts/apply-report-fixes.py > /tmp/apply-report-fixes.py
+          python3 - <<'PY'
+          from pathlib import Path
+          p = Path('/tmp/apply-report-fixes.py')
+          source = p.read_text()
+          source = source.replace(
+              'ROOT = Path(__file__).resolve().parents[2]',
+              'ROOT = Path.cwd()'
+          )
+          start = source.index('rel = "app/src/main/java/com/focusguard/ui/compose/screens/LimitsSecurityScreen.kt"')
+          end = source.index('\nrel = "app/src/main/java/com/focusguard/FocusGuardApplication.kt"', start)
+          replacement = r'''rel = "app/src/main/java/com/focusguard/ui/compose/screens/LimitsSecurityScreen.kt"
+          replace_once(rel, "import kotlinx.coroutines.launch\n", "import kotlinx.coroutines.Dispatchers\nimport kotlinx.coroutines.launch\nimport kotlinx.coroutines.withContext\n")
+          replace_once(rel, '''                                    } else {
+                                        authManager.setAdultFilterEnabled(true)
+                                        val success = deviceOwnerManager.enforceAdultDns()
+                                        if (success) {
+                                            adultFilterEnabled = true
+                                            policyScope.launch {
+                                                blockingSessionManager.checkAndEnforce()
+                                            }
+                                        } else {
+                                            authManager.setAdultFilterEnabled(false)
+                                            Toast.makeText(context, context.getString(R.string.limits_dns_injection_failed), Toast.LENGTH_LONG).show()
+                                        }
+                                    }
+                                } else {
+          ''', '''                                    } else {
+                                        authManager.setAdultFilterEnabled(true)
+                                        policyScope.launch {
+                                            val success = withContext(Dispatchers.IO) {
+                                                deviceOwnerManager.enforceAdultDns()
+                                            }
+                                            if (success) {
+                                                adultFilterEnabled = true
+                                                withContext(Dispatchers.IO) {
+                                                    blockingSessionManager.checkAndEnforce()
+                                                }
+                                            } else {
+                                                authManager.setAdultFilterEnabled(false)
+                                                adultFilterEnabled = false
+                                                Toast.makeText(
+                                                    context,
+                                                    context.getString(R.string.limits_dns_injection_failed),
+                                                    Toast.LENGTH_LONG
+                                                ).show()
+                                            }
+                                            context.sendBroadcast(
+                                                android.content.Intent(
+                                                    com.focusguard.service.BlockingAccessibilityService.ACTION_REFRESH_BLOCKING
+                                                ).setPackage(context.packageName)
+                                            )
+                                        }
+                                        return@Switch
+                                    }
+                                } else {
+          ''')
+          '''
+          source = source[:start] + replacement + source[end:]
+          p.write_text(source)
+          PY
+          python3 /tmp/apply-report-fixes.py
       - name: Review patch integrity
         shell: bash
         run: |
