@@ -31,20 +31,25 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          git show d06aa5bceb476521d9ab99cb58dce7e9902ab34e:.github/scripts/apply-report-fixes.py > /tmp/apply-report-fixes.py
+          git show d06aa5bceb476521d9ab99cb58dce7e9902ab34e:.github/scripts/apply-report-fixes.py > /tmp/full-fixes.py
+          sed -i 's|ROOT = Path(__file__).resolve().parents\[2\]|ROOT = Path.cwd()|' /tmp/full-fixes.py
+
+          # The original script intentionally stops at the screen snippet whose
+          # current source differs from the audit baseline. Everything before that
+          # point is still applied to this disposable worktree.
+          set +e
+          python3 /tmp/full-fixes.py > /tmp/full-fixes-first-pass.log 2>&1
+          first_pass=$?
+          set -e
+          cat /tmp/full-fixes-first-pass.log
+          test "$first_pass" -ne 0
+          grep -q 'LimitsSecurityScreen.kt: expected exactly one match' /tmp/full-fixes-first-pass.log
+
           python3 - <<'PY'
           from pathlib import Path
-          p = Path('/tmp/apply-report-fixes.py')
-          source = p.read_text()
-          source = source.replace(
-              'ROOT = Path(__file__).resolve().parents[2]',
-              'ROOT = Path.cwd()'
-          )
-          start = source.index('rel = "app/src/main/java/com/focusguard/ui/compose/screens/LimitsSecurityScreen.kt"')
-          end = source.index('\nrel = "app/src/main/java/com/focusguard/FocusGuardApplication.kt"', start)
-          replacement = r'''rel = "app/src/main/java/com/focusguard/ui/compose/screens/LimitsSecurityScreen.kt"
-          replace_once(rel, "import kotlinx.coroutines.launch\n", "import kotlinx.coroutines.Dispatchers\nimport kotlinx.coroutines.launch\nimport kotlinx.coroutines.withContext\n")
-          replace_once(rel, '''                                    } else {
+          path = Path('app/src/main/java/com/focusguard/ui/compose/screens/LimitsSecurityScreen.kt')
+          text = path.read_text()
+          old = """                                    } else {
                                         authManager.setAdultFilterEnabled(true)
                                         val success = deviceOwnerManager.enforceAdultDns()
                                         if (success) {
@@ -58,7 +63,8 @@ jobs:
                                         }
                                     }
                                 } else {
-          ''', '''                                    } else {
+          """
+          new = """                                    } else {
                                         authManager.setAdultFilterEnabled(true)
                                         policyScope.launch {
                                             val success = withContext(Dispatchers.IO) {
@@ -87,12 +93,23 @@ jobs:
                                         return@Switch
                                     }
                                 } else {
-          ''')
-          '''
-          source = source[:start] + replacement + source[end:]
-          p.write_text(source)
+          """
+          if text.count(old) != 1:
+              raise SystemExit(f'LimitsSecurityScreen DNS block matches: {text.count(old)}')
+          path.write_text(text.replace(old, new, 1))
           PY
-          python3 /tmp/apply-report-fixes.py
+
+          python3 - <<'PY'
+          from pathlib import Path
+          full = Path('/tmp/full-fixes.py').read_text()
+          marker = 'rel = "app/src/main/java/com/focusguard/FocusGuardApplication.kt"'
+          start = full.index(marker)
+          header_end = full.index('# FG-01')
+          header = full[:header_end]
+          tail = full[start:]
+          Path('/tmp/fixes-tail.py').write_text(header + tail)
+          PY
+          python3 /tmp/fixes-tail.py
       - name: Review patch integrity
         shell: bash
         run: |
