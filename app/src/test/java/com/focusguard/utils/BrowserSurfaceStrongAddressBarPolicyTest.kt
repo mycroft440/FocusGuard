@@ -1,5 +1,6 @@
 package com.focusguard.utils
 
+import android.view.accessibility.AccessibilityNodeInfo
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -39,6 +40,32 @@ class BrowserSurfaceStrongAddressBarPolicyTest {
                 )
             ).isTrue()
         }
+    }
+
+    @Test
+    fun `custom renderer class and html navigation actions identify web content`() {
+        assertThat(
+            BrowserSurfaceInspector.isWebContentSignal(
+                className = "org.chromium.content.browser.RenderWidgetHostView",
+                actionIds = emptySet()
+            )
+        ).isTrue()
+        assertThat(
+            BrowserSurfaceInspector.isWebContentSignal(
+                className = "com.vendor.CustomSurface",
+                actionIds = setOf(AccessibilityNodeInfo.ACTION_NEXT_HTML_ELEMENT)
+            )
+        ).isTrue()
+    }
+
+    @Test
+    fun `ordinary native controls are not classified as web content`() {
+        assertThat(
+            BrowserSurfaceInspector.isWebContentSignal(
+                className = "android.widget.LinearLayout",
+                actionIds = setOf(AccessibilityNodeInfo.ACTION_CLICK)
+            )
+        ).isFalse()
     }
 
     @Test

@@ -13,8 +13,8 @@ import java.util.Locale
 
 /** Browser-owned, fail-closed actions used by the same-tab redirect pipeline. */
 internal object AddressBarRedirectionActions {
-    private const val MAX_TREE_DEPTH = 12
-    private const val MAX_TREE_NODES = 256
+    private const val MAX_TREE_DEPTH = 24
+    private const val MAX_TREE_NODES = 512
 
     enum class Status { ACCEPTED, NOT_FOUND, AMBIGUOUS, REJECTED }
 
@@ -367,16 +367,75 @@ internal object AddressBarRedirectionActions {
             packageName = browserPackageName,
             defaults = BrowserUiCapabilityPolicy.strongAddressBarEntryNames
         ).forEach { entry ->
-            output += runCatching {
+            val matches = runCatching {
                 root.findAccessibilityNodeInfosByViewId("$browserPackageName:id/$entry")
             }.getOrDefault(emptyList())
+            matches.forEach { candidate ->
+                if (!retainDistinctNode(output, candidate)) recycleSafely(candidate)
+            }
         }
+
+        // Keep editor/action discovery aligned with read-only URL discovery. Exact
+        // strong browser resources may legitimately be nested below a WebView-like
+        // container, so traverse through it only for those package-owned ids.
+        collectStrongNodes(
+            node = root,
+            browserPackageName = browserPackageName,
+            expectedWindowId = expectedWindowId,
+            output = output,
+            depth = 0,
+            visited = intArrayOf(0)
+        )
+
         if (httpsHandlerRecognized) {
             collectSemanticNodes(
                 root, browserPackageName, expectedWindowId, output, 0, intArrayOf(0)
             )
         }
         return output
+    }
+
+    private fun collectStrongNodes(
+        node: AccessibilityNodeInfo,
+        browserPackageName: String,
+        expectedWindowId: Int,
+        output: MutableList<AccessibilityNodeInfo>,
+        depth: Int,
+        visited: IntArray
+    ) {
+        if (depth > MAX_TREE_DEPTH || visited[0] >= MAX_TREE_NODES ||
+            !node.isVisibleToUser || node.windowId != expectedWindowId
+        ) return
+        visited[0] += 1
+
+        if (node.packageName?.toString() == browserPackageName &&
+            BrowserUiCapabilityPolicy.isStrongAddressBarResource(
+                node.viewIdResourceName.orEmpty(), browserPackageName
+            )
+        ) {
+            if (output.none { existing -> existing == node }) {
+                @Suppress("DEPRECATION")
+                output += AccessibilityNodeInfo.obtain(node)
+            }
+            return
+        }
+
+        for (index in 0 until node.childCount) {
+            if (visited[0] >= MAX_TREE_NODES) break
+            val child = node.getChild(index) ?: continue
+            try {
+                collectStrongNodes(
+                    child,
+                    browserPackageName,
+                    expectedWindowId,
+                    output,
+                    depth + 1,
+                    visited
+                )
+            } finally {
+                recycleSafely(child)
+            }
+        }
     }
 
     private fun collectSemanticNodes(
@@ -403,8 +462,7 @@ internal object AddressBarRedirectionActions {
                     fact, browserPackageName, expectedWindowId, true
                 )
                 if (semantic) {
-                    output += child
-                    retained = true
+                    retained = retainDistinctNode(output, child)
                 } else {
                     collectSemanticNodes(
                         child, browserPackageName, expectedWindowId, output,
@@ -417,6 +475,15 @@ internal object AddressBarRedirectionActions {
                 if (!retained) recycleSafely(child)
             }
         }
+    }
+
+    private fun retainDistinctNode(
+        output: MutableList<AccessibilityNodeInfo>,
+        candidate: AccessibilityNodeInfo
+    ): Boolean {
+        if (output.any { existing -> existing == candidate }) return false
+        output += candidate
+        return true
     }
 
     private fun AccessibilityNodeInfo.toFact(): BrowserUiCapabilityPolicy.Node {

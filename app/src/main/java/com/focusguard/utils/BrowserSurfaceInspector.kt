@@ -13,6 +13,9 @@ internal object BrowserSurfaceInspector {
 
     private const val MAX_NODES = 512
     private const val MAX_DEPTH = 32
+    private val webContainerClassMarkers = setOf(
+        "webview", "webcontent", "contentview", "geckoview", "renderwidgethostview"
+    )
     private val nativePanels = setOf(
         "app_menu_list", "app_menu_layout", "menu_panel", "menu_list",
         "tab_switcher", "tab_switcher_view", "tab_switcher_container",
@@ -22,11 +25,17 @@ internal object BrowserSurfaceInspector {
         "new_tab_page", "new_tab_page_layout", "ntp_content"
     )
 
-    fun isWebContainer(node: AccessibilityNodeInfo): Boolean {
-        val className = node.className?.toString().orEmpty().lowercase(Locale.ROOT)
-        return className.contains("webview") || className.contains("webcontent") ||
-            className.contains("contentview") || className.contains("geckoview")
+    internal fun isWebContentSignal(className: String, actionIds: Set<Int>): Boolean {
+        val normalizedClass = className.lowercase(Locale.ROOT)
+        if (webContainerClassMarkers.any(normalizedClass::contains)) return true
+        return AccessibilityNodeInfo.ACTION_NEXT_HTML_ELEMENT in actionIds ||
+            AccessibilityNodeInfo.ACTION_PREVIOUS_HTML_ELEMENT in actionIds
     }
+
+    fun isWebContainer(node: AccessibilityNodeInfo): Boolean = isWebContentSignal(
+        className = node.className?.toString().orEmpty(),
+        actionIds = node.actionList.mapTo(linkedSetOf()) { it.id }
+    )
 
     /**
      * Exact browser-owned address-bar resources remain browser chrome even when a
