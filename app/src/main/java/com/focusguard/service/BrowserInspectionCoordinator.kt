@@ -1,5 +1,7 @@
 package com.focusguard.service
 
+import com.focusguard.accessibility.website.identification.BrowserObservationSignal
+
 /**
  * Serializes expensive browser accessibility inspections without retaining Android
  * accessibility objects. Only immutable event primitives cross the callback boundary.
@@ -76,6 +78,7 @@ internal class BrowserInspectionCoordinator {
             contentDescription = contentDescription
         )
         pending = snapshot
+        BrowserObservationSignal.markObserved(packageName, windowId)
         val start = !workerActive
         if (start) workerActive = true
         Offer(snapshot, start)
