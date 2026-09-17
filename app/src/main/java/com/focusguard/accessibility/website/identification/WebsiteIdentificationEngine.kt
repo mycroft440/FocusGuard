@@ -2,6 +2,7 @@ package com.focusguard.accessibility.website.identification
 
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.focusguard.utils.BrowserInspectionSessionStore
 import com.focusguard.utils.BrowserSurfaceInspector
 import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.focusguard.utils.WebsiteBlocker
@@ -21,6 +22,11 @@ import com.focusguard.utils.WebsiteBlocker
  */
 internal object WebsiteIdentificationEngine {
 
+    /**
+     * Legacy synchronous entry point. Normal browser inspection must use
+     * [identifyFromRoot] from the worker-owned root instead of carrying an
+     * AccessibilityEvent across the callback boundary.
+     */
     fun identifyFromEvent(
         event: AccessibilityEvent,
         browserPackageName: String,
@@ -73,7 +79,7 @@ internal object WebsiteIdentificationEngine {
                 urlCandidate = url,
                 browserPackageName = browserPackageName,
                 windowId = event.windowId,
-                evidence = evidence
+                evidence = evidence.toSet()
             )
         }
 
@@ -81,16 +87,23 @@ internal object WebsiteIdentificationEngine {
             status = WebsiteIdentificationStatus.UNOBSERVABLE,
             browserPackageName = browserPackageName,
             windowId = event.windowId,
-            evidence = evidence
+            evidence = evidence.toSet()
         )
     }
 
+    /**
+     * Standard normal-inspection entry point. Surface, URL, raw address text and
+     * address-bar observability all resolve against the same root, so
+     * BrowserInspectionSessionStore can reuse their budget and intermediate data.
+     */
     fun identifyFromRoot(
         root: AccessibilityNodeInfo?,
         browserPackageName: String,
         expectedWindowId: Int,
-        httpsHandlerRecognized: Boolean
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
     ): WebsiteIdentificationResult {
+        if (!isCurrent()) return WebsiteIdentificationResult(WebsiteIdentificationStatus.REJECTED_CONTEXT)
         if (root == null || browserPackageName.isBlank() || expectedWindowId < 0) {
             return WebsiteIdentificationResult(
                 status = WebsiteIdentificationStatus.UNOBSERVABLE,
@@ -99,11 +112,23 @@ internal object WebsiteIdentificationEngine {
             )
         }
 
+        return BrowserInspectionSessionStore.withInspection(root, browserPackageName, isCurrent) {
+            identifyCurrentRoot(root, browserPackageName, expectedWindowId, httpsHandlerRecognized, isCurrent)
+        }
+    }
+
+    private fun identifyCurrentRoot(
+        root: AccessibilityNodeInfo,
+        browserPackageName: String,
+        expectedWindowId: Int,
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
+    ): WebsiteIdentificationResult {
         val rootMatchesBrowser = runCatching {
             root.packageName?.toString() == browserPackageName &&
                 root.windowId == expectedWindowId
         }.getOrDefault(false)
-        if (!rootMatchesBrowser) {
+        if (!isCurrent() || !rootMatchesBrowser) {
             return WebsiteIdentificationResult(
                 status = WebsiteIdentificationStatus.REJECTED_CONTEXT,
                 browserPackageName = browserPackageName,
@@ -120,13 +145,16 @@ internal object WebsiteIdentificationEngine {
                 evidence = setOf(WebsiteIdentificationLayer.BROWSER_PACKAGE_AND_WINDOW)
             )
         }
+
         val evidence = linkedSetOf(WebsiteIdentificationLayer.BROWSER_PACKAGE_AND_WINDOW)
+        // These accessors all resolve through the same BrowserInspectionSession for
+        // this root. Calling each accessor does not start an independent tree walk.
         val url = WebsiteBlocker.extractUrlFromRoot(
             root = root,
             browserPackageName = browserPackageName,
             httpsHandlerRecognized = httpsHandlerRecognized
         )
-        val rawText = url ?: WebsiteBlocker.extractAddressBarTextFromRoot(
+        val rawText = WebsiteBlocker.extractAddressBarTextFromRoot(
             root = root,
             browserPackageName = browserPackageName,
             httpsHandlerRecognized = httpsHandlerRecognized
@@ -137,6 +165,10 @@ internal object WebsiteIdentificationEngine {
             httpsHandlerRecognized = httpsHandlerRecognized
         )
 
+        if (!isCurrent()) return WebsiteIdentificationResult(WebsiteIdentificationStatus.REJECTED_CONTEXT)
+        if (BrowserInspectionSessionStore.sessionFor(root, browserPackageName).strongAddressBarObserved) {
+            evidence += WebsiteIdentificationLayer.STRONG_ADDRESS_BAR_ID
+        }
         if (!rawText.isNullOrBlank()) evidence += WebsiteIdentificationLayer.ADDRESS_BAR_TEXT
         if (observable) evidence += WebsiteIdentificationLayer.FIELD_SEMANTICS
 
@@ -150,7 +182,7 @@ internal object WebsiteIdentificationEngine {
             urlCandidate = url,
             browserPackageName = browserPackageName,
             windowId = expectedWindowId,
-            evidence = evidence,
+            evidence = evidence.toSet(),
             webContentObserved = surface == BrowserSurfaceInspector.Surface.WEB_CONTENT
         )
     }
@@ -174,8 +206,10 @@ internal object WebsiteIdentificationEngine {
         rootProvider: () -> AccessibilityNodeInfo?,
         browserPackageName: String,
         expectedWindowId: Int,
-        httpsHandlerRecognized: Boolean
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
     ): WebsiteIdentificationResult {
+        if (!isCurrent()) return WebsiteIdentificationResult(WebsiteIdentificationStatus.REJECTED_CONTEXT)
         val freshRoot = rootProvider() ?: return WebsiteIdentificationResult(
             status = WebsiteIdentificationStatus.UNOBSERVABLE,
             browserPackageName = browserPackageName,
@@ -187,8 +221,10 @@ internal object WebsiteIdentificationEngine {
                 root = freshRoot,
                 browserPackageName = browserPackageName,
                 expectedWindowId = expectedWindowId,
-                httpsHandlerRecognized = httpsHandlerRecognized
+                httpsHandlerRecognized = httpsHandlerRecognized,
+                isCurrent = isCurrent
             )
+            if (!isCurrent()) return WebsiteIdentificationResult(WebsiteIdentificationStatus.REJECTED_CONTEXT)
             result.copy(
                 evidence = result.evidence +
                     WebsiteIdentificationLayer.POST_INTERACTION_REIDENTIFICATION
@@ -214,35 +250,6 @@ internal object WebsiteIdentificationEngine {
         } finally {
             recycleSafely(source)
         }
-    }
-
-    private fun hasStrongAddressBarId(
-        root: AccessibilityNodeInfo,
-        browserPackageName: String,
-        expectedWindowId: Int
-    ): Boolean {
-        BrowserUiCapabilityPolicy.strongAddressBarEntryNames.forEach { entryName ->
-            val nodes = runCatching {
-                root.findAccessibilityNodeInfosByViewId("$browserPackageName:id/$entryName")
-            }.getOrDefault(emptyList())
-            try {
-                if (nodes.any { node ->
-                        runCatching {
-                            node.isVisibleToUser && BrowserSurfaceInspector.isNativeNode(node) &&
-                                node.packageName?.toString() == browserPackageName &&
-                                node.windowId == expectedWindowId &&
-                                BrowserUiCapabilityPolicy.isStrongAddressBarResource(
-                                    node.viewIdResourceName.orEmpty(),
-                                    browserPackageName
-                                )
-                        }.getOrDefault(false)
-                    }
-                ) return true
-            } finally {
-                nodes.forEach(::recycleSafely)
-            }
-        }
-        return false
     }
 
     private fun recycleSafely(node: AccessibilityNodeInfo?) {

@@ -549,7 +549,7 @@ object WebsiteBlocker {
     ): Boolean {
         if (root == null || browserPackageName.isBlank()) return false
         val inspection = inspectAddressBarRoot(root, browserPackageName, httpsHandlerRecognized)
-        if (!inspection.addressBarObservable &&
+        if (inspection.isCurrent() && !inspection.addressBarObservable &&
             inspection.surface == BrowserSurfaceInspector.Surface.WEB_CONTENT
         ) {
             BrowserCompatibilityStore.recordUnobservableFailure(browserPackageName)
@@ -583,6 +583,7 @@ object WebsiteBlocker {
             session.url = null
             session.addressText = null
             session.addressBarObservable = false
+            session.focusedAddressEditor = false
         }
         session.addressHttpsHandlerRecognized = httpsHandlerRecognized
 
@@ -614,9 +615,20 @@ object WebsiteBlocker {
             val text = extractTextFromNode(node)
             val candidate = extractCandidateFromNode(node)
             session.addressBarObservable = true
+            session.strongAddressBarObserved = session.strongAddressBarObserved ||
+                BrowserUiCapabilityPolicy.isStrongAddressBarResource(
+                    node.viewIdResourceName.orEmpty(), browserPackageName
+                )
+            session.focusedAddressEditor = session.focusedAddressEditor ||
+                (node.isEditable && node.isFocused &&
+                    BrowserUiCapabilityPolicy.isActionableAddressBarNode(
+                        node.toBrowserUiNode(inspectionBudget = budget), browserPackageName, expectedWindowId,
+                        httpsHandlerRecognized
+                    ))
             if (session.addressText == null) session.addressText = text
             if (session.url == null) session.url = candidate
-            BrowserCompatibilityStore.recordIdentificationSuccess(
+            session.identificationMethod = method
+            if (session.isCurrent()) BrowserCompatibilityStore.recordIdentificationSuccess(
                 packageName = browserPackageName,
                 viewIdResourceName = node.viewIdResourceName,
                 method = method,
@@ -815,8 +827,10 @@ object WebsiteBlocker {
         arguments: Bundle? = null,
         textPredicate: ((String?) -> Boolean)? = null,
         httpsHandlerRecognized: Boolean = false,
-        allowFallbacks: Boolean = true
+        allowFallbacks: Boolean = true,
+        isCurrent: () -> Boolean
     ): AddressBarActionResult {
+        if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
         if (root.packageName?.toString() != browserPackageName ||
             root.windowId != expectedWindowId
         ) return AddressBarActionResult(AddressBarActionStatus.NOT_FOUND)
@@ -830,8 +844,10 @@ object WebsiteBlocker {
                 browserPackageName = browserPackageName,
                 expectedWindowId = expectedWindowId,
                 arguments = arguments,
-                httpsHandlerRecognized = httpsHandlerRecognized
+                httpsHandlerRecognized = httpsHandlerRecognized,
+                isCurrent = isCurrent
             )
+            if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
             if (cachedPaste.accepted || cachedPaste.status == AddressBarActionStatus.AMBIGUOUS) {
                 return cachedPaste
             }
@@ -842,8 +858,10 @@ object WebsiteBlocker {
                 browserPackageName = browserPackageName,
                 expectedWindowId = expectedWindowId,
                 textPredicate = textPredicate,
-                httpsHandlerRecognized = httpsHandlerRecognized
+                httpsHandlerRecognized = httpsHandlerRecognized,
+                isCurrent = isCurrent
             )
+            if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
             if (cachedSubmit?.accepted == true ||
                 cachedSubmit?.status == AddressBarActionStatus.AMBIGUOUS
             ) {
@@ -908,18 +926,20 @@ object WebsiteBlocker {
                         browserPackageName = browserPackageName,
                         expectedWindowId = expectedWindowId,
                         arguments = arguments,
-                        httpsHandlerRecognized = httpsHandlerRecognized
+                        httpsHandlerRecognized = httpsHandlerRecognized,
+                        isCurrent = isCurrent
                     )
                     BrowserUiCapabilityPolicy.NodeAction.IME_ENTER -> attemptSubmitFallback(
                         root = root,
                         browserPackageName = browserPackageName,
                         expectedWindowId = expectedWindowId,
                         textPredicate = textPredicate,
-                        httpsHandlerRecognized = httpsHandlerRecognized
+                        httpsHandlerRecognized = httpsHandlerRecognized,
+                        isCurrent = isCurrent
                     )
                     else -> AddressBarActionResult(AddressBarActionStatus.NOT_FOUND)
                 }
-                if (!fallback.accepted &&
+                if (isCurrent() && !fallback.accepted &&
                     (requiredAction == BrowserUiCapabilityPolicy.NodeAction.SET_TEXT ||
                         requiredAction == BrowserUiCapabilityPolicy.NodeAction.IME_ENTER)
                 ) {
@@ -929,12 +949,14 @@ object WebsiteBlocker {
             }
 
             val selected = nodes[selectedIndex]
+            if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
             if (allowFallbacks && requiredAction == BrowserUiCapabilityPolicy.NodeAction.SET_TEXT) {
                 val selectionResult = AddressBarRedirectionActions.selectAll(
                     root = root,
                     browserPackageName = browserPackageName,
                     expectedWindowId = expectedWindowId,
-                    httpsHandlerRecognized = httpsHandlerRecognized
+                    httpsHandlerRecognized = httpsHandlerRecognized,
+                    isCurrent = isCurrent
                 )
                 if (selectionResult.status == AddressBarRedirectionActions.Status.AMBIGUOUS) {
                     return AddressBarActionResult(AddressBarActionStatus.AMBIGUOUS)
@@ -956,27 +978,34 @@ object WebsiteBlocker {
                             browserPackageName = browserPackageName,
                             expectedWindowId = expectedWindowId,
                             textPredicate = textPredicate,
-                            httpsHandlerRecognized = httpsHandlerRecognized
+                            httpsHandlerRecognized = httpsHandlerRecognized,
+                            isCurrent = isCurrent
                         )
                         else -> AddressBarActionResult(AddressBarActionStatus.REJECTED)
                     }
-                    if (!fallback.accepted &&
+                    if (isCurrent() && !fallback.accepted &&
                         requiredAction == BrowserUiCapabilityPolicy.NodeAction.IME_ENTER
                     ) {
                         BrowserCompatibilityStore.recordRedirectionFailure(browserPackageName)
                     }
                     return fallback
                 }
-                runCatching { selected.performAction(androidAction, arguments) }
-                    .getOrDefault(false)
+                if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+                val actionAccepted = runCatching {
+                    selected.performAction(androidAction, arguments)
+                }.getOrDefault(false)
+                if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+                actionAccepted
             }
 
+            if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
             if (accepted) {
                 if (allowFallbacks) recordAddressBarActionSuccess(
                     browserPackageName = browserPackageName,
                     selectedViewId = selected.viewIdResourceName,
                     requiredAction = requiredAction,
-                    arguments = arguments
+                    arguments = arguments,
+                    isCurrent = isCurrent
                 )
                 return AddressBarActionResult(
                     status = AddressBarActionStatus.ACCEPTED,
@@ -991,21 +1020,23 @@ object WebsiteBlocker {
                     browserPackageName = browserPackageName,
                     expectedWindowId = expectedWindowId,
                     arguments = arguments,
-                    httpsHandlerRecognized = httpsHandlerRecognized
+                    httpsHandlerRecognized = httpsHandlerRecognized,
+                    isCurrent = isCurrent
                 )
                 BrowserUiCapabilityPolicy.NodeAction.IME_ENTER -> attemptSubmitFallback(
                     root = root,
                     browserPackageName = browserPackageName,
                     expectedWindowId = expectedWindowId,
                     textPredicate = textPredicate,
-                    httpsHandlerRecognized = httpsHandlerRecognized
+                    httpsHandlerRecognized = httpsHandlerRecognized,
+                    isCurrent = isCurrent
                 )
                 else -> AddressBarActionResult(
                     status = AddressBarActionStatus.REJECTED,
                     selectedViewId = selected.viewIdResourceName
                 )
             }
-            if (!fallback.accepted &&
+            if (isCurrent() && !fallback.accepted &&
                 (requiredAction == BrowserUiCapabilityPolicy.NodeAction.SET_TEXT ||
                     requiredAction == BrowserUiCapabilityPolicy.NodeAction.IME_ENTER)
             ) {
@@ -1022,21 +1053,26 @@ object WebsiteBlocker {
         browserPackageName: String,
         expectedWindowId: Int,
         arguments: Bundle?,
-        httpsHandlerRecognized: Boolean
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
     ): AddressBarActionResult {
+        if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
         val replacement = arguments?.getCharSequence(
             AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE
         )?.toString()?.takeIf(String::isNotBlank)
             ?: return AddressBarActionResult(AddressBarActionStatus.REJECTED)
 
+        if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
         val result = ClipboardPasteFallback.pasteSafely(replacement) {
             AddressBarRedirectionActions.paste(
                 root = root,
                 browserPackageName = browserPackageName,
                 expectedWindowId = expectedWindowId,
-                httpsHandlerRecognized = httpsHandlerRecognized
+                httpsHandlerRecognized = httpsHandlerRecognized,
+                isCurrent = isCurrent
             )
         }.toLegacyAddressBarActionResult()
+        if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
         if (result.accepted) {
             BrowserCompatibilityStore.recordWriteSuccess(
                 packageName = browserPackageName,
@@ -1053,7 +1089,8 @@ object WebsiteBlocker {
         browserPackageName: String,
         expectedWindowId: Int,
         textPredicate: ((String?) -> Boolean)?,
-        httpsHandlerRecognized: Boolean
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
     ): AddressBarActionResult? = when (
         BrowserCompatibilityStore.preferredSubmitMethod(browserPackageName)
     ) {
@@ -1062,12 +1099,14 @@ object WebsiteBlocker {
             browserPackageName,
             expectedWindowId,
             textPredicate,
-            httpsHandlerRecognized
+            httpsHandlerRecognized,
+            isCurrent
         )
         BrowserSubmitMethod.CERTIFIED_GO_BUTTON -> performGoButtonSubmit(
             root,
             browserPackageName,
-            expectedWindowId
+            expectedWindowId,
+            isCurrent
         )
         BrowserSubmitMethod.IME_ENTER,
         null -> null
@@ -1078,7 +1117,8 @@ object WebsiteBlocker {
         browserPackageName: String,
         expectedWindowId: Int,
         textPredicate: ((String?) -> Boolean)?,
-        httpsHandlerRecognized: Boolean
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
     ): AddressBarActionResult {
         val preferred = BrowserCompatibilityStore.preferredSubmitMethod(browserPackageName)
         val order = when (preferred) {
@@ -1092,21 +1132,25 @@ object WebsiteBlocker {
             )
         }
         order.forEach { method ->
+            if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
             val result = when (method) {
                 BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION -> performAnnouncedSubmit(
                     root,
                     browserPackageName,
                     expectedWindowId,
                     textPredicate,
-                    httpsHandlerRecognized
+                    httpsHandlerRecognized,
+                    isCurrent
                 )
                 BrowserSubmitMethod.CERTIFIED_GO_BUTTON -> performGoButtonSubmit(
                     root,
                     browserPackageName,
-                    expectedWindowId
+                    expectedWindowId,
+                    isCurrent
                 )
                 BrowserSubmitMethod.IME_ENTER -> null
             } ?: return@forEach
+            if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
             if (result.accepted || result.status == AddressBarActionStatus.AMBIGUOUS) {
                 return result
             }
@@ -1119,15 +1163,19 @@ object WebsiteBlocker {
         browserPackageName: String,
         expectedWindowId: Int,
         textPredicate: ((String?) -> Boolean)?,
-        httpsHandlerRecognized: Boolean
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
     ): AddressBarActionResult {
+        if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
         val announced = AddressBarRedirectionActions.submitAnnouncedEditorAction(
             root = root,
             browserPackageName = browserPackageName,
             expectedWindowId = expectedWindowId,
             textPredicate = textPredicate,
-            httpsHandlerRecognized = httpsHandlerRecognized
+            httpsHandlerRecognized = httpsHandlerRecognized,
+            isCurrent = isCurrent
         ).toLegacyAddressBarActionResult()
+        if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
         if (announced.accepted) {
             BrowserCompatibilityStore.recordSubmitAccepted(
                 packageName = browserPackageName,
@@ -1141,13 +1189,17 @@ object WebsiteBlocker {
     private fun performGoButtonSubmit(
         root: AccessibilityNodeInfo,
         browserPackageName: String,
-        expectedWindowId: Int
+        expectedWindowId: Int,
+        isCurrent: () -> Boolean
     ): AddressBarActionResult {
+        if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
         val go = AddressBarRedirectionActions.clickCertifiedGoButton(
             root = root,
             browserPackageName = browserPackageName,
-            expectedWindowId = expectedWindowId
+            expectedWindowId = expectedWindowId,
+            isCurrent = isCurrent
         ).toLegacyAddressBarActionResult()
+        if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
         if (go.accepted) {
             BrowserCompatibilityStore.recordSubmitAccepted(
                 packageName = browserPackageName,
@@ -1173,8 +1225,10 @@ object WebsiteBlocker {
         browserPackageName: String,
         selectedViewId: String?,
         requiredAction: BrowserUiCapabilityPolicy.NodeAction,
-        arguments: Bundle?
+        arguments: Bundle?,
+        isCurrent: () -> Boolean
     ) {
+        if (!isCurrent()) return
         when (requiredAction) {
             BrowserUiCapabilityPolicy.NodeAction.FOCUS ->
                 BrowserCompatibilityStore.recordActivationSuccess(
