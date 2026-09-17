@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
+import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.focusguard.utils.WebsiteBlocker
 import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -440,13 +441,8 @@ internal object BrowserCompatibilityStore {
         put("updated_at", record.updatedAtMillis)
     }.toString()
 
-    private fun browserOwnedEntryName(packageName: String, viewIdResourceName: String?): String? {
-        val value = viewIdResourceName?.trim().orEmpty()
-        val prefix = "$packageName:id/"
-        return value.takeIf { it.startsWith(prefix) && it.length > prefix.length }
-            ?.substring(prefix.length)
-            ?.takeIf(String::isNotBlank)
-    }
+    private fun browserOwnedEntryName(packageName: String, viewIdResourceName: String?): String? =
+        BrowserUiCapabilityPolicy.browserOwnedEntryName(packageName, viewIdResourceName)
 
     private fun observedValueMatchesTarget(observedValue: String?, normalizedTarget: String): Boolean {
         if (normalizedTarget.isEmpty()) return false
