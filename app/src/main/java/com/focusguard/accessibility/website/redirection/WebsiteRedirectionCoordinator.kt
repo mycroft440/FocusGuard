@@ -125,7 +125,7 @@ internal class WebsiteRedirectionCoordinator(
             if (!isCurrent()) return null
             onPhase(WebsiteRedirectionPhase.PASTE_FALLBACK)
             written = withFreshRoot { root ->
-                if (!isCurrent()) return@withFreshRoot AddressBarRedirectionActions.ActionResult(
+                if (!isCurrent()) return@withFreshRoot AddressBarRedirectionActions.Result(
                     AddressBarRedirectionActions.Status.NOT_FOUND
                 )
                 ClipboardPasteFallback.pasteSafely(
@@ -133,7 +133,7 @@ internal class WebsiteRedirectionCoordinator(
                     text = redirectUrl
                 ) {
                     if (!isCurrent()) {
-                        AddressBarRedirectionActions.ActionResult(
+                        AddressBarRedirectionActions.Result(
                             AddressBarRedirectionActions.Status.NOT_FOUND
                         )
                     } else {
