@@ -7,9 +7,10 @@ import com.focusguard.database.BlockSession
  * Central policy for irreversible protection and the master credential boundary.
  *
  * The master credential is administrative and remains independent from credentials
- * configured for individual PASSWORD targets. Creating a blocking session does not
- * depend on the master credential; active protection rules remain governed by their
- * own hardening and maintenance boundaries.
+ * configured for individual PASSWORD targets. Creating blocking sessions and
+ * configuring ordinary usage limits do not depend on the master credential;
+ * active protection rules remain governed by their own hardening and maintenance
+ * boundaries.
  *
  * Two protection invariants remain load-bearing:
  *  1. Dopamine Fast (`TIME`) and strict Pomodoro cannot be ended early by a
@@ -81,7 +82,7 @@ object MasterCredentialPolicy {
 
     enum class MutationGate {
         ALLOWED,
-        /** Legacy value retained for older UI branches. */
+        /** Legacy values retained for older UI branches; no longer emitted here. */
         MASTER_CREDENTIAL_REQUIRED,
         MASTER_CREDENTIAL_NOT_CONFIGURED,
         BLOCKED_BY_TIME_HARDENING,
@@ -89,12 +90,9 @@ object MasterCredentialPolicy {
     }
 
     /**
-     * Existing hardening and Safety Mode always take precedence. A target that has
-     * no protection mode yet can enter the usage-limit editor without forcing
-     * master-password setup; protected existing limits keep the established master
-     * credential requirement. Merely having the credential is sufficient here;
-     * this policy does not turn the master password into the unlock password for
-     * the individual limit.
+     * Altering a usage limit is governed by the limit's own hardening and Safety
+     * Mode. The master credential is deliberately ignored: it must not become a
+     * generic password for creating, editing or removing individual limits.
      */
     @Suppress("UNUSED_PARAMETER")
     fun evaluateLimitMutation(
@@ -110,11 +108,6 @@ object MasterCredentialPolicy {
         }
         if (safetyModeEnabled) {
             return MutationGate.BLOCKED_BY_SAFETY_MODE
-        }
-        val unprotectedTarget = lockMode.equals(LOCK_MODE_NONE, ignoreCase = true) &&
-            lockUntilTimestamp == null
-        if (!hasMasterCredential && !unprotectedTarget) {
-            return MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED
         }
         return MutationGate.ALLOWED
     }
