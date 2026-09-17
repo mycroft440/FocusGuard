@@ -1,95 +1,23 @@
 package com.focusguard.accessibility.website.identification
 
-import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import com.focusguard.utils.BrowserInspectionSessionStore
 import com.focusguard.utils.BrowserSurfaceInspector
-import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.focusguard.utils.WebsiteBlocker
 
 /**
  * Layered website identification for browser accessibility surfaces.
  *
  * Order of evidence:
- * 1. event as a reinspection trigger;
- * 2. browser package/window ownership;
- * 3. known strong address-bar ids;
- * 4. current address-bar text/URL;
- * 5. semantic address-field fallback;
- * 6. fresh reidentification after an interaction.
+ * 1. browser package/window ownership;
+ * 2. known strong address-bar ids;
+ * 3. current address-bar text/URL;
+ * 4. semantic address-field fallback;
+ * 5. fresh reidentification after an interaction.
  *
  * The engine never keeps AccessibilityNodeInfo references between phases.
  */
 internal object WebsiteIdentificationEngine {
-
-    /**
-     * Legacy synchronous entry point. Normal browser inspection must use
-     * [identifyFromRoot] from the worker-owned root instead of carrying an
-     * AccessibilityEvent across the callback boundary.
-     */
-    fun identifyFromEvent(
-        event: AccessibilityEvent,
-        browserPackageName: String,
-        httpsHandlerRecognized: Boolean
-    ): WebsiteIdentificationResult {
-        if (browserPackageName.isBlank() || event.windowId < 0) {
-            return WebsiteIdentificationResult(
-                status = WebsiteIdentificationStatus.REJECTED_CONTEXT
-            )
-        }
-        if (!WebsiteIdentificationEventPolicy.shouldReinspect(event.eventType)) {
-            return WebsiteIdentificationResult(
-                status = WebsiteIdentificationStatus.UNOBSERVABLE,
-                browserPackageName = browserPackageName,
-                windowId = event.windowId
-            )
-        }
-
-        val evidence = linkedSetOf(
-            WebsiteIdentificationLayer.ACCESSIBILITY_EVENT,
-            WebsiteIdentificationLayer.BROWSER_PACKAGE_AND_WINDOW
-        )
-        if (eventSourceHasStrongAddressBarId(event, browserPackageName)) {
-            evidence += WebsiteIdentificationLayer.STRONG_ADDRESS_BAR_ID
-        }
-
-        val rawText = WebsiteBlocker.extractAddressBarTextFromEvent(
-            event = event,
-            browserPackageName = browserPackageName,
-            httpsHandlerRecognized = httpsHandlerRecognized
-        )
-        val url = rawText?.let(WebsiteBlocker::extractUrlCandidate)
-            ?: WebsiteBlocker.extractUrlFromEvent(
-                event = event,
-                browserPackageName = browserPackageName,
-                httpsHandlerRecognized = httpsHandlerRecognized
-            )
-
-        if (!rawText.isNullOrBlank()) evidence += WebsiteIdentificationLayer.ADDRESS_BAR_TEXT
-        if (rawText != null || url != null) {
-            if (WebsiteIdentificationLayer.STRONG_ADDRESS_BAR_ID !in evidence) {
-                evidence += WebsiteIdentificationLayer.FIELD_SEMANTICS
-            }
-            return WebsiteIdentificationResult(
-                status = classifyStatus(
-                    urlCandidate = url,
-                    addressBarObservable = rawText != null || url != null
-                ),
-                rawAddressText = rawText,
-                urlCandidate = url,
-                browserPackageName = browserPackageName,
-                windowId = event.windowId,
-                evidence = evidence.toSet()
-            )
-        }
-
-        return WebsiteIdentificationResult(
-            status = WebsiteIdentificationStatus.UNOBSERVABLE,
-            browserPackageName = browserPackageName,
-            windowId = event.windowId,
-            evidence = evidence.toSet()
-        )
-    }
 
     /**
      * Standard normal-inspection entry point. Surface, URL, raw address text and
@@ -231,24 +159,6 @@ internal object WebsiteIdentificationEngine {
             )
         } finally {
             recycleSafely(freshRoot)
-        }
-    }
-
-    private fun eventSourceHasStrongAddressBarId(
-        event: AccessibilityEvent,
-        browserPackageName: String
-    ): Boolean {
-        val source = runCatching { event.source }.getOrNull() ?: return false
-        return try {
-            BrowserSurfaceInspector.isNativeNode(source) &&
-                source.packageName?.toString() == browserPackageName &&
-                source.windowId == event.windowId &&
-                BrowserUiCapabilityPolicy.isStrongAddressBarResource(
-                    source.viewIdResourceName.orEmpty(),
-                    browserPackageName
-                )
-        } finally {
-            recycleSafely(source)
         }
     }
 
