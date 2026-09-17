@@ -57,6 +57,16 @@ internal object BrowserObservationSignal {
         } ?: false
     }
 
+    /** Wakes an invalidated waiter before dropping the old package/window entry. */
+    fun forget(packageName: String, windowId: Int) {
+        if (packageName.isBlank() || windowId < 0) return
+        val key = Key(packageName, windowId)
+        val entry = entries[key] ?: return
+        val next = entry.version.incrementAndGet()
+        entry.events.tryEmit(next)
+        entries.remove(key, entry)
+    }
+
     internal fun clearForTest(packageName: String, windowId: Int) {
         entries.remove(Key(packageName, windowId))
     }
