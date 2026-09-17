@@ -1,5 +1,6 @@
 package com.focusguard.service
 
+import com.focusguard.accessibility.website.identification.BrowserObservationSignal
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
@@ -91,5 +92,19 @@ class BrowserInspectionCoordinatorTest {
         )
         assertTrue(replacement.startWorker)
         assertTrue(coordinator.isCurrent(replacement.snapshot.token, requireLatestSequence = true))
+    }
+
+    @Test
+    fun offeringInspectionPublishesPrimitiveObservationSignal() {
+        val packageName = "test.browser.coordinator"
+        val windowId = 91
+        BrowserObservationSignal.clearForTest(packageName, windowId)
+        val baseline = BrowserObservationSignal.currentVersion(packageName, windowId)
+        val coordinator = BrowserInspectionCoordinator()
+
+        coordinator.offer(packageName, windowId, 2048, 1L, 1L, "", emptyList(), null)
+
+        assertTrue(BrowserObservationSignal.currentVersion(packageName, windowId) > baseline)
+        BrowserObservationSignal.clearForTest(packageName, windowId)
     }
 }
