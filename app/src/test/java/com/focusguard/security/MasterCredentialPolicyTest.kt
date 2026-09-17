@@ -133,46 +133,22 @@ class MasterCredentialPolicyTest {
     }
 
     @Test
-    fun `unprotected usage limit target can enter setup without master credential`() {
-        assertThat(
-            MasterCredentialPolicy.evaluateLimitMutation(
-                lockMode = "NONE",
-                lockUntilTimestamp = null,
-                safetyModeEnabled = false,
-                hasMasterCredential = false,
-                masterCredentialVerified = false
-            )
-        ).isEqualTo(MutationGate.ALLOWED)
+    fun `usage limit mutation never requires master credential`() {
+        listOf("NONE", "PASSWORD").forEach { lockMode ->
+            assertThat(
+                MasterCredentialPolicy.evaluateLimitMutation(
+                    lockMode = lockMode,
+                    lockUntilTimestamp = null,
+                    safetyModeEnabled = false,
+                    hasMasterCredential = false,
+                    masterCredentialVerified = false
+                )
+            ).isEqualTo(MutationGate.ALLOWED)
+        }
     }
 
     @Test
-    fun `protected editable usage limit requires master credential to exist`() {
-        assertThat(
-            MasterCredentialPolicy.evaluateLimitMutation(
-                lockMode = "PASSWORD",
-                lockUntilTimestamp = null,
-                safetyModeEnabled = false,
-                hasMasterCredential = false,
-                masterCredentialVerified = false
-            )
-        ).isEqualTo(MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED)
-    }
-
-    @Test
-    fun `protected editable usage limit is allowed after master credential exists`() {
-        assertThat(
-            MasterCredentialPolicy.evaluateLimitMutation(
-                lockMode = "PASSWORD",
-                lockUntilTimestamp = null,
-                safetyModeEnabled = false,
-                hasMasterCredential = true,
-                masterCredentialVerified = false
-            )
-        ).isEqualTo(MutationGate.ALLOWED)
-    }
-
-    @Test
-    fun `expired time limit still requires configured master credential`() {
+    fun `expired time limit is mutable without master credential`() {
         assertThat(
             MasterCredentialPolicy.evaluateLimitMutation(
                 lockMode = "TIME",
@@ -182,7 +158,7 @@ class MasterCredentialPolicyTest {
                 masterCredentialVerified = false,
                 nowMillis = 5_000L
             )
-        ).isEqualTo(MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED)
+        ).isEqualTo(MutationGate.ALLOWED)
     }
 
     @Test
