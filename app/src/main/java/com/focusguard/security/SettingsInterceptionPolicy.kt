@@ -102,9 +102,6 @@ object SettingsInterceptionPolicy {
             return Decision.IGNORE
         }
 
-        // Maintenance keeps only FocusGuard's own essential enforcement accesses
-        // protected. The app name must come from the current event, never a broad
-        // root-tree hit that could merely be a row in a list.
         if (maintenanceActive) {
             if (!signals.textMentionsFocusGuard) return Decision.IGNORE
             val essentialAccess = signals.classTargetsEssentialSpecialAccess ||
@@ -133,19 +130,15 @@ object SettingsInterceptionPolicy {
             return Decision.POMODORO_LOCK
         }
 
-        // The short ACTION_ADD_DEVICE_ADMIN enrollment opened by FocusGuard must
-        // stay usable. It is allowed only when the current event directly names
-        // FocusGuard and it is not another destructive/special-access surface.
+        // ACTION_ADD_DEVICE_ADMIN is a short app-initiated enrollment window.
+        // Direct FocusGuard identity is required, and unrelated destructive or
+        // special-access surfaces remain protected even during that window.
         if (deviceAdminActivationAuthorized &&
             signals.textMentionsFocusGuard &&
             !signals.classTargetsAppDetails &&
             !signals.classTargetsUninstall &&
             !signals.classTargetsAccessibilityServiceToggle &&
-            !signals.classTargetsEssentialSpecialAccess &&
-            (signals.textMentionsDeviceAdmin ||
-                signals.classTargetsDeviceAdmin ||
-                signals.isGenericSubSettings ||
-                rootSignals.mentionsDeviceAdmin())
+            !signals.classTargetsEssentialSpecialAccess
         ) {
             return Decision.IGNORE
         }
@@ -157,18 +150,15 @@ object SettingsInterceptionPolicy {
             return Decision.PROTECT
         }
 
-        // Device Admin list/gateway stays fully available. Only an interaction
-        // that is both about Device Admin and directly tied to FocusGuard is ours.
+        // Device Admin list/gateway stays available. Only a current event that
+        // directly identifies FocusGuard may be treated as our administrative
+        // control. A Device Admin class alone never reaches this branch.
         val deviceAdminContext = signals.textMentionsDeviceAdmin ||
-            signals.classTargetsDeviceAdmin ||
             (signals.textMentionsFocusGuard && rootSignals.mentionsDeviceAdmin())
         if (signals.textMentionsFocusGuard && deviceAdminContext) {
             return Decision.PROTECT
         }
 
-        // The Accessibility services list is also a normal system-management area.
-        // Do not block its gateway/list. The FocusGuard row or its own toggle is
-        // protected only when the current event identifies FocusGuard.
         if (signals.classTargetsAccessibilityServiceToggle &&
             signals.textMentionsFocusGuard
         ) {
@@ -179,13 +169,8 @@ object SettingsInterceptionPolicy {
             return Decision.PROTECT
         }
 
-        // Strict Pomodoro owns ordinary Settings navigation, but only after the
-        // explicit FocusGuard removal/permission cases above had a chance to route
-        // through the master-removal flow.
         if (strictPomodoroActive) return Decision.POMODORO_LOCK
 
-        // A stale guard may never consume a different app's event. The guard is
-        // accepted only when this event independently proves FocusGuard identity.
         if (signals.guardArmed &&
             !signals.isViewClickedEvent &&
             signals.textMentionsFocusGuard
