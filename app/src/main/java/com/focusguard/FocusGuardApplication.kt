@@ -6,6 +6,7 @@ import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
+import com.focusguard.accessibility.website.compatibility.BrowserDetector
 import com.focusguard.accessibility.website.redirection.ClipboardPasteFallback
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeManager
@@ -48,6 +49,7 @@ class FocusGuardApplication : Application() {
         val browserCompatibilityContext = runCatching {
             createDeviceProtectedStorageContext()
         }.getOrDefault(startupContext)
+        BrowserDetector.initialize(browserCompatibilityContext)
         BrowserCompatibilityStore.initialize(browserCompatibilityContext)
         FocusGuardLogger.init(startupContext)
 
