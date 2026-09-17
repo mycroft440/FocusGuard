@@ -35,15 +35,19 @@ class BrowserSiteOnlyBlockingPolicyTest {
     }
 
     @Test
-    fun `observable address bar evidence is never downgraded`() {
+    fun `address bar without valid URL becomes fail closed after recovery`() {
         val observable = WebsiteIdentificationResult(
             status = WebsiteIdentificationStatus.ADDRESS_BAR_OBSERVABLE,
-            rawAddressText = "example.com",
+            rawAddressText = "Search or type URL",
             webContentObserved = true
         )
 
-        assertThat(BrowserSiteOnlyBlockingPolicy.applyAfterRecovery(observable))
-            .isEqualTo(observable)
+        val adjusted = BrowserSiteOnlyBlockingPolicy.applyAfterRecovery(observable)
+
+        assertThat(adjusted.status).isEqualTo(WebsiteIdentificationStatus.UNOBSERVABLE)
+        assertThat(adjusted.addressBarObservable).isFalse()
+        assertThat(adjusted.webContentObserved).isTrue()
+        assertThat(adjusted.evidence).contains(WebsiteIdentificationLayer.FAIL_CLOSED)
     }
 
     @Test
