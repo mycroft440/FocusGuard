@@ -2,12 +2,13 @@ package com.focusguard.utils
 
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
+import com.focusguard.accessibility.website.compatibility.BrowserIdentificationMethod
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Short-lived state shared by the synchronous browser inspection stages that run
- * against the same accessibility root. It prevents URL/text/address-bar/surface
- * readers from starting independent unbounded walks during one callback.
+ * Short-lived state shared by browser inspection stages running against the same
+ * accessibility root. It prevents surface/URL/text/address-bar readers from
+ * starting independent walks and gives the whole worker pass one shared budget.
  */
 internal class BrowserInspectionBudget(
     private val maxNodes: Int = 512,
@@ -109,6 +110,8 @@ internal class BrowserInspectionSession(
     var url: String? = null
     var addressText: String? = null
     var addressBarObservable: Boolean = false
+    var strongAddressBarObserved: Boolean = false
+    var identificationMethod: BrowserIdentificationMethod? = null
 }
 
 internal object BrowserInspectionSessionStore {
