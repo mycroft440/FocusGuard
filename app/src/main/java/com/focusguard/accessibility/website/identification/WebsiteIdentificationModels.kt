@@ -1,5 +1,7 @@
 package com.focusguard.accessibility.website.identification
 
+import com.focusguard.accessibility.website.compatibility.BrowserIdentificationMethod
+
 /**
  * Evidence layers used to identify the browser's current website without trusting
  * arbitrary text from the rendered page.
@@ -33,7 +35,8 @@ internal data class WebsiteIdentificationResult(
     val browserPackageName: String? = null,
     val windowId: Int? = null,
     val evidence: Set<WebsiteIdentificationLayer> = emptySet(),
-    val webContentObserved: Boolean = false
+    val webContentObserved: Boolean = false,
+    val identificationMethod: BrowserIdentificationMethod? = null
 ) {
     val addressBarObservable: Boolean
         get() = status == WebsiteIdentificationStatus.IDENTIFIED ||
