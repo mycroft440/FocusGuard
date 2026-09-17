@@ -85,6 +85,18 @@ class BrowserRecognitionPolicyTest {
     }
 
     @Test
+    fun `probable same-version browser may fail closed after bounded recovery`() {
+        assertThat(
+            BrowserRecognitionPolicy.shouldFailClosedAfterRecovery(
+                classification = BrowserClassification.PROBABLE_BROWSER,
+                identificationStatus = WebsiteIdentificationStatus.UNOBSERVABLE,
+                addressBarObservable = false,
+                urlCandidatePresent = false
+            )
+        ).isTrue()
+    }
+
+    @Test
     fun `unknown package never gains new opaque fail closed evidence`() {
         assertThat(
             BrowserRecognitionPolicy.shouldFailClosedAfterRecovery(
