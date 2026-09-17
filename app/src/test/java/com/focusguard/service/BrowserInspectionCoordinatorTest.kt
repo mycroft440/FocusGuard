@@ -26,7 +26,22 @@ class BrowserInspectionCoordinatorTest {
         offers.dropLast(1).forEach {
             assertFalse(coordinator.isCurrent(it.snapshot.token, requireLatestSequence = true))
         }
-        assertFalse(coordinator.isCurrent(first.snapshot.token, requireLatestSequence = true))
+        // A pass that was actually validated against the live root may continue
+        // async confirmation/recovery while newer events arrive in this generation.
+        assertTrue(coordinator.isCurrent(first.snapshot.token, requireLatestSequence = true))
+    }
+
+    @Test
+    fun validatedPassMaySurviveNewSequenceButNotNewWindow() {
+        val coordinator = BrowserInspectionCoordinator()
+        val validated = coordinator.offer("com.android.chrome", 10, 2048, 1L, 1L, "", emptyList(), null)
+        coordinator.takePending()
+        coordinator.offer("com.android.chrome", 10, 2048, 2L, 2L, "", emptyList(), null)
+        coordinator.finishPass()
+
+        assertTrue(coordinator.isCurrent(validated.snapshot.token, requireLatestSequence = true))
+        coordinator.observeWindow("com.android.chrome", 11)
+        assertFalse(coordinator.isCurrent(validated.snapshot.token, requireLatestSequence = true))
     }
 
     @Test
