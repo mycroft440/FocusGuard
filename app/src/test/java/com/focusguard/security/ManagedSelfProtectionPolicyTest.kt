@@ -32,20 +32,35 @@ class ManagedSelfProtectionPolicyTest {
     }
 
     @Test
-    fun `device admin labels remain available as context`() {
+    fun `device admin wording alone is context not target`() {
+        val generic = listOf("Apps do administrador do aparelho")
+
+        assertThat(ManagedSelfProtectionPolicy.textLooksLikeDeviceAdminContext(generic))
+            .isTrue()
+        assertThat(ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(generic))
+            .isFalse()
+    }
+
+    @Test
+    fun `device admin target requires FocusGuard identity in same values`() {
+        val focusGuardAdmin = listOf("Apps do administrador do aparelho", "HardBlock")
+
+        assertThat(ManagedSelfProtectionPolicy.textLooksLikeDeviceAdminContext(focusGuardAdmin))
+            .isTrue()
+        assertThat(ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(focusGuardAdmin))
+            .isTrue()
+    }
+
+    @Test
+    fun `abbreviated and Samsung device admin labels remain recognizable as context`() {
         assertThat(
-            ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(
-                listOf("Apps do administrador do aparelho")
-            )
-        ).isTrue()
-        assertThat(
-            ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(
-                listOf("Apps administradores do sistema")
-            )
-        ).isTrue()
-        assertThat(
-            ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(
+            ManagedSelfProtectionPolicy.textLooksLikeDeviceAdminContext(
                 listOf("Apps do administr. do aparel...")
+            )
+        ).isTrue()
+        assertThat(
+            ManagedSelfProtectionPolicy.textLooksLikeDeviceAdminContext(
+                listOf("Apps administradores do sistema")
             )
         ).isTrue()
     }
@@ -93,14 +108,14 @@ class ManagedSelfProtectionPolicyTest {
     }
 
     @Test
-    fun `administration wording alone does not target device admin`() {
+    fun `administration wording alone does not look like device admin context`() {
         assertThat(
-            ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(
+            ManagedSelfProtectionPolicy.textLooksLikeDeviceAdminContext(
                 listOf("Configurações de administração da conta")
             )
         ).isFalse()
         assertThat(
-            ManagedSelfProtectionPolicy.textTargetsDeviceAdmin(listOf("Meu aparelho"))
+            ManagedSelfProtectionPolicy.textLooksLikeDeviceAdminContext(listOf("Meu aparelho"))
         ).isFalse()
     }
 
