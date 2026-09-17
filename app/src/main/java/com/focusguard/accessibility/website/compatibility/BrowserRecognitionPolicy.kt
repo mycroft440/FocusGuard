@@ -47,12 +47,9 @@ internal object BrowserRecognitionPolicy {
         identificationStatus: WebsiteIdentificationStatus,
         addressBarObservable: Boolean,
         urlCandidatePresent: Boolean
-    ): Boolean {
-        if (!classification.isBrowserLike ||
-            identificationStatus != WebsiteIdentificationStatus.UNOBSERVABLE ||
-            addressBarObservable || urlCandidatePresent
-        ) return false
-
-        return true
-    }
+    ): Boolean =
+        classification.isBrowserLike &&
+            identificationStatus == WebsiteIdentificationStatus.UNOBSERVABLE &&
+            !addressBarObservable &&
+            !urlCandidatePresent
 }
