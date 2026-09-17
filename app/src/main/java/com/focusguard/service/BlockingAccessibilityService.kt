@@ -185,7 +185,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         val id: Long,
         val browserPackageName: String,
         val destination: WebsiteTransitionDestination,
-        internal var expectedWindowId: Int,
+        @Volatile internal var expectedWindowId: Int,
         val inspectionGeneration: Long,
         val blockedCandidate: String?,
         val blockedRules: Set<String>,
@@ -199,15 +199,15 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal var destinationRequested: Boolean = false,
         internal var handedOff: Boolean = false,
         internal var destinationRequestedAtUptimeMillis: Long = Long.MAX_VALUE,
-        internal var latestObservedEventUptimeMillis: Long = detectionEventUptimeMillis,
-        internal var latestWindowTransitionEventUptimeMillis: Long = detectionEventUptimeMillis,
+        @Volatile internal var latestObservedEventUptimeMillis: Long = detectionEventUptimeMillis,
+        @Volatile internal var latestWindowTransitionEventUptimeMillis: Long = detectionEventUptimeMillis,
         internal var latestSurfaceMutationEventUptimeMillis: Long = 0L,
         internal var latestNavigationEvidenceEventUptimeMillis: Long = 0L,
-        internal var activatedAddressViewId: String? = null,
-        internal var editorAddressViewId: String? = null,
+        @Volatile internal var activatedAddressViewId: String? = null,
+        @Volatile internal var editorAddressViewId: String? = null,
         internal var closeClickedAtUptimeMillis: Long = 0L,
         internal var closeConfirmed: Boolean = false,
-        internal var curtainGeneration: Long = 0L
+        @Volatile internal var curtainGeneration: Long = 0L
     )
 
     /** Keeps same-tab address-bar actions bound to the detected browser window. */
@@ -543,6 +543,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private val lastSlowCallbackLogElapsed = AtomicLong(0L)
     private val browserInspectionCoordinator = BrowserInspectionCoordinator()
     private val browserRecoveryCoordinator = BrowserRecoveryCoordinator()
+    private val websiteTreeWorker = WebsiteTreeWorker()
 
     @Volatile private var blockedAppsSet: Set<String> = emptySet()
     @Volatile private var blockedWebsitesDomainSet: Set<String> = emptySet()
@@ -583,10 +584,10 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var instantBlockCurtain: View? = null
     private var instantBlockCurtainMessage: TextView? = null
     private var instantBlockCurtainLayoutParams: WindowManager.LayoutParams? = null
-    private var instantBlockCurtainAttached = false
-    private var instantBlockCurtainVisible = false
+    @Volatile private var instantBlockCurtainAttached = false
+    @Volatile private var instantBlockCurtainVisible = false
     private var instantBlockCurtainMode: CurtainMode? = null
-    private var instantBlockCurtainGeneration = 0L
+    @Volatile private var instantBlockCurtainGeneration = 0L
     private var awaitingSafeSurfaceGeneration = 0L
     private val instantBlockCurtainGenerationCounter = AtomicLong(0L)
     private var failsafeEvacuationGeneration = 0L
@@ -2811,27 +2812,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         return null
     }
 
-    private fun resolveBrowserWindowId(
-        browserPackageName: String,
-        preferredWindowId: Int
-    ): Int {
-        val candidates = if (preferredWindowId >= 0) {
-            windows.filter { it.id == preferredWindowId }
-        } else {
-            windows.filter { it.isActive }
-        }
-        candidates.forEach { window ->
-            if (!window.isActive) return@forEach
-            val root = runCatching { window.root }.getOrNull() ?: return@forEach
-            val matches = runCatching {
-                root.packageName?.toString() == browserPackageName && root.windowId == window.id
-            }.getOrDefault(false)
-            recycleSafely(root)
-            if (matches) return window.id
-        }
-        return INVALID_BROWSER_WINDOW_ID
-    }
-
     private fun scheduleBrowserInspection(event: AccessibilityEvent, packageName: String) {
         if (packageName.isBlank() || event.windowId < 0) return
         val offer = browserInspectionCoordinator.offer(
@@ -2936,8 +2916,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 browserPackageName = packageName,
                 browserWindowId = token.windowId,
                 blockedCandidate = candidate,
-                detectionEventUptimeMillis = outcome.eventUptimeMillis,
-                browserWindowIdValidated = true
+                detectionEventUptimeMillis = outcome.eventUptimeMillis
             )
             return
         }
@@ -2946,8 +2925,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         if (blockedWebsitesDomainSet.any(WebsiteBlocker::isPornographyRule) &&
             outcome.hasBlockedGoogleSearch()
         ) {
-            blockWebsite(packageName, token.windowId, url, outcome.eventUptimeMillis,
-                browserWindowIdValidated = true)
+            blockWebsite(packageName, token.windowId, url, outcome.eventUptimeMillis)
             return
         }
         if (!url.isNullOrBlank()) {
@@ -3042,8 +3020,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                                 )
                                 when {
                                     blocked != null && candidate != null -> routeWebsiteBlockByHierarchy(
-                                        packageName, token.windowId, candidate, SystemClock.uptimeMillis(),
-                                        browserWindowIdValidated = true
+                                        packageName, token.windowId, candidate, SystemClock.uptimeMillis()
                                     )
                                     url != null -> updateWebsiteTracking(url, packageName, System.currentTimeMillis())
                                     identification.webContentObserved && !identification.addressBarObservable &&
@@ -3342,8 +3319,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         browserPackageName: String,
         browserWindowId: Int,
         blockedCandidate: String,
-        detectionEventUptimeMillis: Long,
-        browserWindowIdValidated: Boolean = false
+        detectionEventUptimeMillis: Long
     ) {
         val token = browserInspectionCoordinator.currentToken(browserPackageName) ?: return
         if (token.windowId != browserWindowId) return
@@ -3374,8 +3350,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             browserPackageName = browserPackageName,
             browserWindowId = browserWindowId,
             blockedCandidate = blockedCandidate,
-            detectionEventUptimeMillis = detectionEventUptimeMillis,
-            browserWindowIdValidated = browserWindowIdValidated
+            detectionEventUptimeMillis = detectionEventUptimeMillis
         )
     }
 
@@ -3383,8 +3358,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         browserPackageName: String,
         browserWindowId: Int = INVALID_BROWSER_WINDOW_ID,
         blockedCandidate: String? = null,
-        detectionEventUptimeMillis: Long = 0L,
-        browserWindowIdValidated: Boolean = false
+        detectionEventUptimeMillis: Long = 0L
     ) {
         val now = System.currentTimeMillis()
         stopWebsiteTracking(now)
@@ -3392,8 +3366,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             browserPackageName = browserPackageName,
             browserWindowId = browserWindowId,
             blockedCandidate = blockedCandidate,
-            detectionEventUptimeMillis = detectionEventUptimeMillis,
-            browserWindowIdValidated = browserWindowIdValidated
+            detectionEventUptimeMillis = detectionEventUptimeMillis
         )
     }
 
@@ -3409,15 +3382,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         browserPackageName: String,
         browserWindowId: Int = INVALID_BROWSER_WINDOW_ID,
         blockedCandidate: String? = null,
-        detectionEventUptimeMillis: Long = 0L,
-        browserWindowIdValidated: Boolean = false
+        detectionEventUptimeMillis: Long = 0L
     ) {
-        val expectedWindowId = if (browserWindowIdValidated && browserWindowId >= 0) {
-            browserWindowId
-        } else {
-            resolveBrowserWindowId(browserPackageName, browserWindowId)
-        }
-        if (expectedWindowId == INVALID_BROWSER_WINDOW_ID) return
+        val expectedWindowId = browserWindowId.takeIf { it >= 0 } ?: return
         val inspectionGeneration = browserInspectionCoordinator.currentGeneration(
             browserPackageName,
             expectedWindowId
@@ -3618,25 +3585,29 @@ class BlockingAccessibilityService : AccessibilityService() {
         transition: WebsiteBlockTransitionHandle
     ): Boolean {
         if (!curtainReadyForTransition(transition)) return false
-        val setRequestedAt = prepareSafeAddressBar(
-            browserPackageName = browserPackageName,
-            expectedWindowId = expectedWindowId,
-            policy = policy,
-            transition = transition,
-            phaseStartedAtUptimeMillis = transition.detectionEventUptimeMillis
-        )
+        val setRequestedAt = websiteTreeWorker.run {
+            prepareSafeAddressBar(
+                browserPackageName = browserPackageName,
+                expectedWindowId = expectedWindowId,
+                policy = policy,
+                transition = transition,
+                phaseStartedAtUptimeMillis = transition.detectionEventUptimeMillis
+            )
+        }
         if (!curtainReadyForTransition(transition)) return false
         if (afterSafeAddressSet(setRequestedAt > 0L) !=
             WebsiteSanitizationDecision.SUBMIT_ADDRESS_BAR
         ) return false
 
         policy.markSafeAddressSet(setRequestedAt)
-        val submitRequestedAt = submitSafeAddressBar(
-            browserPackageName = browserPackageName,
-            expectedWindowId = expectedWindowId,
-            policy = policy,
-            transition = transition
-        )
+        val submitRequestedAt = websiteTreeWorker.run {
+            submitSafeAddressBar(
+                browserPackageName = browserPackageName,
+                expectedWindowId = expectedWindowId,
+                policy = policy,
+                transition = transition
+            )
+        }
         if (!curtainReadyForTransition(transition)) return false
         if (afterSafeAddressSubmit(submitRequestedAt > 0L) !=
             WebsiteSanitizationDecision.AWAIT_GOOGLE_CONFIRMATION
@@ -3664,7 +3635,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         if (!performTransitionBack(transition)) return false
         delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
         if (!curtainReadyForTransition(transition)) return false
-        val restored = currentBrowserSurfaceMatchesBlockedTransition(transition)
+        val restored = websiteTreeWorker.run {
+            currentBrowserSurfaceMatchesBlockedTransition(transition)
+        }
         if (!curtainReadyForTransition(transition)) return false
         transition.activatedAddressViewId = null
         transition.editorAddressViewId = null
@@ -3675,30 +3648,43 @@ class BlockingAccessibilityService : AccessibilityService() {
         transition: WebsiteBlockTransitionHandle
     ): Boolean {
         if (!restoreBlockedSurfaceAfterAddressEdit(transition)) return false
-        return curtainReadyForTransition(transition) && currentBrowserSurfaceMatchesBlockedTransition(transition)
+        if (!curtainReadyForTransition(transition)) return false
+        val blockedSurfaceStillCurrent = websiteTreeWorker.run {
+            currentBrowserSurfaceMatchesBlockedTransition(transition)
+        }
+        return curtainReadyForTransition(transition) && blockedSurfaceStillCurrent
     }
 
-    private fun requestSafeGoogleThroughBrowserIntent(
+    private suspend fun requestSafeGoogleThroughBrowserIntent(
         transition: WebsiteBlockTransitionHandle
     ): Boolean {
-        if (!curtainReadyForTransition(transition) ||
-            !currentBrowserSurfaceMatchesBlockedTransition(transition)
-        ) return false
-        val intent = createSafeBrowserRedirectIntent(transition.browserPackageName)
         if (!curtainReadyForTransition(transition)) return false
-        if (!websiteBlockTransitionGuard.markExternalRedirectRequested(
-                transition.browserPackageName, transition.id, SystemClock.uptimeMillis()
-            )
-        ) return false
-        return try {
-            if (!curtainReadyForTransition(transition)) return false
-            startActivity(intent)
-            true
-        } catch (error: RuntimeException) {
-            if (transitionWindowIsCurrent(transition)) {
-                FocusGuardLogger.logError("A11y", "Falha ao solicitar redirecionamento seguro", error)
+        val blockedSurfaceStillCurrent = websiteTreeWorker.run {
+            currentBrowserSurfaceMatchesBlockedTransition(transition)
+        }
+        if (!curtainReadyForTransition(transition) || !blockedSurfaceStillCurrent) return false
+
+        return withContext(Dispatchers.Main.immediate) {
+            if (!curtainReadyForTransition(transition)) return@withContext false
+            val intent = createSafeBrowserRedirectIntent(transition.browserPackageName)
+            if (!websiteBlockTransitionGuard.markExternalRedirectRequested(
+                    transition.browserPackageName, transition.id, SystemClock.uptimeMillis()
+                )
+            ) return@withContext false
+            try {
+                if (!curtainReadyForTransition(transition)) return@withContext false
+                startActivity(intent)
+                true
+            } catch (error: RuntimeException) {
+                if (transitionWindowIsCurrent(transition)) {
+                    FocusGuardLogger.logError(
+                        "A11y",
+                        "Falha ao solicitar redirecionamento seguro",
+                        error
+                    )
+                }
+                false
             }
-            false
         }
     }
 
