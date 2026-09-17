@@ -156,10 +156,12 @@ object ManagedSelfProtectionPolicy {
     private val normalizedEssentialSpecialAccessSearchTerms =
         essentialSpecialAccessSearchTerms.map(::normalize)
 
-    /** Class name is target evidence only after FocusGuard was explicitly confirmed. */
-    fun classTargetsDeviceAdmin(className: String): Boolean =
-        classLooksLikeDeviceAdminSurface(className) &&
-            SelfProtectionTargetScope.isFocusGuardTargetConfirmed()
+    /**
+     * Kept for the existing service API, but intentionally never identifies a
+     * target. A Device Admin Activity class is shared by all administrators and
+     * therefore cannot prove that FocusGuard is being managed.
+     */
+    fun classTargetsDeviceAdmin(@Suppress("UNUSED_PARAMETER") className: String): Boolean = false
 
     /** Class-only contextual classifier; never sufficient to block by itself. */
     fun classLooksLikeDeviceAdminSurface(className: String): Boolean =
