@@ -2,9 +2,15 @@ package com.focusguard.security
 
 import com.focusguard.security.SettingsInterceptionPolicy.Decision
 import com.google.common.truth.Truth.assertThat
+import org.junit.Before
 import org.junit.Test
 
 class MaintenanceSpecialAccessPolicyTest {
+
+    @Before
+    fun resetTargetScope() {
+        SelfProtectionTargetScope.clear()
+    }
 
     private fun roots(
         focusGuard: Boolean = false,
@@ -45,7 +51,7 @@ class MaintenanceSpecialAccessPolicyTest {
     )
 
     @Test
-    fun `maintenance still protects FocusGuard essential special access`() {
+    fun `maintenance still protects directly identified FocusGuard essential access`() {
         assertThat(
             SettingsInterceptionPolicy.decide(
                 signals = signals(
@@ -59,8 +65,11 @@ class MaintenanceSpecialAccessPolicyTest {
                 maintenanceActive = true,
                 rootSignals = roots()
             )
-        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+        ).isEqualTo(Decision.PROTECT)
+    }
 
+    @Test
+    fun `maintenance root mention alone is not FocusGuard target proof`() {
         assertThat(
             SettingsInterceptionPolicy.decide(
                 signals = signals(),
@@ -70,7 +79,7 @@ class MaintenanceSpecialAccessPolicyTest {
                 maintenanceActive = true,
                 rootSignals = roots(focusGuard = true, essential = true)
             )
-        ).isEqualTo(Decision.PROTECT_AND_ARM_GUARD)
+        ).isEqualTo(Decision.IGNORE)
     }
 
     @Test
@@ -94,7 +103,6 @@ class MaintenanceSpecialAccessPolicyTest {
                 "com.android.settings.applications.appinfo.AlarmsAndRemindersDetails"
             )
         ).isTrue()
-
         assertThat(
             ManagedSelfProtectionPolicy.textTargetsEssentialSpecialAccess(
                 listOf("Alarmes e lembretes")
