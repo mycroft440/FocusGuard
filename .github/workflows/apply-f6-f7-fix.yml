@@ -1,0 +1,248 @@
+name: Apply F6 F7 fixes
+
+on:
+  push:
+    branches:
+      - fix/website-blocking-redirection
+    paths:
+      - .github/workflows/apply-f6-f7-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/website-blocking-redirection
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android 16 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Apply F6 and F7
+        shell: bash
+        run: |
+          cat > /tmp/apply_f6_f7.py <<'PY'
+          from pathlib import Path
+
+          service = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
+          text = service.read_text()
+          old = '''                awaitNextWebsiteRedirectFrame()
+                if (!curtainReadyForTransition(transition)) return@launch
+
+                val rewritePolicy = WebsiteTabNeutralizationPolicy(
+          '''
+          new = '''                awaitNextWebsiteRedirectFrame()
+                if (!curtainReadyForTransition(transition)) return@launch
+
+                // Never redirect a blocked page to a destination that the same active
+                // rule set would immediately block again. That creates a redirect loop
+                // and can expose the old page between transitions. With no independently
+                // certifiable alternative destination, stay fail-closed instead.
+                if (!SafeWebsiteRedirectPolicy.mayUseDestination(
+                        destination = SAFE_REDIRECT_URL,
+                        blockedRules = transition.blockedRules
+                    )
+                ) {
+                    FocusGuardLogger.log(
+                        "A11y",
+                        "Destino seguro também está bloqueado; mantendo bloqueio fail-closed"
+                    )
+                    stateMachine.onFailureOrTimeout()
+                    failClosedWebsiteTransition(transition)
+                    return@launch
+                }
+
+                val rewritePolicy = WebsiteTabNeutralizationPolicy(
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(f'service redirect marker count={text.count(old)}')
+          service.write_text(text.replace(old, new, 1))
+
+          manager = Path('app/src/main/java/com/focusguard/admin/DeviceOwnerManager.kt')
+          text = manager.read_text()
+          if text.count('lastWebsitePolicySignature') < 2:
+              raise SystemExit('website policy signature markers missing')
+          text = text.replace('lastWebsitePolicySignature', 'lastWebsiteConfigurationSignature')
+
+          old_doc = '''    /**
+     * Aplica bloqueio preventivo no renderer dos navegadores gerenciáveis.
+     *
+     * `URLBlocklist` é a camada mais forte disponível sem VPN para Chrome e
+     * Edge em um aparelho Device Owner. A navegação privada também é suspensa
+     * enquanto há regras ativas, evitando uma superfície de bypass. Os demais
+     * navegadores continuam protegidos pelo AccessibilityService.
+     */
+          '''
+          new_doc = '''    /**
+     * Solicita managed configuration de URL aos navegadores compatíveis.
+     *
+     * O read-back de `DevicePolicyManager.getApplicationRestrictions()` prova apenas
+     * que o Android armazenou o Bundle solicitado; não prova que o navegador já o
+     * consumiu nem que o renderer está efetivamente aplicando `URLBlocklist`.
+     * Por isso esta camada é somente defesa em profundidade: o bloqueio de runtime
+     * continua fail-closed no BlockingAccessibilityService.
+     */
+          '''
+          if text.count(old_doc) != 1:
+              raise SystemExit('device owner KDoc marker not found')
+          text = text.replace(old_doc, new_doc, 1)
+
+          replacements = {
+              'var allWritesSucceeded = true': 'var allConfigurationsStored = true',
+              'allWritesSucceeded = false': 'allConfigurationsStored = false',
+              'if (allWritesSucceeded) {': 'if (allConfigurationsStored) {',
+              'val verified = if (managedFilters.isEmpty()) {': 'val configurationStored = if (managedFilters.isEmpty()) {',
+              'if (!verified) {': 'if (ManagedBrowserRestrictionReadback.classify(configurationStored) !=\n                            ManagedBrowserRestrictionEvidence.STORED_RUNTIME_UNVERIFIED\n                        ) {',
+              '"O navegador $packageName não confirmou a política de URLs"': '"O Android não confirmou o armazenamento da configuração de URLs para $packageName"',
+              '"URLBlocklist sincronizada: ${managedFilters.size} filtros em " +\n                            "${targets.size} navegadores"': '"Managed configuration armazenada: ${managedFilters.size} filtros em " +\n                            "${targets.size} navegadores; efeito no renderer permanece não verificado"'
+          }
+          for old_value, new_value in replacements.items():
+              if old_value not in text:
+                  raise SystemExit(f'manager marker missing: {old_value[:70]}')
+              text = text.replace(old_value, new_value)
+          manager.write_text(text)
+          PY
+          python3 /tmp/apply_f6_f7.py
+
+          cat > app/src/main/java/com/focusguard/service/SafeWebsiteRedirectPolicy.kt <<'KOTLIN'
+          package com.focusguard.service
+
+          import com.focusguard.utils.WebsiteBlocker
+
+          /** Prevents a safe-destination redirect from re-entering the active block set. */
+          internal object SafeWebsiteRedirectPolicy {
+              fun mayUseDestination(
+                  destination: String,
+                  blockedRules: Collection<String>
+              ): Boolean {
+                  if (destination.isBlank()) return false
+                  val normalizedRules = WebsiteBlocker.normalizeRules(blockedRules)
+                  return WebsiteBlocker.findMatchingRule(destination, normalizedRules) == null
+              }
+          }
+          KOTLIN
+
+          cat > app/src/main/java/com/focusguard/admin/ManagedBrowserRestrictionEvidence.kt <<'KOTLIN'
+          package com.focusguard.admin
+
+          /**
+           * Evidence available after writing DevicePolicyManager application restrictions.
+           * A matching read-back proves storage only, never browser/runtime enforcement.
+           */
+          internal enum class ManagedBrowserRestrictionEvidence {
+              NOT_STORED,
+              STORED_RUNTIME_UNVERIFIED
+          }
+
+          internal object ManagedBrowserRestrictionReadback {
+              fun classify(readbackMatchesRequestedConfiguration: Boolean): ManagedBrowserRestrictionEvidence =
+                  if (readbackMatchesRequestedConfiguration) {
+                      ManagedBrowserRestrictionEvidence.STORED_RUNTIME_UNVERIFIED
+                  } else {
+                      ManagedBrowserRestrictionEvidence.NOT_STORED
+                  }
+          }
+          KOTLIN
+
+          cat > app/src/test/java/com/focusguard/service/SafeWebsiteRedirectPolicyTest.kt <<'KOTLIN'
+          package com.focusguard.service
+
+          import com.google.common.truth.Truth.assertThat
+          import org.junit.Test
+
+          class SafeWebsiteRedirectPolicyTest {
+              private val google = "https://www.google.com"
+
+              @Test
+              fun `google is available when active rules do not match it`() {
+                  assertThat(
+                      SafeWebsiteRedirectPolicy.mayUseDestination(
+                          google,
+                          setOf("facebook.com", "youtube.com")
+                      )
+                  ).isTrue()
+              }
+
+              @Test
+              fun `google destination is rejected when google itself is blocked`() {
+                  assertThat(
+                      SafeWebsiteRedirectPolicy.mayUseDestination(
+                          google,
+                          setOf("google.com")
+                      )
+                  ).isFalse()
+              }
+
+              @Test
+              fun `google destination is rejected by matching parent domain rule`() {
+                  assertThat(
+                      SafeWebsiteRedirectPolicy.mayUseDestination(
+                          "https://maps.google.com",
+                          setOf("google.com")
+                      )
+                  ).isFalse()
+              }
+
+              @Test
+              fun `blank destination is never considered safe`() {
+                  assertThat(
+                      SafeWebsiteRedirectPolicy.mayUseDestination("", emptySet())
+                  ).isFalse()
+              }
+          }
+          KOTLIN
+
+          mkdir -p app/src/test/java/com/focusguard/admin
+          cat > app/src/test/java/com/focusguard/admin/ManagedBrowserRestrictionEvidenceTest.kt <<'KOTLIN'
+          package com.focusguard.admin
+
+          import com.google.common.truth.Truth.assertThat
+          import org.junit.Test
+
+          class ManagedBrowserRestrictionEvidenceTest {
+              @Test
+              fun `matching DPM readback is storage evidence not runtime enforcement`() {
+                  assertThat(ManagedBrowserRestrictionReadback.classify(true))
+                      .isEqualTo(ManagedBrowserRestrictionEvidence.STORED_RUNTIME_UNVERIFIED)
+              }
+
+              @Test
+              fun `mismatching DPM readback is not stored evidence`() {
+                  assertThat(ManagedBrowserRestrictionReadback.classify(false))
+                      .isEqualTo(ManagedBrowserRestrictionEvidence.NOT_STORED)
+              }
+          }
+          KOTLIN
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon
+
+      - name: Commit F6 and F7 fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt \
+                  app/src/main/java/com/focusguard/service/SafeWebsiteRedirectPolicy.kt \
+                  app/src/main/java/com/focusguard/admin/DeviceOwnerManager.kt \
+                  app/src/main/java/com/focusguard/admin/ManagedBrowserRestrictionEvidence.kt \
+                  app/src/test/java/com/focusguard/service/SafeWebsiteRedirectPolicyTest.kt \
+                  app/src/test/java/com/focusguard/admin/ManagedBrowserRestrictionEvidenceTest.kt
+          git diff --cached --check
+          git commit -m "Close remaining website blocking policy gaps"
+          git push origin HEAD:fix/website-blocking-redirection
