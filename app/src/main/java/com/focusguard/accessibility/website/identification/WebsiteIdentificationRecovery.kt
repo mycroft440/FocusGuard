@@ -2,6 +2,8 @@ package com.focusguard.accessibility.website.identification
 
 import android.view.accessibility.AccessibilityNodeInfo
 import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
+import com.focusguard.accessibility.website.compatibility.BrowserDetector
+import com.focusguard.accessibility.website.compatibility.BrowserRecognitionPolicy
 import com.focusguard.accessibility.website.compatibility.BrowserUrlRecoveryMethod
 import com.focusguard.utils.BrowserSurfaceInspector
 import com.focusguard.utils.BrowserUiCapabilityPolicy
@@ -103,9 +105,25 @@ internal class WebsiteIdentificationRecovery(
         if (!isCurrent()) return rejected()
         val finalResult = read()
         rememberIfCurrent(finalResult, lastAccepted)
-        return if (isCurrent()) {
-            BrowserSiteOnlyBlockingPolicy.applyAfterRecovery(finalResult)
-        } else rejected()
+        if (!isCurrent()) return rejected()
+
+        val postRecovery = BrowserSiteOnlyBlockingPolicy.applyAfterRecovery(finalResult)
+        val classification = BrowserDetector.classify(browserPackage)
+        return if (BrowserRecognitionPolicy.shouldFailClosedAfterRecovery(
+                classification = classification,
+                legacyHttpsHandlerRecognized = httpsHandlerRecognized,
+                identificationStatus = postRecovery.status,
+                addressBarObservable = postRecovery.addressBarObservable,
+                urlCandidatePresent = postRecovery.urlCandidate != null
+            )
+        ) {
+            postRecovery.copy(
+                webContentObserved = true,
+                evidence = postRecovery.evidence + WebsiteIdentificationLayer.FAIL_CLOSED
+            )
+        } else {
+            postRecovery
+        }
     }
 
     private fun resolved(result: WebsiteIdentificationResult): Boolean =
