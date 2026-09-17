@@ -24,7 +24,7 @@ internal class WebsiteRedirectionCoordinator(
     private val performBack: () -> Boolean,
     private val isRedirectAddress: (String?) -> Boolean,
     private val verifyDestination: suspend () -> Boolean,
-    private val isCurrent: () -> Boolean = { true },
+    private val isCurrent: () -> Boolean,
     private val onPhase: (WebsiteRedirectionPhase) -> Unit = {}
 ) {
     enum class SubmissionMethod {
@@ -63,7 +63,7 @@ internal class WebsiteRedirectionCoordinator(
             attempt += 1
         }
 
-        onPhase(WebsiteRedirectionPhase.FAIL_CLOSED)
+        if (isCurrent()) onPhase(WebsiteRedirectionPhase.FAIL_CLOSED)
         return Outcome.FailClosed(attempt.coerceAtMost(WebsiteRedirectionPlan.MAX_SAME_TAB_ATTEMPTS))
     }
 
@@ -75,7 +75,8 @@ internal class WebsiteRedirectionCoordinator(
                 root = root,
                 browserPackageName = browserPackageName,
                 expectedWindowId = expectedWindowId,
-                httpsHandlerRecognized = httpsHandlerRecognized
+                httpsHandlerRecognized = httpsHandlerRecognized,
+                isCurrent = isCurrent
             )
         } ?: return null
         if (!activated.accepted || !isCurrent()) return null
@@ -100,7 +101,8 @@ internal class WebsiteRedirectionCoordinator(
                 root = root,
                 browserPackageName = browserPackageName,
                 expectedWindowId = expectedWindowId,
-                httpsHandlerRecognized = httpsHandlerRecognized
+                httpsHandlerRecognized = httpsHandlerRecognized,
+                isCurrent = isCurrent
             )
         }
         if (!isCurrent() || selection?.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return null
@@ -116,7 +118,8 @@ internal class WebsiteRedirectionCoordinator(
                 browserPackageName = browserPackageName,
                 expectedWindowId = expectedWindowId,
                 text = redirectUrl,
-                httpsHandlerRecognized = httpsHandlerRecognized
+                httpsHandlerRecognized = httpsHandlerRecognized,
+                isCurrent = isCurrent
             )
         }
         if (!isCurrent() || written?.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return null
@@ -126,7 +129,7 @@ internal class WebsiteRedirectionCoordinator(
             onPhase(WebsiteRedirectionPhase.PASTE_FALLBACK)
             written = withFreshRoot { root ->
                 if (!isCurrent()) return@withFreshRoot AddressBarRedirectionActions.Result(
-                    AddressBarRedirectionActions.Status.NOT_FOUND
+                    AddressBarRedirectionActions.Status.REJECTED
                 )
                 ClipboardPasteFallback.pasteSafely(
                     context = context,
@@ -134,14 +137,15 @@ internal class WebsiteRedirectionCoordinator(
                 ) {
                     if (!isCurrent()) {
                         AddressBarRedirectionActions.Result(
-                            AddressBarRedirectionActions.Status.NOT_FOUND
+                            AddressBarRedirectionActions.Status.REJECTED
                         )
                     } else {
                         AddressBarRedirectionActions.paste(
                             root = root,
                             browserPackageName = browserPackageName,
                             expectedWindowId = expectedWindowId,
-                            httpsHandlerRecognized = httpsHandlerRecognized
+                            httpsHandlerRecognized = httpsHandlerRecognized,
+                            isCurrent = isCurrent
                         )
                     }
                 }
@@ -171,7 +175,8 @@ internal class WebsiteRedirectionCoordinator(
                 browserPackageName = browserPackageName,
                 expectedWindowId = expectedWindowId,
                 textPredicate = isRedirectAddress,
-                httpsHandlerRecognized = httpsHandlerRecognized
+                httpsHandlerRecognized = httpsHandlerRecognized,
+                isCurrent = isCurrent
             )
         }
         if (!isCurrent()) return null
@@ -185,7 +190,8 @@ internal class WebsiteRedirectionCoordinator(
                 browserPackageName = browserPackageName,
                 expectedWindowId = expectedWindowId,
                 textPredicate = isRedirectAddress,
-                httpsHandlerRecognized = httpsHandlerRecognized
+                httpsHandlerRecognized = httpsHandlerRecognized,
+                isCurrent = isCurrent
             )
         }
         if (!isCurrent()) return null
@@ -197,7 +203,8 @@ internal class WebsiteRedirectionCoordinator(
             AddressBarRedirectionActions.clickCertifiedGoButton(
                 root = root,
                 browserPackageName = browserPackageName,
-                expectedWindowId = expectedWindowId
+                expectedWindowId = expectedWindowId,
+                isCurrent = isCurrent
             )
         }
         return if (isCurrent() && go?.accepted == true) SubmissionMethod.CERTIFIED_GO_BUTTON else null
