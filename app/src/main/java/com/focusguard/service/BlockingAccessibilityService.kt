@@ -186,7 +186,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         val browserPackageName: String,
         val destination: WebsiteTransitionDestination,
         @Volatile internal var expectedWindowId: Int,
-        val inspectionGeneration: Long,
+        @Volatile internal var inspectionGeneration: Long,
         val blockedCandidate: String?,
         val blockedRules: Set<String>,
         val detectionEventUptimeMillis: Long,
@@ -196,6 +196,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal var sanitizationRequestedAtUptimeMillis: Long = Long.MAX_VALUE,
         internal var externalRedirectRequested: Boolean = false,
         internal var externalRedirectRequestedAtUptimeMillis: Long = Long.MAX_VALUE,
+        internal var externalRedirectWindowRebound: Boolean = false,
         internal var destinationRequested: Boolean = false,
         internal var handedOff: Boolean = false,
         internal var destinationRequestedAtUptimeMillis: Long = Long.MAX_VALUE,
@@ -456,6 +457,28 @@ class BlockingAccessibilityService : AccessibilityService() {
                 eventUptimeMillis < transition.sanitizationRequestedAtUptimeMillis
             ) return false
             transition.expectedWindowId = windowId
+            return true
+        }
+
+        @Synchronized
+        fun rebindExternalRedirectWindow(
+            browserPackageName: String,
+            transitionId: Long,
+            windowId: Int,
+            inspectionGeneration: Long,
+            eventUptimeMillis: Long
+        ): Boolean {
+            val transition = activeTransitions[browserPackageName] ?: return false
+            if (transition.id != transitionId ||
+                !transition.externalRedirectRequested ||
+                transition.externalRedirectWindowRebound ||
+                !transition.sanitizationRequested ||
+                windowId < 0 || inspectionGeneration <= 0L ||
+                eventUptimeMillis < transition.externalRedirectRequestedAtUptimeMillis
+            ) return false
+            transition.expectedWindowId = windowId
+            transition.inspectionGeneration = inspectionGeneration
+            transition.externalRedirectWindowRebound = true
             return true
         }
 
@@ -1142,26 +1165,57 @@ class BlockingAccessibilityService : AccessibilityService() {
                 event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
             if (consumeInputUiEvent(event, directPackage, inspectWindowEarly)) return
 
-            val observedWindowPackage = directPackage.ifBlank { foregroundPackageName.orEmpty() }
+            // An explicit ACTION_VIEW fallback may make the same browser expose a new
+            // Android window. Hand the first post-intent browser window to the existing
+            // transition before generic window retirement. This is provisional only:
+            // the curtain remains until a stable safe Google surface is confirmed.
+            val transitionPackage = directPackage.ifBlank { foregroundPackageName.orEmpty() }
+            val activeBrowserTransition = transitionPackage
+                .takeIf(String::isNotBlank)
+                ?.let(websiteBlockTransitionGuard::activeTransition)
+            if (activeBrowserTransition != null) {
+                val canRebindExternalWindow =
+                    activeBrowserTransition.externalRedirectRequested &&
+                        !activeBrowserTransition.externalRedirectWindowRebound &&
+                        browserInspectionEvent &&
+                        event.windowId >= 0 &&
+                        event.windowId != activeBrowserTransition.expectedWindowId &&
+                        event.eventTime >= activeBrowserTransition.externalRedirectRequestedAtUptimeMillis
+                if (canRebindExternalWindow) {
+                    val reboundGeneration = browserInspectionCoordinator.observeWindow(
+                        transitionPackage,
+                        event.windowId
+                    )
+                    websiteBlockTransitionGuard.rebindExternalRedirectWindow(
+                        browserPackageName = transitionPackage,
+                        transitionId = activeBrowserTransition.id,
+                        windowId = event.windowId,
+                        inspectionGeneration = reboundGeneration,
+                        eventUptimeMillis = event.eventTime
+                    )
+                } else if (isWindowOrTabTransitionEvent(event.eventType)) {
+                    browserInspectionCoordinator.observeWindow(transitionPackage, event.windowId)
+                }
+                retireStaleWebsiteTransitions()
+                if (websiteBlockTransitionGuard.isActive(transitionPackage)) {
+                    websiteBlockTransitionGuard.observeBrowserEvent(
+                        browserPackageName = transitionPackage,
+                        windowId = event.windowId,
+                        eventUptimeMillis = event.eventTime,
+                        eventType = event.eventType
+                    )
+                    scheduleBrowserInspection(event, transitionPackage)
+                }
+                return
+            }
+
+            val observedWindowPackage = transitionPackage
             if ((event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
                     event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) &&
                 observedWindowPackage.isNotBlank()
             ) {
                 browserInspectionCoordinator.observeWindow(observedWindowPackage, event.windowId)
                 retireStaleWebsiteTransitions()
-            }
-
-            // Browser events are reduced to immutable primitives here. Any tree/root
-            // inspection and safe-destination confirmation happens on the serial IO worker.
-            if (directPackage.isNotBlank() && websiteBlockTransitionGuard.isActive(directPackage)) {
-                websiteBlockTransitionGuard.observeBrowserEvent(
-                    browserPackageName = directPackage,
-                    windowId = event.windowId,
-                    eventUptimeMillis = event.eventTime,
-                    eventType = event.eventType
-                )
-                scheduleBrowserInspection(event, directPackage)
-                return
             }
 
             // Shield the native System UI power menu before any other handling.
