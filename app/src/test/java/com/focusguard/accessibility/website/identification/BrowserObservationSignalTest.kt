@@ -50,4 +50,20 @@ class BrowserObservationSignalTest {
             BrowserObservationSignal.awaitAfter(packageName, windowId, baseline, 160L)
         ).isFalse()
     }
+
+    @Test
+    fun `forget wakes invalidated waiter and releases old window entry`() = runTest {
+        BrowserObservationSignal.markObserved(packageName, windowId)
+        val baseline = BrowserObservationSignal.currentVersion(packageName, windowId)
+        val waiter = async {
+            BrowserObservationSignal.awaitAfter(packageName, windowId, baseline, 1_000L)
+        }
+        runCurrent()
+        assertThat(waiter.isCompleted).isFalse()
+
+        BrowserObservationSignal.forget(packageName, windowId)
+
+        assertThat(waiter.await()).isTrue()
+        assertThat(BrowserObservationSignal.currentVersion(packageName, windowId)).isEqualTo(0L)
+    }
 }
