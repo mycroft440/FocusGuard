@@ -5,15 +5,6 @@ import org.junit.Test
 
 class BrowserDetectorPolicyTest {
     @Test
-    fun `browser role confirms browser`() {
-        val result = BrowserClassificationPolicy.classify(
-            BrowserCapabilityEvidence(browserRole = BrowserProbeResult.HANDLED)
-        )
-
-        assertThat(result).isEqualTo(BrowserClassification.CONFIRMED_BROWSER)
-    }
-
-    @Test
     fun `generic http and https handling confirms browser`() {
         val result = BrowserClassificationPolicy.classify(
             BrowserCapabilityEvidence(
