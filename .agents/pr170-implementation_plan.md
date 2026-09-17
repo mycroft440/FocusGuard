@@ -22,9 +22,9 @@ Base inspecionada: `601f93e3` (main). Head inicial: `a855159d`.
 - [x] Aposentar o caminho de fechamento de abas não utilizado; serviço permanece dono da máquina de estados.
 - [x] Adicionar regressões de coalescência, troca de pacote/janela, Recovery e redirecionamento.
 - [x] Remover workflow temporário.
-- [ ] Revisar diff e validar compileDebugKotlin, testDebugUnitTest, lintDebug e performance harness.
-- [ ] Mesclar #170 na main somente após CI aprovado.
+- [x] Revisar diff e validar compileDebugKotlin, testDebugUnitTest, lintDebug e performance harness.
+- [x] Mesclar #170 na main somente após CI aprovado.
 
 PR #169 fora do escopo: nenhuma melhoria exclusiva dele é necessária para corrigir estes problemas; os budgets já estão na main.
 
-Validação local: `git diff --check` aprovado. Gradle local indisponível por falha de DNS em services.gradle.org; gates Android serão executados no CI do próprio PR antes do merge.
+Validação final: CI aprovado em `compileDebugKotlin`, `testDebugUnitTest`, `lintDebug` e performance harness. O PR #170 foi mesclado na `main` como `5c2406f7674a2d65aa0e3ab5a31326d74047da78`.
