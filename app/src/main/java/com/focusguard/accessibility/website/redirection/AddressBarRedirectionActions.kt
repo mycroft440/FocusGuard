@@ -52,8 +52,10 @@ internal object AddressBarRedirectionActions {
         root: AccessibilityNodeInfo,
         browserPackageName: String,
         expectedWindowId: Int,
-        httpsHandlerRecognized: Boolean
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
     ): Result {
+        if (!isCurrent()) return Result(Status.REJECTED)
         val preferClick = BrowserUiCapabilityPolicy.prefersClickAddressBarActivation(
             browserPackageName
         )
@@ -63,12 +65,15 @@ internal object AddressBarRedirectionActions {
             else BrowserUiCapabilityPolicy.NodeAction.CLICK
         val first = legacyAction(
             root, browserPackageName, expectedWindowId, primary,
-            httpsHandlerRecognized = httpsHandlerRecognized
+            httpsHandlerRecognized = httpsHandlerRecognized,
+            isCurrent = isCurrent
         )
+        if (!isCurrent()) return Result(Status.REJECTED)
         if (first.accepted || first.status == Status.AMBIGUOUS) return first
         return legacyAction(
             root, browserPackageName, expectedWindowId, secondary,
-            httpsHandlerRecognized = httpsHandlerRecognized
+            httpsHandlerRecognized = httpsHandlerRecognized,
+            isCurrent = isCurrent
         )
     }
 
@@ -77,9 +82,16 @@ internal object AddressBarRedirectionActions {
         browserPackageName: String,
         expectedWindowId: Int,
         action: BrowserUiCapabilityPolicy.NodeAction,
-        httpsHandlerRecognized: Boolean
-    ): Result = legacyAction(root, browserPackageName, expectedWindowId, action,
-        httpsHandlerRecognized = httpsHandlerRecognized)
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
+    ): Result = legacyAction(
+        root,
+        browserPackageName,
+        expectedWindowId,
+        action,
+        httpsHandlerRecognized = httpsHandlerRecognized,
+        isCurrent = isCurrent
+    )
 
     /**
      * The historical name is retained because callers use this as their submitter
@@ -117,10 +129,15 @@ internal object AddressBarRedirectionActions {
         root: AccessibilityNodeInfo,
         browserPackageName: String,
         expectedWindowId: Int,
-        httpsHandlerRecognized: Boolean
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
     ): Result = rawEditorAction(
-        root, browserPackageName, expectedWindowId,
-        AccessibilityNodeInfo.ACTION_SET_SELECTION, httpsHandlerRecognized
+        root,
+        browserPackageName,
+        expectedWindowId,
+        AccessibilityNodeInfo.ACTION_SET_SELECTION,
+        httpsHandlerRecognized,
+        isCurrent
     ) { selected ->
         Bundle().apply {
             putInt(AccessibilityNodeInfo.ACTION_ARGUMENT_SELECTION_START_INT, 0)
@@ -136,7 +153,8 @@ internal object AddressBarRedirectionActions {
         browserPackageName: String,
         expectedWindowId: Int,
         text: String,
-        httpsHandlerRecognized: Boolean
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
     ): Result = legacyAction(
         root = root,
         browserPackageName = browserPackageName,
@@ -145,17 +163,23 @@ internal object AddressBarRedirectionActions {
         arguments = Bundle().apply {
             putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         },
-        httpsHandlerRecognized = httpsHandlerRecognized
+        httpsHandlerRecognized = httpsHandlerRecognized,
+        isCurrent = isCurrent
     )
 
     fun paste(
         root: AccessibilityNodeInfo,
         browserPackageName: String,
         expectedWindowId: Int,
-        httpsHandlerRecognized: Boolean
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
     ): Result = rawEditorAction(
-        root, browserPackageName, expectedWindowId,
-        AccessibilityNodeInfo.ACTION_PASTE, httpsHandlerRecognized
+        root,
+        browserPackageName,
+        expectedWindowId,
+        AccessibilityNodeInfo.ACTION_PASTE,
+        httpsHandlerRecognized,
+        isCurrent
     ) { null }
 
     fun submitImeEnter(
@@ -163,9 +187,10 @@ internal object AddressBarRedirectionActions {
         browserPackageName: String,
         expectedWindowId: Int,
         textPredicate: ((String?) -> Boolean)?,
-        httpsHandlerRecognized: Boolean
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
     ): Result {
-        if (!BrowserUiCapabilityPolicy.canUseImeEnter(Build.VERSION.SDK_INT)) {
+        if (!isCurrent() || !BrowserUiCapabilityPolicy.canUseImeEnter(Build.VERSION.SDK_INT)) {
             return Result(Status.NOT_FOUND)
         }
         return legacyAction(
@@ -174,7 +199,8 @@ internal object AddressBarRedirectionActions {
             expectedWindowId = expectedWindowId,
             action = BrowserUiCapabilityPolicy.NodeAction.IME_ENTER,
             textPredicate = textPredicate,
-            httpsHandlerRecognized = httpsHandlerRecognized
+            httpsHandlerRecognized = httpsHandlerRecognized,
+            isCurrent = isCurrent
         )
     }
 
@@ -183,8 +209,10 @@ internal object AddressBarRedirectionActions {
         browserPackageName: String,
         expectedWindowId: Int,
         textPredicate: ((String?) -> Boolean)?,
-        httpsHandlerRecognized: Boolean
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
     ): Result {
+        if (!isCurrent()) return Result(Status.REJECTED)
         val nodes = collectAddressBarNodes(
             root, browserPackageName, expectedWindowId, httpsHandlerRecognized
         )
@@ -210,13 +238,16 @@ internal object AddressBarRedirectionActions {
                 val cachedBonus = if (entryName == preferredEntryName) 100 else 0
                 node to (editorRank(node.viewIdResourceName.orEmpty()) + cachedBonus)
             }
+            if (!isCurrent()) return Result(Status.REJECTED)
             if (candidates.isEmpty()) return Result(Status.NOT_FOUND)
             val bestRank = candidates.maxOf { it.second }
             val winners = candidates.filter { it.second == bestRank }
             if (winners.size != 1) return Result(Status.AMBIGUOUS)
             val selected = winners.single().first
+            if (!isCurrent()) return Result(Status.REJECTED)
             val action = selected.actionList.single(::isCertifiedEditorAction)
             val accepted = runCatching { selected.performAction(action.id) }.getOrDefault(false)
+            if (!isCurrent()) return Result(Status.REJECTED, selected.viewIdResourceName)
             if (accepted) {
                 BrowserCompatibilityStore.recordSubmitAccepted(
                     packageName = browserPackageName,
@@ -236,9 +267,10 @@ internal object AddressBarRedirectionActions {
     fun clickCertifiedGoButton(
         root: AccessibilityNodeInfo,
         browserPackageName: String,
-        expectedWindowId: Int
+        expectedWindowId: Int,
+        isCurrent: () -> Boolean
     ): Result {
-        if (!rootMatches(root, browserPackageName, expectedWindowId)) {
+        if (!isCurrent() || !rootMatches(root, browserPackageName, expectedWindowId)) {
             return Result(Status.NOT_FOUND)
         }
         val nodes = certifiedGoButtonEntryNames.flatMap { entry ->
@@ -247,6 +279,7 @@ internal object AddressBarRedirectionActions {
             }.getOrDefault(emptyList())
         }
         return try {
+            if (!isCurrent()) return Result(Status.REJECTED)
             val candidates = nodes.filter { node ->
                 node.isVisibleToUser && BrowserSurfaceInspector.isNativeNode(node) &&
                     node.packageName?.toString() == browserPackageName &&
@@ -257,9 +290,11 @@ internal object AddressBarRedirectionActions {
                 0 -> Result(Status.NOT_FOUND)
                 1 -> {
                     val selected = candidates.single()
+                    if (!isCurrent()) return Result(Status.REJECTED)
                     val accepted = runCatching {
                         selected.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                     }.getOrDefault(false)
+                    if (!isCurrent()) return Result(Status.REJECTED, selected.viewIdResourceName)
                     if (accepted) {
                         BrowserCompatibilityStore.recordSubmitAccepted(
                             packageName = browserPackageName,
@@ -286,8 +321,10 @@ internal object AddressBarRedirectionActions {
         action: BrowserUiCapabilityPolicy.NodeAction,
         arguments: Bundle? = null,
         textPredicate: ((String?) -> Boolean)? = null,
-        httpsHandlerRecognized: Boolean
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
     ): Result {
+        if (!isCurrent()) return Result(Status.REJECTED)
         val result = WebsiteBlocker.performUniqueAddressBarAction(
             root = root,
             browserPackageName = browserPackageName,
@@ -298,6 +335,7 @@ internal object AddressBarRedirectionActions {
             httpsHandlerRecognized = httpsHandlerRecognized,
             allowFallbacks = false
         )
+        if (!isCurrent()) return Result(Status.REJECTED, result.selectedViewId)
         return Result(
             status = when (result.status) {
                 WebsiteBlocker.AddressBarActionStatus.ACCEPTED -> Status.ACCEPTED
@@ -315,12 +353,15 @@ internal object AddressBarRedirectionActions {
         expectedWindowId: Int,
         actionId: Int,
         httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean,
         arguments: (AccessibilityNodeInfo) -> Bundle?
     ): Result {
+        if (!isCurrent()) return Result(Status.REJECTED)
         val nodes = collectAddressBarNodes(
             root, browserPackageName, expectedWindowId, httpsHandlerRecognized
         )
         return try {
+            if (!isCurrent()) return Result(Status.REJECTED)
             val preferredEntryName = BrowserCompatibilityStore
                 .preferredAddressBarEntryName(browserPackageName)
             val candidates = nodes.mapNotNull { node ->
@@ -338,16 +379,19 @@ internal object AddressBarRedirectionActions {
                     node to (editorRank(node.viewIdResourceName.orEmpty()) + cachedBonus)
                 }
             }
+            if (!isCurrent()) return Result(Status.REJECTED)
             if (candidates.isEmpty()) return Result(Status.NOT_FOUND)
             val bestRank = candidates.maxOf { it.second }
             val winners = candidates.filter { it.second == bestRank }
             if (winners.size != 1) return Result(Status.AMBIGUOUS)
             val selected = winners.single().first
+            if (!isCurrent()) return Result(Status.REJECTED)
+            val accepted = runCatching {
+                selected.performAction(actionId, arguments(selected))
+            }.getOrDefault(false)
+            if (!isCurrent()) return Result(Status.REJECTED, selected.viewIdResourceName)
             Result(
-                if (runCatching {
-                        selected.performAction(actionId, arguments(selected))
-                    }.getOrDefault(false)
-                ) Status.ACCEPTED else Status.REJECTED,
+                if (accepted) Status.ACCEPTED else Status.REJECTED,
                 selected.viewIdResourceName
             )
         } finally {
