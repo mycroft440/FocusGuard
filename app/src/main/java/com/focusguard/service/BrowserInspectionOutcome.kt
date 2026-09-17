@@ -72,8 +72,6 @@ internal data class BrowserInspectionOutcome(
             )
             val effectiveSurface = BrowserRecognitionPolicy.recoverySurface(
                 classification = classification,
-                legacyRecognizedBrowser = recognizedBrowser,
-                addressBarObservable = identification.addressBarObservable,
                 identificationStatus = identification.status,
                 observedSurface = surface
             )
