@@ -63,6 +63,7 @@ internal class BrowserInspectionCoordinator {
         contentDescription: String?
     ): Offer = synchronized(lock) {
         if (packageName != currentPackage || windowId != currentWindowId) {
+            BrowserObservationSignal.forget(currentPackage, currentWindowId)
             generation += 1L
             currentPackage = packageName
             currentWindowId = windowId
@@ -87,6 +88,7 @@ internal class BrowserInspectionCoordinator {
     /** Advances the window generation even when no browser inspection is scheduled. */
     fun observeWindow(packageName: String, windowId: Int): Long = synchronized(lock) {
         if (packageName != currentPackage || windowId != currentWindowId) {
+            BrowserObservationSignal.forget(currentPackage, currentWindowId)
             generation += 1L
             currentPackage = packageName
             currentWindowId = windowId
@@ -144,6 +146,7 @@ internal class BrowserInspectionCoordinator {
     }
 
     fun invalidate() = synchronized(lock) {
+        BrowserObservationSignal.forget(currentPackage, currentWindowId)
         generation += 1L
         currentPackage = ""
         currentWindowId = INVALID_WINDOW_ID
