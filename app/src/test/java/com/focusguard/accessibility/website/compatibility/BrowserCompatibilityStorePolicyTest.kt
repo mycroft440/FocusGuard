@@ -52,4 +52,87 @@ class BrowserCompatibilityStorePolicyTest {
             )
         ).isTrue()
     }
+
+    @Test
+    fun `identified url on exact installed version is strong browser evidence`() {
+        val record = BrowserCompatibilityRecord(
+            packageName = "example.browser",
+            packageVersionCode = 42L,
+            preferredUrlEntryName = "url_bar",
+            preferredUrlMethod = BrowserIdentificationMethod.STRONG_RESOURCE_ID
+        )
+
+        assertThat(
+            BrowserCompatibilityStore.hasStrongBrowserEvidenceForVersion(record, 42L)
+        ).isTrue()
+    }
+
+    @Test
+    fun `successful bounded url recovery on exact version is strong evidence`() {
+        val record = BrowserCompatibilityRecord(
+            packageName = "example.browser",
+            packageVersionCode = 42L,
+            urlRecoveryMethod = BrowserUrlRecoveryMethod.CLICK
+        )
+
+        assertThat(
+            BrowserCompatibilityStore.hasStrongBrowserEvidenceForVersion(record, 42L)
+        ).isTrue()
+    }
+
+    @Test
+    fun `confirmed navigation on exact version is strong evidence`() {
+        val record = BrowserCompatibilityRecord(
+            packageName = "example.browser",
+            status = BrowserCompatibilityStatus.SUPPORTED,
+            packageVersionCode = 42L
+        )
+
+        assertThat(
+            BrowserCompatibilityStore.hasStrongBrowserEvidenceForVersion(record, 42L)
+        ).isTrue()
+    }
+
+    @Test
+    fun `evidence from older browser version never promotes current version`() {
+        val record = BrowserCompatibilityRecord(
+            packageName = "example.browser",
+            status = BrowserCompatibilityStatus.SUPPORTED,
+            packageVersionCode = 41L,
+            preferredUrlEntryName = "url_bar",
+            preferredUrlMethod = BrowserIdentificationMethod.STRONG_RESOURCE_ID
+        )
+
+        assertThat(
+            BrowserCompatibilityStore.hasStrongBrowserEvidenceForVersion(record, 42L)
+        ).isFalse()
+    }
+
+    @Test
+    fun `legacy record without version cannot promote an inconclusive package query`() {
+        val record = BrowserCompatibilityRecord(
+            packageName = "example.browser",
+            status = BrowserCompatibilityStatus.SUPPORTED,
+            preferredUrlEntryName = "url_bar",
+            preferredUrlMethod = BrowserIdentificationMethod.STRONG_RESOURCE_ID
+        )
+
+        assertThat(
+            BrowserCompatibilityStore.hasStrongBrowserEvidenceForVersion(record, 42L)
+        ).isFalse()
+    }
+
+    @Test
+    fun `weak activation evidence alone never promotes browser`() {
+        val record = BrowserCompatibilityRecord(
+            packageName = "example.browser",
+            packageVersionCode = 42L,
+            preferredAddressBarEntryName = "url_bar",
+            activationMethod = BrowserActivationMethod.CLICK
+        )
+
+        assertThat(
+            BrowserCompatibilityStore.hasStrongBrowserEvidenceForVersion(record, 42L)
+        ).isFalse()
+    }
 }
