@@ -1,0 +1,533 @@
+name: Complete browser inspection part 2
+
+on:
+  push:
+    branches:
+      - fix/async-a11y-inspection-20260916
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/async-a11y-inspection-20260916
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: temurin
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android 16 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Apply browser inspection part 2
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          service_path = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
+          service = service_path.read_text()
+
+          def function_span(text: str, name: str):
+              markers = [
+                  f'    private fun {name}(',
+                  f'    private suspend fun {name}('
+              ]
+              matches = [(marker, text.find(marker)) for marker in markers if text.find(marker) >= 0]
+              if len(matches) != 1:
+                  raise SystemExit(f'{name}: expected exactly one function marker, got {matches}')
+              _, start = matches[0]
+              brace = text.find('{', start)
+              if brace < 0:
+                  raise SystemExit(f'{name}: opening brace not found')
+              depth = 0
+              for index in range(brace, len(text)):
+                  char = text[index]
+                  if char == '{':
+                      depth += 1
+                  elif char == '}':
+                      depth -= 1
+                      if depth == 0:
+                          end = index + 1
+                          while end < len(text) and text[end] == '\n':
+                              end += 1
+                          return start, end
+              raise SystemExit(f'{name}: closing brace not found')
+
+          def replace_function(text: str, name: str, replacement: str) -> str:
+              start, end = function_span(text, name)
+              return text[:start] + replacement.rstrip() + '\n\n' + text[end:]
+
+          def remove_function(text: str, name: str) -> str:
+              start, end = function_span(text, name)
+              return text[:start] + text[end:]
+
+          def replace_balanced_block(text: str, marker: str, replacement: str, label: str) -> str:
+              if text.count(marker) != 1:
+                  raise SystemExit(f'{label}: expected exactly one marker, got {text.count(marker)}')
+              start = text.index(marker)
+              brace = text.index('{', start + len(marker) - 1)
+              depth = 0
+              for index in range(brace, len(text)):
+                  char = text[index]
+                  if char == '{':
+                      depth += 1
+                  elif char == '}':
+                      depth -= 1
+                      if depth == 0:
+                          return text[:start] + replacement + text[index + 1:]
+              raise SystemExit(f'{label}: closing brace not found')
+
+          # The foreground recheck is a normal inspection too. It only enqueues
+          # primitives; the accessibility tree is acquired later by the IO worker.
+          service = replace_balanced_block(
+              service,
+              '        if (currentPackage in browserPackages && blockedWebsitesDomainSet.isNotEmpty()) {',
+              '''        if (currentPackage in browserPackages && blockedWebsitesDomainSet.isNotEmpty()) {
+            scheduleForegroundBrowserInspection(currentPackage)
+            return
+        }''',
+              'foreground browser inspection'
+          )
+
+          schedule_impl = '''    private fun scheduleBrowserInspection(event: AccessibilityEvent, packageName: String) {
+        offerBrowserInspection(
+            packageName = packageName,
+            windowId = event.windowId,
+            eventType = event.eventType,
+            eventUptimeMillis = event.eventTime,
+            className = event.className?.toString().orEmpty(),
+            directText = event.text.orEmpty().mapNotNull { it?.toString() },
+            contentDescription = event.contentDescription?.toString()
+        )
+    }
+
+    private fun scheduleForegroundBrowserInspection(packageName: String) {
+        if (packageName.isBlank()) return
+        scope.launch {
+            val windowId = runCatching {
+                windows.firstOrNull { it.isActive }?.id
+            }.getOrNull()?.takeIf { it >= 0 } ?: return@launch
+            offerBrowserInspection(
+                packageName = packageName,
+                windowId = windowId,
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                eventUptimeMillis = SystemClock.uptimeMillis(),
+                className = "foreground_snapshot",
+                directText = emptyList(),
+                contentDescription = null
+            )
+        }
+    }
+
+    private fun offerBrowserInspection(
+        packageName: String,
+        windowId: Int,
+        eventType: Int,
+        eventUptimeMillis: Long,
+        className: String,
+        directText: List<String>,
+        contentDescription: String?
+    ) {
+        if (packageName.isBlank() || windowId < 0) return
+        val offer = browserInspectionCoordinator.offer(
+            packageName = packageName,
+            windowId = windowId,
+            eventType = eventType,
+            eventUptimeMillis = eventUptimeMillis,
+            receivedUptimeMillis = SystemClock.uptimeMillis(),
+            className = className,
+            directText = directText.toList(),
+            contentDescription = contentDescription
+        )
+        if (offer.startWorker) scope.launch { drainBrowserInspections() }
+    }'''
+          service = replace_function(service, 'scheduleBrowserInspection', schedule_impl)
+
+          drain_impl = '''    private suspend fun drainBrowserInspections() {
+        var snapshot = browserInspectionCoordinator.takePending()
+        while (snapshot != null) {
+            val outcome = if (browserInspectionCoordinator.isCurrent(
+                    snapshot.token,
+                    requireLatestSequence = true
+                )
+            ) {
+                inspectBrowserSnapshot(snapshot)
+            } else null
+            if (outcome != null &&
+                browserInspectionCoordinator.isCurrent(
+                    outcome.token,
+                    requireLatestSequence = true
+                )
+            ) {
+                withContext(Dispatchers.Main.immediate) {
+                    if (browserInspectionCoordinator.isCurrent(
+                            outcome.token,
+                            requireLatestSequence = true
+                        )
+                    ) applyBrowserInspectionOutcome(outcome)
+                }
+            }
+            snapshot = browserInspectionCoordinator.finishPass()
+        }
+    }'''
+          service = replace_function(service, 'drainBrowserInspections', drain_impl)
+
+          inspect_impl = '''    private fun inspectBrowserSnapshot(
+        snapshot: BrowserInspectionCoordinator.Snapshot
+    ): BrowserInspectionOutcome? {
+        val token = snapshot.token
+        if (!browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)) return null
+        val root = activeBrowserRoot(token.packageName, token.windowId) ?: return null
+        return try {
+            if (!browserRootMatchesInspection(root, token)) return null
+            val surface = BrowserSurfaceInspector.inspect(root, token.packageName)
+            if (!browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)) return null
+            val identification = WebsiteIdentificationEngine.identifyFromRoot(
+                root = root,
+                browserPackageName = token.packageName,
+                expectedWindowId = token.windowId,
+                httpsHandlerRecognized = isVerifiedHttpsHandler(token.packageName)
+            )
+            if (!browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)) return null
+            val addressBarPresent = identification.addressBarObservable
+            val focusedEditor = addressBarPresent &&
+                AddressBarRedirectionActions.hasFocusedAddressEditor(
+                    root,
+                    token.packageName,
+                    token.windowId,
+                    isVerifiedHttpsHandler(token.packageName),
+                    requireUnique = false
+                )
+            if (!browserInspectionCoordinator.isCurrent(
+                    token,
+                    requireLatestSequence = true
+                )
+            ) return null
+            BrowserInspectionOutcome.from(
+                snapshot = snapshot,
+                identification = identification,
+                surface = surface,
+                focusedAddressEditor = focusedEditor,
+                recognizedBrowser = token.packageName in browserPackages || addressBarPresent
+            )
+        } finally {
+            recycleSafely(root)
+        }
+    }
+
+    private fun browserRootMatchesInspection(
+        root: AccessibilityNodeInfo,
+        token: BrowserInspectionCoordinator.Token
+    ): Boolean {
+        if (!browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)) return false
+        return runCatching {
+            root.packageName?.toString() == token.packageName &&
+                root.windowId == token.windowId
+        }.getOrDefault(false)
+    }'''
+          service = replace_function(service, 'inspectBrowserSnapshot', inspect_impl)
+
+          apply_impl = '''    private fun applyBrowserInspectionOutcome(outcome: BrowserInspectionOutcome) {
+        val token = outcome.token
+        if (!browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)) return
+        val packageName = outcome.packageName
+        if (!outcome.recognizedBrowser) {
+            recordBrowserDiscoveryMiss(packageName, outcome.windowId, SystemClock.elapsedRealtime())
+            return
+        }
+        if (packageName !in browserPackages) {
+            browserPackages = browserPackages + packageName
+            browserDiscoveryMisses.remove(packageName)
+        }
+        foregroundPackageName = packageName
+
+        if (websiteBlockTransitionGuard.isActive(packageName)) {
+            observeSafeDestinationFromInspection(outcome)
+            return
+        }
+
+        // This mutation is reachable only after the latest-sequence check above,
+        // so a delayed native panel can never stop tracking for a newer page.
+        if (outcome.surface == BrowserSurfaceInspector.Surface.NATIVE_PANEL) {
+            clearOpaqueBrowserObservation(packageName)
+            stopWebsiteTracking()
+            return
+        }
+
+        val candidate = outcome.bestCandidate
+        val blocked = immediateWebsiteBlockTarget(
+            addressText = outcome.rawAddressText,
+            url = outcome.urlCandidate,
+            blockedRules = blockedWebsitesDomainSet
+        )
+        if (blocked != null && candidate != null &&
+            browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)
+        ) {
+            routeWebsiteBlockByHierarchy(
+                browserPackageName = packageName,
+                browserWindowId = outcome.windowId,
+                blockedCandidate = candidate,
+                detectionEventUptimeMillis = outcome.eventUptimeMillis,
+                browserWindowIdValidated = true
+            )
+            return
+        }
+
+        if (primitiveSnapshotShowsBlockedGoogleSearch(outcome) &&
+            browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)
+        ) {
+            blockWebsite(
+                browserPackageName = packageName,
+                browserWindowId = outcome.windowId,
+                blockedCandidate = outcome.urlCandidate.orEmpty(),
+                detectionEventUptimeMillis = outcome.eventUptimeMillis,
+                browserWindowIdValidated = true
+            )
+            return
+        }
+
+        val url = outcome.urlCandidate
+        if (!url.isNullOrBlank()) {
+            clearOpaqueBrowserObservation(packageName)
+            updateWebsiteTracking(url, packageName, System.currentTimeMillis())
+            return
+        }
+
+        if (outcome.surface == BrowserSurfaceInspector.Surface.WEB_CONTENT &&
+            outcome.identificationStatus != WebsiteIdentificationStatus.REJECTED_CONTEXT &&
+            websiteObservationRequired() && !outcome.focusedAddressEditor
+        ) {
+            scheduleAsyncWebsiteRecovery(outcome)
+        } else if (outcome.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            stopWebsiteTracking()
+        }
+    }
+
+    private fun primitiveSnapshotShowsBlockedGoogleSearch(
+        outcome: BrowserInspectionOutcome
+    ): Boolean {
+        if (blockedWebsitesDomainSet.none(WebsiteBlocker::isPornographyRule)) return false
+        val url = outcome.urlCandidate ?: return false
+        if (!WebsiteBlocker.isGoogleUrl(url)) return false
+        return outcome.directEventText.any(WebsiteBlocker::containsPornographySearchTerm) ||
+            outcome.eventContentDescription?.let(WebsiteBlocker::containsPornographySearchTerm) == true
+    }'''
+          service = replace_function(service, 'applyBrowserInspectionOutcome', apply_impl)
+
+          safe_impl = '''    private fun observeSafeDestinationFromInspection(outcome: BrowserInspectionOutcome) {
+        val token = outcome.token
+        val transition = websiteBlockTransitionGuard.transitionForConfirmation(
+            browserPackageName = outcome.packageName,
+            windowId = outcome.windowId,
+            eventUptimeMillis = outcome.eventUptimeMillis,
+            eventType = outcome.eventType
+        ) ?: return
+        if (!isSafeGoogleRedirectSurface(outcome.bestCandidate) ||
+            outcome.surface != BrowserSurfaceInspector.Surface.WEB_CONTENT ||
+            outcome.focusedAddressEditor
+        ) return
+        scope.launch {
+            delay(WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS)
+            if (!browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)) return@launch
+            val stable = inspectBrowserSnapshot(
+                BrowserInspectionCoordinator.Snapshot(
+                    token = token,
+                    eventType = outcome.eventType,
+                    eventUptimeMillis = outcome.eventUptimeMillis,
+                    receivedUptimeMillis = SystemClock.uptimeMillis(),
+                    className = "stable_google_confirmation",
+                    directText = emptyList(),
+                    contentDescription = null
+                )
+            ) ?: return@launch
+            if (!isSafeGoogleRedirectSurface(stable.bestCandidate) ||
+                stable.surface != BrowserSurfaceInspector.Surface.WEB_CONTENT ||
+                stable.focusedAddressEditor
+            ) return@launch
+            withContext(Dispatchers.Main.immediate) {
+                if (!browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)) return@withContext
+                val current = websiteBlockTransitionGuard.transitionForConfirmation(
+                    browserPackageName = outcome.packageName,
+                    windowId = outcome.windowId,
+                    eventUptimeMillis = outcome.eventUptimeMillis,
+                    eventType = outcome.eventType
+                ) ?: return@withContext
+                if (current.id != transition.id) return@withContext
+                if (websiteBlockTransitionGuard.confirmGoogle(
+                        browserPackageName = outcome.packageName,
+                        windowId = outcome.windowId,
+                        eventUptimeMillis = outcome.eventUptimeMillis
+                    )
+                ) BrowserCompatibilityStore.recordNavigationConfirmed(outcome.packageName)
+            }
+        }
+    }'''
+          service = replace_function(service, 'observeSafeDestinationFromInspection', safe_impl)
+
+          recovery_impl = '''    private fun scheduleAsyncWebsiteRecovery(outcome: BrowserInspectionOutcome) {
+        val token = outcome.token
+        val packageName = outcome.packageName
+        if (!opaqueBrowserRecoveriesRunning.add(packageName)) return
+        scope.launch {
+            try {
+                delay(WebsiteObservabilityPolicy.OPAQUE_BROWSER_GRACE_MILLIS)
+                fun current(): Boolean =
+                    browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true) &&
+                        foregroundPackageName == packageName &&
+                        websiteObservationRequired() &&
+                        !websiteBlockTransitionGuard.isActive(packageName)
+                if (!current()) return@launch
+                val identification = WebsiteIdentificationRecovery(
+                    browserPackage = packageName,
+                    windowId = outcome.windowId,
+                    httpsHandlerRecognized = isVerifiedHttpsHandler(packageName),
+                    rootProvider = {
+                        if (current()) activeBrowserRoot(packageName, outcome.windowId) else null
+                    },
+                    isCurrent = ::current
+                ).recover()
+                if (!current()) return@launch
+                withContext(Dispatchers.Main.immediate) {
+                    if (!current()) return@withContext
+                    val candidate = identification.bestCandidate
+                    val blocked = immediateWebsiteBlockTarget(
+                        identification.rawAddressText,
+                        identification.urlCandidate,
+                        blockedWebsitesDomainSet
+                    )
+                    when {
+                        blocked != null && candidate != null -> routeWebsiteBlockByHierarchy(
+                            packageName,
+                            outcome.windowId,
+                            candidate,
+                            SystemClock.uptimeMillis(),
+                            browserWindowIdValidated = true
+                        )
+                        identification.urlCandidate != null -> updateWebsiteTracking(
+                            identification.urlCandidate,
+                            packageName,
+                            System.currentTimeMillis()
+                        )
+                        identification.webContentObserved &&
+                            !identification.addressBarObservable &&
+                            identification.status != WebsiteIdentificationStatus.REJECTED_CONTEXT ->
+                            blockOpaqueBrowser(packageName)
+                    }
+                }
+            } catch (cancelled: CancellationException) {
+                throw cancelled
+            } catch (error: RuntimeException) {
+                FocusGuardLogger.logError("A11y", "Falha na inspeção assíncrona do navegador", error)
+            } finally {
+                withContext(Dispatchers.Main.immediate) {
+                    opaqueBrowserRecoveriesRunning.remove(packageName)
+                }
+            }
+        }
+    }'''
+          service = replace_function(service, 'scheduleAsyncWebsiteRecovery', recovery_impl)
+
+          # Retire the synchronous normal-identification paths. Interaction/recovery
+          # helpers that deliberately acquire a fresh root per phase remain untouched.
+          for legacy in [
+              'observeWebsiteTransitionDestination',
+              'scheduleStableGoogleConfirmation',
+              'currentBrowserSurfaceIsSafeGoogle',
+              'handleImmediateBrowserBlock',
+              'handleBrowserEvent',
+              'handleBrowserObservability'
+          ]:
+              service = remove_function(service, legacy)
+
+          for forbidden in [
+              'private fun handleBrowserEvent(',
+              'private fun handleBrowserObservability(',
+              'private fun handleImmediateBrowserBlock(',
+              'outcome.snapshot',
+              'outcome.identification'
+          ]:
+              if forbidden in service:
+                  raise SystemExit(f'legacy browser inspection marker remains: {forbidden}')
+
+          service_path.write_text(service)
+
+          tests_path = Path('app/src/test/java/com/focusguard/service/BrowserInspectionCoordinatorTest.kt')
+          tests = tests_path.read_text()
+          if 'delayedNativePanelSnapshotIsStaleAfterNewPageObservation' in tests:
+              raise SystemExit('stale native-panel regression test already exists')
+          insertion = '''
+
+    @Test
+    fun delayedNativePanelSnapshotIsStaleAfterNewPageObservation() {
+        val coordinator = BrowserInspectionCoordinator()
+        val nativePanel = coordinator.offer(
+            "com.android.chrome", 10, 32, 1L, 1L, "", emptyList(), null
+        )
+        assertSame(nativePanel.snapshot, coordinator.takePending())
+
+        val newPage = coordinator.offer(
+            "com.android.chrome", 10, 2048, 2L, 2L, "", listOf("new page"), null
+        )
+
+        assertFalse(coordinator.isCurrent(
+            nativePanel.snapshot.token,
+            requireLatestSequence = true
+        ))
+        assertTrue(coordinator.isCurrent(
+            newPage.snapshot.token,
+            requireLatestSequence = true
+        ))
+    }
+'''
+          closing = tests.rfind('\n}')
+          if closing < 0:
+              raise SystemExit('BrowserInspectionCoordinatorTest closing brace not found')
+          tests = tests[:closing] + insertion + tests[closing:]
+          tests_path.write_text(tests)
+          PY
+
+      - name: Check transformed diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          git diff --check
+          ! grep -q 'outcome\.snapshot' app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+          ! grep -q 'outcome\.identification' app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+          ! grep -q 'private fun handleBrowserEvent(' app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+          ! grep -q 'private fun handleBrowserObservability(' app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+          ! grep -q 'private fun handleImmediateBrowserBlock(' app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+
+      - name: Run unit tests and lint
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x gradlew
+          ./gradlew testDebugUnitTest lintDebug --no-daemon --stacktrace
+
+      - name: Commit completed part 2
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git rm .github/workflows/part2-browser-inspection.yml
+          git add \
+            app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt \
+            app/src/test/java/com/focusguard/service/BrowserInspectionCoordinatorTest.kt
+          git diff --cached --check
+          git commit -m "refactor(a11y): complete browser inspection part 2"
+          git push origin HEAD:fix/async-a11y-inspection-20260916
