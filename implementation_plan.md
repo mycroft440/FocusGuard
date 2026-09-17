@@ -142,3 +142,21 @@ Permitir que o bloqueio por tempo use uma faixa diária configurável, aplicada 
 
 ## Critério de conclusão
 Um bloqueio `TIME` deve bloquear somente dentro da faixa diária selecionada, nos dias marcados, até o fim da duração total configurada; fora da faixa ou após a expiração, o alvo não deve ser bloqueado por essa sessão.
+
+
+---
+
+# Correção de CI — paridade de recursos em inglês
+
+## Diagnóstico
+- [x] Confirmar que o `lintRelease` falha por `MissingTranslation` nas cinco novas chaves da faixa de horário.
+- [x] Confirmar que `values-en/dopamine_schedule_strings.xml` ainda contém a versão anterior das strings de agendamento.
+- [x] Confirmar que as cinco chaves ausentes são `dopamine_time_window_question`, `dopamine_time_window_hint`, `dopamine_start_time`, `dopamine_end_time` e `dopamine_time_window_invalid`.
+
+## Implementação
+- [ ] Sincronizar `values-en/dopamine_schedule_strings.xml` com o conteúdo inglês atual de `values/dopamine_schedule_strings.xml`, preservando os mesmos nomes de recurso.
+- [ ] Não suprimir `MissingTranslation` e não alterar recursos portugueses ou lógica de bloqueio.
+
+## Validação
+- [ ] Revisar o diff para confirmar que a mudança ficou restrita ao plano e ao recurso inglês.
+- [ ] Confirmar o resultado de `lintRelease`/CI disparado pelo commit.
