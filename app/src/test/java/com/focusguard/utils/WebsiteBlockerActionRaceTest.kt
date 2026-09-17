@@ -73,7 +73,7 @@ class WebsiteBlockerActionRaceTest {
         verify(exactly = 1) {
             BrowserCompatibilityStore.recordSubmitAccepted(
                 pkg,
-                "$pkg:id/url_bar_go_button",
+                null,
                 BrowserSubmitMethod.CERTIFIED_GO_BUTTON
             )
         }
