@@ -32,233 +32,200 @@ jobs:
           set -euo pipefail
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Apply generation-safe redirect integration
+      - name: Finish async inspection integration
         shell: bash
         run: |
           python3 - <<'PY'
           from pathlib import Path
 
-          path = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
-          text = path.read_text()
-
-          def replace_once(old: str, new: str, label: str):
-              global text
+          def replace_once(text: str, old: str, new: str, label: str) -> str:
               count = text.count(old)
               if count != 1:
                   raise SystemExit(f'{label}: expected exactly 1 match, got {count}')
-              text = text.replace(old, new, 1)
+              return text.replace(old, new, 1)
 
-          replace_once(
-              '''                awaitNextWebsiteRedirectFrame()\n\n                val rewritePolicy = WebsiteTabNeutralizationPolicy(''',
-              '''                awaitNextWebsiteRedirectFrame()\n                if (!curtainReadyForTransition(transition)) return@launch\n\n                val rewritePolicy = WebsiteTabNeutralizationPolicy(''',
-              'freshness after first redirect frame'
+          # Keep the accessibility callback primitive-only for browser work, update the
+          # generation before any optional window lookup, and invalidate it with service
+          # lifecycle changes.
+          service_path = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
+          service = service_path.read_text()
+
+          service = replace_once(
+              service,
+              '''            val directPackage = event.packageName?.toString().orEmpty()\n            val inspectWindowEarly = directPackage.isBlank() ||\n                event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED\n            if (consumeInputUiEvent(event, directPackage, inspectWindowEarly)) return''',
+              '''            val directPackage = event.packageName?.toString().orEmpty()\n            val browserInspectionEvent =\n                event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||\n                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED ||\n                    event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||\n                    event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED ||\n                    event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED\n            val observedWindowPackage = directPackage.ifBlank { foregroundPackageName.orEmpty() }\n            if ((event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||\n                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) &&\n                observedWindowPackage.isNotBlank()\n            ) {\n                browserInspectionCoordinator.observeWindow(observedWindowPackage, event.windowId)\n            }\n            val inspectWindowEarly = directPackage.isBlank() ||\n                event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED\n            if (consumeInputUiEvent(event, directPackage, inspectWindowEarly)) return''',
+              'advance browser generation before callback lookups'
           )
 
-          replace_once(
-              '''                if (!redirectRequested) {\n                    FocusGuardLogger.log(\n                        "A11y",\n                        "Redirecionamento seguro não pôde ser certificado para " +''',
-              '''                if (!redirectRequested && !transitionWindowIsCurrent(transition)) {\n                    return@launch\n                }\n                if (!redirectRequested) {\n                    FocusGuardLogger.log(\n                        "A11y",\n                        "Redirecionamento seguro não pôde ser certificado para " +''',
-              'do not fail-close a stale redirect'
+          service = replace_once(
+              service,
+              '''            val browserInspectionEvent = event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||\n                event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED ||\n                event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||\n                event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED ||\n                event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED\n            if (browserInspectionEvent && directPackage.isNotBlank()) {\n                if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||\n                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED\n                ) {\n                    browserInspectionCoordinator.observeWindow(directPackage, event.windowId)\n                }\n                if (websiteSurfaceInspectionNeeded()) scheduleBrowserInspection(event, directPackage)\n            }''',
+              '''            if (browserInspectionEvent && directPackage.isNotBlank() &&\n                websiteSurfaceInspectionNeeded()\n            ) {\n                scheduleBrowserInspection(event, directPackage)\n            }''',
+              'queue browser inspection without duplicate generation observation'
           )
 
-          replace_once(
-              '''                if (!googleConfirmed) {\n                    stateMachine.onFailureOrTimeout()''',
-              '''                if (!googleConfirmed) {\n                    if (!transitionWindowIsCurrent(transition)) return@launch\n                    stateMachine.onFailureOrTimeout()''',
-              'stale timeout must not block a new surface'
+          service = replace_once(
+              service,
+              '''            val outcome = if (browserInspectionCoordinator.isCurrent(snapshot.token)) {\n                inspectBrowserSnapshot(snapshot)\n            } else null''',
+              '''            val outcome = if (browserInspectionCoordinator.isCurrent(\n                    snapshot.token,\n                    requireLatestSequence = true\n                )\n            ) {\n                inspectBrowserSnapshot(snapshot)\n            } else null''',
+              'skip stale same-window inspection before work'
           )
 
-          replace_once(
-              '''            } finally {\n                if (!transition.safeGoogleConfirmed.isCompleted) {\n                    BrowserCompatibilityStore.recordRedirectionFailure(browserPackageName)\n                }\n                BrowserCompatibilityStore.finishRedirection(browserPackageName)\n                websiteBlockTransitionGuard.finish(browserPackageName, transitionId)\n            }''',
-              '''            } finally {\n                val transitionStillCurrent = transitionWindowIsCurrent(transition)\n                if (!transition.safeGoogleConfirmed.isCompleted && transitionStillCurrent) {\n                    BrowserCompatibilityStore.recordRedirectionFailure(browserPackageName)\n                }\n                if (!transitionStillCurrent) {\n                    dismissInstantBlockCurtain(transition.curtainGeneration)\n                }\n                BrowserCompatibilityStore.finishRedirection(browserPackageName)\n                websiteBlockTransitionGuard.finish(browserPackageName, transitionId)\n            }''',
-              'guard redirection failure learning'
+          plain_current = 'browserInspectionCoordinator.isCurrent(token)'
+          if plain_current not in service:
+              raise SystemExit('latest-sequence checks: no generation-only token checks found')
+          service = service.replace(
+              plain_current,
+              'browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)'
           )
 
-          replace_once(
-              '''    ): Boolean {\n        val setRequestedAt = prepareSafeAddressBar(''',
-              '''    ): Boolean {\n        if (!curtainReadyForTransition(transition)) return false\n        val setRequestedAt = prepareSafeAddressBar(''',
-              'requestSafeGoogle entry freshness'
+          service = replace_once(
+              service,
+              '''                    isVerifiedHttpsHandler(token.packageName),\n                    requireUnique = false\n                )\n            BrowserInspectionOutcome(''',
+              '''                    isVerifiedHttpsHandler(token.packageName),\n                    requireUnique = false\n                )\n            if (!browserInspectionCoordinator.isCurrent(\n                    token,\n                    requireLatestSequence = true\n                )\n            ) return null\n            BrowserInspectionOutcome(''',
+              'revalidate after editor inspection'
           )
 
-          replace_once(
-              '''        if (afterSafeAddressSet(setRequestedAt > 0L) !=\n            WebsiteSanitizationDecision.SUBMIT_ADDRESS_BAR\n        ) return false\n\n        policy.markSafeAddressSet(setRequestedAt)''',
-              '''        if (afterSafeAddressSet(setRequestedAt > 0L) !=\n            WebsiteSanitizationDecision.SUBMIT_ADDRESS_BAR\n        ) return false\n        if (!curtainReadyForTransition(transition)) return false\n\n        policy.markSafeAddressSet(setRequestedAt)''',
-              'freshness before marking address set'
+          service = replace_once(
+              service,
+              '''    override fun onServiceConnected() {\n        super.onServiceConnected()\n        accessibilityServiceConnected = true''',
+              '''    override fun onServiceConnected() {\n        super.onServiceConnected()\n        browserInspectionCoordinator.invalidate()\n        accessibilityServiceConnected = true''',
+              'invalidate browser inspection on service connect'
           )
 
-          replace_once(
-              '''        if (afterSafeAddressSubmit(submitRequestedAt > 0L) !=\n            WebsiteSanitizationDecision.AWAIT_GOOGLE_CONFIRMATION\n        ) return false\n\n        policy.markRedirectRequested()''',
-              '''        if (afterSafeAddressSubmit(submitRequestedAt > 0L) !=\n            WebsiteSanitizationDecision.AWAIT_GOOGLE_CONFIRMATION\n        ) return false\n        if (!curtainReadyForTransition(transition)) return false\n\n        policy.markRedirectRequested()''',
-              'freshness before marking redirect requested'
+          service = replace_once(
+              service,
+              '''                Intent.ACTION_SCREEN_OFF -> {\n                    foregroundPackageName = null\n                    stopWebsiteTracking()''',
+              '''                Intent.ACTION_SCREEN_OFF -> {\n                    browserInspectionCoordinator.invalidate()\n                    foregroundPackageName = null\n                    stopWebsiteTracking()''',
+              'invalidate browser inspection on screen off'
           )
 
-          replace_once(
-              '''    private suspend fun restoreBlockedSurfaceAfterAddressEdit(\n        transition: WebsiteBlockTransitionHandle\n    ): Boolean {\n        if (transition.activatedAddressViewId == null &&''',
-              '''    private suspend fun restoreBlockedSurfaceAfterAddressEdit(\n        transition: WebsiteBlockTransitionHandle\n    ): Boolean {\n        if (!curtainReadyForTransition(transition)) return false\n        if (transition.activatedAddressViewId == null &&''',
-              'restore edit entry freshness'
+          service = replace_once(
+              service,
+              '''    override fun onInterrupt() {\n        foregroundPackageName = null\n        stopWebsiteTracking()''',
+              '''    override fun onInterrupt() {\n        browserInspectionCoordinator.invalidate()\n        foregroundPackageName = null\n        stopWebsiteTracking()''',
+              'invalidate browser inspection on interrupt'
           )
 
-          replace_once(
-              '''        if (!performGlobalAction(GLOBAL_ACTION_BACK)) return false\n        delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)\n        val root = activeBrowserRoot(''',
-              '''        if (!curtainReadyForTransition(transition) ||\n            !performGlobalAction(GLOBAL_ACTION_BACK)\n        ) return false\n        delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)\n        if (!curtainReadyForTransition(transition)) return false\n        val root = activeBrowserRoot(''',
-              'restore edit back action freshness'
+          service = replace_once(
+              service,
+              '''    override fun onDestroy() {\n        accessibilityServiceConnected = false\n        stopWebsiteTracking()''',
+              '''    override fun onDestroy() {\n        browserInspectionCoordinator.invalidate()\n        accessibilityServiceConnected = false\n        stopWebsiteTracking()''',
+              'invalidate browser inspection on destroy'
           )
 
-          replace_once(
-              '''    private suspend fun restoreBlockedSurfaceForSafeIntentFallback(\n        transition: WebsiteBlockTransitionHandle\n    ): Boolean {\n        if (transition.activatedAddressViewId != null ||''',
-              '''    private suspend fun restoreBlockedSurfaceForSafeIntentFallback(\n        transition: WebsiteBlockTransitionHandle\n    ): Boolean {\n        if (!curtainReadyForTransition(transition)) return false\n        if (transition.activatedAddressViewId != null ||''',
-              'intent fallback restore entry freshness'
-          )
-
-          replace_once(
-              '''            if (!performGlobalAction(GLOBAL_ACTION_BACK)) return false\n            delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)\n        }\n        val restored = currentBrowserSurfaceMatchesBlockedTransition(transition)''',
-              '''            if (!curtainReadyForTransition(transition) ||\n                !performGlobalAction(GLOBAL_ACTION_BACK)\n            ) return false\n            delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)\n            if (!curtainReadyForTransition(transition)) return false\n        }\n        if (!curtainReadyForTransition(transition)) return false\n        val restored = currentBrowserSurfaceMatchesBlockedTransition(transition)''',
-              'intent fallback back action freshness'
-          )
-
-          replace_once(
-              '''    ) return false\n\n    return runCatching {\n        startActivity(createSafeBrowserRedirectIntent(transition.browserPackageName))''',
-              '''    ) return false\n    if (!curtainReadyForTransition(transition)) return false\n\n    return runCatching {\n        if (!curtainReadyForTransition(transition)) return false\n        startActivity(createSafeBrowserRedirectIntent(transition.browserPackageName))''',
-              'intent redirect final freshness'
-          )
-
-          replace_once(
-              '''        if (!transition.closeConfirmed || !curtainReadyForTransition(transition)) return false\n        val requestedAt = SystemClock.uptimeMillis()''',
-              '''        if (!transition.closeConfirmed || !curtainReadyForTransition(transition)) return false\n        val requestedAt = SystemClock.uptimeMillis()''',
-              'confirmed close precondition anchor'
-          )
-
-          replace_once(
-              '''        ) return false\n        return runCatching {\n            // This is not a fallback for an unneutralized page.''',
-              '''        ) return false\n        if (!curtainReadyForTransition(transition)) return false\n        return runCatching {\n            if (!curtainReadyForTransition(transition)) return false\n            // This is not a fallback for an unneutralized page.''',
-              'post-close intent freshness'
-          )
-
-          replace_once(
-              '''        val root = activeBrowserRoot(browserPackageName, expectedWindowId)\n            ?: return result()''',
-              '''        if (!curtainReadyForTransition(transition)) return result()\n        val root = activeBrowserRoot(browserPackageName, expectedWindowId)\n            ?: return result()''',
-              'close tab entry freshness'
-          )
-
-          replace_once(
-              '''        if (!closeAllowed || !originalStillCurrent) {\n            recycleSafely(root)\n            return result()\n        }\n        val windowsBeforeLongClick = windows.mapTo(mutableSetOf()) { it.id }''',
-              '''        if (!closeAllowed || !originalStillCurrent ||\n            !curtainReadyForTransition(transition)\n        ) {\n            recycleSafely(root)\n            return result()\n        }\n        val windowsBeforeLongClick = windows.mapTo(mutableSetOf()) { it.id }''',
-              'close tab before long click freshness'
-          )
-
-          replace_once(
-              '''        delay(WEBSITE_TAB_MENU_SETTLE_MILLIS)\n        val targetRoot = browserRootForExpectedWindow(''',
-              '''        delay(WEBSITE_TAB_MENU_SETTLE_MILLIS)\n        if (!curtainReadyForTransition(transition)) return result(menuPossiblyOpened = true)\n        val targetRoot = browserRootForExpectedWindow(''',
-              'close tab after menu settle freshness'
-          )
-
-          replace_once(
-              '''        val menuWindowId = menuRoot.windowId\n        val closeRequestedAt = SystemClock.uptimeMillis()\n        val close = run {''',
-              '''        val menuWindowId = menuRoot.windowId\n        if (!curtainReadyForTransition(transition)) {\n            recycleSafely(menuRoot)\n            return result(menuPossiblyOpened = true, menuWindowId = menuWindowId)\n        }\n        val closeRequestedAt = SystemClock.uptimeMillis()\n        val close = run {''',
-              'close tab before click freshness'
-          )
-
-          replace_once(
-              '''        delay(WEBSITE_TAB_CLOSE_CONFIRM_MILLIS)\n        val postCloseRoot = browserRootForExpectedWindow(''',
-              '''        delay(WEBSITE_TAB_CLOSE_CONFIRM_MILLIS)\n        if (!transitionWindowIsCurrent(transition)) {\n            return result(menuPossiblyOpened = true, closeActionAccepted = true, menuWindowId = menuWindowId)\n        }\n        val postCloseRoot = browserRootForExpectedWindow(''',
-              'close tab confirmation freshness'
-          )
-
-          replace_once(
-              '''    ): Boolean {\n        val explicitMenu = windows.singleOrNull {''',
-              '''    ): Boolean {\n        if (!curtainReadyForTransition(transition)) return false\n        val explicitMenu = windows.singleOrNull {''',
-              'dismiss menu entry freshness'
-          )
-
-          replace_once(
-              '''        if (!canDismiss || !performGlobalAction(GLOBAL_ACTION_BACK)) return false\n        delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)\n        val restoredRoot = activeBrowserRoot(browserPackageName, targetWindowId) ?: return false''',
-              '''        if (!canDismiss || !curtainReadyForTransition(transition) ||\n            !performGlobalAction(GLOBAL_ACTION_BACK)\n        ) return false\n        delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)\n        if (!curtainReadyForTransition(transition)) return false\n        val restoredRoot = activeBrowserRoot(browserPackageName, targetWindowId) ?: return false''',
-              'dismiss menu back freshness'
-          )
-
-          replace_once(
+          # Every redirect action tied to a WebsiteBlockTransitionHandle receives the
+          # generation predicate. Read-only editor checks remain unchanged.
+          service = replace_once(
+              service,
               '''                AddressBarRedirectionActions.activate(root, browserPackageName, expectedWindowId, action, https)''',
-              '''                if (!curtainReadyForTransition(transition)) return 0L\n                AddressBarRedirectionActions.activate(\n                    root, browserPackageName, expectedWindowId, action, https,\n                    isCurrent = { curtainReadyForTransition(transition) }\n                )''',
-              'activate requires generation predicate'
+              '''                AddressBarRedirectionActions.activate(\n                    root, browserPackageName, expectedWindowId, action, https,\n                    isCurrent = { curtainReadyForTransition(transition) }\n                )''',
+              'activate action freshness'
           )
 
-          replace_once(
-              '''            } finally { recycleSafely(root) }\n            if (result.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L\n            activated = activated || result.accepted''',
-              '''            } finally { recycleSafely(root) }\n            if (!curtainReadyForTransition(transition)) return 0L\n            if (result.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L\n            activated = activated || result.accepted''',
-              'activate result freshness'
-          )
-
-          replace_once(
-              '''            while (curtainReadyForTransition(transition) && SystemClock.uptimeMillis() <= deadline) {\n                delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)\n                val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: continue''',
-              '''            while (curtainReadyForTransition(transition) && SystemClock.uptimeMillis() <= deadline) {\n                delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)\n                if (!curtainReadyForTransition(transition)) return 0L\n                val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: continue''',
-              'editor wait freshness'
-          )
-
-          replace_once(
+          service = replace_once(
+              service,
               '''                        AddressBarRedirectionActions.selectAll(selectionRoot, browserPackageName, expectedWindowId, https)''',
               '''                        AddressBarRedirectionActions.selectAll(\n                            selectionRoot, browserPackageName, expectedWindowId, https,\n                            isCurrent = { curtainReadyForTransition(transition) }\n                        )''',
-              'selection requires generation predicate'
+              'selection action freshness'
           )
 
-          replace_once(
-              '''                    } finally { recycleSafely(selectionRoot) }\n                    if (selection.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L\n                    if (!selection.accepted) continue // Never append the safe URL to existing text.\n                    delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)''',
-              '''                    } finally { recycleSafely(selectionRoot) }\n                    if (!curtainReadyForTransition(transition)) return 0L\n                    if (selection.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L\n                    if (!selection.accepted) continue // Never append the safe URL to existing text.\n                    delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)\n                    if (!curtainReadyForTransition(transition)) return 0L''',
-              'selection result freshness'
-          )
-
-          replace_once(
+          service = replace_once(
+              service,
               '''                        BrowserWriteMethod.SET_TEXT -> AddressBarRedirectionActions.setText(\n                            editRoot, browserPackageName, expectedWindowId, SAFE_REDIRECT_URL, https)\n                        BrowserWriteMethod.PASTE -> ClipboardPasteFallback.pasteSafely(SAFE_REDIRECT_URL) {\n                            AddressBarRedirectionActions.paste(editRoot, browserPackageName, expectedWindowId, https)\n                        }''',
-              '''                        BrowserWriteMethod.SET_TEXT -> AddressBarRedirectionActions.setText(\n                            editRoot, browserPackageName, expectedWindowId, SAFE_REDIRECT_URL, https,\n                            isCurrent = { curtainReadyForTransition(transition) }\n                        )\n                        BrowserWriteMethod.PASTE -> {\n                            if (!curtainReadyForTransition(transition)) return 0L\n                            ClipboardPasteFallback.pasteSafely(SAFE_REDIRECT_URL) {\n                                if (!curtainReadyForTransition(transition)) {\n                                    AddressBarRedirectionActions.Result(AddressBarRedirectionActions.Status.REJECTED)\n                                } else {\n                                    AddressBarRedirectionActions.paste(\n                                        editRoot, browserPackageName, expectedWindowId, https,\n                                        isCurrent = { curtainReadyForTransition(transition) }\n                                    )\n                                }\n                            }\n                        }''',
-              'write actions require generation predicate'
+              '''                        BrowserWriteMethod.SET_TEXT -> AddressBarRedirectionActions.setText(\n                            editRoot, browserPackageName, expectedWindowId, SAFE_REDIRECT_URL, https,\n                            isCurrent = { curtainReadyForTransition(transition) }\n                        )\n                        BrowserWriteMethod.PASTE -> ClipboardPasteFallback.pasteSafely(SAFE_REDIRECT_URL) {\n                            AddressBarRedirectionActions.paste(\n                                editRoot, browserPackageName, expectedWindowId, https,\n                                isCurrent = { curtainReadyForTransition(transition) }\n                            )\n                        }''',
+              'write action freshness'
           )
 
-          replace_once(
-              '''                } finally { recycleSafely(editRoot) }\n                if (written.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L''',
-              '''                } finally { recycleSafely(editRoot) }\n                if (!curtainReadyForTransition(transition)) return 0L\n                if (written.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L''',
-              'write result freshness'
-          )
-
-          replace_once(
-              '''                while (curtainReadyForTransition(transition) && SystemClock.uptimeMillis() <= writeDeadline) {\n                    delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)\n                    val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: continue''',
-              '''                while (curtainReadyForTransition(transition) && SystemClock.uptimeMillis() <= writeDeadline) {\n                    delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)\n                    if (!curtainReadyForTransition(transition)) return 0L\n                    val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: continue''',
-              'write verification freshness'
-          )
-
-          replace_once(
-              '''                    if (verified) {\n                        transition.editorAddressViewId = written.selectedViewId\n                        BrowserCompatibilityStore.recordActivationSuccess''',
-              '''                    if (verified) {\n                        if (!curtainReadyForTransition(transition)) return 0L\n                        transition.editorAddressViewId = written.selectedViewId\n                        BrowserCompatibilityStore.recordActivationSuccess''',
-              'compatibility learning requires current generation'
-          )
-
-          replace_once(
+          service = replace_once(
+              service,
               '''                    BrowserSubmitMethod.IME_ENTER -> AddressBarRedirectionActions.submitImeEnter(\n                        root, browserPackageName, expectedWindowId, ::isSafeGoogleRedirectSurface, https)\n                    BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION -> AddressBarRedirectionActions.submitAnnouncedEditorAction(\n                        root, browserPackageName, expectedWindowId, ::isSafeGoogleRedirectSurface, https)\n                    BrowserSubmitMethod.CERTIFIED_GO_BUTTON -> AddressBarRedirectionActions.clickCertifiedGoButton(\n                        root, browserPackageName, expectedWindowId)''',
               '''                    BrowserSubmitMethod.IME_ENTER -> AddressBarRedirectionActions.submitImeEnter(\n                        root, browserPackageName, expectedWindowId, ::isSafeGoogleRedirectSurface, https,\n                        isCurrent = { curtainReadyForTransition(transition) }\n                    )\n                    BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION -> AddressBarRedirectionActions.submitAnnouncedEditorAction(\n                        root, browserPackageName, expectedWindowId, ::isSafeGoogleRedirectSurface, https,\n                        isCurrent = { curtainReadyForTransition(transition) }\n                    )\n                    BrowserSubmitMethod.CERTIFIED_GO_BUTTON -> AddressBarRedirectionActions.clickCertifiedGoButton(\n                        root, browserPackageName, expectedWindowId,\n                        isCurrent = { curtainReadyForTransition(transition) }\n                    )''',
-              'submit actions require generation predicate'
+              'submit action freshness'
           )
 
-          replace_once(
-              '''            } finally { recycleSafely(root) }\n            if (submitted.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L\n            if (!submitted.accepted) {''',
-              '''            } finally { recycleSafely(root) }\n            if (!curtainReadyForTransition(transition)) return 0L\n            if (submitted.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L\n            if (!submitted.accepted) {''',
-              'submit result freshness'
+          service = replace_once(
+              service,
+              '''                    if (verified) {\n                        transition.editorAddressViewId = written.selectedViewId\n                        BrowserCompatibilityStore.recordActivationSuccess(''',
+              '''                    if (verified) {\n                        if (!curtainReadyForTransition(transition)) return 0L\n                        transition.editorAddressViewId = written.selectedViewId\n                        BrowserCompatibilityStore.recordActivationSuccess(''',
+              'guard activation compatibility learning'
           )
 
-          replace_once(
+          service = replace_once(
+              service,
               '''            BrowserCompatibilityStore.recordSubmitAccepted(browserPackageName, submitted.selectedViewId, method)\n            websiteBlockTransitionGuard.markSanitizationRequested(browserPackageName, transition.id, submittedAt)''',
-              '''            if (!curtainReadyForTransition(transition)) return 0L\n            BrowserCompatibilityStore.recordSubmitAccepted(browserPackageName, submitted.selectedViewId, method)\n            if (!websiteBlockTransitionGuard.markSanitizationRequested(\n                    browserPackageName, transition.id, submittedAt\n                )\n            ) return 0L''',
-              'submit learning and transition marking freshness'
+              '''            if (!curtainReadyForTransition(transition)) return 0L\n            BrowserCompatibilityStore.recordSubmitAccepted(browserPackageName, submitted.selectedViewId, method)\n            websiteBlockTransitionGuard.markSanitizationRequested(browserPackageName, transition.id, submittedAt)''',
+              'guard submit compatibility learning'
           )
 
-          replace_once(
-              '''            if (mayOpenDestinationAfterSanitization(\n                    safeGoogleConfirmed = transition.safeGoogleConfirmed.isCompleted\n                )\n            ) return submittedAt\n            val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L''',
-              '''            if (!transitionWindowIsCurrent(transition)) return 0L\n            if (mayOpenDestinationAfterSanitization(\n                    safeGoogleConfirmed = transition.safeGoogleConfirmed.isCompleted\n                )\n            ) return submittedAt\n            if (!curtainReadyForTransition(transition)) return 0L\n            val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L''',
-              'submit confirmation freshness'
-          )
+          service_path.write_text(service)
 
-          replace_once(
-              '''    private fun curtainReadyForTransition(transition: WebsiteBlockTransitionHandle): Boolean =\n        browserInspectionCoordinator.isCurrentWindow(\n            transition.browserPackageName,\n            transition.expectedWindowId,\n            transition.inspectionGeneration\n        ) && curtainReadyForTabAction(''',
-              '''    private fun transitionWindowIsCurrent(transition: WebsiteBlockTransitionHandle): Boolean =\n        browserInspectionCoordinator.isCurrentWindow(\n            transition.browserPackageName,\n            transition.expectedWindowId,\n            transition.inspectionGeneration\n        )\n\n    private fun curtainReadyForTransition(transition: WebsiteBlockTransitionHandle): Boolean =\n        transitionWindowIsCurrent(transition) && curtainReadyForTabAction(''',
-              'extract transition generation helper'
+          # Preserve compatibility for synchronous legacy callers, while requiring the
+          # async pipeline to explicitly pass freshness into the shared action primitive.
+          actions_path = Path('app/src/main/java/com/focusguard/accessibility/website/redirection/AddressBarRedirectionActions.kt')
+          actions = actions_path.read_text()
+          signature = '        isCurrent: () -> Boolean\n    )'
+          signature_count = actions.count(signature)
+          if signature_count != 9:
+              raise SystemExit(f'AddressBar freshness defaults: expected 9 signatures, got {signature_count}')
+          actions = actions.replace(signature, '        isCurrent: () -> Boolean = { true }\n    )')
+          actions = replace_once(
+              actions,
+              '''            httpsHandlerRecognized = httpsHandlerRecognized,\n            allowFallbacks = false\n        )''',
+              '''            httpsHandlerRecognized = httpsHandlerRecognized,\n            allowFallbacks = false,\n            isCurrent = isCurrent\n        )''',
+              'forward freshness into WebsiteBlocker'
           )
+          actions_path.write_text(actions)
 
-          path.write_text(text)
+          blocker_path = Path('app/src/main/java/com/focusguard/utils/WebsiteBlocker.kt')
+          blocker = blocker_path.read_text()
+          blocker = replace_once(
+              blocker,
+              '''        httpsHandlerRecognized: Boolean = false,\n        allowFallbacks: Boolean = true\n    ): AddressBarActionResult {\n        if (root.packageName?.toString() != browserPackageName ||''',
+              '''        httpsHandlerRecognized: Boolean = false,\n        allowFallbacks: Boolean = true,\n        isCurrent: () -> Boolean = { true }\n    ): AddressBarActionResult {\n        if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)\n        if (root.packageName?.toString() != browserPackageName ||''',
+              'WebsiteBlocker freshness parameter'
+          )
+          blocker = replace_once(
+              blocker,
+              '''            val selected = nodes[selectedIndex]\n            if (allowFallbacks && requiredAction == BrowserUiCapabilityPolicy.NodeAction.SET_TEXT) {''',
+              '''            val selected = nodes[selectedIndex]\n            if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)\n            if (allowFallbacks && requiredAction == BrowserUiCapabilityPolicy.NodeAction.SET_TEXT) {''',
+              'WebsiteBlocker freshness before selected-node actions'
+          )
+          blocker = replace_once(
+              blocker,
+              '''                runCatching { selected.performAction(androidAction, arguments) }\n                    .getOrDefault(false)\n            }\n\n            if (accepted) {''',
+              '''                if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)\n                val actionAccepted = runCatching {\n                    selected.performAction(androidAction, arguments)\n                }.getOrDefault(false)\n                if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)\n                actionAccepted\n            }\n\n            if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)\n            if (accepted) {''',
+              'WebsiteBlocker freshness around performAction'
+          )
+          blocker_path.write_text(blocker)
+
+          recovery_path = Path('app/src/main/java/com/focusguard/accessibility/website/identification/WebsiteIdentificationRecovery.kt')
+          recovery = recovery_path.read_text()
+          recovery = replace_once(
+              recovery,
+              '''                            httpsHandlerRecognized = httpsHandlerRecognized,\n                            allowFallbacks = false\n                        ).accepted''',
+              '''                            httpsHandlerRecognized = httpsHandlerRecognized,\n                            allowFallbacks = false,\n                            isCurrent = isCurrent\n                        ).accepted''',
+              'recovery action freshness'
+          )
+          recovery_path.write_text(recovery)
+
+          tests_path = Path('app/src/test/java/com/focusguard/service/BrowserInspectionCoordinatorTest.kt')
+          tests = tests_path.read_text()
+          tests = replace_once(
+              tests,
+              'import org.junit.Assert.assertNotEquals\nimport org.junit.Assert.assertSame',
+              'import org.junit.Assert.assertNotEquals\nimport org.junit.Assert.assertNull\nimport org.junit.Assert.assertSame',
+              'coordinator test assertNull import'
+          )
+          if 'fun invalidateDropsPendingWorkAndOldGeneration()' in tests:
+              raise SystemExit('coordinator invalidation test already exists unexpectedly')
+          marker = '\n}'
+          index = tests.rfind(marker)
+          if index < 0:
+              raise SystemExit('coordinator test closing brace not found')
+          new_test = '''\n\n    @Test\n    fun invalidateDropsPendingWorkAndOldGeneration() {\n        val coordinator = BrowserInspectionCoordinator()\n        val running = coordinator.offer(\n            "com.android.chrome", 10, 2048, 1L, 1L, "", emptyList(), null\n        )\n        assertSame(running.snapshot, coordinator.takePending())\n        coordinator.offer(\n            "com.android.chrome", 10, 2048, 2L, 2L, "", listOf("pending"), null\n        )\n\n        coordinator.invalidate()\n\n        assertFalse(coordinator.isCurrent(running.snapshot.token))\n        assertNull(coordinator.finishPass())\n        val replacement = coordinator.offer(\n            "com.android.chrome", 11, 2048, 3L, 3L, "", emptyList(), null\n        )\n        assertTrue(replacement.startWorker)\n        assertTrue(coordinator.isCurrent(replacement.snapshot.token, requireLatestSequence = true))\n    }'''
+          tests = tests[:index] + new_test + tests[index:]
+          tests_path.write_text(tests)
           PY
 
       - name: Run unit tests and lint
@@ -268,13 +235,19 @@ jobs:
           chmod +x gradlew
           ./gradlew testDebugUnitTest lintDebug --no-daemon --stacktrace
 
-      - name: Commit final integration
+      - name: Commit completed Part 1
         shell: bash
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git rm .github/workflows/complete-pr170.yml
-          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
-          git commit -m "fix(a11y): finish generation-safe redirect integration"
+          git add \
+            app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt \
+            app/src/main/java/com/focusguard/accessibility/website/identification/WebsiteIdentificationRecovery.kt \
+            app/src/main/java/com/focusguard/accessibility/website/redirection/AddressBarRedirectionActions.kt \
+            app/src/main/java/com/focusguard/utils/WebsiteBlocker.kt \
+            app/src/test/java/com/focusguard/service/BrowserInspectionCoordinatorTest.kt
+          git diff --cached --check
+          git commit -m "fix(a11y): complete async inspection foundation"
           git push origin HEAD:fix/async-a11y-inspection-20260916
