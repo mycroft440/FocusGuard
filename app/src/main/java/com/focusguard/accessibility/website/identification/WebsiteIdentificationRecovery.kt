@@ -7,8 +7,15 @@ import com.focusguard.accessibility.website.compatibility.BrowserRecognitionPoli
 import com.focusguard.accessibility.website.compatibility.BrowserUrlRecoveryMethod
 import com.focusguard.utils.BrowserSurfaceInspector
 import com.focusguard.utils.BrowserUiCapabilityPolicy
+import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
-import kotlinx.coroutines.delay
+
+internal enum class BrowserRecoveryReason {
+    URL_RECOVERED,
+    NATIVE_UI_REJECTED,
+    RECOVERY_EXHAUSTED,
+    FAIL_CLOSED
+}
 
 /** Bounded recovery in one live window; never types, submits, presses Back or closes tabs. */
 internal class WebsiteIdentificationRecovery(
@@ -44,7 +51,10 @@ internal class WebsiteIdentificationRecovery(
     suspend fun recover(): WebsiteIdentificationResult {
         if (!isCurrent()) return rejected()
         var result = read()
-        if (resolved(result)) return result
+        if (resolved(result)) {
+            traceResolution(result)
+            return result
+        }
         val preferred = BrowserCompatibilityStore.preferredUrlRecoveryMethod(browserPackage)
         val activationOrder = if (BrowserUiCapabilityPolicy.prefersClickAddressBarActivation(browserPackage)) {
             listOf(BrowserUrlRecoveryMethod.CLICK, BrowserUrlRecoveryMethod.FOCUS)
@@ -62,9 +72,11 @@ internal class WebsiteIdentificationRecovery(
                 result = read()
                 if (resolved(result)) {
                     rememberIfCurrent(result, lastAccepted)
+                    traceResolution(result)
                     return result
                 }
                 if (!isCurrent()) return rejected()
+                val observationBaseline = BrowserObservationSignal.currentVersion(browserPackage, windowId)
                 val root = rootProvider() ?: continue
                 val accepted = try {
                     if (!isCurrent() || root.packageName?.toString() != browserPackage ||
@@ -90,32 +102,54 @@ internal class WebsiteIdentificationRecovery(
                     }
                 } finally { recycle(root) }
                 if (!isCurrent()) return rejected()
-                if (accepted) lastAccepted = method
-                delay(120L)
+                if (accepted) {
+                    lastAccepted = method
+                    BrowserObservationSignal.awaitAfter(
+                        browserPackage,
+                        windowId,
+                        observationBaseline,
+                        ACTION_OBSERVATION_TIMEOUT_MILLIS
+                    )
+                }
                 if (!isCurrent()) return rejected()
                 result = read()
                 if (resolved(result)) {
                     rememberIfCurrent(result, lastAccepted)
+                    traceResolution(result)
                     return result
                 }
             }
         }
         if (!isCurrent()) return rejected()
-        delay(160L)
+        val finalObservationBaseline = BrowserObservationSignal.currentVersion(browserPackage, windowId)
+        BrowserObservationSignal.awaitAfter(
+            browserPackage,
+            windowId,
+            finalObservationBaseline,
+            FINAL_OBSERVATION_TIMEOUT_MILLIS
+        )
         if (!isCurrent()) return rejected()
         val finalResult = read()
         rememberIfCurrent(finalResult, lastAccepted)
         if (!isCurrent()) return rejected()
 
         val postRecovery = BrowserSiteOnlyBlockingPolicy.applyAfterRecovery(finalResult)
-        val classification = BrowserDetector.classify(browserPackage)
+        when {
+            postRecovery.urlCandidate != null -> trace(BrowserRecoveryReason.URL_RECOVERED)
+            postRecovery.status == WebsiteIdentificationStatus.NATIVE_BROWSER_UI ->
+                trace(BrowserRecoveryReason.NATIVE_UI_REJECTED)
+            postRecovery.status == WebsiteIdentificationStatus.UNOBSERVABLE ->
+                trace(BrowserRecoveryReason.RECOVERY_EXHAUSTED)
+        }
+        val detection = BrowserDetector.detect(browserPackage)
         return if (BrowserRecognitionPolicy.shouldFailClosedAfterRecovery(
-                classification = classification,
+                classification = detection.classification,
                 identificationStatus = postRecovery.status,
                 addressBarObservable = postRecovery.addressBarObservable,
                 urlCandidatePresent = postRecovery.urlCandidate != null
             )
         ) {
+            trace(BrowserRecoveryReason.FAIL_CLOSED)
             postRecovery.copy(
                 webContentObserved = true,
                 evidence = postRecovery.evidence + WebsiteIdentificationLayer.FAIL_CLOSED
@@ -128,6 +162,18 @@ internal class WebsiteIdentificationRecovery(
     private fun resolved(result: WebsiteIdentificationResult): Boolean =
         result.urlCandidate != null || result.status == WebsiteIdentificationStatus.NATIVE_BROWSER_UI ||
             result.status == WebsiteIdentificationStatus.REJECTED_CONTEXT
+
+    private fun traceResolution(result: WebsiteIdentificationResult) {
+        when {
+            result.urlCandidate != null -> trace(BrowserRecoveryReason.URL_RECOVERED)
+            result.status == WebsiteIdentificationStatus.NATIVE_BROWSER_UI ->
+                trace(BrowserRecoveryReason.NATIVE_UI_REJECTED)
+        }
+    }
+
+    private fun trace(reason: BrowserRecoveryReason) {
+        FocusGuardLogger.addBreadcrumb("BrowserRecovery[$browserPackage]: ${reason.name}")
+    }
 
     private fun rememberIfCurrent(
         result: WebsiteIdentificationResult,
@@ -179,5 +225,10 @@ internal class WebsiteIdentificationRecovery(
     private fun recycle(node: AccessibilityNodeInfo?) {
         @Suppress("DEPRECATION")
         if (node != null) runCatching { node.recycle() }
+    }
+
+    private companion object {
+        const val ACTION_OBSERVATION_TIMEOUT_MILLIS = 180L
+        const val FINAL_OBSERVATION_TIMEOUT_MILLIS = 160L
     }
 }
