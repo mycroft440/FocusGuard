@@ -1,0 +1,252 @@
+name: PR171 Tree Worker Patch
+
+on:
+  push:
+    branches:
+      - fix/post-pr170-browser-cleanup-20260917
+
+permissions:
+  contents: write
+
+jobs:
+  patch-service:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.ref_name }}
+          fetch-depth: 0
+      - name: Patch browser transition boundary
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          path = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
+          text = path.read_text()
+
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label}: expected 1 match, found {count}')
+              text = text.replace(old, new, 1)
+
+          replace_once(
+              '    private val browserInspectionCoordinator = BrowserInspectionCoordinator()\n'
+              '    private val browserRecoveryCoordinator = BrowserRecoveryCoordinator()\n',
+              '    private val browserInspectionCoordinator = BrowserInspectionCoordinator()\n'
+              '    private val browserRecoveryCoordinator = BrowserRecoveryCoordinator()\n'
+              '    private val websiteTreeWorker = WebsiteTreeWorker()\n',
+              'worker field'
+          )
+
+          for field in (
+              'expectedWindowId: Int',
+              'latestObservedEventUptimeMillis: Long = detectionEventUptimeMillis',
+              'latestWindowTransitionEventUptimeMillis: Long = detectionEventUptimeMillis',
+              'activatedAddressViewId: String? = null',
+              'editorAddressViewId: String? = null',
+              'curtainGeneration: Long = 0L',
+          ):
+              replace_once(
+                  f'        internal var {field}',
+                  f'        @Volatile internal var {field}',
+                  f'volatile transition {field}'
+              )
+
+          for field in (
+              'instantBlockCurtainAttached = false',
+              'instantBlockCurtainVisible = false',
+              'instantBlockCurtainGeneration = 0L',
+          ):
+              replace_once(
+                  f'    private var {field}',
+                  f'    @Volatile private var {field}',
+                  f'volatile curtain {field}'
+              )
+
+          count = text.count(',\n        browserWindowIdValidated: Boolean = false')
+          if count != 3:
+              raise SystemExit(f'validated parameter: expected 3 matches, found {count}')
+          text = text.replace(',\n        browserWindowIdValidated: Boolean = false', '')
+
+          count = text.count(',\n            browserWindowIdValidated = browserWindowIdValidated')
+          if count != 2:
+              raise SystemExit(f'validated forwarding: expected 2 matches, found {count}')
+          text = text.replace(',\n            browserWindowIdValidated = browserWindowIdValidated', '')
+
+          text, count = re.subn(
+              r',\n\s*browserWindowIdValidated = true',
+              '',
+              text
+          )
+          if count != 3:
+              raise SystemExit(f'validated call sites: expected 3 matches, found {count}')
+
+          replace_once(
+              '        val expectedWindowId = if (browserWindowIdValidated && browserWindowId >= 0) {\n'
+              '            browserWindowId\n'
+              '        } else {\n'
+              '            resolveBrowserWindowId(browserPackageName, browserWindowId)\n'
+              '        }\n'
+              '        if (expectedWindowId == INVALID_BROWSER_WINDOW_ID) return\n',
+              '        val expectedWindowId = browserWindowId.takeIf { it >= 0 } ?: return\n',
+              'validated window handoff'
+          )
+
+          replace_once(
+              '    private fun resolveBrowserWindowId(\n'
+              '        browserPackageName: String,\n'
+              '        preferredWindowId: Int\n'
+              '    ): Int {\n'
+              '        val candidates = if (preferredWindowId >= 0) {\n'
+              '            windows.filter { it.id == preferredWindowId }\n'
+              '        } else {\n'
+              '            windows.filter { it.isActive }\n'
+              '        }\n'
+              '        candidates.forEach { window ->\n'
+              '            if (!window.isActive) return@forEach\n'
+              '            val root = runCatching { window.root }.getOrNull() ?: return@forEach\n'
+              '            val matches = runCatching {\n'
+              '                root.packageName?.toString() == browserPackageName && root.windowId == window.id\n'
+              '            }.getOrDefault(false)\n'
+              '            recycleSafely(root)\n'
+              '            if (matches) return window.id\n'
+              '        }\n'
+              '        return INVALID_BROWSER_WINDOW_ID\n'
+              '    }\n\n',
+              '',
+              'legacy window resolver'
+          )
+
+          replace_once(
+              '        val setRequestedAt = prepareSafeAddressBar(\n'
+              '            browserPackageName = browserPackageName,\n'
+              '            expectedWindowId = expectedWindowId,\n'
+              '            policy = policy,\n'
+              '            transition = transition,\n'
+              '            phaseStartedAtUptimeMillis = transition.detectionEventUptimeMillis\n'
+              '        )\n',
+              '        val setRequestedAt = websiteTreeWorker.run {\n'
+              '            prepareSafeAddressBar(\n'
+              '                browserPackageName = browserPackageName,\n'
+              '                expectedWindowId = expectedWindowId,\n'
+              '                policy = policy,\n'
+              '                transition = transition,\n'
+              '                phaseStartedAtUptimeMillis = transition.detectionEventUptimeMillis\n'
+              '            )\n'
+              '        }\n',
+              'address preparation worker handoff'
+          )
+
+          replace_once(
+              '        val submitRequestedAt = submitSafeAddressBar(\n'
+              '            browserPackageName = browserPackageName,\n'
+              '            expectedWindowId = expectedWindowId,\n'
+              '            policy = policy,\n'
+              '            transition = transition\n'
+              '        )\n',
+              '        val submitRequestedAt = websiteTreeWorker.run {\n'
+              '            submitSafeAddressBar(\n'
+              '                browserPackageName = browserPackageName,\n'
+              '                expectedWindowId = expectedWindowId,\n'
+              '                policy = policy,\n'
+              '                transition = transition\n'
+              '            )\n'
+              '        }\n',
+              'submit worker handoff'
+          )
+
+          replace_once(
+              '        val restored = currentBrowserSurfaceMatchesBlockedTransition(transition)\n',
+              '        val restored = websiteTreeWorker.run {\n'
+              '            currentBrowserSurfaceMatchesBlockedTransition(transition)\n'
+              '        }\n',
+              'restore worker handoff'
+          )
+
+          replace_once(
+              '        if (!restoreBlockedSurfaceAfterAddressEdit(transition)) return false\n'
+              '        return curtainReadyForTransition(transition) && currentBrowserSurfaceMatchesBlockedTransition(transition)\n',
+              '        if (!restoreBlockedSurfaceAfterAddressEdit(transition)) return false\n'
+              '        if (!curtainReadyForTransition(transition)) return false\n'
+              '        val blockedSurfaceStillCurrent = websiteTreeWorker.run {\n'
+              '            currentBrowserSurfaceMatchesBlockedTransition(transition)\n'
+              '        }\n'
+              '        return curtainReadyForTransition(transition) && blockedSurfaceStillCurrent\n',
+              'intent fallback restore worker handoff'
+          )
+
+          replace_once(
+              '    private fun requestSafeGoogleThroughBrowserIntent(\n'
+              '        transition: WebsiteBlockTransitionHandle\n'
+              '    ): Boolean {\n'
+              '        if (!curtainReadyForTransition(transition) ||\n'
+              '            !currentBrowserSurfaceMatchesBlockedTransition(transition)\n'
+              '        ) return false\n'
+              '        val intent = createSafeBrowserRedirectIntent(transition.browserPackageName)\n'
+              '        if (!curtainReadyForTransition(transition)) return false\n'
+              '        if (!websiteBlockTransitionGuard.markExternalRedirectRequested(\n'
+              '                transition.browserPackageName, transition.id, SystemClock.uptimeMillis()\n'
+              '            )\n'
+              '        ) return false\n'
+              '        return try {\n'
+              '            if (!curtainReadyForTransition(transition)) return false\n'
+              '            startActivity(intent)\n'
+              '            true\n'
+              '        } catch (error: RuntimeException) {\n'
+              '            if (transitionWindowIsCurrent(transition)) {\n'
+              '                FocusGuardLogger.logError("A11y", "Falha ao solicitar redirecionamento seguro", error)\n'
+              '            }\n'
+              '            false\n'
+              '        }\n'
+              '    }\n',
+              '    private suspend fun requestSafeGoogleThroughBrowserIntent(\n'
+              '        transition: WebsiteBlockTransitionHandle\n'
+              '    ): Boolean {\n'
+              '        if (!curtainReadyForTransition(transition)) return false\n'
+              '        val blockedSurfaceStillCurrent = websiteTreeWorker.run {\n'
+              '            currentBrowserSurfaceMatchesBlockedTransition(transition)\n'
+              '        }\n'
+              '        if (!curtainReadyForTransition(transition) || !blockedSurfaceStillCurrent) return false\n\n'
+              '        return withContext(Dispatchers.Main.immediate) {\n'
+              '            if (!curtainReadyForTransition(transition)) return@withContext false\n'
+              '            val intent = createSafeBrowserRedirectIntent(transition.browserPackageName)\n'
+              '            if (!websiteBlockTransitionGuard.markExternalRedirectRequested(\n'
+              '                    transition.browserPackageName, transition.id, SystemClock.uptimeMillis()\n'
+              '                )\n'
+              '            ) return@withContext false\n'
+              '            try {\n'
+              '                if (!curtainReadyForTransition(transition)) return@withContext false\n'
+              '                startActivity(intent)\n'
+              '                true\n'
+              '            } catch (error: RuntimeException) {\n'
+              '                if (transitionWindowIsCurrent(transition)) {\n'
+              '                    FocusGuardLogger.logError(\n'
+              '                        "A11y",\n'
+              '                        "Falha ao solicitar redirecionamento seguro",\n'
+              '                        error\n'
+              '                    )\n'
+              '                }\n'
+              '                false\n'
+              '            }\n'
+              '        }\n'
+              '    }\n',
+              'safe intent main handoff'
+          )
+
+          path.write_text(text)
+          PY
+          git diff --check
+          if git diff --quiet -- app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt; then
+            echo 'No source changes to commit'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt
+          git commit -m 'refactor(a11y): move redirect tree work off main'
+          git push origin HEAD:${{ github.ref_name }}
