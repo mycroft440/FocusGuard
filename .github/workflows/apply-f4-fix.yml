@@ -1,0 +1,317 @@
+name: Apply guarded F4 fix
+
+on:
+  push:
+    branches:
+      - fix/website-blocking-redirection
+    paths:
+      - .github/workflows/apply-f4-fix.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: fix/website-blocking-redirection
+          fetch-depth: 0
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android 16 SDK
+        shell: bash
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Apply guarded redirect-window handoff
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
+          text = path.read_text()
+
+          old_generation = '        val inspectionGeneration: Long,\n'
+          new_generation = '        @Volatile internal var inspectionGeneration: Long,\n'
+          if text.count(old_generation) != 1:
+              raise SystemExit(f'inspectionGeneration marker count={text.count(old_generation)}')
+          text = text.replace(old_generation, new_generation, 1)
+
+          old_external_flag = '        internal var externalRedirectRequested: Boolean = false,\n        internal var externalRedirectRequestedAtUptimeMillis: Long = Long.MAX_VALUE,\n'
+          new_external_flag = '        internal var externalRedirectRequested: Boolean = false,\n        internal var externalRedirectRequestedAtUptimeMillis: Long = Long.MAX_VALUE,\n        internal var externalRedirectWindowRebound: Boolean = false,\n'
+          if text.count(old_external_flag) != 1:
+              raise SystemExit('external redirect state marker not unique')
+          text = text.replace(old_external_flag, new_external_flag, 1)
+
+          observe_marker = '''        @Synchronized
+          fun observeBrowserEvent(
+          '''
+          new_rebind = '''        @Synchronized
+          fun rebindExternalRedirectWindow(
+              browserPackageName: String,
+              transitionId: Long,
+              windowId: Int,
+              inspectionGeneration: Long,
+              eventUptimeMillis: Long
+          ): Boolean {
+              val transition = activeTransitions[browserPackageName] ?: return false
+              if (transition.id != transitionId ||
+                  !transition.externalRedirectRequested ||
+                  transition.externalRedirectWindowRebound ||
+                  !transition.sanitizationRequested ||
+                  windowId < 0 || inspectionGeneration <= 0L ||
+                  eventUptimeMillis < transition.externalRedirectRequestedAtUptimeMillis
+              ) return false
+              transition.expectedWindowId = windowId
+              transition.inspectionGeneration = inspectionGeneration
+              transition.externalRedirectWindowRebound = true
+              return true
+          }
+
+          @Synchronized
+          fun observeBrowserEvent(
+          '''
+          if text.count(observe_marker) != 1:
+              raise SystemExit(f'observe marker count={text.count(observe_marker)}')
+          text = text.replace(observe_marker, new_rebind, 1)
+
+          old_callback = '''            val observedWindowPackage = directPackage.ifBlank { foregroundPackageName.orEmpty() }
+          if ((event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                  event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) &&
+              observedWindowPackage.isNotBlank()
+          ) {
+              browserInspectionCoordinator.observeWindow(observedWindowPackage, event.windowId)
+              retireStaleWebsiteTransitions()
+          }
+
+          // Browser events are reduced to immutable primitives here. Any tree/root
+          // inspection and safe-destination confirmation happens on the serial IO worker.
+          if (directPackage.isNotBlank() && websiteBlockTransitionGuard.isActive(directPackage)) {
+              websiteBlockTransitionGuard.observeBrowserEvent(
+                  browserPackageName = directPackage,
+                  windowId = event.windowId,
+                  eventUptimeMillis = event.eventTime,
+                  eventType = event.eventType
+              )
+              scheduleBrowserInspection(event, directPackage)
+              return
+          }
+          '''
+          new_callback = '''            // An explicit ACTION_VIEW fallback may make the same browser expose a new
+          // Android window. Hand that first post-intent browser window to the existing
+          // transition before generic window retirement runs. This is provisional only:
+          // the curtain still remains until a stable safe Google surface is confirmed.
+          val transitionPackage = directPackage.ifBlank { foregroundPackageName.orEmpty() }
+          val activeBrowserTransition = transitionPackage
+              .takeIf(String::isNotBlank)
+              ?.let(websiteBlockTransitionGuard::activeTransition)
+          if (activeBrowserTransition != null) {
+              val canRebindExternalWindow =
+                  activeBrowserTransition.externalRedirectRequested &&
+                      !activeBrowserTransition.externalRedirectWindowRebound &&
+                      browserInspectionEvent &&
+                      event.windowId >= 0 &&
+                      event.windowId != activeBrowserTransition.expectedWindowId &&
+                      event.eventTime >= activeBrowserTransition.externalRedirectRequestedAtUptimeMillis
+              if (canRebindExternalWindow) {
+                  val reboundGeneration = browserInspectionCoordinator.observeWindow(
+                      transitionPackage,
+                      event.windowId
+                  )
+                  websiteBlockTransitionGuard.rebindExternalRedirectWindow(
+                      browserPackageName = transitionPackage,
+                      transitionId = activeBrowserTransition.id,
+                      windowId = event.windowId,
+                      inspectionGeneration = reboundGeneration,
+                      eventUptimeMillis = event.eventTime
+                  )
+              } else if (isWindowOrTabTransitionEvent(event.eventType)) {
+                  browserInspectionCoordinator.observeWindow(transitionPackage, event.windowId)
+              }
+              retireStaleWebsiteTransitions()
+              if (websiteBlockTransitionGuard.isActive(transitionPackage)) {
+                  websiteBlockTransitionGuard.observeBrowserEvent(
+                      browserPackageName = transitionPackage,
+                      windowId = event.windowId,
+                      eventUptimeMillis = event.eventTime,
+                      eventType = event.eventType
+                  )
+                  scheduleBrowserInspection(event, transitionPackage)
+              }
+              return
+          }
+
+          val observedWindowPackage = transitionPackage
+          if ((event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                  event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) &&
+              observedWindowPackage.isNotBlank()
+          ) {
+              browserInspectionCoordinator.observeWindow(observedWindowPackage, event.windowId)
+              retireStaleWebsiteTransitions()
+          }
+          '''
+          if text.count(old_callback) != 1:
+              raise SystemExit(f'callback marker count={text.count(old_callback)}')
+          text = text.replace(old_callback, new_callback, 1)
+
+          path.write_text(text)
+
+          test = Path('app/src/test/java/com/focusguard/service/ExternalRedirectHandoffTest.kt')
+          test.write_text(r'''package com.focusguard.service
+
+          import android.app.Application
+          import android.view.accessibility.AccessibilityEvent
+          import android.view.accessibility.AccessibilityWindowInfo
+          import io.mockk.every
+          import io.mockk.mockk
+          import io.mockk.spyk
+          import kotlinx.coroutines.ExperimentalCoroutinesApi
+          import kotlinx.coroutines.test.runCurrent
+          import kotlinx.coroutines.test.runTest
+          import org.junit.Assert.assertEquals
+          import org.junit.Assert.assertFalse
+          import org.junit.Assert.assertSame
+          import org.junit.Assert.assertTrue
+          import org.junit.Test
+          import org.junit.runner.RunWith
+          import org.robolectric.RobolectricTestRunner
+          import org.robolectric.annotation.Config
+          import org.robolectric.util.ReflectionHelpers
+
+          @OptIn(ExperimentalCoroutinesApi::class)
+          @RunWith(RobolectricTestRunner::class)
+          @Config(sdk = [34], application = Application::class)
+          class ExternalRedirectHandoffTest {
+              private val browserPackage = "com.android.chrome"
+              private val ownPackage = "com.focusguard.v2"
+
+              private fun event(type: Int, pkg: String?, windowId: Int, eventTime: Long) =
+                  mockk<AccessibilityEvent>(relaxed = true) {
+                      every { eventType } returns type
+                      every { packageName } returns pkg
+                      every { this@mockk.windowId } returns windowId
+                      every { this@mockk.eventTime } returns eventTime
+                  }
+
+              @Test
+              fun `first new browser window after external redirect inherits transition`() = runTest {
+                  val service = spyk(BlockingAccessibilityService())
+                  every { service.packageName } returns ownPackage
+                  val newWindow = mockk<AccessibilityWindowInfo> {
+                      every { id } returns 11
+                      every { type } returns AccessibilityWindowInfo.TYPE_APPLICATION
+                      every { isActive } returns true
+                      every { root } returns null
+                  }
+                  every { service.windows } returns listOf(newWindow)
+                  ReflectionHelpers.setField(service, "scope", this)
+                  ReflectionHelpers.setField(service, "foregroundPackageName", browserPackage)
+
+                  val coordinator = ReflectionHelpers.getField<BrowserInspectionCoordinator>(
+                      service, "browserInspectionCoordinator"
+                  )
+                  val guard = ReflectionHelpers.getField<BlockingAccessibilityService.WebsiteBlockTransitionGuard>(
+                      service, "websiteBlockTransitionGuard"
+                  )
+                  val token = coordinator.offer(
+                      browserPackage, 10, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                      1L, 1L, "", emptyList(), null
+                  ).snapshot.token
+                  val transition = guard.tryStart(
+                      browserPackageName = browserPackage,
+                      transitionId = 1L,
+                      destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+                      expectedWindowId = 10,
+                      inspectionGeneration = token.generation,
+                      blockedCandidate = "https://blocked.example",
+                      blockedRules = setOf("blocked.example"),
+                      detectionEventUptimeMillis = 1L
+                  )!!
+                  guard.markCurtainGeneration(browserPackage, 1L, 1L)
+                  assertTrue(guard.markExternalRedirectRequested(browserPackage, 1L, 2L))
+                  ReflectionHelpers.setField(service, "instantBlockCurtainAttached", true)
+                  ReflectionHelpers.setField(service, "instantBlockCurtainVisible", true)
+                  ReflectionHelpers.setField(service, "instantBlockCurtainGeneration", 1L)
+
+                  service.onAccessibilityEvent(
+                      event(AccessibilityEvent.TYPE_WINDOWS_CHANGED, null, 11, 3L)
+                  )
+                  runCurrent()
+
+                  assertSame(transition, guard.activeTransition(browserPackage))
+                  assertEquals(11, transition.expectedWindowId)
+                  assertTrue(transition.externalRedirectWindowRebound)
+                  assertEquals(
+                      coordinator.currentGeneration(browserPackage, 11),
+                      transition.inspectionGeneration
+                  )
+              }
+
+              @Test
+              fun `second different window after handoff retires transition fail closed`() = runTest {
+                  val service = spyk(BlockingAccessibilityService())
+                  every { service.packageName } returns ownPackage
+                  every { service.windows } returns emptyList()
+                  ReflectionHelpers.setField(service, "scope", this)
+                  ReflectionHelpers.setField(service, "foregroundPackageName", browserPackage)
+
+                  val coordinator = ReflectionHelpers.getField<BrowserInspectionCoordinator>(
+                      service, "browserInspectionCoordinator"
+                  )
+                  val guard = ReflectionHelpers.getField<BlockingAccessibilityService.WebsiteBlockTransitionGuard>(
+                      service, "websiteBlockTransitionGuard"
+                  )
+                  val token = coordinator.offer(
+                      browserPackage, 10, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+                      1L, 1L, "", emptyList(), null
+                  ).snapshot.token
+                  val transition = guard.tryStart(
+                      browserPackage, 1L,
+                      BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+                      expectedWindowId = 10,
+                      inspectionGeneration = token.generation,
+                      detectionEventUptimeMillis = 1L
+                  )!!
+                  assertTrue(guard.markExternalRedirectRequested(browserPackage, 1L, 2L))
+                  val generation11 = coordinator.observeWindow(browserPackage, 11)
+                  assertTrue(
+                      guard.rebindExternalRedirectWindow(
+                          browserPackage, 1L, 11, generation11, 3L
+                      )
+                  )
+                  assertFalse(
+                      guard.rebindExternalRedirectWindow(
+                          browserPackage, 1L, 12,
+                          coordinator.observeWindow(browserPackage, 12), 4L
+                      )
+                  )
+                  assertEquals(11, transition.expectedWindowId)
+              }
+          }
+          '''.replace('\n          ', '\n').lstrip())
+          PY
+
+      - name: Run unit tests
+        run: ./gradlew testDebugUnitTest --no-daemon
+
+      - name: Commit guarded F4 fix
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt \
+                  app/src/test/java/com/focusguard/service/ExternalRedirectHandoffTest.kt
+          git diff --cached --check
+          git commit -m "Fix external browser redirect window handoff"
+          git push origin HEAD:fix/website-blocking-redirection
