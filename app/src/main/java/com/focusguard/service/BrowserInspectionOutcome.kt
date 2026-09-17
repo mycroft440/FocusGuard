@@ -1,14 +1,76 @@
 package com.focusguard.service
 
+import com.focusguard.accessibility.website.identification.WebsiteIdentificationLayer
 import com.focusguard.accessibility.website.identification.WebsiteIdentificationResult
+import com.focusguard.accessibility.website.identification.WebsiteIdentificationStatus
 import com.focusguard.utils.BrowserSurfaceInspector
 
-/** Immutable data returned by the off-main accessibility inspection worker. */
+/**
+ * Immutable data returned by one worker-owned browser inspection.
+ *
+ * Accessibility objects never appear in this contract. Generation and sequence
+ * make every state mutation rejectable once a newer browser observation exists.
+ */
 internal data class BrowserInspectionOutcome(
-    val snapshot: BrowserInspectionCoordinator.Snapshot,
-    val identification: WebsiteIdentificationResult,
+    val packageName: String,
+    val windowId: Int,
+    val generation: Long,
+    val sequence: Long,
+    val eventType: Int,
+    val eventUptimeMillis: Long,
     val surface: BrowserSurfaceInspector.Surface,
+    val identificationStatus: WebsiteIdentificationStatus,
+    val urlCandidate: String?,
+    val rawAddressText: String?,
     val addressBarPresent: Boolean,
     val focusedAddressEditor: Boolean,
-    val recognizedBrowser: Boolean
-)
+    val webContentObserved: Boolean,
+    val evidence: Set<WebsiteIdentificationLayer>,
+    val recognizedBrowser: Boolean,
+    val directEventText: List<String>,
+    val eventContentDescription: String?
+) {
+    val token: BrowserInspectionCoordinator.Token
+        get() = BrowserInspectionCoordinator.Token(
+            packageName = packageName,
+            windowId = windowId,
+            generation = generation,
+            sequence = sequence
+        )
+
+    val bestCandidate: String?
+        get() = urlCandidate?.takeIf(String::isNotBlank)
+            ?: rawAddressText?.takeIf(String::isNotBlank)
+
+    companion object {
+        fun from(
+            snapshot: BrowserInspectionCoordinator.Snapshot,
+            identification: WebsiteIdentificationResult,
+            surface: BrowserSurfaceInspector.Surface,
+            focusedAddressEditor: Boolean,
+            recognizedBrowser: Boolean
+        ): BrowserInspectionOutcome {
+            val token = snapshot.token
+            return BrowserInspectionOutcome(
+                packageName = token.packageName,
+                windowId = token.windowId,
+                generation = token.generation,
+                sequence = token.sequence,
+                eventType = snapshot.eventType,
+                eventUptimeMillis = snapshot.eventUptimeMillis,
+                surface = surface,
+                identificationStatus = identification.status,
+                urlCandidate = identification.urlCandidate,
+                rawAddressText = identification.rawAddressText,
+                addressBarPresent = identification.addressBarObservable,
+                focusedAddressEditor = focusedAddressEditor,
+                webContentObserved = identification.webContentObserved ||
+                    surface == BrowserSurfaceInspector.Surface.WEB_CONTENT,
+                evidence = identification.evidence.toSet(),
+                recognizedBrowser = recognizedBrowser,
+                directEventText = snapshot.directText.toList(),
+                eventContentDescription = snapshot.contentDescription
+            )
+        }
+    }
+}
