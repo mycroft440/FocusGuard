@@ -35,139 +35,124 @@ jobs:
       - name: Apply guarded redirect-window handoff
         shell: bash
         run: |
-          python3 - <<'PY'
+          cat > /tmp/apply_f4.py <<'PY'
           from pathlib import Path
 
           path = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
           text = path.read_text()
 
-          old_generation = '        val inspectionGeneration: Long,\n'
-          new_generation = '        @Volatile internal var inspectionGeneration: Long,\n'
-          if text.count(old_generation) != 1:
-              raise SystemExit(f'inspectionGeneration marker count={text.count(old_generation)}')
-          text = text.replace(old_generation, new_generation, 1)
+          def replace_once(old: str, new: str, label: str) -> None:
+              global text
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f'{label} marker count={count}')
+              text = text.replace(old, new, 1)
 
-          old_external_flag = '        internal var externalRedirectRequested: Boolean = false,\n        internal var externalRedirectRequestedAtUptimeMillis: Long = Long.MAX_VALUE,\n'
-          new_external_flag = '        internal var externalRedirectRequested: Boolean = false,\n        internal var externalRedirectRequestedAtUptimeMillis: Long = Long.MAX_VALUE,\n        internal var externalRedirectWindowRebound: Boolean = false,\n'
-          if text.count(old_external_flag) != 1:
-              raise SystemExit('external redirect state marker not unique')
-          text = text.replace(old_external_flag, new_external_flag, 1)
+          replace_once(
+              '        val inspectionGeneration: Long,\n',
+              '        @Volatile internal var inspectionGeneration: Long,\n',
+              'inspectionGeneration'
+          )
+          replace_once(
+              '        internal var externalRedirectRequestedAtUptimeMillis: Long = Long.MAX_VALUE,\n',
+              '        internal var externalRedirectRequestedAtUptimeMillis: Long = Long.MAX_VALUE,\n'
+              '        internal var externalRedirectWindowRebound: Boolean = false,\n',
+              'external redirect state'
+          )
 
-          observe_marker = '''        @Synchronized
-          fun observeBrowserEvent(
-          '''
-          new_rebind = '''        @Synchronized
-          fun rebindExternalRedirectWindow(
-              browserPackageName: String,
-              transitionId: Long,
-              windowId: Int,
-              inspectionGeneration: Long,
-              eventUptimeMillis: Long
-          ): Boolean {
-              val transition = activeTransitions[browserPackageName] ?: return false
-              if (transition.id != transitionId ||
-                  !transition.externalRedirectRequested ||
-                  transition.externalRedirectWindowRebound ||
-                  !transition.sanitizationRequested ||
-                  windowId < 0 || inspectionGeneration <= 0L ||
-                  eventUptimeMillis < transition.externalRedirectRequestedAtUptimeMillis
-              ) return false
-              transition.expectedWindowId = windowId
-              transition.inspectionGeneration = inspectionGeneration
-              transition.externalRedirectWindowRebound = true
-              return true
-          }
+          observe_marker = '        @Synchronized\n        fun observeBrowserEvent(\n'
+          rebind_method = (
+              '        @Synchronized\n'
+              '        fun rebindExternalRedirectWindow(\n'
+              '            browserPackageName: String,\n'
+              '            transitionId: Long,\n'
+              '            windowId: Int,\n'
+              '            inspectionGeneration: Long,\n'
+              '            eventUptimeMillis: Long\n'
+              '        ): Boolean {\n'
+              '            val transition = activeTransitions[browserPackageName] ?: return false\n'
+              '            if (transition.id != transitionId ||\n'
+              '                !transition.externalRedirectRequested ||\n'
+              '                transition.externalRedirectWindowRebound ||\n'
+              '                !transition.sanitizationRequested ||\n'
+              '                windowId < 0 || inspectionGeneration <= 0L ||\n'
+              '                eventUptimeMillis < transition.externalRedirectRequestedAtUptimeMillis\n'
+              '            ) return false\n'
+              '            transition.expectedWindowId = windowId\n'
+              '            transition.inspectionGeneration = inspectionGeneration\n'
+              '            transition.externalRedirectWindowRebound = true\n'
+              '            return true\n'
+              '        }\n\n'
+              + observe_marker
+          )
+          replace_once(observe_marker, rebind_method, 'observeBrowserEvent')
 
-          @Synchronized
-          fun observeBrowserEvent(
-          '''
-          if text.count(observe_marker) != 1:
-              raise SystemExit(f'observe marker count={text.count(observe_marker)}')
-          text = text.replace(observe_marker, new_rebind, 1)
-
-          old_callback = '''            val observedWindowPackage = directPackage.ifBlank { foregroundPackageName.orEmpty() }
-          if ((event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-                  event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) &&
-              observedWindowPackage.isNotBlank()
-          ) {
-              browserInspectionCoordinator.observeWindow(observedWindowPackage, event.windowId)
-              retireStaleWebsiteTransitions()
-          }
-
-          // Browser events are reduced to immutable primitives here. Any tree/root
-          // inspection and safe-destination confirmation happens on the serial IO worker.
-          if (directPackage.isNotBlank() && websiteBlockTransitionGuard.isActive(directPackage)) {
-              websiteBlockTransitionGuard.observeBrowserEvent(
-                  browserPackageName = directPackage,
-                  windowId = event.windowId,
-                  eventUptimeMillis = event.eventTime,
-                  eventType = event.eventType
-              )
-              scheduleBrowserInspection(event, directPackage)
-              return
-          }
-          '''
-          new_callback = '''            // An explicit ACTION_VIEW fallback may make the same browser expose a new
-          // Android window. Hand that first post-intent browser window to the existing
-          // transition before generic window retirement runs. This is provisional only:
-          // the curtain still remains until a stable safe Google surface is confirmed.
-          val transitionPackage = directPackage.ifBlank { foregroundPackageName.orEmpty() }
-          val activeBrowserTransition = transitionPackage
-              .takeIf(String::isNotBlank)
-              ?.let(websiteBlockTransitionGuard::activeTransition)
-          if (activeBrowserTransition != null) {
-              val canRebindExternalWindow =
-                  activeBrowserTransition.externalRedirectRequested &&
-                      !activeBrowserTransition.externalRedirectWindowRebound &&
-                      browserInspectionEvent &&
-                      event.windowId >= 0 &&
-                      event.windowId != activeBrowserTransition.expectedWindowId &&
-                      event.eventTime >= activeBrowserTransition.externalRedirectRequestedAtUptimeMillis
-              if (canRebindExternalWindow) {
-                  val reboundGeneration = browserInspectionCoordinator.observeWindow(
-                      transitionPackage,
-                      event.windowId
-                  )
-                  websiteBlockTransitionGuard.rebindExternalRedirectWindow(
-                      browserPackageName = transitionPackage,
-                      transitionId = activeBrowserTransition.id,
-                      windowId = event.windowId,
-                      inspectionGeneration = reboundGeneration,
-                      eventUptimeMillis = event.eventTime
-                  )
-              } else if (isWindowOrTabTransitionEvent(event.eventType)) {
-                  browserInspectionCoordinator.observeWindow(transitionPackage, event.windowId)
-              }
-              retireStaleWebsiteTransitions()
-              if (websiteBlockTransitionGuard.isActive(transitionPackage)) {
-                  websiteBlockTransitionGuard.observeBrowserEvent(
-                      browserPackageName = transitionPackage,
-                      windowId = event.windowId,
-                      eventUptimeMillis = event.eventTime,
-                      eventType = event.eventType
-                  )
-                  scheduleBrowserInspection(event, transitionPackage)
-              }
-              return
-          }
-
-          val observedWindowPackage = transitionPackage
-          if ((event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-                  event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) &&
-              observedWindowPackage.isNotBlank()
-          ) {
-              browserInspectionCoordinator.observeWindow(observedWindowPackage, event.windowId)
-              retireStaleWebsiteTransitions()
-          }
-          '''
-          if text.count(old_callback) != 1:
-              raise SystemExit(f'callback marker count={text.count(old_callback)}')
-          text = text.replace(old_callback, new_callback, 1)
-
+          callback_start = '            val observedWindowPackage = directPackage.ifBlank { foregroundPackageName.orEmpty() }\n'
+          callback_end = '            // Shield the native System UI power menu before any other handling.\n'
+          start = text.find(callback_start)
+          end = text.find(callback_end, start)
+          if start < 0 or end < 0:
+              raise SystemExit(f'callback boundaries not found: start={start} end={end}')
+          callback = (
+              '            // An explicit ACTION_VIEW fallback may make the same browser expose a new\n'
+              '            // Android window. Hand the first post-intent browser window to the existing\n'
+              '            // transition before generic window retirement. This is provisional only:\n'
+              '            // the curtain remains until a stable safe Google surface is confirmed.\n'
+              '            val transitionPackage = directPackage.ifBlank { foregroundPackageName.orEmpty() }\n'
+              '            val activeBrowserTransition = transitionPackage\n'
+              '                .takeIf(String::isNotBlank)\n'
+              '                ?.let(websiteBlockTransitionGuard::activeTransition)\n'
+              '            if (activeBrowserTransition != null) {\n'
+              '                val canRebindExternalWindow =\n'
+              '                    activeBrowserTransition.externalRedirectRequested &&\n'
+              '                        !activeBrowserTransition.externalRedirectWindowRebound &&\n'
+              '                        browserInspectionEvent &&\n'
+              '                        event.windowId >= 0 &&\n'
+              '                        event.windowId != activeBrowserTransition.expectedWindowId &&\n'
+              '                        event.eventTime >= activeBrowserTransition.externalRedirectRequestedAtUptimeMillis\n'
+              '                if (canRebindExternalWindow) {\n'
+              '                    val reboundGeneration = browserInspectionCoordinator.observeWindow(\n'
+              '                        transitionPackage,\n'
+              '                        event.windowId\n'
+              '                    )\n'
+              '                    websiteBlockTransitionGuard.rebindExternalRedirectWindow(\n'
+              '                        browserPackageName = transitionPackage,\n'
+              '                        transitionId = activeBrowserTransition.id,\n'
+              '                        windowId = event.windowId,\n'
+              '                        inspectionGeneration = reboundGeneration,\n'
+              '                        eventUptimeMillis = event.eventTime\n'
+              '                    )\n'
+              '                } else if (isWindowOrTabTransitionEvent(event.eventType)) {\n'
+              '                    browserInspectionCoordinator.observeWindow(transitionPackage, event.windowId)\n'
+              '                }\n'
+              '                retireStaleWebsiteTransitions()\n'
+              '                if (websiteBlockTransitionGuard.isActive(transitionPackage)) {\n'
+              '                    websiteBlockTransitionGuard.observeBrowserEvent(\n'
+              '                        browserPackageName = transitionPackage,\n'
+              '                        windowId = event.windowId,\n'
+              '                        eventUptimeMillis = event.eventTime,\n'
+              '                        eventType = event.eventType\n'
+              '                    )\n'
+              '                    scheduleBrowserInspection(event, transitionPackage)\n'
+              '                }\n'
+              '                return\n'
+              '            }\n\n'
+              '            val observedWindowPackage = transitionPackage\n'
+              '            if ((event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||\n'
+              '                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) &&\n'
+              '                observedWindowPackage.isNotBlank()\n'
+              '            ) {\n'
+              '                browserInspectionCoordinator.observeWindow(observedWindowPackage, event.windowId)\n'
+              '                retireStaleWebsiteTransitions()\n'
+              '            }\n\n'
+          )
+          text = text[:start] + callback + text[end:]
           path.write_text(text)
+          PY
+          python3 /tmp/apply_f4.py
 
-          test = Path('app/src/test/java/com/focusguard/service/ExternalRedirectHandoffTest.kt')
-          test.write_text(r'''package com.focusguard.service
+          cat > app/src/test/java/com/focusguard/service/ExternalRedirectHandoffTest.kt <<'KOTLIN'
+          package com.focusguard.service
 
           import android.app.Application
           import android.view.accessibility.AccessibilityEvent
@@ -195,12 +180,12 @@ jobs:
               private val browserPackage = "com.android.chrome"
               private val ownPackage = "com.focusguard.v2"
 
-              private fun event(type: Int, pkg: String?, windowId: Int, eventTime: Long) =
+              private fun event(type: Int, pkg: String?, id: Int, time: Long) =
                   mockk<AccessibilityEvent>(relaxed = true) {
                       every { eventType } returns type
                       every { packageName } returns pkg
-                      every { this@mockk.windowId } returns windowId
-                      every { this@mockk.eventTime } returns eventTime
+                      every { windowId } returns id
+                      every { eventTime } returns time
                   }
 
               @Test
@@ -258,13 +243,10 @@ jobs:
               }
 
               @Test
-              fun `second different window after handoff retires transition fail closed`() = runTest {
+              fun `second different window cannot inherit the same external redirect`() = runTest {
                   val service = spyk(BlockingAccessibilityService())
                   every { service.packageName } returns ownPackage
-                  every { service.windows } returns emptyList()
                   ReflectionHelpers.setField(service, "scope", this)
-                  ReflectionHelpers.setField(service, "foregroundPackageName", browserPackage)
-
                   val coordinator = ReflectionHelpers.getField<BrowserInspectionCoordinator>(
                       service, "browserInspectionCoordinator"
                   )
@@ -298,8 +280,7 @@ jobs:
                   assertEquals(11, transition.expectedWindowId)
               }
           }
-          '''.replace('\n          ', '\n').lstrip())
-          PY
+          KOTLIN
 
       - name: Run unit tests
         run: ./gradlew testDebugUnitTest --no-daemon
