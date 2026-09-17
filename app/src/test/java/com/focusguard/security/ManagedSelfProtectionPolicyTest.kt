@@ -12,7 +12,7 @@ class ManagedSelfProtectionPolicyTest {
     }
 
     @Test
-    fun `device admin class is context only until FocusGuard target is confirmed`() {
+    fun `device admin class is context only and never target proof`() {
         val className = "com.android.settings.Settings\$DeviceAdminSettingsActivity"
 
         assertThat(ManagedSelfProtectionPolicy.classLooksLikeDeviceAdminSurface(className))
@@ -23,7 +23,7 @@ class ManagedSelfProtectionPolicyTest {
         SelfProtectionTargetScope.confirmFocusGuardTarget()
 
         assertThat(ManagedSelfProtectionPolicy.classTargetsDeviceAdmin(className))
-            .isTrue()
+            .isFalse()
     }
 
     @Test
