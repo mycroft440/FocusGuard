@@ -1,9 +1,11 @@
 package com.focusguard.service
 
+import android.view.accessibility.AccessibilityEvent
+import com.focusguard.accessibility.website.compatibility.BrowserDetector
+import com.focusguard.accessibility.website.compatibility.BrowserRecognitionPolicy
 import com.focusguard.accessibility.website.identification.WebsiteIdentificationLayer
 import com.focusguard.accessibility.website.identification.WebsiteIdentificationResult
 import com.focusguard.accessibility.website.identification.WebsiteIdentificationStatus
-import android.view.accessibility.AccessibilityEvent
 import com.focusguard.utils.BrowserSurfaceInspector
 import com.focusguard.utils.WebsiteBlocker
 
@@ -62,6 +64,19 @@ internal data class BrowserInspectionOutcome(
             recognizedBrowser: Boolean
         ): BrowserInspectionOutcome {
             val token = snapshot.token
+            val classification = BrowserDetector.classify(token.packageName)
+            val effectiveRecognizedBrowser = BrowserRecognitionPolicy.isRecognizedBrowser(
+                classification = classification,
+                legacyRecognizedBrowser = recognizedBrowser,
+                addressBarObservable = identification.addressBarObservable
+            )
+            val effectiveSurface = BrowserRecognitionPolicy.recoverySurface(
+                classification = classification,
+                legacyRecognizedBrowser = recognizedBrowser,
+                addressBarObservable = identification.addressBarObservable,
+                identificationStatus = identification.status,
+                observedSurface = surface
+            )
             return BrowserInspectionOutcome(
                 packageName = token.packageName,
                 windowId = token.windowId,
@@ -69,16 +84,16 @@ internal data class BrowserInspectionOutcome(
                 sequence = token.sequence,
                 eventType = snapshot.eventType,
                 eventUptimeMillis = snapshot.eventUptimeMillis,
-                surface = surface,
+                surface = effectiveSurface,
                 identificationStatus = identification.status,
                 urlCandidate = identification.urlCandidate,
                 rawAddressText = identification.rawAddressText,
                 addressBarPresent = identification.addressBarObservable,
                 focusedAddressEditor = focusedAddressEditor,
                 webContentObserved = identification.webContentObserved ||
-                    surface == BrowserSurfaceInspector.Surface.WEB_CONTENT,
+                    effectiveSurface == BrowserSurfaceInspector.Surface.WEB_CONTENT,
                 evidence = identification.evidence.toSet(),
-                recognizedBrowser = recognizedBrowser,
+                recognizedBrowser = effectiveRecognizedBrowser,
                 directEventText = snapshot.directText.toList(),
                 eventContentDescription = snapshot.contentDescription,
                 eventClassName = snapshot.className
