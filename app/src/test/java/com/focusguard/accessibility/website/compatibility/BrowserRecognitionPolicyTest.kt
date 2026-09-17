@@ -32,8 +32,6 @@ class BrowserRecognitionPolicyTest {
     fun `confirmed opaque browser enters bounded recovery`() {
         val surface = BrowserRecognitionPolicy.recoverySurface(
             classification = BrowserClassification.CONFIRMED_BROWSER,
-            legacyRecognizedBrowser = false,
-            addressBarObservable = false,
             identificationStatus = WebsiteIdentificationStatus.UNOBSERVABLE,
             observedSurface = BrowserSurfaceInspector.Surface.UNKNOWN
         )
@@ -42,11 +40,20 @@ class BrowserRecognitionPolicyTest {
     }
 
     @Test
+    fun `unknown legacy handler does not promote opaque tree`() {
+        val surface = BrowserRecognitionPolicy.recoverySurface(
+            classification = BrowserClassification.UNKNOWN,
+            identificationStatus = WebsiteIdentificationStatus.UNOBSERVABLE,
+            observedSurface = BrowserSurfaceInspector.Surface.UNKNOWN
+        )
+
+        assertThat(surface).isEqualTo(BrowserSurfaceInspector.Surface.UNKNOWN)
+    }
+
+    @Test
     fun `native browser ui is never promoted to web content`() {
         val surface = BrowserRecognitionPolicy.recoverySurface(
             classification = BrowserClassification.CONFIRMED_BROWSER,
-            legacyRecognizedBrowser = true,
-            addressBarObservable = false,
             identificationStatus = WebsiteIdentificationStatus.NATIVE_BROWSER_UI,
             observedSurface = BrowserSurfaceInspector.Surface.NATIVE_UI
         )
@@ -59,7 +66,6 @@ class BrowserRecognitionPolicyTest {
         assertThat(
             BrowserRecognitionPolicy.shouldFailClosedAfterRecovery(
                 classification = BrowserClassification.CONFIRMED_BROWSER,
-                legacyHttpsHandlerRecognized = false,
                 identificationStatus = WebsiteIdentificationStatus.UNOBSERVABLE,
                 addressBarObservable = false,
                 urlCandidatePresent = false
@@ -68,11 +74,22 @@ class BrowserRecognitionPolicyTest {
     }
 
     @Test
-    fun `non browser never fails closed from legacy handler`() {
+    fun `unknown package never gains new opaque fail closed evidence`() {
+        assertThat(
+            BrowserRecognitionPolicy.shouldFailClosedAfterRecovery(
+                classification = BrowserClassification.UNKNOWN,
+                identificationStatus = WebsiteIdentificationStatus.UNOBSERVABLE,
+                addressBarObservable = false,
+                urlCandidatePresent = false
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `non browser never fails closed`() {
         assertThat(
             BrowserRecognitionPolicy.shouldFailClosedAfterRecovery(
                 classification = BrowserClassification.NOT_BROWSER,
-                legacyHttpsHandlerRecognized = true,
                 identificationStatus = WebsiteIdentificationStatus.UNOBSERVABLE,
                 addressBarObservable = false,
                 urlCandidatePresent = false
@@ -85,7 +102,6 @@ class BrowserRecognitionPolicyTest {
         assertThat(
             BrowserRecognitionPolicy.shouldFailClosedAfterRecovery(
                 classification = BrowserClassification.CONFIRMED_BROWSER,
-                legacyHttpsHandlerRecognized = true,
                 identificationStatus = WebsiteIdentificationStatus.UNOBSERVABLE,
                 addressBarObservable = false,
                 urlCandidatePresent = true
