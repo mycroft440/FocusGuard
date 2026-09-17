@@ -48,10 +48,10 @@ class BrowserRecognitionPolicyTest {
             legacyRecognizedBrowser = true,
             addressBarObservable = false,
             identificationStatus = WebsiteIdentificationStatus.NATIVE_BROWSER_UI,
-            observedSurface = BrowserSurfaceInspector.Surface.NATIVE_BROWSER_UI
+            observedSurface = BrowserSurfaceInspector.Surface.NATIVE_UI
         )
 
-        assertThat(surface).isEqualTo(BrowserSurfaceInspector.Surface.NATIVE_BROWSER_UI)
+        assertThat(surface).isEqualTo(BrowserSurfaceInspector.Surface.NATIVE_UI)
     }
 
     @Test
