@@ -52,8 +52,9 @@ internal class BrowserRecoveryCoordinator {
 
     @Synchronized
     fun clear() {
-        activeCancelled = true
+        active = null
         pending = null
+        activeCancelled = false
     }
 
     private fun sameDocument(
