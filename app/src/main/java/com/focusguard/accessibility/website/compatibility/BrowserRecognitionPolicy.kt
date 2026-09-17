@@ -17,22 +17,17 @@ internal object BrowserRecognitionPolicy {
     }
 
     /**
-     * A confirmed/probable browser with an entirely opaque tree must still enter the bounded URL
-     * recovery path. Native browser panels remain untouched because they have their own surface.
+     * Only strong package-level browser evidence may promote an entirely opaque tree into the
+     * bounded URL-recovery path. The legacy HTTPS-handler signal still preserves existing browser
+     * recognition for observable surfaces, but cannot by itself turn an UNKNOWN tree into web
+     * content because App Links can produce that same signal.
      */
     fun recoverySurface(
         classification: BrowserClassification,
-        legacyRecognizedBrowser: Boolean,
-        addressBarObservable: Boolean,
         identificationStatus: WebsiteIdentificationStatus,
         observedSurface: BrowserSurfaceInspector.Surface
-    ): BrowserSurfaceInspector.Surface {
-        val recognized = isRecognizedBrowser(
-            classification = classification,
-            legacyRecognizedBrowser = legacyRecognizedBrowser,
-            addressBarObservable = addressBarObservable
-        )
-        return if (recognized &&
+    ): BrowserSurfaceInspector.Surface =
+        if (classification.isBrowserLike &&
             identificationStatus == WebsiteIdentificationStatus.UNOBSERVABLE &&
             observedSurface == BrowserSurfaceInspector.Surface.UNKNOWN
         ) {
@@ -40,25 +35,24 @@ internal object BrowserRecognitionPolicy {
         } else {
             observedSurface
         }
-    }
 
     /**
-     * After bounded recovery, only strong browser evidence may turn a still-unobservable result
-     * into fail-closed web content. A single legacy HTTPS match is accepted only when the new
-     * detector could not decide, never when it explicitly classified the package as NOT_BROWSER.
+     * After bounded recovery, only a confirmed/probable browser may add new fail-closed web
+     * evidence. Legacy HTTPS-handler recognition is intentionally excluded here: it remains useful
+     * for the pre-existing observable-browser flow, but a single App Link must never be sufficient
+     * to create opaque-browser blocking.
      */
     fun shouldFailClosedAfterRecovery(
         classification: BrowserClassification,
-        legacyHttpsHandlerRecognized: Boolean,
         identificationStatus: WebsiteIdentificationStatus,
         addressBarObservable: Boolean,
         urlCandidatePresent: Boolean
     ): Boolean {
-        if (identificationStatus != WebsiteIdentificationStatus.UNOBSERVABLE ||
+        if (!classification.isBrowserLike ||
+            identificationStatus != WebsiteIdentificationStatus.UNOBSERVABLE ||
             addressBarObservable || urlCandidatePresent
         ) return false
 
-        return classification.isBrowserLike ||
-            (classification == BrowserClassification.UNKNOWN && legacyHttpsHandlerRecognized)
+        return true
     }
 }
