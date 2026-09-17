@@ -20,7 +20,6 @@ object ManagedSelfProtectionPolicy {
         val essentialSpecialAccess: Boolean
     )
 
-    // These helpers must exist before the pre-normalized dictionaries are built.
     private val COMBINING_MARKS_REGEX = "\\p{M}+".toRegex()
     private val NON_LETTER_REGEX = "[^a-z0-9]+".toRegex()
 
@@ -32,15 +31,10 @@ object ManagedSelfProtectionPolicy {
     )
 
     private val appDetailsClassMarkers = setOf(
-        // Somente superfícies de detalhes de um app. A lista geral de aplicativos
-        // precisa continuar disponível para administrar qualquer outro pacote.
         "InstalledAppDetails",
         "AppInfoDashboardFragment",
         "AppInfoDashboardActivity",
         "AppInfoActivity",
-        // Android 14+ pode encaminhar Informações do app para a arquitetura SPA.
-        // A política ainda exige a identidade do FocusGuard, portanto uma SpaActivity
-        // de qualquer outro aplicativo continua livre.
         "SpaActivity",
         "SpaAppBridgeActivity"
     )
@@ -62,8 +56,6 @@ object ManagedSelfProtectionPolicy {
     )
 
     internal val deviceAdminSearchTerms = listOf(
-        // One UI pt-BR: keep the observed gateway first so the rare broad root
-        // fallback short-circuits on its first query.
         "Apps administradores do sistema",
         "Apps do administrador do aparelho",
         "Aplicativos administradores do sistema",
@@ -75,45 +67,24 @@ object ManagedSelfProtectionPolicy {
         "Device administrators",
         "Aplicaciones de administración del dispositivo",
         "Administradores del dispositivo",
-        // Accessibility events also expose viewIdResourceName. OEM Settings
-        // commonly uses these stable fragments even when the clickable row itself
-        // has no visible text, letting us classify without a subtree expansion.
         "device_admin",
         "deviceadmin"
     )
 
     /**
-     * Locator-only prefixes for OEM rows. The service still validates the full
-     * returned node text with [textTargetsDeviceAdmin] before blocking.
+     * A generic Device Admin row must never be enough to trigger protection.
+     * Keeping this list empty also disables the service's old fast-path that
+     * searched the clicked subtree only for a Device Admin label and then armed
+     * the global transition guard without knowing which administrator was targeted.
      */
-    internal val deviceAdminNodeSearchTerms = listOf(
-        // Current One UI pt-BR wording first; these are locators only and the
-        // returned node still passes textTargetsDeviceAdmin before any block.
-        "Apps administradores",
-        "Apps do administr",
-        "Device admin"
-    )
+    internal val deviceAdminNodeSearchTerms: List<String> = emptyList()
 
-    /**
-     * Prefixos de "administrador" que aparecem abreviados nas telas.
-     *
-     * A One UI corta o rótulo para caber — "Apps do administr. do aparelho" — e
-     * nenhum termo escrito por extenso casa com isso. Em vez de tentar listar
-     * cada corte de cada fabricante, o casamento é feito por par: uma palavra
-     * que comece com um destes prefixos, mais uma palavra de aparelho na mesma
-     * frase. Sozinho, "admin" apareceria em contexto inocente demais.
-     */
     private val deviceAdminWordPrefixes = listOf(
         "admin",
         "administr",
         "administra"
     )
 
-    /**
-     * Prefixos, e não palavras inteiras: a barra de título também corta o outro
-     * lado do rótulo — "Apps do administr. do aparel…" — então exigir "aparelho"
-     * completo deixaria passar justamente a tela que se quer barrar.
-     */
     private val deviceWordPrefixes = listOf(
         "aparel",
         "dispositiv",
@@ -133,15 +104,10 @@ object ManagedSelfProtectionPolicy {
     )
 
     internal val focusGuardSearchTerms = listOf(
-        // Current installed label. Keep it first: One UI's App Info screen exposes
-        // this label immediately, so the accessibility service normally resolves
-        // our identity with a single tree lookup instead of trying legacy labels.
         "HardBlock",
         "Hard Block",
         "FocusGuard",
         "Focus Guard",
-        // Stable package identifiers remain fallbacks when an OEM exposes the
-        // package name instead of the user-visible label.
         "com.focusguard.v2",
         "com.focusguard.v2.debug",
         "com.focusguard.v2.ci"
@@ -197,7 +163,16 @@ object ManagedSelfProtectionPolicy {
     private val normalizedEssentialSpecialAccessSearchTerms =
         essentialSpecialAccessSearchTerms.map(::normalize)
 
+    /**
+     * Returns true only when a Device Admin class is being observed after the
+     * current interaction has already been explicitly tied to FocusGuard.
+     * Class name by itself is context, not target identity.
+     */
     fun classTargetsDeviceAdmin(className: String): Boolean =
+        classLooksLikeDeviceAdminSurface(className) &&
+            SelfProtectionTargetScope.isFocusGuardTargetConfirmed()
+
+    fun classLooksLikeDeviceAdminSurface(className: String): Boolean =
         containsAny(className, deviceAdminClassMarkers)
 
     fun classTargetsAppDetails(className: String): Boolean =
