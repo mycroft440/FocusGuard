@@ -1,6 +1,10 @@
 package com.focusguard.service
 
-/** One heavy recovery at a time; a newer observation always gets a pending turn. */
+/**
+ * Runs at most one heavy recovery per live browser generation. Repeated content events
+ * from the same window are coalesced into that recovery instead of restarting its
+ * grace/deadline. A real package/window/generation change still cancels the old work.
+ */
 internal class BrowserRecoveryCoordinator {
     private var active: BrowserInspectionCoordinator.Token? = null
     private var pending: BrowserInspectionCoordinator.Token? = null
@@ -8,12 +12,18 @@ internal class BrowserRecoveryCoordinator {
 
     @Synchronized
     fun offer(token: BrowserInspectionCoordinator.Token): Boolean {
-        if (token == active && !activeCancelled) return false
-        if (active != null) {
+        val current = active
+        if (current != null && !activeCancelled && sameDocument(current, token)) {
+            current.permitSequenceAdvance()
+            return false
+        }
+        if (token == current && !activeCancelled) return false
+        if (current != null) {
             pending = token
             activeCancelled = true
             return false
         }
+        token.permitSequenceAdvance()
         active = token
         activeCancelled = false
         return true
@@ -21,15 +31,17 @@ internal class BrowserRecoveryCoordinator {
 
     @Synchronized
     fun isCurrent(token: BrowserInspectionCoordinator.Token): Boolean =
-        active == token && !activeCancelled
+        active === token && !activeCancelled
 
     @Synchronized
     fun finish(token: BrowserInspectionCoordinator.Token): BrowserInspectionCoordinator.Token? {
-        if (active != token) return null
-        active = pending
+        if (active !== token) return null
+        val replacement = pending
         pending = null
         activeCancelled = false
-        return active
+        if (replacement != null) replacement.permitSequenceAdvance()
+        active = replacement
+        return replacement
     }
 
     @Synchronized
@@ -43,4 +55,11 @@ internal class BrowserRecoveryCoordinator {
         activeCancelled = true
         pending = null
     }
+
+    private fun sameDocument(
+        first: BrowserInspectionCoordinator.Token,
+        second: BrowserInspectionCoordinator.Token
+    ): Boolean = first.packageName == second.packageName &&
+        first.windowId == second.windowId &&
+        first.generation == second.generation
 }
