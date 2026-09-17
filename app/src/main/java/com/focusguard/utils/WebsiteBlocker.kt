@@ -815,8 +815,10 @@ object WebsiteBlocker {
         arguments: Bundle? = null,
         textPredicate: ((String?) -> Boolean)? = null,
         httpsHandlerRecognized: Boolean = false,
-        allowFallbacks: Boolean = true
+        allowFallbacks: Boolean = true,
+        isCurrent: () -> Boolean = { true }
     ): AddressBarActionResult {
+        if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
         if (root.packageName?.toString() != browserPackageName ||
             root.windowId != expectedWindowId
         ) return AddressBarActionResult(AddressBarActionStatus.NOT_FOUND)
@@ -929,6 +931,7 @@ object WebsiteBlocker {
             }
 
             val selected = nodes[selectedIndex]
+            if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
             if (allowFallbacks && requiredAction == BrowserUiCapabilityPolicy.NodeAction.SET_TEXT) {
                 val selectionResult = AddressBarRedirectionActions.selectAll(
                     root = root,
@@ -967,10 +970,15 @@ object WebsiteBlocker {
                     }
                     return fallback
                 }
-                runCatching { selected.performAction(androidAction, arguments) }
-                    .getOrDefault(false)
+                if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+                val actionAccepted = runCatching {
+                    selected.performAction(androidAction, arguments)
+                }.getOrDefault(false)
+                if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+                actionAccepted
             }
 
+            if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
             if (accepted) {
                 if (allowFallbacks) recordAddressBarActionSuccess(
                     browserPackageName = browserPackageName,

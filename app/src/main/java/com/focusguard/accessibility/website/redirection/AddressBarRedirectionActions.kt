@@ -53,7 +53,7 @@ internal object AddressBarRedirectionActions {
         browserPackageName: String,
         expectedWindowId: Int,
         httpsHandlerRecognized: Boolean,
-        isCurrent: () -> Boolean
+        isCurrent: () -> Boolean = { true }
     ): Result {
         if (!isCurrent()) return Result(Status.REJECTED)
         val preferClick = BrowserUiCapabilityPolicy.prefersClickAddressBarActivation(
@@ -83,7 +83,7 @@ internal object AddressBarRedirectionActions {
         expectedWindowId: Int,
         action: BrowserUiCapabilityPolicy.NodeAction,
         httpsHandlerRecognized: Boolean,
-        isCurrent: () -> Boolean
+        isCurrent: () -> Boolean = { true }
     ): Result = legacyAction(
         root,
         browserPackageName,
@@ -130,7 +130,7 @@ internal object AddressBarRedirectionActions {
         browserPackageName: String,
         expectedWindowId: Int,
         httpsHandlerRecognized: Boolean,
-        isCurrent: () -> Boolean
+        isCurrent: () -> Boolean = { true }
     ): Result = rawEditorAction(
         root,
         browserPackageName,
@@ -154,7 +154,7 @@ internal object AddressBarRedirectionActions {
         expectedWindowId: Int,
         text: String,
         httpsHandlerRecognized: Boolean,
-        isCurrent: () -> Boolean
+        isCurrent: () -> Boolean = { true }
     ): Result = legacyAction(
         root = root,
         browserPackageName = browserPackageName,
@@ -172,7 +172,7 @@ internal object AddressBarRedirectionActions {
         browserPackageName: String,
         expectedWindowId: Int,
         httpsHandlerRecognized: Boolean,
-        isCurrent: () -> Boolean
+        isCurrent: () -> Boolean = { true }
     ): Result = rawEditorAction(
         root,
         browserPackageName,
@@ -188,7 +188,7 @@ internal object AddressBarRedirectionActions {
         expectedWindowId: Int,
         textPredicate: ((String?) -> Boolean)?,
         httpsHandlerRecognized: Boolean,
-        isCurrent: () -> Boolean
+        isCurrent: () -> Boolean = { true }
     ): Result {
         if (!isCurrent() || !BrowserUiCapabilityPolicy.canUseImeEnter(Build.VERSION.SDK_INT)) {
             return Result(Status.NOT_FOUND)
@@ -210,7 +210,7 @@ internal object AddressBarRedirectionActions {
         expectedWindowId: Int,
         textPredicate: ((String?) -> Boolean)?,
         httpsHandlerRecognized: Boolean,
-        isCurrent: () -> Boolean
+        isCurrent: () -> Boolean = { true }
     ): Result {
         if (!isCurrent()) return Result(Status.REJECTED)
         val nodes = collectAddressBarNodes(
@@ -268,7 +268,7 @@ internal object AddressBarRedirectionActions {
         root: AccessibilityNodeInfo,
         browserPackageName: String,
         expectedWindowId: Int,
-        isCurrent: () -> Boolean
+        isCurrent: () -> Boolean = { true }
     ): Result {
         if (!isCurrent() || !rootMatches(root, browserPackageName, expectedWindowId)) {
             return Result(Status.NOT_FOUND)
@@ -322,7 +322,7 @@ internal object AddressBarRedirectionActions {
         arguments: Bundle? = null,
         textPredicate: ((String?) -> Boolean)? = null,
         httpsHandlerRecognized: Boolean,
-        isCurrent: () -> Boolean
+        isCurrent: () -> Boolean = { true }
     ): Result {
         if (!isCurrent()) return Result(Status.REJECTED)
         val result = WebsiteBlocker.performUniqueAddressBarAction(
@@ -333,7 +333,8 @@ internal object AddressBarRedirectionActions {
             arguments = arguments,
             textPredicate = textPredicate,
             httpsHandlerRecognized = httpsHandlerRecognized,
-            allowFallbacks = false
+            allowFallbacks = false,
+            isCurrent = isCurrent
         )
         if (!isCurrent()) return Result(Status.REJECTED, result.selectedViewId)
         return Result(

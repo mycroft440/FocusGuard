@@ -81,7 +81,8 @@ internal class WebsiteIdentificationRecovery(
                                 BrowserUiCapabilityPolicy.NodeAction.FOCUS
                             },
                             httpsHandlerRecognized = httpsHandlerRecognized,
-                            allowFallbacks = false
+                            allowFallbacks = false,
+                            isCurrent = isCurrent
                         ).accepted
                     }
                 } finally { recycle(root) }

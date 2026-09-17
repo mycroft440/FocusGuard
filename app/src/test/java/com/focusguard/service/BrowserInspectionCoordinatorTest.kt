@@ -2,6 +2,7 @@ package com.focusguard.service
 
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -50,5 +51,27 @@ class BrowserInspectionCoordinatorTest {
         coordinator.observeWindow("com.microsoft.emmx", 7)
 
         assertFalse(coordinator.isCurrent(old.snapshot.token))
+    }
+
+    @Test
+    fun invalidateDropsPendingWorkAndOldGeneration() {
+        val coordinator = BrowserInspectionCoordinator()
+        val running = coordinator.offer(
+            "com.android.chrome", 10, 2048, 1L, 1L, "", emptyList(), null
+        )
+        assertSame(running.snapshot, coordinator.takePending())
+        coordinator.offer(
+            "com.android.chrome", 10, 2048, 2L, 2L, "", listOf("pending"), null
+        )
+
+        coordinator.invalidate()
+
+        assertFalse(coordinator.isCurrent(running.snapshot.token))
+        assertNull(coordinator.finishPass())
+        val replacement = coordinator.offer(
+            "com.android.chrome", 11, 2048, 3L, 3L, "", emptyList(), null
+        )
+        assertTrue(replacement.startWorker)
+        assertTrue(coordinator.isCurrent(replacement.snapshot.token, requireLatestSequence = true))
     }
 }
