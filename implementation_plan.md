@@ -113,3 +113,32 @@ Um domínio bloqueado já visível na barra de endereço deve acionar a cortina 
 - Remover gates globais de API 30 do redirecionamento; tentar envio IME quando disponível, ação anunciada e botão nativo certificado.
 - Revalidar a escrita antes do envio e confirmar navegação após envio; tentar a ativação alternativa mesmo quando a primeira ação foi aceita sem produzir editor.
 - Publicar na main, sem testes ou build, conforme orientação do usuário.
+
+---
+
+# Plano de implementação — bloqueio recorrente por faixa de horário
+
+## Objetivo
+Permitir que o bloqueio por tempo use uma faixa diária configurável, aplicada somente nos dias selecionados, mantendo a duração total de vigência definida pelo usuário.
+
+## Diagnóstico
+- [x] `TimeBlockSessionConfigScreen` já seleciona apps/sites, inicia com os sete dias marcados e possui duração total via `BlockDurationPicker`.
+- [x] `BlockSession` já persiste horário inicial/final, dias de recorrência e `endTime`.
+- [x] `BlockingSessionManager.startTimeSession` já grava esses campos e `BlockingScheduleCalculator`/enforcement já suportam janelas diurnas e noturnas.
+- [x] A tela atual ignora essa infraestrutura e grava sempre `00:00–24:00`.
+
+## Implementação
+- [ ] Expor horário de início e fim na página de agenda, com seleção explícita e feedback para intervalo inválido.
+- [ ] Reutilizar uma validação pura da janela recorrente na UI e na criação da sessão, preservando compatibilidade com sessões legadas `00:00–24:00`.
+- [ ] Passar os horários escolhidos a `startTimeSession`, mantendo dias selecionados e duração total existentes.
+- [ ] Atualizar strings em inglês/português em paridade.
+- [ ] Ajustar testes da agenda para período configurável, incluindo intervalo noturno e compatibilidade de `24:00`.
+
+## Validação
+- [ ] Executar testes unitários relacionados ao agendamento.
+- [ ] Executar `:app:compileDebugKotlin`, `:app:testDebugUnitTest` e `:app:lintDebug` se disponíveis.
+- [ ] Revisar o diff para confirmar ausência de mudanças em PASSWORD, limites de uso e fluxo de seleção.
+- [ ] Confirmar que a expiração total continua limitando qualquer próxima janela recorrente.
+
+## Critério de conclusão
+Um bloqueio `TIME` deve bloquear somente dentro da faixa diária selecionada, nos dias marcados, até o fim da duração total configurada; fora da faixa ou após a expiração, o alvo não deve ser bloqueado por essa sessão.
