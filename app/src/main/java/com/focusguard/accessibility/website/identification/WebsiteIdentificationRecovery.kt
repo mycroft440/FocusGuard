@@ -111,7 +111,6 @@ internal class WebsiteIdentificationRecovery(
         val classification = BrowserDetector.classify(browserPackage)
         return if (BrowserRecognitionPolicy.shouldFailClosedAfterRecovery(
                 classification = classification,
-                legacyHttpsHandlerRecognized = httpsHandlerRecognized,
                 identificationStatus = postRecovery.status,
                 addressBarObservable = postRecovery.addressBarObservable,
                 urlCandidatePresent = postRecovery.urlCandidate != null
