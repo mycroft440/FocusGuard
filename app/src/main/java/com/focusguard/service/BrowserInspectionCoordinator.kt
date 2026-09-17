@@ -14,7 +14,17 @@ internal class BrowserInspectionCoordinator {
         val windowId: Int,
         val generation: Long,
         val sequence: Long
-    )
+    ) {
+        // Once an inspection has been freshly validated against the live root, async
+        // follow-up work may survive later observations from the same window/generation.
+        // Window/package/generation changes still invalidate it unconditionally.
+        @Volatile internal var allowSequenceAdvance: Boolean = false
+            private set
+
+        internal fun permitSequenceAdvance() {
+            allowSequenceAdvance = true
+        }
+    }
 
     data class Snapshot(
         val token: Token,
@@ -37,6 +47,7 @@ internal class BrowserInspectionCoordinator {
     private var currentPackage = ""
     private var currentWindowId = INVALID_WINDOW_ID
     private var pending: Snapshot? = null
+    private var running: Snapshot? = null
     private var workerActive = false
 
     fun offer(
@@ -82,13 +93,24 @@ internal class BrowserInspectionCoordinator {
     }
 
     fun takePending(): Snapshot? = synchronized(lock) {
-        pending.also { pending = null }
-    }
-
-    /** Returns the newest coalesced snapshot, or marks the serial worker idle. */
-    fun finishPass(): Snapshot? = synchronized(lock) {
         pending.also {
             pending = null
+            running = it
+        }
+    }
+
+    /**
+     * Returns the newest coalesced snapshot, or marks the serial worker idle.
+     *
+     * A completed pass has already re-read and validated the live browser root. Async
+     * recovery/destination confirmation started from that pass may therefore accept a
+     * newer sequence in the same generation instead of requiring a 120 ms quiet gap.
+     */
+    fun finishPass(): Snapshot? = synchronized(lock) {
+        running?.token?.permitSequenceAdvance()
+        pending.also {
+            pending = null
+            running = it
             if (it == null) workerActive = false
         }
     }
@@ -98,7 +120,8 @@ internal class BrowserInspectionCoordinator {
             token.packageName == currentPackage &&
                 token.windowId == currentWindowId &&
                 token.generation == generation &&
-                (!requireLatestSequence || token.sequence == sequence)
+                (!requireLatestSequence || token.sequence == sequence ||
+                    (token.allowSequenceAdvance && token.sequence <= sequence))
         }
 
     fun isCurrentWindow(packageName: String, windowId: Int, expectedGeneration: Long): Boolean =
@@ -122,6 +145,7 @@ internal class BrowserInspectionCoordinator {
         currentPackage = ""
         currentWindowId = INVALID_WINDOW_ID
         pending = null
+        running = null
     }
 
     internal companion object {
