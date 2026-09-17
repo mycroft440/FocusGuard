@@ -40,6 +40,17 @@ class BrowserRecognitionPolicyTest {
     }
 
     @Test
+    fun `probable browser policy state also enters bounded recovery`() {
+        val surface = BrowserRecognitionPolicy.recoverySurface(
+            classification = BrowserClassification.PROBABLE_BROWSER,
+            identificationStatus = WebsiteIdentificationStatus.UNOBSERVABLE,
+            observedSurface = BrowserSurfaceInspector.Surface.UNKNOWN
+        )
+
+        assertThat(surface).isEqualTo(BrowserSurfaceInspector.Surface.WEB_CONTENT)
+    }
+
+    @Test
     fun `unknown legacy handler does not promote opaque tree`() {
         val surface = BrowserRecognitionPolicy.recoverySurface(
             classification = BrowserClassification.UNKNOWN,
