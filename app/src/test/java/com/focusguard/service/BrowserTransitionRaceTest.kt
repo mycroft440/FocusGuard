@@ -99,9 +99,9 @@ class BrowserTransitionRaceTest {
     }
 
     @Test
-    fun windowChangeBeforeIntentNeverStartsActivity() {
+    fun windowChangeBeforeIntentNeverStartsActivity() = runTest {
         coordinator.observeWindow(pkg, 11)
-        assertEquals(false, call("requestSafeGoogleThroughBrowserIntent", transition))
+        assertEquals(false, callSuspend("requestSafeGoogleThroughBrowserIntent", transition))
         verify(exactly = 0) { service.startActivity(any()) }
     }
 
