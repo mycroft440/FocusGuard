@@ -9,6 +9,9 @@ import com.focusguard.accessibility.website.identification.WebsiteIdentification
  * Multi-phase same-tab redirect. Nodes never survive an asynchronous phase:
  * activate -> discard -> wait -> reacquire -> edit -> discard -> wait ->
  * reacquire -> submit -> wait -> verify.
+ *
+ * [isCurrent] binds every side effect to the browser window generation that
+ * requested the redirect. A window/package change aborts before the next action.
  */
 internal class WebsiteRedirectionCoordinator(
     private val context: Context,
@@ -21,6 +24,7 @@ internal class WebsiteRedirectionCoordinator(
     private val performBack: () -> Boolean,
     private val isRedirectAddress: (String?) -> Boolean,
     private val verifyDestination: suspend () -> Boolean,
+    private val isCurrent: () -> Boolean = { true },
     private val onPhase: (WebsiteRedirectionPhase) -> Unit = {}
 ) {
     enum class SubmissionMethod {
@@ -40,20 +44,22 @@ internal class WebsiteRedirectionCoordinator(
 
     suspend fun redirect(): Outcome {
         var attempt = 1
-        while (attempt <= WebsiteRedirectionPlan.MAX_SAME_TAB_ATTEMPTS) {
+        while (attempt <= WebsiteRedirectionPlan.MAX_SAME_TAB_ATTEMPTS && isCurrent()) {
             val submissionMethod = runAttempt()
+            if (!isCurrent()) return Outcome.FailClosed(attempt)
             if (submissionMethod != null) {
                 onPhase(WebsiteRedirectionPhase.VERIFY_DESTINATION)
-                if (verifyDestination()) {
+                if (isCurrent() && verifyDestination() && isCurrent()) {
                     onPhase(WebsiteRedirectionPhase.REDIRECT_CONFIRMED)
                     return Outcome.Redirected(attempt, submissionMethod)
                 }
             }
 
-            if (!WebsiteRedirectionPlan.canRetry(attempt)) break
+            if (!WebsiteRedirectionPlan.canRetry(attempt) || !isCurrent()) break
             onPhase(WebsiteRedirectionPhase.BACK_AND_RETRY)
-            if (!performBack()) break
+            if (!isCurrent() || !performBack()) break
             waitForUiMutation()
+            if (!isCurrent()) break
             attempt += 1
         }
 
@@ -62,6 +68,7 @@ internal class WebsiteRedirectionCoordinator(
     }
 
     private suspend fun runAttempt(): SubmissionMethod? {
+        if (!isCurrent()) return null
         onPhase(WebsiteRedirectionPhase.ACTIVATE_ADDRESS_BAR)
         val activated = withFreshRoot { root ->
             AddressBarRedirectionActions.activateAddressBar(
@@ -71,17 +78,19 @@ internal class WebsiteRedirectionCoordinator(
                 httpsHandlerRecognized = httpsHandlerRecognized
             )
         } ?: return null
-        if (!activated.accepted) return null
+        if (!activated.accepted || !isCurrent()) return null
 
         waitForUiMutation()
+        if (!isCurrent()) return null
         onPhase(WebsiteRedirectionPhase.REIDENTIFY_EDITOR)
         val editorIdentification = WebsiteIdentificationEngine.reidentifyAfterInteraction(
-            rootProvider = rootProvider,
+            rootProvider = { if (isCurrent()) rootProvider() else null },
             browserPackageName = browserPackageName,
             expectedWindowId = expectedWindowId,
             httpsHandlerRecognized = httpsHandlerRecognized
         )
-        if (editorIdentification.status == WebsiteIdentificationStatus.REJECTED_CONTEXT ||
+        if (!isCurrent() ||
+            editorIdentification.status == WebsiteIdentificationStatus.REJECTED_CONTEXT ||
             !editorIdentification.addressBarObservable
         ) return null
 
@@ -94,8 +103,11 @@ internal class WebsiteRedirectionCoordinator(
                 httpsHandlerRecognized = httpsHandlerRecognized
             )
         }
-        if (selection?.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return null
-        if (selection?.accepted == true) waitForUiMutation()
+        if (!isCurrent() || selection?.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return null
+        if (selection?.accepted == true) {
+            waitForUiMutation()
+            if (!isCurrent()) return null
+        }
 
         onPhase(WebsiteRedirectionPhase.SET_TEXT)
         var written = withFreshRoot { root ->
@@ -107,35 +119,47 @@ internal class WebsiteRedirectionCoordinator(
                 httpsHandlerRecognized = httpsHandlerRecognized
             )
         }
-        if (written?.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return null
+        if (!isCurrent() || written?.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return null
 
         if (written?.accepted != true) {
+            if (!isCurrent()) return null
             onPhase(WebsiteRedirectionPhase.PASTE_FALLBACK)
             written = withFreshRoot { root ->
+                if (!isCurrent()) return@withFreshRoot AddressBarRedirectionActions.ActionResult(
+                    AddressBarRedirectionActions.Status.NOT_FOUND
+                )
                 ClipboardPasteFallback.pasteSafely(
                     context = context,
                     text = redirectUrl
                 ) {
-                    AddressBarRedirectionActions.paste(
-                        root = root,
-                        browserPackageName = browserPackageName,
-                        expectedWindowId = expectedWindowId,
-                        httpsHandlerRecognized = httpsHandlerRecognized
-                    )
+                    if (!isCurrent()) {
+                        AddressBarRedirectionActions.ActionResult(
+                            AddressBarRedirectionActions.Status.NOT_FOUND
+                        )
+                    } else {
+                        AddressBarRedirectionActions.paste(
+                            root = root,
+                            browserPackageName = browserPackageName,
+                            expectedWindowId = expectedWindowId,
+                            httpsHandlerRecognized = httpsHandlerRecognized
+                        )
+                    }
                 }
             }
         }
-        if (written?.accepted != true) return null
+        if (!isCurrent() || written?.accepted != true) return null
 
         waitForUiMutation()
+        if (!isCurrent()) return null
         onPhase(WebsiteRedirectionPhase.REIDENTIFY_SUBMITTER)
         val submitIdentification = WebsiteIdentificationEngine.reidentifyAfterInteraction(
-            rootProvider = rootProvider,
+            rootProvider = { if (isCurrent()) rootProvider() else null },
             browserPackageName = browserPackageName,
             expectedWindowId = expectedWindowId,
             httpsHandlerRecognized = httpsHandlerRecognized
         )
-        if (submitIdentification.status == WebsiteIdentificationStatus.REJECTED_CONTEXT ||
+        if (!isCurrent() ||
+            submitIdentification.status == WebsiteIdentificationStatus.REJECTED_CONTEXT ||
             !submitIdentification.addressBarObservable ||
             !isRedirectAddress(submitIdentification.bestCandidate)
         ) return null
@@ -150,6 +174,7 @@ internal class WebsiteRedirectionCoordinator(
                 httpsHandlerRecognized = httpsHandlerRecognized
             )
         }
+        if (!isCurrent()) return null
         if (ime?.accepted == true) return SubmissionMethod.IME_ENTER
         if (ime?.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return null
 
@@ -163,6 +188,7 @@ internal class WebsiteRedirectionCoordinator(
                 httpsHandlerRecognized = httpsHandlerRecognized
             )
         }
+        if (!isCurrent()) return null
         if (announced?.accepted == true) return SubmissionMethod.ANNOUNCED_EDITOR_ACTION
         if (announced?.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return null
 
@@ -174,17 +200,19 @@ internal class WebsiteRedirectionCoordinator(
                 expectedWindowId = expectedWindowId
             )
         }
-        return if (go?.accepted == true) SubmissionMethod.CERTIFIED_GO_BUTTON else null
+        return if (isCurrent() && go?.accepted == true) SubmissionMethod.CERTIFIED_GO_BUTTON else null
     }
 
     private inline fun <T> withFreshRoot(block: (AccessibilityNodeInfo) -> T): T? {
+        if (!isCurrent()) return null
         val root = rootProvider() ?: return null
         return try {
+            if (!isCurrent()) return null
             val matches = runCatching {
                 root.packageName?.toString() == browserPackageName &&
                     root.windowId == expectedWindowId
             }.getOrDefault(false)
-            if (!matches) null else block(root)
+            if (!matches || !isCurrent()) null else block(root)
         } finally {
             recycleSafely(root)
         }
