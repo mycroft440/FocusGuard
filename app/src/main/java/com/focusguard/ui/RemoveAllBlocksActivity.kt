@@ -6,15 +6,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Button
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +38,7 @@ import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.PasswordAppUnlockStore
 import com.focusguard.security.PasswordTargetAccessGrant
 import com.focusguard.security.RemoveAllBlocksAuthorizationPolicy
+import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.FocusGuardTheme
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -158,130 +160,78 @@ class RemoveAllBlocksActivity : ComponentActivity() {
                     authorizationGate = readAuthorizationGate()
                 }
 
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(stringResource(R.string.master_remove_all_blocks_title))
-                    Spacer(Modifier.height(12.dp))
-
-                    when (authorizationGate) {
-                        null -> {
-                            CircularProgressIndicator()
-                        }
-
-                        RemoveAllBlocksAuthorizationPolicy.Gate.ALLOW -> {
-                            Text(stringResource(R.string.master_remove_all_blocks_subtitle))
-                            Spacer(Modifier.height(20.dp))
-                            Button(
-                                enabled = !working,
-                                onClick = { removeAllBlocks(masterAlreadyVerified = false) }
-                            ) {
-                                if (working) {
-                                    CircularProgressIndicator(modifier = Modifier.height(18.dp))
-                                    Spacer(Modifier.height(4.dp))
-                                }
+                when (authorizationGate) {
+                    null -> {
+                        AlertDialog(
+                            onDismissRequest = { finish() },
+                            title = {
                                 Text(stringResource(R.string.master_remove_all_blocks_title))
-                            }
-                            Spacer(Modifier.height(8.dp))
-                            TextButton(
-                                enabled = !working,
-                                onClick = { finish() }
-                            ) {
-                                Text(stringResource(R.string.cancel))
-                            }
-                        }
-
-                        RemoveAllBlocksAuthorizationPolicy.Gate.REQUIRE_MASTER_CREDENTIAL -> {
-                            Text(stringResource(R.string.master_remove_all_blocks_prompt))
-                            Spacer(Modifier.height(20.dp))
-
-                            if (!masterConfigured) {
-                                Text(stringResource(R.string.master_credential_not_configured))
-                                Spacer(Modifier.height(12.dp))
-                                Button(
-                                    onClick = {
-                                        masterSetupLauncher.launch(
-                                            MasterPasswordActivity.createIntent(
-                                                this@RemoveAllBlocksActivity
-                                            )
+                            },
+                            text = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(22.dp),
+                                        strokeWidth = 2.5.dp
+                                    )
+                                    Spacer(Modifier.width(12.dp))
+                                    Text(
+                                        stringResource(
+                                            R.string.master_remove_all_blocks_subtitle
                                         )
-                                    }
-                                ) {
-                                    Text(stringResource(R.string.master_credential_create_action))
+                                    )
                                 }
-                                Spacer(Modifier.height(8.dp))
-                                TextButton(onClick = { finish() }) {
-                                    Text(stringResource(R.string.cancel))
-                                }
-                            } else {
-                                OutlinedTextField(
-                                    value = credential,
-                                    onValueChange = {
-                                        credential = it
-                                        error = null
-                                    },
-                                    modifier = Modifier.fillMaxWidth(),
-                                    singleLine = true,
-                                    enabled = !working,
-                                    visualTransformation = PasswordVisualTransformation(),
-                                    label = {
+                            },
+                            confirmButton = { }
+                        )
+                    }
+
+                    RemoveAllBlocksAuthorizationPolicy.Gate.ALLOW -> {
+                        AlertDialog(
+                            onDismissRequest = {
+                                if (!working) finish()
+                            },
+                            title = {
+                                Text(stringResource(R.string.master_remove_all_blocks_title))
+                            },
+                            text = {
+                                Column {
+                                    Text(
+                                        stringResource(
+                                            R.string.master_remove_all_blocks_subtitle
+                                        )
+                                    )
+                                    error?.let {
+                                        Spacer(Modifier.height(12.dp))
                                         Text(
-                                            stringResource(
-                                                R.string.master_password_settings_title
-                                            )
+                                            text = it,
+                                            color = MaterialTheme.colorScheme.error
                                         )
                                     }
-                                )
-                                error?.let {
-                                    Spacer(Modifier.height(8.dp))
-                                    Text(it)
                                 }
-                                Spacer(Modifier.height(16.dp))
-                                Button(
-                                    enabled = credential.isNotBlank() && !working,
+                            },
+                            confirmButton = {
+                                TextButton(
+                                    enabled = !working,
                                     onClick = {
-                                        if (working) return@Button
-                                        when (credentialManager.verify(credential)) {
-                                            DeactivationCredentialManager.VerificationResult
-                                                .PASSWORD_ACCEPTED,
-                                            DeactivationCredentialManager.VerificationResult
-                                                .RECOVERY_ACCEPTED -> {
-                                                credential = ""
-                                                removeAllBlocks(masterAlreadyVerified = true)
-                                            }
-
-                                            DeactivationCredentialManager.VerificationResult
-                                                .REJECTED -> {
-                                                error = getString(
-                                                    R.string.master_credential_wrong
-                                                )
-                                            }
-
-                                            DeactivationCredentialManager.VerificationResult
-                                                .NOT_CONFIGURED -> {
-                                                masterConfigured = false
-                                                error = getString(
-                                                    R.string.master_credential_not_configured
-                                                )
-                                            }
-                                        }
+                                        removeAllBlocks(masterAlreadyVerified = false)
                                     }
                                 ) {
                                     if (working) {
                                         CircularProgressIndicator(
-                                            modifier = Modifier.height(18.dp)
+                                            modifier = Modifier.size(18.dp),
+                                            strokeWidth = 2.dp
                                         )
-                                        Spacer(Modifier.height(4.dp))
+                                        Spacer(Modifier.width(8.dp))
                                     }
                                     Text(
-                                        stringResource(R.string.master_remove_all_blocks_title)
+                                        stringResource(
+                                            R.string.master_remove_all_blocks_title
+                                        ),
+                                        color = DangerRed
                                     )
                                 }
-                                Spacer(Modifier.height(8.dp))
+                            },
+                            dismissButton = {
                                 TextButton(
                                     enabled = !working,
                                     onClick = { finish() }
@@ -289,14 +239,165 @@ class RemoveAllBlocksActivity : ComponentActivity() {
                                     Text(stringResource(R.string.cancel))
                                 }
                             }
-                        }
+                        )
                     }
 
-                    error?.takeIf {
-                        authorizationGate == RemoveAllBlocksAuthorizationPolicy.Gate.ALLOW
-                    }?.let {
-                        Spacer(Modifier.height(8.dp))
-                        Text(it)
+                    RemoveAllBlocksAuthorizationPolicy.Gate.REQUIRE_MASTER_CREDENTIAL -> {
+                        if (!masterConfigured) {
+                            AlertDialog(
+                                onDismissRequest = { finish() },
+                                title = {
+                                    Text(
+                                        stringResource(
+                                            R.string.master_remove_all_blocks_title
+                                        )
+                                    )
+                                },
+                                text = {
+                                    Column {
+                                        Text(
+                                            stringResource(
+                                                R.string.master_remove_all_blocks_prompt
+                                            )
+                                        )
+                                        Spacer(Modifier.height(12.dp))
+                                        Text(
+                                            text = stringResource(
+                                                R.string.master_credential_not_configured
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                },
+                                confirmButton = {
+                                    TextButton(
+                                        onClick = {
+                                            masterSetupLauncher.launch(
+                                                MasterPasswordActivity.createIntent(
+                                                    this@RemoveAllBlocksActivity
+                                                )
+                                            )
+                                        }
+                                    ) {
+                                        Text(
+                                            stringResource(
+                                                R.string.master_credential_create_action
+                                            )
+                                        )
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { finish() }) {
+                                        Text(stringResource(R.string.cancel))
+                                    }
+                                }
+                            )
+                        } else {
+                            val canConfirm = credential.isNotBlank() && !working
+                            AlertDialog(
+                                onDismissRequest = {
+                                    if (!working) finish()
+                                },
+                                title = {
+                                    Text(
+                                        stringResource(
+                                            R.string.master_remove_all_blocks_title
+                                        )
+                                    )
+                                },
+                                text = {
+                                    Column {
+                                        Text(
+                                            stringResource(
+                                                R.string.master_remove_all_blocks_prompt
+                                            )
+                                        )
+                                        Spacer(Modifier.height(16.dp))
+                                        OutlinedTextField(
+                                            value = credential,
+                                            onValueChange = {
+                                                credential = it
+                                                error = null
+                                            },
+                                            modifier = Modifier.fillMaxWidth(),
+                                            singleLine = true,
+                                            enabled = !working,
+                                            visualTransformation =
+                                                PasswordVisualTransformation(),
+                                            label = {
+                                                Text(
+                                                    stringResource(
+                                                        R.string.master_password_settings_title
+                                                    )
+                                                )
+                                            }
+                                        )
+                                        error?.let {
+                                            Spacer(Modifier.height(8.dp))
+                                            Text(
+                                                text = it,
+                                                color = MaterialTheme.colorScheme.error
+                                            )
+                                        }
+                                    }
+                                },
+                                confirmButton = {
+                                    TextButton(
+                                        enabled = canConfirm,
+                                        onClick = {
+                                            when (credentialManager.verify(credential)) {
+                                                DeactivationCredentialManager.VerificationResult
+                                                    .PASSWORD_ACCEPTED,
+                                                DeactivationCredentialManager.VerificationResult
+                                                    .RECOVERY_ACCEPTED -> {
+                                                    credential = ""
+                                                    removeAllBlocks(
+                                                        masterAlreadyVerified = true
+                                                    )
+                                                }
+
+                                                DeactivationCredentialManager.VerificationResult
+                                                    .REJECTED -> {
+                                                    error = getString(
+                                                        R.string.master_credential_wrong
+                                                    )
+                                                }
+
+                                                DeactivationCredentialManager.VerificationResult
+                                                    .NOT_CONFIGURED -> {
+                                                    masterConfigured = false
+                                                    error = getString(
+                                                        R.string.master_credential_not_configured
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    ) {
+                                        if (working) {
+                                            CircularProgressIndicator(
+                                                modifier = Modifier.size(18.dp),
+                                                strokeWidth = 2.dp
+                                            )
+                                            Spacer(Modifier.width(8.dp))
+                                        }
+                                        Text(
+                                            stringResource(
+                                                R.string.master_remove_all_blocks_title
+                                            ),
+                                            color = DangerRed
+                                        )
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(
+                                        enabled = !working,
+                                        onClick = { finish() }
+                                    ) {
+                                        Text(stringResource(R.string.cancel))
+                                    }
+                                }
+                            )
+                        }
                     }
                 }
             }
