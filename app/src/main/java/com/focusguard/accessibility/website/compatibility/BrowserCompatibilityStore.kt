@@ -4,6 +4,7 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
+import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.focusguard.utils.WebsiteBlocker
 import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -134,8 +135,19 @@ internal object BrowserCompatibilityStore {
 
     fun prioritizeUrlEntryNames(packageName: String, defaults: Iterable<String>): List<String> =
         synchronized(lock) {
-            listOfNotNull(cache[packageName]?.preferredUrlEntryName)
-                .plus(defaults).filter(String::isNotBlank).distinct()
+            val preferred = cache[packageName]?.preferredUrlEntryName?.takeIf(String::isNotBlank)
+            val orderedDefaults = defaults.filter(String::isNotBlank).distinct()
+            buildList {
+                // A temporary editor can expose a valid URL while typing. Once a
+                // stable display selector is available, do not keep that editor
+                // ahead of the display-mode address component on later reads.
+                if (BrowserUiCapabilityPolicy.isStableUrlEntryName(preferred)) add(preferred!!)
+                orderedDefaults
+                    .filter(BrowserUiCapabilityPolicy::isStableUrlEntryName)
+                    .forEach(::add)
+                if (!preferred.isNullOrBlank() && preferred !in this) add(preferred)
+                orderedDefaults.forEach { entry -> if (entry !in this) add(entry) }
+            }
         }
 
     fun recordUrlRecoverySuccess(packageName: String, method: BrowserUrlRecoveryMethod) {
@@ -174,13 +186,10 @@ internal object BrowserCompatibilityStore {
         packageName: String,
         defaults: Iterable<String>
     ): List<String> {
-        val preferred = preferredAddressBarEntryName(packageName)
-        return buildList {
-            if (!preferred.isNullOrBlank()) add(preferred)
-            defaults.forEach { entry ->
-                if (entry.isNotBlank() && entry != preferred) add(entry)
-            }
-        }
+        // WebsiteBlocker uses this discovery order for observation as well as
+        // action collection. Keep reads URL-specific; actionable node ranking still
+        // uses preferredAddressBarEntryName independently in BrowserUiCapabilityPolicy.
+        return prioritizeUrlEntryNames(packageName, defaults)
     }
 
     fun recordIdentificationSuccess(
@@ -440,13 +449,8 @@ internal object BrowserCompatibilityStore {
         put("updated_at", record.updatedAtMillis)
     }.toString()
 
-    private fun browserOwnedEntryName(packageName: String, viewIdResourceName: String?): String? {
-        val value = viewIdResourceName?.trim().orEmpty()
-        val prefix = "$packageName:id/"
-        return value.takeIf { it.startsWith(prefix) && it.length > prefix.length }
-            ?.substring(prefix.length)
-            ?.takeIf(String::isNotBlank)
-    }
+    private fun browserOwnedEntryName(packageName: String, viewIdResourceName: String?): String? =
+        BrowserUiCapabilityPolicy.browserOwnedEntryName(packageName, viewIdResourceName)
 
     private fun observedValueMatchesTarget(observedValue: String?, normalizedTarget: String): Boolean {
         if (normalizedTarget.isEmpty()) return false

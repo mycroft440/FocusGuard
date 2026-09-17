@@ -37,10 +37,12 @@ internal object BrowserSurfaceInspector {
     )
 
     /**
-     * Exact browser-owned address-bar resources remain browser chrome even when a
-     * browser nests its toolbar below WebView/ContentView/GeckoView in the
-     * accessibility hierarchy. Every non-exact node below those containers stays
-     * page content, so semantic page fields never gain browser UI privileges.
+     * Exact package-qualified address-bar resources remain browser chrome even
+     * when a browser nests its toolbar below WebView/ContentView/GeckoView in the
+     * accessibility hierarchy. Firefox Compose semantics tags are intentionally
+     * excluded from that escape hatch because a bare tag carries no package
+     * namespace of its own; those nodes must still prove they live outside web
+     * content through the ancestor walk below.
      */
     fun isNativeNode(
         node: AccessibilityNodeInfo,
@@ -75,10 +77,17 @@ internal object BrowserSurfaceInspector {
     internal fun isTrustedExactAddressBarResource(
         viewIdResourceName: String,
         packageName: String
-    ): Boolean = BrowserUiCapabilityPolicy.isStrongAddressBarResource(
-        viewIdResourceName = viewIdResourceName,
-        expectedBrowserPackage = packageName
-    )
+    ): Boolean {
+        if (BrowserUiCapabilityPolicy.isFirefoxComposeAddressBarResource(
+                viewIdResourceName = viewIdResourceName,
+                expectedBrowserPackage = packageName
+            )
+        ) return false
+        return BrowserUiCapabilityPolicy.isStrongAddressBarResource(
+            viewIdResourceName = viewIdResourceName,
+            expectedBrowserPackage = packageName
+        )
+    }
 
     fun inspect(root: AccessibilityNodeInfo?, browserPackage: String): Surface {
         if (root == null || browserPackage.isBlank()) return Surface.UNKNOWN

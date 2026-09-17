@@ -40,8 +40,12 @@ internal object WebsiteRedirectionPlan {
     )
 
     /**
-     * Coordinate taps, keyboard-position guessing and ACTION_VIEW intentionally
-     * do not belong to this plan. Failure stays in the current blocked surface.
+     * Coordinate taps and keyboard-position guessing intentionally do not belong
+     * to this same-tab plan. The service may request an ACTION_VIEW safe-browser
+     * fallback after these phases fail, but launching that intent is only a
+     * navigation request: it is not evidence that the original blocked tab was
+     * replaced or otherwise neutralized. The blocking curtain must remain guarded
+     * by post-navigation/original-surface confirmation.
      */
     fun canRetry(attemptNumber: Int): Boolean = attemptNumber < MAX_SAME_TAB_ATTEMPTS
 }

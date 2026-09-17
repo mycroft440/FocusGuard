@@ -233,9 +233,12 @@ internal object AddressBarRedirectionActions {
                     textMatches &&
                     node.actionList.count(::isCertifiedEditorAction) == 1
                 if (!valid) return@mapNotNull null
-                val entryName = node.viewIdResourceName.orEmpty().substringAfter(":id/", "")
+                val entryName = BrowserUiCapabilityPolicy.browserOwnedEntryName(
+                    browserPackageName,
+                    node.viewIdResourceName
+                ).orEmpty()
                 val cachedBonus = if (entryName == preferredEntryName) 100 else 0
-                node to (editorRank(node.viewIdResourceName.orEmpty()) + cachedBonus)
+                node to (editorRank(entryName) + cachedBonus)
             }
             if (!isCurrent()) return Result(Status.REJECTED)
             if (candidates.isEmpty()) return Result(Status.NOT_FOUND)
@@ -360,9 +363,12 @@ internal object AddressBarRedirectionActions {
                 ) {
                     null
                 } else {
-                    val entryName = node.viewIdResourceName.orEmpty().substringAfter(":id/", "")
+                    val entryName = BrowserUiCapabilityPolicy.browserOwnedEntryName(
+                        browserPackageName,
+                        node.viewIdResourceName
+                    ).orEmpty()
                     val cachedBonus = if (entryName == preferredEntryName) 100 else 0
-                    node to (editorRank(node.viewIdResourceName.orEmpty()) + cachedBonus)
+                    node to (editorRank(entryName) + cachedBonus)
                 }
             }
             if (!isCurrent()) return Result(Status.REJECTED)
@@ -407,8 +413,9 @@ internal object AddressBarRedirectionActions {
         }
 
         // Keep editor/action discovery aligned with read-only URL discovery. Exact
-        // strong browser resources may legitimately be nested below a WebView-like
-        // container, so traverse through it only for those package-owned ids.
+        // package-qualified browser resources may legitimately be nested below a
+        // WebView-like container. Bare Firefox Compose tags are collected only
+        // after BrowserSurfaceInspector proves they live in native browser chrome.
         collectStrongNodes(
             node = root,
             browserPackageName = browserPackageName,
@@ -439,10 +446,14 @@ internal object AddressBarRedirectionActions {
         ) return
         visited[0] += 1
 
-        if (node.packageName?.toString() == browserPackageName &&
-            BrowserUiCapabilityPolicy.isStrongAddressBarResource(
-                node.viewIdResourceName.orEmpty(), browserPackageName
-            )
+        val viewId = node.viewIdResourceName.orEmpty()
+        val composeTag = BrowserUiCapabilityPolicy.isFirefoxComposeAddressBarResource(
+            viewId,
+            browserPackageName
+        )
+        val nativeEnough = !composeTag || BrowserSurfaceInspector.isNativeNode(node)
+        if (nativeEnough && node.packageName?.toString() == browserPackageName &&
+            BrowserUiCapabilityPolicy.isStrongAddressBarResource(viewId, browserPackageName)
         ) {
             if (output.none { existing -> existing == node }) {
                 @Suppress("DEPRECATION")
@@ -551,10 +562,11 @@ internal object AddressBarRedirectionActions {
         )
     }
 
-    private fun editorRank(viewId: String): Int = when (viewId.substringAfter(":id/", "")) {
+    private fun editorRank(entryName: String): Int = when (entryName) {
         "url_bar_edit_text", "location_bar_edit_text", "url_edit_text",
         "omnibarTextInput", "omnibox_text", "inputField",
-        "mozac_browser_toolbar_edit_url_view" -> 50
+        "mozac_browser_toolbar_edit_url_view",
+        BrowserUiCapabilityPolicy.FIREFOX_COMPOSE_SEARCH_ENTRY -> 50
         else -> 30
     }
 

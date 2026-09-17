@@ -16,6 +16,20 @@ internal object BrowserUiCapabilityPolicy {
     private const val IME_ENTER_MIN_API = 30
     private const val DUCKDUCKGO_PACKAGE = "com.duckduckgo.mobile.android"
     private const val DUCKDUCKGO_NATIVE_INPUT_ENTRY = "inputField"
+    internal const val FIREFOX_COMPOSE_URL_ENTRY = "ADDRESSBAR_URL_BOX"
+    internal const val FIREFOX_COMPOSE_SEARCH_ENTRY = "ADDRESSBAR_SEARCH_BOX"
+
+    private val firefoxPackages: Set<String> = setOf(
+        "org.mozilla.firefox",
+        "org.mozilla.firefox_beta",
+        "org.mozilla.fenix",
+        "org.mozilla.fenix.nightly"
+    )
+
+    internal val firefoxComposeAddressBarEntryNames: Set<String> = setOf(
+        FIREFOX_COMPOSE_URL_ENTRY,
+        FIREFOX_COMPOSE_SEARCH_ENTRY
+    )
 
     enum class NodeAction {
         FOCUS,
@@ -70,6 +84,11 @@ internal object BrowserUiCapabilityPolicy {
         "mozac_browser_toolbar_url_view",
         "mozac_browser_toolbar_edit_url_view",
         "browser_toolbar_url_view",
+        // Current Firefox Compose semantics tags. These bare names are never
+        // trusted globally: isStrongAddressBarResource() scopes them to Firefox
+        // packages and callers still enforce package/window/visibility/native UI.
+        FIREFOX_COMPOSE_URL_ENTRY,
+        FIREFOX_COMPOSE_SEARCH_ENTRY,
         // Samsung Internet and compact browsers such as Via use variants above
         // plus this generic browser-owned id.
         "address_bar",
@@ -89,7 +108,8 @@ internal object BrowserUiCapabilityPolicy {
         "omnibarTextInput",
         "omnibox_text",
         DUCKDUCKGO_NATIVE_INPUT_ENTRY,
-        "mozac_browser_toolbar_edit_url_view"
+        "mozac_browser_toolbar_edit_url_view",
+        FIREFOX_COMPOSE_SEARCH_ENTRY
     )
 
     private val clickableDisplayEntryNames: Set<String> = setOf(
@@ -99,6 +119,7 @@ internal object BrowserUiCapabilityPolicy {
         "url_field",
         "mozac_browser_toolbar_url_view",
         "browser_toolbar_url_view",
+        FIREFOX_COMPOSE_URL_ENTRY,
         "address_bar",
         "bro_omnibox_address_title",
         "bro_omnibox_address_bar",
@@ -134,11 +155,40 @@ internal object BrowserUiCapabilityPolicy {
         "configuracoes"
     )
 
+    internal fun isFirefoxPackage(packageName: String): Boolean = packageName in firefoxPackages
+
+    internal fun isFirefoxComposeAddressBarResource(
+        viewIdResourceName: String,
+        expectedBrowserPackage: String
+    ): Boolean = isFirefoxPackage(expectedBrowserPackage) &&
+        viewIdResourceName in firefoxComposeAddressBarEntryNames
+
+    internal fun browserOwnedEntryName(
+        packageName: String,
+        viewIdResourceName: String?
+    ): String? {
+        val value = viewIdResourceName?.trim().orEmpty()
+        if (isFirefoxComposeAddressBarResource(value, packageName)) return value
+        val prefix = "$packageName:id/"
+        return value.takeIf { it.startsWith(prefix) && it.length > prefix.length }
+            ?.substring(prefix.length)
+            ?.takeIf(String::isNotBlank)
+    }
+
+    internal fun isEditorEntryName(entryName: String?): Boolean = entryName in editorEntryNames
+
+    internal fun isStableUrlEntryName(entryName: String?): Boolean =
+        !entryName.isNullOrBlank() && entryName in strongAddressBarEntryNames &&
+            entryName !in editorEntryNames
+
     fun isStrongAddressBarResource(
         viewIdResourceName: String,
         expectedBrowserPackage: String
     ): Boolean {
         if (expectedBrowserPackage.isBlank()) return false
+        if (isFirefoxComposeAddressBarResource(viewIdResourceName, expectedBrowserPackage)) {
+            return true
+        }
         val prefix = "$expectedBrowserPackage:id/"
         if (!viewIdResourceName.startsWith(prefix)) return false
         val entryName = viewIdResourceName.substring(prefix.length)
@@ -195,6 +245,15 @@ internal object BrowserUiCapabilityPolicy {
             node.packageName != expectedBrowserPackage ||
             node.windowId != expectedWindowId
         ) return false
+
+        // Bare Firefox Compose tags have no package prefix of their own. Require
+        // native browser chrome before accepting them so page form fields cannot
+        // spoof ADDRESSBAR_URL_BOX/ADDRESSBAR_SEARCH_BOX.
+        val firefoxComposeResource = isFirefoxComposeAddressBarResource(
+            node.viewIdResourceName,
+            expectedBrowserPackage
+        )
+        if (firefoxComposeResource && node.inWebContent) return false
 
         // Exact browser-owned resources are allowed to remain readable even when
         // a browser exposes its toolbar below a WebView/ContentView/GeckoView.
@@ -408,10 +467,14 @@ internal object BrowserUiCapabilityPolicy {
         val expectedId = "$expectedBrowserPackage:id/$expectedEntryName"
         return nodes.indices.filter { index ->
             val node = nodes[index]
+            val exactQualifiedResource = node.viewIdResourceName == expectedId
+            val exactFirefoxComposeResource =
+                isFirefoxComposeAddressBarResource(node.viewIdResourceName, expectedBrowserPackage) &&
+                    node.viewIdResourceName == expectedEntryName && !node.inWebContent
             node.visible &&
                 node.packageName == expectedBrowserPackage &&
                 node.windowId == expectedWindowId &&
-                node.viewIdResourceName == expectedId &&
+                (exactQualifiedResource || exactFirefoxComposeResource) &&
                 requiredAction in node.actions
         }.singleOrNull()
     }
@@ -424,6 +487,7 @@ internal object BrowserUiCapabilityPolicy {
         BrowserActivationMethod.CLICK -> true
         BrowserActivationMethod.FOCUS -> false
         null -> expectedBrowserPackage == DUCKDUCKGO_PACKAGE ||
+            isFirefoxPackage(expectedBrowserPackage) ||
             expectedBrowserPackage in setOf(
                 "com.android.chrome", "com.chrome.beta", "com.chrome.dev", "com.chrome.canary",
                 "com.sec.android.app.sbrowser", "com.sec.android.app.sbrowser.beta",
@@ -503,5 +567,5 @@ internal object BrowserUiCapabilityPolicy {
     }
 
     private fun entryName(node: Node): String =
-        node.viewIdResourceName.substringAfter(":id/", "")
+        browserOwnedEntryName(node.packageName, node.viewIdResourceName).orEmpty()
 }

@@ -331,21 +331,21 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
 
         @Synchronized
-    fun markExternalRedirectRequested(
-        browserPackageName: String,
-        transitionId: Long,
-        requestedAtUptimeMillis: Long
-    ): Boolean {
-        val transition = activeTransitions[browserPackageName] ?: return false
-        if (transition.id != transitionId || transition.destinationRequested ||
-            requestedAtUptimeMillis < transition.detectionEventUptimeMillis
-        ) return false
-        transition.sanitizationRequested = true
-        transition.sanitizationRequestedAtUptimeMillis = requestedAtUptimeMillis
-        transition.externalRedirectRequested = true
-        transition.externalRedirectRequestedAtUptimeMillis = requestedAtUptimeMillis
-        return true
-    }
+        fun markExternalRedirectRequested(
+            browserPackageName: String,
+            transitionId: Long,
+            requestedAtUptimeMillis: Long
+        ): Boolean {
+            val transition = activeTransitions[browserPackageName] ?: return false
+            if (transition.id != transitionId || transition.destinationRequested ||
+                requestedAtUptimeMillis < transition.detectionEventUptimeMillis
+            ) return false
+            transition.sanitizationRequested = true
+            transition.sanitizationRequestedAtUptimeMillis = requestedAtUptimeMillis
+            transition.externalRedirectRequested = true
+            transition.externalRedirectRequestedAtUptimeMillis = requestedAtUptimeMillis
+            return true
+        }
 
         @Synchronized
         fun markDestinationRequested(
@@ -413,6 +413,11 @@ class BlockingAccessibilityService : AccessibilityService() {
             eventUptimeMillis: Long
         ): Boolean {
             val transition = activeTransitions[browserPackageName] ?: return false
+            // ACTION_VIEW can open Google in a fresh tab/window while the blocked
+            // tab remains intact. A safe destination therefore cannot prove
+            // neutralization after an external fallback unless the original tab
+            // was independently confirmed closed first.
+            if (transition.externalRedirectRequested && !transition.closeConfirmed) return false
             if (!transition.sanitizationRequested ||
                 transition.expectedWindowId != windowId ||
                 eventUptimeMillis < transition.sanitizationRequestedAtUptimeMillis ||
@@ -4638,14 +4643,14 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal const val EXTRA_STRICT_POMODORO_SNAPSHOT = "STRICT_POMODORO_SNAPSHOT"
 
         internal fun confirmAccessibilityContextForInstalledEntry(
-        directAccessibility: Boolean,
-        installedAccessibilityApps: Boolean,
-        rootMentionsAccessibility: () -> Boolean
-    ): Boolean = directAccessibility ||
-        (installedAccessibilityApps && rootMentionsAccessibility())
+            directAccessibility: Boolean,
+            installedAccessibilityApps: Boolean,
+            rootMentionsAccessibility: () -> Boolean
+        ): Boolean = directAccessibility ||
+            (installedAccessibilityApps && rootMentionsAccessibility())
 
         internal fun settingsInterceptionEventTypesForTest(): Set<Int> =
-        settingsInterceptionEventTypes
+            settingsInterceptionEventTypes
 
         internal fun immediateBrowserBlockEventTypesForTest(): Set<Int> =
             immediateBrowserBlockEventTypes
@@ -4984,19 +4989,19 @@ class BlockingAccessibilityService : AccessibilityService() {
             Intent(ACTION_DEV_RELINQUISH_ACCESSIBILITY).setPackage(context.packageName)
 
         internal fun createSafeBrowserRedirectIntent(
-    browserPackageName: String
-): Intent {
-    require(browserPackageName.isNotBlank())
-    return Intent(Intent.ACTION_VIEW, Uri.parse(SAFE_REDIRECT_URL)).apply {
-        addCategory(Intent.CATEGORY_BROWSABLE)
-        setPackage(browserPackageName)
-        addFlags(
-            Intent.FLAG_ACTIVITY_NEW_TASK or
-                Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                Intent.FLAG_ACTIVITY_SINGLE_TOP
-        )
-    }
-}
+            browserPackageName: String
+        ): Intent {
+            require(browserPackageName.isNotBlank())
+            return Intent(Intent.ACTION_VIEW, Uri.parse(SAFE_REDIRECT_URL)).apply {
+                addCategory(Intent.CATEGORY_BROWSABLE)
+                setPackage(browserPackageName)
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            }
+        }
 
         internal fun createBlockNoticeIntent(
             context: Context,
