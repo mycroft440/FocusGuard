@@ -5,7 +5,6 @@ import android.os.Bundle
 import android.text.InputType
 import android.view.accessibility.AccessibilityNodeInfo
 import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
-import com.focusguard.accessibility.website.compatibility.BrowserSubmitMethod
 import com.focusguard.utils.BrowserSurfaceInspector
 import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.focusguard.utils.WebsiteBlocker
@@ -248,13 +247,6 @@ internal object AddressBarRedirectionActions {
             val action = selected.actionList.single(::isCertifiedEditorAction)
             val accepted = runCatching { isCurrent() && selected.performAction(action.id) }.getOrDefault(false)
             if (!isCurrent()) return Result(Status.REJECTED, selected.viewIdResourceName)
-            if (accepted) {
-                BrowserCompatibilityStore.recordSubmitAccepted(
-                    packageName = browserPackageName,
-                    viewIdResourceName = selected.viewIdResourceName,
-                    method = BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION
-                )
-            }
             Result(
                 if (accepted) Status.ACCEPTED else Status.REJECTED,
                 selected.viewIdResourceName
@@ -295,13 +287,6 @@ internal object AddressBarRedirectionActions {
                         selected.performAction(AccessibilityNodeInfo.ACTION_CLICK)
                     }.getOrDefault(false)
                     if (!isCurrent()) return Result(Status.REJECTED, selected.viewIdResourceName)
-                    if (accepted) {
-                        BrowserCompatibilityStore.recordSubmitAccepted(
-                            packageName = browserPackageName,
-                            viewIdResourceName = null,
-                            method = BrowserSubmitMethod.CERTIFIED_GO_BUTTON
-                        )
-                    }
                     Result(
                         if (accepted) Status.ACCEPTED else Status.REJECTED,
                         selected.viewIdResourceName
