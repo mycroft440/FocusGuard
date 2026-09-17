@@ -4,11 +4,10 @@ import java.text.Normalizer
 import java.util.Locale
 
 /**
- * Pure classifier for system screens that can weaken FocusGuard self-protection.
+ * Classifier for system screens that can weaken FocusGuard self-protection.
  *
- * The accessibility service uses it only while a user-created protection is active and the
- * authenticated maintenance window is closed. Decisions still require FocusGuard identity;
- * a screen class alone must never affect another package.
+ * Context classifiers may recognize Device Admin/App Info wording, but target
+ * classifiers never treat a generic system-management label as FocusGuard.
  */
 object ManagedSelfProtectionPolicy {
 
@@ -71,12 +70,7 @@ object ManagedSelfProtectionPolicy {
         "deviceadmin"
     )
 
-    /**
-     * A generic Device Admin row must never be enough to trigger protection.
-     * Keeping this list empty also disables the service's old fast-path that
-     * searched the clicked subtree only for a Device Admin label and then armed
-     * the global transition guard without knowing which administrator was targeted.
-     */
+    /** Generic Device Admin subtree lookup is intentionally disabled. */
     internal val deviceAdminNodeSearchTerms: List<String> = emptyList()
 
     private val deviceAdminWordPrefixes = listOf(
@@ -144,8 +138,7 @@ object ManagedSelfProtectionPolicy {
     )
 
     private val normalizedDeviceAdminSearchTerms = deviceAdminSearchTerms.map(::normalize)
-    private val normalizedAppInfoGatewaySearchTerms =
-        appInfoGatewaySearchTerms.map(::normalize)
+    private val normalizedAppInfoGatewaySearchTerms = appInfoGatewaySearchTerms.map(::normalize)
     private val normalizedFocusGuardSearchTerms = focusGuardSearchTerms.map(::normalize)
     private val normalizedFocusGuardLabels = setOf(
         normalize("HardBlock"),
@@ -163,15 +156,12 @@ object ManagedSelfProtectionPolicy {
     private val normalizedEssentialSpecialAccessSearchTerms =
         essentialSpecialAccessSearchTerms.map(::normalize)
 
-    /**
-     * Returns true only when a Device Admin class is being observed after the
-     * current interaction has already been explicitly tied to FocusGuard.
-     * Class name by itself is context, not target identity.
-     */
+    /** Class name is target evidence only after FocusGuard was explicitly confirmed. */
     fun classTargetsDeviceAdmin(className: String): Boolean =
         classLooksLikeDeviceAdminSurface(className) &&
             SelfProtectionTargetScope.isFocusGuardTargetConfirmed()
 
+    /** Class-only contextual classifier; never sufficient to block by itself. */
     fun classLooksLikeDeviceAdminSurface(className: String): Boolean =
         containsAny(className, deviceAdminClassMarkers)
 
@@ -207,7 +197,19 @@ object ManagedSelfProtectionPolicy {
         )
     }
 
-    fun textTargetsDeviceAdmin(values: Iterable<CharSequence?>): Boolean =
+    /**
+     * Target classifier used by the service's Device Admin subtree shortcut.
+     * The same values must contain both Device Admin context and exact FocusGuard
+     * identity, so a generic administrator row/list can never trigger protection.
+     */
+    fun textTargetsDeviceAdmin(values: Iterable<CharSequence?>): Boolean {
+        val normalizedValues = normalizeValues(values)
+        return matchesDeviceAdmin(normalizedValues) &&
+            matchesFocusGuardIdentity(normalizedValues)
+    }
+
+    /** Context-only Device Admin wording classifier for policy composition/tests. */
+    fun textLooksLikeDeviceAdminContext(values: Iterable<CharSequence?>): Boolean =
         matchesDeviceAdmin(normalizeValues(values))
 
     fun textTargetsAppInfoGateway(values: Iterable<CharSequence?>): Boolean =
