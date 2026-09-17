@@ -31,6 +31,7 @@ class WebsiteIdentificationRecoveryRaceTest {
 
     @Before
     fun setUp() {
+        BrowserObservationSignal.clearForTest(pkg, 10)
         mockkObject(WebsiteIdentificationEngine, WebsiteBlocker, BrowserSurfaceInspector, BrowserCompatibilityStore)
         every { BrowserCompatibilityStore.preferredUrlRecoveryMethod(pkg) } returns BrowserUrlRecoveryMethod.FOCUS
         every { BrowserCompatibilityStore.recordUrlRecoverySuccess(any(), any()) } just Runs
@@ -42,7 +43,10 @@ class WebsiteIdentificationRecoveryRaceTest {
     }
 
     @After
-    fun tearDown() = unmockkAll()
+    fun tearDown() {
+        BrowserObservationSignal.clearForTest(pkg, 10)
+        unmockkAll()
+    }
 
     private fun recovery() = WebsiteIdentificationRecovery(pkg, 10, true, rootProvider = {
         mockk<AccessibilityNodeInfo>(relaxed = true) {
@@ -52,7 +56,7 @@ class WebsiteIdentificationRecoveryRaceTest {
     }, isCurrent = { current })
 
     @Test
-    fun windowChangeDuringFocusDelayStopsEveryFollowingPhase() = runTest {
+    fun windowChangeWhileAwaitingObservationStopsEveryFollowingPhase() = runTest {
         val result = async { recovery().recover() }
         runCurrent()
         assertEquals(3, roots.size)
@@ -94,5 +98,30 @@ class WebsiteIdentificationRecoveryRaceTest {
         assertEquals(4, roots.toSet().size)
         verify(exactly = 1) { BrowserCompatibilityStore.recordUrlRecoverySuccess(pkg, BrowserUrlRecoveryMethod.FOCUS) }
         roots.forEach { verify(exactly = 1) { it.recycle() } }
+    }
+
+    @Test
+    fun browserEventAfterAcceptedActionAvoidsFixedRecoveryDelay() = runTest {
+        var reads = 0
+        every { WebsiteIdentificationEngine.identifyFromRoot(any(), pkg, 10, true, any()) } answers {
+            if (++reads < 3) unresolved else WebsiteIdentificationResult(
+                WebsiteIdentificationStatus.IDENTIFIED,
+                urlCandidate = "https://example.org"
+            )
+        }
+        every {
+            WebsiteBlocker.performUniqueAddressBarAction(any(), pkg, 10, any(), any(), any(), true, false, any())
+        } answers {
+            BrowserObservationSignal.markObserved(pkg, 10)
+            WebsiteBlocker.AddressBarActionResult(WebsiteBlocker.AddressBarActionStatus.ACCEPTED)
+        }
+
+        val result = recovery().recover()
+
+        assertEquals("https://example.org", result.urlCandidate)
+        assertEquals(0L, currentTime)
+        verify(exactly = 1) {
+            BrowserCompatibilityStore.recordUrlRecoverySuccess(pkg, BrowserUrlRecoveryMethod.FOCUS)
+        }
     }
 }
