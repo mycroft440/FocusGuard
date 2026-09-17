@@ -92,13 +92,10 @@ internal object BrowserClassificationPolicy {
 
 /** Keeps inconclusive PackageManager failures cheap while still retrying them quickly. */
 internal object BrowserUnknownRetryPolicy {
-    private const val INITIAL_RETRY_MILLIS = 250L
-    private const val MAX_RETRY_MILLIS = 4_000L
+    private val retryDelaysMillis = longArrayOf(250L, 500L, 1_000L, 2_000L, 4_000L)
 
-    fun retryDelayMillis(attempt: Int): Long {
-        val exponent = (attempt.coerceAtLeast(1) - 1).coerceAtMost(4)
-        return (INITIAL_RETRY_MILLIS shl exponent).coerceAtMost(MAX_RETRY_MILLIS)
-    }
+    fun retryDelayMillis(attempt: Int): Long =
+        retryDelaysMillis[(attempt.coerceAtLeast(1) - 1).coerceAtMost(retryDelaysMillis.lastIndex)]
 }
 
 /**
