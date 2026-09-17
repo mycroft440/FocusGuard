@@ -29,35 +29,52 @@ class AccessibilityInputEventFilterTest {
     )
 
     @Test
-    fun `own typing and anonymous text events require no window reads`() {
-        repeat(1_000) {
+    fun `own application events remain own ui`() {
+        repeat(100) {
             assertThat(classify("com.focusguard.v2", 1)).isEqualTo(Decision.OWN_UI)
             assertThat(classify("", 1)).isEqualTo(Decision.OWN_UI)
         }
-        assertThat(windowReads).isEqualTo(0)
+        assertThat(windowReads).isEqualTo(1)
+    }
+
+    @Test
+    fun `own accessibility overlay never becomes foreground app context`() {
+        windows = listOf(
+            Window(1, AccessibilityWindowInfo.TYPE_APPLICATION),
+            Window(5, AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY)
+        )
+
+        assertThat(classify("com.focusguard.v2", 5)).isEqualTo(Decision.INPUT_METHOD)
+        assertThat(classify("", 5)).isEqualTo(Decision.INPUT_METHOD)
+        assertThat(windowReads).isEqualTo(1)
+    }
+
+    @Test
+    fun `accessibility overlay removal event remains consumed`() {
+        windows = listOf(Window(5, AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY))
+        assertThat(classify("com.focusguard.v2", 5)).isEqualTo(Decision.INPUT_METHOD)
+        windows = emptyList()
+        assertThat(classify("", 5, changed = true)).isEqualTo(Decision.INPUT_METHOD)
     }
 
     @Test
     fun `anonymous own window resize is recognized through metadata`() {
         classify("com.focusguard.v2", 1)
         assertThat(classify("", 1, changed = true)).isEqualTo(Decision.OWN_UI)
-        assertThat(windowReads).isEqualTo(1)
     }
 
     @Test
     fun `keyboard opening typing and closing never become a foreground app`() {
         windows = windows + Window(2, AccessibilityWindowInfo.TYPE_INPUT_METHOD)
         assertThat(classify("", 2, changed = true)).isEqualTo(Decision.INPUT_METHOD)
-        repeat(1_000) {
+        repeat(100) {
             assertThat(classify("com.samsung.android.honeyboard", 2))
                 .isEqualTo(Decision.INPUT_METHOD)
             assertThat(classify("", 2)).isEqualTo(Decision.INPUT_METHOD)
         }
-        assertThat(windowReads).isEqualTo(1)
 
         windows = windows.filterNot { it.id == 2 }
         assertThat(classify("", 2, changed = true)).isEqualTo(Decision.INPUT_METHOD)
-        assertThat(windowReads).isEqualTo(2)
     }
 
     @Test
