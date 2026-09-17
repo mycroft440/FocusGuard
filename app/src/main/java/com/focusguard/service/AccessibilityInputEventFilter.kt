@@ -48,15 +48,17 @@ internal class AccessibilityInputEventFilter {
             if (isConsumedNonApplicationWindow(cachedType)) {
                 return Decision.INPUT_METHOD
             }
-            if (ownEvent && cachedType == AccessibilityWindowInfo.TYPE_APPLICATION) {
+            if (ownEvent &&
+                (cachedType == AccessibilityWindowInfo.TYPE_APPLICATION || !allowWindowLookup)
+            ) {
+                // Ordinary FocusGuard focus/text events stay on the zero-lookup fast
+                // path. Window-transition events arrive with lookup enabled, so a
+                // newly-created accessibility curtain is still classified from real
+                // window metadata before it can be promoted to OWN_UI.
                 return Decision.OWN_UI
             }
         }
 
-        // Do not guess that an event from our package belongs to an Activity. The
-        // blocking curtain is TYPE_ACCESSIBILITY_OVERLAY and must never replace the
-        // browser generation. If metadata is not allowed on this fast pass, defer to
-        // the second pass instead of prematurely classifying it as OWN_UI.
         if (!allowWindowLookup || windowId < 0) return Decision.INSPECT
 
         val wasConsumedNonApplication = isConsumedNonApplicationWindow(windowTypes[windowId])
