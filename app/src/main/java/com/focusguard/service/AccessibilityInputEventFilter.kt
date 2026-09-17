@@ -3,11 +3,13 @@ package com.focusguard.service
 import android.view.accessibility.AccessibilityWindowInfo
 
 /**
- * Classifies UI/IME events without requesting any AccessibilityNodeInfo. Window
- * metadata comes from Android's window manager; reading a window root or an event
- * source would synchronously ask the app/keyboard to build its accessibility tree.
+ * Classifies FocusGuard UI, accessibility-overlay and IME events without requesting
+ * any AccessibilityNodeInfo. Window metadata comes from Android's window manager;
+ * reading a window root or an event source would synchronously ask the app/keyboard
+ * to build its accessibility tree.
  */
 internal class AccessibilityInputEventFilter {
+    /** INPUT_METHOD also represents non-application windows that must be consumed. */
     enum class Decision { OWN_UI, INPUT_METHOD, INSPECT }
 
     data class Window(val id: Int, val type: Int)
@@ -36,21 +38,28 @@ internal class AccessibilityInputEventFilter {
             }
         }
 
-        if (!windowsChanged) {
-            if (eventPackageName == ownPackageName ||
+        val ownEvent = !windowsChanged && (
+            eventPackageName == ownPackageName ||
                 (eventPackageName.isBlank() && windowId in ownWindowIds)
-            ) return Decision.OWN_UI
-            if (windowTypes[windowId] == AccessibilityWindowInfo.TYPE_INPUT_METHOD) {
+            )
+
+        if (!windowsChanged) {
+            val cachedType = windowTypes[windowId]
+            if (isConsumedNonApplicationWindow(cachedType)) {
                 return Decision.INPUT_METHOD
+            }
+            if (ownEvent && cachedType == AccessibilityWindowInfo.TYPE_APPLICATION) {
+                return Decision.OWN_UI
             }
         }
 
-        // Named Settings/launcher/browser events keep their existing immediate
-        // protection path before even a window-metadata lookup is attempted.
+        // Do not guess that an event from our package belongs to an Activity. The
+        // blocking curtain is TYPE_ACCESSIBILITY_OVERLAY and must never replace the
+        // browser generation. If metadata is not allowed on this fast pass, defer to
+        // the second pass instead of prematurely classifying it as OWN_UI.
         if (!allowWindowLookup || windowId < 0) return Decision.INSPECT
 
-        val wasInputMethod =
-            windowTypes[windowId] == AccessibilityWindowInfo.TYPE_INPUT_METHOD
+        val wasConsumedNonApplication = isConsumedNonApplicationWindow(windowTypes[windowId])
         if (windowsChanged || windowId !in windowTypes) {
             val snapshot = readWindows()
             windowTypes.clear()
@@ -59,20 +68,34 @@ internal class AccessibilityInputEventFilter {
         }
 
         val type = windowTypes[windowId]
-        if (type == AccessibilityWindowInfo.TYPE_INPUT_METHOD ||
-            (windowsChanged && wasInputMethod && type == null)
+        if (isConsumedNonApplicationWindow(type) ||
+            (windowsChanged && wasConsumedNonApplication && type == null)
         ) {
-            // The removal event belongs to the keyboard too. It must not replace
-            // the foreground app with the IME or trigger a fallback root read.
+            // Keyboard and FocusGuard accessibility-overlay events are consumed but
+            // never promoted to foreground application context. Their removal event
+            // is consumed as well, preventing the curtain from retiring its own
+            // website transition.
             return Decision.INPUT_METHOD
         }
+
         if (type == AccessibilityWindowInfo.TYPE_APPLICATION && windowId in ownWindowIds) {
             return Decision.OWN_UI
         }
+        if (ownEvent && type == null) {
+            // Metadata can briefly lag a newly-created Activity. At this point a
+            // lookup was attempted and no overlay/IME evidence exists, so preserve
+            // the previous own-Activity behavior rather than leaking the event.
+            return Decision.OWN_UI
+        }
+
         // Unknown, removed app, Settings, browser and System UI windows retain
         // normal inspection. Merely having an IME visible never exempts an app.
         return Decision.INSPECT
     }
+
+    private fun isConsumedNonApplicationWindow(type: Int?): Boolean =
+        type == AccessibilityWindowInfo.TYPE_INPUT_METHOD ||
+            type == AccessibilityWindowInfo.TYPE_ACCESSIBILITY_OVERLAY
 
     private companion object {
         const val MAX_OWN_WINDOWS = 32
