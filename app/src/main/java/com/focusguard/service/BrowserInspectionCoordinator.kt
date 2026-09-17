@@ -108,6 +108,11 @@ internal class BrowserInspectionCoordinator {
                 expectedGeneration == generation
         }
 
+    fun currentToken(packageName: String): Token? = synchronized(lock) {
+        if (packageName != currentPackage || currentWindowId < 0) null
+        else Token(currentPackage, currentWindowId, generation, sequence)
+    }
+
     fun currentGeneration(packageName: String, windowId: Int): Long? = synchronized(lock) {
         generation.takeIf { packageName == currentPackage && windowId == currentWindowId }
     }

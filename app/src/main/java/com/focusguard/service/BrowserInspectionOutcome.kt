@@ -3,7 +3,9 @@ package com.focusguard.service
 import com.focusguard.accessibility.website.identification.WebsiteIdentificationLayer
 import com.focusguard.accessibility.website.identification.WebsiteIdentificationResult
 import com.focusguard.accessibility.website.identification.WebsiteIdentificationStatus
+import android.view.accessibility.AccessibilityEvent
 import com.focusguard.utils.BrowserSurfaceInspector
+import com.focusguard.utils.WebsiteBlocker
 
 /**
  * Immutable data returned by one worker-owned browser inspection.
@@ -28,7 +30,8 @@ internal data class BrowserInspectionOutcome(
     val evidence: Set<WebsiteIdentificationLayer>,
     val recognizedBrowser: Boolean,
     val directEventText: List<String>,
-    val eventContentDescription: String?
+    val eventContentDescription: String?,
+    val eventClassName: String
 ) {
     val token: BrowserInspectionCoordinator.Token
         get() = BrowserInspectionCoordinator.Token(
@@ -41,6 +44,14 @@ internal data class BrowserInspectionOutcome(
     val bestCandidate: String?
         get() = urlCandidate?.takeIf(String::isNotBlank)
             ?: rawAddressText?.takeIf(String::isNotBlank)
+
+    /** Direct text is only search evidence on a freshly verified Google document. */
+    fun hasBlockedGoogleSearch(): Boolean =
+        surface == BrowserSurfaceInspector.Surface.WEB_CONTENT &&
+            eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED &&
+            eventClassName.endsWith("EditText") &&
+            urlCandidate?.let(WebsiteBlocker::isGoogleUrl) == true &&
+            directEventText.any(WebsiteBlocker::containsPornographySearchTerm)
 
     companion object {
         fun from(
@@ -69,7 +80,8 @@ internal data class BrowserInspectionOutcome(
                 evidence = identification.evidence.toSet(),
                 recognizedBrowser = recognizedBrowser,
                 directEventText = snapshot.directText.toList(),
-                eventContentDescription = snapshot.contentDescription
+                eventContentDescription = snapshot.contentDescription,
+                eventClassName = snapshot.className
             )
         }
     }

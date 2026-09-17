@@ -33,7 +33,8 @@ internal class WebsiteIdentificationRecovery(
                 root,
                 browserPackage,
                 windowId,
-                httpsHandlerRecognized
+                httpsHandlerRecognized,
+                isCurrent = isCurrent
             ).takeIf { isCurrent() } ?: rejected()
         } finally { recycle(root) }
     }
@@ -97,6 +98,7 @@ internal class WebsiteIdentificationRecovery(
                 }
             }
         }
+        if (!isCurrent()) return rejected()
         delay(160L)
         if (!isCurrent()) return rejected()
         val finalResult = read()
@@ -149,7 +151,9 @@ internal class WebsiteIdentificationRecovery(
             val action = if (viewport.actionList.any { it.id == AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD }) {
                 AccessibilityNodeInfo.ACTION_SCROLL_BACKWARD
             } else AccessibilityNodeInfo.AccessibilityAction.ACTION_SCROLL_UP.id
-            isCurrent() && viewport.performAction(action)
+            if (!isCurrent()) return false
+            val accepted = viewport.performAction(action)
+            isCurrent() && accepted
         } catch (_: RuntimeException) {
             false
         } finally { candidates.forEach(::recycle) }

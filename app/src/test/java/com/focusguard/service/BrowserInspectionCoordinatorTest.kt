@@ -15,15 +15,18 @@ class BrowserInspectionCoordinatorTest {
         assertTrue(first.startWorker)
         assertSame(first.snapshot, coordinator.takePending())
 
-        val second = coordinator.offer("com.android.chrome", 10, 2048, 2L, 2L, "", listOf("a"), null)
-        val third = coordinator.offer("com.android.chrome", 10, 2048, 3L, 3L, "", listOf("b"), null)
-        assertFalse(second.startWorker)
-        assertFalse(third.startWorker)
+        val offers = (2L..31L).map { sequence ->
+            coordinator.offer("com.android.chrome", 10, 2048, sequence, sequence, "", listOf("$sequence"), null)
+        }
+        offers.forEach { assertFalse(it.startWorker) }
 
         val next = coordinator.finishPass()
-        assertSame(third.snapshot, next)
-        assertTrue(coordinator.isCurrent(third.snapshot.token, requireLatestSequence = true))
-        assertFalse(coordinator.isCurrent(second.snapshot.token, requireLatestSequence = true))
+        assertSame(offers.last().snapshot, next)
+        assertTrue(coordinator.isCurrent(offers.last().snapshot.token, requireLatestSequence = true))
+        offers.dropLast(1).forEach {
+            assertFalse(coordinator.isCurrent(it.snapshot.token, requireLatestSequence = true))
+        }
+        assertFalse(coordinator.isCurrent(first.snapshot.token, requireLatestSequence = true))
     }
 
     @Test

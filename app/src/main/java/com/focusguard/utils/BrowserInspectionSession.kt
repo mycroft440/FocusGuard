@@ -102,7 +102,9 @@ internal class BrowserInspectionSession(
     val windowId: Int,
     val browserPackage: String,
     val createdAtElapsedNanos: Long = SystemClock.elapsedRealtimeNanos(),
-    val budget: BrowserInspectionBudget = BrowserInspectionBudget()
+    val budget: BrowserInspectionBudget = BrowserInspectionBudget(),
+    val isCurrent: () -> Boolean = { true },
+    val scoped: Boolean = false
 ) {
     var surface: BrowserSurfaceInspector.Surface? = null
     var addressComplete: Boolean = false
@@ -110,6 +112,7 @@ internal class BrowserInspectionSession(
     var url: String? = null
     var addressText: String? = null
     var addressBarObservable: Boolean = false
+    var focusedAddressEditor: Boolean = false
     var strongAddressBarObserved: Boolean = false
     var identificationMethod: BrowserIdentificationMethod? = null
 }
@@ -121,6 +124,30 @@ internal object BrowserInspectionSessionStore {
 
     private val sessionLocal = ThreadLocal<BrowserInspectionSession?>()
     private val lastPerfLogElapsed = AtomicLong(0L)
+
+    /** Pins one budget to one synchronous pass; no predicate or node survives it. */
+    fun <T> withInspection(
+        root: AccessibilityNodeInfo,
+        browserPackage: String,
+        isCurrent: () -> Boolean,
+        block: () -> T
+    ): T {
+        val previous = sessionLocal.get()
+        val identity = System.identityHashCode(root)
+        val session = if (previous?.scoped == true && previous.rootIdentity == identity &&
+            previous.browserPackage == browserPackage && previous.windowId == root.windowId
+        ) previous else BrowserInspectionSession(
+            rootIdentity = identity,
+            windowId = root.windowId,
+            browserPackage = browserPackage,
+            isCurrent = isCurrent,
+            scoped = true
+        )
+        sessionLocal.set(session)
+        return try { block() } finally {
+            if (previous == null) sessionLocal.remove() else sessionLocal.set(previous)
+        }
+    }
 
     fun sessionFor(
         root: AccessibilityNodeInfo,
@@ -134,7 +161,8 @@ internal object BrowserInspectionSessionStore {
             current.rootIdentity == identity &&
             current.windowId == windowId &&
             current.browserPackage == browserPackage &&
-            nowNanos - current.createdAtElapsedNanos <= SESSION_REUSE_MILLIS * 1_000_000L
+            (current.scoped ||
+                nowNanos - current.createdAtElapsedNanos <= SESSION_REUSE_MILLIS * 1_000_000L)
         ) {
             return current
         }

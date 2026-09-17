@@ -2,6 +2,7 @@ package com.focusguard.accessibility.website.identification
 
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.focusguard.utils.BrowserInspectionSessionStore
 import com.focusguard.utils.BrowserSurfaceInspector
 import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.focusguard.utils.WebsiteBlocker
@@ -99,8 +100,10 @@ internal object WebsiteIdentificationEngine {
         root: AccessibilityNodeInfo?,
         browserPackageName: String,
         expectedWindowId: Int,
-        httpsHandlerRecognized: Boolean
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
     ): WebsiteIdentificationResult {
+        if (!isCurrent()) return WebsiteIdentificationResult(WebsiteIdentificationStatus.REJECTED_CONTEXT)
         if (root == null || browserPackageName.isBlank() || expectedWindowId < 0) {
             return WebsiteIdentificationResult(
                 status = WebsiteIdentificationStatus.UNOBSERVABLE,
@@ -109,11 +112,23 @@ internal object WebsiteIdentificationEngine {
             )
         }
 
+        return BrowserInspectionSessionStore.withInspection(root, browserPackageName, isCurrent) {
+            identifyCurrentRoot(root, browserPackageName, expectedWindowId, httpsHandlerRecognized, isCurrent)
+        }
+    }
+
+    private fun identifyCurrentRoot(
+        root: AccessibilityNodeInfo,
+        browserPackageName: String,
+        expectedWindowId: Int,
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
+    ): WebsiteIdentificationResult {
         val rootMatchesBrowser = runCatching {
             root.packageName?.toString() == browserPackageName &&
                 root.windowId == expectedWindowId
         }.getOrDefault(false)
-        if (!rootMatchesBrowser) {
+        if (!isCurrent() || !rootMatchesBrowser) {
             return WebsiteIdentificationResult(
                 status = WebsiteIdentificationStatus.REJECTED_CONTEXT,
                 browserPackageName = browserPackageName,
@@ -150,6 +165,10 @@ internal object WebsiteIdentificationEngine {
             httpsHandlerRecognized = httpsHandlerRecognized
         )
 
+        if (!isCurrent()) return WebsiteIdentificationResult(WebsiteIdentificationStatus.REJECTED_CONTEXT)
+        if (BrowserInspectionSessionStore.sessionFor(root, browserPackageName).strongAddressBarObserved) {
+            evidence += WebsiteIdentificationLayer.STRONG_ADDRESS_BAR_ID
+        }
         if (!rawText.isNullOrBlank()) evidence += WebsiteIdentificationLayer.ADDRESS_BAR_TEXT
         if (observable) evidence += WebsiteIdentificationLayer.FIELD_SEMANTICS
 
@@ -187,8 +206,10 @@ internal object WebsiteIdentificationEngine {
         rootProvider: () -> AccessibilityNodeInfo?,
         browserPackageName: String,
         expectedWindowId: Int,
-        httpsHandlerRecognized: Boolean
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
     ): WebsiteIdentificationResult {
+        if (!isCurrent()) return WebsiteIdentificationResult(WebsiteIdentificationStatus.REJECTED_CONTEXT)
         val freshRoot = rootProvider() ?: return WebsiteIdentificationResult(
             status = WebsiteIdentificationStatus.UNOBSERVABLE,
             browserPackageName = browserPackageName,
@@ -200,8 +221,10 @@ internal object WebsiteIdentificationEngine {
                 root = freshRoot,
                 browserPackageName = browserPackageName,
                 expectedWindowId = expectedWindowId,
-                httpsHandlerRecognized = httpsHandlerRecognized
+                httpsHandlerRecognized = httpsHandlerRecognized,
+                isCurrent = isCurrent
             )
+            if (!isCurrent()) return WebsiteIdentificationResult(WebsiteIdentificationStatus.REJECTED_CONTEXT)
             result.copy(
                 evidence = result.evidence +
                     WebsiteIdentificationLayer.POST_INTERACTION_REIDENTIFICATION

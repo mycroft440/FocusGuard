@@ -6,6 +6,9 @@ import com.focusguard.accessibility.website.identification.WebsiteIdentification
 import com.focusguard.accessibility.website.identification.WebsiteIdentificationStatus
 
 /**
+ * Reusable same-tab action adapter. BlockingAccessibilityService owns the live
+ * transition state machine, curtain, retries and compatibility lifecycle.
+ *
  * Multi-phase same-tab redirect. Nodes never survive an asynchronous phase:
  * activate -> discard -> wait -> reacquire -> edit -> discard -> wait ->
  * reacquire -> submit -> wait -> verify.
@@ -40,13 +43,15 @@ internal class WebsiteRedirectionCoordinator(
         ) : Outcome()
 
         data class FailClosed(val attempts: Int) : Outcome()
+
+        data object Stale : Outcome()
     }
 
     suspend fun redirect(): Outcome {
         var attempt = 1
         while (attempt <= WebsiteRedirectionPlan.MAX_SAME_TAB_ATTEMPTS && isCurrent()) {
             val submissionMethod = runAttempt()
-            if (!isCurrent()) return Outcome.FailClosed(attempt)
+            if (!isCurrent()) return Outcome.Stale
             if (submissionMethod != null) {
                 onPhase(WebsiteRedirectionPhase.VERIFY_DESTINATION)
                 if (isCurrent() && verifyDestination() && isCurrent()) {
@@ -58,12 +63,14 @@ internal class WebsiteRedirectionCoordinator(
             if (!WebsiteRedirectionPlan.canRetry(attempt) || !isCurrent()) break
             onPhase(WebsiteRedirectionPhase.BACK_AND_RETRY)
             if (!isCurrent() || !performBack()) break
+            if (!isCurrent()) return Outcome.Stale
             waitForUiMutation()
             if (!isCurrent()) break
             attempt += 1
         }
 
-        if (isCurrent()) onPhase(WebsiteRedirectionPhase.FAIL_CLOSED)
+        if (!isCurrent()) return Outcome.Stale
+        onPhase(WebsiteRedirectionPhase.FAIL_CLOSED)
         return Outcome.FailClosed(attempt.coerceAtMost(WebsiteRedirectionPlan.MAX_SAME_TAB_ATTEMPTS))
     }
 
@@ -88,7 +95,8 @@ internal class WebsiteRedirectionCoordinator(
             rootProvider = { if (isCurrent()) rootProvider() else null },
             browserPackageName = browserPackageName,
             expectedWindowId = expectedWindowId,
-            httpsHandlerRecognized = httpsHandlerRecognized
+            httpsHandlerRecognized = httpsHandlerRecognized,
+            isCurrent = isCurrent
         )
         if (!isCurrent() ||
             editorIdentification.status == WebsiteIdentificationStatus.REJECTED_CONTEXT ||
@@ -160,7 +168,8 @@ internal class WebsiteRedirectionCoordinator(
             rootProvider = { if (isCurrent()) rootProvider() else null },
             browserPackageName = browserPackageName,
             expectedWindowId = expectedWindowId,
-            httpsHandlerRecognized = httpsHandlerRecognized
+            httpsHandlerRecognized = httpsHandlerRecognized,
+            isCurrent = isCurrent
         )
         if (!isCurrent() ||
             submitIdentification.status == WebsiteIdentificationStatus.REJECTED_CONTEXT ||
