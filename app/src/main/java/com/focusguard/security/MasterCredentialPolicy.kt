@@ -7,8 +7,10 @@ import com.focusguard.database.BlockSession
  * Central policy for irreversible protection and the master credential boundary.
  *
  * The master credential is administrative and remains independent from credentials
- * configured for individual PASSWORD targets. A master credential must exist before
- * a TIME commitment or a usage-limit configuration can be created or changed.
+ * configured for individual PASSWORD targets. Creating blocking sessions and
+ * configuring ordinary usage limits do not depend on the master credential;
+ * active protection rules remain governed by their own hardening and maintenance
+ * boundaries.
  *
  * Two protection invariants remain load-bearing:
  *  1. Dopamine Fast (`TIME`) and strict Pomodoro cannot be ended early by a
@@ -27,27 +29,21 @@ object MasterCredentialPolicy {
 
     // ---------------------------------------------------------------- creation
 
-    /** TIME commitments require the master credential to be configured first. */
-    fun requiresMasterCredentialToCreate(sessionType: String): Boolean =
-        sessionType.equals(SESSION_TYPE_TIME, ignoreCase = true)
+    /** Creating a blocking session never redirects through master-password setup. */
+    @Suppress("UNUSED_PARAMETER")
+    fun requiresMasterCredentialToCreate(sessionType: String): Boolean = false
 
     enum class CreationGate {
         ALLOWED,
+        /** Retained for source compatibility with older callers. */
         MASTER_CREDENTIAL_REQUIRED
     }
 
+    @Suppress("UNUSED_PARAMETER")
     fun evaluateCreation(
         sessionType: String,
         hasMasterCredential: Boolean
-    ): CreationGate {
-        return if (
-            requiresMasterCredentialToCreate(sessionType) && !hasMasterCredential
-        ) {
-            CreationGate.MASTER_CREDENTIAL_REQUIRED
-        } else {
-            CreationGate.ALLOWED
-        }
-    }
+    ): CreationGate = CreationGate.ALLOWED
 
     // ----------------------------------------------- credential configuration
 
@@ -86,7 +82,7 @@ object MasterCredentialPolicy {
 
     enum class MutationGate {
         ALLOWED,
-        /** Legacy value retained for older UI branches. */
+        /** Legacy values retained for older UI branches; no longer emitted here. */
         MASTER_CREDENTIAL_REQUIRED,
         MASTER_CREDENTIAL_NOT_CONFIGURED,
         BLOCKED_BY_TIME_HARDENING,
@@ -94,11 +90,9 @@ object MasterCredentialPolicy {
     }
 
     /**
-     * Existing hardening and Safety Mode always take precedence. Outside those
-     * immutable states, a usage limit can only be created or changed after the
-     * master credential has been configured. Merely having the credential is
-     * sufficient here; this policy does not turn the master password into the
-     * unlock password for the individual limit.
+     * Altering a usage limit is governed by the limit's own hardening and Safety
+     * Mode. The master credential is deliberately ignored: it must not become a
+     * generic password for creating, editing or removing individual limits.
      */
     @Suppress("UNUSED_PARAMETER")
     fun evaluateLimitMutation(
@@ -114,9 +108,6 @@ object MasterCredentialPolicy {
         }
         if (safetyModeEnabled) {
             return MutationGate.BLOCKED_BY_SAFETY_MODE
-        }
-        if (!hasMasterCredential) {
-            return MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED
         }
         return MutationGate.ALLOWED
     }
