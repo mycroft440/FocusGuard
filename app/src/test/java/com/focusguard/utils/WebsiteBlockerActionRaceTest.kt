@@ -50,6 +50,36 @@ class WebsiteBlockerActionRaceTest {
     }
 
     @Test
+    fun currentCachedSubmitLearnsExactlyOnceAtWebsiteBlockerBoundary() {
+        val pkg = "com.android.chrome"
+        mockkObject(BrowserCompatibilityStore, AddressBarRedirectionActions)
+        every { BrowserCompatibilityStore.preferredSubmitMethod(pkg) } returns BrowserSubmitMethod.CERTIFIED_GO_BUTTON
+        every { BrowserCompatibilityStore.recordSubmitAccepted(any(), any(), any()) } just Runs
+        val root = mockk<AccessibilityNodeInfo>(relaxed = true) {
+            every { packageName } returns pkg
+            every { windowId } returns 10
+            every { childCount } returns 0
+            every { findAccessibilityNodeInfosByViewId(any()) } returns emptyList()
+        }
+        every { AddressBarRedirectionActions.clickCertifiedGoButton(root, pkg, 10, any()) } returns
+            AddressBarRedirectionActions.Result(AddressBarRedirectionActions.Status.ACCEPTED, "$pkg:id/url_bar_go_button")
+
+        val result = WebsiteBlocker.performUniqueAddressBarAction(
+            root, pkg, 10, BrowserUiCapabilityPolicy.NodeAction.IME_ENTER,
+            isCurrent = { true }
+        )
+
+        assertTrue(result.accepted)
+        verify(exactly = 1) {
+            BrowserCompatibilityStore.recordSubmitAccepted(
+                pkg,
+                null,
+                BrowserSubmitMethod.CERTIFIED_GO_BUTTON
+            )
+        }
+    }
+
+    @Test
     fun staleAddressActionNeverReadsOrActsOnRoot() {
         val root = mockk<AccessibilityNodeInfo>()
         val result = WebsiteBlocker.performUniqueAddressBarAction(
