@@ -67,10 +67,13 @@ class UserProfileStore(context: Context) {
 
     fun save(profile: UserProfile): UserProfile {
         val requestedUserId = UserProfilePolicy.normalizeUserId(profile.userId)
+        val resolvedUserId = if (requestedUserId.isBlank()) {
+            resolveUserId()
+        } else {
+            requestedUserId
+        }
         val normalizedProfile = UserProfilePolicy.normalize(
-            profile.copy(
-                userId = requestedUserId.ifBlank(::resolveUserId)
-            )
+            profile.copy(userId = resolvedUserId)
         )
         preferences.edit()
             .putString(DISPLAY_NAME_KEY, normalizedProfile.displayName)
