@@ -1,0 +1,126 @@
+{
+  "source": "https://easypeasymethod.org/",
+  "bundledPrimaryEdition": {
+    "code": "pt-BR",
+    "name": "Português brasileiro",
+    "format": "html",
+    "assetDirectory": "../",
+    "source": "https://easypeasymethod.org/pt-br/"
+  },
+  "translations": [
+    {
+      "code": "de",
+      "name": "Deutsch",
+      "file": "easypeasy_de.pdf",
+      "source": "https://easypeasymethod.org/de/easypeasy.pdf"
+    },
+    {
+      "code": "en",
+      "name": "English",
+      "file": "easypeasy_en.pdf",
+      "source": "https://easypeasymethod.org/easypeasy.pdf"
+    },
+    {
+      "code": "es",
+      "name": "Español",
+      "file": "easypeasy_es.pdf",
+      "source": "https://easypeasymethod.org/translations/easypeasy_es.pdf"
+    },
+    {
+      "code": "fr",
+      "name": "Français",
+      "file": "easypeasy_fr.pdf",
+      "source": "https://easypeasymethod.org/translations/easypeasy_fr.pdf"
+    },
+    {
+      "code": "it",
+      "name": "Italiano",
+      "file": "easypeasy_it.pdf",
+      "source": "https://easypeasymethod.org/it/easypeasy.pdf"
+    },
+    {
+      "code": "hu",
+      "name": "Magyar",
+      "file": "easypeasy_hu.pdf",
+      "source": "https://easypeasymethod.org/translations/easypeasy_hu.pdf"
+    },
+    {
+      "code": "nl",
+      "name": "Nederlands",
+      "file": "easypeasy_nl.pdf",
+      "source": "https://easypeasymethod.org/nl/easypeasy.pdf"
+    },
+    {
+      "code": "pl",
+      "name": "Polski",
+      "file": "easypeasy_pl.pdf",
+      "source": "https://easypeasymethod.org/pl/easypeasy.pdf"
+    },
+    {
+      "code": "ro",
+      "name": "Română",
+      "file": "easypeasy_ro.pdf",
+      "source": "https://easypeasymethod.org/ro/easypeasy.pdf"
+    },
+    {
+      "code": "sq",
+      "name": "Shqip",
+      "file": "easypeasy_sq.pdf",
+      "source": "https://easypeasymethod.org/sq/easypeasy.pdf"
+    },
+    {
+      "code": "so",
+      "name": "Soomaaliga",
+      "file": "easypeasy_so.pdf",
+      "source": "https://easypeasymethod.org/so/easypeasy.pdf"
+    },
+    {
+      "code": "sv",
+      "name": "Svenska",
+      "file": "easypeasy_sv.pdf",
+      "source": "https://easypeasymethod.org/sv/easypeasy.pdf"
+    },
+    {
+      "code": "tr",
+      "name": "Türkçe",
+      "file": "easypeasy_tr.pdf",
+      "source": "https://easypeasymethod.org/translations/easypeasy_tr.pdf"
+    },
+    {
+      "code": "cs",
+      "name": "Čeština",
+      "file": "easypeasy_cs.pdf",
+      "source": "https://easypeasymethod.org/translations/easypeasy_cs.pdf"
+    },
+    {
+      "code": "ru",
+      "name": "Русский",
+      "file": "easypeasy_ru.pdf",
+      "source": "https://easypeasymethod.org/ru/easypeasy.pdf"
+    },
+    {
+      "code": "uk",
+      "name": "Українська",
+      "file": "easypeasy_uk.pdf",
+      "source": "https://easypeasymethod.org/uk/easypeasy.pdf"
+    },
+    {
+      "code": "ar",
+      "name": "العربية",
+      "file": "easypeasy_ar.pdf",
+      "source": "https://easypeasymethod.org/translations/easypeasy_ar.pdf"
+    },
+    {
+      "code": "fa",
+      "name": "فارسی",
+      "file": "easypeasy_fa.pdf",
+      "source": "https://easypeasymethod.org/translations/easypeasy_fa.pdf"
+    },
+    {
+      "code": "ko",
+      "name": "한국어",
+      "file": "easypeasy_ko.pdf",
+      "source": "https://easypeasymethod.org/ko/easypeasy.pdf"
+    }
+  ]
+}
