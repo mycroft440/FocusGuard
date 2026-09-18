@@ -1,14 +1,16 @@
 package com.focusguard.security
 
 import com.focusguard.database.AppUsageLimit
+import com.focusguard.database.BlockSession
 
 /**
  * Central policy for irreversible protection and the master credential boundary.
  *
- * The master credential is intentionally NOT a password for protected targets.
- * It exists only for the explicit "remove all blocks" administrative action in
- * FocusGuard settings. Password/pattern/biometric credentials configured for a
- * PASSWORD block are independent and are handled by PasswordAppUnlockStore.
+ * The master credential is administrative and remains independent from credentials
+ * configured for individual PASSWORD targets. Creating blocking sessions and
+ * configuring ordinary usage limits do not depend on the master credential;
+ * active protection rules remain governed by their own hardening and maintenance
+ * boundaries.
  *
  * Two protection invariants remain load-bearing:
  *  1. Dopamine Fast (`TIME`) and strict Pomodoro cannot be ended early by a
@@ -27,17 +29,13 @@ object MasterCredentialPolicy {
 
     // ---------------------------------------------------------------- creation
 
-    /**
-     * Creating a block never depends on the master credential. A PASSWORD block
-     * carries its own target credential; TIME/POMODORO use their own commitment
-     * rules. Kept as a function for source compatibility with older callers.
-     */
+    /** Creating a blocking session never redirects through master-password setup. */
     @Suppress("UNUSED_PARAMETER")
     fun requiresMasterCredentialToCreate(sessionType: String): Boolean = false
 
     enum class CreationGate {
         ALLOWED,
-        /** Legacy value retained for binary/source compatibility; no longer emitted. */
+        /** Retained for source compatibility with older callers. */
         MASTER_CREDENTIAL_REQUIRED
     }
 
@@ -46,6 +44,39 @@ object MasterCredentialPolicy {
         sessionType: String,
         hasMasterCredential: Boolean
     ): CreationGate = CreationGate.ALLOWED
+
+    // ----------------------------------------------- credential configuration
+
+    enum class ConfigurationGate {
+        ALLOWED,
+        BLOCKED_BY_TIME_BLOCK,
+        BLOCKED_BY_USAGE_LIMIT
+    }
+
+    /**
+     * The master credential must be chosen before an irreversible TIME block or
+     * an enabled usage limit already exists. PASSWORD sessions are deliberately
+     * ignored because their target credentials are independent from the master
+     * credential. Pomodoro is also outside this gate: only the explicit TIME
+     * blocking mode requested by this boundary prevents configuration.
+     */
+    fun evaluateCredentialConfiguration(
+        activeSessions: Iterable<BlockSession>,
+        hasActiveUsageLimit: Boolean,
+        nowMillis: Long = System.currentTimeMillis()
+    ): ConfigurationGate {
+        val hasActiveTimeBlock = activeSessions.any { session ->
+            isTimeCommitmentActive(
+                sessionType = session.sessionType,
+                isActive = session.isActive,
+                endTime = session.endTime,
+                nowMillis = nowMillis
+            )
+        }
+        if (hasActiveTimeBlock) return ConfigurationGate.BLOCKED_BY_TIME_BLOCK
+        if (hasActiveUsageLimit) return ConfigurationGate.BLOCKED_BY_USAGE_LIMIT
+        return ConfigurationGate.ALLOWED
+    }
 
     // -------------------------------------------------------- limit mutation
 
@@ -60,8 +91,8 @@ object MasterCredentialPolicy {
 
     /**
      * Altering a usage limit is governed by the limit's own hardening and Safety
-     * Mode. The master credential is deliberately ignored: it must never become a
-     * generic password for individual limits.
+     * Mode. The master credential is deliberately ignored: it must not become a
+     * generic password for creating, editing or removing individual limits.
      */
     @Suppress("UNUSED_PARAMETER")
     fun evaluateLimitMutation(

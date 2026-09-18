@@ -80,9 +80,15 @@ fun MainScreen(
                             .statusBarsPadding()
                             .height(64.dp)
                     ) {
-                        if (selectedTab == 4) {
+                        if (selectedTab == 4 || selectedTab == 5) {
                             Text(
-                                stringResource(R.string.nav_focus_mode),
+                                stringResource(
+                                    if (selectedTab == 5) {
+                                        R.string.nav_forum
+                                    } else {
+                                        R.string.nav_focus_mode
+                                    }
+                                ),
                                 modifier = Modifier
                                     .align(Alignment.CenterStart)
                                     .padding(start = 16.dp),
@@ -188,6 +194,7 @@ fun MainScreen(
                             2 -> pomodoroContent()
                             3 -> recoveryContent()
                             4 -> focusModeContent()
+                            5 -> ForumScreen(profile = profile)
                         }
                     }
 
@@ -313,7 +320,7 @@ private fun FocusModeNavigationRail(
             )
         }
     ) {
-        FocusGuardNavigationItems.forEach { item ->
+        FocusModeNavigationItems.forEach { item ->
             NavigationRailItem(
                 selected = selectedTab == item.tab,
                 onClick = { onTabChange(item.tab) },
@@ -347,8 +354,11 @@ private val FocusGuardNavigationItems = listOf(
     FocusGuardNavigationItem(1, Icons.Default.Shield, R.string.nav_protection),
     FocusGuardNavigationItem(2, Icons.Default.Timer, R.string.nav_focus),
     FocusGuardNavigationItem(3, Icons.Outlined.VisibilityOff, R.string.nav_recovery),
-    FocusGuardNavigationItem(4, Icons.Default.LockClock, R.string.nav_focus_mode)
+    FocusGuardNavigationItem(4, Icons.Default.LockClock, R.string.nav_focus_mode),
+    FocusGuardNavigationItem(5, Icons.Outlined.Forum, R.string.nav_forum)
 )
+
+private val FocusModeNavigationItems = FocusGuardNavigationItems.filterNot { it.tab == 5 }
 
 internal fun pendingPermissionsDescriptionRes(
     missingPermissions: List<ProtectionPermission>

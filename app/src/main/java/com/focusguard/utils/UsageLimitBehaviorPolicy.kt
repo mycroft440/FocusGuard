@@ -140,6 +140,13 @@ object UsageLimitBehaviorPolicy {
             startedPause = false
         )
     }
+
+    internal fun pauseEndDeadline(
+        evaluation: PauseEvaluation,
+        nowMillis: Long
+    ): Long? = evaluation.state
+        ?.blockedUntilMillis
+        ?.takeIf { evaluation.shouldBlock && it > nowMillis }
 }
 
 /** Persistent per-app state for the once-per-day 30-minute pause and user notices. */
@@ -189,14 +196,14 @@ object UsageLimitPauseStateStore {
 
         if (evaluation.startedPause) {
             notifyUser(R.string.limits_pause_notice)
-            evaluation.state?.blockedUntilMillis?.let { blockedUntil ->
-                storageContext?.let { context ->
-                    BlockingScheduleReceiver.scheduleUsageLimitPauseEnd(
-                        context = context,
-                        identifier = identifier,
-                        atMillis = blockedUntil
-                    )
-                }
+        }
+        UsageLimitBehaviorPolicy.pauseEndDeadline(evaluation, nowMillis)?.let { blockedUntil ->
+            storageContext?.let { context ->
+                BlockingScheduleReceiver.scheduleUsageLimitPauseEnd(
+                    context = context,
+                    identifier = identifier,
+                    atMillis = blockedUntil
+                )
             }
         }
         return evaluation.shouldBlock

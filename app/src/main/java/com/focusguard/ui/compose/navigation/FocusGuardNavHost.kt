@@ -54,6 +54,8 @@ import com.focusguard.ui.compose.screens.RecoveryCourseGatewayScreen
 import com.focusguard.ui.compose.screens.RecoveryHubScreen
 import com.focusguard.ui.compose.screens.SessionsListScreen
 import com.focusguard.ui.compose.screens.SettingsScreen
+import com.focusguard.ui.compose.screens.TestedBrowsersScreen
+import com.focusguard.ui.compose.screens.TimeBlockConfigMode
 import com.focusguard.ui.compose.screens.UsageLimitsScreen
 import com.focusguard.ui.compose.screens.UsageStatsDashboardScreen
 import androidx.lifecycle.Lifecycle
@@ -70,6 +72,7 @@ private object FocusGuardRoute {
     const val Limits = "LIMITS"
     const val IntruderLog = "INTRUDER_LOG"
     const val Language = "LANGUAGE"
+    const val TestedBrowsers = "TESTED_BROWSERS"
     const val UsageLimits = "USAGE_LIMITS"
     const val Dashboard = "DASHBOARD"
     const val BlockCustomization = "BLOCK_CUSTOMIZATION"
@@ -100,7 +103,7 @@ fun FocusGuardNavHost(
 
     // The FocusGuard shell itself is never unlocked by the master credential.
     // Password/pattern/biometric credentials live on protected targets only;
-    // the master password is reserved for Settings > Remove all blocks.
+    // the master password is reserved for administrative protection boundaries.
 
     var currentRoute by remember { mutableStateOf(FocusGuardRoute.Home) }
     var selectedBlockType by remember { mutableStateOf(BlockTypeUi.PASSWORD) }
@@ -272,6 +275,7 @@ fun FocusGuardNavHost(
             FocusGuardRoute.Limits,
             FocusGuardRoute.Language,
             FocusGuardRoute.Profile,
+            FocusGuardRoute.TestedBrowsers,
             FocusGuardRoute.BlockCustomization -> FocusGuardRoute.Settings
             FocusGuardRoute.IntruderLog,
             FocusGuardRoute.UsageLimits -> FocusGuardRoute.BlockTypeDetail
@@ -389,9 +393,21 @@ fun FocusGuardNavHost(
                                     Intent(activity, CreateSessionActivity::class.java)
                                         .putExtra("SESSION_TYPE", "PASSWORD")
                                 )
+                                BlockTypeUi.DAILY_PERIODS -> activity.startActivity(
+                                    Intent(activity, CreateSessionActivity::class.java)
+                                        .putExtra("SESSION_TYPE", "TIME")
+                                        .putExtra(
+                                            CreateSessionActivity.EXTRA_TIME_BLOCK_MODE,
+                                            TimeBlockConfigMode.DAILY_PERIODS.name
+                                        )
+                                )
                                 BlockTypeUi.DOPAMINE_FAST -> activity.startActivity(
                                     Intent(activity, CreateSessionActivity::class.java)
                                         .putExtra("SESSION_TYPE", "TIME")
+                                        .putExtra(
+                                            CreateSessionActivity.EXTRA_TIME_BLOCK_MODE,
+                                            TimeBlockConfigMode.CONTINUOUS.name
+                                        )
                                 )
                             }
                         }
@@ -405,9 +421,8 @@ fun FocusGuardNavHost(
                 FocusGuardRoute.Settings -> SettingsScreen(
                     profile = userProfile,
                     onProfileClick = { currentRoute = FocusGuardRoute.Profile },
-                    onLimitsClick = { currentRoute = FocusGuardRoute.Limits },
                     onLanguageClick = { currentRoute = FocusGuardRoute.Language },
-                    onBlockCustomizationClick = { currentRoute = FocusGuardRoute.BlockCustomization },
+                    onTestedBrowsersClick = { currentRoute = FocusGuardRoute.TestedBrowsers },
                     onCreatorInstagramClick = { openCreatorInstagram(activity) },
                     onBack = { currentRoute = FocusGuardRoute.Home }
                 )
@@ -437,6 +452,9 @@ fun FocusGuardNavHost(
                     onBack = { currentRoute = FocusGuardRoute.BlockTypeDetail }
                 )
                 FocusGuardRoute.Language -> LanguageScreen(
+                    onBack = { currentRoute = FocusGuardRoute.Settings }
+                )
+                FocusGuardRoute.TestedBrowsers -> TestedBrowsersScreen(
                     onBack = { currentRoute = FocusGuardRoute.Settings }
                 )
                 FocusGuardRoute.UsageLimits -> UsageLimitsScreen(

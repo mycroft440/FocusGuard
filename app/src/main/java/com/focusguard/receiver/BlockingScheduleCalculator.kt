@@ -19,6 +19,29 @@ internal object BlockingScheduleCalculator {
         set(Calendar.MILLISECOND, 0)
     }.timeInMillis
 
+    /**
+     * Valida a faixa diária usada por sessões recorrentes.
+     *
+     * `24:00` é aceito somente como término para manter compatibilidade com sessões
+     * de dia inteiro criadas por versões anteriores. Novas seleções de horário usam
+     * normalmente 00:00..23:59. Início e fim iguais não formam uma janela válida.
+     */
+    fun isValidRecurringWindow(
+        startHour: Int,
+        startMinute: Int,
+        endHour: Int,
+        endMinute: Int
+    ): Boolean {
+        val startValid = startHour in 0..23 && startMinute in 0..59
+        val endValid = (endHour in 0..23 && endMinute in 0..59) ||
+            (endHour == 24 && endMinute == 0)
+        if (!startValid || !endValid) return false
+
+        val startMinutes = startHour * 60 + startMinute
+        val endMinutes = endHour * 60 + endMinute
+        return startMinutes != endMinutes
+    }
+
     fun nextBoundary(
         sessions: Collection<BlockSession>,
         additionalBoundaries: Collection<Long>,
@@ -39,10 +62,16 @@ internal object BlockingScheduleCalculator {
         sessions.asSequence().filter { it.isActive }.forEach { session ->
             session.endTime?.let { consider(it) }
             if (session.isFixed24h) return@forEach
+            if (!isValidRecurringWindow(
+                    startHour = session.recurringStartHour,
+                    startMinute = session.recurringStartMinute,
+                    endHour = session.recurringEndHour,
+                    endMinute = session.recurringEndMinute
+                )
+            ) return@forEach
 
             val startMinutes = session.recurringStartHour * 60 + session.recurringStartMinute
             val endMinutes = session.recurringEndHour * 60 + session.recurringEndMinute
-            if (startMinutes == endMinutes) return@forEach
 
             val allowedDays = session.recurringDaysOfWeek.split(',')
                 .map(String::trim)

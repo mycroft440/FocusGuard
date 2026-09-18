@@ -122,6 +122,14 @@ fun AppEntryPasswordGate(
         }
     }
 
+    fun markCredentialUnlocked(generation: Long) {
+        AppEntryAuthSession.markCredentialAuthenticated(generation)
+        if (AppEntryAuthSession.isCredentialAuthenticated(generation)) {
+            error = null
+            gateState = AppEntryGateState.Unlocked(generation)
+        }
+    }
+
     LaunchedEffect(foregroundGeneration) {
         passwordState.clearText()
         error = null
@@ -201,7 +209,7 @@ fun AppEntryPasswordGate(
                         }
                     }
                     if (accepted) {
-                        markUnlocked(state.generation)
+                        markCredentialUnlocked(state.generation)
                     } else {
                         error = wrongCredentialMessage
                         if (mode == PasswordAppUnlockMode.PATTERN) patternResetKey++
@@ -234,7 +242,7 @@ fun AppEntryPasswordGate(
                             when {
                                 latest == null -> error = unavailableMessage
                                 !stillProtected -> markUnlocked(state.generation)
-                                stillAllowed -> markUnlocked(state.generation)
+                                stillAllowed -> markCredentialUnlocked(state.generation)
                                 else -> error = unavailableMessage
                             }
                             busy = false

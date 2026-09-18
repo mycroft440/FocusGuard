@@ -1,5 +1,7 @@
 package com.focusguard.utils
 
+import com.focusguard.accessibility.website.compatibility.BrowserActivationMethod
+import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
 import java.util.Locale
 
 /**
@@ -12,6 +14,22 @@ import java.util.Locale
 internal object BrowserUiCapabilityPolicy {
 
     private const val IME_ENTER_MIN_API = 30
+    private const val DUCKDUCKGO_PACKAGE = "com.duckduckgo.mobile.android"
+    private const val DUCKDUCKGO_NATIVE_INPUT_ENTRY = "inputField"
+    internal const val FIREFOX_COMPOSE_URL_ENTRY = "ADDRESSBAR_URL_BOX"
+    internal const val FIREFOX_COMPOSE_SEARCH_ENTRY = "ADDRESSBAR_SEARCH_BOX"
+
+    private val firefoxPackages: Set<String> = setOf(
+        "org.mozilla.firefox",
+        "org.mozilla.firefox_beta",
+        "org.mozilla.fenix",
+        "org.mozilla.fenix.nightly"
+    )
+
+    internal val firefoxComposeAddressBarEntryNames: Set<String> = setOf(
+        FIREFOX_COMPOSE_URL_ENTRY,
+        FIREFOX_COMPOSE_SEARCH_ENTRY
+    )
 
     enum class NodeAction {
         FOCUS,
@@ -38,7 +56,9 @@ internal object BrowserUiCapabilityPolicy {
         val uriInput: Boolean,
         val text: String?,
         val contentDescription: String? = null,
-        val actions: Set<NodeAction>
+        val actions: Set<NodeAction>,
+        val hintText: String? = null,
+        val inWebContent: Boolean = false
     )
 
     data class Selection(
@@ -57,13 +77,23 @@ internal object BrowserUiCapabilityPolicy {
         "url_edit_text",
         "omnibarTextInput",
         "omnibox_text",
+        // DuckDuckGo's native input rollout. Authorization remains package- and
+        // semantics-gated below because the id itself is intentionally generic.
+        DUCKDUCKGO_NATIVE_INPUT_ENTRY,
         // Gecko/Fenix toolbars.
         "mozac_browser_toolbar_url_view",
         "mozac_browser_toolbar_edit_url_view",
         "browser_toolbar_url_view",
+        // Current Firefox Compose semantics tags. These bare names are never
+        // trusted globally: isStrongAddressBarResource() scopes them to Firefox
+        // packages and callers still enforce package/window/visibility/native UI.
+        FIREFOX_COMPOSE_URL_ENTRY,
+        FIREFOX_COMPOSE_SEARCH_ENTRY,
         // Samsung Internet and compact browsers such as Via use variants above
         // plus this generic browser-owned id.
-        "address_bar"
+        "address_bar",
+        "bro_omnibox_address_title",
+        "bro_omnibox_address_bar"
     )
 
     val weakReadOnlyAddressBarEntryNames: Set<String> = setOf(
@@ -77,7 +107,9 @@ internal object BrowserUiCapabilityPolicy {
         "url_edit_text",
         "omnibarTextInput",
         "omnibox_text",
-        "mozac_browser_toolbar_edit_url_view"
+        DUCKDUCKGO_NATIVE_INPUT_ENTRY,
+        "mozac_browser_toolbar_edit_url_view",
+        FIREFOX_COMPOSE_SEARCH_ENTRY
     )
 
     private val clickableDisplayEntryNames: Set<String> = setOf(
@@ -87,7 +119,15 @@ internal object BrowserUiCapabilityPolicy {
         "url_field",
         "mozac_browser_toolbar_url_view",
         "browser_toolbar_url_view",
-        "address_bar"
+        FIREFOX_COMPOSE_URL_ENTRY,
+        "address_bar",
+        "bro_omnibox_address_title",
+        "bro_omnibox_address_bar",
+        // DuckDuckGo requires an explicit tap before its editor reliably accepts
+        // replacement text. The native input id is authorized only after the
+        // package-specific address-mode check in isActionableAddressBarNode().
+        "omnibarTextInput",
+        DUCKDUCKGO_NATIVE_INPUT_ENTRY
     )
 
     private val readOnlyAddressBarDescriptions: Set<String> = setOf(
@@ -96,6 +136,8 @@ internal object BrowserUiCapabilityPolicy {
         "barra de endereço e pesquisa",
         "search or type web address",
         "pesquisar ou digitar endereço web",
+        "search or enter address",
+        "pesquisar ou inserir endereço",
         "url bar",
         "barra de url",
         "address bar",
@@ -104,14 +146,93 @@ internal object BrowserUiCapabilityPolicy {
         "endereço da página"
     )
 
+    private val nativeSettingsLabels: Set<String> = setOf(
+        "settings",
+        "setting",
+        "preferences",
+        "preference",
+        "configurações",
+        "configuracoes"
+    )
+
+    internal fun isFirefoxPackage(packageName: String): Boolean = packageName in firefoxPackages
+
+    internal fun isFirefoxComposeAddressBarResource(
+        viewIdResourceName: String,
+        expectedBrowserPackage: String
+    ): Boolean = isFirefoxPackage(expectedBrowserPackage) &&
+        viewIdResourceName in firefoxComposeAddressBarEntryNames
+
+    internal fun browserOwnedEntryName(
+        packageName: String,
+        viewIdResourceName: String?
+    ): String? {
+        val value = viewIdResourceName?.trim().orEmpty()
+        if (isFirefoxComposeAddressBarResource(value, packageName)) return value
+        val prefix = "$packageName:id/"
+        return value.takeIf { it.startsWith(prefix) && it.length > prefix.length }
+            ?.substring(prefix.length)
+            ?.takeIf(String::isNotBlank)
+    }
+
+    internal fun isEditorEntryName(entryName: String?): Boolean = entryName in editorEntryNames
+
+    internal fun isStableUrlEntryName(entryName: String?): Boolean =
+        !entryName.isNullOrBlank() && entryName in strongAddressBarEntryNames &&
+            entryName !in editorEntryNames
+
     fun isStrongAddressBarResource(
         viewIdResourceName: String,
         expectedBrowserPackage: String
     ): Boolean {
         if (expectedBrowserPackage.isBlank()) return false
+        if (isFirefoxComposeAddressBarResource(viewIdResourceName, expectedBrowserPackage)) {
+            return true
+        }
         val prefix = "$expectedBrowserPackage:id/"
         if (!viewIdResourceName.startsWith(prefix)) return false
-        return viewIdResourceName.substring(prefix.length) in strongAddressBarEntryNames
+        val entryName = viewIdResourceName.substring(prefix.length)
+        if (entryName == DUCKDUCKGO_NATIVE_INPUT_ENTRY) {
+            return expectedBrowserPackage == DUCKDUCKGO_PACKAGE
+        }
+        return entryName in strongAddressBarEntryNames
+    }
+
+    /**
+     * Detects browser-owned native chrome that intentionally has no address bar,
+     * such as Chromium/Brave's app menu and Settings/Preferences screens.
+     *
+     * This is deliberately narrower than a generic text match: evidence must be
+     * owned by the browser package and either use a settings/preference resource
+     * id or expose an exact settings label from a menu/title-like native view.
+     */
+    internal fun isNativeBrowserUiNode(
+        node: Node,
+        expectedBrowserPackage: String,
+        expectedWindowId: Int
+    ): Boolean {
+        if (node.inWebContent || !node.visible || node.editable ||
+            expectedBrowserPackage.isBlank() ||
+            node.packageName != expectedBrowserPackage ||
+            node.windowId != expectedWindowId
+        ) return false
+
+        val prefix = "$expectedBrowserPackage:id/"
+        val viewId = node.viewIdResourceName
+        if (!viewId.startsWith(prefix) || viewId.length <= prefix.length) return false
+        val entryName = viewId.substring(prefix.length).lowercase(Locale.ROOT)
+
+        if (entryName.contains("settings") || entryName.contains("preference")) return true
+
+        val nativeLabel = sequenceOf(node.text, node.contentDescription, node.hintText)
+            .mapNotNull { it?.trim()?.lowercase(Locale.ROOT)?.takeIf(String::isNotEmpty) }
+            .any { it in nativeSettingsLabels }
+        if (!nativeLabel) return false
+
+        return entryName.contains("menu") ||
+            entryName == "title" ||
+            entryName.endsWith("_title") ||
+            entryName.contains("toolbar")
     }
 
     fun isReadOnlyAddressBarNode(
@@ -125,9 +246,34 @@ internal object BrowserUiCapabilityPolicy {
             node.windowId != expectedWindowId
         ) return false
 
+        // Bare Firefox Compose tags have no package prefix of their own. Require
+        // native browser chrome before accepting them so page form fields cannot
+        // spoof ADDRESSBAR_URL_BOX/ADDRESSBAR_SEARCH_BOX.
+        val firefoxComposeResource = isFirefoxComposeAddressBarResource(
+            node.viewIdResourceName,
+            expectedBrowserPackage
+        )
+        if (firefoxComposeResource && node.inWebContent) return false
+
+        // Exact browser-owned resources are allowed to remain readable even when
+        // a browser exposes its toolbar below a WebView/ContentView/GeckoView.
+        // This is observation only; action authorization remains stricter below.
         if (isStrongAddressBarResource(node.viewIdResourceName, expectedBrowserPackage)) {
-            return true
+            return !isDuckDuckGoNativeInput(node) || isDuckDuckGoAddressInput(node)
         }
+
+        if (node.inWebContent) {
+            if (!httpsHandlerRecognized) return false
+            return isNestedBrowserOwnedAddressBarEvidence(node, expectedBrowserPackage)
+        }
+
+        // Native browser menus/settings are a legitimate no-address-bar surface.
+        // Never pretend this node is an address bar or authorize automation
+        // against it. Whole-window classification is handled separately.
+        if (isNativeBrowserUiNode(node, expectedBrowserPackage, expectedWindowId)) {
+            return false
+        }
+
         if (!httpsHandlerRecognized) return false
 
         val prefix = "$expectedBrowserPackage:id/"
@@ -139,51 +285,138 @@ internal object BrowserUiCapabilityPolicy {
             node.editable
         ) return true
 
-        val description = node.contentDescription.orEmpty().trim().lowercase(Locale.ROOT)
-        if (readOnlyAddressBarDescriptions.any { label ->
-                description == label ||
-                    description.startsWith("$label,") ||
-                    description.startsWith("$label.") ||
-                    description.startsWith("$label ")
-            }
-        ) return true
+        if (hasAddressBarLabel(node)) return true
 
-        val idLooksNative = entryName.lowercase(Locale.ROOT).let { id ->
+        val normalizedEntryName = entryName.lowercase(Locale.ROOT)
+        val idLooksNative = normalizedEntryName.let { id ->
             id.contains("url") || id.contains("uri") || id.contains("omnibox") ||
                 id.contains("address") || id.contains("location_bar")
         }
-        return node.editable && browserOwnedResource &&
+        val editableAddressField = node.editable && browserOwnedResource &&
             (node.uriInput || idLooksNative)
+        if (editableAddressField) return true
+
+        val idLooksReadOnlyDisplay = normalizedEntryName == "current_url" ||
+            normalizedEntryName == "current_uri" ||
+            normalizedEntryName == "url_display" ||
+            normalizedEntryName == "uri_display" ||
+            normalizedEntryName.startsWith("current_url_") ||
+            normalizedEntryName.startsWith("current_uri_") ||
+            normalizedEntryName.startsWith("address_bar_") ||
+            normalizedEntryName.startsWith("location_bar_") ||
+            normalizedEntryName.startsWith("omnibox_")
+        val displayLooksAddressLike = node.text.orEmpty().trim().let { value ->
+            value.isNotEmpty() &&
+                value.none(Char::isWhitespace) &&
+                (value.contains("://") || value.contains('.'))
+        }
+        return browserOwnedResource && idLooksReadOnlyDisplay && displayLooksAddressLike
+    }
+
+    /**
+     * Read-only escape hatch for browsers that place native address chrome below
+     * their web container. A candidate must still be an Android resource owned by
+     * the browser package and its id must explicitly describe URL/address chrome.
+     * HTML labels, arbitrary URI inputs and generic navigation fields stay rejected.
+     */
+    private fun isNestedBrowserOwnedAddressBarEvidence(
+        node: Node,
+        expectedBrowserPackage: String
+    ): Boolean {
+        val prefix = "$expectedBrowserPackage:id/"
+        val viewId = node.viewIdResourceName
+        if (!viewId.startsWith(prefix) || viewId.length <= prefix.length) return false
+
+        val entryName = viewId.substring(prefix.length).lowercase(Locale.ROOT)
+        val idLooksAddressLike = entryName.contains("url") ||
+            entryName.contains("uri") ||
+            entryName.contains("omnibox") ||
+            entryName.contains("address") ||
+            entryName.contains("location_bar")
+        if (!idLooksAddressLike) return false
+
+        if (node.editable) return node.uriInput || hasAddressBarLabel(node) || idLooksAddressLike
+
+        val displayLooksAddressLike = sequenceOf(node.text, node.contentDescription)
+            .mapNotNull { it?.trim()?.takeIf(String::isNotEmpty) }
+            .any { value ->
+                value.none(Char::isWhitespace) &&
+                    (value.contains("://") || value.contains('.'))
+            }
+        return displayLooksAddressLike || hasAddressBarLabel(node)
+    }
+
+    fun isSemanticActionableAddressBarNode(
+        node: Node,
+        expectedBrowserPackage: String,
+        expectedWindowId: Int,
+        httpsHandlerRecognized: Boolean
+    ): Boolean {
+        if (node.inWebContent || !httpsHandlerRecognized ||
+            !node.visible || !node.editable || !node.uriInput ||
+            node.packageName != expectedBrowserPackage ||
+            node.windowId != expectedWindowId
+        ) return false
+
+        val prefix = "$expectedBrowserPackage:id/"
+        val viewId = node.viewIdResourceName
+        if (!viewId.startsWith(prefix) || viewId.length <= prefix.length) return false
+
+        val entryName = viewId.substring(prefix.length).lowercase(Locale.ROOT)
+        return entryName.contains("url") || entryName.contains("uri") ||
+            entryName.contains("omnibox") || entryName.contains("address") ||
+            entryName.contains("location") || entryName.contains("navigation") ||
+            hasAddressBarLabel(node)
     }
 
     fun isActionableAddressBarNode(
         node: Node,
         expectedBrowserPackage: String,
-        expectedWindowId: Int
-    ): Boolean = node.visible &&
-        node.packageName == expectedBrowserPackage &&
-        node.windowId == expectedWindowId &&
-        isStrongAddressBarResource(node.viewIdResourceName, expectedBrowserPackage)
+        expectedWindowId: Int,
+        httpsHandlerRecognized: Boolean = false
+    ): Boolean {
+        if (node.inWebContent || !node.visible ||
+            node.packageName != expectedBrowserPackage ||
+            node.windowId != expectedWindowId
+        ) return false
+
+        if (isStrongAddressBarResource(node.viewIdResourceName, expectedBrowserPackage)) {
+            return !isDuckDuckGoNativeInput(node) || isDuckDuckGoAddressInput(node)
+        }
+        return isSemanticActionableAddressBarNode(
+            node = node,
+            expectedBrowserPackage = expectedBrowserPackage,
+            expectedWindowId = expectedWindowId,
+            httpsHandlerRecognized = httpsHandlerRecognized
+        )
+    }
 
     fun resolveUniqueAddressBarNode(
         nodes: List<Node>,
         expectedBrowserPackage: String,
         expectedWindowId: Int,
         requiredAction: NodeAction,
-        textPredicate: ((String?) -> Boolean)? = null
+        textPredicate: ((String?) -> Boolean)? = null,
+        httpsHandlerRecognized: Boolean = false
     ): Selection {
+        val preferredEntryName = BrowserCompatibilityStore
+            .preferredAddressBarEntryName(expectedBrowserPackage)
         val ranked = nodes.indices.mapNotNull { index ->
             val node = nodes[index]
             if (!isActionableAddressBarNode(
                     node,
                     expectedBrowserPackage,
-                    expectedWindowId
+                    expectedWindowId,
+                    httpsHandlerRecognized = httpsHandlerRecognized
                 ) || !supports(node, requiredAction) ||
                 (textPredicate != null && !textPredicate(node.text))
             ) {
                 null
             } else {
-                index to actionRank(node, requiredAction)
+                val cachedPreferenceBonus = if (
+                    preferredEntryName != null && entryName(node) == preferredEntryName
+                ) 100 else 0
+                index to (actionRank(node, requiredAction) + cachedPreferenceBonus)
             }
         }
         if (ranked.isEmpty()) return Selection(SelectionStatus.NOT_FOUND)
@@ -200,7 +433,7 @@ internal object BrowserUiCapabilityPolicy {
         nodes: List<Node>,
         expectedBrowserPackage: String,
         expectedWindowId: Int,
-        @Suppress("UNUSED_PARAMETER") httpsHandlerRecognized: Boolean,
+        httpsHandlerRecognized: Boolean,
         requiredAction: NodeAction? = null,
         expectedText: String? = null
     ): Int? {
@@ -208,7 +441,8 @@ internal object BrowserUiCapabilityPolicy {
             isActionableAddressBarNode(
                 nodes[index],
                 expectedBrowserPackage,
-                expectedWindowId
+                expectedWindowId,
+                httpsHandlerRecognized = httpsHandlerRecognized
             )
         }.singleOrNull()
         return resolveUniqueAddressBarNode(
@@ -218,7 +452,8 @@ internal object BrowserUiCapabilityPolicy {
             requiredAction = action,
             textPredicate = expectedText?.let { expected ->
                 { actual: String? -> actual?.trim() == expected.trim() }
-            }
+            },
+            httpsHandlerRecognized = httpsHandlerRecognized
         ).index
     }
 
@@ -232,15 +467,34 @@ internal object BrowserUiCapabilityPolicy {
         val expectedId = "$expectedBrowserPackage:id/$expectedEntryName"
         return nodes.indices.filter { index ->
             val node = nodes[index]
+            val exactQualifiedResource = node.viewIdResourceName == expectedId
+            val exactFirefoxComposeResource =
+                isFirefoxComposeAddressBarResource(node.viewIdResourceName, expectedBrowserPackage) &&
+                    node.viewIdResourceName == expectedEntryName && !node.inWebContent
             node.visible &&
                 node.packageName == expectedBrowserPackage &&
                 node.windowId == expectedWindowId &&
-                node.viewIdResourceName == expectedId &&
+                (exactQualifiedResource || exactFirefoxComposeResource) &&
                 requiredAction in node.actions
         }.singleOrNull()
     }
 
     fun canUseImeEnter(apiLevel: Int): Boolean = apiLevel >= IME_ENTER_MIN_API
+
+    fun prefersClickAddressBarActivation(expectedBrowserPackage: String): Boolean = when (
+        BrowserCompatibilityStore.preferredActivationMethod(expectedBrowserPackage)
+    ) {
+        BrowserActivationMethod.CLICK -> true
+        BrowserActivationMethod.FOCUS -> false
+        null -> expectedBrowserPackage == DUCKDUCKGO_PACKAGE ||
+            isFirefoxPackage(expectedBrowserPackage) ||
+            expectedBrowserPackage in setOf(
+                "com.android.chrome", "com.chrome.beta", "com.chrome.dev", "com.chrome.canary",
+                "com.sec.android.app.sbrowser", "com.sec.android.app.sbrowser.beta",
+                "mark.via", "mark.via.gp", "com.yandex.browser", "com.yandex.browser.beta",
+                "com.yandex.browser.alpha", "com.yandex.browser.lite"
+            )
+    }
 
     fun mayRewriteBlockedTabAfterCloseAttempt(
         closeActionAccepted: Boolean,
@@ -268,8 +522,7 @@ internal object BrowserUiCapabilityPolicy {
         NodeAction.IME_ENTER -> node.editable && node.focused &&
             NodeAction.IME_ENTER in node.actions
         NodeAction.LONG_CLICK -> NodeAction.LONG_CLICK in node.actions
-        NodeAction.CLICK -> entryName(node) in clickableDisplayEntryNames &&
-            NodeAction.CLICK in node.actions
+        NodeAction.CLICK -> NodeAction.CLICK in node.actions
     }
 
     private fun actionRank(node: Node, action: NodeAction): Int = when (action) {
@@ -285,6 +538,34 @@ internal object BrowserUiCapabilityPolicy {
         NodeAction.LONG_CLICK -> 30
     }
 
+    private fun hasAddressBarLabel(node: Node): Boolean =
+        sequenceOf(node.contentDescription, node.hintText).filterNotNull().any { raw ->
+            val value = raw.trim().lowercase(Locale.ROOT)
+            readOnlyAddressBarDescriptions.any { label ->
+                value == label || value.startsWith("$label,") ||
+                    value.startsWith("$label.") || value.startsWith("$label ")
+            }
+        }
+
+    private fun isDuckDuckGoNativeInput(node: Node): Boolean =
+        node.packageName == DUCKDUCKGO_PACKAGE &&
+            entryName(node) == DUCKDUCKGO_NATIVE_INPUT_ENTRY
+
+    private fun isDuckDuckGoAddressInput(node: Node): Boolean {
+        if (!isDuckDuckGoNativeInput(node) || !node.editable) return false
+        if (node.uriInput) return true
+        val labels = sequenceOf(node.contentDescription, node.hintText)
+            .mapNotNull { it?.trim()?.lowercase(Locale.ROOT)?.takeIf(String::isNotEmpty) }
+        return labels.any { value ->
+            readOnlyAddressBarDescriptions.any { label ->
+                value == label ||
+                    value.startsWith("$label,") ||
+                    value.startsWith("$label.") ||
+                    value.startsWith("$label ")
+            }
+        }
+    }
+
     private fun entryName(node: Node): String =
-        node.viewIdResourceName.substringAfter(":id/", "")
+        browserOwnedEntryName(node.packageName, node.viewIdResourceName).orEmpty()
 }

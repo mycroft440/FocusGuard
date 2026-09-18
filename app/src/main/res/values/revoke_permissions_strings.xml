@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_revoke_permissions_title">Revogar permissões do app para desinstalar</string>
+    <string name="settings_revoke_permissions_subtitle">Desative a Acessibilidade e o Device Admin legado para preparar a desinstalação</string>
+    <string name="settings_revoke_permissions_confirm_title">Revogar permissões do app para desinstalar?</string>
+    <string name="settings_revoke_permissions_confirm_message">O FocusGuard desativará automaticamente o serviço de Acessibilidade e o Device Admin legado. O Device Owner e todas as outras permissões permanecerão inalterados.</string>
+    <string name="settings_revoke_permissions_confirm_action">Revogar permissões</string>
+    <string name="settings_revoke_permissions_master_prompt">Digite a senha mestre para autorizar a revogação da Acessibilidade e do Device Admin.</string>
+    <string name="settings_revoke_permissions_progress">Revogando Acessibilidade e Device Admin…</string>
+    <string name="settings_revoke_permissions_success">A Acessibilidade e o Device Admin foram revogados.</string>
+    <string name="settings_revoke_permissions_incomplete">O FocusGuard não conseguiu revogar automaticamente todos os acessos solicitados.</string>
+    <string name="settings_revoke_permissions_none_active">A Acessibilidade e o Device Admin legado já estão desativados.</string>
+</resources>

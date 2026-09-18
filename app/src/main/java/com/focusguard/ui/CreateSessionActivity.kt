@@ -71,6 +71,7 @@ import com.focusguard.ui.compose.screens.AppSelectionScreen
 import com.focusguard.ui.compose.screens.KeywordRulesTab
 import com.focusguard.ui.compose.screens.SelectableAppUi
 import com.focusguard.ui.compose.screens.TimeAwareFinalConfigStep
+import com.focusguard.ui.compose.screens.TimeBlockConfigMode
 import com.focusguard.ui.compose.screens.UnifiedProtectionSetupWizard
 import com.focusguard.ui.compose.screens.WebsiteRulesTab
 import com.focusguard.ui.compose.theme.AccentCyan
@@ -93,6 +94,10 @@ import javax.inject.Inject
 @AndroidEntryPoint
 class CreateSessionActivity : ComponentActivity() {
 
+    companion object {
+        const val EXTRA_TIME_BLOCK_MODE = "TIME_BLOCK_MODE"
+    }
+
     // Injetado via Hilt (AuthModule.provideAuthManager) — usa a MESMA instância
     // singleton do app inteiro. Antes era `AuthManager(this)` direto, criando
     // uma instância paralela que burlava o singleton do Hilt e podia disparar
@@ -104,6 +109,9 @@ class CreateSessionActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         if (!ensureProtectionPermissions()) return
         val sessionType = intent.getStringExtra("SESSION_TYPE") ?: "PASSWORD"
+        val timeBlockMode = TimeBlockConfigMode.fromSerialized(
+            intent.getStringExtra(EXTRA_TIME_BLOCK_MODE)
+        )
 
         setContent {
             FocusGuardTheme {
@@ -116,7 +124,8 @@ class CreateSessionActivity : ComponentActivity() {
                     CreateSessionWizard(
                         sessionType = sessionType,
                         authManager = authManager,
-                        onFinish = { finish() }
+                        onFinish = { finish() },
+                        timeBlockMode = timeBlockMode
                     )
                 }
             }
@@ -144,7 +153,8 @@ class CreateSessionActivity : ComponentActivity() {
 fun CreateSessionWizard(
     sessionType: String,
     authManager: AuthManager,
-    onFinish: () -> Unit
+    onFinish: () -> Unit,
+    timeBlockMode: TimeBlockConfigMode = TimeBlockConfigMode.CONTINUOUS
 ) {
     val pagerState = rememberPagerState(pageCount = { 2 })
     val scope = rememberCoroutineScope()
@@ -192,7 +202,8 @@ fun CreateSessionWizard(
                     apps = appPackages,
                     appName = appNameLabel,
                     onFinish = onFinish,
-                    onBack = { scope.launch { pagerState.animateScrollToPage(0) } }
+                    onBack = { scope.launch { pagerState.animateScrollToPage(0) } },
+                    timeBlockMode = timeBlockMode
                 )
             }
         }

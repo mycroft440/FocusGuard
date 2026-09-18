@@ -73,7 +73,7 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
         if (store.readRuntime()?.active == true) return
 
         val manager = PomodoroManager.getInstance(context.applicationContext)
-        manager.startPlan(store.loadConfig())
+        manager.startPlan(store.loadConfig().copy(strictBlocking = false))
     }
 
     private suspend fun stopPomodoro(context: Context) {
