@@ -1,3 +1,32 @@
+# Plano de implementação — integridade permanente dos ZIPs de artefatos GitHub
+
+## Objetivo
+Garantir que todo artefato ZIP produzido pelos workflows do repositório seja criado por uma versão atual do uploader, substitua cópias antigas em reruns e seja baixado novamente e validado antes de ser aceito como publicação válida.
+
+## Diagnóstico
+- [x] Confirmar que a recompilação do mesmo commit produziu um novo ZIP íntegro e um APK cujo conteúdo pôde ser verificado byte a byte.
+- [x] Mapear todos os usos de `actions/upload-artifact` nos workflows `release.yml`, `fresh-apk-aab.yml` e `android-ci.yml`.
+- [x] Confirmar que reruns do workflow podem deixar artefatos antigos e novos com o mesmo nome, criando risco de baixar uma cópia anterior.
+- [x] Confirmar que o uploader atual expõe ID e SHA-256 do arquivo de artefato, permitindo validar exatamente o ZIP servido pelo GitHub após o upload.
+
+## Implementação
+- [ ] Atualizar os uploads de artefatos para a versão atual do `actions/upload-artifact`, mantendo criação explícita de ZIP e substituição em reruns.
+- [ ] Adicionar um verificador local que valide SHA-256 do ZIP, estrutura/CRC, nomes seguros e, para binários de release, igualdade byte a byte com APK/AAB/relatórios de origem.
+- [ ] Baixar novamente cada ZIP recém-enviado pelo endpoint de artefatos do GitHub e falhar o job se o ZIP baixado não passar na validação.
+- [ ] Impedir a publicação de uma GitHub Release quando o ZIP do APK/AAB/identidade não tiver sido validado.
+- [ ] Aplicar a mesma validação aos ZIPs de diagnóstico do CI para que nenhum `upload-artifact` do repositório fique sem teste de integridade.
+
+## Validação
+- [ ] Executar o self-test do verificador, incluindo ZIP truncado e conteúdo divergente.
+- [ ] Revisar sintaxe dos workflows e o diff agregado para evitar alterações fora do escopo.
+- [ ] Executar os jobs do Android CI na branch/PR.
+- [ ] Integrar somente com CI verde e confirmar uma nova execução de Release na `main`, incluindo download e verificação pós-upload dos ZIPs reais.
+
+## Critério de conclusão
+Nenhum ZIP de artefato deve ser considerado válido apenas porque o upload terminou. O workflow precisa baixar o arquivo servido pelo GitHub, conferir o digest e a integridade do ZIP e, quando houver pacote de release, provar que o conteúdo arquivado é exatamente o mesmo binário verificado antes do upload. Em reruns, a cópia anterior com o mesmo nome deve ser substituída para evitar ambiguidade.
+
+---
+
 # Plano de implementação — gerenciamento de sites protegidos por senha
 
 ## Objetivo
