@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.HourglassEmpty
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Timelapse
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -78,6 +79,7 @@ import com.focusguard.ui.compose.components.FocusGuardAppIcon
 import com.focusguard.ui.compose.components.FocusGuardBannerAd
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.AccentIconBadge
+import com.focusguard.ui.compose.theme.AccentPurple
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
@@ -123,6 +125,14 @@ enum class BlockTypeUi(
         icon = Icons.Outlined.Timelapse,
         accent = WarningAmber
     ),
+    DAILY_PERIODS(
+        titleRes = R.string.block_type_periods_title,
+        subtitleRes = R.string.block_type_periods_subtitle,
+        emptyRes = R.string.block_type_periods_empty,
+        actionRes = R.string.block_type_periods_action,
+        icon = Icons.Outlined.Schedule,
+        accent = AccentPurple
+    ),
     DOPAMINE_FAST(
         titleRes = R.string.block_type_fast_title,
         subtitleRes = R.string.block_type_fast_subtitle,
@@ -135,12 +145,15 @@ enum class BlockTypeUi(
     fun entriesOf(overview: BlockingSessionManager.BlockOverview) = when (this) {
         PASSWORD -> overview.passwordEntries
         DAILY_LIMIT -> overview.dailyLimitEntries
+        DAILY_PERIODS -> overview.scheduledTimeEntries
         DOPAMINE_FAST -> overview.dopamineFastEntries
     }
 }
 
 internal fun shouldShowBlockTypeBanner(type: BlockTypeUi): Boolean =
-    type == BlockTypeUi.DAILY_LIMIT || type == BlockTypeUi.DOPAMINE_FAST
+    type == BlockTypeUi.DAILY_LIMIT ||
+        type == BlockTypeUi.DAILY_PERIODS ||
+        type == BlockTypeUi.DOPAMINE_FAST
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
