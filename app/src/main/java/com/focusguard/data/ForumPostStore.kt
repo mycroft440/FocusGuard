@@ -75,7 +75,7 @@ class ForumPostStore(context: Context) {
         if (normalizedBody.isBlank()) return null
 
         val post = ForumPost(
-            id = "$nowMillis-\${UUID.randomUUID()}",
+            id = nowMillis.toString() + "-" + UUID.randomUUID(),
             authorName = UserProfilePolicy.normalizeName(authorName),
             avatarId = UserProfilePolicy.normalizeAvatarId(avatarId),
             body = normalizedBody,
