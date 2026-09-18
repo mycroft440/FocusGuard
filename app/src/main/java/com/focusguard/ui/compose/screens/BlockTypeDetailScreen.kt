@@ -155,6 +155,19 @@ internal fun shouldShowBlockTypeBanner(type: BlockTypeUi): Boolean =
         type == BlockTypeUi.DAILY_PERIODS ||
         type == BlockTypeUi.DOPAMINE_FAST
 
+internal data class PasswordProtectionToggleState(
+    val biometricEnabled: Boolean,
+    val selfieEnabled: Boolean
+)
+
+internal fun readPasswordProtectionToggleState(
+    biometricEnabled: () -> Boolean,
+    selfieEnabled: () -> Boolean
+): PasswordProtectionToggleState = PasswordProtectionToggleState(
+    biometricEnabled = biometricEnabled(),
+    selfieEnabled = selfieEnabled()
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun BlockTypeDetailScreen(
@@ -249,6 +262,7 @@ fun BlockTypeDetailScreen(
                     Spacer(Modifier.height(16.dp))
                     PasswordProtectionTools(
                         accent = type.accent,
+                        reloadTrigger = reloadTrigger,
                         onIntruderLogClick = onIntruderLogClick
                     )
                 }
@@ -397,6 +411,7 @@ fun BlockTypeDetailScreen(
 @Composable
 private fun PasswordProtectionTools(
     accent: Color,
+    reloadTrigger: Int,
     onIntruderLogClick: () -> Unit
 ) {
     val context = LocalContext.current
@@ -409,6 +424,19 @@ private fun PasswordProtectionTools(
         mutableStateOf(authManager.isBiometricAppUnlockEnabled())
     }
     var selfieEnabled by remember { mutableStateOf(authManager.isPhotoCaptureEnabled()) }
+
+    // O assistente de proteção abre em outra Activity. Quando ele ativa a
+    // biometria (ou a selfie) e volta, esta composição pode continuar viva com
+    // o valor anterior em `remember`. Releia a fonte persistida em cada resume
+    // para que o switch represente a configuração que acabou de ser salva.
+    LaunchedEffect(reloadTrigger) {
+        val persistedState = readPasswordProtectionToggleState(
+            biometricEnabled = authManager::isBiometricAppUnlockEnabled,
+            selfieEnabled = authManager::isPhotoCaptureEnabled
+        )
+        biometricEnabled = persistedState.biometricEnabled
+        selfieEnabled = persistedState.selfieEnabled
+    }
 
     val biometricGateTitle = stringResource(R.string.password_app_unlock_quick_biometric_title)
     val biometricGateDescription =
