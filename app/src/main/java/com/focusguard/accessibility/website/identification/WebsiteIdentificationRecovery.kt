@@ -9,6 +9,11 @@ import com.focusguard.utils.BrowserSurfaceInspector
 import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
 
 internal enum class BrowserRecoveryReason {
     URL_RECOVERED,
@@ -23,21 +28,22 @@ internal class WebsiteIdentificationRecovery(
     private val windowId: Int,
     private val httpsHandlerRecognized: Boolean,
     private val rootProvider: () -> AccessibilityNodeInfo?,
-    private val isCurrent: () -> Boolean
+    private val isCurrent: () -> Boolean,
+    private val readDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
     private fun rejected() = WebsiteIdentificationResult(WebsiteIdentificationStatus.REJECTED_CONTEXT)
 
-    private fun read(): WebsiteIdentificationResult {
-        if (!isCurrent()) return rejected()
-        val root = rootProvider() ?: return if (isCurrent()) {
+    private suspend fun read(): WebsiteIdentificationResult = withContext(readDispatcher) {
+        if (!isCurrent()) return@withContext rejected()
+        val root = rootProvider() ?: return@withContext if (isCurrent()) {
             WebsiteIdentificationResult(
                 status = WebsiteIdentificationStatus.UNOBSERVABLE,
                 browserPackageName = browserPackage,
                 windowId = windowId
             )
         } else rejected()
-        return try {
-            if (!isCurrent()) return rejected()
+        try {
+            if (!isCurrent()) return@withContext rejected()
             WebsiteIdentificationEngine.identifyFromRoot(
                 root,
                 browserPackage,
@@ -48,7 +54,12 @@ internal class WebsiteIdentificationRecovery(
         } finally { recycle(root) }
     }
 
-    suspend fun recover(): WebsiteIdentificationResult {
+    suspend fun recover(): WebsiteIdentificationResult = recoveryMutex.withLock {
+        if (!isCurrent()) return@withLock rejected()
+        recoverSerially()
+    }
+
+    private suspend fun recoverSerially(): WebsiteIdentificationResult {
         if (!isCurrent()) return rejected()
         var result = read()
         if (resolved(result)) {
@@ -228,6 +239,9 @@ internal class WebsiteIdentificationRecovery(
     }
 
     private companion object {
+        /** Only one complementary browser-recovery pipeline may inspect at a time. */
+        val recoveryMutex = Mutex()
+
         const val ACTION_OBSERVATION_TIMEOUT_MILLIS = 180L
         const val FINAL_OBSERVATION_TIMEOUT_MILLIS = 160L
     }

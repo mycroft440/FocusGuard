@@ -33,19 +33,24 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action != ACTION_START_POMODORO) return
+        val action = intent.action
+        if (action != ACTION_START_POMODORO &&
+            action != ACTION_STOP_POMODORO &&
+            action != ACTION_DECREMENT_SESSIONS &&
+            action != ACTION_INCREMENT_SESSIONS
+        ) {
+            return
+        }
 
         val pendingResult = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                val store = PomodoroPlanStore(context)
-                if (store.readRuntime()?.active == true) {
-                    requestUpdate(context)
-                    return@launch
+                when (action) {
+                    ACTION_START_POMODORO -> startPomodoro(context)
+                    ACTION_STOP_POMODORO -> stopPomodoro(context)
+                    ACTION_DECREMENT_SESSIONS -> adjustTargetSessions(context, -1)
+                    ACTION_INCREMENT_SESSIONS -> adjustTargetSessions(context, 1)
                 }
-
-                val manager = PomodoroManager.getInstance(context.applicationContext)
-                manager.startPlan(store.loadConfig())
                 requestUpdate(context)
             } catch (error: Exception) {
                 Handler(Looper.getMainLooper()).post {
@@ -63,11 +68,54 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
         }
     }
 
+    private suspend fun startPomodoro(context: Context) {
+        val store = PomodoroPlanStore(context)
+        if (store.readRuntime()?.active == true) return
+
+        val manager = PomodoroManager.getInstance(context.applicationContext)
+        manager.startPlan(store.loadConfig().copy(strictBlocking = false))
+    }
+
+    private suspend fun stopPomodoro(context: Context) {
+        val store = PomodoroPlanStore(context)
+        if (store.readRuntime()?.active != true) return
+
+        val manager = PomodoroManager.getInstance(context.applicationContext)
+        manager.stopSession()
+    }
+
+    private fun adjustTargetSessions(context: Context, delta: Int) {
+        val store = PomodoroPlanStore(context)
+        if (store.readRuntime()?.active == true) return
+
+        val current = store.loadConfig()
+        val target = (current.targetSessions + delta).coerceIn(
+            MIN_TARGET_SESSIONS,
+            MAX_TARGET_SESSIONS
+        )
+        if (target != current.targetSessions) {
+            store.saveConfig(current.copy(targetSessions = target))
+        }
+    }
+
     companion object {
         private const val ACTION_START_POMODORO =
             "com.focusguard.action.START_POMODORO_FROM_WIDGET"
+        private const val ACTION_STOP_POMODORO =
+            "com.focusguard.action.STOP_POMODORO_FROM_WIDGET"
+        private const val ACTION_DECREMENT_SESSIONS =
+            "com.focusguard.action.DECREMENT_POMODORO_SESSIONS_FROM_WIDGET"
+        private const val ACTION_INCREMENT_SESSIONS =
+            "com.focusguard.action.INCREMENT_POMODORO_SESSIONS_FROM_WIDGET"
+
         private const val REQUEST_CONFIGURE = 5101
         private const val REQUEST_START = 5102
+        private const val REQUEST_STOP = 5103
+        private const val REQUEST_DECREMENT_SESSIONS = 5104
+        private const val REQUEST_INCREMENT_SESSIONS = 5105
+        private const val REQUEST_DIAL = 5106
+        private const val MIN_TARGET_SESSIONS = 0
+        private const val MAX_TARGET_SESSIONS = 5
 
         fun requestUpdate(context: Context) {
             val appContext = context.applicationContext
@@ -128,17 +176,70 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
                 )
             )
 
-            views.setTextViewText(
-                R.id.widget_pomodoro_start,
-                context.getString(
-                    if (runtime != null) {
-                        R.string.fg_pomodoro_running
-                    } else {
-                        R.string.fg_pomodoro_start
-                    }
-                )
+            val dialIntent = Intent(context, PomodoroWidgetDialActivity::class.java)
+                .addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            val dialPendingIntent = PendingIntent.getActivity(
+                context,
+                REQUEST_DIAL,
+                dialIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            views.setBoolean(R.id.widget_pomodoro_start, "setEnabled", runtime == null)
+            views.setOnClickPendingIntent(
+                R.id.widget_pomodoro_clock,
+                if (runtime == null) dialPendingIntent else null
+            )
+
+            val targetSessions = displayConfig.targetSessions.coerceIn(
+                MIN_TARGET_SESSIONS,
+                MAX_TARGET_SESSIONS
+            )
+            val targetLabel = if (targetSessions == 0) {
+                context.getString(R.string.fg_pomodoro_until_i_stop)
+            } else {
+                targetSessions.toString()
+            }
+            views.setTextViewText(
+                R.id.widget_pomodoro_sessions_value,
+                context.getString(R.string.fg_pomodoro_sessions_label, targetLabel)
+            )
+
+            val sessionsEditable = runtime == null
+            views.setBoolean(
+                R.id.widget_pomodoro_sessions_decrement,
+                "setEnabled",
+                sessionsEditable && targetSessions > MIN_TARGET_SESSIONS
+            )
+            views.setBoolean(
+                R.id.widget_pomodoro_sessions_increment,
+                "setEnabled",
+                sessionsEditable && targetSessions < MAX_TARGET_SESSIONS
+            )
+
+            val decrementIntent = Intent(context, PomodoroWidgetProvider::class.java)
+                .setAction(ACTION_DECREMENT_SESSIONS)
+            val decrementPendingIntent = PendingIntent.getBroadcast(
+                context,
+                REQUEST_DECREMENT_SESSIONS,
+                decrementIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            views.setOnClickPendingIntent(
+                R.id.widget_pomodoro_sessions_decrement,
+                decrementPendingIntent
+            )
+
+            val incrementIntent = Intent(context, PomodoroWidgetProvider::class.java)
+                .setAction(ACTION_INCREMENT_SESSIONS)
+            val incrementPendingIntent = PendingIntent.getBroadcast(
+                context,
+                REQUEST_INCREMENT_SESSIONS,
+                incrementIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            views.setOnClickPendingIntent(
+                R.id.widget_pomodoro_sessions_increment,
+                incrementPendingIntent
+            )
 
             val configureIntent = Intent(context, MainActivity::class.java)
                 .putExtra(MainActivity.EXTRA_OPEN_POMODORO, true)
@@ -158,15 +259,24 @@ class PomodoroWidgetProvider : AppWidgetProvider() {
                 configurePendingIntent
             )
 
-            val startIntent = Intent(context, PomodoroWidgetProvider::class.java)
-                .setAction(ACTION_START_POMODORO)
-            val startPendingIntent = PendingIntent.getBroadcast(
+            val isRunning = runtime != null
+            views.setTextViewText(
+                R.id.widget_pomodoro_start,
+                context.getString(
+                    if (isRunning) R.string.fg_pomodoro_stop else R.string.fg_pomodoro_start
+                )
+            )
+            views.setBoolean(R.id.widget_pomodoro_start, "setEnabled", true)
+
+            val primaryIntent = Intent(context, PomodoroWidgetProvider::class.java)
+                .setAction(if (isRunning) ACTION_STOP_POMODORO else ACTION_START_POMODORO)
+            val primaryPendingIntent = PendingIntent.getBroadcast(
                 context,
-                REQUEST_START,
-                startIntent,
+                if (isRunning) REQUEST_STOP else REQUEST_START,
+                primaryIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            views.setOnClickPendingIntent(R.id.widget_pomodoro_start, startPendingIntent)
+            views.setOnClickPendingIntent(R.id.widget_pomodoro_start, primaryPendingIntent)
 
             manager.updateAppWidget(appWidgetId, views)
         }
