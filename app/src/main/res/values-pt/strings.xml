@@ -149,7 +149,18 @@
     <string name="nav_metrics">Métricas</string>
     <string name="nav_recovery">AntiPorn</string>
     <string name="nav_focus_mode">Modo foco</string>
+    <string name="nav_forum">Fórum</string>
     <string name="nav_settings">Configurações</string>
+
+    <!-- Fórum -->
+    <string name="forum_composer_hint">Escreva algo…</string>
+    <string name="forum_composer_expanded_hint">O que você quer compartilhar?</string>
+    <string name="forum_publish">Publicar</string>
+    <string name="forum_character_count">%1$d/%2$d</string>
+    <string name="forum_member">Membro do HardBlock</string>
+    <string name="forum_empty_title">Nenhuma postagem ainda</string>
+    <string name="forum_empty_description">Seja a primeira pessoa a publicar algo aqui.</string>
+    <string name="forum_local_storage_notice">Nesta versão, as postagens do fórum ficam salvas apenas neste aparelho.</string>
 
     <!-- AntiPorn e EasyPeasy -->
     <string name="recovery_title">AntiPorn</string>
