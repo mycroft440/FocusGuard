@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="device_owner_maintenance_exact_expiry_required">Maintenance can only open when Android can guarantee an exact automatic expiry. Allow Alarms &amp; reminders or exempt HardBlock from battery optimization, then try again.</string>
+</resources>

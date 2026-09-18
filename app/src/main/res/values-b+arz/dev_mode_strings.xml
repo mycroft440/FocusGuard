@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_dev_mode_title">Developer mode</string>
+    <string name="settings_dev_mode_subtitle">Maintenance and diagnostic tools without master-password authentication</string>
+    <string name="dev_mode_title">Developer mode</string>
+    <string name="dev_mode_warning">Actions on this screen bypass master-password authentication. Use them only for maintenance and diagnostics.</string>
+    <string name="dev_mode_revoke_blocks">Revoke blocks</string>
+    <string name="dev_mode_revoke_blocks_desc">Removes configured blocks directly, without asking for the master password.</string>
+    <string name="dev_mode_revoke_permissions">Revoke permissions</string>
+    <string name="dev_mode_revoke_permissions_desc">Revokes FocusGuard Accessibility and legacy Device Admin directly, without asking for the master password.</string>
+    <string name="dev_mode_anr_title">ANR log</string>
+    <string name="dev_mode_anr_desc">Shows historical FocusGuard ANRs that Android makes available to this app.</string>
+    <string name="dev_mode_anr_copy">Copy</string>
+    <string name="dev_mode_anr_download">Save TXT</string>
+    <string name="dev_mode_anr_refresh">Refresh</string>
+    <string name="dev_mode_anr_copied">ANR log copied.</string>
+    <string name="dev_mode_anr_saved">ANR log saved as TXT.</string>
+    <string name="dev_mode_anr_save_failed">Could not save the ANR log.</string>
+    <string name="dev_mode_anr_unavailable">ANR history requires Android 11 or newer.</string>
+    <string name="dev_mode_anr_empty">No FocusGuard ANR was returned by Android.</string>
+    <string name="dev_mode_close">Close</string>
+</resources>

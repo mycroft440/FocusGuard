@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="uninstall_app_subtitle_free">No active blocks: uninstall is available</string>
+    <string name="uninstall_app_subtitle_auth">Use the same password, pattern or biometric as the active block</string>
+    <string name="uninstall_app_free_description">There are no active blocks. You can uninstall HardBlock directly even while its protection permissions are still granted.</string>
+    <string name="uninstall_app_block_auth_description">An active reversible block exists. Authorize removal with the same credential that can open that block.</string>
+    <string name="uninstall_app_loading_authorization">Checking the active block protection…</string>
+    <string name="uninstall_app_pending_authorizations">Pending protection authorizations: %1$d</string>
+    <string name="uninstall_app_use_biometric">Use biometric</string>
+    <string name="uninstall_app_block_password">Block password</string>
+    <string name="uninstall_app_validate_password">Validate</string>
+    <string name="uninstall_app_draw_pattern">Draw the block pattern</string>
+    <string name="uninstall_app_master_fallback_description">A legacy or website-only block also needs the master deactivation credential.</string>
+    <string name="uninstall_app_authorization_complete">Authorization complete. You can continue to Android uninstall.</string>
+    <string name="uninstall_app_authorization_required">A block became active before removal. Authorize it before uninstalling.</string>
+    <string name="uninstall_app_wrong_block_credential">This credential does not match any pending block.</string>
+    <string name="uninstall_app_biometric_prompt_title">Authorize HardBlock uninstall</string>
+    <string name="uninstall_app_biometric_prompt_subtitle">Use the same biometric authorization accepted by the active block.</string>
+</resources>
