@@ -11,16 +11,16 @@ plugins {
     id("androidx.baselineprofile")
 }
 
-private const val ADMOB_TEST_APP_ID = "ca-app-pub-3940256099942544~3347511713"
-private const val ADMOB_TEST_INTERSTITIAL_ID = "ca-app-pub-3940256099942544/1033173712"
-private const val ADMOB_TEST_REWARDED_ID = "ca-app-pub-3940256099942544/5224354917"
-private const val ADMOB_TEST_BANNER_ID = "ca-app-pub-3940256099942544/9214589741"
-private const val ADMOB_TEST_NATIVE_ID = "ca-app-pub-3940256099942544/2247696110"
+val admobTestAppId = "ca-app-pub-3940256099942544~3347511713"
+val admobTestInterstitialId = "ca-app-pub-3940256099942544/1033173712"
+val admobTestRewardedId = "ca-app-pub-3940256099942544/5224354917"
+val admobTestBannerId = "ca-app-pub-3940256099942544/9214589741"
+val admobTestNativeId = "ca-app-pub-3940256099942544/2247696110"
 
-private const val ADMOB_PRODUCTION_APP_ID = "ca-app-pub-7090310776523046~9758255269"
-private const val ADMOB_PRODUCTION_INTERSTITIAL_ID = "ca-app-pub-7090310776523046/8800396811"
-private const val ADMOB_PRODUCTION_REWARDED_ID = "ca-app-pub-7090310776523046/1946766744"
-private const val ADMOB_PRODUCTION_BANNER_ID = "ca-app-pub-7090310776523046/2381881015"
+val admobProductionAppId = "ca-app-pub-7090310776523046~9758255269"
+val admobProductionInterstitialId = "ca-app-pub-7090310776523046/8800396811"
+val admobProductionRewardedId = "ca-app-pub-7090310776523046/1946766744"
+val admobProductionBannerId = "ca-app-pub-7090310776523046/2381881015"
 
 android {
     namespace = "com.focusguard"
@@ -207,33 +207,37 @@ androidComponents {
         // variants from release. Only the exact publishable release variant may
         // use production AdMob IDs; all other variants stay on official test IDs.
         val useProductionAds = variant.name == "release"
-        val appId = if (useProductionAds) ADMOB_PRODUCTION_APP_ID else ADMOB_TEST_APP_ID
+        val appId = if (useProductionAds) admobProductionAppId else admobTestAppId
         val interstitialId =
-            if (useProductionAds) ADMOB_PRODUCTION_INTERSTITIAL_ID else ADMOB_TEST_INTERSTITIAL_ID
+            if (useProductionAds) admobProductionInterstitialId else admobTestInterstitialId
         val rewardedId =
-            if (useProductionAds) ADMOB_PRODUCTION_REWARDED_ID else ADMOB_TEST_REWARDED_ID
+            if (useProductionAds) admobProductionRewardedId else admobTestRewardedId
         val bannerId =
-            if (useProductionAds) ADMOB_PRODUCTION_BANNER_ID else ADMOB_TEST_BANNER_ID
+            if (useProductionAds) admobProductionBannerId else admobTestBannerId
 
-        variant.buildConfigFields.put(
+        val buildConfigFields = requireNotNull(variant.buildConfigFields) {
+            "BuildConfig fields must be enabled for ${variant.name}"
+        }
+
+        buildConfigFields.put(
             "ADMOB_APP_ID",
             BuildConfigField("String", "\"$appId\"", "AdMob application ID")
         )
-        variant.buildConfigFields.put(
+        buildConfigFields.put(
             "ADMOB_INTERSTITIAL_AD_UNIT_ID",
             BuildConfigField("String", "\"$interstitialId\"", "AdMob interstitial unit ID")
         )
-        variant.buildConfigFields.put(
+        buildConfigFields.put(
             "ADMOB_REWARDED_AD_UNIT_ID",
             BuildConfigField("String", "\"$rewardedId\"", "AdMob rewarded unit ID")
         )
-        variant.buildConfigFields.put(
+        buildConfigFields.put(
             "ADMOB_BANNER_AD_UNIT_ID",
             BuildConfigField("String", "\"$bannerId\"", "AdMob banner unit ID")
         )
-        variant.buildConfigFields.put(
+        buildConfigFields.put(
             "ADMOB_NATIVE_AD_UNIT_ID",
-            BuildConfigField("String", "\"$ADMOB_TEST_NATIVE_ID\"", "AdMob native test unit ID")
+            BuildConfigField("String", "\"$admobTestNativeId\"", "AdMob native test unit ID")
         )
         variant.manifestPlaceholders.put("admobAppId", appId)
     }
