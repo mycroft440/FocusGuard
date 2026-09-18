@@ -130,6 +130,12 @@ private fun ForumComposer(
     onDraftChange: (String) -> Unit,
     onPublish: () -> Unit
 ) {
+    val authorLabel = if (profile.displayName.isBlank()) {
+        stringResource(R.string.forum_member)
+    } else {
+        profile.displayName
+    }
+
     if (!expanded) {
         FocusCard(
             modifier = Modifier.fillMaxWidth(),
@@ -184,9 +190,7 @@ private fun ForumComposer(
                 )
                 Spacer(modifier = Modifier.width(10.dp))
                 Text(
-                    text = profile.displayName.ifBlank {
-                        stringResource(R.string.forum_member)
-                    },
+                    text = authorLabel,
                     color = TextPrimary,
                     fontSize = 14.sp,
                     fontWeight = FontWeight.SemiBold
@@ -254,6 +258,11 @@ private fun ForumComposer(
 
 @Composable
 private fun ForumPostCard(post: ForumPost) {
+    val authorLabel = if (post.authorName.isBlank()) {
+        stringResource(R.string.forum_member)
+    } else {
+        post.authorName
+    }
     val relativeTime = DateUtils.getRelativeTimeSpanString(
         post.createdAtMillis,
         System.currentTimeMillis(),
@@ -281,9 +290,7 @@ private fun ForumPostCard(post: ForumPost) {
                 Spacer(modifier = Modifier.width(10.dp))
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = post.authorName.ifBlank {
-                            stringResource(R.string.forum_member)
-                        },
+                        text = authorLabel,
                         color = TextPrimary,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.SemiBold
