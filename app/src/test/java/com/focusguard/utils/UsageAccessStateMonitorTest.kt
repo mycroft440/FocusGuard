@@ -26,7 +26,7 @@ class UsageAccessStateMonitorTest {
 
     @Before
     fun setUp() {
-        context = RuntimeEnvironment.getApplication<Application>().applicationContext
+        context = RuntimeEnvironment.getApplication().applicationContext
         UsageAccessStateMonitor.stop()
         mockkObject(PermissionUtils)
     }
