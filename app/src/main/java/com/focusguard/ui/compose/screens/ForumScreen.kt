@@ -18,14 +18,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.outlined.ChatBubbleOutline
 import androidx.compose.material.icons.outlined.EditNote
+import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.R
+import com.focusguard.data.ForumComment
 import com.focusguard.data.ForumPost
 import com.focusguard.data.ForumPostPolicy
 import com.focusguard.data.ForumPostStore
@@ -115,7 +120,29 @@ fun ForumScreen(
                 items = posts,
                 key = ForumPost::id
             ) { post ->
-                ForumPostCard(post = post)
+                ForumPostCard(
+                    post = post,
+                    profile = profile,
+                    onToggleLike = {
+                        if (store.toggleLike(post.id) != null) {
+                            posts = store.load()
+                        }
+                    },
+                    onAddComment = { commentBody ->
+                        val added = store.addComment(
+                            postId = post.id,
+                            authorName = profile.displayName,
+                            avatarId = profile.avatarId,
+                            body = commentBody
+                        )
+                        if (added != null) {
+                            posts = store.load()
+                            true
+                        } else {
+                            false
+                        }
+                    }
+                )
             }
         }
     }
@@ -211,15 +238,7 @@ private fun ForumComposer(
                 },
                 minLines = 4,
                 maxLines = 8,
-                colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = AccentCyan,
-                    unfocusedBorderColor = CardBorder,
-                    focusedTextColor = TextPrimary,
-                    unfocusedTextColor = TextPrimary,
-                    cursorColor = AccentCyan,
-                    focusedContainerColor = DarkCard,
-                    unfocusedContainerColor = DarkCard
-                ),
+                colors = forumTextFieldColors(),
                 shape = RoundedCornerShape(14.dp)
             )
 
@@ -257,18 +276,20 @@ private fun ForumComposer(
 }
 
 @Composable
-private fun ForumPostCard(post: ForumPost) {
+private fun ForumPostCard(
+    post: ForumPost,
+    profile: UserProfile,
+    onToggleLike: () -> Unit,
+    onAddComment: (String) -> Boolean
+) {
+    var commentsExpanded by rememberSaveable(post.id) { mutableStateOf(false) }
+    var commentDraft by rememberSaveable(post.id) { mutableStateOf("") }
     val authorLabel = if (post.authorName.isBlank()) {
         stringResource(R.string.forum_member)
     } else {
         post.authorName
     }
-    val relativeTime = DateUtils.getRelativeTimeSpanString(
-        post.createdAtMillis,
-        System.currentTimeMillis(),
-        DateUtils.MINUTE_IN_MILLIS,
-        DateUtils.FORMAT_ABBREV_RELATIVE
-    ).toString()
+    val relativeTime = forumRelativeTime(post.createdAtMillis)
 
     FocusCard(
         modifier = Modifier.fillMaxWidth(),
@@ -311,9 +332,254 @@ private fun ForumPostCard(post: ForumPost) {
                 fontSize = 14.sp,
                 lineHeight = 20.sp
             )
+
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(color = CardBorder.copy(alpha = 0.70f))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = onToggleLike,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = if (post.likedByMe) {
+                            Icons.Filled.Favorite
+                        } else {
+                            Icons.Outlined.FavoriteBorder
+                        },
+                        contentDescription = null,
+                        tint = if (post.likedByMe) AccentCyan else TextSecondary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(
+                            if (post.likedByMe) R.string.forum_liked else R.string.forum_like
+                        ),
+                        color = if (post.likedByMe) AccentCyan else TextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (post.likeCount > 0) {
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = post.likeCount.toString(),
+                            color = if (post.likedByMe) AccentCyan else TextHint,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+
+                TextButton(
+                    onClick = { commentsExpanded = !commentsExpanded },
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.ChatBubbleOutline,
+                        contentDescription = null,
+                        tint = if (commentsExpanded) AccentCyan else TextSecondary,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = stringResource(R.string.forum_comment),
+                        color = if (commentsExpanded) AccentCyan else TextSecondary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    if (post.comments.isNotEmpty()) {
+                        Spacer(modifier = Modifier.width(5.dp))
+                        Text(
+                            text = post.comments.size.toString(),
+                            color = if (commentsExpanded) AccentCyan else TextHint,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+
+            if (commentsExpanded) {
+                HorizontalDivider(color = CardBorder.copy(alpha = 0.70f))
+                Spacer(modifier = Modifier.height(12.dp))
+
+                if (post.comments.isEmpty()) {
+                    Text(
+                        text = stringResource(R.string.forum_no_comments),
+                        color = TextHint,
+                        fontSize = 12.sp
+                    )
+                } else {
+                    post.comments.forEachIndexed { index, comment ->
+                        ForumCommentItem(comment = comment)
+                        if (index != post.comments.lastIndex) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            HorizontalDivider(color = CardBorder.copy(alpha = 0.45f))
+                            Spacer(modifier = Modifier.height(10.dp))
+                        }
+                    }
+                }
+
+                if (post.comments.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(14.dp))
+                } else {
+                    Spacer(modifier = Modifier.height(10.dp))
+                }
+
+                ForumCommentComposer(
+                    profile = profile,
+                    draft = commentDraft,
+                    onDraftChange = {
+                        commentDraft = ForumPostPolicy.limitCommentInput(it)
+                    },
+                    onPublish = {
+                        if (onAddComment(commentDraft)) {
+                            commentDraft = ""
+                        }
+                    }
+                )
+            }
         }
     }
 }
+
+@Composable
+private fun ForumCommentItem(comment: ForumComment) {
+    val authorLabel = if (comment.authorName.isBlank()) {
+        stringResource(R.string.forum_member)
+    } else {
+        comment.authorName
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        ProfileAvatar(
+            avatarId = comment.avatarId,
+            modifier = Modifier.size(30.dp)
+        )
+        Spacer(modifier = Modifier.width(9.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = authorLabel,
+                    color = TextPrimary,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(modifier = Modifier.width(7.dp))
+                Text(
+                    text = forumRelativeTime(comment.createdAtMillis),
+                    color = TextHint,
+                    fontSize = 10.sp
+                )
+            }
+            Spacer(modifier = Modifier.height(3.dp))
+            Text(
+                text = comment.body,
+                color = TextSecondary,
+                fontSize = 13.sp,
+                lineHeight = 18.sp
+            )
+        }
+    }
+}
+
+@Composable
+private fun ForumCommentComposer(
+    profile: UserProfile,
+    draft: String,
+    onDraftChange: (String) -> Unit,
+    onPublish: () -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        ProfileAvatar(
+            avatarId = profile.avatarId,
+            modifier = Modifier
+                .padding(top = 6.dp)
+                .size(30.dp)
+        )
+        Spacer(modifier = Modifier.width(9.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            OutlinedTextField(
+                value = draft,
+                onValueChange = onDraftChange,
+                modifier = Modifier.fillMaxWidth(),
+                placeholder = {
+                    Text(
+                        text = stringResource(R.string.forum_comment_hint),
+                        color = TextHint,
+                        fontSize = 12.sp
+                    )
+                },
+                minLines = 2,
+                maxLines = 5,
+                colors = forumTextFieldColors(),
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            Spacer(modifier = Modifier.height(7.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(
+                        R.string.forum_character_count,
+                        ForumPostPolicy.commentCodePointCount(draft),
+                        ForumPostPolicy.MAX_COMMENT_CODE_POINTS
+                    ),
+                    color = TextHint,
+                    fontSize = 10.sp
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Button(
+                    onClick = onPublish,
+                    enabled = ForumPostPolicy.normalizeCommentForPublish(draft).isNotBlank(),
+                    colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
+                    shape = RoundedCornerShape(10.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp)
+                ) {
+                    Text(
+                        text = stringResource(R.string.forum_comment_publish),
+                        color = DarkBg,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun forumTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = AccentCyan,
+    unfocusedBorderColor = CardBorder,
+    focusedTextColor = TextPrimary,
+    unfocusedTextColor = TextPrimary,
+    cursorColor = AccentCyan,
+    focusedContainerColor = DarkCard,
+    unfocusedContainerColor = DarkCard
+)
+
+private fun forumRelativeTime(createdAtMillis: Long): String =
+    DateUtils.getRelativeTimeSpanString(
+        createdAtMillis,
+        System.currentTimeMillis(),
+        DateUtils.MINUTE_IN_MILLIS,
+        DateUtils.FORMAT_ABBREV_RELATIVE
+    ).toString()
 
 @Composable
 private fun ForumEmptyState() {
