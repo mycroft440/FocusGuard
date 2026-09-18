@@ -36,6 +36,10 @@
     <string name="block_type_limit_subtitle">Limite o quanto você usa apps viciantes</string>
     <string name="block_type_limit_empty">Nenhum limite diário configurado ainda.</string>
     <string name="block_type_limit_action">Limitar apps</string>
+    <string name="block_type_periods_title">Bloquear apps em períodos do dia</string>
+    <string name="block_type_periods_subtitle">Escolha os dias e horários em que apps e sites devem ficar bloqueados</string>
+    <string name="block_type_periods_empty">Nenhum bloqueio por períodos do dia configurado ainda.</string>
+    <string name="block_type_periods_action">Configurar períodos</string>
 
     <string name="block_type_fast_title">Bloqueie sem senha por tempo</string>
     <string name="block_type_fast_subtitle">Bloqueie pornografia, redes sociais ou qualquer app e site por meses. Não há senha: só termina quando o prazo acabar.</string>
@@ -60,6 +64,9 @@
 
     <!-- Termo do jejum de dopamina -->
     <string name="dopamine_terms_title">Como o jejum de dopamina funciona</string>
+    <string name="block_periods_terms_title">Como o bloqueio por períodos do dia funciona</string>
+    <string name="block_periods_terms_intro">Este modo bloqueia os apps e sites selecionados somente nas faixas diárias que você configurar.</string>
+    <string name="block_periods_terms_accept">Eu li como o agendamento funciona e concordo em mantê-lo até o fim da duração configurada</string>
     <string name="dopamine_terms_intro">O bloqueio de jejum de dopamina foi criado justamente para você, que se sente viciado em redes sociais ou em qualquer coisa relacionada a tecnologia, como pornografia.</string>
     <string name="dopamine_terms_how">Você seleciona o que quer bloquear e por quantos dias — por exemplo, 365. O que você colocar para bloquear nesse período ficará bloqueado até o fim da contagem, de forma irrevogável.</string>
     <string name="dopamine_terms_escape">Para compensar isso, numa emergência em que você realmente precise remover algo, todo dia 15, às 03:00 da manhã, o app libera o bloqueio e permite remover alguns apps ou sites. Mas somente nesse horário.</string>
@@ -124,9 +131,11 @@
     <string name="dopamine_configure_for">Configurar jejum para %1$s</string>
     <string name="dopamine_description">Os apps e sites selecionados ficarão completamente bloqueados durante todo o período.</string>
     <string name="dopamine_simple_mode_info">O Device Owner é opcional. Sem ele, o Jejum funciona no modo simples pela Acessibilidade; com ele, recebe também a proteção reforçada contra remoção.</string>
+    <string name="block_periods_simple_mode_info">O Device Owner é opcional. Sem ele, o agendamento funciona pela Acessibilidade; com ele, recebe também a proteção reforçada contra remoção.</string>
     <string name="dopamine_duration_question">Por quanto tempo deseja manter o jejum ativo?</string>
     <string name="dopamine_warning">Atenção: depois de ativado, este bloqueio não poderá ser encerrado nem com senha. Aguarde o período terminar.</string>
     <string name="dopamine_activate">Ativar jejum de dopamina</string>
+    <string name="block_periods_activate">Ativar bloqueio agendado</string>
     <string name="block_customization">Personalizar bloqueio</string>
     <string name="pending_permissions_title">Permissões pendentes</string>
     <string name="pending_permissions_desc">Conclua todas as permissões de proteção para liberar a configuração de bloqueios.</string>
