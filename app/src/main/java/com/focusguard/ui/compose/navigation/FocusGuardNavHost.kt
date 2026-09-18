@@ -55,6 +55,7 @@ import com.focusguard.ui.compose.screens.RecoveryHubScreen
 import com.focusguard.ui.compose.screens.SessionsListScreen
 import com.focusguard.ui.compose.screens.SettingsScreen
 import com.focusguard.ui.compose.screens.TestedBrowsersScreen
+import com.focusguard.ui.compose.screens.TimeBlockConfigMode
 import com.focusguard.ui.compose.screens.UsageLimitsScreen
 import com.focusguard.ui.compose.screens.UsageStatsDashboardScreen
 import androidx.lifecycle.Lifecycle
@@ -392,9 +393,21 @@ fun FocusGuardNavHost(
                                     Intent(activity, CreateSessionActivity::class.java)
                                         .putExtra("SESSION_TYPE", "PASSWORD")
                                 )
+                                BlockTypeUi.DAILY_PERIODS -> activity.startActivity(
+                                    Intent(activity, CreateSessionActivity::class.java)
+                                        .putExtra("SESSION_TYPE", "TIME")
+                                        .putExtra(
+                                            CreateSessionActivity.EXTRA_TIME_BLOCK_MODE,
+                                            TimeBlockConfigMode.DAILY_PERIODS.name
+                                        )
+                                )
                                 BlockTypeUi.DOPAMINE_FAST -> activity.startActivity(
                                     Intent(activity, CreateSessionActivity::class.java)
                                         .putExtra("SESSION_TYPE", "TIME")
+                                        .putExtra(
+                                            CreateSessionActivity.EXTRA_TIME_BLOCK_MODE,
+                                            TimeBlockConfigMode.CONTINUOUS.name
+                                        )
                                 )
                             }
                         }
