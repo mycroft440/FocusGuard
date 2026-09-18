@@ -112,14 +112,14 @@ class BlockingSessionManager @Inject constructor(
     data class BlockOverview(
         val passwordEntries: List<Entry> = emptyList(),
         val dailyLimitEntries: List<Entry> = emptyList(),
-        val scheduledTimeEntries: List<Entry> = emptyList(),
-        val dopamineFastEntries: List<Entry> = emptyList()
+        val dopamineFastEntries: List<Entry> = emptyList(),
+        val scheduledTimeEntries: List<Entry> = emptyList()
     ) {
         val isEmpty: Boolean
             get() = passwordEntries.isEmpty() &&
                 dailyLimitEntries.isEmpty() &&
-                scheduledTimeEntries.isEmpty() &&
-                dopamineFastEntries.isEmpty()
+                dopamineFastEntries.isEmpty() &&
+                scheduledTimeEntries.isEmpty()
 
         /**
          * @param identifier package name for an app, normalized rule for a site.
