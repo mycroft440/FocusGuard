@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="limits_time_hours_short">Hours</string>
+    <string name="limits_time_minutes_short">Minutes</string>
+</resources>

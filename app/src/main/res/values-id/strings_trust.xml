@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="trust_disclosure_title">Privacy and permissions</string>
+    <string name="trust_disclosure_intro">Before opening Android\'s sensitive permissions, review how FocusGuard works.</string>
+    <string name="trust_accessibility_title">Accessibility</string>
+    <string name="trust_accessibility_body">When enabled, it identifies the visible app or browser and can read window text, including displayed addresses, to enforce configured blocks and limits. It also recognizes system screens concerning FocusGuard itself to honor the accepted self-protection commitment; it does not interfere with controls for other apps.</string>
+    <string name="trust_usage_title">Usage access</string>
+    <string name="trust_usage_body">Reads app screen time to calculate daily limits and show metrics on the device itself.</string>
+    <string name="trust_local_title">Local processing</string>
+    <string name="trust_local_body">Passwords, sessions, block lists, metrics and accessibility events are processed locally. FocusGuard does not sell this data and contains no ad SDK.</string>
+    <string name="trust_camera_title">Optional camera</string>
+    <string name="trust_camera_body">The camera is only requested when you manually enable the access-attempt photo. Images stay stored inside the app.</string>
+    <string name="trust_network_title">Internet usage</string>
+    <string name="trust_network_body">The internet is used to load public resources such as website icons. Core protection and private data stay on the device.</string>
+    <string name="trust_choice_notice">You can continue without agreeing and use features that do not depend on these permissions. Outside an active voluntary protection, they can be revoked in Android settings; during protection, the commitment shown in the previous step applies.</string>
+    <string name="trust_accept">Agree and continue</string>
+    <string name="trust_decline">Not now</string>
+
+    <string name="self_protection_term_title">Self-protection commitment</string>
+    <string name="self_protection_term_intro">FocusGuard is a voluntary tool that supports habit control. Protection is only activated by a choice made on this device.</string>
+    <string name="self_protection_term_scope_title">What will be protected</string>
+    <string name="self_protection_term_scope_body">While a block, limit or filter you chose is active, attempts to disable protection or remove FocusGuard itself will be interrupted. Self-protection will not block uninstall or controls for other apps. In strict Pomodoro, all navigation outside the focus screen remains unavailable for the chosen duration.</string>
+    <string name="self_protection_term_modes_title">Technical limits</string>
+    <string name="self_protection_term_modes_body">In standard mode, Accessibility reacts to Android screens and cannot absolutely guarantee blocking the first attempt. In Device Owner mode, Android blocks only FocusGuard uninstall from the first attempt and, on supported versions, force stop and data clearing; other reinforced restrictions are shown before provisioning.</string>
+    <string name="self_protection_term_exit_title">How protection ends</string>
+    <string name="self_protection_term_exit_body">Exit follows the exact block type you selected: timer completion, a password when provided, or authenticated maintenance. There is no hidden remote control, and you may decline this term and not activate new blocks.</string>
+    <string name="self_protection_term_checkbox">I have read, understood and voluntarily agree to impose these unlock conditions on myself.</string>
+    <string name="self_protection_term_accept">Agree and continue</string>
+    <string name="self_protection_term_decline">Do not enable self-protection</string>
+
+    <string name="accessibility_service_description_transparent">FocusGuard observes the foreground app or browser and visible window content to enforce user-configured blocks and limits. Processing is local and there is no remote control. During active voluntary protection, attempts to disable FocusGuard itself may be closed under the term accepted in the app.</string>
+    <string name="accessibility_paused_channel">Protection status</string>
+    <string name="accessibility_paused_channel_description">Alerts when a permission required for real-time blocking is turned off.</string>
+    <string name="accessibility_paused_title">Real-time protection paused</string>
+    <string name="accessibility_paused_message">FocusGuard Accessibility is turned off. Tap to re-enable it, or dismiss this alert to continue without real-time blocking.</string>
+    <string name="accessibility_paused_device_owner_message">FocusGuard Accessibility is turned off. Native Device Owner blocks remain active, but real-time protection in unmanaged browsers is paused. Tap to re-enable.</string>
+    <string name="device_admin_disable_warning">A standard administrator can be disabled by Android. If you continue, FocusGuard will lose the ability to lock the screen and will be less resistant to removal. For strong protection, use Device Owner mode.</string>
+
+    <string name="usage_access_paused_title">App limits paused</string>
+    <string name="usage_access_paused_message">FocusGuard\'s Usage access was revoked. Without it there is no way to measure screen time, and app limits stopped being enforced. Tap to re-enable.</string>
+    <string name="usage_access_paused_device_owner_message">FocusGuard\'s Usage access was revoked. App limits stopped being enforced because screen time cannot be measured. Password blocks and the Dopamine Fast remain active. Tap to re-enable.</string>
+</resources>
