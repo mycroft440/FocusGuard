@@ -112,11 +112,13 @@ class BlockingSessionManager @Inject constructor(
     data class BlockOverview(
         val passwordEntries: List<Entry> = emptyList(),
         val dailyLimitEntries: List<Entry> = emptyList(),
+        val scheduledTimeEntries: List<Entry> = emptyList(),
         val dopamineFastEntries: List<Entry> = emptyList()
     ) {
         val isEmpty: Boolean
             get() = passwordEntries.isEmpty() &&
                 dailyLimitEntries.isEmpty() &&
+                scheduledTimeEntries.isEmpty() &&
                 dopamineFastEntries.isEmpty()
 
         /**
@@ -149,11 +151,18 @@ class BlockingSessionManager @Inject constructor(
             .filter { it.sessionType == "PASSWORD" }
             .map { it.id }
 
-        // A fast can span several sessions; each target shows the deadline of the
-        // session that actually holds it, so two fasts started apart do not report
-        // a single misleading date.
-        val fastSessions = activeSessions.filter {
+        // TIME sessions share the same enforcement layer, but the Home exposes
+        // recurring daily windows separately from continuous 24h commitments.
+        // Legacy recurring sessions are therefore surfaced under the scheduled
+        // option instead of being mixed into the dopamine-fast list.
+        val timeSessions = activeSessions.filter {
             MasterCredentialPolicy.isIrreversibleSessionType(it.sessionType)
+        }
+        val scheduledTimeSessions = timeSessions.filter {
+            it.isRecurring && !it.isFixed24h
+        }
+        val continuousTimeSessions = timeSessions.filterNot {
+            it.isRecurring && !it.isFixed24h
         }
 
         val passwordEntries = buildEntries(
@@ -161,7 +170,15 @@ class BlockingSessionManager @Inject constructor(
             websiteRules = getSitesForSessions(passwordIds)
         )
 
-        val fastEntries = fastSessions.flatMap { session ->
+        val scheduledTimeEntries = scheduledTimeSessions.flatMap { session ->
+            buildEntries(
+                appPackages = getAppsForSessions(listOf(session.id)),
+                websiteRules = getSitesForSessions(listOf(session.id)),
+                unlockAtMillis = session.endTime
+            )
+        }.distinctBy { it.identifier }
+
+        val fastEntries = continuousTimeSessions.flatMap { session ->
             buildEntries(
                 appPackages = getAppsForSessions(listOf(session.id)),
                 websiteRules = getSitesForSessions(listOf(session.id)),
@@ -188,6 +205,7 @@ class BlockingSessionManager @Inject constructor(
         BlockOverview(
             passwordEntries = passwordEntries.sortedBy { it.identifier },
             dailyLimitEntries = limitEntries.sortedBy { it.identifier },
+            scheduledTimeEntries = scheduledTimeEntries.sortedBy { it.identifier },
             dopamineFastEntries = fastEntries.sortedBy { it.identifier }
         )
     }
