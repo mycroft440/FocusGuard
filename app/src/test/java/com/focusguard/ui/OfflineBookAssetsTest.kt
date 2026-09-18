@@ -7,6 +7,7 @@ import org.junit.Test
 class OfflineBookAssetsTest {
     private val bookAssets = File("src/main/assets/easypeasy")
     private val creatorBookAssets = File("src/main/assets/creator-instructions")
+    private val translationAssets = File(bookAssets, "translations")
 
     @Test
     fun creatorInstructionsBookIsBundledBeforeContentIsWritten() {
@@ -41,6 +42,35 @@ class OfflineBookAssetsTest {
         assertThat(File(bookAssets, "index.html").isFile).isTrue()
         assertThat(File(bookAssets, "assets/css/reader.css").isFile).isTrue()
         assertThat(File(bookAssets, "assets/js/reader.js").isFile).isTrue()
+    }
+
+    @Test
+    fun officialTranslationsAreBundledAsPdf() {
+        val expectedLanguageCodes = listOf(
+            "de", "en", "es", "fr", "it", "hu", "nl", "pl", "ro", "sq",
+            "so", "sv", "tr", "cs", "ru", "uk", "ar", "fa", "ko"
+        )
+        val catalog = File(translationAssets, "catalog.json").readText()
+
+        expectedLanguageCodes.forEach { languageCode ->
+            val fileName = "easypeasy_${languageCode}.pdf"
+            val pdf = File(translationAssets, fileName)
+            val magic = if (pdf.isFile) {
+                pdf.inputStream().use { input ->
+                    val bytes = ByteArray(5)
+                    val count = input.read(bytes)
+                    String(bytes, 0, count.coerceAtLeast(0), Charsets.US_ASCII)
+                }
+            } else {
+                ""
+            }
+
+            assertThat(pdf.isFile).isTrue()
+            assertThat(pdf.length()).isGreaterThan(1_024L)
+            assertThat(magic).isEqualTo("%PDF-")
+            assertThat(catalog).contains("\"code\": \"$languageCode\"")
+            assertThat(catalog).contains("\"file\": \"$fileName\"")
+        }
     }
 
     @Test
