@@ -180,3 +180,36 @@ Um bloqueio `TIME` deve bloquear somente dentro da faixa diária selecionada, no
 ## Validação
 - [ ] Revisar o diff para confirmar escopo restrito ao plano e ao teste obsoleto.
 - [ ] Confirmar `testReleaseUnitTest`, lint e release no CI após o commit.
+
+---
+
+# Plano de implementação — expansão para 20 idiomas
+
+## Objetivo
+Expandir o FocusGuard dos idiomas atuais (inglês e português) para o conjunto de 20 idiomas definido na análise anterior, mantendo inglês como fallback e a seleção de idioma por aplicativo do Android/AppCompat.
+
+## Diagnóstico
+- [x] O fallback não qualificado é `en-US` e o app já usa `generateLocaleConfig = true`.
+- [x] `resourceConfigurations` limita o APK a `en`, `pt` e `pt-rBR`.
+- [x] `LanguageScreen` oferece apenas sistema, português e inglês e não é rolável.
+- [x] Há 34 arquivos textuais em paridade estrutural para inglês/português e cerca de 1.248 recursos traduzíveis.
+- [x] `res/xml/locales_config.xml` é configuração manual residual enquanto o projeto usa geração automática de LocaleConfig.
+- [x] O ebook em `assets/easypeasy` é conteúdo editorial em português e fica fora deste escopo.
+
+## Implementação
+- [ ] Adicionar recursos completos para espanhol, francês, alemão, russo, japonês, chinês simplificado, hindi, bengali, indonésio, urdu, árabe, árabe egípcio, marata, telugu, vietnamita, suaíli, hauçá e pidgin nigeriano.
+- [ ] Atualizar `resourceConfigurations` para preservar todos os 20 idiomas, mantendo `pt-rBR`.
+- [ ] Remover o `locales_config.xml` manual residual e manter o LocaleConfig gerado pelo AGP a partir dos diretórios `values-*`.
+- [ ] Tornar o seletor de idiomas rolável e orientado por uma lista única de idiomas/tags.
+- [ ] Adicionar nomes nativos dos idiomas como recursos não traduzíveis para manter rótulos estáveis no seletor.
+- [ ] Adicionar teste unitário para quantidade, unicidade e tags suportadas.
+
+## Validação
+- [ ] Verificar paridade de nomes e placeholders entre o fallback inglês e cada novo locale.
+- [ ] Revisar o diff agregado e confirmar ausência de alterações fora de internacionalização.
+- [ ] Executar testes unitários, Android Lint e build debug quando o ambiente permitir.
+- [ ] Conferir RTL para árabe/urdu/árabe egípcio e recursos com script/BCP-47 para chinês simplificado.
+
+## Critério de conclusão
+O app deve expor 20 idiomas no seletor, empacotar recursos completos para cada um, continuar seguindo o idioma do sistema quando solicitado e manter inglês como fallback sem enfraquecer as validações de tradução existentes.
+
