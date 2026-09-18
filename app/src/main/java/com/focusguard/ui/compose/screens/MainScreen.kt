@@ -320,7 +320,9 @@ private fun FocusModeNavigationRail(
             )
         }
     ) {
-        FocusGuardNavigationItems.forEach { item ->
+        FocusGuardNavigationItems
+            .filterNot { it.tab == 5 }
+            .forEach { item ->
             NavigationRailItem(
                 selected = selectedTab == item.tab,
                 onClick = { onTabChange(item.tab) },
