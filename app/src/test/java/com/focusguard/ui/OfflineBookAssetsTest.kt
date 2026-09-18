@@ -50,6 +50,10 @@ class OfflineBookAssetsTest {
             "de", "en", "es", "it", "hu", "nl", "pl", "ro",
             "sq", "so", "sv", "tr", "ru", "uk", "ko"
         )
+        val multiPageLanguageCodes = setOf(
+            "de", "en", "it", "nl", "pl", "ro",
+            "sq", "so", "sv", "ru", "uk", "ko"
+        )
         val catalog = File(translationAssets, "catalog.json").readText()
         val bundledPdfs = translationAssets
             .walkTopDown()
@@ -61,6 +65,14 @@ class OfflineBookAssetsTest {
         expectedLanguageCodes.forEach { languageCode ->
             val languageDirectory = File(translationAssets, languageCode)
             val entrypoint = File(languageDirectory, "index.html")
+            val snapshot = File(languageDirectory, "snapshot.json").readText()
+            val offlineDocument = requireNotNull(
+                Regex("\"offlineDocument\"\\s*:\\s*\"([^\"]+)\"")
+                    .find(snapshot)
+                    ?.groupValues
+                    ?.get(1)
+            )
+            val primaryHtml = File(languageDirectory, offlineDocument)
             val mirroredHtml = File(languageDirectory, "mirror")
                 .walkTopDown()
                 .filter { it.isFile && it.extension.equals("html", ignoreCase = true) }
@@ -68,11 +80,21 @@ class OfflineBookAssetsTest {
 
             assertThat(entrypoint.isFile).isTrue()
             assertThat(entrypoint.readText()).contains("http-equiv=\"refresh\"")
+            assertThat(primaryHtml.isFile).isTrue()
+            assertThat(primaryHtml.length()).isGreaterThan(1_024L)
             assertThat(mirroredHtml).isNotEmpty()
-            assertThat(mirroredHtml.maxOf { it.length() }).isGreaterThan(1_024L)
+            if (languageCode in multiPageLanguageCodes) {
+                assertThat(mirroredHtml.size).isAtLeast(20)
+            }
             assertThat(catalog).contains("\"code\": \"$languageCode\"")
             assertThat(catalog).contains("\"entrypoint\": \"$languageCode/index.html\"")
         }
+
+        val englishMirror = File(translationAssets, "en/mirror/easypeasymethod.org")
+        listOf("de", "it", "nl", "pl", "pt-br", "ro", "sq", "so", "sv", "ru", "uk", "ko")
+            .forEach { translatedPath ->
+                assertThat(File(englishMirror, translatedPath).exists()).isFalse()
+            }
     }
 
     @Test
