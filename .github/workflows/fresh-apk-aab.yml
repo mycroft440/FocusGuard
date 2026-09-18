@@ -1,4 +1,5 @@
 name: Fresh APK + AAB
+# Signed artifact workflow for the current main branch; refreshed after nested browser detection fixes.
 
 on:
   push:
@@ -23,6 +24,7 @@ jobs:
       KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
       KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
       KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      CANONICAL_SIGNER_SHA256: e8da4209d0012052b052b280fa64becb788bf6929563ce54a0707cb8c3385157
 
     steps:
       - name: Checkout latest main
@@ -88,7 +90,7 @@ jobs:
             --no-daemon \
             --stacktrace
 
-      - name: Collect and verify artifacts
+      - name: Collect and verify canonical artifacts
         shell: bash
         run: |
           set -euo pipefail
@@ -99,11 +101,16 @@ jobs:
 
           test -n "$APK" && test -s "$APK"
           test -n "$AAB" && test -s "$AAB"
-          "$APKSIGNER" verify --verbose --print-certs "$APK"
-          "$AAPT" dump badging "$APK" | head -n 1 | grep -q "package: name='com.focusguard.v2'"
-          jarsigner -verify "$AAB"
 
           mkdir -p latest-artifacts
+          "$APKSIGNER" verify --verbose --print-certs "$APK" \
+            | tee latest-artifacts/apksigner.txt
+          "$AAPT" dump badging "$APK" | head -n 1 \
+            | tee latest-artifacts/package.txt
+          grep -q "package: name='com.focusguard.v2'" latest-artifacts/package.txt
+          grep -qi "$CANONICAL_SIGNER_SHA256" latest-artifacts/apksigner.txt
+          jarsigner -verify "$AAB"
+
           cp "$APK" latest-artifacts/FocusGuard-latest.apk
           cp "$AAB" latest-artifacts/FocusGuard-latest.aab
           sha256sum latest-artifacts/FocusGuard-latest.apk latest-artifacts/FocusGuard-latest.aab \
@@ -131,7 +138,10 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: FocusGuard-latest-SHA256-${{ github.run_number }}
-          path: latest-artifacts/SHA256SUMS.txt
+          path: |
+            latest-artifacts/SHA256SUMS.txt
+            latest-artifacts/apksigner.txt
+            latest-artifacts/package.txt
           if-no-files-found: error
           retention-days: 30
 

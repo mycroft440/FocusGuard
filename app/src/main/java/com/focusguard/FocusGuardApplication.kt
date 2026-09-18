@@ -5,6 +5,9 @@ import android.os.UserManager
 import androidx.lifecycle.DefaultLifecycleObserver
 import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
+import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
+import com.focusguard.accessibility.website.compatibility.BrowserDetector
+import com.focusguard.accessibility.website.redirection.ClipboardPasteFallback
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.focusmode.FocusModeStore
@@ -34,6 +37,7 @@ class FocusGuardApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        ClipboardPasteFallback.initialize(this)
         val userUnlocked = runCatching {
             getSystemService(UserManager::class.java).isUserUnlocked
         }.getOrDefault(true)
@@ -42,6 +46,11 @@ class FocusGuardApplication : Application() {
         } else {
             runCatching { createDeviceProtectedStorageContext() }.getOrDefault(this)
         }
+        val browserCompatibilityContext = runCatching {
+            createDeviceProtectedStorageContext()
+        }.getOrDefault(startupContext)
+        BrowserDetector.initialize(browserCompatibilityContext)
+        BrowserCompatibilityStore.initialize(browserCompatibilityContext)
         FocusGuardLogger.init(startupContext)
 
         // A nova geração é criada apenas quando o PROCESSO do app volta ao
@@ -73,7 +82,9 @@ class FocusGuardApplication : Application() {
         val deviceOwnerManager = DeviceOwnerManager.getInstance(this)
         if (userUnlocked) {
             // Reaplica as políticas oficiais e inicia dependências que usam Room/Keystore.
-            deviceOwnerManager.applyNuclearShield()
+            applicationScope.launch {
+                deviceOwnerManager.applyNuclearShield()
+            }
             AccessibilityStateMonitor.start(this)
             UsageAccessStateMonitor.start(this)
 

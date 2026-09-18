@@ -36,6 +36,10 @@
     <string name="block_type_limit_subtitle">Limit how much you use addictive apps</string>
     <string name="block_type_limit_empty">No daily limit configured yet.</string>
     <string name="block_type_limit_action">Limit apps</string>
+    <string name="block_type_periods_title">Block apps during periods of the day</string>
+    <string name="block_type_periods_subtitle">Choose weekdays and daily hours when apps and sites should stay blocked</string>
+    <string name="block_type_periods_empty">No scheduled daily-period block configured yet.</string>
+    <string name="block_type_periods_action">Configure periods</string>
 
     <string name="block_type_fast_title">Block by time, with no password</string>
     <string name="block_type_fast_subtitle">Block pornography, social media or any app and site for months. There is no password: it ends only when the period is over.</string>
@@ -60,6 +64,9 @@
 
     <!-- Dopamine fast terms -->
     <string name="dopamine_terms_title">How the dopamine fast works</string>
+    <string name="block_periods_terms_title">How daily-period blocking works</string>
+    <string name="block_periods_terms_intro">This mode blocks the selected apps and sites only during the daily windows you configure.</string>
+    <string name="block_periods_terms_accept">I read how the schedule works and agree to keep it until the configured duration ends</string>
     <string name="dopamine_terms_intro">The dopamine fast was created for you, who feels addicted to social media or to anything technology-related, such as pornography.</string>
     <string name="dopamine_terms_how">You choose what to block and for how many days — 365, for example. Whatever you put on the list stays blocked until the countdown ends, irrevocably.</string>
     <string name="dopamine_terms_escape">To offset that, in an emergency where you genuinely need to remove something, on the 15th of every month at 03:00 the app releases the block and lets you remove some apps or sites. Only then.</string>
@@ -124,9 +131,11 @@
     <string name="dopamine_configure_for">Configure fast for %1$s</string>
     <string name="dopamine_description">The selected apps and sites will be completely blocked for the entire period.</string>
     <string name="dopamine_simple_mode_info">Device Owner is optional. Without it, the Fast runs in simple mode through Accessibility; with it, you also get reinforced protection against removal.</string>
+    <string name="block_periods_simple_mode_info">Device Owner is optional. Without it, scheduled blocking runs through Accessibility; with it, you also get reinforced protection against removal.</string>
     <string name="dopamine_duration_question">How long do you want to keep the fast active?</string>
     <string name="dopamine_warning">Warning: once activated, this block cannot be ended even with a password. Wait for the period to finish.</string>
     <string name="dopamine_activate">Activate dopamine fast</string>
+    <string name="block_periods_activate">Activate scheduled block</string>
     <string name="block_customization">Customize block</string>
     <string name="pending_permissions_title">Pending permissions</string>
     <string name="pending_permissions_desc">Complete every protection permission to enable block configuration.</string>
@@ -140,7 +149,24 @@
     <string name="nav_metrics">Metrics</string>
     <string name="nav_recovery">AntiPorn</string>
     <string name="nav_focus_mode">Focus mode</string>
+    <string name="nav_forum">Forum</string>
     <string name="nav_settings">Settings</string>
+
+    <!-- Forum -->
+    <string name="forum_composer_hint">Write something…</string>
+    <string name="forum_composer_expanded_hint">What do you want to share?</string>
+    <string name="forum_publish">Publish</string>
+    <string name="forum_character_count">%1$d/%2$d</string>
+    <string name="forum_member">HardBlock member</string>
+    <string name="forum_like">Like</string>
+    <string name="forum_liked">Liked</string>
+    <string name="forum_comment">Comment</string>
+    <string name="forum_no_comments">No comments yet.</string>
+    <string name="forum_comment_hint">Write a comment…</string>
+    <string name="forum_comment_publish">Comment</string>
+    <string name="forum_empty_title">No posts yet</string>
+    <string name="forum_empty_description">Be the first to publish something here.</string>
+    <string name="forum_local_storage_notice">In this version, forum posts, likes and comments are saved only on this device.</string>
 
     <!-- AntiPorn and EasyPeasy -->
     <string name="recovery_title">AntiPorn</string>

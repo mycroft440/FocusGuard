@@ -19,26 +19,26 @@ bloqueio combina as duas camadas nativas disponíveis no Android:
      expõe um id forte de omnibox sob o próprio pacote; um campo URI sem essa
      prova só é aceito se o pacote já foi confirmado como handler HTTPS.
    - Observa alterações da janela, do conteúdo e do texto da barra de endereço.
-   - Localiza a barra por ids estritos usados por Chromium, Gecko/Firefox,
-     Samsung Internet, Via e navegadores compactos. Inputs URI, ids fracos e
-     descrições localizadas ajudam apenas a observar a URL de um handler HTTPS
-     confirmado: nunca autorizam foco, troca de texto, submissão ou fechamento.
-   - Sob uma cortina opaca e consumidora de toque, tenta fechar a guia apenas
-     quando a árvore atual publica exatamente `tab_switcher_button` e
-     `close_tab` sob o pacote do navegador. Essa capacidade atende Chrome e
-     forks Chromium compatíveis sem uma allowlist de marcas.
-   - Um clique em `close_tab` só conta como fechamento depois de um evento
-     posterior do navegador e do desaparecimento comprovado da superfície
-     bloqueada. Após essa confirmação, abre um novo documento limpo do Google
-     no mesmo navegador; a guia sobrevivente jamais é sobrescrita.
-   - Se o fechamento não estiver disponível, substitui a própria guia bloqueada
-     por uma raiz segura do Google somente quando há um único nó forte, visível,
-     editável e com cada ação anunciada. Em Android 8 a 10 (API 26–29), ou quando
-     não existe submissão certificável, a cortina permanece e o fluxo evacua para
-     HOME. `ACTION_VIEW` só é permitido depois de um fechamento já confirmado.
-   - Um clique aceito mas não confirmado nunca autoriza reescrever a guia que
-     restou. O fluxo falha fechado em HOME; uma superfície que reapareça será
-     avaliada como uma nova navegação.
+   - Localiza a barra por ids fortes usados por Chromium, Gecko/Firefox,
+     Samsung Internet, Via e navegadores compactos. Para handlers HTTPS
+     realmente confirmados pelo `PackageManager`, também aceita como capacidade
+     de ação um único campo nativo do próprio pacote/janela que seja editável,
+     declare `textUri` e anuncie explicitamente a ação solicitada. Ids fracos e
+     descrições localizadas continuam servindo apenas para observação.
+   - Sob uma cortina opaca e consumidora de toque, a neutralização substitui a
+     URL na própria aba bloqueada e a envia somente após certificar a escrita
+     e um método de envio disponível no mesmo campo/janela. A cortina
+     só é liberada depois de um evento posterior confirmar uma raiz segura do
+     Google.
+   - Se a primeira tentativa coincidir com uma animação/foco transitório do
+     editor, o FocusGuard restaura a superfície bloqueada exata e tenta uma vez
+     de novo com uma política de capacidade nova. A repetição nunca reutiliza
+     handles de nós de acessibilidade antigos.
+   - O fluxo de site não fecha guia, não fecha navegador, não abre um segundo
+     documento por `ACTION_VIEW` e não evacua para HOME. Em Android 8 a 10
+     (API 26–29), ignora somente o método `ACTION_IME_ENTER` indisponível e tenta
+     a ação de envio anunciada pelo editor e o botão nativo certificado.
+     Se nenhum método aplicável comprovar o destino, mantém a proteção.
 
 ## Regras de domínio
 
@@ -98,19 +98,17 @@ Device Owner, Chrome e Edge recebem a camada preventiva adicional por
 `URLBlocklist`.
 
 A neutralização rápida também é adaptativa: interfaces proprietárias que não
-publiquem os ids e as ações esperados falham de modo fechado e são evacuadas para
-HOME. O Android não oferece uma API pública universal para fechar a guia atual
-ou remover de forma portátil a tarefa do navegador da tela de Recentes. Assim,
-o FocusGuard não promete manipular menus proprietários nem apagar a tarefa de
-Recentes; promete não tocar uma guia ambígua e não liberar a cortina sobre uma
-superfície ainda não confirmada.
+publiquem um editor certificável simplesmente não recebem automação destrutiva. O
+Android não oferece uma API pública universal para fechar a guia atual, escolher a
+aba exata ou remover de forma portátil a tarefa do navegador da tela de Recentes.
+Por isso o FocusGuard prefere preservar navegador e abas, falha fechado diante de
+campos ambíguos e só confirma o redirecionamento quando a própria superfície
+acessível prova que a raiz segura foi carregada.
 
-Isso também explica cartões como os exibidos no seletor de abas e na tela de
-Recentes: quando o navegador publica a ação exata, o FocusGuard confirma que a
-guia bloqueada desapareceu antes de prosseguir. Se a interface não publicar essa
-capacidade, o Android não permite apagá-la de maneira universal; nesse caso a
-página fica coberta durante a evacuação, mas uma miniatura antiga ainda pode ser
-mantida pelo próprio navegador ou pelo sistema.
+Cartões exibidos no seletor de abas e na tela de Recentes continuam sob controle do
+navegador/sistema. O FocusGuard não tenta apagá-los por menus proprietários e não
+usa fechamento de aba como substituto de redirecionamento; essa escolha evita
+destruir uma aba sobrevivente quando a árvore de acessibilidade é incompleta.
 
 O DNS familiar impede a resolução dos domínios adultos classificados em todos
 os navegadores, mas DNS enxerga apenas o host. Ele não consegue ler a consulta
@@ -139,10 +137,13 @@ Com uma sessão ativa bloqueando `example.com`, validar:
 - Google Imagens com uma consulta segura, que também deve ser bloqueada;
 - Chrome, Firefox, Brave, Samsung Internet e ao menos outro navegador instalado;
 - Via e qualquer navegador adicional configurado como handler HTTPS;
-- Android API 26, 29 e 30 ou superior, incluindo o fallback HOME nas APIs 26–29;
-- várias abas abertas, duas abas com a mesma URL e menu de abas já visível;
-- confirmação de que um clique de fechar recusado ou inconclusivo não altera a
-  aba sobrevivente;
+- Android API 26, 29 e 30 ou superior, confirmando que APIs 26–29 não
+  fecham o navegador nem usam HOME para simular uma submissão inexistente;
+- várias abas abertas e duas abas com a mesma URL, confirmando que nenhuma aba
+  nova é criada e nenhuma aba existente é fechada pelo redirecionamento;
+- um navegador HTTPS adicional cujo editor use id nativo desconhecido, mas
+  exponha `textUri`, `ACTION_SET_TEXT` e `ACTION_IME_ENTER`, além de um campo
+  de página semelhante para validar que o fallback semântico não o toca;
 - uma busca web comum como `Essex Inglaterra`, que deve permanecer liberada;
 - fim da sessão e remoção imediata da política;
 - reinício do aparelho durante uma sessão ativa.
@@ -161,3 +162,39 @@ Com uma sessão ativa bloqueando `example.com`, validar:
 - [Política URLBlocklist do Microsoft Edge](https://learn.microsoft.com/pt-br/deployedge/microsoft-edge-policies/urlblocklist)
 - [Política InPrivate do Microsoft Edge](https://learn.microsoft.com/pt-br/deployedge/microsoft-edge-policies/inprivatemodeavailability)
 - [Filtros DNS gratuitos do CleanBrowsing](https://cleanbrowsing.org/filters)
+
+
+## Navegadores sem URL observável (fail-closed)
+
+Quando uma proteção de site ou um limite rígido exige conhecer a URL atual, o FocusGuard primeiro classifica a janela atual. Somente conteúdo web confirmado sem uma barra observável inicia a tolerância de 1,5 segundo. Ao terminar esse prazo, executa recuperação com releituras, clique/foco em barra certificada e uma tentativa de rolar o viewport web para trás para revelar a barra recolhida. Há no máximo duas passagens, com nova leitura após cada ação. Só após esgotar as fases aplicáveis uma nova leitura pode confirmar conteúdo web sem barra no mesmo pacote/janela e exibir a proteção. Uma URL identificada que corresponda a uma regra continua sendo bloqueada imediatamente, sem aguardar esse prazo.
+
+Menus, configurações, seletor de abas, favoritos, histórico, downloads e nova aba são interfaces do navegador, não evidência de site bloqueado. A classificação usa estrutura nativa fora dos contêineres web e não reutiliza uma exceção global de outro menu, aba ou navegador. Janela de teclado, diálogo do sistema, árvore ausente ou incompleta são estados inconclusivos: isoladamente não autorizam bloquear o navegador inteiro. Eventos posteriores retomam a identificação.
+
+A busca semântica não percorre documentos WebView/ContentView/GeckoView. Mesmo nas buscas diretas por id, um nó dentro de conteúdo web não pode ser usado como barra de endereço, editor ou botão de envio. Isso também evita consumir todo o limite de busca no conteúdo de uma página antes de encontrar a barra nativa.
+
+Chrome, Samsung Internet, Via (pacotes `mark.via` e `mark.via.gp`) e variantes Yandex têm ativação por clique como primeira tentativa quando não existe preferência aprendida. Os ids de omnibox Yandex e rótulos de endereço em campos nativos URI também participam da seleção. O app continua exigindo ações anunciadas pelo editor e confirmação posterior do destino; reconhecer o pacote não comprova suporte universal a redirecionamento. A disponibilidade real depende da versão do navegador e da árvore que ele publica à acessibilidade.
+
+O mesmo princípio vale para a neutralização de uma página já identificada como bloqueada: se a reescrita na mesma aba ou a confirmação do destino seguro não puder ser certificada, o FocusGuard mantém o fluxo fail-closed e mostra a superfície de bloqueio; ele não devolve a página bloqueada ao usuário.
+
+
+## Compatibilidade com DuckDuckGo Android
+
+O DuckDuckGo Android usa o pacote `com.duckduckgo.mobile.android` e, conforme a geração da interface, pode expor a barra como `omnibarTextInput` ou como o campo nativo `inputField`. O FocusGuard trata `omnibarTextInput` como uma barra que pode exigir `ACTION_CLICK` antes de aceitar `ACTION_SET_TEXT`. O id genérico `inputField` só é autorizado para automação no pacote oficial do DuckDuckGo e apenas quando o próprio nó se identifica semanticamente como campo de endereço (por exemplo, `Search or enter address` / `Pesquisar ou inserir endereço`); campos de Duck.ai com o mesmo id continuam rejeitados.
+
+Se a neutralização na mesma aba ainda falhar, o handoff fail-closed reutiliza a geração da cortina já visível. Isso evita destacar/desanexar e recriar a cortina durante a falha, reduzindo o efeito de tela de bloqueio piscando enquanto a superfície genérica segura assume o primeiro plano.
+
+
+## Registro desta correção
+
+Revisão estática do código, sem execução de testes, build ou validação em aparelho, conforme solicitado. A classificação distingue evidência nativa, conteúdo web e estado inconclusivo; ela não promete inspecionar superfícies que o navegador não expõe ao Android.
+
+
+## Memória do método de URL e recuperação
+
+O método de leitura, o id nativo que forneceu uma URL válida e a estratégia de recuperação que funcionou ficam persistidos por pacote do navegador. O próximo acesso prioriza essa identificação; se ela falhar, a busca completa continua na mesma leitura e aprende a alternativa bem-sucedida. Interfaces sem URL, hints, menus e ações aceitas sem resultado não comprovam identificação de URL. O endereço visitado não é salvo no perfil.
+
+A preferência de leitura é separada dos ids e métodos usados para editar a barra, evitando que um editor temporário substitua a identificação do endereço exibido. Se uma atualização mudar a interface, o perfil pode reaprender sem impedir o fallback. A recuperação tenta o método anteriormente bem-sucedido antes das outras ações, sempre na janela atual; não fecha abas, não usa Back e não digita URLs durante a identificação.
+
+No redirecionamento, aceitar um clique/foco sem produzir editor não encerra a busca: a ativação alternativa continua disponível. A substituição por texto e a colagem são tentadas em ordem aprendida, e a colagem exige seleção do texto antes de substituir. Uma nova leitura confirma o endereço seguro antes de permitir o envio. A ação IME (quando disponível), a ação anunciada pelo editor e o botão nativo são tentados com raízes novas; uma ação de envio aceita que não navegar permite tentar a seguinte apenas se o editor ainda contiver o endereço seguro.
+
+A confirmação requer evento posterior ao envio, endereço seguro numa superfície web atual e ausência de editor de endereço focado. Só então o perfil recebe confirmação de redirecionamento e a cortina pode ser liberada. Ambiguidade de alvo, mudança de janela ou ausência de ações certificáveis interrompem a automação; não são motivo para clicar em controles arbitrários.

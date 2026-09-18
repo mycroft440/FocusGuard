@@ -3,6 +3,10 @@ package com.focusguard.receiver
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
+import com.focusguard.accessibility.website.compatibility.BrowserDetector
+import com.focusguard.focusmode.FocusModeManager
+import com.focusguard.focusmode.FocusModeStore
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.CoroutineScope
@@ -20,10 +24,18 @@ class PackageChangeReceiver : BroadcastReceiver() {
         val changedPackage = intent.data?.schemeSpecificPart.orEmpty()
         if (changedPackage.isBlank() || changedPackage == context.packageName) return
 
+        BrowserDetector.invalidate(changedPackage)
+        BrowserCompatibilityStore.invalidatePackageMetadata(changedPackage)
+
         val pending = goAsync()
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             try {
-                BlockingSessionManager.getInstance(context.applicationContext).checkAndEnforce()
+                val appContext = context.applicationContext
+                if (FocusModeStore.readSession(appContext) != null) {
+                    FocusModeManager.getInstance(appContext).ensureEnforced()
+                } else {
+                    BlockingSessionManager.getInstance(appContext).checkAndEnforce()
+                }
             } catch (error: Exception) {
                 FocusGuardLogger.logError(
                     "PackageChangeReceiver",

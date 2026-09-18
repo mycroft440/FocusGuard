@@ -1,6 +1,8 @@
 package com.focusguard.security
 
 import com.focusguard.database.AppUsageLimit
+import com.focusguard.database.BlockSession
+import com.focusguard.security.MasterCredentialPolicy.ConfigurationGate
 import com.focusguard.security.MasterCredentialPolicy.CreationGate
 import com.focusguard.security.MasterCredentialPolicy.MutationGate
 import com.focusguard.security.MasterCredentialPolicy.UninstallGate
@@ -10,21 +12,97 @@ import org.junit.Test
 class MasterCredentialPolicyTest {
 
     @Test
-    fun `password block does not require master credential to be created`() {
-        assertThat(
-            MasterCredentialPolicy.evaluateCreation("PASSWORD", hasMasterCredential = false)
-        ).isEqualTo(CreationGate.ALLOWED)
-        assertThat(MasterCredentialPolicy.requiresMasterCredentialToCreate("PASSWORD")).isFalse()
-    }
-
-    @Test
-    fun `no session type uses master credential as a creation gate`() {
+    fun `block creation never requires master credential`() {
         listOf("PASSWORD", "TIME", "POMODORO", "SOMETHING_ELSE").forEach { type ->
             assertThat(MasterCredentialPolicy.requiresMasterCredentialToCreate(type)).isFalse()
             assertThat(
                 MasterCredentialPolicy.evaluateCreation(type, hasMasterCredential = false)
             ).isEqualTo(CreationGate.ALLOWED)
         }
+    }
+
+    @Test
+    fun `master credential can be configured before protected blocks exist`() {
+        assertThat(
+            MasterCredentialPolicy.evaluateCredentialConfiguration(
+                activeSessions = emptyList(),
+                hasActiveUsageLimit = false,
+                nowMillis = 1_000L
+            )
+        ).isEqualTo(ConfigurationGate.ALLOWED)
+    }
+
+    @Test
+    fun `password and pomodoro sessions do not block master credential configuration`() {
+        val sessions = listOf(
+            BlockSession(sessionType = "PASSWORD", endTime = null),
+            BlockSession(sessionType = "POMODORO", endTime = 2_000L)
+        )
+
+        assertThat(
+            MasterCredentialPolicy.evaluateCredentialConfiguration(
+                activeSessions = sessions,
+                hasActiveUsageLimit = false,
+                nowMillis = 1_000L
+            )
+        ).isEqualTo(ConfigurationGate.ALLOWED)
+    }
+
+    @Test
+    fun `active time session blocks master credential configuration`() {
+        val session = BlockSession(
+            sessionType = "TIME",
+            endTime = 2_000L,
+            isActive = true
+        )
+
+        assertThat(
+            MasterCredentialPolicy.evaluateCredentialConfiguration(
+                activeSessions = listOf(session),
+                hasActiveUsageLimit = false,
+                nowMillis = 1_000L
+            )
+        ).isEqualTo(ConfigurationGate.BLOCKED_BY_TIME_BLOCK)
+    }
+
+    @Test
+    fun `expired or inactive time session does not block master credential configuration`() {
+        val sessions = listOf(
+            BlockSession(sessionType = "TIME", endTime = 500L, isActive = true),
+            BlockSession(sessionType = "TIME", endTime = 2_000L, isActive = false)
+        )
+
+        assertThat(
+            MasterCredentialPolicy.evaluateCredentialConfiguration(
+                activeSessions = sessions,
+                hasActiveUsageLimit = false,
+                nowMillis = 1_000L
+            )
+        ).isEqualTo(ConfigurationGate.ALLOWED)
+    }
+
+    @Test
+    fun `enabled usage limit blocks master credential configuration`() {
+        assertThat(
+            MasterCredentialPolicy.evaluateCredentialConfiguration(
+                activeSessions = listOf(BlockSession(sessionType = "PASSWORD")),
+                hasActiveUsageLimit = true,
+                nowMillis = 1_000L
+            )
+        ).isEqualTo(ConfigurationGate.BLOCKED_BY_USAGE_LIMIT)
+    }
+
+    @Test
+    fun `time block takes precedence when time and usage limit are both active`() {
+        assertThat(
+            MasterCredentialPolicy.evaluateCredentialConfiguration(
+                activeSessions = listOf(
+                    BlockSession(sessionType = "TIME", endTime = null, isActive = true)
+                ),
+                hasActiveUsageLimit = true,
+                nowMillis = 1_000L
+            )
+        ).isEqualTo(ConfigurationGate.BLOCKED_BY_TIME_BLOCK)
     }
 
     @Test
@@ -55,16 +133,18 @@ class MasterCredentialPolicyTest {
     }
 
     @Test
-    fun `password limit mutation never asks for master credential`() {
-        assertThat(
-            MasterCredentialPolicy.evaluateLimitMutation(
-                lockMode = "PASSWORD",
-                lockUntilTimestamp = null,
-                safetyModeEnabled = false,
-                hasMasterCredential = false,
-                masterCredentialVerified = false
-            )
-        ).isEqualTo(MutationGate.ALLOWED)
+    fun `usage limit mutation never requires master credential`() {
+        listOf("NONE", "PASSWORD").forEach { lockMode ->
+            assertThat(
+                MasterCredentialPolicy.evaluateLimitMutation(
+                    lockMode = lockMode,
+                    lockUntilTimestamp = null,
+                    safetyModeEnabled = false,
+                    hasMasterCredential = false,
+                    masterCredentialVerified = false
+                )
+            ).isEqualTo(MutationGate.ALLOWED)
+        }
     }
 
     @Test
@@ -82,7 +162,7 @@ class MasterCredentialPolicyTest {
     }
 
     @Test
-    fun `limit row overload preserves hardening only`() {
+    fun `limit row overload preserves time hardening precedence`() {
         val limit = AppUsageLimit(
             packageName = "com.example.app",
             appName = "Example",

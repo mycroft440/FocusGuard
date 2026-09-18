@@ -6,6 +6,13 @@ import android.os.Bundle
 import android.text.InputType
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
+import com.focusguard.accessibility.website.compatibility.BrowserActivationMethod
+import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
+import com.focusguard.accessibility.website.compatibility.BrowserIdentificationMethod
+import com.focusguard.accessibility.website.compatibility.BrowserSubmitMethod
+import com.focusguard.accessibility.website.compatibility.BrowserWriteMethod
+import com.focusguard.accessibility.website.redirection.AddressBarRedirectionActions
+import com.focusguard.accessibility.website.redirection.ClipboardPasteFallback
 import com.focusguard.data.PredefinedApps
 import com.focusguard.data.PredefinedWebsites
 import com.focusguard.security.PasswordTargetAccessGrant
@@ -30,8 +37,11 @@ import java.util.Locale
 object WebsiteBlocker {
 
     private const val TAG = "WebsiteBlocker"
-    private const val MAX_TREE_DEPTH = 12
-    private const val MAX_TREE_NODES = 256
+    // Browser toolbars can be nested below a virtualized WebView/GeckoView.
+    // Keep the walk bounded, but large enough to reach browser-owned chrome after
+    // entering those containers without turning arbitrary page text into URL evidence.
+    private const val MAX_TREE_DEPTH = 24
+    private const val MAX_TREE_NODES = 512
     private const val KEYWORD_RULE_PREFIX = "keyword:"
     private const val CATEGORY_RULE_PREFIX = "category:"
     private const val MIN_KEYWORD_LENGTH = 3
@@ -447,10 +457,19 @@ object WebsiteBlocker {
                 )
             ) return null
 
-            extractCandidateFromNode(source)
+            val candidate = extractCandidateFromNode(source)
                 ?: event.text.orEmpty().firstNotNullOfOrNull { value ->
                     extractUrlCandidate(value?.toString().orEmpty())
                 }
+            if (candidate != null) {
+                BrowserCompatibilityStore.recordIdentificationSuccess(
+                    packageName = browserPackageName,
+                    viewIdResourceName = source.viewIdResourceName,
+                    method = BrowserIdentificationMethod.EVENT_SOURCE,
+                    observedValue = candidate
+                )
+            }
+            candidate
         } catch (error: RuntimeException) {
             FocusGuardLogger.logError(TAG, "Falha ao ler URL do evento", error)
             null
@@ -474,14 +493,22 @@ object WebsiteBlocker {
                     httpsHandlerRecognized
                 )
             ) return null
-            sanitizeText(source.text?.toString().orEmpty()).takeIf(String::isNotEmpty)
+            val text = sanitizeText(source.text?.toString().orEmpty()).takeIf(String::isNotEmpty)
                 ?: event.text.orEmpty().firstNotNullOfOrNull { value ->
                     sanitizeText(value?.toString().orEmpty()).takeIf(String::isNotEmpty)
                 }
                 ?: sanitizeText(source.contentDescription?.toString().orEmpty())
                     .takeIf(String::isNotEmpty)
-                ?: sanitizeText(source.hintText?.toString().orEmpty())
-                    .takeIf(String::isNotEmpty)
+
+            if (text != null) {
+                BrowserCompatibilityStore.recordIdentificationSuccess(
+                    packageName = browserPackageName,
+                    viewIdResourceName = source.viewIdResourceName,
+                    method = BrowserIdentificationMethod.EVENT_SOURCE,
+                    observedValue = text
+                )
+            }
+            text
         } catch (error: RuntimeException) {
             FocusGuardLogger.logError(TAG, "Falha ao ler texto da barra de endereço", error)
             null
@@ -512,43 +539,7 @@ object WebsiteBlocker {
         httpsHandlerRecognized: Boolean = false
     ): String? {
         if (root == null || browserPackageName.isBlank()) return null
-
-        strongAddressBarEntryNames.forEach { entryName ->
-            val fullId = "$browserPackageName:id/$entryName"
-            val nodes = runCatching { root.findAccessibilityNodeInfosByViewId(fullId) }
-                .getOrNull()
-                .orEmpty()
-            try {
-                nodes.forEach { node ->
-                    if (isAddressBarNode(
-                            node,
-                            browserPackageName,
-                            root.windowId,
-                            httpsHandlerRecognized
-                        )
-                    ) {
-                        extractCandidateFromNode(node)?.let { return it }
-                    }
-                }
-            } finally {
-                nodes.forEach(::recycleSafely)
-            }
-        }
-
-        val startedAt = System.currentTimeMillis()
-        val result = findAddressBarValue(
-            root,
-            browserPackageName,
-            root.windowId,
-            httpsHandlerRecognized,
-            0,
-            intArrayOf(0)
-        )
-        val elapsed = System.currentTimeMillis() - startedAt
-        if (elapsed > 50L) {
-            FocusGuardLogger.log(TAG, "Busca da barra de URL demorou ${elapsed}ms")
-        }
-        return result
+        return inspectAddressBarRoot(root, browserPackageName, httpsHandlerRecognized).url
     }
 
     fun hasAddressBarNode(
@@ -557,14 +548,13 @@ object WebsiteBlocker {
         httpsHandlerRecognized: Boolean = false
     ): Boolean {
         if (root == null || browserPackageName.isBlank()) return false
-        return findAddressBarNode(
-            root,
-            browserPackageName,
-            root.windowId,
-            httpsHandlerRecognized,
-            0,
-            intArrayOf(0)
-        )
+        val inspection = inspectAddressBarRoot(root, browserPackageName, httpsHandlerRecognized)
+        if (inspection.isCurrent() && !inspection.addressBarObservable &&
+            inspection.surface == BrowserSurfaceInspector.Surface.WEB_CONTENT
+        ) {
+            BrowserCompatibilityStore.recordUnobservableFailure(browserPackageName)
+        }
+        return inspection.addressBarObservable
     }
 
     fun extractAddressBarTextFromRoot(
@@ -573,37 +563,170 @@ object WebsiteBlocker {
         httpsHandlerRecognized: Boolean = false
     ): String? {
         if (root == null || browserPackageName.isBlank()) return null
+        return inspectAddressBarRoot(root, browserPackageName, httpsHandlerRecognized).addressText
+    }
 
-        strongAddressBarEntryNames.forEach { entryName ->
-            val fullId = "$browserPackageName:id/$entryName"
-            val nodes = runCatching { root.findAccessibilityNodeInfosByViewId(fullId) }
-                .getOrNull()
-                .orEmpty()
+    private fun inspectAddressBarRoot(
+        root: AccessibilityNodeInfo,
+        browserPackageName: String,
+        httpsHandlerRecognized: Boolean
+    ): BrowserInspectionSession {
+        val session = BrowserInspectionSessionStore.sessionFor(root, browserPackageName)
+        if (session.addressComplete &&
+            (!httpsHandlerRecognized || session.addressHttpsHandlerRecognized)
+        ) {
+            return session
+        }
+
+        if (session.addressComplete) {
+            session.addressComplete = false
+            session.url = null
+            session.addressText = null
+            session.addressBarObservable = false
+            session.focusedAddressEditor = false
+        }
+        session.addressHttpsHandlerRecognized = httpsHandlerRecognized
+
+        val expectedWindowId = runCatching { root.windowId }.getOrDefault(-1)
+        if (browserPackageName.isBlank() || expectedWindowId < 0 ||
+            root.packageName?.toString() != browserPackageName
+        ) {
+            session.addressComplete = true
+            if (session.surface == null) {
+                session.surface = BrowserSurfaceInspector.inspect(root, browserPackageName)
+            }
+            return session
+        }
+
+        val budget = session.budget
+        val directEntries = buildList {
+            addAll(addressBarEntryNamesFor(browserPackageName))
+            if (httpsHandlerRecognized) {
+                BrowserUiCapabilityPolicy.weakReadOnlyAddressBarEntryNames.forEach { entry ->
+                    if (entry !in this) add(entry)
+                }
+            }
+        }
+
+        fun recordEvidence(
+            node: AccessibilityNodeInfo,
+            method: BrowserIdentificationMethod
+        ) {
+            val text = extractTextFromNode(node)
+            val candidate = extractCandidateFromNode(node)
+            session.addressBarObservable = true
+            session.strongAddressBarObserved = session.strongAddressBarObserved ||
+                BrowserUiCapabilityPolicy.isStrongAddressBarResource(
+                    node.viewIdResourceName.orEmpty(), browserPackageName
+                )
+            session.focusedAddressEditor = session.focusedAddressEditor ||
+                (node.isEditable && node.isFocused &&
+                    BrowserUiCapabilityPolicy.isActionableAddressBarNode(
+                        node.toBrowserUiNode(inspectionBudget = budget), browserPackageName, expectedWindowId,
+                        httpsHandlerRecognized
+                    ))
+            if (session.addressText == null) session.addressText = text
+            if (session.url == null) session.url = candidate
+            session.identificationMethod = method
+            if (session.isCurrent()) BrowserCompatibilityStore.recordIdentificationSuccess(
+                packageName = browserPackageName,
+                viewIdResourceName = node.viewIdResourceName,
+                method = method,
+                observedValue = candidate ?: text
+            )
+        }
+
+        for (entryName in directEntries) {
+            if (!budget.tryIdQuery()) break
+            val nodes = runCatching {
+                root.findAccessibilityNodeInfosByViewId("$browserPackageName:id/$entryName")
+            }.getOrDefault(emptyList())
             try {
                 nodes.forEach { node ->
-                    if (isAddressBarNode(
-                            node,
-                            browserPackageName,
-                            root.windowId,
-                            httpsHandlerRecognized
+                    if (!budget.isExhausted &&
+                        isAddressBarNode(
+                            node = node,
+                            browserPackageName = browserPackageName,
+                            expectedWindowId = expectedWindowId,
+                            httpsHandlerRecognized = httpsHandlerRecognized,
+                            inspectionBudget = budget
                         )
                     ) {
-                        extractTextFromNode(node)?.let { return it }
+                        recordEvidence(
+                            node,
+                            identificationMethodFor(browserPackageName, entryName)
+                        )
                     }
                 }
             } finally {
                 nodes.forEach(::recycleSafely)
             }
+            if (session.addressBarObservable &&
+                (session.url != null || session.addressText != null)
+            ) break
         }
 
-        return findAddressBarText(
-            root,
-            browserPackageName,
-            root.windowId,
-            httpsHandlerRecognized,
-            0,
-            intArrayOf(0)
-        )
+        if ((!session.addressBarObservable ||
+                (session.url == null && session.addressText == null)) &&
+            !budget.isExhausted
+        ) {
+            var foundSemanticAddressBar = false
+
+            fun visit(node: AccessibilityNodeInfo, depth: Int) {
+                if (foundSemanticAddressBar || !budget.tryVisitNode(depth, MAX_TREE_DEPTH)) return
+                if (!node.isVisibleToUser ||
+                    node.packageName?.toString() != browserPackageName ||
+                    node.windowId != expectedWindowId ||
+                    BrowserSurfaceInspector.isWebContainer(node)
+                ) return
+
+                val variation = node.inputType and InputType.TYPE_MASK_VARIATION
+                val facts = node.toBrowserUiNode(
+                    uriInput = variation == InputType.TYPE_TEXT_VARIATION_URI,
+                    inWebContentOverride = false,
+                    inspectionBudget = budget
+                )
+                if (BrowserUiCapabilityPolicy.isReadOnlyAddressBarNode(
+                        node = facts,
+                        expectedBrowserPackage = browserPackageName,
+                        expectedWindowId = expectedWindowId,
+                        httpsHandlerRecognized = httpsHandlerRecognized
+                    )
+                ) {
+                    recordEvidence(node, BrowserIdentificationMethod.SEMANTIC_TREE)
+                    foundSemanticAddressBar = true
+                    return
+                }
+
+                for (index in 0 until node.childCount) {
+                    if (foundSemanticAddressBar || !budget.tryChildQuery()) break
+                    val child = node.getChild(index) ?: continue
+                    try {
+                        visit(child, depth + 1)
+                    } finally {
+                        recycleSafely(child)
+                    }
+                }
+            }
+
+            runCatching { visit(root, 0) }
+                .onFailure { error ->
+                    if (error is RuntimeException) {
+                        FocusGuardLogger.logError(
+                            TAG,
+                            "Falha na inspeção consolidada da barra de endereço",
+                            error
+                        )
+                    }
+                }
+        }
+
+        session.addressComplete = true
+        if (session.surface == null) {
+            session.surface = BrowserSurfaceInspector.inspect(root, browserPackageName)
+        }
+        BrowserInspectionSessionStore.logIfNeeded(session, "address")
+        return session
     }
 
     fun isPornographySearchInput(text: String): Boolean {
@@ -682,11 +805,10 @@ object WebsiteBlocker {
     private fun extractCandidateFromNode(node: AccessibilityNodeInfo): String? {
         return extractUrlCandidate(node.text?.toString().orEmpty())
             ?: extractUrlCandidate(node.contentDescription?.toString().orEmpty())
-            ?: extractUrlCandidate(node.hintText?.toString().orEmpty())
     }
 
     private fun extractTextFromNode(node: AccessibilityNodeInfo): String? {
-        return sequenceOf(node.text, node.contentDescription, node.hintText)
+        return sequenceOf(node.text, node.contentDescription)
             .map { value -> sanitizeText(value?.toString().orEmpty()) }
             .firstOrNull(String::isNotEmpty)
     }
@@ -703,19 +825,81 @@ object WebsiteBlocker {
         expectedWindowId: Int,
         requiredAction: BrowserUiCapabilityPolicy.NodeAction,
         arguments: Bundle? = null,
-        textPredicate: ((String?) -> Boolean)? = null
+        textPredicate: ((String?) -> Boolean)? = null,
+        httpsHandlerRecognized: Boolean = false,
+        allowFallbacks: Boolean = true,
+        isCurrent: () -> Boolean
     ): AddressBarActionResult {
+        if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
         if (root.packageName?.toString() != browserPackageName ||
             root.windowId != expectedWindowId
         ) return AddressBarActionResult(AddressBarActionStatus.NOT_FOUND)
 
+        if (allowFallbacks && requiredAction == BrowserUiCapabilityPolicy.NodeAction.SET_TEXT &&
+            BrowserCompatibilityStore.preferredWriteMethod(browserPackageName) ==
+            BrowserWriteMethod.PASTE
+        ) {
+            val cachedPaste = attemptPasteFallback(
+                root = root,
+                browserPackageName = browserPackageName,
+                expectedWindowId = expectedWindowId,
+                arguments = arguments,
+                httpsHandlerRecognized = httpsHandlerRecognized,
+                isCurrent = isCurrent
+            )
+            if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+            if (cachedPaste.accepted || cachedPaste.status == AddressBarActionStatus.AMBIGUOUS) {
+                return cachedPaste
+            }
+        }
+        if (allowFallbacks && requiredAction == BrowserUiCapabilityPolicy.NodeAction.IME_ENTER) {
+            val cachedSubmit = attemptCachedSubmitFallback(
+                root = root,
+                browserPackageName = browserPackageName,
+                expectedWindowId = expectedWindowId,
+                textPredicate = textPredicate,
+                httpsHandlerRecognized = httpsHandlerRecognized,
+                isCurrent = isCurrent
+            )
+            if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+            if (cachedSubmit?.accepted == true ||
+                cachedSubmit?.status == AddressBarActionStatus.AMBIGUOUS
+            ) {
+                return cachedSubmit
+            }
+        }
+
         val nodes = mutableListOf<AccessibilityNodeInfo>()
-        strongAddressBarEntryNames.forEach { entryName ->
+        addressBarEntryNamesFor(browserPackageName).forEach { entryName ->
             val expectedId = "$browserPackageName:id/$entryName"
             val matches = runCatching {
                 root.findAccessibilityNodeInfosByViewId(expectedId)
             }.getOrDefault(emptyList())
-            nodes += matches
+            matches.forEach { candidate ->
+                if (!retainDistinctActionNode(nodes, candidate)) recycleSafely(candidate)
+            }
+        }
+        // Some browsers expose a genuine native toolbar below their web container,
+        // while findAccessibilityNodeInfosByViewId() does not return that descendant.
+        // Traverse through the container only for exact strong browser resources.
+        // Semantic page fields never enter this action candidate list.
+        collectStrongActionAddressBarNodes(
+            node = root,
+            browserPackageName = browserPackageName,
+            expectedWindowId = expectedWindowId,
+            output = nodes,
+            depth = 0,
+            visitedNodes = intArrayOf(0)
+        )
+        if (httpsHandlerRecognized) {
+            collectSemanticActionAddressBarNodes(
+                node = root,
+                browserPackageName = browserPackageName,
+                expectedWindowId = expectedWindowId,
+                output = nodes,
+                depth = 0,
+                visitedNodes = intArrayOf(0)
+            )
         }
         return try {
             val facts = runCatching { nodes.map { it.toBrowserUiNode() } }
@@ -727,16 +911,58 @@ object WebsiteBlocker {
                 expectedBrowserPackage = browserPackageName,
                 expectedWindowId = expectedWindowId,
                 requiredAction = requiredAction,
-                textPredicate = textPredicate
+                textPredicate = textPredicate,
+                httpsHandlerRecognized = httpsHandlerRecognized
             )
-            val selectedIndex = selection.index ?: return AddressBarActionResult(
-                status = when (selection.status) {
-                    BrowserUiCapabilityPolicy.SelectionStatus.AMBIGUOUS ->
-                        AddressBarActionStatus.AMBIGUOUS
-                    else -> AddressBarActionStatus.NOT_FOUND
+            val selectedIndex = selection.index
+            if (selectedIndex == null) {
+                if (selection.status == BrowserUiCapabilityPolicy.SelectionStatus.AMBIGUOUS) {
+                    return AddressBarActionResult(AddressBarActionStatus.AMBIGUOUS)
                 }
-            )
+                if (!allowFallbacks) return AddressBarActionResult(AddressBarActionStatus.NOT_FOUND)
+                val fallback = when (requiredAction) {
+                    BrowserUiCapabilityPolicy.NodeAction.SET_TEXT -> attemptPasteFallback(
+                        root = root,
+                        browserPackageName = browserPackageName,
+                        expectedWindowId = expectedWindowId,
+                        arguments = arguments,
+                        httpsHandlerRecognized = httpsHandlerRecognized,
+                        isCurrent = isCurrent
+                    )
+                    BrowserUiCapabilityPolicy.NodeAction.IME_ENTER -> attemptSubmitFallback(
+                        root = root,
+                        browserPackageName = browserPackageName,
+                        expectedWindowId = expectedWindowId,
+                        textPredicate = textPredicate,
+                        httpsHandlerRecognized = httpsHandlerRecognized,
+                        isCurrent = isCurrent
+                    )
+                    else -> AddressBarActionResult(AddressBarActionStatus.NOT_FOUND)
+                }
+                if (isCurrent() && !fallback.accepted &&
+                    (requiredAction == BrowserUiCapabilityPolicy.NodeAction.SET_TEXT ||
+                        requiredAction == BrowserUiCapabilityPolicy.NodeAction.IME_ENTER)
+                ) {
+                    BrowserCompatibilityStore.recordRedirectionFailure(browserPackageName)
+                }
+                return fallback
+            }
+
             val selected = nodes[selectedIndex]
+            if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+            if (allowFallbacks && requiredAction == BrowserUiCapabilityPolicy.NodeAction.SET_TEXT) {
+                val selectionResult = AddressBarRedirectionActions.selectAll(
+                    root = root,
+                    browserPackageName = browserPackageName,
+                    expectedWindowId = expectedWindowId,
+                    httpsHandlerRecognized = httpsHandlerRecognized,
+                    isCurrent = isCurrent
+                )
+                if (selectionResult.status == AddressBarRedirectionActions.Status.AMBIGUOUS) {
+                    return AddressBarActionResult(AddressBarActionStatus.AMBIGUOUS)
+                }
+            }
+
             val accepted = if (
                 requiredAction == BrowserUiCapabilityPolicy.NodeAction.FOCUS &&
                 selected.isFocused
@@ -744,27 +970,409 @@ object WebsiteBlocker {
                 true
             } else {
                 val androidAction = requiredAction.androidActionId()
-                    ?: return AddressBarActionResult(AddressBarActionStatus.REJECTED)
-                runCatching { selected.performAction(androidAction, arguments) }
-                    .getOrDefault(false)
+                if (androidAction == null) {
+                    if (!allowFallbacks) return AddressBarActionResult(AddressBarActionStatus.NOT_FOUND)
+                    val fallback = when (requiredAction) {
+                        BrowserUiCapabilityPolicy.NodeAction.IME_ENTER -> attemptSubmitFallback(
+                            root = root,
+                            browserPackageName = browserPackageName,
+                            expectedWindowId = expectedWindowId,
+                            textPredicate = textPredicate,
+                            httpsHandlerRecognized = httpsHandlerRecognized,
+                            isCurrent = isCurrent
+                        )
+                        else -> AddressBarActionResult(AddressBarActionStatus.REJECTED)
+                    }
+                    if (isCurrent() && !fallback.accepted &&
+                        requiredAction == BrowserUiCapabilityPolicy.NodeAction.IME_ENTER
+                    ) {
+                        BrowserCompatibilityStore.recordRedirectionFailure(browserPackageName)
+                    }
+                    return fallback
+                }
+                if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+                val actionAccepted = runCatching {
+                    selected.performAction(androidAction, arguments)
+                }.getOrDefault(false)
+                if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+                actionAccepted
             }
-            AddressBarActionResult(
-                status = if (accepted) {
-                    AddressBarActionStatus.ACCEPTED
-                } else {
-                    AddressBarActionStatus.REJECTED
-                },
-                selectedViewId = selected.viewIdResourceName
-            )
+
+            if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+            if (accepted) {
+                if (allowFallbacks) recordAddressBarActionSuccess(
+                    browserPackageName = browserPackageName,
+                    selectedViewId = selected.viewIdResourceName,
+                    requiredAction = requiredAction,
+                    arguments = arguments,
+                    isCurrent = isCurrent
+                )
+                return AddressBarActionResult(
+                    status = AddressBarActionStatus.ACCEPTED,
+                    selectedViewId = selected.viewIdResourceName
+                )
+            }
+
+            if (!allowFallbacks) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+            val fallback = when (requiredAction) {
+                BrowserUiCapabilityPolicy.NodeAction.SET_TEXT -> attemptPasteFallback(
+                    root = root,
+                    browserPackageName = browserPackageName,
+                    expectedWindowId = expectedWindowId,
+                    arguments = arguments,
+                    httpsHandlerRecognized = httpsHandlerRecognized,
+                    isCurrent = isCurrent
+                )
+                BrowserUiCapabilityPolicy.NodeAction.IME_ENTER -> attemptSubmitFallback(
+                    root = root,
+                    browserPackageName = browserPackageName,
+                    expectedWindowId = expectedWindowId,
+                    textPredicate = textPredicate,
+                    httpsHandlerRecognized = httpsHandlerRecognized,
+                    isCurrent = isCurrent
+                )
+                else -> AddressBarActionResult(
+                    status = AddressBarActionStatus.REJECTED,
+                    selectedViewId = selected.viewIdResourceName
+                )
+            }
+            if (isCurrent() && !fallback.accepted &&
+                (requiredAction == BrowserUiCapabilityPolicy.NodeAction.SET_TEXT ||
+                    requiredAction == BrowserUiCapabilityPolicy.NodeAction.IME_ENTER)
+            ) {
+                BrowserCompatibilityStore.recordRedirectionFailure(browserPackageName)
+            }
+            fallback
         } finally {
             nodes.forEach(::recycleSafely)
         }
     }
 
+    private fun attemptPasteFallback(
+        root: AccessibilityNodeInfo,
+        browserPackageName: String,
+        expectedWindowId: Int,
+        arguments: Bundle?,
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
+    ): AddressBarActionResult {
+        if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+        val replacement = arguments?.getCharSequence(
+            AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE
+        )?.toString()?.takeIf(String::isNotBlank)
+            ?: return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+
+        if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+        val result = ClipboardPasteFallback.pasteSafely(replacement) {
+            AddressBarRedirectionActions.paste(
+                root = root,
+                browserPackageName = browserPackageName,
+                expectedWindowId = expectedWindowId,
+                httpsHandlerRecognized = httpsHandlerRecognized,
+                isCurrent = isCurrent
+            )
+        }.toLegacyAddressBarActionResult()
+        if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+        if (result.accepted) {
+            BrowserCompatibilityStore.recordWriteSuccess(
+                packageName = browserPackageName,
+                viewIdResourceName = result.selectedViewId,
+                method = BrowserWriteMethod.PASTE,
+                replacementText = replacement
+            )
+        }
+        return result
+    }
+
+    private fun attemptCachedSubmitFallback(
+        root: AccessibilityNodeInfo,
+        browserPackageName: String,
+        expectedWindowId: Int,
+        textPredicate: ((String?) -> Boolean)?,
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
+    ): AddressBarActionResult? = when (
+        BrowserCompatibilityStore.preferredSubmitMethod(browserPackageName)
+    ) {
+        BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION -> performAnnouncedSubmit(
+            root,
+            browserPackageName,
+            expectedWindowId,
+            textPredicate,
+            httpsHandlerRecognized,
+            isCurrent
+        )
+        BrowserSubmitMethod.CERTIFIED_GO_BUTTON -> performGoButtonSubmit(
+            root,
+            browserPackageName,
+            expectedWindowId,
+            isCurrent
+        )
+        BrowserSubmitMethod.IME_ENTER,
+        null -> null
+    }
+
+    private fun attemptSubmitFallback(
+        root: AccessibilityNodeInfo,
+        browserPackageName: String,
+        expectedWindowId: Int,
+        textPredicate: ((String?) -> Boolean)?,
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
+    ): AddressBarActionResult {
+        val preferred = BrowserCompatibilityStore.preferredSubmitMethod(browserPackageName)
+        val order = when (preferred) {
+            BrowserSubmitMethod.CERTIFIED_GO_BUTTON -> listOf(
+                BrowserSubmitMethod.CERTIFIED_GO_BUTTON,
+                BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION
+            )
+            else -> listOf(
+                BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION,
+                BrowserSubmitMethod.CERTIFIED_GO_BUTTON
+            )
+        }
+        order.forEach { method ->
+            if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+            val result = when (method) {
+                BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION -> performAnnouncedSubmit(
+                    root,
+                    browserPackageName,
+                    expectedWindowId,
+                    textPredicate,
+                    httpsHandlerRecognized,
+                    isCurrent
+                )
+                BrowserSubmitMethod.CERTIFIED_GO_BUTTON -> performGoButtonSubmit(
+                    root,
+                    browserPackageName,
+                    expectedWindowId,
+                    isCurrent
+                )
+                BrowserSubmitMethod.IME_ENTER -> null
+            } ?: return@forEach
+            if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+            if (result.accepted || result.status == AddressBarActionStatus.AMBIGUOUS) {
+                return result
+            }
+        }
+        return AddressBarActionResult(AddressBarActionStatus.NOT_FOUND)
+    }
+
+    private fun performAnnouncedSubmit(
+        root: AccessibilityNodeInfo,
+        browserPackageName: String,
+        expectedWindowId: Int,
+        textPredicate: ((String?) -> Boolean)?,
+        httpsHandlerRecognized: Boolean,
+        isCurrent: () -> Boolean
+    ): AddressBarActionResult {
+        if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+        val announced = AddressBarRedirectionActions.submitAnnouncedEditorAction(
+            root = root,
+            browserPackageName = browserPackageName,
+            expectedWindowId = expectedWindowId,
+            textPredicate = textPredicate,
+            httpsHandlerRecognized = httpsHandlerRecognized,
+            isCurrent = isCurrent
+        ).toLegacyAddressBarActionResult()
+        if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+        if (announced.accepted) {
+            BrowserCompatibilityStore.recordSubmitAccepted(
+                packageName = browserPackageName,
+                viewIdResourceName = announced.selectedViewId,
+                method = BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION
+            )
+        }
+        return announced
+    }
+
+    private fun performGoButtonSubmit(
+        root: AccessibilityNodeInfo,
+        browserPackageName: String,
+        expectedWindowId: Int,
+        isCurrent: () -> Boolean
+    ): AddressBarActionResult {
+        if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+        val go = AddressBarRedirectionActions.clickCertifiedGoButton(
+            root = root,
+            browserPackageName = browserPackageName,
+            expectedWindowId = expectedWindowId,
+            isCurrent = isCurrent
+        ).toLegacyAddressBarActionResult()
+        if (!isCurrent()) return AddressBarActionResult(AddressBarActionStatus.REJECTED)
+        if (go.accepted) {
+            BrowserCompatibilityStore.recordSubmitAccepted(
+                packageName = browserPackageName,
+                viewIdResourceName = null,
+                method = BrowserSubmitMethod.CERTIFIED_GO_BUTTON
+            )
+        }
+        return go
+    }
+
+    private fun AddressBarRedirectionActions.Result.toLegacyAddressBarActionResult(): AddressBarActionResult =
+        AddressBarActionResult(
+            status = when (status) {
+                AddressBarRedirectionActions.Status.ACCEPTED -> AddressBarActionStatus.ACCEPTED
+                AddressBarRedirectionActions.Status.NOT_FOUND -> AddressBarActionStatus.NOT_FOUND
+                AddressBarRedirectionActions.Status.AMBIGUOUS -> AddressBarActionStatus.AMBIGUOUS
+                AddressBarRedirectionActions.Status.REJECTED -> AddressBarActionStatus.REJECTED
+            },
+            selectedViewId = selectedViewId
+        )
+
+    private fun recordAddressBarActionSuccess(
+        browserPackageName: String,
+        selectedViewId: String?,
+        requiredAction: BrowserUiCapabilityPolicy.NodeAction,
+        arguments: Bundle?,
+        isCurrent: () -> Boolean
+    ) {
+        if (!isCurrent()) return
+        when (requiredAction) {
+            BrowserUiCapabilityPolicy.NodeAction.FOCUS ->
+                BrowserCompatibilityStore.recordActivationSuccess(
+                    browserPackageName,
+                    selectedViewId,
+                    BrowserActivationMethod.FOCUS
+                )
+            BrowserUiCapabilityPolicy.NodeAction.CLICK ->
+                BrowserCompatibilityStore.recordActivationSuccess(
+                    browserPackageName,
+                    selectedViewId,
+                    BrowserActivationMethod.CLICK
+                )
+            BrowserUiCapabilityPolicy.NodeAction.SET_TEXT ->
+                BrowserCompatibilityStore.recordWriteSuccess(
+                    packageName = browserPackageName,
+                    viewIdResourceName = selectedViewId,
+                    method = BrowserWriteMethod.SET_TEXT,
+                    replacementText = arguments?.getCharSequence(
+                        AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE
+                    )?.toString()
+                )
+            BrowserUiCapabilityPolicy.NodeAction.IME_ENTER ->
+                BrowserCompatibilityStore.recordSubmitAccepted(
+                    packageName = browserPackageName,
+                    viewIdResourceName = selectedViewId,
+                    method = BrowserSubmitMethod.IME_ENTER
+                )
+            BrowserUiCapabilityPolicy.NodeAction.LONG_CLICK -> Unit
+        }
+    }
+
+    private fun collectStrongActionAddressBarNodes(
+        node: AccessibilityNodeInfo,
+        browserPackageName: String,
+        expectedWindowId: Int,
+        output: MutableList<AccessibilityNodeInfo>,
+        depth: Int,
+        visitedNodes: IntArray
+    ) {
+        if (depth > MAX_TREE_DEPTH || visitedNodes[0] >= MAX_TREE_NODES ||
+            !node.isVisibleToUser || node.windowId != expectedWindowId
+        ) return
+        visitedNodes[0] += 1
+
+        val belongsToBrowser = node.packageName?.toString() == browserPackageName
+        if (belongsToBrowser && BrowserUiCapabilityPolicy.isStrongAddressBarResource(
+                node.viewIdResourceName.orEmpty(),
+                browserPackageName
+            )
+        ) {
+            if (output.none { existing -> existing == node }) {
+                @Suppress("DEPRECATION")
+                output += AccessibilityNodeInfo.obtain(node)
+            }
+            return
+        }
+
+        for (index in 0 until node.childCount) {
+            if (visitedNodes[0] >= MAX_TREE_NODES) break
+            val child = node.getChild(index) ?: continue
+            try {
+                collectStrongActionAddressBarNodes(
+                    node = child,
+                    browserPackageName = browserPackageName,
+                    expectedWindowId = expectedWindowId,
+                    output = output,
+                    depth = depth + 1,
+                    visitedNodes = visitedNodes
+                )
+            } finally {
+                recycleSafely(child)
+            }
+        }
+    }
+
+    private fun collectSemanticActionAddressBarNodes(
+        node: AccessibilityNodeInfo,
+        browserPackageName: String,
+        expectedWindowId: Int,
+        output: MutableList<AccessibilityNodeInfo>,
+        depth: Int,
+        visitedNodes: IntArray
+    ) {
+        if (depth >= MAX_TREE_DEPTH || visitedNodes[0] >= MAX_TREE_NODES ||
+            BrowserSurfaceInspector.isWebContainer(node)
+        ) return
+        for (index in 0 until node.childCount) {
+            if (visitedNodes[0] >= MAX_TREE_NODES) return
+            val child = node.getChild(index) ?: continue
+            var retained = false
+            try {
+                visitedNodes[0] += 1
+                val facts = runCatching { child.toBrowserUiNode() }.getOrNull()
+                val semanticCandidate = facts != null &&
+                    !BrowserUiCapabilityPolicy.isStrongAddressBarResource(
+                        facts.viewIdResourceName,
+                        browserPackageName
+                    ) &&
+                    BrowserUiCapabilityPolicy.isSemanticActionableAddressBarNode(
+                        node = facts,
+                        expectedBrowserPackage = browserPackageName,
+                        expectedWindowId = expectedWindowId,
+                        httpsHandlerRecognized = true
+                    )
+                if (semanticCandidate) {
+                    retained = retainDistinctActionNode(output, child)
+                } else {
+                    collectSemanticActionAddressBarNodes(
+                        node = child,
+                        browserPackageName = browserPackageName,
+                        expectedWindowId = expectedWindowId,
+                        output = output,
+                        depth = depth + 1,
+                        visitedNodes = visitedNodes
+                    )
+                }
+            } catch (error: RuntimeException) {
+                FocusGuardLogger.logError(
+                    TAG,
+                    "Falha ao procurar campo URI acionável do navegador",
+                    error
+                )
+            } finally {
+                if (!retained) recycleSafely(child)
+            }
+        }
+    }
+
+    private fun retainDistinctActionNode(
+        output: MutableList<AccessibilityNodeInfo>,
+        candidate: AccessibilityNodeInfo
+    ): Boolean {
+        if (output.any { existing -> existing == candidate }) return false
+        output += candidate
+        return true
+    }
+
     private fun AccessibilityNodeInfo.toBrowserUiNode(
         uriInput: Boolean =
             (inputType and InputType.TYPE_MASK_VARIATION) ==
-                InputType.TYPE_TEXT_VARIATION_URI
+                InputType.TYPE_TEXT_VARIATION_URI,
+        inWebContentOverride: Boolean? = null,
+        inspectionBudget: BrowserInspectionBudget? = null
     ): BrowserUiCapabilityPolicy.Node = BrowserUiCapabilityPolicy.Node(
         packageName = packageName?.toString().orEmpty(),
         windowId = windowId,
@@ -791,7 +1399,10 @@ object WebsiteBlocker {
                     BrowserUiCapabilityPolicy.NodeAction.CLICK
                 else -> null
             }
-        }.toSet()
+        }.toSet(),
+        hintText = hintText?.toString(),
+        inWebContent = inWebContentOverride
+            ?: !BrowserSurfaceInspector.isNativeNode(this, inspectionBudget)
     )
 
     private fun BrowserUiCapabilityPolicy.NodeAction.androidActionId(): Int? = when (this) {
@@ -815,10 +1426,10 @@ object WebsiteBlocker {
         httpsHandlerRecognized: Boolean,
         depth: Int,
         visitedNodes: IntArray
-    ): Boolean {
-        if (node == null || depth > MAX_TREE_DEPTH) return false
+    ): String? {
+        if (node == null || depth > MAX_TREE_DEPTH) return null
         visitedNodes[0] += 1
-        if (visitedNodes[0] > MAX_TREE_NODES) return false
+        if (visitedNodes[0] > MAX_TREE_NODES) return null
         return try {
             if (isAddressBarNode(
                     node,
@@ -826,29 +1437,27 @@ object WebsiteBlocker {
                     expectedWindowId,
                     httpsHandlerRecognized
                 )
-            ) return true
+            ) return node.viewIdResourceName.orEmpty()
             for (index in 0 until node.childCount) {
+                if (visitedNodes[0] >= MAX_TREE_NODES) break
                 val child = node.getChild(index) ?: continue
                 try {
-                    if (findAddressBarNode(
-                            child,
-                            browserPackageName,
-                            expectedWindowId,
-                            httpsHandlerRecognized,
-                            depth + 1,
-                            visitedNodes
-                        )
-                    ) {
-                        return true
-                    }
+                    findAddressBarNode(
+                        child,
+                        browserPackageName,
+                        expectedWindowId,
+                        httpsHandlerRecognized,
+                        depth + 1,
+                        visitedNodes
+                    )?.let { return it }
                 } finally {
                     recycleSafely(child)
                 }
             }
-            false
+            null
         } catch (error: RuntimeException) {
             FocusGuardLogger.logError(TAG, "Falha ao localizar barra de endereço", error)
-            false
+            null
         }
     }
 
@@ -872,10 +1481,19 @@ object WebsiteBlocker {
                     httpsHandlerRecognized
                 )
             ) {
-                extractCandidateFromNode(node)?.let { return it }
+                extractCandidateFromNode(node)?.let { candidate ->
+                    BrowserCompatibilityStore.recordIdentificationSuccess(
+                        packageName = browserPackageName,
+                        viewIdResourceName = node.viewIdResourceName,
+                        method = BrowserIdentificationMethod.SEMANTIC_TREE,
+                        observedValue = candidate
+                    )
+                    return candidate
+                }
             }
 
             for (index in 0 until node.childCount) {
+                if (visitedNodes[0] >= MAX_TREE_NODES) break
                 val child = node.getChild(index) ?: continue
                 try {
                     findAddressBarValue(
@@ -917,9 +1535,18 @@ object WebsiteBlocker {
                     httpsHandlerRecognized
                 )
             ) {
-                extractTextFromNode(node)?.let { return it }
+                extractTextFromNode(node)?.let { text ->
+                    BrowserCompatibilityStore.recordIdentificationSuccess(
+                        packageName = browserPackageName,
+                        viewIdResourceName = node.viewIdResourceName,
+                        method = BrowserIdentificationMethod.SEMANTIC_TREE,
+                        observedValue = text
+                    )
+                    return text
+                }
             }
             for (index in 0 until node.childCount) {
+                if (visitedNodes[0] >= MAX_TREE_NODES) break
                 val child = node.getChild(index) ?: continue
                 try {
                     findAddressBarText(
@@ -945,17 +1572,35 @@ object WebsiteBlocker {
         node: AccessibilityNodeInfo,
         browserPackageName: String,
         expectedWindowId: Int,
-        httpsHandlerRecognized: Boolean
+        httpsHandlerRecognized: Boolean,
+        inspectionBudget: BrowserInspectionBudget? = null
     ): Boolean {
         val variation = node.inputType and InputType.TYPE_MASK_VARIATION
         return BrowserUiCapabilityPolicy.isReadOnlyAddressBarNode(
             node = node.toBrowserUiNode(
-                uriInput = variation == InputType.TYPE_TEXT_VARIATION_URI
+                uriInput = variation == InputType.TYPE_TEXT_VARIATION_URI,
+                inspectionBudget = inspectionBudget
             ),
             expectedBrowserPackage = browserPackageName,
             expectedWindowId = expectedWindowId,
             httpsHandlerRecognized = httpsHandlerRecognized
         )
+    }
+
+    private fun addressBarEntryNamesFor(browserPackageName: String): List<String> =
+        BrowserCompatibilityStore.prioritizeAddressBarEntryNames(
+            packageName = browserPackageName,
+            defaults = strongAddressBarEntryNames
+        )
+
+    private fun identificationMethodFor(
+        browserPackageName: String,
+        entryName: String
+    ): BrowserIdentificationMethod = when {
+        BrowserCompatibilityStore.preferredAddressBarEntryName(browserPackageName) == entryName ->
+            BrowserIdentificationMethod.CACHED_RESOURCE_ID
+        entryName in strongAddressBarEntryNames -> BrowserIdentificationMethod.STRONG_RESOURCE_ID
+        else -> BrowserIdentificationMethod.SEMANTIC_TREE
     }
 
     private fun isKnownSearchEngineDomain(domain: String): Boolean {

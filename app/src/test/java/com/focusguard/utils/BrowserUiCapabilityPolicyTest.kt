@@ -216,6 +216,81 @@ class BrowserUiCapabilityPolicyTest {
     }
 
     @Test
+    fun `DuckDuckGo legacy omnibar can be clicked before editing`() {
+        val packageName = "com.duckduckgo.mobile.android"
+        val omnibar = node(
+            packageName = packageName,
+            viewId = "$packageName:id/omnibarTextInput",
+            editable = true,
+            actions = setOf(NodeAction.CLICK)
+        )
+
+        val selection = BrowserUiCapabilityPolicy.resolveUniqueAddressBarNode(
+            nodes = listOf(omnibar),
+            expectedBrowserPackage = packageName,
+            expectedWindowId = WINDOW_ID,
+            requiredAction = NodeAction.CLICK
+        )
+
+        assertThat(selection.status).isEqualTo(SelectionStatus.SELECTED)
+        assertThat(selection.index).isEqualTo(0)
+    }
+
+    @Test
+    fun `DuckDuckGo native input is actionable only in address mode`() {
+        val packageName = "com.duckduckgo.mobile.android"
+        val addressInput = node(
+            packageName = packageName,
+            viewId = "$packageName:id/inputField",
+            editable = true,
+            focused = true,
+            hintText = "Pesquisar ou inserir endereço",
+            actions = setOf(NodeAction.SET_TEXT, NodeAction.IME_ENTER)
+        )
+        val duckAiPrompt = addressInput.copy(
+            hintText = "Pergunte qualquer coisa"
+        )
+
+        assertThat(
+            BrowserUiCapabilityPolicy.resolveUniqueAddressBarNode(
+                nodes = listOf(addressInput),
+                expectedBrowserPackage = packageName,
+                expectedWindowId = WINDOW_ID,
+                requiredAction = NodeAction.SET_TEXT
+            ).status
+        ).isEqualTo(SelectionStatus.SELECTED)
+        assertThat(
+            BrowserUiCapabilityPolicy.resolveUniqueAddressBarNode(
+                nodes = listOf(duckAiPrompt),
+                expectedBrowserPackage = packageName,
+                expectedWindowId = WINDOW_ID,
+                requiredAction = NodeAction.SET_TEXT
+            ).status
+        ).isEqualTo(SelectionStatus.NOT_FOUND)
+    }
+
+    @Test
+    fun `generic inputField never becomes an address bar in another browser`() {
+        val candidate = node(
+            packageName = BROWSER_PACKAGE,
+            viewId = "$BROWSER_PACKAGE:id/inputField",
+            editable = true,
+            focused = true,
+            hintText = "Search or enter address",
+            actions = setOf(NodeAction.SET_TEXT)
+        )
+
+        assertThat(
+            BrowserUiCapabilityPolicy.resolveUniqueAddressBarNode(
+                nodes = listOf(candidate),
+                expectedBrowserPackage = BROWSER_PACKAGE,
+                expectedWindowId = WINDOW_ID,
+                requiredAction = NodeAction.SET_TEXT
+            ).status
+        ).isEqualTo(SelectionStatus.NOT_FOUND)
+    }
+
+    @Test
     fun `ordinary page fields are never actionable`() {
         val pageSearch = node(
             viewId = "$BROWSER_PACKAGE:id/search_box_text",
@@ -305,6 +380,18 @@ class BrowserUiCapabilityPolicyTest {
     }
 
     @Test
+    fun `DuckDuckGo prefers click activation while other browsers prefer focus`() {
+        assertThat(
+            BrowserUiCapabilityPolicy.prefersClickAddressBarActivation(
+                "com.duckduckgo.mobile.android"
+            )
+        ).isTrue()
+        assertThat(
+            BrowserUiCapabilityPolicy.prefersClickAddressBarActivation(BROWSER_PACKAGE)
+        ).isFalse()
+    }
+
+    @Test
     fun `API below 30 has no certifiable IME submit`() {
         assertThat(BrowserUiCapabilityPolicy.canUseImeEnter(26)).isFalse()
         assertThat(BrowserUiCapabilityPolicy.canUseImeEnter(29)).isFalse()
@@ -363,6 +450,7 @@ class BrowserUiCapabilityPolicyTest {
         uriInput: Boolean = false,
         text: String? = null,
         contentDescription: String? = null,
+        hintText: String? = null,
         actions: Set<NodeAction>
     ) = BrowserUiCapabilityPolicy.Node(
         packageName = packageName,
@@ -375,7 +463,8 @@ class BrowserUiCapabilityPolicyTest {
         uriInput = uriInput,
         text = text,
         contentDescription = contentDescription,
-        actions = actions
+        actions = actions,
+        hintText = hintText
     )
 
     private companion object {
