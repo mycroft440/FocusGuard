@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tested_browsers_settings_title">Navegadores testados</string>
+    <string name="tested_browsers_settings_subtitle">Veja os navegadores já verificados pela proteção de sites</string>
+    <string name="tested_browsers_title">Navegadores testados</string>
+    <string name="tested_browsers_supported">Suportados</string>
+    <string name="tested_browsers_unsupported">Não suportados</string>
+    <string name="tested_browsers_supported_empty">Nenhum navegador suportado foi testado ainda.</string>
+    <string name="tested_browsers_unsupported_empty">Nenhum navegador não suportado foi detectado ainda.</string>
+</resources>

@@ -52,6 +52,16 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Restore Robolectric Android runtime cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository/org/robolectric/android-all
+            ~/.m2/repository/org/robolectric/android-all-instrumented
+          key: robolectric-runtime-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', '**/build.gradle.kts') }}
+          restore-keys: |
+            robolectric-runtime-${{ runner.os }}-
+
       - name: Install Android 16 SDK
         shell: bash
         run: |
@@ -88,19 +98,63 @@ jobs:
           printf '%s' "$KEYSTORE_BASE64" | tr -d '\n\r' | base64 --decode > "$RUNNER_TEMP/focusguard-release.jks"
           test -s "$RUNNER_TEMP/focusguard-release.jks"
 
-      - name: Run checks and build canonical Release APK and AAB
+      - name: Run release lint
         shell: bash
         env:
           KEYSTORE_FILE: ${{ runner.temp }}/focusguard-release.jks
         run: |
           set -euo pipefail
-          ./gradlew \
-            lintRelease \
-            testReleaseUnitTest \
-            assembleRelease \
-            bundleRelease \
-            --no-daemon \
-            --stacktrace
+          ./gradlew lintRelease --no-daemon --stacktrace 2>&1 | tee release-lint-gradle.log
+
+      - name: Run release unit tests
+        shell: bash
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/focusguard-release.jks
+          JAVA_TOOL_OPTIONS: >-
+            -Drobolectric.dependency.repo.id=central
+            -Drobolectric.dependency.repo.url=https://repo.maven.apache.org/maven2
+        run: |
+          set -euo pipefail
+          set +e
+          ./gradlew testReleaseUnitTest --no-daemon --stacktrace 2>&1 | tee release-unit-tests-gradle.log
+          first_status=${PIPESTATUS[0]}
+          set -e
+
+          if [ "$first_status" -eq 0 ]; then
+            exit 0
+          fi
+
+          if grep -q "MavenArtifactFetcher" release-unit-tests-gradle.log && \
+             grep -Eq "SocketException|ConnectException|UnknownHostException|SocketTimeoutException" release-unit-tests-gradle.log; then
+            echo "::warning::Transient Robolectric dependency transport failure detected; retrying release unit tests once."
+            ./gradlew testReleaseUnitTest --no-daemon --stacktrace 2>&1 | tee -a release-unit-tests-gradle.log
+          else
+            exit "$first_status"
+          fi
+
+      - name: Build canonical Release APK and AAB
+        shell: bash
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/focusguard-release.jks
+        run: |
+          set -euo pipefail
+          ./gradlew assembleRelease bundleRelease --no-daemon --stacktrace 2>&1 | tee release-build-gradle.log
+
+      - name: Upload release diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-diagnostics-${{ github.run_number }}
+          path: |
+            release-lint-gradle.log
+            release-unit-tests-gradle.log
+            release-build-gradle.log
+            app/build/reports/tests/
+            app/build/test-results/
+            app/build/reports/lint-results-*.html
+            app/build/reports/lint-results-*.xml
+          if-no-files-found: warn
+          retention-days: 14
 
       - name: Collect canonical release files
         id: collect

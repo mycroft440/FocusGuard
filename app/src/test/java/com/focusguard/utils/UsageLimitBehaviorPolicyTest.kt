@@ -165,4 +165,24 @@ class UsageLimitBehaviorPolicyTest {
             )
         )
     }
+
+    @Test
+    fun `restored active pause still exposes its alarm deadline`() {
+        val now = 7_000_000L
+        val deadline = now + 10L * 60L * 1_000L
+        val evaluation = UsageLimitBehaviorPolicy.PauseEvaluation(
+            shouldBlock = true,
+            state = UsageLimitBehaviorPolicy.PauseState(
+                ruleEndMillis = deadline + 60_000L,
+                dayKey = 2026240L,
+                blockedUntilMillis = deadline
+            ),
+            startedPause = false
+        )
+
+        assertEquals(
+            deadline,
+            UsageLimitBehaviorPolicy.pauseEndDeadline(evaluation, now)
+        )
+    }
 }

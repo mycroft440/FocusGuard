@@ -14,10 +14,15 @@ import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.database.AppDatabase
 import com.focusguard.security.UsageAccessPausePolicy
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
 /**
  * Observes Usage Access while the FocusGuard process is alive.
@@ -39,59 +44,153 @@ object UsageAccessStateMonitor {
     private const val NOTIFICATION_ID = 9002
 
     private val handler = Handler(Looper.getMainLooper())
-    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val checkInFlight = AtomicBoolean(false)
+
+    @Volatile
+    private var monitorJob: Job? = null
+
+    @Volatile
+    private var lifecycleGeneration = 0L
+
     private var pollingRunnable: Runnable? = null
+
+    @Volatile
     private var lastKnownState: UsageAccessPausePolicy.State? = null
 
+    /**
+     * Starts one restartable monitor generation.
+     *
+     * Every generation owns its own [SupervisorJob]. This is deliberately not a
+     * process-global permanent scope: Robolectric tears Android sandboxes down
+     * between tests, and a late AppOps/Room access from an old generation can
+     * otherwise initialize framework services while the previous sandbox is
+     * already being reset.
+     */
+    @Synchronized
     fun start(context: Context) {
+        if (monitorJob?.isActive == true) return
+
         val appContext = context.applicationContext
-        checkAndHandle(appContext)
-        if (pollingRunnable != null) return
+        val generation = lifecycleGeneration + 1
+        lifecycleGeneration = generation
+        lastKnownState = null
+        checkInFlight.set(false)
+
+        val generationJob = SupervisorJob()
+        monitorJob = generationJob
+        val generationScope = CoroutineScope(generationJob + Dispatchers.IO)
+
         val runnable = object : Runnable {
             override fun run() {
-                checkAndHandle(appContext)
-                handler.postDelayed(this, POLL_INTERVAL_MS)
+                if (!isGenerationActive(generation)) return
+                checkAndHandle(appContext, generationScope, generation)
+                if (isGenerationActive(generation)) {
+                    handler.postDelayed(this, POLL_INTERVAL_MS)
+                }
             }
         }
         pollingRunnable = runnable
+
+        checkAndHandle(appContext, generationScope, generation)
         handler.postDelayed(runnable, POLL_INTERVAL_MS)
     }
 
+    /**
+     * Stops the current generation synchronously.
+     *
+     * Cancellation alone is insufficient because the permission/AppOps lookup is
+     * synchronous. Waiting for the generation job guarantees that no check from a
+     * stopped monitor can escape into the next lifecycle/test sandbox. A later
+     * [start] creates a fresh SupervisorJob and can run normally.
+     */
+    @Synchronized
     fun stop() {
+        lifecycleGeneration += 1
         pollingRunnable?.let(handler::removeCallbacks)
         pollingRunnable = null
+
+        val jobToStop = monitorJob
+        monitorJob = null
+        jobToStop?.cancel()
+        if (jobToStop != null) {
+            runBlocking {
+                jobToStop.join()
+            }
+        }
+
+        checkInFlight.set(false)
         lastKnownState = null
     }
 
-    private fun checkAndHandle(context: Context) {
+    private fun isGenerationActive(generation: Long): Boolean =
+        lifecycleGeneration == generation && monitorJob?.isActive == true
+
+    private fun checkAndHandle(
+        context: Context,
+        scope: CoroutineScope,
+        generation: Long
+    ) {
+        if (!isGenerationActive(generation)) return
+        if (!checkInFlight.compareAndSet(false, true)) return
+
         scope.launch {
-            val granted = PermissionUtils.isUsageAccessEnabled(context)
-            // Counted in the database rather than trusted from memory: the limit
-            // list changes from several screens and a stale count would either
-            // warn about nothing or stay silent when it matters.
-            val enabledAppLimits = runCatching {
-                AppDatabase.getDatabase(context).appUsageLimitDao().getAllActiveLimitsStatic().size
-            }.getOrElse { error ->
-                FocusGuardLogger.logError(TAG, "Falha ao contar limites ativos", error)
-                return@launch
-            }
+            try {
+                val granted = PermissionUtils.isUsageAccessEnabled(context)
+                currentCoroutineContext().ensureActive()
+                if (!isGenerationActive(generation)) return@launch
 
-            val state = UsageAccessPausePolicy.evaluate(
-                usageAccessGranted = granted,
-                enabledAppLimitCount = enabledAppLimits
-            )
-            if (state == lastKnownState) return@launch
-            lastKnownState = state
+                // Counted in the database rather than trusted from memory: the limit
+                // list changes from several screens and a stale count would either
+                // warn about nothing or stay silent when it matters.
+                val enabledAppLimits = runCatching {
+                    AppDatabase.getDatabase(context)
+                        .appUsageLimitDao()
+                        .getAllActiveLimitsStatic()
+                        .size
+                }.getOrElse { error ->
+                    if (isGenerationActive(generation)) {
+                        FocusGuardLogger.logError(
+                            TAG,
+                            "Falha ao contar limites ativos",
+                            error
+                        )
+                    }
+                    return@launch
+                }
 
-            if (UsageAccessPausePolicy.shouldWarn(state)) {
-                FocusGuardLogger.log(
-                    TAG,
-                    "Acesso de uso revogado com $enabledAppLimits limite(s) ativo(s); " +
-                        "limites de app pararam de ser aplicados"
+                currentCoroutineContext().ensureActive()
+                if (!isGenerationActive(generation)) return@launch
+
+                val state = UsageAccessPausePolicy.evaluate(
+                    usageAccessGranted = granted,
+                    enabledAppLimitCount = enabledAppLimits
                 )
-                handler.post { sendPausedNotification(context) }
-            } else {
-                handler.post { cancelPausedNotification(context) }
+                if (state == lastKnownState) return@launch
+                lastKnownState = state
+
+                currentCoroutineContext().ensureActive()
+                if (!isGenerationActive(generation)) return@launch
+
+                if (UsageAccessPausePolicy.shouldWarn(state)) {
+                    FocusGuardLogger.log(
+                        TAG,
+                        "Acesso de uso revogado com $enabledAppLimits limite(s) ativo(s); " +
+                            "limites de app pararam de ser aplicados"
+                    )
+                    handler.post {
+                        if (isGenerationActive(generation)) {
+                            sendPausedNotification(context)
+                        }
+                    }
+                } else {
+                    handler.post {
+                        if (isGenerationActive(generation)) {
+                            cancelPausedNotification(context)
+                        }
+                    }
+                }
+            } finally {
+                checkInFlight.set(false)
             }
         }
     }

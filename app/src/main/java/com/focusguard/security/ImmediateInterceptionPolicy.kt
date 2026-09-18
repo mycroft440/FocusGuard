@@ -4,11 +4,13 @@ import java.text.Normalizer
 import java.util.Locale
 
 /**
- * Pure, allocation-light decisions used before Accessibility touches a node tree.
+ * Allocation-light decisions used before Accessibility touches a node tree.
  *
- * The service builds [LauncherLabelIndex] away from the accessibility callback.
- * A click can then be matched using only the event's direct text and the current
- * in-memory blocked-package snapshot.
+ * App-launch blocking may still be decided immediately from an exact launcher
+ * identity. System-settings self-protection is intentionally different: an
+ * immediate classifier never blocks a Settings/installer click on its own,
+ * because doing so would arm the service-wide transition window before the
+ * FocusGuard target had been validated by the full policy.
  */
 object ImmediateInterceptionPolicy {
 
@@ -47,10 +49,6 @@ object ImmediateInterceptionPolicy {
                     }
                 }
 
-                // Work backwards so punctuation that belongs to the real label
-                // (for example "Washington, D.C.") is retained before trying an
-                // accessibility badge suffix. Inspect the raw value so a newline
-                // is not lost by whitespace normalization.
                 val lastDigitIndex = raw.indexOfLast(Char::isDigit)
                 for (boundary in raw.indices.reversed()) {
                     if (raw[boundary] !in SAFE_LABEL_SUFFIXES || boundary <= 0) continue
@@ -120,7 +118,6 @@ object ImmediateInterceptionPolicy {
         !defaultLauncherPackage.isNullOrBlank() &&
         eventPackageName == defaultLauncherPackage
 
-    /** Conservative class gate before a launcher label may identify a package. */
     fun isLikelyLauncherAppIconClass(className: String): Boolean {
         if (className.isBlank()) return false
         if (className == "android.widget.TextView") return true
@@ -131,13 +128,6 @@ object ImmediateInterceptionPolicy {
         return APP_ICON_CLASS_MARKERS.any { className.contains(it, ignoreCase = true) }
     }
 
-    /**
-     * Source-independent fallback used by Recents, notifications and deep links.
-     *
-     * A PASSWORD visit can end while Android is still delivering the protected
-     * app's final window-removal events. Those events describe the app that is
-     * leaving, not a new foreground entry, and must not reopen the auth surface.
-     */
     fun isBlockedTargetWindow(
         foregroundPackageName: String,
         blockedPackages: Set<String>
@@ -157,12 +147,12 @@ object ImmediateInterceptionPolicy {
 
         val accessibility = AccessibilitySettingsPolicy.classifyText(values)
         val managed = ManagedSelfProtectionPolicy.classifyText(values)
+        val classLooksLikeDeviceAdmin =
+            ManagedSelfProtectionPolicy.classLooksLikeDeviceAdminSurface(className)
         val classTargetsAccessibilityToggle =
             AccessibilitySettingsPolicy.classTargetsAccessibilityServiceToggle(className)
         val classTargetsAccessibilityList =
             AccessibilitySettingsPolicy.classTargetsAccessibilityList(className)
-        val classTargetsDeviceAdmin =
-            ManagedSelfProtectionPolicy.classTargetsDeviceAdmin(className)
         val classTargetsAppDetails =
             ManagedSelfProtectionPolicy.classTargetsAppDetails(className)
         val classTargetsUninstall =
@@ -173,16 +163,10 @@ object ImmediateInterceptionPolicy {
 
         if (packageName in SettingsInterceptionPolicy.systemUiPackages) {
             return when {
-                managed.deviceAdmin -> SettingsClickDecision(
-                    DirectDecision.PROTECT,
-                    SettingsSurface.DEVICE_ADMIN
-                )
-                managed.focusGuard && accessibility.accessibilityDisclosure ->
-                    SettingsClickDecision(
-                        DirectDecision.PROTECT,
-                        SettingsSurface.ACCESSIBILITY
-                    )
-                managed.focusGuard || accessibility.accessibilityDisclosure ->
+                managed.focusGuard &&
+                    (accessibility.accessibilityDisclosure || managed.deviceAdmin) ->
+                    SettingsClickDecision(DirectDecision.NEED_TREE)
+                managed.focusGuard || accessibility.accessibilityDisclosure || managed.deviceAdmin ->
                     SettingsClickDecision(DirectDecision.NEED_TREE)
                 values.all { it?.toString().isNullOrBlank() } ->
                     SettingsClickDecision(DirectDecision.NEED_TREE)
@@ -190,74 +174,58 @@ object ImmediateInterceptionPolicy {
             }
         }
 
-        return when {
-            classTargetsDeviceAdmin || managed.deviceAdmin -> SettingsClickDecision(
-                DirectDecision.PROTECT,
-                SettingsSurface.DEVICE_ADMIN
-            )
-
-            managed.appInfoGateway && managed.focusGuard -> SettingsClickDecision(
-                DirectDecision.PROTECT,
-                SettingsSurface.APP_INFO
-            )
-
-            managed.appInfoGateway -> SettingsClickDecision(DirectDecision.NEED_TREE)
-
-            accessibility.installedAccessibilityApps && accessibility.accessibility ->
-                SettingsClickDecision(
-                    DirectDecision.PROTECT,
-                    SettingsSurface.ACCESSIBILITY
-                )
-
-            managed.focusGuard &&
-                (classTargetsAccessibilityToggle ||
+        // Even when the direct event already names FocusGuard, defer to the full
+        // policy so the service does not arm its package-wide transition guard.
+        if (managed.focusGuard) {
+            val surface = when {
+                managed.appInfoGateway || classTargetsAppDetails -> SettingsSurface.APP_INFO
+                classTargetsUninstall || managed.destructiveControl -> SettingsSurface.UNINSTALL
+                classLooksLikeDeviceAdmin || managed.deviceAdmin -> SettingsSurface.DEVICE_ADMIN
+                classTargetsAccessibilityToggle ||
                     classTargetsAccessibilityList ||
                     accessibility.accessibility ||
-                    accessibility.accessibilityDisclosure) -> SettingsClickDecision(
-                DirectDecision.PROTECT,
-                SettingsSurface.ACCESSIBILITY
-            )
+                    accessibility.accessibilityDisclosure -> SettingsSurface.ACCESSIBILITY
+                else -> SettingsSurface.APP_INFO
+            }
+            return SettingsClickDecision(DirectDecision.NEED_TREE, surface)
+        }
 
-            managed.focusGuard &&
-                (classTargetsUninstall || managed.destructiveControl) -> SettingsClickDecision(
-                DirectDecision.PROTECT,
-                SettingsSurface.UNINSTALL
-            )
-
-            managed.focusGuard && classTargetsAppDetails -> SettingsClickDecision(
-                DirectDecision.PROTECT,
-                SettingsSurface.APP_INFO
-            )
-
-            managed.focusGuard -> SettingsClickDecision(
-                DirectDecision.PROTECT,
-                SettingsSurface.APP_INFO
-            )
-
+        // Generic management gateways must remain available. NEED_TREE means
+        // "let the target-aware full policy inspect this event", not "block it".
+        if (classLooksLikeDeviceAdmin ||
+            managed.deviceAdmin ||
             classTargetsAccessibilityToggle ||
-                classTargetsAccessibilityList ||
-                classTargetsAppDetails ||
-                classTargetsUninstall ||
-                classTargetsEssentialSpecialAccess ||
-                isGenericSubSettings ||
-                packageName in SettingsInterceptionPolicy.packageInstallerPackages ||
-                accessibility.installedAccessibilityApps ||
-                accessibility.accessibility ||
-                accessibility.accessibilityDisclosure ||
-                managed.destructiveControl -> SettingsClickDecision(
-                DirectDecision.NEED_TREE
-            )
+            classTargetsAccessibilityList ||
+            classTargetsAppDetails ||
+            classTargetsUninstall ||
+            classTargetsEssentialSpecialAccess ||
+            isGenericSubSettings ||
+            packageName in SettingsInterceptionPolicy.packageInstallerPackages ||
+            accessibility.installedAccessibilityApps ||
+            accessibility.accessibility ||
+            accessibility.accessibilityDisclosure ||
+            managed.destructiveControl ||
+            managed.appInfoGateway
+        ) {
+            return SettingsClickDecision(DirectDecision.NEED_TREE)
+        }
 
-            else -> SettingsClickDecision(DirectDecision.NEED_TREE)
+        return if (values.all { it?.toString().isNullOrBlank() }) {
+            SettingsClickDecision(DirectDecision.NEED_TREE)
+        } else {
+            SettingsClickDecision(DirectDecision.IGNORE)
         }
     }
 
+    /**
+     * Launcher App Info is no longer blocked on the launcher click itself. The
+     * destination App Info event is handled by the target-aware full policy.
+     */
     fun classifyLauncherAppInfoClick(
         values: Iterable<CharSequence?>
     ): DirectDecision {
         val managed = ManagedSelfProtectionPolicy.classifyText(values)
         return when {
-            managed.appInfoGateway && managed.focusGuard -> DirectDecision.PROTECT
             managed.appInfoGateway -> DirectDecision.NEED_TREE
             else -> DirectDecision.IGNORE
         }
@@ -292,7 +260,7 @@ object ImmediateInterceptionPolicy {
         directSurface: SettingsSurface?
     ): Boolean = deviceAdminActivationAuthorized &&
         (directSurface == SettingsSurface.DEVICE_ADMIN ||
-            ManagedSelfProtectionPolicy.classTargetsDeviceAdmin(className) ||
+            ManagedSelfProtectionPolicy.classLooksLikeDeviceAdminSurface(className) ||
             className.contains("SubSettings", ignoreCase = true))
 
     private fun normalize(value: String): String {

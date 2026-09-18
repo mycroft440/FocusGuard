@@ -35,7 +35,7 @@ class ProtectionSetupStateTest {
     }
 
     @Test
-    fun `exact domain already configured by another block is rejected`() {
+    fun `exact domain already configured by same mode is rejected`() {
         assertThat(
             isWebsiteRuleAlreadyBlocked(
                 candidate = "https://www.youtube.com/watch?v=1",
@@ -45,7 +45,7 @@ class ProtectionSetupStateTest {
     }
 
     @Test
-    fun `existing keyword also rejects matching domains`() {
+    fun `existing keyword also rejects matching domains within same mode`() {
         assertThat(
             isWebsiteRuleAlreadyBlocked(
                 candidate = "example-porn-site.com",
@@ -75,43 +75,39 @@ class ProtectionSetupStateTest {
     }
 
     @Test
-    fun `limit mode accepts password-only targets but rejects existing limits`() {
+    fun `limit mode rejects only existing limit layer`() {
         val configured = BlockingSessionManager.ConfiguredBlockedTargets(
             passwordAppPackageNames = setOf("com.example.password"),
             limitedAppPackageNames = setOf("com.example.limit"),
-            exclusiveAppPackageNames = setOf("com.example.exclusive")
+            exclusiveAppPackageNames = setOf("com.example.time")
         )
 
         assertThat(configuredAppPackagesForMode(ProtectionMode.LIMIT, configured))
-            .containsExactly("com.example.limit", "com.example.exclusive")
+            .containsExactly("com.example.limit")
     }
 
     @Test
-    fun `password mode accepts limit-only targets but rejects existing passwords`() {
+    fun `password mode rejects only existing password layer`() {
         val configured = BlockingSessionManager.ConfiguredBlockedTargets(
             passwordWebsiteRules = setOf("youtube.com"),
             limitedWebsiteRules = setOf("reddit.com"),
-            exclusiveWebsiteRules = setOf("keyword:porn")
+            exclusiveWebsiteRules = setOf("tiktok.com")
         )
 
         assertThat(configuredWebsiteRulesForMode(ProtectionMode.PASSWORD, configured))
-            .containsExactly("youtube.com", "keyword:porn")
+            .containsExactly("youtube.com")
     }
 
     @Test
-    fun `dopamine fast rejects every previously protected target`() {
+    fun `time mode rejects only existing time layer`() {
         val configured = BlockingSessionManager.ConfiguredBlockedTargets(
             passwordAppPackageNames = setOf("com.example.password"),
             limitedAppPackageNames = setOf("com.example.limit"),
-            exclusiveAppPackageNames = setOf("com.example.exclusive")
+            exclusiveAppPackageNames = setOf("com.example.time")
         )
 
         assertThat(configuredAppPackagesForMode(ProtectionMode.DOPAMINE_FAST, configured))
-            .containsExactly(
-                "com.example.password",
-                "com.example.limit",
-                "com.example.exclusive"
-            )
+            .containsExactly("com.example.time")
     }
 
     @Test

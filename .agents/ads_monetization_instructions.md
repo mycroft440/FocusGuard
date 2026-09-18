@@ -6,7 +6,7 @@ Qualquer agente ou pessoa que adicionar, remover, mover ou alterar anúncios no 
 2. Revisar as políticas oficiais do AdMob listadas no final do playbook quando a alteração for relevante ou quando o documento estiver desatualizado.
 3. Preservar `FocusGuardAds` como ponto central de integração; não espalhar IDs/carregadores pelas telas.
 4. Preservar UMP/consentimento, tratamento de falhas e proteção contra fullscreen duplicado.
-5. Não trocar os IDs oficiais de teste usados no Release sem autorização explícita do responsável pelo projeto.
+5. Manter IDs oficiais de teste no Debug. O Release usa IDs de produção autorizados; não alterar essa separação nem trocar unidades sem autorização explícita do responsável pelo projeto.
 6. Priorizar lucro sustentável (LTV/ARPDAU + retenção), não quantidade bruta de impressões.
 7. Para rewarded: opt-in claro, recompensa anunciada, crédito somente no callback real e progresso persistente para pacotes.
 8. Para interstitial: somente transições naturais, nunca saída do app, background, meio de tarefa ou back-to-back.

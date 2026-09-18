@@ -24,6 +24,11 @@ import kotlinx.coroutines.launch
  * visit to the matching rule and are revoked when URL matching observes
  * navigation away; a bounded timeout is a fail-closed fallback if no further
  * browser event arrives.
+ *
+ * TIME and an exhausted daily limit are stronger layers. Reconciliation publishes
+ * those owners here so an old PASSWORD visit grant can never punch through a
+ * stronger block. When a stronger layer takes ownership, the PASSWORD grant is
+ * consumed instead of being allowed to revive automatically when that layer ends.
  */
 object PasswordTargetAccessGrant {
     private const val APP_OPEN_TIMEOUT_MILLIS = 15_000L
@@ -57,10 +62,82 @@ object PasswordTargetAccessGrant {
     private val recentAppExits = ConcurrentHashMap<String, RecentAppExit>()
     private val websiteExpiryElapsed = ConcurrentHashMap<String, Long>()
     private val websiteMonitorJobs = ConcurrentHashMap<String, Job>()
+    private val strongerAppPackages = ConcurrentHashMap.newKeySet<String>()
+    private val strongerWebsiteRules = ConcurrentHashMap.newKeySet<String>()
     @Volatile private var applicationContext: Context? = null
+
+    /**
+     * Publishes the app targets currently owned by TIME, an exhausted daily limit,
+     * or another non-PASSWORD hard layer. Existing PASSWORD visit grants are
+     * consumed immediately so they cannot reappear after the stronger layer ends.
+     */
+    fun updateStrongerAppPackages(packageNames: Collection<String>) {
+        val normalized = packageNames.filter(String::isNotBlank).toSet()
+        strongerAppPackages.clear()
+        strongerAppPackages.addAll(normalized)
+
+        grantedPackages.toList().forEach { target ->
+            if (target in normalized) dropPackageGrantForStrongerProtection(target)
+        }
+    }
+
+    /**
+     * Publishes one newly-detected strong app owner before the full policy
+     * reconciliation finishes. This closes the sub-second edge where an
+     * already-authenticated PASSWORD visit could otherwise survive the
+     * exact pulse that discovers an exhausted limit.
+     */
+    fun claimStrongerAppProtection(packageName: String) {
+        val target = packageName.takeIf(String::isNotBlank) ?: return
+        strongerAppPackages.add(target)
+        dropPackageGrantForStrongerProtection(target)
+    }
+
+    /** Same immediate ownership claim for a website rule. */
+    fun claimStrongerWebsiteProtection(ruleOrDomain: String) {
+        val rule = WebsiteBlocker.normalizeRule(ruleOrDomain)
+            .takeIf(String::isNotBlank) ?: return
+        strongerWebsiteRules.add(rule)
+        websiteExpiryElapsed.keys.toList().forEach { grantedRule ->
+            if (websiteRulesOverlap(grantedRule, rule)) {
+                dropWebsiteGrantForStrongerProtection(grantedRule)
+            }
+        }
+    }
+
+    internal fun isAppStronglyProtected(packageName: String): Boolean =
+        packageName.isNotBlank() && packageName in strongerAppPackages
+
+    internal fun isWebsiteStronglyProtected(ruleOrDomain: String): Boolean {
+        val candidate = WebsiteBlocker.normalizeRule(ruleOrDomain)
+        if (candidate.isBlank()) return false
+        return strongerWebsiteRules.any { strongerRule ->
+            websiteRulesOverlap(candidate, strongerRule)
+        }
+    }
+
+    /** Same ownership hand-off as [updateStrongerAppPackages], for website rules. */
+    fun updateStrongerWebsiteRules(rules: Collection<String>) {
+        val normalized = WebsiteBlocker.normalizeRules(rules)
+        strongerWebsiteRules.clear()
+        strongerWebsiteRules.addAll(normalized)
+
+        websiteExpiryElapsed.keys.toList().forEach { grantedRule ->
+            if (normalized.any { strongerRule ->
+                    websiteRulesOverlap(grantedRule, strongerRule)
+                }
+            ) {
+                dropWebsiteGrantForStrongerProtection(grantedRule)
+            }
+        }
+    }
 
     fun grantPackage(context: Context, packageName: String) {
         val target = packageName.takeIf(String::isNotBlank) ?: return
+        // A credential accepted a few milliseconds before a TIME/limit transition
+        // must not unsuspend a target that the stronger layer already owns.
+        if (target in strongerAppPackages) return
+
         val appContext = context.applicationContext
         applicationContext = appContext
         recentAppExits.remove(target)
@@ -78,7 +155,9 @@ object PasswordTargetAccessGrant {
     }
 
     fun isPackageGranted(packageName: String): Boolean =
-        packageName.isNotBlank() && packageName in grantedPackages
+        packageName.isNotBlank() &&
+            packageName in grantedPackages &&
+            packageName !in strongerAppPackages
 
     /**
      * Accessibility can deliver a final TYPE_WINDOWS_CHANGED event for the app
@@ -127,6 +206,11 @@ object PasswordTargetAccessGrant {
 
     fun grantWebsite(context: Context, ruleOrDomain: String) {
         val rule = WebsiteBlocker.normalizeRule(ruleOrDomain).takeIf(String::isNotBlank) ?: return
+        if (strongerWebsiteRules.any { strongerRule ->
+                websiteRulesOverlap(rule, strongerRule)
+            }
+        ) return
+
         val appContext = context.applicationContext
         applicationContext = appContext
         websiteExpiryElapsed[rule] = SystemClock.elapsedRealtime() + WEBSITE_GRANT_TIMEOUT_MILLIS
@@ -147,6 +231,13 @@ object PasswordTargetAccessGrant {
         val rule = WebsiteBlocker.normalizeRule(ruleOrDomain)
         if (rule.isBlank()) return false
         val expiry = websiteExpiryElapsed[rule] ?: return false
+        if (strongerWebsiteRules.any { strongerRule ->
+                websiteRulesOverlap(rule, strongerRule)
+            }
+        ) {
+            dropWebsiteGrantForStrongerProtection(rule)
+            return false
+        }
         if (SystemClock.elapsedRealtime() < expiry) return true
         revokeWebsiteRule(rule)
         return false
@@ -189,10 +280,26 @@ object PasswordTargetAccessGrant {
         websiteExpiryElapsed.clear()
         websiteMonitorJobs.values.forEach(Job::cancel)
         websiteMonitorJobs.clear()
+        strongerAppPackages.clear()
+        strongerWebsiteRules.clear()
     }
 
     internal fun grantedWebsiteRulesSnapshot(): Set<String> =
         websiteExpiryElapsed.keys.filterTo(linkedSetOf(), ::isWebsiteRuleGranted)
+
+    internal fun websiteRulesOverlap(first: String, second: String): Boolean {
+        val normalizedFirst = WebsiteBlocker.normalizeRule(first)
+        val normalizedSecond = WebsiteBlocker.normalizeRule(second)
+        if (normalizedFirst.isBlank() || normalizedSecond.isBlank()) return false
+        if (normalizedFirst == normalizedSecond) return true
+
+        // Domain parent/child, aliases, keywords and the pornography category all
+        // use the same matcher as runtime blocking. Checking both directions catches
+        // a narrower stronger rule under a broader PASSWORD rule as well as the
+        // inverse relationship.
+        return WebsiteBlocker.matchesRuleIgnoringGrants(normalizedFirst, normalizedSecond) ||
+            WebsiteBlocker.matchesRuleIgnoringGrants(normalizedSecond, normalizedFirst)
+    }
 
     internal fun shouldSuppressPostExitEcho(
         target: String,
@@ -267,7 +374,7 @@ object PasswordTargetAccessGrant {
             var targetSeenForeground = false
             var visitStartedAt = Long.MIN_VALUE
 
-            while (target in grantedPackages) {
+            while (target in grantedPackages && target !in strongerAppPackages) {
                 val observation = observeAppVisit(
                     manager = usage,
                     target = target,
@@ -442,6 +549,19 @@ object PasswordTargetAccessGrant {
             recentAppExits.remove(target)
         }
         reconcileProtection()
+    }
+
+    /** Drops a PASSWORD visit while a stronger layer is already reconciling. */
+    private fun dropPackageGrantForStrongerProtection(target: String) {
+        recentAppExits.remove(target)
+        grantedPackages.remove(target)
+        appMonitorJobs.remove(target)?.cancel()
+    }
+
+    /** Drops the website grant without recursively starting another reconciliation. */
+    private fun dropWebsiteGrantForStrongerProtection(rule: String) {
+        websiteExpiryElapsed.remove(rule)
+        websiteMonitorJobs.remove(rule)?.cancel()
     }
 
     private fun reconcileProtection(invalidateWebsitePolicy: Boolean = false) {

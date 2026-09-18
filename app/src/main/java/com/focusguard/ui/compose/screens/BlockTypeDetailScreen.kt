@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PhotoCamera
 import androidx.compose.material.icons.outlined.HourglassEmpty
 import androidx.compose.material.icons.outlined.Lock
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.Timelapse
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -78,6 +79,7 @@ import com.focusguard.ui.compose.components.FocusGuardAppIcon
 import com.focusguard.ui.compose.components.FocusGuardBannerAd
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.AccentIconBadge
+import com.focusguard.ui.compose.theme.AccentPurple
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
@@ -93,7 +95,7 @@ import com.focusguard.ui.compose.theme.WarningAmber
 import com.focusguard.utils.WebsiteBlocker
 
 /**
- * The three kinds of protection, as the user chooses between them.
+ * The four protection choices shown on the Home screen.
  *
  * Each carries its own colour and icon so the type is recognisable before the
  * text is read — the same card looks the same on the home screen and at the top
@@ -123,6 +125,14 @@ enum class BlockTypeUi(
         icon = Icons.Outlined.Timelapse,
         accent = WarningAmber
     ),
+    DAILY_PERIODS(
+        titleRes = R.string.block_type_periods_title,
+        subtitleRes = R.string.block_type_periods_subtitle,
+        emptyRes = R.string.block_type_periods_empty,
+        actionRes = R.string.block_type_periods_action,
+        icon = Icons.Outlined.Schedule,
+        accent = AccentPurple
+    ),
     DOPAMINE_FAST(
         titleRes = R.string.block_type_fast_title,
         subtitleRes = R.string.block_type_fast_subtitle,
@@ -135,12 +145,15 @@ enum class BlockTypeUi(
     fun entriesOf(overview: BlockingSessionManager.BlockOverview) = when (this) {
         PASSWORD -> overview.passwordEntries
         DAILY_LIMIT -> overview.dailyLimitEntries
+        DAILY_PERIODS -> overview.scheduledTimeEntries
         DOPAMINE_FAST -> overview.dopamineFastEntries
     }
 }
 
 internal fun shouldShowBlockTypeBanner(type: BlockTypeUi): Boolean =
-    type == BlockTypeUi.DAILY_LIMIT || type == BlockTypeUi.DOPAMINE_FAST
+    type == BlockTypeUi.DAILY_LIMIT ||
+        type == BlockTypeUi.DAILY_PERIODS ||
+        type == BlockTypeUi.DOPAMINE_FAST
 
 internal data class PasswordProtectionToggleState(
     val biometricEnabled: Boolean,
@@ -354,7 +367,15 @@ fun BlockTypeDetailScreen(
                                     )
                                 }
                                 items(sites, key = { "site_${it.identifier}" }) { entry ->
-                                    BlockedEntryRow(entry = entry, accent = type.accent)
+                                    BlockedEntryRow(
+                                        entry = entry,
+                                        accent = type.accent,
+                                        onRemove = if (type == BlockTypeUi.PASSWORD) {
+                                            { removalTarget = entry }
+                                        } else {
+                                            null
+                                        }
+                                    )
                                 }
                             }
                         }
@@ -706,24 +727,11 @@ private fun BlockedEntryRow(
             verticalAlignment = Alignment.CenterVertically
         ) {
             if (entry.isWebsite) {
-                Box(
-                    modifier = Modifier
-                        .size(34.dp)
-                        .clip(RoundedCornerShape(10.dp))
-                        .background(accent.copy(alpha = 0.14f))
-                        .border(
-                            1.dp,
-                            accent.copy(alpha = 0.24f),
-                            RoundedCornerShape(10.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = label.take(1).uppercase(),
-                        color = accent,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
+                BlockedWebsiteIcon(
+                    identifier = entry.identifier,
+                    label = label,
+                    accent = accent
+                )
             } else {
                 FocusGuardAppIcon(
                     packageName = entry.identifier,
