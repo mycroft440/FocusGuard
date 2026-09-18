@@ -197,19 +197,20 @@ Expandir o FocusGuard dos idiomas atuais (inglês e português) para o conjunto 
 - [x] O ebook em `assets/easypeasy` é conteúdo editorial em português e fica fora deste escopo.
 
 ## Implementação
-- [ ] Adicionar recursos completos para espanhol, francês, alemão, russo, japonês, chinês simplificado, hindi, bengali, indonésio, urdu, árabe, árabe egípcio, marata, telugu, vietnamita, suaíli, hauçá e pidgin nigeriano.
-- [ ] Atualizar `resourceConfigurations` para preservar todos os 20 idiomas, mantendo `pt-rBR`.
-- [ ] Remover o `locales_config.xml` manual residual e manter o LocaleConfig gerado pelo AGP a partir dos diretórios `values-*`.
-- [ ] Tornar o seletor de idiomas rolável e orientado por uma lista única de idiomas/tags.
-- [ ] Adicionar nomes nativos dos idiomas como recursos não traduzíveis para manter rótulos estáveis no seletor.
-- [ ] Adicionar teste unitário para quantidade, unicidade e tags suportadas.
+- [x] Criar os 18 pacotes de locale com os mesmos 34 XMLs e as mesmas chaves do fallback inglês; localizar o seletor e um conjunto inicial de navegação/configurações, mantendo inglês explícito nas strings ainda não revisadas humanamente.
+- [ ] Traduzir semanticamente todo o catálogo (~1.248 recursos) para os 18 novos idiomas; não considerar a simples cópia do inglês como tradução concluída.
+- [x] Atualizar `resourceConfigurations` para preservar todos os 20 idiomas, mantendo `pt-rBR`.
+- [x] Remover o `locales_config.xml` manual residual e manter o LocaleConfig gerado pelo AGP a partir dos diretórios `values-*`.
+- [x] Tornar o seletor de idiomas rolável e orientado por uma lista única de idiomas/tags.
+- [x] Adicionar nomes nativos dos idiomas como recursos não traduzíveis para manter rótulos estáveis no seletor.
+- [x] Adicionar teste unitário para quantidade, unicidade e tags suportadas.
 
 ## Validação
-- [ ] Verificar paridade de nomes e placeholders entre o fallback inglês e cada novo locale.
-- [ ] Revisar o diff agregado e confirmar ausência de alterações fora de internacionalização.
-- [ ] Executar testes unitários, Android Lint e build debug quando o ambiente permitir.
-- [ ] Conferir RTL para árabe/urdu/árabe egípcio e recursos com script/BCP-47 para chinês simplificado.
+- [x] Verificar paridade de nomes e placeholders entre o fallback inglês e cada novo locale.
+- [x] Revisar os 618 arquivos alterados: 612 são recursos dos 18 novos locales e os 6 restantes são exclusivamente configuração/UI/teste/plano de internacionalização.
+- [ ] Executar testes unitários, Android Lint e build debug; o PR draft #184 foi aberto para disparar o CI do projeto.
+- [x] Aplicar navegação autoespelhada para RTL e usar BCP-47 para chinês simplificado, pidgin nigeriano e árabe egípcio; a validação visual manual em dispositivos RTL permanece recomendada.
 
 ## Critério de conclusão
-O app deve expor 20 idiomas no seletor, empacotar recursos completos para cada um, continuar seguindo o idioma do sistema quando solicitado e manter inglês como fallback sem enfraquecer as validações de tradução existentes.
+O app deve expor 20 idiomas no seletor, empacotar recursos estruturalmente completos para cada um, continuar seguindo o idioma do sistema quando solicitado e manter inglês como fallback sem enfraquecer as validações de tradução existentes. A localização semântica integral dos 18 novos catálogos só será considerada concluída após substituir as entradas ainda em inglês por traduções revisadas.
 
