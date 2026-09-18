@@ -64,7 +64,7 @@ object ForumPostPolicy {
  * Local adapter used until a remote forum backend is configured.
  *
  * The persisted shape intentionally mirrors the future remote layout: the post feed contains
- * summaries only, while likes and comments are stored independently per post.
+ * summaries only, while likes, comments and notifications are stored independently.
  */
 class ForumPostStore(context: Context) : ForumRepository {
     private val preferences = context.applicationContext.getSharedPreferences(
@@ -77,6 +77,19 @@ class ForumPostStore(context: Context) : ForumRepository {
         withContext(Dispatchers.IO) {
             synchronized(lock) {
                 loadPostsInternal(UserProfilePolicy.normalizeUserId(currentUserId))
+            }
+        }
+
+    override suspend fun loadUserPosts(userId: String): List<ForumPost> =
+        withContext(Dispatchers.IO) {
+            synchronized(lock) {
+                val normalizedUserId = UserProfilePolicy.normalizeUserId(userId)
+                if (normalizedUserId.isBlank()) {
+                    emptyList()
+                } else {
+                    loadPostsInternal(normalizedUserId)
+                        .filter { post -> post.authorId == normalizedUserId }
+                }
             }
         }
 
@@ -108,22 +121,34 @@ class ForumPostStore(context: Context) : ForumRepository {
 
     override suspend fun toggleLike(
         postId: String,
-        userId: String
+        actor: ForumAuthor,
+        nowMillis: Long
     ): ForumPost? = withContext(Dispatchers.IO) {
         synchronized(lock) {
-            val normalizedUserId = UserProfilePolicy.normalizeUserId(userId)
-            if (normalizedUserId.isBlank()) return@synchronized null
+            val actorId = UserProfilePolicy.normalizeUserId(actor.userId)
+            if (actorId.isBlank()) return@synchronized null
 
-            migrateLegacyInteractions(normalizedUserId)
-            val posts = loadPostsInternal(normalizedUserId)
+            migrateLegacyInteractions(actorId)
+            val posts = loadPostsInternal(actorId)
             val post = posts.firstOrNull { it.id == postId } ?: return@synchronized null
             val likedUserIds = readLikeUserIds(postId).toMutableSet()
-            val wasLiked = normalizedUserId in likedUserIds
+            val wasLiked = actorId in likedUserIds
 
             if (wasLiked) {
-                likedUserIds.remove(normalizedUserId)
+                likedUserIds.remove(actorId)
+                removeNotification(
+                    userId = post.authorId,
+                    notificationId = ForumStorageLayout.likeNotificationId(postId, actorId)
+                )
             } else {
-                likedUserIds.add(normalizedUserId)
+                likedUserIds.add(actorId)
+                createInteractionNotification(
+                    post = post,
+                    actor = actor,
+                    type = ForumNotificationType.LIKE,
+                    notificationId = ForumStorageLayout.likeNotificationId(postId, actorId),
+                    nowMillis = nowMillis
+                )
             }
 
             val nextLikeCount = (
@@ -184,7 +209,42 @@ class ForumPostStore(context: Context) : ForumRepository {
                     candidate
                 }
             })
+            createInteractionNotification(
+                post = post,
+                actor = author,
+                type = ForumNotificationType.COMMENT,
+                notificationId = ForumStorageLayout.commentNotificationId(comment.id),
+                nowMillis = nowMillis
+            )
             comment
+        }
+    }
+
+    override suspend fun loadNotifications(userId: String): List<ForumNotification> =
+        withContext(Dispatchers.IO) {
+            synchronized(lock) {
+                val normalizedUserId = UserProfilePolicy.normalizeUserId(userId)
+                if (normalizedUserId.isBlank()) {
+                    emptyList()
+                } else {
+                    readNotifications(normalizedUserId)
+                }
+            }
+        }
+
+    override suspend fun markAllNotificationsRead(
+        userId: String
+    ): List<ForumNotification> = withContext(Dispatchers.IO) {
+        synchronized(lock) {
+            val normalizedUserId = UserProfilePolicy.normalizeUserId(userId)
+            if (normalizedUserId.isBlank()) {
+                return@synchronized emptyList()
+            }
+
+            val updated = readNotifications(normalizedUserId)
+                .map { notification -> notification.copy(isRead = true) }
+            persistNotifications(normalizedUserId, updated)
+            updated
         }
     }
 
@@ -258,6 +318,120 @@ class ForumPostStore(context: Context) : ForumRepository {
             }
         }
         return emptyList()
+    }
+
+    private fun createInteractionNotification(
+        post: ForumPost,
+        actor: ForumAuthor,
+        type: ForumNotificationType,
+        notificationId: String,
+        nowMillis: Long
+    ) {
+        val recipientUserId = UserProfilePolicy.normalizeUserId(post.authorId)
+        val actorId = UserProfilePolicy.normalizeUserId(actor.userId)
+        if (
+            recipientUserId.isBlank() ||
+            actorId.isBlank() ||
+            recipientUserId == actorId
+        ) {
+            return
+        }
+
+        val notification = ForumNotification(
+            id = notificationId,
+            recipientUserId = recipientUserId,
+            actorId = actorId,
+            actorName = UserProfilePolicy.normalizeName(actor.displayName),
+            actorAvatarId = UserProfilePolicy.normalizeAvatarId(actor.avatarId),
+            postId = post.id,
+            type = type,
+            createdAtMillis = nowMillis.coerceAtLeast(0L)
+        )
+        val existing = readNotifications(recipientUserId)
+            .filterNot { candidate -> candidate.id == notification.id }
+        persistNotifications(recipientUserId, listOf(notification) + existing)
+    }
+
+    private fun removeNotification(userId: String, notificationId: String) {
+        val normalizedUserId = UserProfilePolicy.normalizeUserId(userId)
+        if (normalizedUserId.isBlank()) return
+        val remaining = readNotifications(normalizedUserId)
+            .filterNot { notification -> notification.id == notificationId }
+        persistNotifications(normalizedUserId, remaining)
+    }
+
+    private fun readNotifications(userId: String): List<ForumNotification> {
+        val raw = preferences.getString(notificationsKey(userId), null) ?: return emptyList()
+        val array = runCatching { JSONArray(raw) }.getOrElse { return emptyList() }
+        val notifications = ArrayList<ForumNotification>(array.length())
+
+        for (index in 0 until array.length()) {
+            val json = array.optJSONObject(index) ?: continue
+            val id = json.optString(NOTIFICATION_ID_KEY)
+            val actorId = UserProfilePolicy.normalizeUserId(
+                json.optString(NOTIFICATION_ACTOR_ID_KEY)
+            )
+            val postId = json.optString(NOTIFICATION_POST_ID_KEY)
+            val type = runCatching {
+                ForumNotificationType.valueOf(json.optString(NOTIFICATION_TYPE_KEY))
+            }.getOrNull()
+            if (
+                id.isBlank() ||
+                actorId.isBlank() ||
+                postId.isBlank() ||
+                type == null
+            ) {
+                continue
+            }
+
+            notifications += ForumNotification(
+                id = id,
+                recipientUserId = userId,
+                actorId = actorId,
+                actorName = UserProfilePolicy.normalizeName(
+                    json.optString(NOTIFICATION_ACTOR_NAME_KEY)
+                ),
+                actorAvatarId = UserProfilePolicy.normalizeAvatarId(
+                    json.optInt(
+                        NOTIFICATION_ACTOR_AVATAR_KEY,
+                        UserProfilePolicy.DEFAULT_AVATAR_ID
+                    )
+                ),
+                postId = postId,
+                type = type,
+                createdAtMillis = json.optLong(
+                    NOTIFICATION_CREATED_AT_KEY,
+                    0L
+                ).coerceAtLeast(0L),
+                isRead = json.optBoolean(NOTIFICATION_READ_KEY, false)
+            )
+        }
+
+        return notifications.sortedByDescending(ForumNotification::createdAtMillis)
+    }
+
+    private fun persistNotifications(
+        userId: String,
+        notifications: List<ForumNotification>
+    ) {
+        val array = JSONArray()
+        notifications.forEach { notification ->
+            array.put(
+                JSONObject()
+                    .put(NOTIFICATION_ID_KEY, notification.id)
+                    .put(NOTIFICATION_RECIPIENT_ID_KEY, notification.recipientUserId)
+                    .put(NOTIFICATION_ACTOR_ID_KEY, notification.actorId)
+                    .put(NOTIFICATION_ACTOR_NAME_KEY, notification.actorName)
+                    .put(NOTIFICATION_ACTOR_AVATAR_KEY, notification.actorAvatarId)
+                    .put(NOTIFICATION_POST_ID_KEY, notification.postId)
+                    .put(NOTIFICATION_TYPE_KEY, notification.type.name)
+                    .put(NOTIFICATION_CREATED_AT_KEY, notification.createdAtMillis)
+                    .put(NOTIFICATION_READ_KEY, notification.isRead)
+            )
+        }
+        preferences.edit()
+            .putString(notificationsKey(userId), array.toString())
+            .commit()
     }
 
     private fun migrateLegacyInteractions(currentUserId: String) {
@@ -402,12 +576,15 @@ class ForumPostStore(context: Context) : ForumRepository {
 
     private fun likesKey(postId: String): String = LIKES_PREFIX + postId
 
+    private fun notificationsKey(userId: String): String = NOTIFICATIONS_PREFIX + userId
+
     internal companion object {
         const val PREFERENCES_NAME = "focusguard_forum_posts"
         internal const val POSTS_KEY = "posts"
 
         private const val COMMENTS_PREFIX = "comments:"
         private const val LIKES_PREFIX = "likes:"
+        private const val NOTIFICATIONS_PREFIX = "notifications:"
 
         private const val ID_KEY = "id"
         private const val AUTHOR_ID_KEY = "author_id"
@@ -427,5 +604,15 @@ class ForumPostStore(context: Context) : ForumRepository {
         private const val COMMENT_AVATAR_KEY = "avatar"
         private const val COMMENT_BODY_KEY = "body"
         private const val COMMENT_CREATED_AT_KEY = "created_at"
+
+        private const val NOTIFICATION_ID_KEY = "id"
+        private const val NOTIFICATION_RECIPIENT_ID_KEY = "recipient_id"
+        private const val NOTIFICATION_ACTOR_ID_KEY = "actor_id"
+        private const val NOTIFICATION_ACTOR_NAME_KEY = "actor_name"
+        private const val NOTIFICATION_ACTOR_AVATAR_KEY = "actor_avatar"
+        private const val NOTIFICATION_POST_ID_KEY = "post_id"
+        private const val NOTIFICATION_TYPE_KEY = "type"
+        private const val NOTIFICATION_CREATED_AT_KEY = "created_at"
+        private const val NOTIFICATION_READ_KEY = "read"
     }
 }
