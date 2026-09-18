@@ -17,6 +17,20 @@ android {
     val ciVersionCode = System.getenv("CI_VERSION_CODE")?.toIntOrNull()
     val ciVersionName = System.getenv("CI_VERSION_NAME")?.takeIf { it.isNotBlank() }
 
+    // AdMob configuration is selected automatically per build type.
+    // Debug uses Google's official test IDs; Release overrides the active
+    // production placements with the real Focus Guard AdMob IDs.
+    val admobTestAppId = "ca-app-pub-3940256099942544~3347511713"
+    val admobTestInterstitialId = "ca-app-pub-3940256099942544/1033173712"
+    val admobTestRewardedId = "ca-app-pub-3940256099942544/5224354917"
+    val admobTestBannerId = "ca-app-pub-3940256099942544/9214589741"
+    val admobTestNativeId = "ca-app-pub-3940256099942544/2247696110"
+
+    val admobProductionAppId = "ca-app-pub-7090310776523046~9758255269"
+    val admobProductionInterstitialId = "ca-app-pub-7090310776523046/8800396811"
+    val admobProductionRewardedId = "ca-app-pub-7090310776523046/1946766744"
+    val admobProductionBannerId = "ca-app-pub-7090310776523046/2381881015"
+
     defaultConfig {
         // Permanent Android update identity. Never change this applicationId:
         // every production APK must update the same installed Hard Block app.
@@ -26,6 +40,14 @@ android {
         versionCode = ciVersionCode ?: 10
         versionName = ciVersionName ?: "2.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
+        // Safe defaults for every non-Release variant.
+        buildConfigField("String", "ADMOB_APP_ID", "\"$admobTestAppId\"")
+        buildConfigField("String", "ADMOB_INTERSTITIAL_AD_UNIT_ID", "\"$admobTestInterstitialId\"")
+        buildConfigField("String", "ADMOB_REWARDED_AD_UNIT_ID", "\"$admobTestRewardedId\"")
+        buildConfigField("String", "ADMOB_BANNER_AD_UNIT_ID", "\"$admobTestBannerId\"")
+        buildConfigField("String", "ADMOB_NATIVE_AD_UNIT_ID", "\"$admobTestNativeId\"")
+        manifestPlaceholders["admobAppId"] = admobTestAppId
         ksp {
             arg("room.schemaLocation", "$projectDir/schemas")
         }
@@ -133,6 +155,14 @@ android {
             versionNameSuffix = "-debug"
         }
         release {
+            buildConfigField("String", "ADMOB_APP_ID", "\"$admobProductionAppId\"")
+            buildConfigField("String", "ADMOB_INTERSTITIAL_AD_UNIT_ID", "\"$admobProductionInterstitialId\"")
+            buildConfigField("String", "ADMOB_REWARDED_AD_UNIT_ID", "\"$admobProductionRewardedId\"")
+            buildConfigField("String", "ADMOB_BANNER_AD_UNIT_ID", "\"$admobProductionBannerId\"")
+            // Native has no active production placement yet, so it intentionally
+            // inherits Google's official test unit until a real unit is created.
+            manifestPlaceholders["admobAppId"] = admobProductionAppId
+
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
