@@ -11,116 +11,107 @@
     {
       "code": "de",
       "name": "Deutsch",
-      "file": "easypeasy_de.pdf",
-      "source": "https://easypeasymethod.org/de/easypeasy.pdf"
+      "format": "html",
+      "entrypoint": "de/index.html",
+      "source": "https://easypeasymethod.org/de/"
     },
     {
       "code": "en",
       "name": "English",
-      "file": "easypeasy_en.pdf",
-      "source": "https://easypeasymethod.org/easypeasy.pdf"
+      "format": "html",
+      "entrypoint": "en/index.html",
+      "source": "https://easypeasymethod.org/"
     },
     {
       "code": "es",
       "name": "Español",
-      "file": "easypeasy_es.pdf",
-      "source": "https://easypeasymethod.org/translations/easypeasy_es.pdf"
-    },
-    {
-      "code": "fr",
-      "name": "Français",
-      "file": "easypeasy_fr.pdf",
-      "source": "https://easypeasymethod.org/translations/easypeasy_fr.pdf"
+      "format": "html",
+      "entrypoint": "es/index.html",
+      "source": "https://easypeasyespanol.github.io/"
     },
     {
       "code": "it",
       "name": "Italiano",
-      "file": "easypeasy_it.pdf",
-      "source": "https://easypeasymethod.org/it/easypeasy.pdf"
+      "format": "html",
+      "entrypoint": "it/index.html",
+      "source": "https://easypeasymethod.org/it/"
     },
     {
       "code": "hu",
       "name": "Magyar",
-      "file": "easypeasy_hu.pdf",
-      "source": "https://easypeasymethod.org/translations/easypeasy_hu.pdf"
+      "format": "html",
+      "entrypoint": "hu/index.html",
+      "source": "https://sites.google.com/view/jarhatout"
     },
     {
       "code": "nl",
       "name": "Nederlands",
-      "file": "easypeasy_nl.pdf",
-      "source": "https://easypeasymethod.org/nl/easypeasy.pdf"
+      "format": "html",
+      "entrypoint": "nl/index.html",
+      "source": "https://easypeasymethod.org/nl/"
     },
     {
       "code": "pl",
       "name": "Polski",
-      "file": "easypeasy_pl.pdf",
-      "source": "https://easypeasymethod.org/pl/easypeasy.pdf"
+      "format": "html",
+      "entrypoint": "pl/index.html",
+      "source": "https://easypeasymethod.org/pl/"
     },
     {
       "code": "ro",
       "name": "Română",
-      "file": "easypeasy_ro.pdf",
-      "source": "https://easypeasymethod.org/ro/easypeasy.pdf"
+      "format": "html",
+      "entrypoint": "ro/index.html",
+      "source": "https://easypeasymethod.org/ro/"
     },
     {
       "code": "sq",
       "name": "Shqip",
-      "file": "easypeasy_sq.pdf",
-      "source": "https://easypeasymethod.org/sq/easypeasy.pdf"
+      "format": "html",
+      "entrypoint": "sq/index.html",
+      "source": "https://easypeasymethod.org/sq/"
     },
     {
       "code": "so",
       "name": "Soomaaliga",
-      "file": "easypeasy_so.pdf",
-      "source": "https://easypeasymethod.org/so/easypeasy.pdf"
+      "format": "html",
+      "entrypoint": "so/index.html",
+      "source": "https://easypeasymethod.org/so/"
     },
     {
       "code": "sv",
       "name": "Svenska",
-      "file": "easypeasy_sv.pdf",
-      "source": "https://easypeasymethod.org/sv/easypeasy.pdf"
+      "format": "html",
+      "entrypoint": "sv/index.html",
+      "source": "https://easypeasymethod.org/sv/"
     },
     {
       "code": "tr",
       "name": "Türkçe",
-      "file": "easypeasy_tr.pdf",
-      "source": "https://easypeasymethod.org/translations/easypeasy_tr.pdf"
-    },
-    {
-      "code": "cs",
-      "name": "Čeština",
-      "file": "easypeasy_cs.pdf",
-      "source": "https://easypeasymethod.org/translations/easypeasy_cs.pdf"
+      "format": "html",
+      "entrypoint": "tr/index.html",
+      "source": "https://www.neverfapturkiye.com/konu/pornoyu-birakmanin-kolay-yolu.1259/"
     },
     {
       "code": "ru",
       "name": "Русский",
-      "file": "easypeasy_ru.pdf",
-      "source": "https://easypeasymethod.org/ru/easypeasy.pdf"
+      "format": "html",
+      "entrypoint": "ru/index.html",
+      "source": "https://easypeasymethod.org/ru/"
     },
     {
       "code": "uk",
       "name": "Українська",
-      "file": "easypeasy_uk.pdf",
-      "source": "https://easypeasymethod.org/uk/easypeasy.pdf"
-    },
-    {
-      "code": "ar",
-      "name": "العربية",
-      "file": "easypeasy_ar.pdf",
-      "source": "https://easypeasymethod.org/translations/easypeasy_ar.pdf"
-    },
-    {
-      "code": "fa",
-      "name": "فارسی",
-      "file": "easypeasy_fa.pdf",
-      "source": "https://easypeasymethod.org/translations/easypeasy_fa.pdf"
+      "format": "html",
+      "entrypoint": "uk/index.html",
+      "source": "https://easypeasymethod.org/uk/"
     },
     {
       "code": "ko",
       "name": "한국어",
-      "file": "easypeasy_ko.pdf",
-      "source": "https://easypeasymethod.org/ko/easypeasy.pdf"
+      "format": "html",
+      "entrypoint": "ko/index.html",
+      "source": "https://easypeasymethod.org/ko/"
     }
   ]
 }
