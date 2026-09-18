@@ -15,8 +15,6 @@ data class ForumPost(
 
 object ForumPostPolicy {
     const val MAX_BODY_CODE_POINTS = 1000
-    const val MAX_STORED_POSTS = 200
-
     fun limitBodyInput(value: String): String = value
         .replace("\r\n", "\n")
         .replace('\r', '\n')
@@ -60,9 +58,7 @@ class ForumPostStore(context: Context) {
             )
         }
 
-        return posts
-            .sortedByDescending(ForumPost::createdAtMillis)
-            .take(ForumPostPolicy.MAX_STORED_POSTS)
+        return posts.sortedByDescending(ForumPost::createdAtMillis)
     }
 
     fun publish(
@@ -81,7 +77,7 @@ class ForumPostStore(context: Context) {
             body = normalizedBody,
             createdAtMillis = nowMillis.coerceAtLeast(0L)
         )
-        persist((listOf(post) + load()).take(ForumPostPolicy.MAX_STORED_POSTS))
+        persist(listOf(post) + load())
         return post
     }
 
