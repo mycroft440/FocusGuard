@@ -292,7 +292,9 @@ class ForumPostStore(context: Context) : ForumRepository {
                     .coerceAtLeast(readLikeUserIds(postId).size),
                 likedByMe = likedByMe,
                 commentsCount = commentsCount,
-                authorId = UserProfilePolicy.normalizeUserId(json.optString(AUTHOR_ID_KEY))
+                authorId = UserProfilePolicy.normalizeUserId(
+                    json.optString(AUTHOR_ID_KEY)
+                ).ifBlank { currentUserId }
             )
         }
 
