@@ -474,14 +474,12 @@ private fun ForumPostCard(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold
                     )
-                    if (post.commentsCount > 0) {
-                        Spacer(modifier = Modifier.width(5.dp))
-                        Text(
-                            text = post.commentsCount.toString(),
-                            color = if (commentsExpanded) AccentCyan else TextHint,
-                            fontSize = 12.sp
-                        )
-                    }
+                    Spacer(modifier = Modifier.width(5.dp))
+                    Text(
+                        text = post.commentsCount.toString(),
+                        color = if (commentsExpanded) AccentCyan else TextHint,
+                        fontSize = 12.sp
+                    )
                 }
             }
 
