@@ -45,31 +45,33 @@ class OfflineBookAssetsTest {
     }
 
     @Test
-    fun officialTranslationsAreBundledAsPdf() {
+    fun htmlTranslationsAreBundledForOfflineAccess() {
         val expectedLanguageCodes = listOf(
-            "de", "en", "es", "fr", "it", "hu", "nl", "pl", "ro", "sq",
-            "so", "sv", "tr", "cs", "ru", "uk", "ar", "fa", "ko"
+            "de", "en", "es", "it", "hu", "nl", "pl", "ro",
+            "sq", "so", "sv", "tr", "ru", "uk", "ko"
         )
         val catalog = File(translationAssets, "catalog.json").readText()
+        val bundledPdfs = translationAssets
+            .walkTopDown()
+            .filter { it.isFile && it.extension.equals("pdf", ignoreCase = true) }
+            .toList()
+
+        assertThat(bundledPdfs).isEmpty()
 
         expectedLanguageCodes.forEach { languageCode ->
-            val fileName = "easypeasy_${languageCode}.pdf"
-            val pdf = File(translationAssets, fileName)
-            val magic = if (pdf.isFile) {
-                pdf.inputStream().use { input ->
-                    val bytes = ByteArray(5)
-                    val count = input.read(bytes)
-                    String(bytes, 0, count.coerceAtLeast(0), Charsets.US_ASCII)
-                }
-            } else {
-                ""
-            }
+            val languageDirectory = File(translationAssets, languageCode)
+            val entrypoint = File(languageDirectory, "index.html")
+            val mirroredHtml = File(languageDirectory, "mirror")
+                .walkTopDown()
+                .filter { it.isFile && it.extension.equals("html", ignoreCase = true) }
+                .toList()
 
-            assertThat(pdf.isFile).isTrue()
-            assertThat(pdf.length()).isGreaterThan(1_024L)
-            assertThat(magic).isEqualTo("%PDF-")
+            assertThat(entrypoint.isFile).isTrue()
+            assertThat(entrypoint.readText()).contains("http-equiv=\"refresh\"")
+            assertThat(mirroredHtml).isNotEmpty()
+            assertThat(mirroredHtml.maxOf { it.length() }).isGreaterThan(1_024L)
             assertThat(catalog).contains("\"code\": \"$languageCode\"")
-            assertThat(catalog).contains("\"file\": \"$fileName\"")
+            assertThat(catalog).contains("\"entrypoint\": \"$languageCode/index.html\"")
         }
     }
 
