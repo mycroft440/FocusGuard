@@ -98,6 +98,34 @@ class OfflineBookAssetsTest {
     }
 
     @Test
+    fun turkishSnapshotKeepsOnlyBookPagesAndLocalContentImages() {
+        val threadDirectory = File(
+            translationAssets,
+            "tr/mirror/www.neverfapturkiye.com/konu/pornoyu-birakmanin-kolay-yolu.1259"
+        )
+        val threadPages = threadDirectory
+            .listFiles()
+            .orEmpty()
+            .filter { it.isFile && it.extension.equals("html", ignoreCase = true) }
+        val combinedBookHtml = threadPages.joinToString("\n") { it.readText() }
+        val attachmentDirectory = File(
+            translationAssets,
+            "tr/mirror/neverfapturkiye.com/data/attachments/0"
+        )
+
+        assertThat(threadPages.map { it.name }).containsExactly("index.html", "page-2.html")
+        assertThat(combinedBookHtml).doesNotContain("https://neverfapturkiye.com/data/attachments/")
+        listOf(
+            "303-8110cdc624017b34c6b2d44d80c2f64f.jpg",
+            "304-48795eee67977acfb7258673ecec4faa.jpg",
+            "305-f7f09f2441d27b4ccd74daa59a22d2de.jpg",
+            "306-6d24c124ec3d8b12b14d85298d61660e.jpg"
+        ).forEach { fileName ->
+            assertThat(File(attachmentDirectory, fileName).length()).isGreaterThan(1_024L)
+        }
+    }
+
+    @Test
     fun redistributionNoticesAreBundled() {
         assertThat(File(bookAssets, "licenses/NOTICE.md").isFile).isTrue()
         assertThat(File(bookAssets, "licenses/LICENSE-CONTENT").isFile).isTrue()
