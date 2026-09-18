@@ -7,7 +7,10 @@ Attribution:
 - Original English hackbook: Hackauthor²
 - Brazilian Portuguese translation: HackAuthorBR and volunteer translators
 - Upstream project: https://gitlab.com/snuggy/easypeasy
-- Official Portuguese edition: https://easypeasymethod.org/pt-br/
+- Official Brazilian Portuguese edition: https://easypeasymethod.org/pt-br/
+- Other official translated PDF editions bundled by FocusGuard: see ../translations/catalog.json
+
+The bundled translated PDFs are kept unmodified from their upstream downloads so attribution contained in each edition remains intact.
 
 License: https://creativecommons.org/licenses/by-sa/4.0/
 SPDX-License-Identifier: CC-BY-SA-4.0
