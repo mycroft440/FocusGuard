@@ -161,12 +161,13 @@ jobs:
             :baselineprofile:compileBenchmarkReleaseKotlin \
             :baselineprofile:compileNonMinifiedReleaseKotlin \
             --no-daemon --stacktrace 2>&1 | tee performance-harness-gradle.log
-      - name: Validate percentile parsers
+      - name: Validate CI helper scripts
         shell: bash
         run: |
           set -euo pipefail
           python3 scripts/summarize_focusguard_latency.py --self-test
           python3 scripts/summarize_macrobenchmark.py --self-test
+          python3 scripts/verify_github_artifact_zip.py --self-test
       - name: Upload performance-harness diagnostics
         id: upload_performance_diagnostics
         if: always()
