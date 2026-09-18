@@ -362,8 +362,10 @@ private fun ForumSocialHeader(
     onMyPostsClick: () -> Unit
 ) {
     var menuExpanded by remember { mutableStateOf(false) }
-    val profileName = profile.displayName.ifBlank {
+    val profileName = if (profile.displayName.isBlank()) {
         stringResource(R.string.forum_member)
+    } else {
+        profile.displayName
     }
 
     FocusCard(
@@ -502,8 +504,10 @@ private fun ForumLoadingState() {
 
 @Composable
 private fun ForumNotificationItem(notification: ForumNotification) {
-    val actorName = notification.actorName.ifBlank {
+    val actorName = if (notification.actorName.isBlank()) {
         stringResource(R.string.forum_member)
+    } else {
+        notification.actorName
     }
     val message = when (notification.type) {
         ForumNotificationType.LIKE ->
