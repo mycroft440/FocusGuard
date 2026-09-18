@@ -9,6 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: read
   contents: read
 
 concurrency:
@@ -117,25 +118,74 @@ jobs:
             > latest-artifacts/SHA256SUMS.txt
 
       - name: Upload latest APK
-        uses: actions/upload-artifact@v4
+        id: upload_latest_apk
+        uses: actions/upload-artifact@v7
         with:
           name: FocusGuard-latest-APK-${{ github.run_number }}
           path: latest-artifacts/FocusGuard-latest.apk
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
+          overwrite: true
+          archive: true
+
+      - name: Verify latest APK ZIP
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.upload_latest_apk.outputs['artifact-id'] }}
+          ARTIFACT_DIGEST: ${{ steps.upload_latest_apk.outputs['artifact-digest'] }}
+        run: |
+          set -euo pipefail
+          ARCHIVE="$RUNNER_TEMP/FocusGuard-latest-APK-${{ github.run_number }}.zip"
+          curl --fail --silent --show-error --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            --output "$ARCHIVE"
+          python3 scripts/verify_github_artifact_zip.py \
+            --archive "$ARCHIVE" \
+            --expected-digest "$ARTIFACT_DIGEST" \
+            --expect "FocusGuard-latest.apk=latest-artifacts/FocusGuard-latest.apk"
 
       - name: Upload latest AAB
-        uses: actions/upload-artifact@v4
+        id: upload_latest_aab
+        uses: actions/upload-artifact@v7
         with:
           name: FocusGuard-latest-AAB-${{ github.run_number }}
           path: latest-artifacts/FocusGuard-latest.aab
           if-no-files-found: error
           retention-days: 30
           compression-level: 0
+          overwrite: true
+          archive: true
+
+      - name: Verify latest AAB ZIP
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.upload_latest_aab.outputs['artifact-id'] }}
+          ARTIFACT_DIGEST: ${{ steps.upload_latest_aab.outputs['artifact-digest'] }}
+        run: |
+          set -euo pipefail
+          ARCHIVE="$RUNNER_TEMP/FocusGuard-latest-AAB-${{ github.run_number }}.zip"
+          curl --fail --silent --show-error --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            --output "$ARCHIVE"
+          python3 scripts/verify_github_artifact_zip.py \
+            --archive "$ARCHIVE" \
+            --expected-digest "$ARTIFACT_DIGEST" \
+            --expect "FocusGuard-latest.aab=latest-artifacts/FocusGuard-latest.aab"
 
       - name: Upload checksums
-        uses: actions/upload-artifact@v4
+        id: upload_latest_identity
+        uses: actions/upload-artifact@v7
         with:
           name: FocusGuard-latest-SHA256-${{ github.run_number }}
           path: |
@@ -144,6 +194,31 @@ jobs:
             latest-artifacts/package.txt
           if-no-files-found: error
           retention-days: 30
+          overwrite: true
+          archive: true
+
+      - name: Verify latest identity ZIP
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.upload_latest_identity.outputs['artifact-id'] }}
+          ARTIFACT_DIGEST: ${{ steps.upload_latest_identity.outputs['artifact-digest'] }}
+        run: |
+          set -euo pipefail
+          ARCHIVE="$RUNNER_TEMP/FocusGuard-latest-SHA256-${{ github.run_number }}.zip"
+          curl --fail --silent --show-error --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            --output "$ARCHIVE"
+          python3 scripts/verify_github_artifact_zip.py \
+            --archive "$ARCHIVE" \
+            --expected-digest "$ARTIFACT_DIGEST" \
+            --expect "SHA256SUMS.txt=latest-artifacts/SHA256SUMS.txt" \
+            --expect "apksigner.txt=latest-artifacts/apksigner.txt" \
+            --expect "package.txt=latest-artifacts/package.txt"
 
       - name: Remove release keystore
         if: always()
