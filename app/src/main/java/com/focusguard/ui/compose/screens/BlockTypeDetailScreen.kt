@@ -95,7 +95,7 @@ import com.focusguard.ui.compose.theme.WarningAmber
 import com.focusguard.utils.WebsiteBlocker
 
 /**
- * The three kinds of protection, as the user chooses between them.
+ * The four protection choices shown on the Home screen.
  *
  * Each carries its own colour and icon so the type is recognisable before the
  * text is read — the same card looks the same on the home screen and at the top
