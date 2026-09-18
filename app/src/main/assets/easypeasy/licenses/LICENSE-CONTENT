@@ -8,9 +8,9 @@ Attribution:
 - Brazilian Portuguese translation: HackAuthorBR and volunteer translators
 - Upstream project: https://gitlab.com/snuggy/easypeasy
 - Official Brazilian Portuguese edition: https://easypeasymethod.org/pt-br/
-- Other official translated PDF editions bundled by FocusGuard: see ../translations/catalog.json
+- Other HTML translations bundled by FocusGuard: see ../translations/catalog.json
 
-The bundled translated PDFs are kept unmodified from their upstream downloads so attribution contained in each edition remains intact.
+The bundled translation snapshots are downloaded from the HTML editions linked by the EasyPeasy language index and retain the upstream page content and attribution. PDF-only editions are not converted or bundled.
 
 License: https://creativecommons.org/licenses/by-sa/4.0/
 SPDX-License-Identifier: CC-BY-SA-4.0
