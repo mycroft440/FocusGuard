@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_entry_lock_title">HardBlock is locked</string>
+    <string name="app_entry_lock_description">A password block is active. Confirm its unlock method to open HardBlock.</string>
+    <string name="app_entry_lock_password_label">Block password</string>
+    <string name="app_entry_lock_unlock">Unlock HardBlock</string>
+    <string name="app_entry_lock_wrong_credential">Incorrect password or pattern.</string>
+    <string name="app_entry_lock_pattern_prompt">Draw the pattern used by an active password block.</string>
+    <string name="app_entry_lock_biometric">Use fingerprint</string>
+    <string name="app_entry_lock_loading">Checking active protection…</string>
+    <string name="app_entry_lock_unavailable">The active password block has no available unlock method. Reopen HardBlock to retry.</string>
+</resources>

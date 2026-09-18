@@ -1,5 +1,6 @@
 package com.focusguard.ui.compose.screens
 
+import androidx.annotation.StringRes
 import androidx.appcompat.app.AppCompatDelegate
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
@@ -7,8 +8,10 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -31,6 +34,31 @@ import com.focusguard.ui.compose.theme.DarkBg
 import com.focusguard.ui.compose.theme.DarkSurface
 import com.focusguard.ui.compose.theme.TextPrimary
 
+internal data class AppLanguageOption(@StringRes val labelRes: Int, val languageTag: String)
+
+internal val SUPPORTED_APP_LANGUAGES = listOf(
+    AppLanguageOption(R.string.fg_language_english, "en"),
+    AppLanguageOption(R.string.fg_language_chinese_simplified, "zh-Hans"),
+    AppLanguageOption(R.string.fg_language_hindi, "hi"),
+    AppLanguageOption(R.string.fg_language_spanish, "es"),
+    AppLanguageOption(R.string.fg_language_arabic, "ar"),
+    AppLanguageOption(R.string.fg_language_french, "fr"),
+    AppLanguageOption(R.string.fg_language_bengali, "bn"),
+    AppLanguageOption(R.string.fg_language_portuguese, "pt"),
+    AppLanguageOption(R.string.fg_language_indonesian, "id"),
+    AppLanguageOption(R.string.fg_language_urdu, "ur"),
+    AppLanguageOption(R.string.fg_language_russian, "ru"),
+    AppLanguageOption(R.string.fg_language_german, "de"),
+    AppLanguageOption(R.string.fg_language_japanese, "ja"),
+    AppLanguageOption(R.string.fg_language_nigerian_pidgin, "pcm"),
+    AppLanguageOption(R.string.fg_language_egyptian_arabic, "arz"),
+    AppLanguageOption(R.string.fg_language_marathi, "mr"),
+    AppLanguageOption(R.string.fg_language_vietnamese, "vi"),
+    AppLanguageOption(R.string.fg_language_telugu, "te"),
+    AppLanguageOption(R.string.fg_language_swahili, "sw"),
+    AppLanguageOption(R.string.fg_language_hausa, "ha")
+)
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LanguageScreen(onBack: () -> Unit) {
@@ -41,7 +69,7 @@ fun LanguageScreen(onBack: () -> Unit) {
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(
-                            Icons.Default.ArrowBack,
+                            Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = stringResource(R.string.action_back),
                             tint = TextPrimary
                         )
@@ -56,12 +84,13 @@ fun LanguageScreen(onBack: () -> Unit) {
             modifier = Modifier
                 .fillMaxSize()
                 .padding(paddingValues)
+                .verticalScroll(rememberScrollState())
         ) {
             LanguageItem(stringResource(R.string.fg_language_system_default), "")
-            Divider(color = CardBorder)
-            LanguageItem(stringResource(R.string.fg_language_portuguese), "pt")
-            Divider(color = CardBorder)
-            LanguageItem(stringResource(R.string.fg_language_english), "en")
+            SUPPORTED_APP_LANGUAGES.forEach { language ->
+                Divider(color = CardBorder)
+                LanguageItem(stringResource(language.labelRes), language.languageTag)
+            }
             Divider(color = CardBorder)
         }
     }
@@ -74,24 +103,14 @@ fun LanguageItem(label: String, langCode: String) {
             .fillMaxWidth()
             .clickable {
                 if (langCode.isEmpty()) {
-                    // Empty app locale list means: follow the phone language.
-                    AppCompatDelegate.setApplicationLocales(
-                        LocaleListCompat.getEmptyLocaleList()
-                    )
+                    AppCompatDelegate.setApplicationLocales(LocaleListCompat.getEmptyLocaleList())
                 } else {
-                    AppCompatDelegate.setApplicationLocales(
-                        LocaleListCompat.forLanguageTags(langCode)
-                    )
+                    AppCompatDelegate.setApplicationLocales(LocaleListCompat.forLanguageTags(langCode))
                 }
             }
             .padding(24.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            text = label,
-            fontSize = 16.sp,
-            color = TextPrimary,
-            fontWeight = FontWeight.Medium
-        )
+        Text(text = label, fontSize = 16.sp, color = TextPrimary, fontWeight = FontWeight.Medium)
     }
 }

@@ -44,9 +44,13 @@ android {
             arg("room.schemaLocation", "$projectDir/schemas")
         }
         // English is the universal fallback in unqualified `values/`.
-        // Portuguese lives in `values-pt/`; pt-rBR also keeps Portuguese
-        // resources supplied by AndroidX/AppCompat libraries when filtering.
-        resourceConfigurations += setOf("en", "pt", "pt-rBR")
+        // Keep exactly the app-supported language resources in packaged variants.
+        // pt-rBR stays as a regional override alongside the 20 language options.
+        resourceConfigurations += setOf(
+            "en", "pt", "pt-rBR", "b+zh+Hans", "hi", "es", "ar", "fr", "bn",
+            "id", "ur", "ru", "de", "ja", "b+pcm", "b+arz", "mr", "vi", "te",
+            "sw", "ha"
+        )
     }
 
     // AGP generates the Android 13+ per-app language configuration from the
@@ -59,8 +63,8 @@ android {
     lint {
         abortOnError = true
         checkReleaseBuilds = true
-        // Both locales must stay in exact parity. The default English fallback
-        // and Portuguese translation are treated as a release invariant.
+        // Every published locale must stay in resource-key parity with the English
+        // fallback. Missing and extra translations remain release errors.
         error.add("MissingTranslation")
         error.add("ExtraTranslation")
 

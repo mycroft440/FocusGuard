@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <plurals name="dopamine_selected_targets_count">
+        <item quantity="zero">%1$d عنصر محدد</item>
+        <item quantity="one">%1$d عنصر محدد</item>
+        <item quantity="two">%1$d عنصران محددان</item>
+        <item quantity="few">%1$d عناصر محددة</item>
+        <item quantity="many">%1$d عنصرًا محددًا</item>
+        <item quantity="other">%1$d عنصر محدد</item>
+    </plurals>
+    <plurals name="dopamine_selected_apps_count">
+        <item quantity="zero">%1$d تطبيق محدد</item>
+        <item quantity="one">%1$d تطبيق محدد</item>
+        <item quantity="two">%1$d تطبيقان محددان</item>
+        <item quantity="few">%1$d تطبيقات محددة</item>
+        <item quantity="many">%1$d تطبيقًا محددًا</item>
+        <item quantity="other">%1$d تطبيق محدد</item>
+    </plurals>
+    <string name="dopamine_schedule_description">Selected apps and sites are blocked only during the daily time window on the weekdays you choose, until the selected duration ends.</string>
+    <string name="dopamine_schedule_terms_how">Choose what to block, which weekdays the block applies to, the daily time window, and the total duration. During the selected window the targets stay blocked; outside it they remain available. The commitment itself cannot be ended early.</string>
+    <string name="dopamine_continue_to_schedule">Continue to schedule</string>
+    <string name="dopamine_schedule_config_title">Schedule and duration</string>
+    <string name="dopamine_schedule_config_subtitle">Choose the weekdays, daily blocking hours, and how long the commitment should remain active.</string>
+    <string name="dopamine_weekdays_question">Which days of the week do you want to block?</string>
+    <string name="dopamine_weekdays_hint">Blocking applies only on the selected days.</string>
+    <string name="dopamine_weekdays_required">Select at least one day of the week.</string>
+    <string name="dopamine_time_window_question">What hours should blocking be active?</string>
+    <string name="dopamine_time_window_hint">Apps and sites are blocked only between the start and end time. Overnight windows are supported.</string>
+    <string name="dopamine_start_time">Starts</string>
+    <string name="dopamine_end_time">Ends</string>
+    <string name="dopamine_time_window_invalid">Start and end time must be different.</string>
+    <string name="dopamine_duration_days_question">How long should this schedule remain active?</string>
+    <string name="dopamine_weekday_mon">Mon</string>
+    <string name="dopamine_weekday_tue">Tue</string>
+    <string name="dopamine_weekday_wed">Wed</string>
+    <string name="dopamine_weekday_thu">Thu</string>
+    <string name="dopamine_weekday_fri">Fri</string>
+    <string name="dopamine_weekday_sat">Sat</string>
+    <string name="dopamine_weekday_sun">Sun</string>
+</resources>
