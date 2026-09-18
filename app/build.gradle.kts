@@ -44,8 +44,8 @@ android {
             arg("room.schemaLocation", "$projectDir/schemas")
         }
         // English is the universal fallback in unqualified `values/`.
-        // Portuguese lives in `values-pt/`; pt-rBR also keeps Portuguese
-        // resources supplied by AndroidX/AppCompat libraries when filtering.
+        // Keep exactly the app-supported language resources in packaged variants.
+        // pt-rBR stays as a regional override alongside the 20 language options.
         resourceConfigurations += setOf(
             "en", "pt", "pt-rBR", "b+zh+Hans", "hi", "es", "ar", "fr", "bn",
             "id", "ur", "ru", "de", "ja", "b+pcm", "b+arz", "mr", "vi", "te",
