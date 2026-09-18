@@ -774,4 +774,12 @@
     <string name="focus_mode_notification_channel_description">Mantém o prazo e a restauração automática do Modo Foco.</string>
     <string name="focus_mode_notification_access_label">Controle de notificações do Modo Foco</string>
 
+
+    <string name="forum_notifications">Notificações</string>
+    <string name="forum_my_posts">Meus posts</string>
+    <string name="forum_notifications_empty_title">Nenhuma notificação ainda</string>
+    <string name="forum_notifications_empty_description">Curtidas e comentários nas suas publicações aparecerão aqui.</string>
+    <string name="forum_my_posts_empty_description">As publicações que você fizer aparecerão aqui.</string>
+    <string name="forum_notification_like">%1$s curtiu sua publicação.</string>
+    <string name="forum_notification_comment">%1$s comentou na sua publicação.</string>
 </resources>

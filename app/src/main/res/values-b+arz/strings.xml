@@ -782,4 +782,12 @@
     <string name="focus_mode_notification_channel_description">Keeps the Focus Mode deadline and automatic restoration running.</string>
     <string name="focus_mode_notification_access_label">Focus Mode notification control</string>
 
+
+    <string name="forum_notifications">Notifications</string>
+    <string name="forum_my_posts">My posts</string>
+    <string name="forum_notifications_empty_title">No notifications yet</string>
+    <string name="forum_notifications_empty_description">Likes and comments on your posts will appear here.</string>
+    <string name="forum_my_posts_empty_description">Posts you publish will appear here.</string>
+    <string name="forum_notification_like">%1$s liked your post.</string>
+    <string name="forum_notification_comment">%1$s commented on your post.</string>
 </resources>
