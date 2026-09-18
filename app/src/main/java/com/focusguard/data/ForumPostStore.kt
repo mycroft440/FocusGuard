@@ -228,7 +228,8 @@ class ForumPostStore(context: Context) : ForumRepository {
                 ),
                 body = body,
                 createdAtMillis = json.optLong(CREATED_AT_KEY, 0L).coerceAtLeast(0L),
-                likeCount = json.optInt(LIKE_COUNT_KEY, 0).coerceAtLeast(0),
+                likeCount = json.optInt(LIKE_COUNT_KEY, 0)
+                    .coerceAtLeast(readLikeUserIds(postId).size),
                 likedByMe = likedByMe,
                 commentsCount = commentsCount,
                 authorId = UserProfilePolicy.normalizeUserId(json.optString(AUTHOR_ID_KEY))
@@ -393,7 +394,7 @@ class ForumPostStore(context: Context) : ForumRepository {
 
     private fun persistLikeUserIds(postId: String, userIds: Set<String>) {
         val array = JSONArray()
-        userIds.sorted().forEach(array::put)
+        userIds.sorted().forEach { userId -> array.put(userId) }
         preferences.edit().putString(likesKey(postId), array.toString()).commit()
     }
 
