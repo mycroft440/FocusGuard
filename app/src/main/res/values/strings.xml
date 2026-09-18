@@ -158,9 +158,15 @@
     <string name="forum_publish">Publish</string>
     <string name="forum_character_count">%1$d/%2$d</string>
     <string name="forum_member">HardBlock member</string>
+    <string name="forum_like">Like</string>
+    <string name="forum_liked">Liked</string>
+    <string name="forum_comment">Comment</string>
+    <string name="forum_no_comments">No comments yet.</string>
+    <string name="forum_comment_hint">Write a comment…</string>
+    <string name="forum_comment_publish">Comment</string>
     <string name="forum_empty_title">No posts yet</string>
     <string name="forum_empty_description">Be the first to publish something here.</string>
-    <string name="forum_local_storage_notice">In this version, forum posts are saved only on this device.</string>
+    <string name="forum_local_storage_notice">In this version, forum posts, likes and comments are saved only on this device.</string>
 
     <!-- AntiPorn and EasyPeasy -->
     <string name="recovery_title">AntiPorn</string>
