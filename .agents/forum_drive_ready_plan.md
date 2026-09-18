@@ -9,18 +9,18 @@
 - [x] A integração Google Drive ainda não pode ser implementada sem credenciais/configuração do projeto.
 
 ## Implementação
-- [ ] Criar identidade estável `userId` no perfil local, mantendo compatibilidade com perfis existentes.
-- [ ] Introduzir contrato de repositório do fórum para desacoplar UI do mecanismo de armazenamento.
-- [ ] Separar comentários da lista principal de posts no contrato e carregá-los somente ao expandir.
-- [ ] Manter `commentsCount` no resumo do post.
-- [ ] Tornar curtidas únicas por `postId + userId` no armazenamento local.
-- [ ] Adicionar convenções determinísticas de pastas/arquivos compatíveis com o futuro adaptador Google Drive.
-- [ ] Preservar leitura dos posts/comentários legados já salvos no SharedPreferences.
-- [ ] Manter a experiência visual e as strings atuais do fórum.
+- [x] Criar identidade estável `userId` no perfil local, mantendo compatibilidade com perfis existentes.
+- [x] Introduzir contrato de repositório do fórum para desacoplar UI do mecanismo de armazenamento.
+- [x] Separar comentários da lista principal de posts no contrato e carregá-los somente ao expandir.
+- [x] Manter `commentsCount` no resumo do post.
+- [x] Tornar curtidas únicas por `postId + userId` no armazenamento local.
+- [x] Adicionar convenções determinísticas de pastas/arquivos compatíveis com o futuro adaptador Google Drive.
+- [x] Preservar leitura dos posts/comentários legados já salvos no SharedPreferences.
+- [x] Manter a experiência visual e as strings atuais do fórum.
 
 ## Validação
-- [ ] Cobrir identidade estável, curtidas únicas, comentários separados e compatibilidade legada com testes.
-- [ ] Revisar diff por mudanças não solicitadas.
-- [ ] Executar unit tests.
-- [ ] Executar Android Lint.
-- [ ] Executar compilação debug/performance aplicável.
+- [x] Cobrir identidade estável, curtidas únicas, comentários separados e compatibilidade legada com testes.
+- [x] Revisar diff por mudanças não solicitadas.
+- [x] Executar unit tests.
+- [x] Executar Android Lint.
+- [x] Executar compilação debug/performance aplicável.
