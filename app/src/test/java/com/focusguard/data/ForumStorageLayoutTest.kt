@@ -12,6 +12,11 @@ class ForumStorageLayoutTest {
             .isEqualTo("users/user-123")
         assertThat(ForumStorageLayout.userProfileFile("user-123"))
             .isEqualTo("users/user-123/profile.json")
+        assertThat(ForumStorageLayout.userNotificationsFolder("user-123"))
+            .isEqualTo("users/user-123/notifications")
+        assertThat(
+            ForumStorageLayout.notificationFile("user-123", "notification-1")
+        ).isEqualTo("users/user-123/notifications/notification-1.json")
         assertThat(ForumStorageLayout.postFile("post-456"))
             .isEqualTo("posts/post-456/post.json")
         assertThat(ForumStorageLayout.commentFile("post-456", "comment-789"))
@@ -35,6 +40,18 @@ class ForumStorageLayoutTest {
         val second = ForumStorageLayout.likeRecordId("post-456", "user-b")
 
         assertThat(first).isNotEqualTo(second)
+    }
+
+    @Test
+    fun `interaction notification ids are deterministic`() {
+        val likeId = ForumStorageLayout.likeNotificationId("post-456", "user-123")
+        val sameLikeId = ForumStorageLayout.likeNotificationId("post-456", "user-123")
+        val commentId = ForumStorageLayout.commentNotificationId("comment-789")
+
+        assertThat(likeId).isEqualTo(sameLikeId)
+        assertThat(likeId).startsWith("like-")
+        assertThat(commentId).startsWith("comment-")
+        assertThat(likeId).isNotEqualTo(commentId)
     }
 
     @Test
