@@ -10,6 +10,11 @@ class BlockTypeBannerPolicyTest {
     }
 
     @Test
+    fun scheduledPeriodBlockShowsBanner() {
+        assertThat(shouldShowBlockTypeBanner(BlockTypeUi.DAILY_PERIODS)).isTrue()
+    }
+
+    @Test
     fun timeBlockShowsBanner() {
         assertThat(shouldShowBlockTypeBanner(BlockTypeUi.DOPAMINE_FAST)).isTrue()
     }
