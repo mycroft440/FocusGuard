@@ -24,6 +24,7 @@ import androidx.compose.material.icons.outlined.EditNote
 import androidx.compose.material.icons.outlined.FavoriteBorder
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
@@ -31,9 +32,11 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -48,7 +51,9 @@ import com.focusguard.data.ForumComment
 import com.focusguard.data.ForumPost
 import com.focusguard.data.ForumPostPolicy
 import com.focusguard.data.ForumPostStore
+import com.focusguard.data.ForumRepository
 import com.focusguard.data.UserProfile
+import com.focusguard.data.toForumAuthor
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DarkBg
@@ -57,6 +62,7 @@ import com.focusguard.ui.compose.theme.FocusCard
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
+import kotlinx.coroutines.launch
 
 @Composable
 fun ForumScreen(
@@ -64,10 +70,23 @@ fun ForumScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val store = remember(context) { ForumPostStore(context) }
-    var posts by remember { mutableStateOf(store.load()) }
+    val repository: ForumRepository = remember(context) { ForumPostStore(context) }
+    val scope = rememberCoroutineScope()
+    var posts by remember { mutableStateOf(emptyList<ForumPost>()) }
+    var postsLoaded by remember { mutableStateOf(false) }
     var composerExpanded by rememberSaveable { mutableStateOf(false) }
     var draft by rememberSaveable { mutableStateOf("") }
+    var publishInFlight by remember { mutableStateOf(false) }
+
+    LaunchedEffect(repository, profile.userId) {
+        postsLoaded = false
+        runCatching {
+            repository.loadPosts(profile.userId)
+        }.onSuccess {
+            posts = it
+        }
+        postsLoaded = true
+    }
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
@@ -87,15 +106,23 @@ fun ForumScreen(
                 onExpand = { composerExpanded = true },
                 onDraftChange = { draft = ForumPostPolicy.limitBodyInput(it) },
                 onPublish = {
-                    val published = store.publish(
-                        authorName = profile.displayName,
-                        avatarId = profile.avatarId,
-                        body = draft
-                    )
-                    if (published != null) {
-                        posts = store.load()
-                        draft = ""
-                        composerExpanded = false
+                    if (!publishInFlight) {
+                        publishInFlight = true
+                        scope.launch {
+                            try {
+                                val published = repository.publish(
+                                    author = profile.toForumAuthor(),
+                                    body = draft
+                                )
+                                if (published != null) {
+                                    posts = repository.loadPosts(profile.userId)
+                                    draft = ""
+                                    composerExpanded = false
+                                }
+                            } finally {
+                                publishInFlight = false
+                            }
+                        }
                     }
                 }
             )
@@ -111,38 +138,68 @@ fun ForumScreen(
             )
         }
 
-        if (posts.isEmpty()) {
-            item(key = "forum_empty") {
-                ForumEmptyState()
-            }
-        } else {
-            items(
-                items = posts,
-                key = ForumPost::id
-            ) { post ->
-                ForumPostCard(
-                    post = post,
-                    profile = profile,
-                    onToggleLike = {
-                        if (store.toggleLike(post.id) != null) {
-                            posts = store.load()
-                        }
-                    },
-                    onAddComment = { commentBody ->
-                        val added = store.addComment(
-                            postId = post.id,
-                            authorName = profile.displayName,
-                            avatarId = profile.avatarId,
-                            body = commentBody
+        when {
+            !postsLoaded -> {
+                item(key = "forum_loading") {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 28.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = AccentCyan,
+                            strokeWidth = 2.dp
                         )
-                        if (added != null) {
-                            posts = store.load()
-                            true
-                        } else {
-                            false
-                        }
                     }
-                )
+                }
+            }
+
+            posts.isEmpty() -> {
+                item(key = "forum_empty") {
+                    ForumEmptyState()
+                }
+            }
+
+            else -> {
+                items(
+                    items = posts,
+                    key = ForumPost::id
+                ) { post ->
+                    ForumPostCard(
+                        post = post,
+                        profile = profile,
+                        onLoadComments = {
+                            repository.loadComments(post.id)
+                        },
+                        onToggleLike = {
+                            scope.launch {
+                                if (
+                                    repository.toggleLike(
+                                        postId = post.id,
+                                        userId = profile.userId
+                                    ) != null
+                                ) {
+                                    posts = repository.loadPosts(profile.userId)
+                                }
+                            }
+                        },
+                        onAddComment = { commentBody ->
+                            val added = repository.addComment(
+                                postId = post.id,
+                                author = profile.toForumAuthor(),
+                                body = commentBody
+                            )
+                            if (added != null) {
+                                posts = repository.loadPosts(profile.userId)
+                                true
+                            } else {
+                                false
+                            }
+                        }
+                    )
+                }
             }
         }
     }
@@ -279,17 +336,37 @@ private fun ForumComposer(
 private fun ForumPostCard(
     post: ForumPost,
     profile: UserProfile,
+    onLoadComments: suspend () -> List<ForumComment>,
     onToggleLike: () -> Unit,
-    onAddComment: (String) -> Boolean
+    onAddComment: suspend (String) -> Boolean
 ) {
+    val scope = rememberCoroutineScope()
     var commentsExpanded by rememberSaveable(post.id) { mutableStateOf(false) }
     var commentDraft by rememberSaveable(post.id) { mutableStateOf("") }
+    var comments by remember(post.id) { mutableStateOf(emptyList<ForumComment>()) }
+    var commentsLoaded by remember(post.id) { mutableStateOf(false) }
+    var commentsLoading by remember(post.id) { mutableStateOf(false) }
+    var commentPublishing by remember(post.id) { mutableStateOf(false) }
+
     val authorLabel = if (post.authorName.isBlank()) {
         stringResource(R.string.forum_member)
     } else {
         post.authorName
     }
     val relativeTime = forumRelativeTime(post.createdAtMillis)
+
+    fun loadComments() {
+        if (commentsLoading) return
+        commentsLoading = true
+        scope.launch {
+            try {
+                comments = onLoadComments()
+                commentsLoaded = true
+            } finally {
+                commentsLoading = false
+            }
+        }
+    }
 
     FocusCard(
         modifier = Modifier.fillMaxWidth(),
@@ -375,7 +452,13 @@ private fun ForumPostCard(
                 }
 
                 TextButton(
-                    onClick = { commentsExpanded = !commentsExpanded },
+                    onClick = {
+                        val nextExpanded = !commentsExpanded
+                        commentsExpanded = nextExpanded
+                        if (nextExpanded && !commentsLoaded) {
+                            loadComments()
+                        }
+                    },
                     contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)
                 ) {
                     Icon(
@@ -391,10 +474,10 @@ private fun ForumPostCard(
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold
                     )
-                    if (post.comments.isNotEmpty()) {
+                    if (post.commentsCount > 0) {
                         Spacer(modifier = Modifier.width(5.dp))
                         Text(
-                            text = post.comments.size.toString(),
+                            text = post.commentsCount.toString(),
                             color = if (commentsExpanded) AccentCyan else TextHint,
                             fontSize = 12.sp
                         )
@@ -406,24 +489,43 @@ private fun ForumPostCard(
                 HorizontalDivider(color = CardBorder.copy(alpha = 0.70f))
                 Spacer(modifier = Modifier.height(12.dp))
 
-                if (post.comments.isEmpty()) {
-                    Text(
-                        text = stringResource(R.string.forum_no_comments),
-                        color = TextHint,
-                        fontSize = 12.sp
-                    )
-                } else {
-                    post.comments.forEachIndexed { index, comment ->
-                        ForumCommentItem(comment = comment)
-                        if (index != post.comments.lastIndex) {
-                            Spacer(modifier = Modifier.height(10.dp))
-                            HorizontalDivider(color = CardBorder.copy(alpha = 0.45f))
-                            Spacer(modifier = Modifier.height(10.dp))
+                when {
+                    commentsLoading && !commentsLoaded -> {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 10.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                color = AccentCyan,
+                                strokeWidth = 2.dp
+                            )
+                        }
+                    }
+
+                    comments.isEmpty() -> {
+                        Text(
+                            text = stringResource(R.string.forum_no_comments),
+                            color = TextHint,
+                            fontSize = 12.sp
+                        )
+                    }
+
+                    else -> {
+                        comments.forEachIndexed { index, comment ->
+                            ForumCommentItem(comment = comment)
+                            if (index != comments.lastIndex) {
+                                Spacer(modifier = Modifier.height(10.dp))
+                                HorizontalDivider(color = CardBorder.copy(alpha = 0.45f))
+                                Spacer(modifier = Modifier.height(10.dp))
+                            }
                         }
                     }
                 }
 
-                if (post.comments.isNotEmpty()) {
+                if (comments.isNotEmpty()) {
                     Spacer(modifier = Modifier.height(14.dp))
                 } else {
                     Spacer(modifier = Modifier.height(10.dp))
@@ -436,8 +538,19 @@ private fun ForumPostCard(
                         commentDraft = ForumPostPolicy.limitCommentInput(it)
                     },
                     onPublish = {
-                        if (onAddComment(commentDraft)) {
-                            commentDraft = ""
+                        if (!commentPublishing) {
+                            commentPublishing = true
+                            scope.launch {
+                                try {
+                                    if (onAddComment(commentDraft)) {
+                                        commentDraft = ""
+                                        comments = onLoadComments()
+                                        commentsLoaded = true
+                                    }
+                                } finally {
+                                    commentPublishing = false
+                                }
+                            }
                         }
                     }
                 )
