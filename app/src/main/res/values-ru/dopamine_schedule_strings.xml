@@ -1,12 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <plurals name="dopamine_selected_targets_count">
-        <item quantity="one">%1$d item selected</item>
-        <item quantity="other">%1$d items selected</item>
+        <item quantity="one">%1$d элемент выбран</item>
+        <item quantity="few">%1$d элемента выбрано</item>
+        <item quantity="many">%1$d элементов выбрано</item>
+        <item quantity="other">%1$d элемента выбрано</item>
     </plurals>
     <plurals name="dopamine_selected_apps_count">
-        <item quantity="one">%1$d app selected</item>
-        <item quantity="other">%1$d apps selected</item>
+        <item quantity="one">%1$d приложение выбрано</item>
+        <item quantity="few">%1$d приложения выбрано</item>
+        <item quantity="many">%1$d приложений выбрано</item>
+        <item quantity="other">%1$d приложения выбрано</item>
     </plurals>
     <string name="dopamine_schedule_description">Selected apps and sites are blocked only during the daily time window on the weekdays you choose, until the selected duration ends.</string>
     <string name="dopamine_schedule_terms_how">Choose what to block, which weekdays the block applies to, the daily time window, and the total duration. During the selected window the targets stay blocked; outside it they remain available. The commitment itself cannot be ended early.</string>

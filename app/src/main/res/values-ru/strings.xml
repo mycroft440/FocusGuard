@@ -423,8 +423,10 @@
     <string name="dashboard_sleep_confidence_medium">Medium</string>
     <string name="dashboard_sleep_confidence_high">High</string>
     <plurals name="dashboard_sleep_nights">
-        <item quantity="one">%1$d night analyzed</item>
-        <item quantity="other">%1$d nights analyzed</item>
+        <item quantity="one">%1$d ночь проанализирована</item>
+        <item quantity="few">%1$d ночи проанализированы</item>
+        <item quantity="many">%1$d ночей проанализировано</item>
+        <item quantity="other">%1$d ночи проанализированы</item>
     </plurals>
     <string name="dashboard_sleep_insufficient">The local AI needs at least %1$d complete nights to learn your pattern. Valid nights so far: %2$d.</string>
     <string name="dashboard_sleep_disclaimer">Private estimate based only on screen events. It is not a clinical measurement and may be inaccurate when your phone is away from you or your night routine is irregular.</string>
@@ -435,8 +437,10 @@
     <string name="dashboard_most_opened_title">Most opened apps today</string>
     <string name="dashboard_no_accesses">No completed access today.</string>
     <plurals name="dashboard_access_count">
-        <item quantity="one">%1$d access</item>
-        <item quantity="other">%1$d accesses</item>
+        <item quantity="one">%1$d открытие</item>
+        <item quantity="few">%1$d открытия</item>
+        <item quantity="many">%1$d открытий</item>
+        <item quantity="other">%1$d открытия</item>
     </plurals>
     <string name="dashboard_never_used">Never Used Apps (7 Days)</string>
     <string name="dashboard_no_inactive">No inactive app found.</string>
