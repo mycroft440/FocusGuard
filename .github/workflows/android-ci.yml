@@ -12,6 +12,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
+  actions: read
   contents: read
   checks: write
   pull-requests: write
@@ -40,8 +41,9 @@ jobs:
           set -o pipefail
           ./gradlew lintDebug --no-daemon --stacktrace 2>&1 | tee lint-gradle.log
       - name: Upload Lint diagnostics
+        id: upload_lint_diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: lint-diagnostics-${{ github.run_number }}
           path: |
@@ -50,6 +52,28 @@ jobs:
             app/build/reports/lint-results-*.xml
           if-no-files-found: error
           retention-days: 14
+          overwrite: true
+          archive: true
+      - name: Verify Lint diagnostics ZIP
+        if: always() && steps.upload_lint_diagnostics.outcome == 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.upload_lint_diagnostics.outputs['artifact-id'] }}
+          ARTIFACT_DIGEST: ${{ steps.upload_lint_diagnostics.outputs['artifact-digest'] }}
+        run: |
+          set -euo pipefail
+          ARCHIVE="$RUNNER_TEMP/lint-diagnostics-${{ github.run_number }}.zip"
+          curl --fail --silent --show-error --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            --output "$ARCHIVE"
+          python3 scripts/verify_github_artifact_zip.py \
+            --archive "$ARCHIVE" \
+            --expected-digest "$ARTIFACT_DIGEST"
 
   unit-tests:
     name: Unit Tests
@@ -74,8 +98,9 @@ jobs:
           set -o pipefail
           ./gradlew testDebugUnitTest --no-daemon --stacktrace 2>&1 | tee unit-tests-gradle.log
       - name: Upload unit-test diagnostics
+        id: upload_unit_test_diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: unit-test-diagnostics-${{ github.run_number }}
           path: |
@@ -84,6 +109,28 @@ jobs:
             app/build/test-results/
           if-no-files-found: error
           retention-days: 14
+          overwrite: true
+          archive: true
+      - name: Verify unit-test diagnostics ZIP
+        if: always() && steps.upload_unit_test_diagnostics.outcome == 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.upload_unit_test_diagnostics.outputs['artifact-id'] }}
+          ARTIFACT_DIGEST: ${{ steps.upload_unit_test_diagnostics.outputs['artifact-digest'] }}
+        run: |
+          set -euo pipefail
+          ARCHIVE="$RUNNER_TEMP/unit-test-diagnostics-${{ github.run_number }}.zip"
+          curl --fail --silent --show-error --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            --output "$ARCHIVE"
+          python3 scripts/verify_github_artifact_zip.py \
+            --archive "$ARCHIVE" \
+            --expected-digest "$ARTIFACT_DIGEST"
 
   performance-harness:
     name: Compile Performance Harness
@@ -121,10 +168,34 @@ jobs:
           python3 scripts/summarize_focusguard_latency.py --self-test
           python3 scripts/summarize_macrobenchmark.py --self-test
       - name: Upload performance-harness diagnostics
+        id: upload_performance_diagnostics
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: performance-harness-diagnostics-${{ github.run_number }}
           path: performance-harness-gradle.log
           if-no-files-found: error
           retention-days: 14
+          overwrite: true
+          archive: true
+      - name: Verify performance diagnostics ZIP
+        if: always() && steps.upload_performance_diagnostics.outcome == 'success'
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.upload_performance_diagnostics.outputs['artifact-id'] }}
+          ARTIFACT_DIGEST: ${{ steps.upload_performance_diagnostics.outputs['artifact-digest'] }}
+        run: |
+          set -euo pipefail
+          ARCHIVE="$RUNNER_TEMP/performance-harness-diagnostics-${{ github.run_number }}.zip"
+          curl --fail --silent --show-error --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            --output "$ARCHIVE"
+          python3 scripts/verify_github_artifact_zip.py \
+            --archive "$ARCHIVE" \
+            --expected-digest "$ARTIFACT_DIGEST" \
+            --expect "performance-harness-gradle.log=performance-harness-gradle.log"
