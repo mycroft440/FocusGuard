@@ -10,15 +10,15 @@ Garantir que todo artefato ZIP produzido pelos workflows do repositório seja cr
 - [x] Confirmar que o uploader atual expõe ID e SHA-256 do arquivo de artefato, permitindo validar exatamente o ZIP servido pelo GitHub após o upload.
 
 ## Implementação
-- [ ] Atualizar os uploads de artefatos para a versão atual do `actions/upload-artifact`, mantendo criação explícita de ZIP e substituição em reruns.
-- [ ] Adicionar um verificador local que valide SHA-256 do ZIP, estrutura/CRC, nomes seguros e, para binários de release, igualdade byte a byte com APK/AAB/relatórios de origem.
-- [ ] Baixar novamente cada ZIP recém-enviado pelo endpoint de artefatos do GitHub e falhar o job se o ZIP baixado não passar na validação.
-- [ ] Impedir a publicação de uma GitHub Release quando o ZIP do APK/AAB/identidade não tiver sido validado.
-- [ ] Aplicar a mesma validação aos ZIPs de diagnóstico do CI para que nenhum `upload-artifact` do repositório fique sem teste de integridade.
+- [x] Atualizar os uploads de artefatos para a versão atual do `actions/upload-artifact`, mantendo criação explícita de ZIP e substituição em reruns.
+- [x] Adicionar um verificador local que valide SHA-256 do ZIP, estrutura/CRC, nomes seguros e, para binários de release, igualdade byte a byte com APK/AAB/relatórios de origem.
+- [x] Baixar novamente cada ZIP recém-enviado pelo endpoint de artefatos do GitHub e falhar o job se o ZIP baixado não passar na validação.
+- [x] Impedir a publicação de uma GitHub Release quando o ZIP do APK/AAB/identidade não tiver sido validado.
+- [x] Aplicar a mesma validação aos ZIPs de diagnóstico do CI para que nenhum `upload-artifact` do repositório fique sem teste de integridade.
 
 ## Validação
-- [ ] Executar o self-test do verificador, incluindo ZIP truncado e conteúdo divergente.
-- [ ] Revisar sintaxe dos workflows e o diff agregado para evitar alterações fora do escopo.
+- [x] Executar o self-test do verificador, incluindo ZIP truncado e conteúdo divergente.
+- [x] Revisar sintaxe dos workflows e o diff agregado para evitar alterações fora do escopo.
 - [ ] Executar os jobs do Android CI na branch/PR.
 - [ ] Integrar somente com CI verde e confirmar uma nova execução de Release na `main`, incluindo download e verificação pós-upload dos ZIPs reais.
 
