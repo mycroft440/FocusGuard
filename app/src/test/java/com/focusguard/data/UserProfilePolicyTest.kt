@@ -62,6 +62,26 @@ class UserProfilePolicyTest {
     }
 
     @Test
+    fun `existing profile receives a stable generated user id`() {
+        val first = UserProfileStore(context).load()
+        val second = UserProfileStore(context).load()
+
+        assertThat(first.userId).isNotEmpty()
+        assertThat(second.userId).isEqualTo(first.userId)
+    }
+
+    @Test
+    fun `saving profile without an id preserves the existing identity`() {
+        val store = UserProfileStore(context)
+        val originalId = store.load().userId
+
+        val saved = store.save(UserProfile(displayName = "Ana", avatarId = 2))
+
+        assertThat(saved.userId).isEqualTo(originalId)
+        assertThat(UserProfileStore(context).load().userId).isEqualTo(originalId)
+    }
+
+    @Test
     fun `saved profile is restored after creating a new store`() {
         val savedProfile = UserProfileStore(context).save(
             UserProfile(displayName = "  João   Lima ", avatarId = 4)
@@ -69,7 +89,9 @@ class UserProfilePolicyTest {
 
         val restoredProfile = UserProfileStore(context).load()
 
-        assertThat(savedProfile).isEqualTo(UserProfile("João Lima", 4))
+        assertThat(savedProfile.displayName).isEqualTo("João Lima")
+        assertThat(savedProfile.avatarId).isEqualTo(4)
+        assertThat(savedProfile.userId).isNotEmpty()
         assertThat(restoredProfile).isEqualTo(savedProfile)
     }
 }
