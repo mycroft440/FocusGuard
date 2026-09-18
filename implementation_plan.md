@@ -5,7 +5,7 @@ Garantir que todo artefato ZIP produzido pelos workflows do repositório seja cr
 
 ## Diagnóstico
 - [x] Confirmar que a recompilação do mesmo commit produziu um novo ZIP íntegro e um APK cujo conteúdo pôde ser verificado byte a byte.
-- [x] Mapear todos os usos de `actions/upload-artifact` nos workflows `release.yml`, `fresh-apk-aab.yml` e `android-ci.yml`.
+- [x] Mapear todos os usos de `actions/upload-artifact` nos workflows `release.yml`, `fresh-apk-aab.yml`, `android-ci.yml` e `performance.yml`.
 - [x] Confirmar que reruns do workflow podem deixar artefatos antigos e novos com o mesmo nome, criando risco de baixar uma cópia anterior.
 - [x] Confirmar que o uploader atual expõe ID e SHA-256 do arquivo de artefato, permitindo validar exatamente o ZIP servido pelo GitHub após o upload.
 
