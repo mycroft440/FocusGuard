@@ -9,6 +9,7 @@ import com.focusguard.utils.BrowserSurfaceInspector
 import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -27,11 +28,12 @@ internal class WebsiteIdentificationRecovery(
     private val windowId: Int,
     private val httpsHandlerRecognized: Boolean,
     private val rootProvider: () -> AccessibilityNodeInfo?,
-    private val isCurrent: () -> Boolean
+    private val isCurrent: () -> Boolean,
+    private val readDispatcher: CoroutineDispatcher = Dispatchers.IO
 ) {
     private fun rejected() = WebsiteIdentificationResult(WebsiteIdentificationStatus.REJECTED_CONTEXT)
 
-    private suspend fun read(): WebsiteIdentificationResult = withContext(Dispatchers.IO) {
+    private suspend fun read(): WebsiteIdentificationResult = withContext(readDispatcher) {
         if (!isCurrent()) return@withContext rejected()
         val root = rootProvider() ?: return@withContext if (isCurrent()) {
             WebsiteIdentificationResult(

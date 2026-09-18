@@ -7,6 +7,7 @@ import com.focusguard.accessibility.website.compatibility.BrowserUrlRecoveryMeth
 import com.focusguard.utils.BrowserSurfaceInspector
 import com.focusguard.utils.WebsiteBlocker
 import io.mockk.*
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.test.*
@@ -53,7 +54,7 @@ class WebsiteIdentificationRecoveryRaceTest {
             every { packageName } returns pkg
             every { windowId } returns 10
         }.also(roots::add)
-    }, isCurrent = { current })
+    }, isCurrent = { current }, readDispatcher = Dispatchers.Unconfined)
 
     @Test
     fun windowChangeWhileAwaitingObservationStopsEveryFollowingPhase() = runTest {
