@@ -52,6 +52,19 @@ class ForumPostStoreTest {
     }
 
     @Test
+    fun `user posts are filtered by stable author id`() = runBlocking {
+        val store = ForumPostStore(context)
+        store.publish(author("user-alice", "Alice", 0), "A1", 1_000L)
+        store.publish(author("user-bob", "Bob", 1), "B1", 2_000L)
+        store.publish(author("user-alice", "Alice", 0), "A2", 3_000L)
+
+        val alicePosts = store.loadUserPosts("user-alice")
+
+        assertThat(alicePosts.map(ForumPost::body)).containsExactly("A2", "A1").inOrder()
+        assertThat(alicePosts.all { it.authorId == "user-alice" }).isTrue()
+    }
+
+    @Test
     fun `blank post is not persisted`() = runBlocking {
         val store = ForumPostStore(context)
 
@@ -76,7 +89,7 @@ class ForumPostStoreTest {
     }
 
     @Test
-    fun `legacy posts load with empty interactions`() = runBlocking {
+    fun `legacy posts load with empty interactions and belong to local user`() = runBlocking {
         val legacy = JSONArray().put(
             JSONObject()
                 .put("id", "legacy-post")
@@ -92,12 +105,15 @@ class ForumPostStoreTest {
             .putString(ForumPostStore.POSTS_KEY, legacy.toString())
             .commit()
 
-        val post = ForumPostStore(context).loadPosts("user-alice").single()
+        val store = ForumPostStore(context)
+        val post = store.loadPosts("user-alice").single()
 
+        assertThat(post.authorId).isEqualTo("user-alice")
         assertThat(post.likeCount).isEqualTo(0)
         assertThat(post.likedByMe).isFalse()
         assertThat(post.commentsCount).isEqualTo(0)
-        assertThat(ForumPostStore(context).loadComments(post.id)).isEmpty()
+        assertThat(store.loadComments(post.id)).isEmpty()
+        assertThat(store.loadUserPosts("user-alice").single().id).isEqualTo(post.id)
     }
 
     @Test
@@ -110,8 +126,9 @@ class ForumPostStoreTest {
                 nowMillis = 1_000L
             )
         )
+        val bob = author("user-bob", "Bob", 1)
 
-        val liked = requireNotNull(store.toggleLike(post.id, "user-bob"))
+        val liked = requireNotNull(store.toggleLike(post.id, bob, 2_000L))
         assertThat(liked.likedByMe).isTrue()
         assertThat(liked.likeCount).isEqualTo(1)
 
@@ -121,7 +138,9 @@ class ForumPostStoreTest {
         assertThat(aliceView.likedByMe).isFalse()
         assertThat(aliceView.likeCount).isEqualTo(1)
 
-        val unliked = requireNotNull(ForumPostStore(context).toggleLike(post.id, "user-bob"))
+        val unliked = requireNotNull(
+            ForumPostStore(context).toggleLike(post.id, bob, 3_000L)
+        )
         assertThat(unliked.likedByMe).isFalse()
         assertThat(unliked.likeCount).isEqualTo(0)
     }
@@ -137,8 +156,8 @@ class ForumPostStoreTest {
             )
         )
 
-        store.toggleLike(post.id, "user-a")
-        store.toggleLike(post.id, "user-b")
+        store.toggleLike(post.id, author("user-a", "A", 1), 2_000L)
+        store.toggleLike(post.id, author("user-b", "B", 2), 3_000L)
 
         val userAView = store.loadPosts("user-a").single()
         val userBView = store.loadPosts("user-b").single()
@@ -148,6 +167,43 @@ class ForumPostStoreTest {
         assertThat(userAView.likedByMe).isTrue()
         assertThat(userBView.likedByMe).isTrue()
         assertThat(ownerView.likedByMe).isFalse()
+    }
+
+    @Test
+    fun `like creates unread notification for post author and unlike removes it`() = runBlocking {
+        val store = ForumPostStore(context)
+        val owner = author("user-owner", "Owner", 0)
+        val bob = author("user-bob", "Bob", 2)
+        val post = requireNotNull(store.publish(owner, "Post", 1_000L))
+
+        store.toggleLike(post.id, bob, 2_000L)
+
+        val notification = store.loadNotifications(owner.userId).single()
+        assertThat(notification.recipientUserId).isEqualTo(owner.userId)
+        assertThat(notification.actorId).isEqualTo(bob.userId)
+        assertThat(notification.actorName).isEqualTo("Bob")
+        assertThat(notification.postId).isEqualTo(post.id)
+        assertThat(notification.type).isEqualTo(ForumNotificationType.LIKE)
+        assertThat(notification.createdAtMillis).isEqualTo(2_000L)
+        assertThat(notification.isRead).isFalse()
+        assertThat(store.loadNotifications(bob.userId)).isEmpty()
+
+        val read = store.markAllNotificationsRead(owner.userId).single()
+        assertThat(read.isRead).isTrue()
+
+        store.toggleLike(post.id, bob, 3_000L)
+        assertThat(store.loadNotifications(owner.userId)).isEmpty()
+    }
+
+    @Test
+    fun `self like does not create notification`() = runBlocking {
+        val store = ForumPostStore(context)
+        val owner = author("user-owner", "Owner", 0)
+        val post = requireNotNull(store.publish(owner, "Post", 1_000L))
+
+        store.toggleLike(post.id, owner, 2_000L)
+
+        assertThat(store.loadNotifications(owner.userId)).isEmpty()
     }
 
     @Test
@@ -187,6 +243,25 @@ class ForumPostStoreTest {
         val postJson = JSONArray(rawPosts).getJSONObject(0)
         assertThat(postJson.has("comments")).isFalse()
         assertThat(postJson.getInt("comments_count")).isEqualTo(1)
+    }
+
+    @Test
+    fun `comment creates notification for author but self comment does not`() = runBlocking {
+        val store = ForumPostStore(context)
+        val owner = author("user-owner", "Owner", 0)
+        val bob = author("user-bob", "Bob", 3)
+        val post = requireNotNull(store.publish(owner, "Post", 1_000L))
+
+        store.addComment(post.id, bob, "Comentário", 2_000L)
+
+        val notification = store.loadNotifications(owner.userId).single()
+        assertThat(notification.type).isEqualTo(ForumNotificationType.COMMENT)
+        assertThat(notification.actorId).isEqualTo(bob.userId)
+        assertThat(notification.postId).isEqualTo(post.id)
+
+        store.addComment(post.id, owner, "Resposta própria", 3_000L)
+
+        assertThat(store.loadNotifications(owner.userId)).hasSize(1)
     }
 
     @Test
