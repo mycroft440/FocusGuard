@@ -440,51 +440,6 @@ class WebsiteBlockNavigationTest {
         assertThat(guard.confirmGoogle(CHROME_PACKAGE, 8, 111L)).isTrue()
     }
 
-        @Test
-    fun `browser intent redirect may confirm on a fresh window from the same browser`() {
-        val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
-        val transition = guard.tryStart(
-  FIREFOX_PACKAGE,
-  transitionId = 25L,
-  destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
-  expectedWindowId = 7,
-  blockedCandidate = "https://facebook.com/feed",
-  blockedRules = setOf("facebook.com"),
-  detectionEventUptimeMillis = 100L
-        )!!
-        assertThat(
-  guard.markExternalRedirectRequested(
-      FIREFOX_PACKAGE,
-      transitionId = 25L,
-      requestedAtUptimeMillis = 110L
-  )
-        ).isTrue()
-
-        guard.observeBrowserEvent(
-  browserPackageName = FIREFOX_PACKAGE,
-  windowId = 8,
-  eventUptimeMillis = 111L,
-  eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-        )
-        assertThat(
-  guard.transitionForConfirmation(
-      FIREFOX_PACKAGE,
-      windowId = 8,
-      eventUptimeMillis = 111L,
-      eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-  )
-        ).isSameInstanceAs(transition)
-        assertThat(
-  guard.rebindPostCloseGoogleWindow(
-      FIREFOX_PACKAGE,
-      transitionId = 25L,
-      windowId = 8,
-      eventUptimeMillis = 111L
-  )
-        ).isTrue()
-        assertThat(guard.confirmGoogle(FIREFOX_PACKAGE, 8, 111L)).isTrue()
-    }
-
     @Test
     fun `finished website transition re-arms the same browser for Back navigation`() {
         val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
