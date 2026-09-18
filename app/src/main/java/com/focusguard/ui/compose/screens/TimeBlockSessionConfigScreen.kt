@@ -563,19 +563,13 @@ private fun TimeBlockSchedulePage(
 ) {
     val isScheduled = mode == TimeBlockConfigMode.DAILY_PERIODS
 
-    Text(
-        text = stringResource(
-            if (isScheduled) {
-                R.string.dopamine_schedule_config_title
-            } else {
-                R.string.dopamine_duration_question
-            }
-        ),
-        color = TextPrimary,
-        fontSize = 22.sp,
-        fontWeight = FontWeight.Bold
-    )
     if (isScheduled) {
+        Text(
+            text = stringResource(R.string.dopamine_schedule_config_title),
+            color = TextPrimary,
+            fontSize = 22.sp,
+            fontWeight = FontWeight.Bold
+        )
         Spacer(modifier = Modifier.height(6.dp))
         Text(
             text = stringResource(R.string.dopamine_schedule_config_subtitle),
@@ -601,9 +595,9 @@ private fun TimeBlockSchedulePage(
             onEditStartTime = onEditStartTime,
             onEditEndTime = onEditEndTime
         )
-    }
 
-    Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
+    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),
