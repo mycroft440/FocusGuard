@@ -19,8 +19,16 @@ object CurtainSafeWindowPolicy {
         blockedPackages: Set<String>,
         protectSettings: Boolean,
         protectedSettingsPackages: Set<String>
-    ): Boolean = visiblePackage.isNotBlank() &&
-        visiblePackage != focusGuardPackage &&
-        (visiblePackage in blockedPackages ||
-            (protectSettings && visiblePackage in protectedSettingsPackages))
+    ): Boolean {
+        if (visiblePackage.isBlank() || visiblePackage == focusGuardPackage) return false
+        if (visiblePackage in blockedPackages) return true
+
+        // Settings/installer windows are unsafe only while the current system
+        // interaction is still explicitly bound to FocusGuard. Merely being a
+        // Settings package while the self-protection curtain is visible is not
+        // enough, otherwise navigating to another app extends the interference.
+        return protectSettings &&
+            visiblePackage in protectedSettingsPackages &&
+            SelfProtectionTargetScope.isFocusGuardTargetConfirmed()
+    }
 }

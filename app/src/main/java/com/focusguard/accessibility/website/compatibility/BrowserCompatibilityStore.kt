@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
+import androidx.core.content.pm.PackageInfoCompat
+import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.focusguard.utils.WebsiteBlocker
 import java.util.Locale
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -45,6 +47,7 @@ internal enum class BrowserSubmitMethod {
 internal data class BrowserCompatibilityRecord(
     val packageName: String,
     val status: BrowserCompatibilityStatus = BrowserCompatibilityStatus.UNKNOWN,
+    val packageVersionCode: Long? = null,
     val preferredAddressBarEntryName: String? = null,
     val identificationMethod: BrowserIdentificationMethod? = null,
     val preferredUrlEntryName: String? = null,
@@ -64,6 +67,10 @@ internal data class BrowserCompatibilityRecord(
  * A successful resource id/method is attempted first on the next visit. The
  * complete fail-closed discovery path remains available whenever the cached
  * strategy stops working, so browser updates can self-heal the profile.
+ *
+ * Strong browser evidence is version-bound. Selectors/methods from an older browser version may
+ * still be attempted as hints, but they cannot promote an inconclusive PackageManager probe into
+ * PROBABLE_BROWSER until the current version produces fresh positive evidence.
  */
 internal object BrowserCompatibilityStore {
     private const val PREFS_NAME = "browser_compatibility_cache_v1"
@@ -76,8 +83,10 @@ internal object BrowserCompatibilityStore {
     private const val NATIVE_UI_EVIDENCE_MAX_AGE_NANOS = 1_500_000_000L
 
     private val lock = Any()
+    private var appContext: Context? = null
     private var prefs: SharedPreferences? = null
     private val cache = linkedMapOf<String, BrowserCompatibilityRecord>()
+    private val packageVersionCache = mutableMapOf<String, Long>()
     private val pendingRedirects = mutableMapOf<String, PendingRedirect>()
     private val firstObservationFailureAt = mutableMapOf<String, Long>()
     private val lastRedirectionFailureAt = mutableMapOf<String, Long>()
@@ -97,8 +106,9 @@ internal object BrowserCompatibilityStore {
     fun initialize(context: Context) {
         synchronized(lock) {
             if (prefs != null) return
-            prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            verifiedHttpsHandlerPackages = queryHttpsHandlerPackages(context)
+            appContext = context.applicationContext
+            prefs = appContext!!.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            verifiedHttpsHandlerPackages = queryHttpsHandlerPackages(appContext!!)
             val packageNames = prefs?.getStringSet(KEY_PACKAGES, emptySet()).orEmpty()
             val stalePackages = linkedSetOf<String>()
             packageNames.sorted().forEach { packageName ->
@@ -119,6 +129,37 @@ internal object BrowserCompatibilityStore {
         }
     }
 
+    fun invalidatePackageMetadata(packageName: String) {
+        if (packageName.isBlank()) return
+        synchronized(lock) {
+            packageVersionCache.remove(packageName)
+        }
+    }
+
+    fun hasStrongCurrentVersionBrowserEvidence(packageName: String): Boolean {
+        if (packageName.isBlank()) return false
+        return synchronized(lock) {
+            hasStrongBrowserEvidenceForVersion(
+                record = cache[packageName],
+                installedVersionCode = installedVersionCodeLocked(packageName)
+            )
+        }
+    }
+
+    internal fun hasStrongBrowserEvidenceForVersion(
+        record: BrowserCompatibilityRecord?,
+        installedVersionCode: Long?
+    ): Boolean {
+        if (record == null || installedVersionCode == null ||
+            record.packageVersionCode != installedVersionCode
+        ) {
+            return false
+        }
+        return record.status == BrowserCompatibilityStatus.SUPPORTED ||
+            (!record.preferredUrlEntryName.isNullOrBlank() && record.preferredUrlMethod != null) ||
+            record.urlRecoveryMethod != null
+    }
+
     fun preferredAddressBarEntryName(packageName: String): String? = synchronized(lock) {
         cache[packageName]?.preferredAddressBarEntryName?.takeIf(String::isNotBlank)
     }
@@ -134,14 +175,32 @@ internal object BrowserCompatibilityStore {
 
     fun prioritizeUrlEntryNames(packageName: String, defaults: Iterable<String>): List<String> =
         synchronized(lock) {
-            listOfNotNull(cache[packageName]?.preferredUrlEntryName)
-                .plus(defaults).filter(String::isNotBlank).distinct()
+            val preferred = cache[packageName]?.preferredUrlEntryName?.takeIf(String::isNotBlank)
+            val orderedDefaults = defaults.filter(String::isNotBlank).distinct()
+            buildList {
+                // A temporary editor can expose a valid URL while typing. Once a
+                // stable display selector is available, do not keep that editor
+                // ahead of the display-mode address component on later reads.
+                if (BrowserUiCapabilityPolicy.isStableUrlEntryName(preferred)) add(preferred!!)
+                orderedDefaults
+                    .filter(BrowserUiCapabilityPolicy::isStableUrlEntryName)
+                    .forEach(::add)
+                if (!preferred.isNullOrBlank() && preferred !in this) add(preferred)
+                orderedDefaults.forEach { entry -> if (entry !in this) add(entry) }
+            }
         }
 
     fun recordUrlRecoverySuccess(packageName: String, method: BrowserUrlRecoveryMethod) {
         synchronized(lock) {
             val previous = recordForLocked(packageName)
-            saveLocked(previous.copy(urlRecoveryMethod = method, updatedAtMillis = System.currentTimeMillis()))
+            saveLocked(
+                previous.copy(
+                    packageVersionCode = installedVersionCodeLocked(packageName)
+                        ?: previous.packageVersionCode,
+                    urlRecoveryMethod = method,
+                    updatedAtMillis = System.currentTimeMillis()
+                )
+            )
         }
     }
 
@@ -152,8 +211,15 @@ internal object BrowserCompatibilityStore {
             if (!pending.submitted) return
             pendingRedirects.remove(packageName)
             val previous = recordForLocked(packageName)
-            saveLocked(previous.copy(status = BrowserCompatibilityStatus.SUPPORTED,
-                consecutiveRedirectionFailures = 0, updatedAtMillis = System.currentTimeMillis()))
+            saveLocked(
+                previous.copy(
+                    status = BrowserCompatibilityStatus.SUPPORTED,
+                    packageVersionCode = installedVersionCodeLocked(packageName)
+                        ?: previous.packageVersionCode,
+                    consecutiveRedirectionFailures = 0,
+                    updatedAtMillis = System.currentTimeMillis()
+                )
+            )
         }
     }
 
@@ -174,13 +240,10 @@ internal object BrowserCompatibilityStore {
         packageName: String,
         defaults: Iterable<String>
     ): List<String> {
-        val preferred = preferredAddressBarEntryName(packageName)
-        return buildList {
-            if (!preferred.isNullOrBlank()) add(preferred)
-            defaults.forEach { entry ->
-                if (entry.isNotBlank() && entry != preferred) add(entry)
-            }
-        }
+        // WebsiteBlocker uses this discovery order for observation as well as
+        // action collection. Keep reads URL-specific; actionable node ranking still
+        // uses preferredAddressBarEntryName independently in BrowserUiCapabilityPolicy.
+        return prioritizeUrlEntryNames(packageName, defaults)
     }
 
     fun recordIdentificationSuccess(
@@ -205,6 +268,11 @@ internal object BrowserCompatibilityStore {
             val urlEntry = browserOwnedEntryName(packageName, viewIdResourceName)
             saveLocked(
                 previous.copy(
+                    packageVersionCode = if (validUrl) {
+                        installedVersionCodeLocked(packageName) ?: previous.packageVersionCode
+                    } else {
+                        previous.packageVersionCode
+                    },
                     preferredAddressBarEntryName = entryName,
                     identificationMethod = method,
                     preferredUrlEntryName = if (validUrl) urlEntry else previous.preferredUrlEntryName,
@@ -372,6 +440,17 @@ internal object BrowserCompatibilityStore {
     private fun recordForLocked(packageName: String): BrowserCompatibilityRecord =
         cache[packageName] ?: BrowserCompatibilityRecord(packageName = packageName)
 
+    private fun installedVersionCodeLocked(packageName: String): Long? {
+        packageVersionCache[packageName]?.let { return it }
+        val context = appContext ?: return null
+        val versionCode = runCatching {
+            @Suppress("DEPRECATION")
+            PackageInfoCompat.getLongVersionCode(context.packageManager.getPackageInfo(packageName, 0))
+        }.getOrNull()
+        if (versionCode != null) packageVersionCache[packageName] = versionCode
+        return versionCode
+    }
+
     private fun saveLocked(record: BrowserCompatibilityRecord) {
         val previous = cache[record.packageName]
         if (previous != null && previous.copy(updatedAtMillis = record.updatedAtMillis) == record) {
@@ -405,6 +484,11 @@ internal object BrowserCompatibilityStore {
                 packageName = packageName,
                 status = enumOrNull<BrowserCompatibilityStatus>(json.optString("status"))
                     ?: BrowserCompatibilityStatus.UNKNOWN,
+                packageVersionCode = if (json.has("package_version_code")) {
+                    json.optLong("package_version_code")
+                } else {
+                    null
+                },
                 preferredAddressBarEntryName = json.optString("preferred_entry")
                     .takeIf(String::isNotBlank),
                 identificationMethod = enumOrNull<BrowserIdentificationMethod>(
@@ -427,6 +511,7 @@ internal object BrowserCompatibilityStore {
 
     private fun encode(record: BrowserCompatibilityRecord): String = JSONObject().apply {
         put("status", record.status.name)
+        record.packageVersionCode?.let { put("package_version_code", it) }
         record.preferredAddressBarEntryName?.let { put("preferred_entry", it) }
         record.identificationMethod?.let { put("identification", it.name) }
         record.preferredUrlEntryName?.let { put("url_entry", it) }
@@ -440,13 +525,8 @@ internal object BrowserCompatibilityStore {
         put("updated_at", record.updatedAtMillis)
     }.toString()
 
-    private fun browserOwnedEntryName(packageName: String, viewIdResourceName: String?): String? {
-        val value = viewIdResourceName?.trim().orEmpty()
-        val prefix = "$packageName:id/"
-        return value.takeIf { it.startsWith(prefix) && it.length > prefix.length }
-            ?.substring(prefix.length)
-            ?.takeIf(String::isNotBlank)
-    }
+    private fun browserOwnedEntryName(packageName: String, viewIdResourceName: String?): String? =
+        BrowserUiCapabilityPolicy.browserOwnedEntryName(packageName, viewIdResourceName)
 
     private fun observedValueMatchesTarget(observedValue: String?, normalizedTarget: String): Boolean {
         if (normalizedTarget.isEmpty()) return false

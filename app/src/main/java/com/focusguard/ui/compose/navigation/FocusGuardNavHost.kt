@@ -33,11 +33,9 @@ import com.focusguard.manager.PomodoroManager
 import com.focusguard.focusmode.FocusModeIdleReturnPolicy
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.security.AuthManager
-import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.ProtectionPermission
 import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.CreateSessionActivity
-import com.focusguard.ui.MasterPasswordActivity
 import com.focusguard.ui.OfflineBookActivity
 import com.focusguard.ui.PermissionsActivity
 import com.focusguard.ui.compose.screens.BlockCustomizationScreen
@@ -57,6 +55,7 @@ import com.focusguard.ui.compose.screens.RecoveryHubScreen
 import com.focusguard.ui.compose.screens.SessionsListScreen
 import com.focusguard.ui.compose.screens.SettingsScreen
 import com.focusguard.ui.compose.screens.TestedBrowsersScreen
+import com.focusguard.ui.compose.screens.TimeBlockConfigMode
 import com.focusguard.ui.compose.screens.UsageLimitsScreen
 import com.focusguard.ui.compose.screens.UsageStatsDashboardScreen
 import androidx.lifecycle.Lifecycle
@@ -123,9 +122,6 @@ fun FocusGuardNavHost(
     }
     val creatorInstagramPromptStore = remember(activity.applicationContext) {
         CreatorInstagramPromptStore(activity.applicationContext)
-    }
-    val masterCredentialManager = remember(activity.applicationContext) {
-        DeactivationCredentialManager(activity.applicationContext)
     }
     var userProfile by remember { mutableStateOf(userProfileStore.load()) }
     var creatorInstagramPresented by remember {
@@ -248,14 +244,6 @@ fun FocusGuardNavHost(
                     PermissionsActivity.createPendingProtectionIntent(activity)
                 )
             }
-        }
-    }
-
-    fun withMasterCredential(onReady: () -> Unit) {
-        if (masterCredentialManager.hasCredential()) {
-            onReady()
-        } else {
-            activity.startActivity(MasterPasswordActivity.createIntent(activity))
         }
     }
 
@@ -399,19 +387,28 @@ fun FocusGuardNavHost(
                     onAddClick = {
                         withProtectionPermissions {
                             when (selectedBlockType) {
-                                BlockTypeUi.DAILY_LIMIT -> withMasterCredential {
+                                BlockTypeUi.DAILY_LIMIT ->
                                     currentRoute = FocusGuardRoute.UsageLimits
-                                }
                                 BlockTypeUi.PASSWORD -> activity.startActivity(
                                     Intent(activity, CreateSessionActivity::class.java)
                                         .putExtra("SESSION_TYPE", "PASSWORD")
                                 )
-                                BlockTypeUi.DOPAMINE_FAST -> withMasterCredential {
-                                    activity.startActivity(
-                                        Intent(activity, CreateSessionActivity::class.java)
-                                            .putExtra("SESSION_TYPE", "TIME")
-                                    )
-                                }
+                                BlockTypeUi.DAILY_PERIODS -> activity.startActivity(
+                                    Intent(activity, CreateSessionActivity::class.java)
+                                        .putExtra("SESSION_TYPE", "TIME")
+                                        .putExtra(
+                                            CreateSessionActivity.EXTRA_TIME_BLOCK_MODE,
+                                            TimeBlockConfigMode.DAILY_PERIODS.name
+                                        )
+                                )
+                                BlockTypeUi.DOPAMINE_FAST -> activity.startActivity(
+                                    Intent(activity, CreateSessionActivity::class.java)
+                                        .putExtra("SESSION_TYPE", "TIME")
+                                        .putExtra(
+                                            CreateSessionActivity.EXTRA_TIME_BLOCK_MODE,
+                                            TimeBlockConfigMode.CONTINUOUS.name
+                                        )
+                                )
                             }
                         }
                     },

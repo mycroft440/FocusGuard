@@ -12,27 +12,8 @@ import org.junit.Test
 class MasterCredentialPolicyTest {
 
     @Test
-    fun `password block does not require master credential to be created`() {
-        assertThat(
-            MasterCredentialPolicy.evaluateCreation("PASSWORD", hasMasterCredential = false)
-        ).isEqualTo(CreationGate.ALLOWED)
-        assertThat(MasterCredentialPolicy.requiresMasterCredentialToCreate("PASSWORD")).isFalse()
-    }
-
-    @Test
-    fun `time block requires master credential before creation`() {
-        assertThat(MasterCredentialPolicy.requiresMasterCredentialToCreate("TIME")).isTrue()
-        assertThat(
-            MasterCredentialPolicy.evaluateCreation("TIME", hasMasterCredential = false)
-        ).isEqualTo(CreationGate.MASTER_CREDENTIAL_REQUIRED)
-        assertThat(
-            MasterCredentialPolicy.evaluateCreation("TIME", hasMasterCredential = true)
-        ).isEqualTo(CreationGate.ALLOWED)
-    }
-
-    @Test
-    fun `pomodoro and unknown sessions keep their existing creation behavior`() {
-        listOf("POMODORO", "SOMETHING_ELSE").forEach { type ->
+    fun `block creation never requires master credential`() {
+        listOf("PASSWORD", "TIME", "POMODORO", "SOMETHING_ELSE").forEach { type ->
             assertThat(MasterCredentialPolicy.requiresMasterCredentialToCreate(type)).isFalse()
             assertThat(
                 MasterCredentialPolicy.evaluateCreation(type, hasMasterCredential = false)
@@ -152,33 +133,22 @@ class MasterCredentialPolicyTest {
     }
 
     @Test
-    fun `editable usage limit requires master credential to exist`() {
-        assertThat(
-            MasterCredentialPolicy.evaluateLimitMutation(
-                lockMode = "PASSWORD",
-                lockUntilTimestamp = null,
-                safetyModeEnabled = false,
-                hasMasterCredential = false,
-                masterCredentialVerified = false
-            )
-        ).isEqualTo(MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED)
+    fun `usage limit mutation never requires master credential`() {
+        listOf("NONE", "PASSWORD").forEach { lockMode ->
+            assertThat(
+                MasterCredentialPolicy.evaluateLimitMutation(
+                    lockMode = lockMode,
+                    lockUntilTimestamp = null,
+                    safetyModeEnabled = false,
+                    hasMasterCredential = false,
+                    masterCredentialVerified = false
+                )
+            ).isEqualTo(MutationGate.ALLOWED)
+        }
     }
 
     @Test
-    fun `editable usage limit is allowed after master credential exists`() {
-        assertThat(
-            MasterCredentialPolicy.evaluateLimitMutation(
-                lockMode = "PASSWORD",
-                lockUntilTimestamp = null,
-                safetyModeEnabled = false,
-                hasMasterCredential = true,
-                masterCredentialVerified = false
-            )
-        ).isEqualTo(MutationGate.ALLOWED)
-    }
-
-    @Test
-    fun `expired time limit still requires configured master credential`() {
+    fun `expired time limit is mutable without master credential`() {
         assertThat(
             MasterCredentialPolicy.evaluateLimitMutation(
                 lockMode = "TIME",
@@ -188,7 +158,7 @@ class MasterCredentialPolicyTest {
                 masterCredentialVerified = false,
                 nowMillis = 5_000L
             )
-        ).isEqualTo(MutationGate.MASTER_CREDENTIAL_NOT_CONFIGURED)
+        ).isEqualTo(MutationGate.ALLOWED)
     }
 
     @Test

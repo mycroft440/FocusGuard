@@ -113,3 +113,70 @@ Um domínio bloqueado já visível na barra de endereço deve acionar a cortina 
 - Remover gates globais de API 30 do redirecionamento; tentar envio IME quando disponível, ação anunciada e botão nativo certificado.
 - Revalidar a escrita antes do envio e confirmar navegação após envio; tentar a ativação alternativa mesmo quando a primeira ação foi aceita sem produzir editor.
 - Publicar na main, sem testes ou build, conforme orientação do usuário.
+
+---
+
+# Plano de implementação — bloqueio recorrente por faixa de horário
+
+## Objetivo
+Permitir que o bloqueio por tempo use uma faixa diária configurável, aplicada somente nos dias selecionados, mantendo a duração total de vigência definida pelo usuário.
+
+## Diagnóstico
+- [x] `TimeBlockSessionConfigScreen` já seleciona apps/sites, inicia com os sete dias marcados e possui duração total via `BlockDurationPicker`.
+- [x] `BlockSession` já persiste horário inicial/final, dias de recorrência e `endTime`.
+- [x] `BlockingSessionManager.startTimeSession` já grava esses campos e `BlockingScheduleCalculator`/enforcement já suportam janelas diurnas e noturnas.
+- [x] A tela atual ignora essa infraestrutura e grava sempre `00:00–24:00`.
+
+## Implementação
+- [ ] Expor horário de início e fim na página de agenda, com seleção explícita e feedback para intervalo inválido.
+- [ ] Reutilizar uma validação pura da janela recorrente na UI e na criação da sessão, preservando compatibilidade com sessões legadas `00:00–24:00`.
+- [ ] Passar os horários escolhidos a `startTimeSession`, mantendo dias selecionados e duração total existentes.
+- [ ] Atualizar strings em inglês/português em paridade.
+- [ ] Ajustar testes da agenda para período configurável, incluindo intervalo noturno e compatibilidade de `24:00`.
+
+## Validação
+- [ ] Executar testes unitários relacionados ao agendamento.
+- [ ] Executar `:app:compileDebugKotlin`, `:app:testDebugUnitTest` e `:app:lintDebug` se disponíveis.
+- [ ] Revisar o diff para confirmar ausência de mudanças em PASSWORD, limites de uso e fluxo de seleção.
+- [ ] Confirmar que a expiração total continua limitando qualquer próxima janela recorrente.
+
+## Critério de conclusão
+Um bloqueio `TIME` deve bloquear somente dentro da faixa diária selecionada, nos dias marcados, até o fim da duração total configurada; fora da faixa ou após a expiração, o alvo não deve ser bloqueado por essa sessão.
+
+
+---
+
+# Correção de CI — paridade de recursos em inglês
+
+## Diagnóstico
+- [x] Confirmar que o `lintRelease` falha por `MissingTranslation` nas cinco novas chaves da faixa de horário.
+- [x] Confirmar que `values-en/dopamine_schedule_strings.xml` ainda contém a versão anterior das strings de agendamento.
+- [x] Confirmar que as cinco chaves ausentes são `dopamine_time_window_question`, `dopamine_time_window_hint`, `dopamine_start_time`, `dopamine_end_time` e `dopamine_time_window_invalid`.
+
+## Implementação
+- [ ] Sincronizar `values-en/dopamine_schedule_strings.xml` com o conteúdo inglês atual de `values/dopamine_schedule_strings.xml`, preservando os mesmos nomes de recurso.
+- [ ] Não suprimir `MissingTranslation` e não alterar recursos portugueses ou lógica de bloqueio.
+
+## Validação
+- [ ] Revisar o diff para confirmar que a mudança ficou restrita ao plano e ao recurso inglês.
+- [ ] Confirmar o resultado de `lintRelease`/CI disparado pelo commit.
+
+
+---
+
+# Correção de CI — teste legado de redirecionamento externo
+
+## Diagnóstico
+- [x] Confirmar que o teste falho cria um `WebsiteBlockTransitionGuard` novo, portanto não depende de estado compartilhado entre testes.
+- [x] Confirmar que `confirmGoogle` recusa deliberadamente confirmação após `externalRedirectRequested` enquanto `closeConfirmed` for falso.
+- [x] Confirmar no histórico que essa regra foi introduzida por `fix: require blocked-tab neutralization after external redirect` e já possui cobertura dedicada em `ExternalRedirectNeutralizationTest`.
+- [x] Identificar `browser intent redirect may confirm on a fresh window from the same browser` como teste legado que contradiz a política atual.
+
+## Implementação
+- [ ] Remover somente o caso legado contraditório de `WebsiteBlockNavigationTest`.
+- [ ] Preservar `ExternalRedirectNeutralizationTest`, que cobre tanto a recusa com a aba bloqueada aberta quanto a confirmação após fechamento independente.
+- [ ] Não alterar o código de produção nem adicionar espera/polling para mascarar a asserção.
+
+## Validação
+- [ ] Revisar o diff para confirmar escopo restrito ao plano e ao teste obsoleto.
+- [ ] Confirmar `testReleaseUnitTest`, lint e release no CI após o commit.

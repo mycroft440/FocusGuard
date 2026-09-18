@@ -1,3 +1,4 @@
+import com.android.build.api.variant.BuildConfigField
 import java.security.KeyStore
 import java.security.MessageDigest
 
@@ -10,12 +11,24 @@ plugins {
     id("androidx.baselineprofile")
 }
 
+val admobTestAppId = "ca-app-pub-3940256099942544~3347511713"
+val admobTestInterstitialId = "ca-app-pub-3940256099942544/1033173712"
+val admobTestRewardedId = "ca-app-pub-3940256099942544/5224354917"
+val admobTestBannerId = "ca-app-pub-3940256099942544/9214589741"
+val admobTestNativeId = "ca-app-pub-3940256099942544/2247696110"
+
+val admobProductionAppId = "ca-app-pub-7090310776523046~9758255269"
+val admobProductionInterstitialId = "ca-app-pub-7090310776523046/8800396811"
+val admobProductionRewardedId = "ca-app-pub-7090310776523046/1946766744"
+val admobProductionBannerId = "ca-app-pub-7090310776523046/2381881015"
+
 android {
     namespace = "com.focusguard"
     compileSdk = 36
 
     val ciVersionCode = System.getenv("CI_VERSION_CODE")?.toIntOrNull()
     val ciVersionName = System.getenv("CI_VERSION_NAME")?.takeIf { it.isNotBlank() }
+
 
     defaultConfig {
         // Permanent Android update identity. Never change this applicationId:
@@ -26,6 +39,7 @@ android {
         versionCode = ciVersionCode ?: 10
         versionName = ciVersionName ?: "2.5.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+
         ksp {
             arg("room.schemaLocation", "$projectDir/schemas")
         }
@@ -133,6 +147,7 @@ android {
             versionNameSuffix = "-debug"
         }
         release {
+
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -183,6 +198,48 @@ android {
     buildFeatures {
         compose = true
         buildConfig = true
+    }
+}
+
+androidComponents {
+    onVariants(selector().all()) { variant ->
+        // The Baseline Profile plugin creates benchmarkRelease/nonMinifiedRelease
+        // variants from release. Only the exact publishable release variant may
+        // use production AdMob IDs; all other variants stay on official test IDs.
+        val useProductionAds = variant.name == "release"
+        val appId = if (useProductionAds) admobProductionAppId else admobTestAppId
+        val interstitialId =
+            if (useProductionAds) admobProductionInterstitialId else admobTestInterstitialId
+        val rewardedId =
+            if (useProductionAds) admobProductionRewardedId else admobTestRewardedId
+        val bannerId =
+            if (useProductionAds) admobProductionBannerId else admobTestBannerId
+
+        val buildConfigFields = requireNotNull(variant.buildConfigFields) {
+            "BuildConfig fields must be enabled for ${variant.name}"
+        }
+
+        buildConfigFields.put(
+            "ADMOB_APP_ID",
+            BuildConfigField("String", "\"$appId\"", "AdMob application ID")
+        )
+        buildConfigFields.put(
+            "ADMOB_INTERSTITIAL_AD_UNIT_ID",
+            BuildConfigField("String", "\"$interstitialId\"", "AdMob interstitial unit ID")
+        )
+        buildConfigFields.put(
+            "ADMOB_REWARDED_AD_UNIT_ID",
+            BuildConfigField("String", "\"$rewardedId\"", "AdMob rewarded unit ID")
+        )
+        buildConfigFields.put(
+            "ADMOB_BANNER_AD_UNIT_ID",
+            BuildConfigField("String", "\"$bannerId\"", "AdMob banner unit ID")
+        )
+        buildConfigFields.put(
+            "ADMOB_NATIVE_AD_UNIT_ID",
+            BuildConfigField("String", "\"$admobTestNativeId\"", "AdMob native test unit ID")
+        )
+        variant.manifestPlaceholders.put("admobAppId", appId)
     }
 }
 

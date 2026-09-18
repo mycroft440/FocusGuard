@@ -49,7 +49,6 @@ import com.focusguard.BuildConfig
 import com.focusguard.R
 import com.focusguard.data.UserProfile
 import com.focusguard.monetization.AdsConsentManager
-import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.PermissionRevocationFlow
 import com.focusguard.ui.MasterPasswordActivity
 import com.focusguard.ui.RemoveAllBlocksActivity
@@ -77,29 +76,18 @@ fun SettingsScreen(
     val context = LocalContext.current
     val activity = context as? ComponentActivity
     val coroutineScope = rememberCoroutineScope()
-    val credentialManager = remember(context) {
-        DeactivationCredentialManager(context.applicationContext)
-    }
 
     var privacyOptionsRequired by remember {
         mutableStateOf(AdsConsentManager.isPrivacyOptionsRequired(context))
     }
     var showRevokeConfirmation by remember { mutableStateOf(false) }
     var showRevokeCredential by remember { mutableStateOf(false) }
-    var revokeAwaitingMasterSetup by remember { mutableStateOf(false) }
     var showDeveloperMode by remember { mutableStateOf(false) }
     var revocationWorking by remember { mutableStateOf(false) }
 
     val masterPasswordLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
-    ) {
-        if (revokeAwaitingMasterSetup) {
-            revokeAwaitingMasterSetup = false
-            if (credentialManager.hasCredential()) {
-                showRevokeCredential = true
-            }
-        }
-    }
+    ) { }
 
     fun beginPermissionRevocation() {
         if (revocationWorking) return
@@ -247,14 +235,7 @@ fun SettingsScreen(
                 TextButton(
                     onClick = {
                         showRevokeConfirmation = false
-                        if (credentialManager.hasCredential()) {
-                            showRevokeCredential = true
-                        } else {
-                            revokeAwaitingMasterSetup = true
-                            masterPasswordLauncher.launch(
-                                MasterPasswordActivity.createIntent(context)
-                            )
-                        }
+                        showRevokeCredential = true
                     }
                 ) {
                     Text(

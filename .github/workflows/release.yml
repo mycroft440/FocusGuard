@@ -52,6 +52,16 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Restore Robolectric Android runtime cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.m2/repository/org/robolectric/android-all
+            ~/.m2/repository/org/robolectric/android-all-instrumented
+          key: robolectric-runtime-${{ runner.os }}-${{ hashFiles('gradle/libs.versions.toml', '**/build.gradle.kts') }}
+          restore-keys: |
+            robolectric-runtime-${{ runner.os }}-
+
       - name: Install Android 16 SDK
         shell: bash
         run: |
@@ -100,6 +110,9 @@ jobs:
         shell: bash
         env:
           KEYSTORE_FILE: ${{ runner.temp }}/focusguard-release.jks
+          JAVA_TOOL_OPTIONS: >-
+            -Drobolectric.dependency.repo.id=central
+            -Drobolectric.dependency.repo.url=https://repo.maven.apache.org/maven2
         run: |
           set -euo pipefail
           set +e

@@ -1,7 +1,7 @@
 # FocusGuard — Playbook de Monetização com Anúncios
 
 > **Status:** instrução obrigatória para qualquer pessoa ou agente que adicionar, mover ou alterar anúncios no FocusGuard.
-> **Última revisão:** 2026-09-03.
+> **Última revisão:** 2026-09-18.
 > **Objetivo:** maximizar **receita líquida por usuário ao longo do tempo**, sem sacrificar retenção, confiança, estabilidade ou conformidade com AdMob/Google Play.
 
 ## 1. Regra principal de lucro
@@ -16,7 +16,7 @@ Uma posição com eCPM alto pode diminuir a receita total se fizer o usuário ab
 
 - O app usa Google Mobile Ads Next-Gen SDK e UMP/consentimento centralizado.
 - `FocusGuardAds` é o ponto único de integração. Não criar carregadores paralelos de anúncios em telas individuais.
-- **Debug e Release usam intencionalmente IDs oficiais de teste do Google.** Enquanto isso permanecer assim, o app gera **R$ 0** de receita real. Não trocar por IDs reais sem autorização explícita do responsável pelo projeto.
+- **Debug usa IDs oficiais de teste do Google; Release usa IDs reais do AdMob para banner, intersticial e rewarded.** A seleção é automática por build type e não exige troca manual. Native permanece em unidade oficial de teste enquanto não houver uma posição nativa de produção ativa.
 - O Pomodoro mantém conclusão de anúncio em fila persistente; término natural e encerramento manual geram uma oportunidade de intersticial.
 - Rewarded deve creditar somente pelo callback de recompensa; fechar ou falhar não conta.
 
@@ -127,7 +127,7 @@ Antes/depois ou A/B test deve acompanhar pelo menos:
 7. Falha/no-fill não pode quebrar uma função já concluída nem prender navegação.
 8. UMP/consentimento deve ser respeitado antes de qualquer request.
 9. Não criar novos IDs hardcoded espalhados. Todas as unidades passam por `FocusGuardAds`/configuração central.
-10. Enquanto o projeto estiver em modo de testes, **manter IDs oficiais de teste em Release**, conforme decisão atual do projeto.
+10. **Manter IDs oficiais de teste no Debug e IDs reais somente no Release** para os formatos de produção ativos. Native continua em teste até existir uma unidade e posição de produção aprovadas.
 
 ## 6. Estratégia de expansão recomendada
 
