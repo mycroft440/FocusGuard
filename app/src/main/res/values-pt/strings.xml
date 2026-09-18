@@ -158,9 +158,15 @@
     <string name="forum_publish">Publicar</string>
     <string name="forum_character_count">%1$d/%2$d</string>
     <string name="forum_member">Membro do HardBlock</string>
+    <string name="forum_like">Curtir</string>
+    <string name="forum_liked">Curtido</string>
+    <string name="forum_comment">Comentar</string>
+    <string name="forum_no_comments">Nenhum comentário ainda.</string>
+    <string name="forum_comment_hint">Escreva um comentário…</string>
+    <string name="forum_comment_publish">Comentar</string>
     <string name="forum_empty_title">Nenhuma postagem ainda</string>
     <string name="forum_empty_description">Seja a primeira pessoa a publicar algo aqui.</string>
-    <string name="forum_local_storage_notice">Nesta versão, as postagens do fórum ficam salvas apenas neste aparelho.</string>
+    <string name="forum_local_storage_notice">Nesta versão, postagens, curtidas e comentários do fórum ficam salvos apenas neste aparelho.</string>
 
     <!-- AntiPorn e EasyPeasy -->
     <string name="recovery_title">AntiPorn</string>
