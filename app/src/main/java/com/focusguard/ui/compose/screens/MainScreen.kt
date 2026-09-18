@@ -320,9 +320,7 @@ private fun FocusModeNavigationRail(
             )
         }
     ) {
-        FocusGuardNavigationItems
-            .filterNot { it.tab == 5 }
-            .forEach { item ->
+        FocusModeNavigationItems.forEach { item ->
             NavigationRailItem(
                 selected = selectedTab == item.tab,
                 onClick = { onTabChange(item.tab) },
@@ -359,6 +357,8 @@ private val FocusGuardNavigationItems = listOf(
     FocusGuardNavigationItem(4, Icons.Default.LockClock, R.string.nav_focus_mode),
     FocusGuardNavigationItem(5, Icons.Outlined.Forum, R.string.nav_forum)
 )
+
+private val FocusModeNavigationItems = FocusGuardNavigationItems.filterNot { it.tab == 5 }
 
 internal fun pendingPermissionsDescriptionRes(
     missingPermissions: List<ProtectionPermission>
