@@ -160,3 +160,23 @@ Um bloqueio `TIME` deve bloquear somente dentro da faixa diária selecionada, no
 ## Validação
 - [ ] Revisar o diff para confirmar que a mudança ficou restrita ao plano e ao recurso inglês.
 - [ ] Confirmar o resultado de `lintRelease`/CI disparado pelo commit.
+
+
+---
+
+# Correção de CI — teste legado de redirecionamento externo
+
+## Diagnóstico
+- [x] Confirmar que o teste falho cria um `WebsiteBlockTransitionGuard` novo, portanto não depende de estado compartilhado entre testes.
+- [x] Confirmar que `confirmGoogle` recusa deliberadamente confirmação após `externalRedirectRequested` enquanto `closeConfirmed` for falso.
+- [x] Confirmar no histórico que essa regra foi introduzida por `fix: require blocked-tab neutralization after external redirect` e já possui cobertura dedicada em `ExternalRedirectNeutralizationTest`.
+- [x] Identificar `browser intent redirect may confirm on a fresh window from the same browser` como teste legado que contradiz a política atual.
+
+## Implementação
+- [ ] Remover somente o caso legado contraditório de `WebsiteBlockNavigationTest`.
+- [ ] Preservar `ExternalRedirectNeutralizationTest`, que cobre tanto a recusa com a aba bloqueada aberta quanto a confirmação após fechamento independente.
+- [ ] Não alterar o código de produção nem adicionar espera/polling para mascarar a asserção.
+
+## Validação
+- [ ] Revisar o diff para confirmar escopo restrito ao plano e ao teste obsoleto.
+- [ ] Confirmar `testReleaseUnitTest`, lint e release no CI após o commit.
