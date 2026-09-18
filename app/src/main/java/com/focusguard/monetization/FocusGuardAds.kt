@@ -3,6 +3,7 @@ package com.focusguard.monetization
 import android.content.Context
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.Lifecycle
+import com.focusguard.BuildConfig
 import com.focusguard.utils.FocusGuardLogger
 import com.google.android.libraries.ads.mobile.sdk.MobileAds
 import com.google.android.libraries.ads.mobile.sdk.banner.AdSize
@@ -36,16 +37,11 @@ import kotlinx.coroutines.withContext
 /**
  * Ponto único de integração de anúncios do FocusGuard.
  *
- * Por decisão do projeto, Debug e Release usam permanentemente os IDs oficiais de
- * teste do Google. A infraestrutura de consentimento, lifecycle e recompensa é a
- * mesma que seria usada com unidades monetizadas, mas estes IDs não geram receita.
+ * Os IDs são fornecidos pelo BuildConfig: Debug usa unidades oficiais de teste
+ * do Google e Release usa as unidades reais dos formatos ativos. A seleção é
+ * automática e não exige troca manual antes de publicar.
  */
 object FocusGuardAds {
-    const val TEST_APP_ID = "ca-app-pub-3940256099942544~3347511713"
-    const val TEST_INTERSTITIAL_ID = "ca-app-pub-3940256099942544/1033173712"
-    const val TEST_REWARDED_ID = "ca-app-pub-3940256099942544/5224354917"
-    const val TEST_ADAPTIVE_BANNER_ID = "ca-app-pub-3940256099942544/9214589741"
-    const val TEST_NATIVE_ID = "ca-app-pub-3940256099942544/2247696110"
 
     private const val ADAPTIVE_BANNER_PRELOAD_BUFFER_SIZE = 2
     private const val ADAPTIVE_BANNER_PRELOAD_PREFIX = "focusguard-adaptive-banner"
@@ -93,7 +89,7 @@ object FocusGuardAds {
             if (initialized) return
             MobileAds.initialize(
                 context,
-                InitializationConfig.Builder(TEST_APP_ID).build()
+                InitializationConfig.Builder(BuildConfig.ADMOB_APP_ID).build()
             ) { }
             initialized = true
         }
@@ -150,7 +146,7 @@ object FocusGuardAds {
             normalizedWidthDp
         )
         val request = BannerAdRequest.Builder(
-            TEST_ADAPTIVE_BANNER_ID,
+            BuildConfig.ADMOB_BANNER_AD_UNIT_ID,
             adSize
         ).build()
         val started = BannerAdPreloader.start(
@@ -183,7 +179,7 @@ object FocusGuardAds {
             onUnavailable = onUnavailable,
             onReady = {
                 val request = NativeAdRequest.Builder(
-                    TEST_NATIVE_ID,
+                    BuildConfig.ADMOB_NATIVE_AD_UNIT_ID,
                     listOf(NativeAd.NativeAdType.NATIVE)
                 ).build()
                 NativeAdLoader.load(
@@ -239,7 +235,7 @@ object FocusGuardAds {
                     normalizedWidthDp
                 )
                 val request = BannerAdRequest.Builder(
-                    TEST_ADAPTIVE_BANNER_ID,
+                    BuildConfig.ADMOB_BANNER_AD_UNIT_ID,
                     adSize
                 ).build()
                 adView.loadAd(
@@ -282,7 +278,7 @@ object FocusGuardAds {
                 }
 
                 RewardedAd.load(
-                    AdRequest.Builder(TEST_REWARDED_ID).build(),
+                    AdRequest.Builder(BuildConfig.ADMOB_REWARDED_AD_UNIT_ID).build(),
                     object : AdLoadCallback<RewardedAd> {
                         override fun onAdLoaded(ad: RewardedAd) {
                             var rewardEarned = false
@@ -349,7 +345,7 @@ object FocusGuardAds {
                 }
 
                 InterstitialAd.load(
-                    AdRequest.Builder(TEST_INTERSTITIAL_ID).build(),
+                    AdRequest.Builder(BuildConfig.ADMOB_INTERSTITIAL_AD_UNIT_ID).build(),
                     object : AdLoadCallback<InterstitialAd> {
                         override fun onAdLoaded(ad: InterstitialAd) {
                             if (activity.isFinishing || activity.isDestroyed ||
