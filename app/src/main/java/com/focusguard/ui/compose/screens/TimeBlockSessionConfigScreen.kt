@@ -113,11 +113,13 @@ fun TimeBlockSessionConfigScreen(
     apps: List<String>,
     sites: List<String>,
     onBack: () -> Unit,
-    onFinish: () -> Unit
+    onFinish: () -> Unit,
+    mode: TimeBlockConfigMode = TimeBlockConfigMode.CONTINUOUS
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
+    val isScheduled = mode == TimeBlockConfigMode.DAILY_PERIODS
 
     var page by remember { mutableStateOf(TimeBlockConfigPage.TERMS) }
     val websiteCompanionOptions = remember(apps) {
@@ -213,7 +215,7 @@ fun TimeBlockSessionConfigScreen(
             .joinToString(",") { it.calendarDay.toString() }
     }
     val hasTargets = effectiveApps.isNotEmpty() || effectiveSites.isNotEmpty()
-    val timeWindowValid = BlockingScheduleCalculator.isValidRecurringWindow(
+    val timeWindowValid = !isScheduled || BlockingScheduleCalculator.isValidRecurringWindow(
         startHour = startHour,
         startMinute = startMinute,
         endHour = endHour,
@@ -222,9 +224,8 @@ fun TimeBlockSessionConfigScreen(
     val canContinue = termsAccepted && hasTargets
     val canSave = duration != null &&
         termsAccepted &&
-        selectedDays.isNotEmpty() &&
-        timeWindowValid &&
-        hasTargets
+        hasTargets &&
+        (!isScheduled || (selectedDays.isNotEmpty() && timeWindowValid))
 
     fun navigateBack() {
         if (page == TimeBlockConfigPage.SCHEDULE) {
@@ -298,7 +299,18 @@ fun TimeBlockSessionConfigScreen(
         containerColor = DarkBg,
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.dopamine_title), color = TextPrimary) },
+                title = {
+                    Text(
+                        stringResource(
+                            if (isScheduled) {
+                                R.string.block_type_periods_title
+                            } else {
+                                R.string.dopamine_title
+                            }
+                        ),
+                        color = TextPrimary
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = ::navigateBack) {
                         Icon(
@@ -326,6 +338,7 @@ fun TimeBlockSessionConfigScreen(
                     appName = appName,
                     apps = apps,
                     sites = sites,
+                    mode = mode,
                     termsAccepted = termsAccepted,
                     canContinue = canContinue,
                     onTermsAcceptedChange = { termsAccepted = it },
@@ -334,6 +347,7 @@ fun TimeBlockSessionConfigScreen(
                 )
 
                 TimeBlockConfigPage.SCHEDULE -> TimeBlockSchedulePage(
+                    mode = mode,
                     durationUnit = durationUnit,
                     amountText = amountText,
                     availableUnits = availableUnits,
@@ -400,12 +414,12 @@ fun TimeBlockSessionConfigScreen(
                                         BlockDurationPolicy.Duration.Forever -> 0
                                     },
                                     openEnded = resolved is BlockDurationPolicy.Duration.Forever,
-                                    isFixed24h = false,
-                                    startHour = startHour,
-                                    endHour = endHour,
-                                    startMinute = startMinute,
-                                    endMinute = endMinute,
-                                    daysOfWeek = selectedDaysSerialized,
+                                    isFixed24h = !isScheduled,
+                                    startHour = if (isScheduled) startHour else 0,
+                                    endHour = if (isScheduled) endHour else 24,
+                                    startMinute = if (isScheduled) startMinute else 0,
+                                    endMinute = if (isScheduled) endMinute else 0,
+                                    daysOfWeek = if (isScheduled) selectedDaysSerialized else "",
                                     apps = effectiveApps,
                                     sites = effectiveSites
                                 )
@@ -449,6 +463,7 @@ private fun TimeBlockTermsPage(
     appName: String,
     apps: List<String>,
     sites: List<String>,
+    mode: TimeBlockConfigMode,
     termsAccepted: Boolean,
     canContinue: Boolean,
     onTermsAcceptedChange: (Boolean) -> Unit,
@@ -456,6 +471,7 @@ private fun TimeBlockTermsPage(
     onBack: () -> Unit
 ) {
     DopamineHowItWorksCard(
+        mode = mode,
         termsAccepted = termsAccepted,
         onTermsAcceptedChange = onTermsAcceptedChange
     )
@@ -475,7 +491,13 @@ private fun TimeBlockTermsPage(
         shape = RoundedCornerShape(14.dp)
     ) {
         Text(
-            text = stringResource(R.string.dopamine_simple_mode_info),
+            text = stringResource(
+                if (mode == TimeBlockConfigMode.DAILY_PERIODS) {
+                    R.string.block_periods_simple_mode_info
+                } else {
+                    R.string.dopamine_simple_mode_info
+                }
+            ),
             color = TextSecondary,
             modifier = Modifier.fillMaxWidth().padding(12.dp),
             fontSize = 13.sp
@@ -492,7 +514,13 @@ private fun TimeBlockTermsPage(
         shape = RoundedCornerShape(16.dp)
     ) {
         Text(
-            stringResource(R.string.dopamine_continue_to_schedule),
+            stringResource(
+                if (mode == TimeBlockConfigMode.DAILY_PERIODS) {
+                    R.string.dopamine_continue_to_schedule
+                } else {
+                    R.string.final_config_proceed
+                }
+            ),
             color = DarkBg,
             fontWeight = FontWeight.Bold
         )
@@ -507,6 +535,7 @@ private fun TimeBlockTermsPage(
 
 @Composable
 private fun TimeBlockSchedulePage(
+    mode: TimeBlockConfigMode,
     durationUnit: BlockDurationPolicy.Unit,
     amountText: String,
     availableUnits: List<BlockDurationPolicy.Unit>,
@@ -532,37 +561,47 @@ private fun TimeBlockSchedulePage(
     onActivate: () -> Unit,
     onBack: () -> Unit
 ) {
+    val isScheduled = mode == TimeBlockConfigMode.DAILY_PERIODS
+
     Text(
-        text = stringResource(R.string.dopamine_schedule_config_title),
+        text = stringResource(
+            if (isScheduled) {
+                R.string.dopamine_schedule_config_title
+            } else {
+                R.string.dopamine_duration_question
+            }
+        ),
         color = TextPrimary,
         fontSize = 22.sp,
         fontWeight = FontWeight.Bold
     )
-    Spacer(modifier = Modifier.height(6.dp))
-    Text(
-        text = stringResource(R.string.dopamine_schedule_config_subtitle),
-        color = TextSecondary,
-        fontSize = 13.sp
-    )
+    if (isScheduled) {
+        Spacer(modifier = Modifier.height(6.dp))
+        Text(
+            text = stringResource(R.string.dopamine_schedule_config_subtitle),
+            color = TextSecondary,
+            fontSize = 13.sp
+        )
 
-    Spacer(modifier = Modifier.height(18.dp))
+        Spacer(modifier = Modifier.height(18.dp))
 
-    DopamineWeekdaySelector(
-        selectedDays = selectedDays,
-        onToggleDay = onToggleDay
-    )
+        DopamineWeekdaySelector(
+            selectedDays = selectedDays,
+            onToggleDay = onToggleDay
+        )
 
-    Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(16.dp))
 
-    DopamineTimeWindowCard(
-        startHour = startHour,
-        startMinute = startMinute,
-        endHour = endHour,
-        endMinute = endMinute,
-        isValid = timeWindowValid,
-        onEditStartTime = onEditStartTime,
-        onEditEndTime = onEditEndTime
-    )
+        DopamineTimeWindowCard(
+            startHour = startHour,
+            startMinute = startMinute,
+            endHour = endHour,
+            endMinute = endMinute,
+            isValid = timeWindowValid,
+            onEditStartTime = onEditStartTime,
+            onEditEndTime = onEditEndTime
+        )
+    }
 
     Spacer(modifier = Modifier.height(16.dp))
 
@@ -573,7 +612,13 @@ private fun TimeBlockSchedulePage(
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
             Text(
-                text = stringResource(R.string.dopamine_duration_days_question),
+                text = stringResource(
+                    if (isScheduled) {
+                        R.string.dopamine_duration_days_question
+                    } else {
+                        R.string.dopamine_duration_question
+                    }
+                ),
                 color = TextPrimary,
                 fontWeight = FontWeight.SemiBold
             )
@@ -633,7 +678,13 @@ private fun TimeBlockSchedulePage(
         shape = RoundedCornerShape(16.dp)
     ) {
         Text(
-            stringResource(R.string.dopamine_activate),
+            stringResource(
+                if (isScheduled) {
+                    R.string.block_periods_activate
+                } else {
+                    R.string.dopamine_activate
+                }
+            ),
             color = DarkBg,
             fontWeight = FontWeight.Bold
         )
@@ -815,6 +866,7 @@ private fun SelectedAppsSummary(
 
 @Composable
 private fun DopamineHowItWorksCard(
+    mode: TimeBlockConfigMode,
     termsAccepted: Boolean,
     onTermsAcceptedChange: (Boolean) -> Unit
 ) {
@@ -824,16 +876,31 @@ private fun DopamineHowItWorksCard(
         shape = RoundedCornerShape(20.dp)
     ) {
         Column(modifier = Modifier.padding(18.dp)) {
+            val isScheduled = mode == TimeBlockConfigMode.DAILY_PERIODS
             Text(
-                text = stringResource(R.string.dopamine_terms_title),
+                text = stringResource(
+                    if (isScheduled) {
+                        R.string.block_periods_terms_title
+                    } else {
+                        R.string.dopamine_terms_title
+                    }
+                ),
                 color = TextPrimary,
                 fontWeight = FontWeight.Bold,
                 fontSize = 16.sp
             )
             Spacer(modifier = Modifier.height(10.dp))
             listOf(
-                R.string.dopamine_terms_intro,
-                R.string.dopamine_schedule_terms_how,
+                if (isScheduled) {
+                    R.string.block_periods_terms_intro
+                } else {
+                    R.string.dopamine_terms_intro
+                },
+                if (isScheduled) {
+                    R.string.dopamine_schedule_terms_how
+                } else {
+                    R.string.dopamine_terms_how
+                },
                 R.string.dopamine_terms_escape
             ).forEach { paragraph ->
                 Text(
@@ -863,7 +930,13 @@ private fun DopamineHowItWorksCard(
                 )
                 Spacer(modifier = Modifier.padding(horizontal = 2.dp))
                 Text(
-                    text = stringResource(R.string.dopamine_terms_accept),
+                    text = stringResource(
+                        if (isScheduled) {
+                            R.string.block_periods_terms_accept
+                        } else {
+                            R.string.dopamine_terms_accept
+                        }
+                    ),
                     color = TextPrimary,
                     fontSize = 13.sp
                 )
