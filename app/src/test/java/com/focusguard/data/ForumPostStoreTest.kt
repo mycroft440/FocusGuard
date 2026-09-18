@@ -25,7 +25,7 @@ class ForumPostStoreTest {
     }
 
     @Test
-    fun \`published posts survive a fresh store and newest appears first\`() {
+    fun `published posts survive a fresh store and newest appears first`() {
         val store = ForumPostStore(context)
 
         store.publish(
@@ -51,7 +51,7 @@ class ForumPostStoreTest {
     }
 
     @Test
-    fun \`blank post is not persisted\`() {
+    fun `blank post is not persisted`() {
         val store = ForumPostStore(context)
 
         assertThat(store.publish("Alice", 0, "   \n  ", nowMillis = 1_000L)).isNull()
@@ -59,7 +59,7 @@ class ForumPostStoreTest {
     }
 
     @Test
-    fun \`draft input is limited by Unicode code points\`() {
+    fun `draft input is limited by Unicode code points`() {
         val input = "🙂".repeat(ForumPostPolicy.MAX_BODY_CODE_POINTS + 5)
 
         val limited = ForumPostPolicy.limitBodyInput(input)
@@ -69,7 +69,7 @@ class ForumPostStoreTest {
     }
 
     @Test
-    fun \`legacy posts load with empty interactions\`() {
+    fun `legacy posts load with empty interactions`() {
         val legacy = JSONArray().put(
             JSONObject()
                 .put("id", "legacy-post")
@@ -93,7 +93,7 @@ class ForumPostStoreTest {
     }
 
     @Test
-    fun \`like toggles once and survives a fresh store\`() {
+    fun `like toggles once and survives a fresh store`() {
         val store = ForumPostStore(context)
         val post = requireNotNull(
             store.publish("Alice", 0, "Olá", nowMillis = 1_000L)
@@ -112,7 +112,7 @@ class ForumPostStoreTest {
     }
 
     @Test
-    fun \`comment is normalized persisted and attached to its post\`() {
+    fun `comment is normalized persisted and attached to its post`() {
         val store = ForumPostStore(context)
         val post = requireNotNull(
             store.publish("Alice", 0, "Post", nowMillis = 1_000L)
@@ -135,7 +135,7 @@ class ForumPostStoreTest {
     }
 
     @Test
-    fun \`blank comment is rejected\`() {
+    fun `blank comment is rejected`() {
         val store = ForumPostStore(context)
         val post = requireNotNull(
             store.publish("Alice", 0, "Post", nowMillis = 1_000L)
@@ -148,7 +148,7 @@ class ForumPostStoreTest {
     }
 
     @Test
-    fun \`comment input is limited by Unicode code points\`() {
+    fun `comment input is limited by Unicode code points`() {
         val input = "🙂".repeat(ForumPostPolicy.MAX_COMMENT_CODE_POINTS + 5)
 
         val limited = ForumPostPolicy.limitCommentInput(input)
