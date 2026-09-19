@@ -33,9 +33,10 @@ Esta camada não abre tela de bloqueio e não navega.
 
 Código principal:
 
-- `utils/WebsiteBlocker.kt`
-- `service/WebsiteProtectionHierarchyPolicy.kt`
-- regras e limites fornecidos por `BlockingSessionManager`
+- `utils/WebsiteBlocker.kt` para normalização/matching de regras;
+- `accessibility/website/blocking/WebsiteBlockDecisionPolicy.kt` para propriedade HARD/PASSWORD/NONE;
+- `service/WebsiteProtectionHierarchyPolicy.kt` somente como facade de compatibilidade do orquestrador atual;
+- regras e limites fornecidos por `BlockingSessionManager`.
 
 Esta camada resolve domínio/subdomínio, aliases, categoria Pornografia, concessões PASSWORD e prioridade de proteção. Ela não manipula a barra do navegador.
 
@@ -134,4 +135,4 @@ Comparar regras / hierarquia
 
 ## Regra de manutenção
 
-Novas estratégias de leitura de URL entram em `identification`. Novos métodos de escrita/envio entram em `redirection`. Mudanças visuais do bloqueio web entram em `WebsiteBlockNoticeActivity`. Regras de domínio entram no matcher/políticas. O `BlockingAccessibilityService` deve apenas coordenar essas etapas, sem criar um segundo mecanismo paralelo para a mesma responsabilidade.
+Novas estratégias de leitura de URL entram em `identification`. Novas decisões de propriedade da proteção entram em `blocking`. Novos métodos de escrita/envio entram em `redirection`. Mudanças visuais do bloqueio web entram em `WebsiteBlockNoticeActivity`. Regras de domínio entram no matcher/políticas. O `BlockingAccessibilityService` deve apenas coordenar essas etapas, sem criar um segundo mecanismo paralelo para a mesma responsabilidade.
