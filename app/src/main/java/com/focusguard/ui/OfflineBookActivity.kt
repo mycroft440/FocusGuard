@@ -21,12 +21,14 @@ import com.focusguard.R
 
 class OfflineBookActivity : ComponentActivity() {
     private lateinit var webView: WebView
+    private lateinit var book: OfflineBook
     private lateinit var bookAssetDirectory: String
 
     @SuppressLint("SetJavaScriptEnabled")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        bookAssetDirectory = selectedBook().assetDirectory
+        book = selectedBook()
+        bookAssetDirectory = book.assetDirectory
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContentView(R.layout.activity_offline_book)
 
@@ -77,6 +79,16 @@ class OfflineBookActivity : ComponentActivity() {
 
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
+                if (book == OfflineBook.EASYPEASY) {
+                    if (webView.url.isEasyPeasyLanguageSelector()) {
+                        isEnabled = false
+                        onBackPressedDispatcher.onBackPressed()
+                    } else {
+                        webView.loadUrl(easyPeasyLanguageSelectorUrl())
+                    }
+                    return
+                }
+
                 if (webView.canGoBack()) {
                     webView.goBack()
                 } else {
@@ -114,16 +126,32 @@ class OfflineBookActivity : ComponentActivity() {
             host == WebViewAssetLoader.DEFAULT_DOMAIN &&
             path?.startsWith("/assets/$bookAssetDirectory/") == true
 
+    private fun String?.isEasyPeasyLanguageSelector(): Boolean {
+        if (this == null) return false
+        val uri = Uri.parse(this)
+        return uri.scheme == "https" &&
+            uri.host == WebViewAssetLoader.DEFAULT_DOMAIN &&
+            uri.path == "/assets/${OfflineBook.EASYPEASY.assetDirectory}/$EASYPEASY_LANGUAGE_SELECTOR"
+    }
+
     private fun selectedBook(): OfflineBook =
         OfflineBook.values().firstOrNull {
             it.name == intent.getStringExtra(EXTRA_BOOK)
         } ?: OfflineBook.EASYPEASY
 
     private fun bookUrl(): String =
-        "https://${WebViewAssetLoader.DEFAULT_DOMAIN}/assets/$bookAssetDirectory/index.html"
+        if (book == OfflineBook.EASYPEASY) {
+            easyPeasyLanguageSelectorUrl()
+        } else {
+            "https://${WebViewAssetLoader.DEFAULT_DOMAIN}/assets/$bookAssetDirectory/index.html"
+        }
+
+    private fun easyPeasyLanguageSelectorUrl(): String =
+        "https://${WebViewAssetLoader.DEFAULT_DOMAIN}/assets/${OfflineBook.EASYPEASY.assetDirectory}/$EASYPEASY_LANGUAGE_SELECTOR"
 
     companion object {
         private const val EXTRA_BOOK = "offline_book"
+        private const val EASYPEASY_LANGUAGE_SELECTOR = "language-selector.html"
 
         fun createIntent(context: Context, book: OfflineBook): Intent =
             Intent(context, OfflineBookActivity::class.java)
