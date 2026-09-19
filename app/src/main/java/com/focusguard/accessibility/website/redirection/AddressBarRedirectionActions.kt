@@ -566,6 +566,8 @@ internal object AddressBarRedirectionActions {
         "url_bar_edit_text", "location_bar_edit_text", "url_edit_text",
         "omnibarTextInput", "omnibox_text", "inputField",
         "mozac_browser_toolbar_edit_url_view",
+        "mozac_browser_toolbar_edit_url",
+        "browser_toolbar_edit_url_view",
         BrowserUiCapabilityPolicy.FIREFOX_COMPOSE_SEARCH_ENTRY -> 50
         else -> 30
     }
