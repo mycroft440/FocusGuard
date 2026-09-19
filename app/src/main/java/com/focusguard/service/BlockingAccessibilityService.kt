@@ -1246,15 +1246,6 @@ class BlockingAccessibilityService : AccessibilityService() {
                 return
             }
 
-            val observedWindowPackage = transitionPackage
-            if ((event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) &&
-                observedWindowPackage.isNotBlank()
-            ) {
-                browserInspectionCoordinator.observeWindow(observedWindowPackage, event.windowId)
-                retireStaleWebsiteTransitions()
-            }
-
             // Shield the native System UI power menu before any other handling.
             // A touch-consuming TYPE_ACCESSIBILITY_OVERLAY stays on top while the
             // controller forwards only ACTION_CLICK to native actions; the user
@@ -1303,26 +1294,46 @@ class BlockingAccessibilityService : AccessibilityService() {
             // after the immediate self-protection/browser paths and before nodes.
             if (!inspectWindowEarly && consumeInputUiEvent(event, directPackage, true)) return
 
+            // Browser window events can arrive without packageName, and
+            // TYPE_WINDOWS_CHANGED can carry the package of a different window. Resolve
+            // the package from the changed window only after the self-protection fast
+            // paths above have had a chance to return.
+            val inspectionPackage = if (browserInspectionEvent &&
+                (directPackage.isBlank() || event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED)
+            ) {
+                resolveEventPackageName(event)
+            } else {
+                directPackage
+            }
+
+            if ((event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) &&
+                inspectionPackage.isNotBlank()
+            ) {
+                browserInspectionCoordinator.observeWindow(inspectionPackage, event.windowId)
+                retireStaleWebsiteTransitions()
+            }
+
             // Address-bar text changes are the strongest low-latency signal Chromium
             // exposes through Accessibility. Inspect only the event source here (never the
             // whole tree) so a blocked host can be stopped even when rootInActiveWindow is
             // stale, incomplete, or the toolbar is temporarily absent from the active root.
-            if (browserInspectionEvent && directPackage.isNotBlank() &&
+            if (browserInspectionEvent && inspectionPackage.isNotBlank() &&
                 websiteSurfaceInspectionNeeded() &&
-                handleImmediateBrowserAddressEvent(event, directPackage)
+                handleImmediateBrowserAddressEvent(event, inspectionPackage)
             ) {
                 return
             }
 
             // Full website inspection stays asynchronous. The immediate source path above
             // complements this root/window walk; it does not replace the normal verification.
-            if (browserInspectionEvent && directPackage.isNotBlank() &&
+            if (browserInspectionEvent && inspectionPackage.isNotBlank() &&
                 websiteSurfaceInspectionNeeded()
             ) {
-                scheduleBrowserInspection(event, directPackage)
+                scheduleBrowserInspection(event, inspectionPackage)
             }
 
-            val packageName = directPackage.ifBlank { foregroundPackageName.orEmpty() }
+            val packageName = inspectionPackage.ifBlank { foregroundPackageName.orEmpty() }
             if (packageName == this.packageName) {
                 observeOwnUiEvent(event)
                 return
@@ -2983,7 +2994,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         var snapshot = browserInspectionCoordinator.takePending()
         while (snapshot != null) {
             try {
-                val outcome = inspectBrowserSnapshot(snapshot)
+                val outcome = inspectBrowserSnapshotWithRetry(snapshot)
                 if (outcome != null) withContext(Dispatchers.Main.immediate) {
                     applyBrowserInspectionOutcome(outcome)
                 }
@@ -2995,6 +3006,27 @@ class BlockingAccessibilityService : AccessibilityService() {
                 snapshot = browserInspectionCoordinator.finishPass()
             }
         }
+    }
+
+    /**
+     * A missing Accessibility root during a window transition is inconclusive, not a
+     * proof that the page is safe. Retry briefly while the exact package/window/
+     * generation/sequence is still current; a newer event cancels these retries and
+     * becomes the next queued inspection.
+     */
+    private suspend fun inspectBrowserSnapshotWithRetry(
+        snapshot: BrowserInspectionCoordinator.Snapshot
+    ): BrowserInspectionOutcome? {
+        val token = snapshot.token
+        var attempt = 0
+        while (attempt < 3) {
+            if (!browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)) return null
+            inspectBrowserSnapshot(snapshot)?.let { return it }
+            if (!browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)) return null
+            attempt += 1
+            if (attempt < 3) delay(40L * attempt)
+        }
+        return null
     }
 
     private fun inspectBrowserSnapshot(
@@ -3622,27 +3654,11 @@ class BlockingAccessibilityService : AccessibilityService() {
                     }
                 }
 
-                if (!redirectRequested &&
-                    supportsCapabilityBasedIntentRedirectFallback(
-                        knownBrowser = browserPackageName in knownBrowserPackages,
-                        verifiedHttpsHandler = isVerifiedHttpsHandler(browserPackageName)
-                    )
-                ) {
-                    // Any recognized browser with independently verified browser
-                    // capability may use the safe ACTION_VIEW fallback after the two
-                    // certified same-tab attempts are exhausted. The blocked surface
-                    // is revalidated by rule before the browser is asked to open the
-                    // Google homepage; the curtain remains until Google is confirmed.
-                    val blockedSurfaceRestored =
-                        restoreBlockedSurfaceForSafeIntentFallback(transition)
-                    if (blockedSurfaceRestored && curtainReadyForTransition(transition)) {
-                        FocusGuardLogger.log(
-                            "A11y",
-                            "Usando fallback seguro por intent para $browserPackageName"
-                        )
-                        redirectRequested = requestSafeGoogleThroughBrowserIntent(transition)
-                    }
-                }
+                // HardBlock must not treat ACTION_VIEW as neutralization. It can open
+                // Google in another tab/window while the blocked tab remains reachable.
+                // If both certified same-tab rewrites fail, keep the curtain and fall
+                // through to fail-closed protection below instead of opening a second
+                // browser surface that cannot satisfy the transition guarantee.
 
                 if (!curtainReadyForTransition(transition)) return@launch
                 if (!redirectRequested) {

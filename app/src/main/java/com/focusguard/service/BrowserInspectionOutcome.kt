@@ -33,15 +33,24 @@ internal data class BrowserInspectionOutcome(
     val recognizedBrowser: Boolean,
     val directEventText: List<String>,
     val eventContentDescription: String?,
-    val eventClassName: String
+    val eventClassName: String,
+    private val sourceToken: BrowserInspectionCoordinator.Token? = null
 ) {
-    val token: BrowserInspectionCoordinator.Token
-        get() = BrowserInspectionCoordinator.Token(
+    private val fallbackToken: BrowserInspectionCoordinator.Token =
+        BrowserInspectionCoordinator.Token(
             packageName = packageName,
             windowId = windowId,
             generation = generation,
             sequence = sequence
         )
+
+    /**
+     * Preserve the exact inspection token used by the snapshot. Recovery uses
+     * referential identity and finishPass() mutates this token to allow newer
+     * observations from the same browser document.
+     */
+    val token: BrowserInspectionCoordinator.Token
+        get() = sourceToken ?: fallbackToken
 
     val bestCandidate: String?
         get() = urlCandidate?.takeIf(String::isNotBlank)
@@ -94,7 +103,8 @@ internal data class BrowserInspectionOutcome(
                 recognizedBrowser = effectiveRecognizedBrowser,
                 directEventText = snapshot.directText.toList(),
                 eventContentDescription = snapshot.contentDescription,
-                eventClassName = snapshot.className
+                eventClassName = snapshot.className,
+                sourceToken = token
             )
         }
     }
