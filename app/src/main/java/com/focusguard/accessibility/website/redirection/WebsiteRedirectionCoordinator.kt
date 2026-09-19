@@ -1,7 +1,5 @@
 package com.focusguard.accessibility.website.redirection
 
-import com.focusguard.utils.BrowserUiCapabilityPolicy
-
 /**
  * Coordinator for one website redirection transaction.
  *
@@ -74,7 +72,10 @@ internal object WebsiteRedirectionCoordinator {
 
         var redirectRequested = false
         var attemptNumber = 1
-        while (adapter.ownsProtection() && attemptNumber <= WebsiteRedirectionPlan.MAX_SAME_TAB_ATTEMPTS) {
+        while (
+            adapter.ownsProtection() &&
+            attemptNumber <= WebsiteRedirectionPlan.MAX_SAME_TAB_ATTEMPTS
+        ) {
             redirectRequested = adapter.requestSameTabRedirect(attemptNumber)
             if (redirectRequested) break
             if (!adapter.ownsProtection()) return Outcome.ABORTED
@@ -128,28 +129,18 @@ internal class WebsiteTabNeutralizationPolicy(
     private var state = State.BLOCKED_TAB
 
     fun mayTouchBlockedTab(activePackageName: String, activeWindowId: Int): Boolean =
-        state == State.BLOCKED_TAB && activePackageName == browserPackageName && activeWindowId == expectedWindowId
-
-    fun mayAttemptChromiumClose(
-        activePackageName: String,
-        activeWindowId: Int,
-        phaseStartedAtUptimeMillis: Long,
-        latestWindowTransitionEventUptimeMillis: Long
-    ): Boolean = state == State.BLOCKED_TAB && BrowserUiCapabilityPolicy.isFreshExpectedSurface(
-        expectedBrowserPackage = browserPackageName,
-        expectedWindowId = expectedWindowId,
-        activePackageName = activePackageName,
-        activeWindowId = activeWindowId,
-        phaseStartedAtUptimeMillis = phaseStartedAtUptimeMillis,
-        latestWindowTransitionEventUptimeMillis = latestWindowTransitionEventUptimeMillis
-    )
+        state == State.BLOCKED_TAB &&
+            activePackageName == browserPackageName &&
+            activeWindowId == expectedWindowId
 
     fun mayActivateBlockedAddressBar(
         activePackageName: String,
         activeWindowId: Int,
         @Suppress("UNUSED_PARAMETER") phaseStartedAtUptimeMillis: Long,
         @Suppress("UNUSED_PARAMETER") latestWindowTransitionEventUptimeMillis: Long
-    ): Boolean = state == State.BLOCKED_TAB && activePackageName == browserPackageName && activeWindowId == expectedWindowId
+    ): Boolean = state == State.BLOCKED_TAB &&
+        activePackageName == browserPackageName &&
+        activeWindowId == expectedWindowId
 
     fun markSafeAddressSet(setAtUptimeMillis: Long) {
         check(state == State.BLOCKED_TAB)
@@ -161,7 +152,9 @@ internal class WebsiteTabNeutralizationPolicy(
         activePackageName: String,
         activeWindowId: Int,
         @Suppress("UNUSED_PARAMETER") latestWindowTransitionEventUptimeMillis: Long
-    ): Boolean = state == State.SAFE_ADDRESS_SET && activePackageName == browserPackageName && activeWindowId == expectedWindowId
+    ): Boolean = state == State.SAFE_ADDRESS_SET &&
+        activePackageName == browserPackageName &&
+        activeWindowId == expectedWindowId
 
     fun markRedirectRequested() {
         check(state == State.SAFE_ADDRESS_SET)
