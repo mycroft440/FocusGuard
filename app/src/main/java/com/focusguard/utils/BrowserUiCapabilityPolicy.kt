@@ -207,6 +207,20 @@ internal object BrowserUiCapabilityPolicy {
         !entryName.isNullOrBlank() && entryName in strongAddressBarEntryNames &&
             entryName !in editorEntryNames
 
+    /**
+     * Firefox/Fenix can expose a stable display URL node while the edit-only
+     * SEARCH_BOX is nested below it after a tap. Continue the bounded walk only
+     * below stable Firefox address-display nodes; all editors and other browser
+     * families remain terminal strong nodes.
+     */
+    internal fun shouldSearchAddressBarDescendants(
+        packageName: String,
+        viewIdResourceName: String?
+    ): Boolean {
+        if (!isFirefoxPackage(packageName)) return false
+        return isStableUrlEntryName(browserOwnedEntryName(packageName, viewIdResourceName))
+    }
+
     fun isStrongAddressBarResource(
         viewIdResourceName: String,
         expectedBrowserPackage: String
@@ -530,12 +544,15 @@ internal object BrowserUiCapabilityPolicy {
         // focus for Chrome; AddressBarRedirectionActions still keeps CLICK as the
         // secondary fallback when focus is unavailable.
         if (isChromePackage(expectedBrowserPackage)) return false
+        // Fenix enters edit mode through a click from ADDRESSBAR_URL_BOX to the
+        // edit-only ADDRESSBAR_SEARCH_BOX. An old cached FOCUS result must not
+        // override that transition; FOCUS remains the secondary fallback.
+        if (isFirefoxPackage(expectedBrowserPackage)) return true
 
         return when (BrowserCompatibilityStore.preferredActivationMethod(expectedBrowserPackage)) {
             BrowserActivationMethod.CLICK -> true
             BrowserActivationMethod.FOCUS -> false
             null -> expectedBrowserPackage == DUCKDUCKGO_PACKAGE ||
-                isFirefoxPackage(expectedBrowserPackage) ||
                 expectedBrowserPackage in setOf(
                     "com.sec.android.app.sbrowser", "com.sec.android.app.sbrowser.beta",
                     "mark.via", "mark.via.gp", "com.yandex.browser", "com.yandex.browser.beta",

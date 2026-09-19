@@ -138,6 +138,12 @@ class BlockingAccessibilityService : AccessibilityService() {
         ABORT_REDIRECT
     }
 
+    internal enum class WebsiteRestoreDecision {
+        BACK_TO_BLOCKED_SURFACE,
+        RETRY_CURRENT_BLOCKED_SURFACE,
+        KEEP_CURRENT_SURFACE
+    }
+
     internal enum class WebsiteCloseFollowUp {
         REWRITE_SAME_BLOCKED_TAB,
         REQUEST_SAFE_GOOGLE_AFTER_CONFIRMED_CLOSE,
@@ -428,6 +434,32 @@ class BlockingAccessibilityService : AccessibilityService() {
                 eventUptimeMillis
             )
             return transition.safeGoogleConfirmed.complete(Unit)
+        }
+
+        /**
+         * A fresh, stable browser root is itself navigation evidence when the exact
+         * safe Google root URL is visible as WEB_CONTENT and no address editor is
+         * focused. This covers Fenix when submission succeeds but its mutation event
+         * is delayed or lost.
+         */
+        @Synchronized
+        fun confirmGoogleFromStableCurrentSurface(
+            browserPackageName: String,
+            windowId: Int,
+            observedAtUptimeMillis: Long
+        ): Boolean {
+            val transition = activeTransitions[browserPackageName] ?: return false
+            if (transition.externalRedirectRequested ||
+                !transition.sanitizationRequested ||
+                transition.expectedWindowId != windowId ||
+                observedAtUptimeMillis < transition.sanitizationRequestedAtUptimeMillis
+            ) return false
+            transition.latestObservedEventUptimeMillis = maxOf(
+                transition.latestObservedEventUptimeMillis,
+                observedAtUptimeMillis
+            )
+            return transition.safeGoogleConfirmed.complete(Unit) ||
+                transition.safeGoogleConfirmed.isCompleted
         }
 
         @Synchronized
@@ -3750,6 +3782,50 @@ class BlockingAccessibilityService : AccessibilityService() {
     ): Boolean {
         if (!curtainReadyForTransition(transition)) return false
         if (transition.activatedAddressViewId == null && transition.editorAddressViewId == null) return true
+
+        // BACK is allowed only while the exact safe URL is still being edited.
+        // If submission already navigated away from the blocked page, going BACK
+        // would resurrect that blocked page from Firefox history.
+        val https = isVerifiedHttpsHandler(transition.browserPackageName)
+        val editorRoot = activeBrowserRoot(
+            transition.browserPackageName,
+            transition.expectedWindowId
+        ) ?: return false
+        val safeRedirectStillEditing = try {
+            AddressBarRedirectionActions.hasFocusedAddressEditor(
+                editorRoot,
+                transition.browserPackageName,
+                transition.expectedWindowId,
+                https,
+                ::isSafeGoogleRedirectSurface
+            )
+        } finally { recycleSafely(editorRoot) }
+        if (!curtainReadyForTransition(transition)) return false
+
+        val blockedSurfaceStillCurrent = if (safeRedirectStillEditing) {
+            false
+        } else {
+            websiteTreeWorker.run { currentBrowserSurfaceMatchesBlockedTransition(transition) }
+        }
+        if (!curtainReadyForTransition(transition)) return false
+
+        when (websiteRestoreDecision(
+            safeRedirectStillEditing = safeRedirectStillEditing,
+            blockedSurfaceStillCurrent = blockedSurfaceStillCurrent
+        )) {
+            WebsiteRestoreDecision.RETRY_CURRENT_BLOCKED_SURFACE -> {
+                transition.activatedAddressViewId = null
+                transition.editorAddressViewId = null
+                return true
+            }
+            WebsiteRestoreDecision.KEEP_CURRENT_SURFACE -> {
+                transition.activatedAddressViewId = null
+                transition.editorAddressViewId = null
+                return false
+            }
+            WebsiteRestoreDecision.BACK_TO_BLOCKED_SURFACE -> Unit
+        }
+
         if (!performTransitionBack(transition)) return false
         delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
         if (!curtainReadyForTransition(transition)) return false
@@ -3855,7 +3931,8 @@ class BlockingAccessibilityService : AccessibilityService() {
             if (result.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L
             activated = activated || result.accepted
             if (result.accepted) transition.activatedAddressViewId = result.selectedViewId
-            val deadline = SystemClock.uptimeMillis() + WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS
+            val deadline = SystemClock.uptimeMillis() +
+                websiteAddressBarActionTimeoutMillis(browserPackageName)
             var editorReady = false
             while (curtainReadyForTransition(transition) && SystemClock.uptimeMillis() <= deadline) {
                 if (!curtainReadyForTransition(transition)) return 0L
@@ -3906,7 +3983,8 @@ class BlockingAccessibilityService : AccessibilityService() {
                 } finally { recycleSafely(editRoot) }
                 if (!curtainReadyForTransition(transition)) return 0L
                 if (written.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L
-                val writeDeadline = SystemClock.uptimeMillis() + WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS
+                val writeDeadline = SystemClock.uptimeMillis() +
+                    websiteAddressBarActionTimeoutMillis(browserPackageName)
                 while (curtainReadyForTransition(transition) && SystemClock.uptimeMillis() <= writeDeadline) {
                     if (!curtainReadyForTransition(transition)) return 0L
                     delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
@@ -3994,6 +4072,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                     safeGoogleConfirmed = transition.safeGoogleConfirmed.isCompleted
                 )
             ) return submittedAt
+            if (confirmSafeGoogleFromFreshBrowserSurface(transition)) return submittedAt
             val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
             val stillEditing = try {
                 AddressBarRedirectionActions.hasFocusedAddressEditor(fresh, browserPackageName,
@@ -4002,6 +4081,56 @@ class BlockingAccessibilityService : AccessibilityService() {
             if (!stillEditing) return 0L
         }
         return 0L
+    }
+
+    private suspend fun confirmSafeGoogleFromFreshBrowserSurface(
+        transition: WebsiteBlockTransitionHandle
+    ): Boolean {
+        if (!curtainReadyForTransition(transition) ||
+            !transition.sanitizationRequested ||
+            transition.externalRedirectRequested
+        ) return false
+
+        repeat(2) { pass ->
+            val root = activeBrowserRoot(
+                transition.browserPackageName,
+                transition.expectedWindowId
+            ) ?: return false
+            val stableSafeSurface = try {
+                val identification = WebsiteIdentificationEngine.identifyFromRoot(
+                    root,
+                    transition.browserPackageName,
+                    transition.expectedWindowId,
+                    isVerifiedHttpsHandler(transition.browserPackageName),
+                    isCurrent = { transitionWindowIsCurrent(transition) }
+                )
+                val session = BrowserInspectionSessionStore.sessionFor(
+                    root,
+                    transition.browserPackageName
+                )
+                isSafeGoogleRedirectSurface(identification.bestCandidate) &&
+                    (session.surface ?: BrowserSurfaceInspector.inspect(
+                        root,
+                        transition.browserPackageName
+                    )) == BrowserSurfaceInspector.Surface.WEB_CONTENT &&
+                    !session.focusedAddressEditor
+            } finally { recycleSafely(root) }
+            if (!stableSafeSurface || !curtainReadyForTransition(transition)) return false
+            if (pass == 0) {
+                delay(WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS)
+                if (!curtainReadyForTransition(transition)) return false
+            }
+        }
+
+        val confirmed = websiteBlockTransitionGuard.confirmGoogleFromStableCurrentSurface(
+            browserPackageName = transition.browserPackageName,
+            windowId = transition.expectedWindowId,
+            observedAtUptimeMillis = SystemClock.uptimeMillis()
+        )
+        if (confirmed) {
+            BrowserCompatibilityStore.recordNavigationConfirmed(transition.browserPackageName)
+        }
+        return confirmed
     }
 
     private fun transitionWindowIsCurrent(transition: WebsiteBlockTransitionHandle): Boolean =
@@ -4599,6 +4728,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         private const val WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS = 48L
         private const val WEBSITE_ADDRESS_BAR_ACTION_RETRY_MILLIS = 32L
         private const val WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS = 360L
+        private const val WEBSITE_FIREFOX_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS = 800L
         private const val WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS = 120L
         internal const val WEBSITE_MIN_BLOCK_NOTICE_MILLIS = 1_000L
         /** Exact hosts published by Google's supported-domains endpoint. */
@@ -4877,6 +5007,23 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         internal fun canUseCertifiableImeSubmit(apiLevel: Int): Boolean =
             BrowserUiCapabilityPolicy.canUseImeEnter(apiLevel)
+
+        internal fun websiteAddressBarActionTimeoutMillis(
+            browserPackageName: String
+        ): Long = if (BrowserUiCapabilityPolicy.isFirefoxPackage(browserPackageName)) {
+            WEBSITE_FIREFOX_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS
+        } else {
+            WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS
+        }
+
+        internal fun websiteRestoreDecision(
+            safeRedirectStillEditing: Boolean,
+            blockedSurfaceStillCurrent: Boolean
+        ): WebsiteRestoreDecision = when {
+            safeRedirectStillEditing -> WebsiteRestoreDecision.BACK_TO_BLOCKED_SURFACE
+            blockedSurfaceStillCurrent -> WebsiteRestoreDecision.RETRY_CURRENT_BLOCKED_SURFACE
+            else -> WebsiteRestoreDecision.KEEP_CURRENT_SURFACE
+        }
 
         internal fun settingsTransitionGuardMillisForTest(): Long =
             SETTINGS_TRANSITION_GUARD_MILLIS

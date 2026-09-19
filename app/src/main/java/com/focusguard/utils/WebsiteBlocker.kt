@@ -1275,8 +1275,9 @@ object WebsiteBlocker {
         visitedNodes[0] += 1
 
         val belongsToBrowser = node.packageName?.toString() == browserPackageName
+        val viewId = node.viewIdResourceName.orEmpty()
         if (belongsToBrowser && BrowserUiCapabilityPolicy.isStrongAddressBarResource(
-                node.viewIdResourceName.orEmpty(),
+                viewId,
                 browserPackageName
             )
         ) {
@@ -1284,7 +1285,11 @@ object WebsiteBlocker {
                 @Suppress("DEPRECATION")
                 output += AccessibilityNodeInfo.obtain(node)
             }
-            return
+            if (!BrowserUiCapabilityPolicy.shouldSearchAddressBarDescendants(
+                    browserPackageName,
+                    viewId
+                )
+            ) return
         }
 
         for (index in 0 until node.childCount) {

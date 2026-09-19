@@ -459,7 +459,11 @@ internal object AddressBarRedirectionActions {
                 @Suppress("DEPRECATION")
                 output += AccessibilityNodeInfo.obtain(node)
             }
-            return
+            if (!BrowserUiCapabilityPolicy.shouldSearchAddressBarDescendants(
+                    browserPackageName,
+                    viewId
+                )
+            ) return
         }
 
         for (index in 0 until node.childCount) {
