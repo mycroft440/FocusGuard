@@ -17,10 +17,12 @@ internal object BrowserRecognitionPolicy {
     }
 
     /**
-     * Only strong package-level browser evidence may promote an entirely opaque tree into the
-     * bounded URL-recovery path. The legacy HTTPS-handler signal still preserves existing browser
-     * recognition for observable surfaces, but cannot by itself turn an UNKNOWN tree into web
-     * content because App Links can produce that same signal.
+     * Strong package-level browser evidence may promote an inconclusive tree into the bounded
+     * URL-recovery path. This includes both a fully opaque observation and the important partial
+     * state where a certified address-bar control was found but did not yet expose a usable URL.
+     *
+     * The legacy HTTPS-handler signal still preserves existing browser recognition for observable
+     * surfaces, but cannot by itself promote UNKNOWN because App Links can produce that same signal.
      */
     fun recoverySurface(
         classification: BrowserClassification,
@@ -28,7 +30,10 @@ internal object BrowserRecognitionPolicy {
         observedSurface: BrowserSurfaceInspector.Surface
     ): BrowserSurfaceInspector.Surface =
         if (classification.isBrowserLike &&
-            identificationStatus == WebsiteIdentificationStatus.UNOBSERVABLE &&
+            identificationStatus in setOf(
+                WebsiteIdentificationStatus.UNOBSERVABLE,
+                WebsiteIdentificationStatus.ADDRESS_BAR_OBSERVABLE
+            ) &&
             observedSurface == BrowserSurfaceInspector.Surface.UNKNOWN
         ) {
             BrowserSurfaceInspector.Surface.WEB_CONTENT
