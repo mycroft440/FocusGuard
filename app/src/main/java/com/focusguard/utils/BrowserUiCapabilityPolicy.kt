@@ -83,7 +83,14 @@ internal object BrowserUiCapabilityPolicy {
         // Gecko/Fenix toolbars.
         "mozac_browser_toolbar_url_view",
         "mozac_browser_toolbar_edit_url_view",
+        "mozac_browser_toolbar_url",
+        "mozac_browser_toolbar_edit_url",
+        "mozac_browser_toolbar_address_view",
         "browser_toolbar_url_view",
+        "browser_toolbar_edit_url_view",
+        "browser_toolbar_address_view",
+        "toolbar_url",
+        "toolbar_url_view",
         // Current Firefox Compose semantics tags. These bare names are never
         // trusted globally: isStrongAddressBarResource() scopes them to Firefox
         // packages and callers still enforce package/window/visibility/native UI.
@@ -109,6 +116,8 @@ internal object BrowserUiCapabilityPolicy {
         "omnibox_text",
         DUCKDUCKGO_NATIVE_INPUT_ENTRY,
         "mozac_browser_toolbar_edit_url_view",
+        "mozac_browser_toolbar_edit_url",
+        "browser_toolbar_edit_url_view",
         FIREFOX_COMPOSE_SEARCH_ENTRY
     )
 
@@ -118,7 +127,12 @@ internal object BrowserUiCapabilityPolicy {
         "location_bar",
         "url_field",
         "mozac_browser_toolbar_url_view",
+        "mozac_browser_toolbar_url",
+        "mozac_browser_toolbar_address_view",
         "browser_toolbar_url_view",
+        "browser_toolbar_address_view",
+        "toolbar_url",
+        "toolbar_url_view",
         FIREFOX_COMPOSE_URL_ENTRY,
         "address_bar",
         "bro_omnibox_address_title",
@@ -358,8 +372,16 @@ internal object BrowserUiCapabilityPolicy {
             node.windowId != expectedWindowId
         ) return false
 
-        val prefix = "$expectedBrowserPackage:id/"
         val viewId = node.viewIdResourceName
+        val composeEntry = isFirefoxComposeAddressBarResource(viewId, expectedBrowserPackage)
+        if (composeEntry) {
+            // Firefox/Fenix Compose semantics tags are intentionally bare rather than
+            // package-qualified Android resource ids. They are actionable only after
+            // the package/window/native/editable/URI checks above have all succeeded.
+            return viewId == FIREFOX_COMPOSE_SEARCH_ENTRY
+        }
+
+        val prefix = "$expectedBrowserPackage:id/"
         if (!viewId.startsWith(prefix) || viewId.length <= prefix.length) return false
 
         val entryName = viewId.substring(prefix.length).lowercase(Locale.ROOT)
