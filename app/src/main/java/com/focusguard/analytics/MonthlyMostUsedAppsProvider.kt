@@ -29,7 +29,7 @@ object MonthlyMostUsedAppsProvider {
                 .values
                 .asSequence()
                 .filter { usage ->
-                    usage.totalTimeInForeground > 60_000L &&
+                    usage.totalTimeInForeground > 0L &&
                         runCatching {
                             packageManager.getLaunchIntentForPackage(usage.packageName) != null
                         }.getOrDefault(false)
