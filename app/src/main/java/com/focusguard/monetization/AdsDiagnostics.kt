@@ -4,29 +4,26 @@ package com.focusguard.monetization
  * Pure formatting helpers for monetization diagnostics.
  *
  * Keeping the formatter free from Android/GMA types lets unit tests verify that
- * the production logs preserve the fields needed to diagnose no-fill, consent,
- * account/configuration and mediation failures.
+ * the production logs preserve the fields exposed by GMA Next-Gen for no-fill,
+ * onboarding/configuration and mediation failures.
  */
 internal object AdsDiagnostics {
     private const val MAX_DETAIL_LENGTH = 8_000
 
     fun formatLoadFailure(
         format: String,
-        code: Int,
-        domain: String,
+        code: String,
         message: String,
-        cause: String?,
+        errorDump: String,
         responseInfo: String?
     ): String = buildString {
         append(format)
-        append(" falhou: domain=")
-        append(compact(domain, "desconhecido"))
-        append(", code=")
-        append(code)
+        append(" falhou: code=")
+        append(compact(code, "desconhecido"))
         append(", message=")
         append(compact(message, "sem mensagem"))
-        append(", cause=")
-        append(compact(cause, "sem causa"))
+        append(", error=")
+        append(compact(errorDump, "indisponível"))
         append(", responseInfo=")
         append(compact(responseInfo, "indisponível"))
     }
