@@ -155,9 +155,9 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
-    fun `website curtain remains visible for one second while redirect starts immediately`() {
+    fun `website curtain remains briefly visible while redirect starts immediately`() {
         assertThat(BlockingAccessibilityService.WEBSITE_MIN_BLOCK_NOTICE_MILLIS)
-            .isEqualTo(1_000L)
+            .isEqualTo(250L)
     }
 
     @Test
