@@ -283,7 +283,7 @@ replace_once(
 replace_in_region(
     service,
     "    private suspend fun submitSafeAddressBar(\n",
-    "    private fun transitionWindowIsCurrent(\n",
+    "    private fun transitionWindowIsCurrent(transition: WebsiteBlockTransitionHandle): Boolean =\n",
     """            val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
 """,
     """            if (confirmSafeGoogleFromFreshBrowserSurface(transition)) return submittedAt
