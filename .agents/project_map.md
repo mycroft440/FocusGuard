@@ -17,8 +17,11 @@
 - `BrowserCompatibilityStore`: persiste identificação de URL e recuperação por pacote, separadas das preferências de edição; endereço injetado e aceitação de ação não confirmam navegação. Evidência usada para promover navegador fica vinculada ao `versionCode` que realmente a produziu.
 - `WebsiteBlocker`: normaliza/matcheia regras de site e utilidades de domínio.
 - `accessibility/website/blocking/WebsiteBlockDecisionPolicy`: resolve a propriedade HARD/PASSWORD/NONE de um candidato já identificado. Não é dona da UI nem do redirecionamento. `service/WebsiteProtectionHierarchyPolicy` é apenas facade de compatibilidade para o orquestrador atual.
-- `WebsiteBlockNoticeActivity`: única superfície visual dedicada a um site bloqueado conhecido. Não identifica URL e não manipula a barra do navegador.
+- A apresentação HARD normal de um site bloqueado é a cortina opaca `TYPE_ACCESSIBILITY_OVERLAY`; ela mantém o navegador como janela ativa para permitir a reescrita da mesma aba.
+- `WebsiteBlockNoticeActivity`: superfície terminal/fail-closed para um site bloqueado conhecido. Não participa antes do redirecionamento normal, não identifica URL e não manipula a barra do navegador.
 - `GenericBlockNoticeActivity`: superfície de bloqueio de apps e estados fail-closed sem alvo web conhecido; não contém automação de website.
-- `accessibility/website/redirection`: executa somente ações certificáveis de barra de endereço para redirecionamento na mesma aba.
-- `BlockingAccessibilityService`: orquestra identificação → decisão → cortina → redirecionamento → confirmação/fail-closed; não deve criar uma segunda implementação paralela dessas responsabilidades.
+- `accessibility/website/redirection/WebsiteRedirectDestination`: única fonte de verdade do destino seguro e da validação de sua superfície. O destino inicial é `https://www.google.com`.
+- `accessibility/website/redirection/WebsiteRedirectionCoordinator`: possui a máquina de estados da transação e `WebsiteTabNeutralizationPolicy`; não acessa diretamente janelas/nodes Android.
+- `AddressBarRedirectionActions`, `ClipboardPasteFallback` e `WebsiteRedirectionPlan`: executam/definem somente ações certificáveis de barra e fases do redirecionamento na mesma aba.
+- `BlockingAccessibilityService`: adaptador Android que conecta identificação → decisão → apresentação overlay → coordinator/destino → confirmação/fail-closed. Não é fonte de verdade da URL segura nem da máquina de estados de redirecionamento.
 - Arquitetura detalhada: `docs/WEBSITE_BLOCKING_ARCHITECTURE.md`.
