@@ -31,8 +31,9 @@ internal data class WebsiteBlockingDiagnosticsClearResult(
  * Dedicated, best-effort diagnostics for website protection.
  *
  * This storage is intentionally independent from FocusGuardLogger. Calls on the
- * accessibility path only mutate small in-memory records; report I/O happens on
- * Dispatchers.IO and must never change protection behavior.
+ * accessibility path only mutate small in-memory records; report I/O and the
+ * diagnostic-only rule matching happen on Dispatchers.IO and must never change
+ * protection behavior.
  */
 internal object WebsiteBlockingDiagnostics {
     private const val DIRECTORY_NAME = "WebsiteBlockingDiagnostics"
@@ -59,8 +60,8 @@ internal object WebsiteBlockingDiagnostics {
         val startedAtMillis: Long,
         val expectedWindowId: Int,
         val inspectionGeneration: Long,
-        val blockedTarget: String?,
-        val matchedRule: String?,
+        val blockedCandidate: String?,
+        val blockedRules: Set<String>,
         val strictDestination: Boolean,
         @Volatile var curtainGeneration: Long = 0L,
         @Volatile var submitAcceptedCount: Int = 0,
@@ -90,22 +91,18 @@ internal object WebsiteBlockingDiagnostics {
         strictDestination: Boolean
     ) {
         if (browserPackageName.isBlank() || transitionId <= 0L) return
-        val safeTarget = WebsiteBlockingDiagnosticPolicy.sanitizeTarget(blockedCandidate)
 
-        // Diagnostics must be observational. The regular matcher can update PASSWORD
-        // grant lifecycle state, so use the explicitly side-effect-free matching path.
-        val matchedRule = blockedCandidate
-            ?.let { WebsiteBlocker.findMatchingRulesIgnoringGrants(it, blockedRules).firstOrNull() }
-            ?.let(WebsiteBlocker::displayRule)
-
+        // Keep the accessibility hot path observational and cheap. Target
+        // sanitization and side-effect-free rule matching are deferred until a
+        // failed transaction actually needs a report.
         transitions[key(browserPackageName, transitionId)] = TransitionState(
             browserPackageName = browserPackageName,
             transitionId = transitionId,
             startedAtMillis = System.currentTimeMillis(),
             expectedWindowId = expectedWindowId,
             inspectionGeneration = inspectionGeneration,
-            blockedTarget = safeTarget,
-            matchedRule = matchedRule,
+            blockedCandidate = blockedCandidate,
+            blockedRules = blockedRules,
             strictDestination = strictDestination
         )
     }
@@ -213,8 +210,8 @@ internal object WebsiteBlockingDiagnostics {
             startedAtMillis = now,
             expectedWindowId = windowId,
             inspectionGeneration = 0L,
-            blockedTarget = null,
-            matchedRule = null,
+            blockedCandidate = null,
+            blockedRules = emptySet(),
             strictDestination = false
         )
         writeFailureAsync(
@@ -287,6 +284,16 @@ internal object WebsiteBlockingDiagnostics {
         scope.launch {
             runCatching {
                 val now = System.currentTimeMillis()
+                val safeTarget = WebsiteBlockingDiagnosticPolicy.sanitizeTarget(state.blockedCandidate)
+                val matchedRules = state.blockedCandidate
+                    ?.let { candidate ->
+                        WebsiteBlocker.findMatchingRulesIgnoringGrants(candidate, state.blockedRules)
+                    }
+                    .orEmpty()
+                    .map(WebsiteBlocker::displayRule)
+                    .filter(String::isNotBlank)
+                    .joinToString(", ")
+                    .takeIf(String::isNotBlank)
                 val packageInfo = runCatching {
                     context.packageManager.getPackageInfo(state.browserPackageName, 0)
                 }.getOrNull()
@@ -314,8 +321,8 @@ internal object WebsiteBlockingDiagnostics {
                     appendLine("Janela inicial: ${state.expectedWindowId}")
                     appendLine("Geração de inspeção: ${state.inspectionGeneration}")
                     state.reboundWindowId?.let { appendLine("Janela confirmada após navegação: $it") }
-                    appendLine("Alvo bloqueado sanitizado: ${state.blockedTarget ?: "não disponível"}")
-                    appendLine("Regra correspondente: ${state.matchedRule ?: "não disponível"}")
+                    appendLine("Alvo bloqueado sanitizado: ${safeTarget ?: "não disponível"}")
+                    appendLine("Regra(s) correspondente(s): ${matchedRules ?: "não disponível"}")
                     appendLine("Tempo observado: ${elapsed} ms")
                     appendLine()
                     appendLine("Resultado: FALHA / NÃO CONFIRMADO")
