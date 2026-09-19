@@ -1,0 +1,35 @@
+name: Fix redirect attempt epoch
+
+on:
+  push:
+    branches:
+      - refactor/website-blocking-pipeline
+    paths:
+      - scripts/fix_redirect_attempt_epoch.py
+      - .github/workflows/fix-redirect-attempt-epoch.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/website-blocking-pipeline
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python scripts/fix_redirect_attempt_epoch.py
+      - run: |
+          git rm scripts/fix_redirect_attempt_epoch.py
+          git rm .github/workflows/fix-redirect-attempt-epoch.yml
+      - run: |
+          git config user.name "FocusGuard Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Fix same-tab retry phase epoch"
+          git push origin HEAD:refactor/website-blocking-pipeline
