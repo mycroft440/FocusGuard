@@ -1,5 +1,7 @@
 package com.focusguard.accessibility.website.redirection
 
+import kotlinx.coroutines.CancellationException
+
 /**
  * Coordinator for one website redirection transaction.
  *
@@ -23,7 +25,8 @@ internal object WebsiteRedirectionCoordinator {
     interface Adapter {
         suspend fun awaitPresentationFrame(): Boolean
         fun ownsProtection(): Boolean
-        suspend fun requestSameTabRedirect(attemptNumber: Int): Boolean
+        suspend fun prepareSameTabRedirect(attemptNumber: Int): Boolean
+        suspend fun submitSameTabRedirect(attemptNumber: Int): Boolean
         suspend fun restoreBlockedSurfaceForRetry(): Boolean
         suspend fun beforeRetry(nextAttemptNumber: Int)
         suspend fun awaitRedirectConfirmation(): Boolean
@@ -60,55 +63,72 @@ internal object WebsiteRedirectionCoordinator {
         }
 
         fun failClosed() {
-            check(state != State.FINISHED)
-            state = State.FINISHED
+            if (state != State.FINISHED) state = State.FINISHED
         }
     }
 
-    suspend fun execute(session: Session, adapter: Adapter): Outcome {
+    suspend fun execute(session: Session, adapter: Adapter): Outcome = try {
+        executeInternal(session, adapter)
+    } catch (cancellation: CancellationException) {
+        throw cancellation
+    } catch (_: RuntimeException) {
+        if (adapter.ownsProtection()) failClosed(session, adapter) else Outcome.ABORTED
+    }
+
+    private suspend fun executeInternal(session: Session, adapter: Adapter): Outcome {
         if (!adapter.awaitPresentationFrame() || !adapter.ownsProtection()) {
             return Outcome.ABORTED
         }
 
-        var redirectRequested = false
         var attemptNumber = 1
-        while (
-            adapter.ownsProtection() &&
-            attemptNumber <= WebsiteRedirectionPlan.MAX_SAME_TAB_ATTEMPTS
-        ) {
-            redirectRequested = adapter.requestSameTabRedirect(attemptNumber)
-            if (redirectRequested) break
+        while (attemptNumber <= WebsiteRedirectionPlan.MAX_SAME_TAB_ATTEMPTS) {
             if (!adapter.ownsProtection()) return Outcome.ABORTED
-            if (!WebsiteRedirectionPlan.canRetry(attemptNumber)) break
-            if (!adapter.restoreBlockedSurfaceForRetry()) break
+
+            val prepared = adapter.prepareSameTabRedirect(attemptNumber)
             if (!adapter.ownsProtection()) return Outcome.ABORTED
+
+            val submitted = prepared && adapter.submitSameTabRedirect(attemptNumber)
+            if (!adapter.ownsProtection()) return Outcome.ABORTED
+
+            if (submitted && adapter.awaitRedirectConfirmation()) {
+                if (!adapter.ownsProtection()) return Outcome.ABORTED
+                return completeConfirmedRedirect(session, adapter)
+            }
+            if (!adapter.ownsProtection()) return Outcome.ABORTED
+
+            if (!WebsiteRedirectionPlan.canRetry(attemptNumber)) {
+                return failClosed(session, adapter)
+            }
+            if (!adapter.restoreBlockedSurfaceForRetry()) {
+                if (!adapter.ownsProtection()) return Outcome.ABORTED
+                return failClosed(session, adapter)
+            }
+            if (!adapter.ownsProtection()) return Outcome.ABORTED
+
             attemptNumber += 1
             adapter.beforeRetry(attemptNumber)
         }
 
-        if (!adapter.ownsProtection()) return Outcome.ABORTED
-        if (!redirectRequested) return failClosed(session, adapter)
-        if (!adapter.awaitRedirectConfirmation()) {
-            if (!adapter.ownsProtection()) return Outcome.ABORTED
-            return failClosed(session, adapter)
-        }
-        if (!adapter.ownsProtection()) return Outcome.ABORTED
+        return failClosed(session, adapter)
+    }
 
-        return when (session.afterRedirectConfirmed()) {
-            Action.HIDE_BLOCK_PRESENTATION -> {
+    private suspend fun completeConfirmedRedirect(
+        session: Session,
+        adapter: Adapter
+    ): Outcome = when (session.afterRedirectConfirmed()) {
+        Action.HIDE_BLOCK_PRESENTATION -> {
+            adapter.releasePresentation()
+            Outcome.REDIRECT_CONFIRMED
+        }
+        Action.OPEN_POMODORO -> {
+            if (adapter.completeStrictDestination()) {
+                session.onPomodoroConfirmed()
                 adapter.releasePresentation()
-                Outcome.REDIRECT_CONFIRMED
-            }
-            Action.OPEN_POMODORO -> {
-                if (adapter.completeStrictDestination()) {
-                    session.onPomodoroConfirmed()
-                    adapter.releasePresentation()
-                    Outcome.STRICT_DESTINATION_CONFIRMED
-                } else if (!adapter.ownsProtection()) {
-                    Outcome.ABORTED
-                } else {
-                    failClosed(session, adapter)
-                }
+                Outcome.STRICT_DESTINATION_CONFIRMED
+            } else if (!adapter.ownsProtection()) {
+                Outcome.ABORTED
+            } else {
+                failClosed(session, adapter)
             }
         }
     }
@@ -127,6 +147,7 @@ internal class WebsiteTabNeutralizationPolicy(
 ) {
     private enum class State { BLOCKED_TAB, SAFE_ADDRESS_SET, REDIRECT_REQUESTED }
     private var state = State.BLOCKED_TAB
+    private var safeAddressSetAtUptimeMillis = Long.MIN_VALUE
 
     fun mayTouchBlockedTab(activePackageName: String, activeWindowId: Int): Boolean =
         state == State.BLOCKED_TAB &&
@@ -136,23 +157,28 @@ internal class WebsiteTabNeutralizationPolicy(
     fun mayActivateBlockedAddressBar(
         activePackageName: String,
         activeWindowId: Int,
-        @Suppress("UNUSED_PARAMETER") phaseStartedAtUptimeMillis: Long,
-        @Suppress("UNUSED_PARAMETER") latestWindowTransitionEventUptimeMillis: Long
+        phaseStartedAtUptimeMillis: Long,
+        latestWindowTransitionEventUptimeMillis: Long
     ): Boolean = state == State.BLOCKED_TAB &&
+        phaseStartedAtUptimeMillis > 0L &&
+        latestWindowTransitionEventUptimeMillis <= phaseStartedAtUptimeMillis &&
         activePackageName == browserPackageName &&
         activeWindowId == expectedWindowId
 
     fun markSafeAddressSet(setAtUptimeMillis: Long) {
         check(state == State.BLOCKED_TAB)
         check(setAtUptimeMillis > 0L)
+        safeAddressSetAtUptimeMillis = setAtUptimeMillis
         state = State.SAFE_ADDRESS_SET
     }
 
     fun maySubmitSafeAddress(
         activePackageName: String,
         activeWindowId: Int,
-        @Suppress("UNUSED_PARAMETER") latestWindowTransitionEventUptimeMillis: Long
+        latestWindowTransitionEventUptimeMillis: Long
     ): Boolean = state == State.SAFE_ADDRESS_SET &&
+        safeAddressSetAtUptimeMillis > 0L &&
+        latestWindowTransitionEventUptimeMillis <= safeAddressSetAtUptimeMillis &&
         activePackageName == browserPackageName &&
         activeWindowId == expectedWindowId
 

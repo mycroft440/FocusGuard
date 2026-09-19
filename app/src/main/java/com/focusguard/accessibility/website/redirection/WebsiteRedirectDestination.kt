@@ -82,7 +82,7 @@ internal data class WebsiteRedirectDestination(
 
     companion object {
         private fun normalizeHost(host: String): String =
-            host.trim().lowercase(Locale.US).removePrefix("www.")
+            host.trim().lowercase(Locale.US)
 
         /** Exact hosts published by Google's supported-domains endpoint. */
         private val GOOGLE_ROOT_HOSTS = """
@@ -113,10 +113,13 @@ internal data class WebsiteRedirectDestination(
             google.vu google.ws google.rs google.co.za google.co.zm google.co.zw google.cat
         """.trimIndent().split(Regex("\\s+")).toSet()
 
+        private val GOOGLE_ACCEPTED_ROOT_HOSTS = GOOGLE_ROOT_HOSTS
+            .flatMapTo(linkedSetOf()) { host -> listOf(host, "www.$host") }
+
         /** Initial FocusGuard destination. Future selection belongs in this layer. */
         val GOOGLE = WebsiteRedirectDestination(
             url = "https://www.google.com",
-            acceptedRootHosts = GOOGLE_ROOT_HOSTS,
+            acceptedRootHosts = GOOGLE_ACCEPTED_ROOT_HOSTS,
             acceptedRootQueryParameters = setOf("gl", "gws_rd", "hl")
         )
 

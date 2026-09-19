@@ -3,13 +3,7 @@ package com.focusguard.accessibility.website.redirection
 import android.view.accessibility.AccessibilityEvent
 import kotlinx.coroutines.CompletableDeferred
 
-/**
- * Mutable state for one browser-bound website redirection transaction.
- *
- * The state lives with the redirection subsystem instead of the AccessibilityService.
- * Android tree/window operations remain in the service adapter; this object only
- * records transaction identity, confirmation evidence and terminal handoff state.
- */
+/** Mutable state for one browser-bound website redirection transaction. */
 internal data class WebsiteBlockTransitionHandle(
     val id: Long,
     val browserPackageName: String,
@@ -32,14 +26,16 @@ internal data class WebsiteBlockTransitionHandle(
     internal var latestNavigationEvidenceEventUptimeMillis: Long = 0L,
     @Volatile internal var activatedAddressViewId: String? = null,
     @Volatile internal var editorAddressViewId: String? = null,
-    @Volatile internal var curtainGeneration: Long = 0L
+    @Volatile internal var curtainGeneration: Long = 0L,
+    @Volatile internal var verifiedDestinationWindowRebound: Boolean = false
 )
 
 /**
  * Owns active transaction registration and confirmation ordering.
  *
- * Deliberately contains no ACTION_VIEW fallback or tab-close/rebind state: blocking
- * is same-tab only, and an unproven browser window can never inherit a transition.
+ * The original browser window remains authoritative while editing. A different
+ * Accessibility window may inherit the transition exactly once, and only after the
+ * service has independently proved that it is the stable configured destination.
  */
 internal class WebsiteBlockTransitionGuard {
     private val activeTransitions = mutableMapOf<String, WebsiteBlockTransitionHandle>()
@@ -91,7 +87,10 @@ internal class WebsiteBlockTransitionGuard {
             requestedAtUptimeMillis < transition.detectionEventUptimeMillis
         ) return false
         transition.sanitizationRequested = true
-        transition.sanitizationRequestedAtUptimeMillis = requestedAtUptimeMillis
+        transition.sanitizationRequestedAtUptimeMillis = minOf(
+            transition.sanitizationRequestedAtUptimeMillis,
+            requestedAtUptimeMillis
+        )
         return true
     }
 
@@ -161,6 +160,7 @@ internal class WebsiteBlockTransitionGuard {
             transition.safeRedirectConfirmed.isCompleted
     }
 
+    /** Same-window confirmation path used after ordinary navigation evidence. */
     @Synchronized
     fun transitionForConfirmation(
         browserPackageName: String,
@@ -168,13 +168,74 @@ internal class WebsiteBlockTransitionGuard {
         eventUptimeMillis: Long,
         eventType: Int
     ): WebsiteBlockTransitionHandle? {
+        val transition = transitionForDestinationCandidate(
+            browserPackageName,
+            eventUptimeMillis,
+            eventType
+        ) ?: return null
+        return transition.takeIf { it.expectedWindowId == windowId }
+    }
+
+    /**
+     * Returns a transaction that is temporally eligible for destination validation.
+     * Window ownership is deliberately not changed here; the caller must first prove
+     * the exact stable destination surface, then call [rebindVerifiedDestinationWindow].
+     */
+    @Synchronized
+    fun transitionForDestinationCandidate(
+        browserPackageName: String,
+        eventUptimeMillis: Long,
+        eventType: Int
+    ): WebsiteBlockTransitionHandle? {
         val transition = activeTransitions[browserPackageName] ?: return null
         return transition.takeIf {
             it.sanitizationRequested &&
-                it.expectedWindowId == windowId &&
                 eventUptimeMillis >= it.sanitizationRequestedAtUptimeMillis &&
                 isRedirectNavigationEvidenceEvent(eventType)
         }
+    }
+
+    /**
+     * One-time rebind for browsers that recreate their Accessibility window during
+     * a certified same-tab navigation. Call only after the new window has been
+     * independently inspected twice as the exact configured destination.
+     */
+    @Synchronized
+    fun rebindVerifiedDestinationWindow(
+        browserPackageName: String,
+        transitionId: Long,
+        windowId: Int,
+        inspectionGeneration: Long,
+        eventUptimeMillis: Long,
+        eventType: Int
+    ): Boolean {
+        val transition = activeTransitions[browserPackageName] ?: return false
+        if (transition.id != transitionId ||
+            !transition.sanitizationRequested ||
+            transition.destinationRequested ||
+            windowId < 0 || inspectionGeneration <= 0L ||
+            eventUptimeMillis < transition.sanitizationRequestedAtUptimeMillis ||
+            !isRedirectNavigationEvidenceEvent(eventType)
+        ) return false
+        if (transition.expectedWindowId == windowId) return true
+        if (transition.verifiedDestinationWindowRebound) return false
+
+        transition.expectedWindowId = windowId
+        transition.inspectionGeneration = inspectionGeneration
+        transition.verifiedDestinationWindowRebound = true
+        transition.latestObservedEventUptimeMillis = maxOf(
+            transition.latestObservedEventUptimeMillis,
+            eventUptimeMillis
+        )
+        transition.latestSurfaceMutationEventUptimeMillis = maxOf(
+            transition.latestSurfaceMutationEventUptimeMillis,
+            eventUptimeMillis
+        )
+        transition.latestNavigationEvidenceEventUptimeMillis = maxOf(
+            transition.latestNavigationEvidenceEventUptimeMillis,
+            eventUptimeMillis
+        )
+        return true
     }
 
     @Synchronized

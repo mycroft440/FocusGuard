@@ -123,6 +123,28 @@ class BrowserCompatibilityStorePolicyTest {
     }
 
     @Test
+    fun `submit preference is learned only after confirmed navigation`() {
+        val packageName = "example.deferred.submit.browser"
+        BrowserCompatibilityStore.recordWriteSuccess(
+            packageName,
+            "$packageName:id/url_bar",
+            BrowserWriteMethod.SET_TEXT,
+            "https://www.google.com"
+        )
+        BrowserCompatibilityStore.recordSubmitAccepted(
+            packageName,
+            "$packageName:id/url_bar",
+            BrowserSubmitMethod.IME_ENTER
+        )
+
+        assertThat(BrowserCompatibilityStore.preferredSubmitMethod(packageName)).isNull()
+        BrowserCompatibilityStore.recordNavigationConfirmed(packageName)
+        assertThat(BrowserCompatibilityStore.preferredSubmitMethod(packageName))
+            .isEqualTo(BrowserSubmitMethod.IME_ENTER)
+        BrowserCompatibilityStore.finishRedirection(packageName)
+    }
+
+    @Test
     fun `weak activation evidence alone never promotes browser`() {
         val record = BrowserCompatibilityRecord(
             packageName = "example.browser",

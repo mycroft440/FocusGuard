@@ -70,3 +70,16 @@ Deixar o fluxo web legível como uma pipeline com responsabilidades independente
 - Simplificar `GenericBlockNoticeActivity` para apps/estado genérico.
 - Adicionar testes de roteamento, destino e execução do coordinator.
 - Atualizar o mapa e `docs/WEBSITE_BLOCKING_ARCHITECTURE.md`.
+
+
+## Hardening pós-revisão
+
+- O coordinator executa explicitamente `prepare -> submit -> confirmação -> restore/retry`; não existe mais uma lista de fases apenas documental.
+- A confirmação tem um único timeout por tentativa e uma falha de confirmação pode consumir o único retry same-tab.
+- `Outcome` é a fonte explícita da telemetria de sucesso/falha/abort; supersessão não penaliza compatibilidade.
+- Métodos de submit são candidatos transitórios e só viram preferência após navegação confirmada.
+- Navegadores que recriam a janela de Accessibility podem fazer um único rebind, exclusivamente após dupla prova da superfície segura configurada.
+- O editor é revalidado imediatamente antes da escrita e a política rejeita transições de janela posteriores ao início da fase.
+- Exceções de runtime sob cortina viram fail-closed; cancelamento de coroutine continua sendo propagado.
+- Aliases `www` de destinos customizados são explícitos; não existe colapso global de host.
+- `UsageAccessStateMonitor` fecha a corrida pré-dispatch e o `Application` encerra monitores no teardown Robolectric.

@@ -2677,9 +2677,8 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun observeSafeDestinationFromInspection(outcome: BrowserInspectionOutcome) {
         val token = outcome.token
-        val transition = websiteBlockTransitionGuard.transitionForConfirmation(
+        val transition = websiteBlockTransitionGuard.transitionForDestinationCandidate(
             browserPackageName = token.packageName,
-            windowId = token.windowId,
             eventUptimeMillis = outcome.eventUptimeMillis,
             eventType = outcome.eventType
         ) ?: return
@@ -2687,9 +2686,8 @@ class BlockingAccessibilityService : AccessibilityService() {
             isSafeRedirectSurface(outcome.bestCandidate) &&
                 outcome.surface == BrowserSurfaceInspector.Surface.WEB_CONTENT &&
                 !outcome.focusedAddressEditor
-        if (!stableRedirectCandidate) return
+        if (!stableRedirectCandidate || !transitionOwnsCurtain(transition)) return
 
-        if (!transitionWindowIsCurrent(transition)) return
         scope.launch {
             delay(WEBSITE_REDIRECT_SURFACE_SETTLE_MILLIS)
             if (!browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)) return@launch
@@ -2703,19 +2701,30 @@ class BlockingAccessibilityService : AccessibilityService() {
             ) return@launch
             withContext(Dispatchers.Main.immediate) {
                 if (!browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)) return@withContext
-                val current = websiteBlockTransitionGuard.transitionForConfirmation(
+                val current = websiteBlockTransitionGuard.transitionForDestinationCandidate(
                     browserPackageName = token.packageName,
-                    windowId = token.windowId,
                     eventUptimeMillis = outcome.eventUptimeMillis,
                     eventType = outcome.eventType
                 ) ?: return@withContext
-                if (current.id != transition.id || !transitionWindowIsCurrent(current)) return@withContext
-                if (websiteBlockTransitionGuard.confirmRedirect(
+                if (current.id != transition.id || !transitionOwnsCurtain(current)) return@withContext
+
+                if (token.windowId != current.expectedWindowId &&
+                    !websiteBlockTransitionGuard.rebindVerifiedDestinationWindow(
                         browserPackageName = token.packageName,
+                        transitionId = current.id,
                         windowId = token.windowId,
-                        eventUptimeMillis = outcome.eventUptimeMillis
+                        inspectionGeneration = token.generation,
+                        eventUptimeMillis = outcome.eventUptimeMillis,
+                        eventType = outcome.eventType
                     )
-                ) BrowserCompatibilityStore.recordNavigationConfirmed(token.packageName)
+                ) return@withContext
+
+                if (!transitionWindowIsCurrent(current)) return@withContext
+                websiteBlockTransitionGuard.confirmRedirect(
+                    browserPackageName = token.packageName,
+                    windowId = token.windowId,
+                    eventUptimeMillis = outcome.eventUptimeMillis
+                )
             }
         }
     }
@@ -3164,37 +3173,65 @@ class BlockingAccessibilityService : AccessibilityService() {
         val curtainShownAtUptimeMillis = SystemClock.uptimeMillis()
 
         scope.launch(Dispatchers.Main.immediate) {
+            var outcome: WebsiteRedirectionCoordinator.Outcome? = null
+            var activePolicy: WebsiteTabNeutralizationPolicy? = null
             try {
-                WebsiteRedirectionCoordinator.execute(
+                outcome = WebsiteRedirectionCoordinator.execute(
                     session = stateMachine,
                     adapter = object : WebsiteRedirectionCoordinator.Adapter {
                         override suspend fun awaitPresentationFrame(): Boolean {
-                            // Let the already-warm overlay commit one display frame
-                            // before touching browser UI, avoiding a blocked-page flash.
                             awaitNextWebsiteRedirectFrame()
                             return transitionOwnsCurtain(transition)
                         }
 
-                        override fun ownsProtection(): Boolean =
-                            transitionOwnsCurtain(transition)
+                        override fun ownsProtection(): Boolean = transitionOwnsCurtain(transition)
 
-                        override suspend fun requestSameTabRedirect(
-                            attemptNumber: Int
-                        ): Boolean {
+                        override suspend fun prepareSameTabRedirect(attemptNumber: Int): Boolean {
                             if (!curtainReadyForTransition(transition)) return false
-                            return requestSafeRedirectInCurrentTab(
+                            val policy = WebsiteTabNeutralizationPolicy(
                                 browserPackageName = browserPackageName,
-                                expectedWindowId = expectedWindowId,
-                                policy = WebsiteTabNeutralizationPolicy(
-                                    browserPackageName = browserPackageName,
-                                    expectedWindowId = expectedWindowId
-                                ),
-                                transition = transition
+                                expectedWindowId = transition.expectedWindowId
                             )
+                            val setRequestedAt = websiteTreeWorker.run {
+                                prepareSafeAddressBar(
+                                    browserPackageName = browserPackageName,
+                                    expectedWindowId = transition.expectedWindowId,
+                                    policy = policy,
+                                    transition = transition,
+                                    phaseStartedAtUptimeMillis = transition.detectionEventUptimeMillis
+                                )
+                            }
+                            if (setRequestedAt <= 0L || !curtainReadyForTransition(transition)) {
+                                activePolicy = null
+                                return false
+                            }
+                            policy.markSafeAddressSet(setRequestedAt)
+                            activePolicy = policy
+                            return true
                         }
 
-                        override suspend fun restoreBlockedSurfaceForRetry(): Boolean =
-                            restoreBlockedSurfaceAfterAddressEdit(transition)
+                        override suspend fun submitSameTabRedirect(attemptNumber: Int): Boolean {
+                            val policy = activePolicy ?: return false
+                            if (!transitionOwnsCurtain(transition)) return false
+                            val submitRequestedAt = websiteTreeWorker.run {
+                                submitSafeAddressBar(
+                                    browserPackageName = browserPackageName,
+                                    expectedWindowId = transition.expectedWindowId,
+                                    policy = policy,
+                                    transition = transition
+                                )
+                            }
+                            if (submitRequestedAt <= 0L || !transitionOwnsCurtain(transition)) {
+                                return false
+                            }
+                            policy.markRedirectRequested()
+                            return true
+                        }
+
+                        override suspend fun restoreBlockedSurfaceForRetry(): Boolean {
+                            activePolicy = null
+                            return restoreBlockedSurfaceAfterAddressEdit(transition)
+                        }
 
                         override suspend fun beforeRetry(nextAttemptNumber: Int) {
                             FocusGuardLogger.log(
@@ -3235,8 +3272,11 @@ class BlockingAccessibilityService : AccessibilityService() {
                         }
                     }
                 )
+            } catch (cancellation: CancellationException) {
+                outcome = WebsiteRedirectionCoordinator.Outcome.ABORTED
+                throw cancellation
             } finally {
-                finishWebsiteTransition(transition)
+                finishWebsiteTransition(transition, outcome)
             }
         }
     }
@@ -3287,49 +3327,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             }
             choreographer.postFrameCallback(callback)
         }
-    }
-
-    private suspend fun requestSafeRedirectInCurrentTab(
-        browserPackageName: String,
-        expectedWindowId: Int,
-        policy: WebsiteTabNeutralizationPolicy,
-        transition: WebsiteBlockTransitionHandle
-    ): Boolean {
-        if (!curtainReadyForTransition(transition)) return false
-        val setRequestedAt = websiteTreeWorker.run {
-            prepareSafeAddressBar(
-                browserPackageName = browserPackageName,
-                expectedWindowId = expectedWindowId,
-                policy = policy,
-                transition = transition,
-                phaseStartedAtUptimeMillis = transition.detectionEventUptimeMillis
-            )
-        }
-        if (!curtainReadyForTransition(transition)) return false
-        if (afterSafeAddressSet(setRequestedAt > 0L) !=
-            WebsiteSanitizationDecision.SUBMIT_ADDRESS_BAR
-        ) return false
-
-        policy.markSafeAddressSet(setRequestedAt)
-        val submitRequestedAt = websiteTreeWorker.run {
-            submitSafeAddressBar(
-                browserPackageName = browserPackageName,
-                expectedWindowId = expectedWindowId,
-                policy = policy,
-                transition = transition
-            )
-        }
-        if (!curtainReadyForTransition(transition)) return false
-        if (afterSafeAddressSubmit(submitRequestedAt > 0L) !=
-            WebsiteSanitizationDecision.AWAIT_REDIRECT_CONFIRMATION
-        ) return false
-
-        policy.markRedirectRequested()
-        return websiteBlockTransitionGuard.markSanitizationRequested(
-            browserPackageName = browserPackageName,
-            transitionId = transition.id,
-            requestedAtUptimeMillis = submitRequestedAt
-        )
     }
 
     private fun performTransitionBack(transition: WebsiteBlockTransitionHandle): Boolean {
@@ -3484,7 +3481,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                 val writtenAt = SystemClock.uptimeMillis()
                 val written = try {
                     if (!curtainReadyForTransition(transition)) return 0L
-                    if (!policy.mayTouchBlockedTab(browserPackageName, editRoot.windowId)) return 0L
+                    if (!policy.mayTouchBlockedTab(browserPackageName, editRoot.windowId) ||
+                        !editorSurfaceBelongsToTransitionOrSafeDestination(editRoot, transition)
+                    ) return 0L
                     when (method) {
                         BrowserWriteMethod.SET_TEXT -> AddressBarRedirectionActions.setText(
                             editRoot, browserPackageName, expectedWindowId, WebsiteRedirectDestination.current.url, https,
@@ -3525,6 +3524,28 @@ class BlockingAccessibilityService : AccessibilityService() {
         return 0L
     }
 
+    private fun editorSurfaceBelongsToTransitionOrSafeDestination(
+        root: AccessibilityNodeInfo,
+        transition: WebsiteBlockTransitionHandle
+    ): Boolean {
+        if (!transitionWindowIsCurrent(transition)) return false
+        val https = isVerifiedHttpsHandler(transition.browserPackageName)
+        val currentAddress = WebsiteBlocker.extractAddressBarTextFromRoot(
+            root,
+            transition.browserPackageName,
+            https
+        ) ?: WebsiteBlocker.extractUrlFromRoot(
+            root,
+            transition.browserPackageName,
+            https
+        )
+        if (!transitionWindowIsCurrent(transition) || currentAddress.isNullOrBlank()) return false
+        if (isSafeRedirectSurface(currentAddress)) return true
+        val detected = transition.blockedCandidate?.takeIf(String::isNotBlank) ?: return false
+        val detectedRule = WebsiteBlocker.findMatchingRule(detected, transition.blockedRules) ?: return false
+        return WebsiteBlocker.findMatchingRule(currentAddress, transition.blockedRules) == detectedRule
+    }
+
     private suspend fun submitSafeAddressBar(
         browserPackageName: String,
         expectedWindowId: Int,
@@ -3537,65 +3558,62 @@ class BlockingAccessibilityService : AccessibilityService() {
             listOf(BrowserSubmitMethod.IME_ENTER, BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION,
                 BrowserSubmitMethod.CERTIFIED_GO_BUTTON)).distinct()
         for (method in methods) {
-            if (method == BrowserSubmitMethod.IME_ENTER && !canUseCertifiableImeSubmit(Build.VERSION.SDK_INT)) continue
+            if (method == BrowserSubmitMethod.IME_ENTER &&
+                !canUseCertifiableImeSubmit(Build.VERSION.SDK_INT)
+            ) continue
             if (!curtainReadyForTransition(transition)) return 0L
             val root = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
             val submittedAt = SystemClock.uptimeMillis()
             val submitted = try {
-                if (!policy.maySubmitSafeAddress(browserPackageName, root.windowId,
-                        transition.latestWindowTransitionEventUptimeMillis) ||
-                    !AddressBarRedirectionActions.hasFocusedAddressEditor(root, browserPackageName,
-                        expectedWindowId, https, ::isSafeRedirectSurface)
+                if (!policy.maySubmitSafeAddress(
+                        browserPackageName,
+                        root.windowId,
+                        transition.latestWindowTransitionEventUptimeMillis
+                    ) ||
+                    !AddressBarRedirectionActions.hasFocusedAddressEditor(
+                        root, browserPackageName, expectedWindowId, https, ::isSafeRedirectSurface
+                    )
                 ) return 0L
                 when (method) {
                     BrowserSubmitMethod.IME_ENTER -> AddressBarRedirectionActions.submitImeEnter(
                         root, browserPackageName, expectedWindowId, ::isSafeRedirectSurface, https,
-                        isCurrent = { curtainReadyForTransition(transition) }
+                        isCurrent = { transitionOwnsCurtain(transition) }
                     )
-                    BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION -> AddressBarRedirectionActions.submitAnnouncedEditorAction(
-                        root, browserPackageName, expectedWindowId, ::isSafeRedirectSurface, https,
-                        isCurrent = { curtainReadyForTransition(transition) }
-                    )
-                    BrowserSubmitMethod.CERTIFIED_GO_BUTTON -> AddressBarRedirectionActions.clickCertifiedGoButton(
-                        root, browserPackageName, expectedWindowId,
-                        isCurrent = { curtainReadyForTransition(transition) }
-                    )
+                    BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION ->
+                        AddressBarRedirectionActions.submitAnnouncedEditorAction(
+                            root, browserPackageName, expectedWindowId, ::isSafeRedirectSurface, https,
+                            isCurrent = { transitionOwnsCurtain(transition) }
+                        )
+                    BrowserSubmitMethod.CERTIFIED_GO_BUTTON ->
+                        AddressBarRedirectionActions.clickCertifiedGoButton(
+                            root, browserPackageName, expectedWindowId,
+                            isCurrent = { transitionOwnsCurtain(transition) }
+                        )
                 }
-            } finally { recycleSafely(root) }
-            if (!curtainReadyForTransition(transition)) return 0L
+            } finally {
+                recycleSafely(root)
+            }
+
+            if (!transitionOwnsCurtain(transition)) return 0L
             if (submitted.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L
             if (!submitted.accepted) {
                 if (!curtainReadyForTransition(transition)) return 0L
                 delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
-                if (!curtainReadyForTransition(transition)) return 0L
                 continue
             }
-            if (!curtainReadyForTransition(transition)) return 0L
-            BrowserCompatibilityStore.recordSubmitAccepted(browserPackageName, submitted.selectedViewId, method)
-            websiteBlockTransitionGuard.markSanitizationRequested(browserPackageName, transition.id, submittedAt)
-            val deadline = SystemClock.uptimeMillis() + WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS
-            while (curtainReadyForTransition(transition) && SystemClock.uptimeMillis() <= deadline) {
-                if (transition.safeRedirectConfirmed.isCompleted) return submittedAt
-                if (!curtainReadyForTransition(transition)) return 0L
-                delay(WEBSITE_REDIRECT_SURFACE_SETTLE_MILLIS)
-                if (!curtainReadyForTransition(transition)) return 0L
-            }
-            // An accepted submit action is not navigation proof. Only a positively
-            // confirmed redirect surface may complete this attempt. If the editor
-            // disappeared without confirmation, stop touching that surface and let
-            // the guarded restore/retry/intent fallback revalidate what is current.
-            if (!curtainReadyForTransition(transition)) return 0L
-            if (mayOpenDestinationAfterSanitization(
-                    safeRedirectConfirmed = transition.safeRedirectConfirmed.isCompleted
+
+            BrowserCompatibilityStore.recordSubmitAccepted(
+                browserPackageName,
+                submitted.selectedViewId,
+                method
+            )
+            if (!websiteBlockTransitionGuard.markSanitizationRequested(
+                    browserPackageName = browserPackageName,
+                    transitionId = transition.id,
+                    requestedAtUptimeMillis = submittedAt
                 )
-            ) return submittedAt
-            if (confirmSafeRedirectFromFreshBrowserSurface(transition)) return submittedAt
-            val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
-            val stillEditing = try {
-                AddressBarRedirectionActions.hasFocusedAddressEditor(fresh, browserPackageName,
-                    expectedWindowId, https, ::isSafeRedirectSurface)
-            } finally { recycleSafely(fresh) }
-            if (!stillEditing) return 0L
+            ) return 0L
+            return submittedAt
         }
         return 0L
     }
@@ -3643,9 +3661,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             windowId = transition.expectedWindowId,
             observedAtUptimeMillis = SystemClock.uptimeMillis()
         )
-        if (confirmed) {
-            BrowserCompatibilityStore.recordNavigationConfirmed(transition.browserPackageName)
-        }
         return confirmed
     }
 
@@ -3679,11 +3694,31 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun finishWebsiteTransition(transition: WebsiteBlockTransitionHandle) {
+    private fun finishWebsiteTransition(
+        transition: WebsiteBlockTransitionHandle,
+        outcome: WebsiteRedirectionCoordinator.Outcome? = null
+    ) {
         val current = transitionWindowIsCurrent(transition)
         if (!websiteBlockTransitionGuard.finish(transition.browserPackageName, transition.id)) return
-        if (current && !transition.safeRedirectConfirmed.isCompleted) {
-            BrowserCompatibilityStore.recordRedirectionFailure(transition.browserPackageName)
+
+        val redirectConfirmed = transition.safeRedirectConfirmed.isCompleted
+        if (redirectConfirmed) {
+            BrowserCompatibilityStore.recordNavigationConfirmed(transition.browserPackageName)
+        }
+        when (outcome) {
+            WebsiteRedirectionCoordinator.Outcome.FAIL_CLOSED -> {
+                if (!redirectConfirmed) {
+                    BrowserCompatibilityStore.recordRedirectionFailure(transition.browserPackageName)
+                }
+            }
+            WebsiteRedirectionCoordinator.Outcome.ABORTED,
+            WebsiteRedirectionCoordinator.Outcome.REDIRECT_CONFIRMED,
+            WebsiteRedirectionCoordinator.Outcome.STRICT_DESTINATION_CONFIRMED -> Unit
+            null -> {
+                if (current && !redirectConfirmed) {
+                    BrowserCompatibilityStore.recordRedirectionFailure(transition.browserPackageName)
+                }
+            }
         }
         BrowserCompatibilityStore.finishRedirection(transition.browserPackageName)
         if (!current && !transition.handedOff && !transition.destinationRequested) {

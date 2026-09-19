@@ -97,7 +97,7 @@ class FirefoxWebsiteRedirectReliabilityTest {
     }
 
     @Test
-    fun `stable current Google surface can confirm a missed Firefox navigation event`() {
+    fun `stable current redirect surface can confirm a missed Firefox navigation event`() {
         val guard = WebsiteBlockTransitionGuard()
         val transition = guard.tryStart(
             browserPackageName = "org.mozilla.firefox",

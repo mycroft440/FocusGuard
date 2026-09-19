@@ -371,6 +371,51 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
+    fun `verified destination can rebind one recreated accessibility window`() {
+        val guard = WebsiteBlockTransitionGuard()
+        val transition = guard.tryStart(
+            BRAVE_PACKAGE,
+            transitionId = 23L,
+            destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
+            expectedWindowId = 7,
+            inspectionGeneration = 3L,
+            detectionEventUptimeMillis = 100L
+        )!!
+        guard.markSanitizationRequested(BRAVE_PACKAGE, 23L, requestedAtUptimeMillis = 150L)
+
+        assertThat(
+            guard.transitionForDestinationCandidate(
+                BRAVE_PACKAGE,
+                eventUptimeMillis = 151L,
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            )
+        ).isSameInstanceAs(transition)
+        assertThat(
+            guard.rebindVerifiedDestinationWindow(
+                BRAVE_PACKAGE,
+                transitionId = 23L,
+                windowId = 8,
+                inspectionGeneration = 4L,
+                eventUptimeMillis = 151L,
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            )
+        ).isTrue()
+        assertThat(transition.expectedWindowId).isEqualTo(8)
+        assertThat(transition.inspectionGeneration).isEqualTo(4L)
+        assertThat(guard.confirmRedirect(BRAVE_PACKAGE, 8, 151L)).isTrue()
+        assertThat(
+            guard.rebindVerifiedDestinationWindow(
+                BRAVE_PACKAGE,
+                transitionId = 23L,
+                windowId = 9,
+                inspectionGeneration = 5L,
+                eventUptimeMillis = 152L,
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            )
+        ).isFalse()
+    }
+
+    @Test
     fun `text and focus events cannot release the curtain after submit`() {
         val guard = WebsiteBlockTransitionGuard()
         val transition = guard.tryStart(
@@ -475,9 +520,17 @@ class WebsiteBlockNavigationTest {
                 browserPackage,
                 activeWindowId = 7,
                 phaseStartedAtUptimeMillis = 100L,
-                latestWindowTransitionEventUptimeMillis = 101L
+                latestWindowTransitionEventUptimeMillis = 100L
             )
         ).isTrue()
+        assertThat(
+            policy.mayActivateBlockedAddressBar(
+                browserPackage,
+                activeWindowId = 7,
+                phaseStartedAtUptimeMillis = 100L,
+                latestWindowTransitionEventUptimeMillis = 101L
+            )
+        ).isFalse()
         assertThat(policy.mayTouchBlockedTab(browserPackage, 8)).isFalse()
         assertThat(policy.mayTouchBlockedTab(CHROME_PACKAGE, 7)).isFalse()
 

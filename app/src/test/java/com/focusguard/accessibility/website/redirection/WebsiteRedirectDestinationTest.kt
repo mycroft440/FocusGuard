@@ -65,6 +65,16 @@ class WebsiteRedirectDestinationTest {
     }
 
     @Test
+    fun `www alias must be explicitly accepted for custom destinations`() {
+        val destination = WebsiteRedirectDestination(
+            url = "https://www.example.org",
+            acceptedRootHosts = setOf("www.example.org")
+        )
+        assertThat(destination.matchesSurface("https://www.example.org/")).isTrue()
+        assertThat(destination.matchesSurface("https://example.org/")).isFalse()
+    }
+
+    @Test
     fun `destination rejects non https and user info surfaces`() {
         assertThat(WebsiteRedirectDestination.current.matchesSurface("http://www.google.com/"))
             .isFalse()
