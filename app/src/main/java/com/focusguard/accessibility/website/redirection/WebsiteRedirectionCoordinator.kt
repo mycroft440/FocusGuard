@@ -154,14 +154,21 @@ internal class WebsiteTabNeutralizationPolicy(
             activePackageName == browserPackageName &&
             activeWindowId == expectedWindowId
 
+    /**
+     * Package + exact Accessibility window ownership are the authority here. A
+     * TYPE_WINDOW_STATE_CHANGED/TYPE_WINDOWS_CHANGED emitted by the same window can
+     * merely represent opening the omnibox, suggestions or another expected browser
+     * panel; treating its timestamp as a tab switch made the redirect invalidate
+     * itself. Real window/tab changes are still rejected by expectedWindowId and by
+     * the inspection-generation guard owned by the service.
+     */
     fun mayActivateBlockedAddressBar(
         activePackageName: String,
         activeWindowId: Int,
         phaseStartedAtUptimeMillis: Long,
-        latestWindowTransitionEventUptimeMillis: Long
+        @Suppress("UNUSED_PARAMETER") latestWindowTransitionEventUptimeMillis: Long
     ): Boolean = state == State.BLOCKED_TAB &&
         phaseStartedAtUptimeMillis > 0L &&
-        latestWindowTransitionEventUptimeMillis <= phaseStartedAtUptimeMillis &&
         activePackageName == browserPackageName &&
         activeWindowId == expectedWindowId
 
@@ -175,10 +182,9 @@ internal class WebsiteTabNeutralizationPolicy(
     fun maySubmitSafeAddress(
         activePackageName: String,
         activeWindowId: Int,
-        latestWindowTransitionEventUptimeMillis: Long
+        @Suppress("UNUSED_PARAMETER") latestWindowTransitionEventUptimeMillis: Long
     ): Boolean = state == State.SAFE_ADDRESS_SET &&
         safeAddressSetAtUptimeMillis > 0L &&
-        latestWindowTransitionEventUptimeMillis <= safeAddressSetAtUptimeMillis &&
         activePackageName == browserPackageName &&
         activeWindowId == expectedWindowId
 
