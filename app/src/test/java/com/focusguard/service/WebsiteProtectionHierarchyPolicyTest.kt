@@ -13,6 +13,9 @@ class WebsiteProtectionHierarchyPolicyTest {
         )
 
         assertThat(result.owner).isEqualTo(WebsiteProtectionHierarchyPolicy.Owner.HARD)
+        assertThat(result.matchedRule).isEqualTo("youtube.com")
+        assertThat(result.nextStep)
+            .isEqualTo(WebsiteProtectionHierarchyPolicy.NextStep.REDIRECT_BLOCKED_TAB)
     }
 
     @Test
@@ -25,6 +28,8 @@ class WebsiteProtectionHierarchyPolicyTest {
 
         assertThat(result.owner).isEqualTo(WebsiteProtectionHierarchyPolicy.Owner.PASSWORD)
         assertThat(result.matchedRule).isEqualTo("youtube.com")
+        assertThat(result.nextStep)
+            .isEqualTo(WebsiteProtectionHierarchyPolicy.NextStep.SHOW_PASSWORD_BLOCK)
     }
 
     @Test
@@ -36,5 +41,6 @@ class WebsiteProtectionHierarchyPolicyTest {
         )
 
         assertThat(result.owner).isEqualTo(WebsiteProtectionHierarchyPolicy.Owner.NONE)
+        assertThat(result.nextStep).isEqualTo(WebsiteProtectionHierarchyPolicy.NextStep.ALLOW)
     }
 }
