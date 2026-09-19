@@ -1,7 +1,7 @@
 package com.focusguard.accessibility.website.redirection
 
-import android.net.Uri
 import com.focusguard.utils.WebsiteBlocker
+import java.net.URI
 import java.util.Locale
 
 /**
@@ -10,6 +10,9 @@ import java.util.Locale
  * The accessibility service is deliberately not the owner of the target URL.
  * Switching away from Google must happen here (or in a future persisted selector),
  * while the same-tab redirection engine only consumes this contract.
+ *
+ * This class intentionally uses only JVM URL primitives so destination policy can
+ * be tested without an Android runtime and remains independent from UI/platform code.
  */
 internal data class WebsiteRedirectDestination(
     val url: String,
@@ -25,12 +28,19 @@ internal data class WebsiteRedirectDestination(
         val raw = urlOrAddress?.trim()?.takeIf(String::isNotEmpty) ?: return false
         val candidate = WebsiteBlocker.extractUrlCandidate(raw) ?: raw
         val withScheme = if ("://" in candidate) candidate else "https://$candidate"
-        val uri = runCatching { Uri.parse(withScheme) }.getOrNull() ?: return false
+        val uri = runCatching { URI(withScheme) }.getOrNull() ?: return false
         val host = uri.host?.lowercase(Locale.US)?.removePrefix("www.") ?: return false
+        val queryParameterNames = uri.rawQuery
+            ?.split('&')
+            ?.asSequence()
+            ?.filter(String::isNotBlank)
+            ?.map { parameter -> parameter.substringBefore('=') }
+            ?.toSet()
+            .orEmpty()
         return host in acceptedRootHosts &&
-            (uri.path.isNullOrEmpty() || uri.path == "/") &&
-            uri.queryParameterNames.all(acceptedRootQueryParameters::contains) &&
-            uri.fragment.isNullOrEmpty()
+            (uri.rawPath.isNullOrEmpty() || uri.rawPath == "/") &&
+            queryParameterNames.all(acceptedRootQueryParameters::contains) &&
+            uri.rawFragment.isNullOrEmpty()
     }
 
     companion object {
