@@ -449,10 +449,11 @@ object WebsiteBlocker {
     ): String? {
         val source = event.source ?: return null
         return try {
-            if (!isAddressBarNode(
+            val sourceWindowId = source.windowId
+            if (sourceWindowId < 0 || !isAddressBarNode(
                     source,
                     browserPackageName,
-                    event.windowId,
+                    sourceWindowId,
                     httpsHandlerRecognized
                 )
             ) return null
@@ -486,10 +487,11 @@ object WebsiteBlocker {
     ): String? {
         val source = event.source ?: return null
         return try {
-            if (!isAddressBarNode(
+            val sourceWindowId = source.windowId
+            if (sourceWindowId < 0 || !isAddressBarNode(
                     source,
                     browserPackageName,
-                    event.windowId,
+                    sourceWindowId,
                     httpsHandlerRecognized
                 )
             ) return null

@@ -1229,11 +1229,20 @@ class BlockingAccessibilityService : AccessibilityService() {
                 .takeIf(String::isNotBlank)
                 ?.let(websiteBlockTransitionGuard::activeTransition)
             if (activeBrowserTransition != null) {
-                // Do not bind an external redirect to the first browser-owned window.
-                // Chromium and Fenix can expose suggestion/native/transient windows before
-                // the destination page. Only a positively identified Google WEB_CONTENT
-                // inspection is allowed to rebind the transition later.
-                if (isWindowOrTabTransitionEvent(event.eventType) && event.windowId >= 0) {
+                // Omnibox activation can expose browser-owned suggestion/native windows
+                // with a different accessibility window id. Those are transient UI, not
+                // a replacement for the blocked tab, so they must not invalidate the
+                // same-tab transaction. A foreign window becomes eligible only after an
+                // explicit external redirect or a confirmed close handoff.
+                val transitionInspectionWindowId = resolveTransitionInspectionWindowId(
+                    expectedWindowId = activeBrowserTransition.expectedWindowId,
+                    eventWindowId = event.windowId,
+                    externalRedirectRequested = activeBrowserTransition.externalRedirectRequested,
+                    closeConfirmed = activeBrowserTransition.closeConfirmed
+                )
+                if (isWindowOrTabTransitionEvent(event.eventType) &&
+                    event.windowId >= 0 && transitionInspectionWindowId == event.windowId
+                ) {
                     browserInspectionCoordinator.observeWindow(transitionPackage, event.windowId)
                 }
                 retireStaleWebsiteTransitions()
@@ -1244,7 +1253,13 @@ class BlockingAccessibilityService : AccessibilityService() {
                         eventUptimeMillis = event.eventTime,
                         eventType = event.eventType
                     )
-                    scheduleBrowserInspection(event, transitionPackage)
+                    if (transitionInspectionWindowId >= 0) {
+                        scheduleBrowserInspection(
+                            event,
+                            transitionPackage,
+                            transitionInspectionWindowId
+                        )
+                    }
                 }
                 return
             }
@@ -1309,9 +1324,21 @@ class BlockingAccessibilityService : AccessibilityService() {
                 directPackage
             }
 
+            val browserInspectionWindowId = if (
+                browserInspectionEvent && inspectionPackage.isNotBlank()
+            ) {
+                resolveBrowserInspectionWindowId(
+                    eventWindowId = event.windowId,
+                    currentWindowId = browserInspectionCoordinator
+                        .currentToken(inspectionPackage)?.windowId
+                )
+            } else {
+                INVALID_BROWSER_WINDOW_ID
+            }
+
             if ((event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
                     event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) &&
-                inspectionPackage.isNotBlank()
+                inspectionPackage.isNotBlank() && event.windowId >= 0
             ) {
                 browserInspectionCoordinator.observeWindow(inspectionPackage, event.windowId)
                 retireStaleWebsiteTransitions()
@@ -1331,9 +1358,9 @@ class BlockingAccessibilityService : AccessibilityService() {
             // Full website inspection stays asynchronous. The immediate source path above
             // complements this root/window walk; it does not replace the normal verification.
             if (browserInspectionEvent && inspectionPackage.isNotBlank() &&
-                websiteSurfaceInspectionNeeded()
+                websiteSurfaceInspectionNeeded() && browserInspectionWindowId >= 0
             ) {
-                scheduleBrowserInspection(event, inspectionPackage)
+                scheduleBrowserInspection(event, inspectionPackage, browserInspectionWindowId)
             }
 
             val packageName = inspectionPackage.ifBlank { foregroundPackageName.orEmpty() }
@@ -2882,8 +2909,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         transition: WebsiteBlockTransitionHandle
     ): Boolean {
         if (!transitionWindowIsCurrent(transition)) return false
-        val root = activeBrowserRoot(transition.browserPackageName, transition.expectedWindowId)
-            ?: return false
+        val root = transitionBrowserRoot(transition) ?: return false
         val currentAddress = try {
             WebsiteIdentificationEngine.identifyFromRoot(
                 root, transition.browserPackageName, transition.expectedWindowId,
@@ -2909,6 +2935,17 @@ class BlockingAccessibilityService : AccessibilityService() {
         requireActive = true
     )
 
+    private fun transitionBrowserRoot(
+        transition: WebsiteBlockTransitionHandle
+    ): AccessibilityNodeInfo? {
+        if (!transitionWindowIsCurrent(transition)) return null
+        return browserRootForExpectedWindow(
+            browserPackageName = transition.browserPackageName,
+            expectedWindowId = transition.expectedWindowId,
+            requireActive = false
+        )
+    }
+
     private fun browserRootForExpectedWindow(
         browserPackageName: String,
         expectedWindowId: Int,
@@ -2928,16 +2965,34 @@ class BlockingAccessibilityService : AccessibilityService() {
         return null
     }
 
+    private fun accessibilityEventSourceWindowId(event: AccessibilityEvent): Int? {
+        val source = runCatching { event.source }.getOrNull() ?: return null
+        return try {
+            source.windowId.takeIf { it >= 0 }
+        } catch (_: RuntimeException) {
+            null
+        } finally {
+            recycleSafely(source)
+        }
+    }
+
     private fun handleImmediateBrowserAddressEvent(
         event: AccessibilityEvent,
         packageName: String
     ): Boolean {
         if (event.eventType !in immediateBrowserBlockEventTypes ||
             packageName !in browserPackages ||
-            event.windowId < 0 ||
             blockedWebsitesDomainSet.isEmpty() ||
             websiteBlockTransitionGuard.isActive(packageName)
         ) return false
+
+        val sourceWindowId = accessibilityEventSourceWindowId(event)
+        val immediateWindowId = resolveImmediateBrowserWindowId(
+            eventWindowId = event.windowId,
+            sourceWindowId = sourceWindowId,
+            currentWindowId = browserInspectionCoordinator.currentToken(packageName)?.windowId
+        )
+        if (immediateWindowId < 0) return false
 
         val addressText = WebsiteBlocker.extractAddressBarTextFromEvent(
             event = event,
@@ -2957,7 +3012,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         // browser window that emitted the address-bar event.
         val offer = browserInspectionCoordinator.offer(
             packageName = packageName,
-            windowId = event.windowId,
+            windowId = immediateWindowId,
             eventType = event.eventType,
             eventUptimeMillis = event.eventTime,
             receivedUptimeMillis = SystemClock.uptimeMillis(),
@@ -2969,18 +3024,22 @@ class BlockingAccessibilityService : AccessibilityService() {
         foregroundPackageName = packageName
         routeWebsiteBlockByHierarchy(
             browserPackageName = packageName,
-            browserWindowId = event.windowId,
+            browserWindowId = immediateWindowId,
             blockedCandidate = candidate,
             detectionEventUptimeMillis = event.eventTime
         )
         return true
     }
 
-    private fun scheduleBrowserInspection(event: AccessibilityEvent, packageName: String) {
-        if (packageName.isBlank() || event.windowId < 0) return
+    private fun scheduleBrowserInspection(
+        event: AccessibilityEvent,
+        packageName: String,
+        windowId: Int = event.windowId
+    ) {
+        if (packageName.isBlank() || windowId < 0) return
         val offer = browserInspectionCoordinator.offer(
             packageName = packageName,
-            windowId = event.windowId,
+            windowId = windowId,
             eventType = event.eventType,
             eventUptimeMillis = event.eventTime,
             receivedUptimeMillis = SystemClock.uptimeMillis(),
@@ -3844,10 +3903,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         // If submission already navigated away from the blocked page, going BACK
         // would resurrect that blocked page from Firefox history.
         val https = isVerifiedHttpsHandler(transition.browserPackageName)
-        val editorRoot = activeBrowserRoot(
-            transition.browserPackageName,
-            transition.expectedWindowId
-        ) ?: return false
+        val editorRoot = transitionBrowserRoot(transition) ?: return false
         val safeRedirectStillEditing = try {
             AddressBarRedirectionActions.hasFocusedAddressEditor(
                 editorRoot,
@@ -3968,7 +4024,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         var activated = false
         for (action in activations) {
             if (!curtainReadyForTransition(transition)) return 0L
-            val root = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
+            val root = transitionBrowserRoot(transition) ?: return 0L
             val result = try {
                 if (!policy.mayActivateBlockedAddressBar(browserPackageName, root.windowId,
                         phaseStartedAtUptimeMillis, transition.latestWindowTransitionEventUptimeMillis) ||
@@ -3991,7 +4047,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 if (!curtainReadyForTransition(transition)) return 0L
                 delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
                 if (!curtainReadyForTransition(transition)) return 0L
-                val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: continue
+                val fresh = transitionBrowserRoot(transition) ?: continue
                 editorReady = try {
                     AddressBarRedirectionActions.hasFocusedAddressEditor(fresh, browserPackageName, expectedWindowId, https)
                 } finally { recycleSafely(fresh) }
@@ -4003,7 +4059,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             for (method in writes) {
                 if (!curtainReadyForTransition(transition)) return 0L
                 if (method == BrowserWriteMethod.PASTE) {
-                    val selectionRoot = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
+                    val selectionRoot = transitionBrowserRoot(transition) ?: return 0L
                     val selection = try {
                         AddressBarRedirectionActions.selectAll(
                             selectionRoot, browserPackageName, expectedWindowId, https,
@@ -4016,7 +4072,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                     delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
                     if (!curtainReadyForTransition(transition)) return 0L
                 }
-                val editRoot = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
+                val editRoot = transitionBrowserRoot(transition) ?: return 0L
                 val writtenAt = SystemClock.uptimeMillis()
                 val written = try {
                     if (!curtainReadyForTransition(transition)) return 0L
@@ -4042,7 +4098,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                     if (!curtainReadyForTransition(transition)) return 0L
                     delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
                     if (!curtainReadyForTransition(transition)) return 0L
-                    val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: continue
+                    val fresh = transitionBrowserRoot(transition) ?: continue
                     val verified = try {
                         AddressBarRedirectionActions.hasFocusedAddressEditor(fresh, browserPackageName,
                             expectedWindowId, https, ::isSafeGoogleRedirectSurface)
@@ -4075,7 +4131,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         for (method in methods) {
             if (method == BrowserSubmitMethod.IME_ENTER && !canUseCertifiableImeSubmit(Build.VERSION.SDK_INT)) continue
             if (!curtainReadyForTransition(transition)) return 0L
-            val root = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
+            val root = transitionBrowserRoot(transition) ?: return 0L
             val submittedAt = SystemClock.uptimeMillis()
             val submitted = try {
                 if (!policy.maySubmitSafeAddress(browserPackageName, root.windowId,
@@ -4126,7 +4182,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 )
             ) return submittedAt
             if (confirmSafeGoogleFromFreshBrowserSurface(transition)) return submittedAt
-            val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
+            val fresh = transitionBrowserRoot(transition) ?: return 0L
             val stillEditing = try {
                 AddressBarRedirectionActions.hasFocusedAddressEditor(fresh, browserPackageName,
                     expectedWindowId, https, ::isSafeGoogleRedirectSurface)
@@ -4144,10 +4200,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         ) return false
 
         repeat(2) { pass ->
-            val root = activeBrowserRoot(
-                transition.browserPackageName,
-                transition.expectedWindowId
-            ) ?: return false
+            val root = transitionBrowserRoot(transition) ?: return false
             val stableSafeSurface = try {
                 val identification = WebsiteIdentificationEngine.identifyFromRoot(
                     root,
@@ -4785,11 +4838,11 @@ class BlockingAccessibilityService : AccessibilityService() {
         )
         private const val WEBSITE_TAB_MENU_SETTLE_MILLIS = 120L
         private const val WEBSITE_TAB_CLOSE_CONFIRM_MILLIS = 180L
-        private const val WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS = 32L
-        private const val WEBSITE_ADDRESS_BAR_ACTION_RETRY_MILLIS = 16L
+        private const val WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS = 48L
+        private const val WEBSITE_ADDRESS_BAR_ACTION_RETRY_MILLIS = 32L
         private const val WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS = 360L
         private const val WEBSITE_FIREFOX_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS = 800L
-        private const val WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS = 80L
+        private const val WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS = 120L
         internal const val WEBSITE_MIN_BLOCK_NOTICE_MILLIS = 250L
         /** Exact hosts published by Google's supported-domains endpoint. */
         private val SAFE_GOOGLE_HOSTS = """
@@ -4979,13 +5032,11 @@ class BlockingAccessibilityService : AccessibilityService() {
             val current = currentAddress?.takeIf(String::isNotBlank) ?: return false
             val candidateRule = WebsiteBlocker.findMatchingRule(candidate, rules) ?: return false
             val currentRule = WebsiteBlocker.findMatchingRule(current, rules) ?: return false
-            if (candidateRule != currentRule) return false
-            val candidateDomain = WebsiteBlocker.extractDomain(candidate)
-            val currentDomain = WebsiteBlocker.extractDomain(current)
-            if (candidateDomain.isNotBlank() && currentDomain.isNotBlank() &&
-                candidateDomain != currentDomain
-            ) return false
-            return browserTargetIdentity(candidate) == browserTargetIdentity(current)
+            // Enforcement is rule-scoped, not path-scoped. If the live browser surface
+            // is still covered by the exact same blocked rule, rewriting it is correct
+            // even when Chrome has shortened/canonicalized the visible path or the user
+            // moved to another still-blocked page under that rule.
+            return candidateRule == currentRule
         }
 
         private fun browserTargetIdentity(value: String): String {
@@ -5006,6 +5057,39 @@ class BlockingAccessibilityService : AccessibilityService() {
             knownBrowser: Boolean,
             verifiedHttpsHandler: Boolean
         ): Boolean = knownBrowser || verifiedHttpsHandler
+
+        internal fun resolveTransitionInspectionWindowId(
+            expectedWindowId: Int,
+            eventWindowId: Int,
+            externalRedirectRequested: Boolean,
+            closeConfirmed: Boolean
+        ): Int = when {
+            expectedWindowId < 0 -> INVALID_BROWSER_WINDOW_ID
+            eventWindowId < 0 -> expectedWindowId
+            eventWindowId == expectedWindowId -> expectedWindowId
+            externalRedirectRequested || closeConfirmed -> eventWindowId
+            else -> INVALID_BROWSER_WINDOW_ID
+        }
+
+        internal fun resolveBrowserInspectionWindowId(
+            eventWindowId: Int,
+            currentWindowId: Int?
+        ): Int = when {
+            eventWindowId >= 0 -> eventWindowId
+            currentWindowId != null && currentWindowId >= 0 -> currentWindowId
+            else -> INVALID_BROWSER_WINDOW_ID
+        }
+
+        internal fun resolveImmediateBrowserWindowId(
+            eventWindowId: Int,
+            sourceWindowId: Int?,
+            currentWindowId: Int?
+        ): Int = when {
+            sourceWindowId != null && sourceWindowId >= 0 -> sourceWindowId
+            eventWindowId >= 0 -> eventWindowId
+            currentWindowId != null && currentWindowId >= 0 -> currentWindowId
+            else -> INVALID_BROWSER_WINDOW_ID
+        }
 
         internal fun shouldStartWebsiteIdentityRecovery(
             websiteIdentified: Boolean,

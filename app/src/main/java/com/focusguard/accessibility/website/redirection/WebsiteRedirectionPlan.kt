@@ -25,11 +25,11 @@ internal object WebsiteRedirectionPlan {
 
     /**
      * Website blocking must stay bound to the tab/window that exposed the blocked
-     * destination. ACTION_VIEW hands navigation back to the browser and can create
-     * another tab while leaving the blocked tab alive, so it is deliberately not a
-     * valid fallback for a blocking transition.
+     * destination. ACTION_VIEW may open another tab, so it remains a last-resort fallback only after
+     * the bounded same-tab rewrite attempts fail. The blocked tab is still protected
+     * if the user returns to it.
      */
-    const val ALLOW_EXTERNAL_BROWSER_INTENT_FALLBACK = false
+    const val ALLOW_EXTERNAL_BROWSER_INTENT_FALLBACK = true
 
     val orderedLayers: List<WebsiteRedirectionPhase> = listOf(
         WebsiteRedirectionPhase.ACTIVATE_ADDRESS_BAR,
@@ -49,10 +49,9 @@ internal object WebsiteRedirectionPlan {
 
     /**
      * Coordinate taps and keyboard-position guessing intentionally do not belong
-     * to this same-tab plan. After the bounded same-tab attempts are exhausted the
-     * transition stays fail-closed rather than launching a browser ACTION_VIEW,
-     * because an external navigation request cannot prove that the original blocked
-     * tab was replaced or otherwise neutralized.
+     * to this same-tab plan. After the bounded same-tab attempts are exhausted the service may request the
+     * package-scoped safe-browser fallback. That request is never treated as proof
+     * that the original tab was neutralized; destination confirmation remains required.
      */
     fun canRetry(attemptNumber: Int): Boolean = attemptNumber < MAX_SAME_TAB_ATTEMPTS
 }
