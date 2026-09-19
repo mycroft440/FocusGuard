@@ -7,7 +7,9 @@ import java.time.ZoneId
 data class CurrentMonthUsagePeriod(
     val startMillis: Long,
     val endMillis: Long,
-    val elapsedDays: Int
+    val elapsedDays: Int,
+    val completedDaysEndMillis: Long,
+    val completedDays: Int
 )
 
 object UsageInsightsPeriodPolicy {
@@ -16,14 +18,18 @@ object UsageInsightsPeriodPolicy {
         zoneId: ZoneId = ZoneId.systemDefault()
     ): CurrentMonthUsagePeriod {
         val now = Instant.ofEpochMilli(nowMillis).atZone(zoneId)
-        val start = now.toLocalDate()
+        val today = now.toLocalDate()
+        val start = today
             .withDayOfMonth(1)
             .atStartOfDay(zoneId)
+        val startOfToday = today.atStartOfDay(zoneId)
 
         return CurrentMonthUsagePeriod(
             startMillis = start.toInstant().toEpochMilli(),
             endMillis = nowMillis,
-            elapsedDays = now.dayOfMonth.coerceAtLeast(1)
+            elapsedDays = now.dayOfMonth.coerceAtLeast(1),
+            completedDaysEndMillis = startOfToday.toInstant().toEpochMilli(),
+            completedDays = (now.dayOfMonth - 1).coerceAtLeast(0)
         )
     }
 }

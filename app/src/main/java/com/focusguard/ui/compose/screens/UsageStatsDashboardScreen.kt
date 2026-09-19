@@ -42,6 +42,7 @@ import java.util.Calendar
 private data class UsageInsightsData(
     val phoneUsage: PhoneUsageInsights,
     val mostUsedApps: List<AppUsageStat>,
+    val mostUsedAverageApps: List<AppUsageStat>,
     val mostUsedAverageDays: Int,
     val mostUsedTodayApps: List<AppUsageStat>,
     val mostOpenedApps: List<AppAccessStat>,
@@ -60,7 +61,8 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
         mutableStateOf(PhoneUsageInsights(dailyHistory = emptyList(), periodSummary = null))
     }
     var mostUsedApps by remember { mutableStateOf<List<AppUsageStat>>(emptyList()) }
-    var mostUsedAverageDays by remember { mutableIntStateOf(1) }
+    var mostUsedAverageApps by remember { mutableStateOf<List<AppUsageStat>>(emptyList()) }
+    var mostUsedAverageDays by remember { mutableIntStateOf(0) }
     var mostUsedTodayApps by remember { mutableStateOf<List<AppUsageStat>>(emptyList()) }
     var mostOpenedApps by remember { mutableStateOf<List<AppAccessStat>>(emptyList()) }
     var neverUsedApps by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -109,14 +111,7 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                 val monthPeriod = UsageInsightsPeriodPolicy.currentMonth(end)
                 val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -7) }
                 val start7Days = cal.timeInMillis
-
-                val calToday = Calendar.getInstance().apply {
-                    set(Calendar.HOUR_OF_DAY, 0)
-                    set(Calendar.MINUTE, 0)
-                    set(Calendar.SECOND, 0)
-                    set(Calendar.MILLISECOND, 0)
-                }
-                val startToday = calToday.timeInMillis
+                val startToday = monthPeriod.completedDaysEndMillis
 
                 UsageInsightsData(
                     phoneUsage = analytics.getPhoneUsageInsights(),
@@ -125,7 +120,16 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                         startTime = monthPeriod.startMillis,
                         endTime = monthPeriod.endMillis
                     ),
-                    mostUsedAverageDays = monthPeriod.elapsedDays,
+                    mostUsedAverageApps = if (monthPeriod.completedDays > 0) {
+                        MonthlyMostUsedAppsProvider.load(
+                            context = context.applicationContext,
+                            startTime = monthPeriod.startMillis,
+                            endTime = monthPeriod.completedDaysEndMillis
+                        )
+                    } else {
+                        emptyList()
+                    },
+                    mostUsedAverageDays = monthPeriod.completedDays,
                     mostUsedTodayApps = MonthlyMostUsedAppsProvider.load(
                         context = context.applicationContext,
                         startTime = startToday,
@@ -139,6 +143,7 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
             .onSuccess { data ->
                 phoneUsage = data.phoneUsage
                 mostUsedApps = data.mostUsedApps
+                mostUsedAverageApps = data.mostUsedAverageApps
                 mostUsedAverageDays = data.mostUsedAverageDays
                 mostUsedTodayApps = data.mostUsedTodayApps
                 mostOpenedApps = data.mostOpenedApps
@@ -230,6 +235,7 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                         item(key = "most_used_apps") {
                             MostUsedAppsSection(
                                 apps = mostUsedApps,
+                                averageApps = mostUsedAverageApps,
                                 pm = pm,
                                 averageDays = mostUsedAverageDays,
                                 showAverage = showAverageForMostUsed,
@@ -756,8 +762,9 @@ private fun UsagePatternStatement(
 @Composable
 fun MostUsedAppsSection(
     apps: List<AppUsageStat>,
+    averageApps: List<AppUsageStat>,
     pm: PackageManager,
-    averageDays: Int = 1,
+    averageDays: Int = 0,
     showAverage: Boolean,
     onToggleAverage: (Boolean) -> Unit,
     expanded: Boolean,
@@ -776,6 +783,8 @@ fun MostUsedAppsSection(
                 fontWeight = FontWeight.Bold
             )
             Spacer(Modifier.height(6.dp))
+            val averageAvailable = averageDays > 0
+            val useAverage = showAverage && averageAvailable
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
                     stringResource(R.string.dashboard_daily_avg),
@@ -784,15 +793,19 @@ fun MostUsedAppsSection(
                 )
                 Spacer(Modifier.width(8.dp))
                 Switch(
-                    checked = showAverage,
+                    checked = useAverage,
                     onCheckedChange = onToggleAverage,
+                    enabled = averageAvailable,
                     modifier = Modifier.scale(0.8f)
                 )
             }
 
             Spacer(Modifier.height(12.dp))
 
-            val orderedApps = remember(apps) { apps.sortedByDescending(AppUsageStat::timeSpentMs) }
+            val sourceApps = if (useAverage) averageApps else apps
+            val orderedApps = remember(sourceApps) {
+                sourceApps.sortedByDescending(AppUsageStat::timeSpentMs)
+            }
             val displayList = if (expanded) orderedApps else orderedApps.take(3)
             val divisor = averageDays.coerceAtLeast(1).toLong()
 
@@ -800,7 +813,7 @@ fun MostUsedAppsSection(
                 Text(stringResource(R.string.dashboard_no_data), color = MaterialTheme.colorScheme.onSurfaceVariant)
             } else {
                 displayList.forEach { stat ->
-                    val timeToDisplay = if (showAverage) stat.timeSpentMs / divisor else stat.timeSpentMs
+                    val timeToDisplay = if (useAverage) stat.timeSpentMs / divisor else stat.timeSpentMs
                     AppUsageRow(stat.packageName, timeToDisplay, pm)
                     Spacer(Modifier.height(12.dp))
                 }

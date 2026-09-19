@@ -18,9 +18,14 @@ class UsageInsightsPeriodPolicyTest {
         val expectedStart = ZonedDateTime.of(2026, 9, 1, 0, 0, 0, 0, zone)
             .toInstant()
             .toEpochMilli()
+        val expectedCompletedEnd = ZonedDateTime.of(2026, 9, 7, 0, 0, 0, 0, zone)
+            .toInstant()
+            .toEpochMilli()
         assertThat(period.startMillis).isEqualTo(expectedStart)
         assertThat(period.endMillis).isEqualTo(now)
         assertThat(period.elapsedDays).isEqualTo(7)
+        assertThat(period.completedDaysEndMillis).isEqualTo(expectedCompletedEnd)
+        assertThat(period.completedDays).isEqualTo(6)
     }
 
     @Test
@@ -32,12 +37,13 @@ class UsageInsightsPeriodPolicyTest {
 
         val period = UsageInsightsPeriodPolicy.currentMonth(now, zone)
 
-        assertThat(period.startMillis).isEqualTo(
-            ZonedDateTime.of(2027, 1, 1, 0, 0, 0, 0, zone)
-                .toInstant()
-                .toEpochMilli()
-        )
+        val expectedStart = ZonedDateTime.of(2027, 1, 1, 0, 0, 0, 0, zone)
+            .toInstant()
+            .toEpochMilli()
+        assertThat(period.startMillis).isEqualTo(expectedStart)
+        assertThat(period.completedDaysEndMillis).isEqualTo(expectedStart)
         assertThat(period.elapsedDays).isEqualTo(1)
+        assertThat(period.completedDays).isEqualTo(0)
     }
 
     @Test
@@ -49,11 +55,15 @@ class UsageInsightsPeriodPolicyTest {
 
         val period = UsageInsightsPeriodPolicy.currentMonth(now, zone)
 
-        assertThat(period.startMillis).isEqualTo(
-            ZonedDateTime.of(2026, 8, 1, 0, 0, 0, 0, zone)
-                .toInstant()
-                .toEpochMilli()
-        )
+        val expectedStart = ZonedDateTime.of(2026, 8, 1, 0, 0, 0, 0, zone)
+            .toInstant()
+            .toEpochMilli()
+        val expectedCompletedEnd = ZonedDateTime.of(2026, 8, 31, 0, 0, 0, 0, zone)
+            .toInstant()
+            .toEpochMilli()
+        assertThat(period.startMillis).isEqualTo(expectedStart)
+        assertThat(period.completedDaysEndMillis).isEqualTo(expectedCompletedEnd)
         assertThat(period.elapsedDays).isEqualTo(31)
+        assertThat(period.completedDays).isEqualTo(30)
     }
 }
