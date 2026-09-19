@@ -33,10 +33,21 @@ jobs:
       - name: Validate patch
         run: git diff --check
 
-      - name: Run browser detection regression tests
+      - name: Run navigation regression tests
+        run: |
+          set +e
+          ./gradlew :app:testDebugUnitTest \
+            --tests com.focusguard.service.WebsiteBlockNavigationTest
+          status=$?
+          if [ $status -ne 0 ]; then
+            find app/build/test-results/testDebugUnitTest -name 'TEST-com.focusguard.service.WebsiteBlockNavigationTest.xml' \
+              -exec cat {} \; || true
+            exit $status
+          fi
+
+      - name: Run browser detection and race tests
         run: >-
           ./gradlew :app:testDebugUnitTest
-          --tests com.focusguard.service.WebsiteBlockNavigationTest
           --tests com.focusguard.service.BrowserTransitionRaceTest
           --tests com.focusguard.service.WebsiteBlockDetectionLatencyTest
           --tests com.focusguard.utils.WebsiteBlockerTest
