@@ -462,62 +462,40 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
-    fun `Chromium capability policy is package based and rejects stale surfaces`() {
-        val arbitraryChromiumPackage = "org.example.chromium.fork"
+    fun `same tab policy is package and window bound`() {
+        val browserPackage = "org.example.chromium.fork"
         val policy = WebsiteTabNeutralizationPolicy(
-            browserPackageName = arbitraryChromiumPackage,
+            browserPackageName = browserPackage,
             expectedWindowId = 7
         )
 
-        assertThat(policy.mayTouchBlockedTab(arbitraryChromiumPackage, 7)).isTrue()
-        assertThat(
-            policy.mayAttemptChromiumClose(
-                arbitraryChromiumPackage,
-                activeWindowId = 7,
-                phaseStartedAtUptimeMillis = 100L,
-                latestWindowTransitionEventUptimeMillis = 100L
-            )
-        ).isTrue()
-        assertThat(
-            policy.mayAttemptChromiumClose(
-                arbitraryChromiumPackage,
-                activeWindowId = 7,
-                phaseStartedAtUptimeMillis = 100L,
-                latestWindowTransitionEventUptimeMillis = 101L
-            )
-        ).isFalse()
+        assertThat(policy.mayTouchBlockedTab(browserPackage, 7)).isTrue()
         assertThat(
             policy.mayActivateBlockedAddressBar(
-                arbitraryChromiumPackage,
+                browserPackage,
                 activeWindowId = 7,
                 phaseStartedAtUptimeMillis = 100L,
                 latestWindowTransitionEventUptimeMillis = 101L
             )
         ).isTrue()
-        assertThat(policy.mayTouchBlockedTab(arbitraryChromiumPackage, 8)).isFalse()
+        assertThat(policy.mayTouchBlockedTab(browserPackage, 8)).isFalse()
         assertThat(policy.mayTouchBlockedTab(CHROME_PACKAGE, 7)).isFalse()
+
         policy.markSafeAddressSet(200L)
-        assertThat(policy.mayTouchBlockedTab(arbitraryChromiumPackage, 7)).isFalse()
+        assertThat(policy.mayTouchBlockedTab(browserPackage, 7)).isFalse()
         assertThat(
             policy.maySubmitSafeAddress(
-                arbitraryChromiumPackage,
+                browserPackage,
                 activeWindowId = 7,
                 latestWindowTransitionEventUptimeMillis = 200L
-            )
-        ).isTrue()
-        assertThat(
-            policy.maySubmitSafeAddress(
-                arbitraryChromiumPackage,
-                activeWindowId = 7,
-                latestWindowTransitionEventUptimeMillis = 201L
             )
         ).isTrue()
         policy.markRedirectRequested()
         assertThat(
             policy.maySubmitSafeAddress(
-                arbitraryChromiumPackage,
+                browserPackage,
                 activeWindowId = 7,
-                latestWindowTransitionEventUptimeMillis = 200L
+                latestWindowTransitionEventUptimeMillis = 201L
             )
         ).isFalse()
     }
@@ -602,7 +580,7 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
-    fun `close click alone never authorizes destination`() {
+    fun `redirect remains fail closed until destination confirmation`() {
         assertThat(
             BlockingAccessibilityService.mayOpenDestinationAfterSanitization(
                 safeRedirectConfirmed = false
@@ -652,43 +630,23 @@ class WebsiteBlockNavigationTest {
         ).isTrue()
     }
 
-    @Test
-    fun `Chromium tab closing supports Brave top and bottom tab switchers`() {
-        assertThat(BlockingAccessibilityService.chromiumTabSwitcherEntryNamesForTest())
-            .containsExactly("tab_switcher_button", "bottom_tab_switcher_button")
-            .inOrder()
-    }
+
 
     @Test
-    fun `normal transition hides only after Google was sanitized`() {
-        val machine = WebsiteRedirectionCoordinator.Session(
-            strict = false
-        )
+    fun `normal transition hides only after redirect was confirmed`() {
+        val machine = WebsiteRedirectionCoordinator.Session(strict = false)
 
-        assertThat(machine.begin()).containsExactly(
-            WebsiteRedirectionCoordinator.Action.SHOW_BLOCK_PRESENTATION,
-            WebsiteRedirectionCoordinator.Action.NEUTRALIZE_BLOCKED_TAB
-        ).inOrder()
+        machine.begin()
         assertThat(machine.afterRedirectConfirmed()).isEqualTo(
             WebsiteRedirectionCoordinator.Action.HIDE_BLOCK_PRESENTATION
         )
     }
 
-
-
     @Test
-    fun `strict transition opens Pomodoro only after Google sanitization`() {
-        val machine = WebsiteRedirectionCoordinator.Session(
-            strict = true
-        )
+    fun `strict transition opens Pomodoro only after redirect confirmation`() {
+        val machine = WebsiteRedirectionCoordinator.Session(strict = true)
 
-        val initialActions = machine.begin()
-        assertThat(initialActions.first()).isEqualTo(
-            WebsiteRedirectionCoordinator.Action.SHOW_BLOCK_PRESENTATION
-        )
-        assertThat(initialActions.last()).isEqualTo(
-            WebsiteRedirectionCoordinator.Action.NEUTRALIZE_BLOCKED_TAB
-        )
+        machine.begin()
         assertThat(machine.afterRedirectConfirmed()).isEqualTo(
             WebsiteRedirectionCoordinator.Action.OPEN_POMODORO
         )

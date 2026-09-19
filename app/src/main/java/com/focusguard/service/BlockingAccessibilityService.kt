@@ -4239,12 +4239,6 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val INVALID_BROWSER_WINDOW_ID = -1
-        private val CHROMIUM_TAB_SWITCHER_ENTRY_NAMES = listOf(
-            "tab_switcher_button",
-            "bottom_tab_switcher_button"
-        )
-        private const val WEBSITE_TAB_MENU_SETTLE_MILLIS = 120L
-        private const val WEBSITE_TAB_CLOSE_CONFIRM_MILLIS = 180L
         private const val WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS = 32L
         private const val WEBSITE_ADDRESS_BAR_ACTION_RETRY_MILLIS = 16L
         private const val WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS = 360L
@@ -4334,8 +4328,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal fun immediateBrowserBlockEventTypesForTest(): Set<Int> =
             immediateBrowserBlockEventTypes
 
-        internal fun chromiumTabSwitcherEntryNamesForTest(): List<String> =
-            CHROMIUM_TAB_SWITCHER_ENTRY_NAMES
 
         internal fun shouldApplyStrictPomodoroToWindow(
             strictActive: Boolean,

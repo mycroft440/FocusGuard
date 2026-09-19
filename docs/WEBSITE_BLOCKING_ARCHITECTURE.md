@@ -90,7 +90,7 @@ Ordem conceitual:
 9. confirmar `WebsiteRedirectDestination.current.matchesSurface(...)`;
 10. liberar a apresentação somente após confirmação.
 
-O fluxo não abre outra aba como substituto do redirecionamento na aba bloqueada. O fallback externo permanece desabilitado enquanto não puder provar a neutralização da aba original.
+O fluxo não abre outra aba como substituto do redirecionamento na aba bloqueada. Não existe fallback externo por `ACTION_VIEW`: ao esgotar as tentativas certificáveis na mesma aba, o fluxo permanece fail-closed.
 
 ## 7. Confirmação e fail-closed
 
