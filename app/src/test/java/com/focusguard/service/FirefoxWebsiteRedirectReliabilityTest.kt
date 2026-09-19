@@ -1,5 +1,6 @@
 package com.focusguard.service
 
+import com.focusguard.accessibility.website.redirection.WebsiteBlockTransitionGuard
 import com.focusguard.accessibility.website.redirection.WebsiteRedirectionCoordinator
 
 import com.focusguard.utils.BrowserUiCapabilityPolicy
@@ -97,7 +98,7 @@ class FirefoxWebsiteRedirectReliabilityTest {
 
     @Test
     fun `stable current Google surface can confirm a missed Firefox navigation event`() {
-        val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
+        val guard = WebsiteBlockTransitionGuard()
         val transition = guard.tryStart(
             browserPackageName = "org.mozilla.firefox",
             transitionId = 11L,

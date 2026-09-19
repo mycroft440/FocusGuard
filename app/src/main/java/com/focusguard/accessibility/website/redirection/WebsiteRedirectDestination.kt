@@ -20,8 +20,24 @@ internal data class WebsiteRedirectDestination(
     val acceptedRootQueryParameters: Set<String> = emptySet()
 ) {
     init {
-        require(url.startsWith("https://")) { "Website redirect destination must use HTTPS" }
         require(acceptedRootHosts.isNotEmpty()) { "At least one destination host is required" }
+        val configured = runCatching { URI(url) }.getOrNull()
+            ?: throw IllegalArgumentException("Website redirect destination must be a valid URI")
+        val configuredHost = configured.host?.lowercase(Locale.US)?.removePrefix("www.")
+            ?: throw IllegalArgumentException("Website redirect destination must have a host")
+        require(configured.scheme.equals("https", ignoreCase = true)) {
+            "Website redirect destination must use HTTPS"
+        }
+        require(configured.userInfo == null) { "Website redirect destination cannot contain user info" }
+        require(configured.port == -1 || configured.port == 443) {
+            "Website redirect destination must use the default HTTPS port"
+        }
+        require(configuredHost in acceptedRootHosts.map { it.lowercase(Locale.US).removePrefix("www.") }) {
+            "Configured destination host must be accepted by its validation policy"
+        }
+        require(configured.rawFragment.isNullOrEmpty()) {
+            "Website redirect destination cannot contain a fragment"
+        }
     }
 
     fun matchesSurface(urlOrAddress: String?): Boolean {
@@ -29,6 +45,9 @@ internal data class WebsiteRedirectDestination(
         val candidate = WebsiteBlocker.extractUrlCandidate(raw) ?: raw
         val withScheme = if ("://" in candidate) candidate else "https://$candidate"
         val uri = runCatching { URI(withScheme) }.getOrNull() ?: return false
+        if (!uri.scheme.equals("https", ignoreCase = true) || uri.userInfo != null ||
+            (uri.port != -1 && uri.port != 443)
+        ) return false
         val host = uri.host?.lowercase(Locale.US)?.removePrefix("www.") ?: return false
         val queryParameterNames = uri.rawQuery
             ?.split('&')

@@ -782,4 +782,7 @@
     <string name="forum_my_posts_empty_description">Posts you publish will appear here.</string>
     <string name="forum_notification_like">%1$s liked your post.</string>
     <string name="forum_notification_comment">%1$s commented on your post.</string>
+    <string name="website_block_overlay_message">Tovuti imezuiwa: %1$s</string>
+    <string name="website_block_overlay_message_generic">Tovuti imezuiwa na FocusGuard</string>
+    <string name="website_block_notice_description">Ufikiaji wa tovuti hii umezuiwa.</string>
 </resources>

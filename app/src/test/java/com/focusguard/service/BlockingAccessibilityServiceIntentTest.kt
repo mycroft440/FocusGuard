@@ -227,7 +227,6 @@ class BlockingAccessibilityServiceIntentTest {
             strictBlock = false,
             blockedPackage = "com.example.blocked",
             blockedDomain = null,
-            redirectBrowserPackage = null,
             curtainGeneration = 42L
         )
 

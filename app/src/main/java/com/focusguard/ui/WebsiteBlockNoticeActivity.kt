@@ -241,7 +241,7 @@ private fun WebsiteBlockNoticeContent(
 
             Spacer(Modifier.height(28.dp))
             Text(
-                text = "Site bloqueado pelo FocusGuard",
+                text = stringResource(R.string.website_block_overlay_message_generic),
                 color = TextPrimary,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
@@ -249,7 +249,7 @@ private fun WebsiteBlockNoticeContent(
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                text = blockedDomain ?: "O acesso a este site foi bloqueado.",
+                text = blockedDomain ?: stringResource(R.string.website_block_notice_description),
                 color = TextSecondary,
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center

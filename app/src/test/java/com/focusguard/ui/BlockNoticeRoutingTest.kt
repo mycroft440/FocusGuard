@@ -80,34 +80,6 @@ class BlockNoticeRoutingTest {
     }
 
     @Test
-    fun `generic website surface targets dedicated website activity`() {
-        val context = RuntimeEnvironment.getApplication().applicationContext
-        val source = Intent().apply {
-            putExtra(BlockingAccessibilityService.EXTRA_BLOCKED_DOMAIN, "example.com")
-            putExtra(BlockingAccessibilityService.EXTRA_REDIRECT_BROWSER_PACKAGE, "com.android.chrome")
-            putExtra(BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION, 99L)
-        }
-
-        val routed = BlockNoticeActivity.createDestinationIntent(
-            context,
-            source,
-            AppBlockSurfacePolicy.Surface.GENERIC_BLOCK
-        )
-
-        assertThat(routed.component?.className)
-            .isEqualTo(WebsiteBlockNoticeActivity::class.java.name)
-        assertThat(
-            routed.getStringExtra(BlockingAccessibilityService.EXTRA_BLOCKED_DOMAIN)
-        ).isEqualTo("example.com")
-        assertThat(
-            routed.getStringExtra(BlockingAccessibilityService.EXTRA_REDIRECT_BROWSER_PACKAGE)
-        ).isEqualTo("com.android.chrome")
-        assertThat(
-            routed.getLongExtra(BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION, 0L)
-        ).isEqualTo(99L)
-    }
-
-    @Test
     fun `duplicate target coalesces while newest curtain handshake is preserved`() {
         val context = RuntimeEnvironment.getApplication().applicationContext
         val first = Intent().apply {

@@ -782,4 +782,7 @@
     <string name="forum_my_posts_empty_description">Posts you publish will appear here.</string>
     <string name="forum_notification_like">%1$s liked your post.</string>
     <string name="forum_notification_comment">%1$s commented on your post.</string>
+    <string name="website_block_overlay_message">వెబ్‌సైట్ బ్లాక్ చేయబడింది: %1$s</string>
+    <string name="website_block_overlay_message_generic">FocusGuard వెబ్‌సైట్‌ను బ్లాక్ చేసింది</string>
+    <string name="website_block_notice_description">ఈ వెబ్‌సైట్‌కు ప్రాప్యత బ్లాక్ చేయబడింది.</string>
 </resources>

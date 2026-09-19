@@ -1,10 +1,11 @@
 package com.focusguard.service
 
+import com.focusguard.accessibility.website.redirection.WebsiteBlockTransitionHandle
+import com.focusguard.accessibility.website.redirection.WebsiteBlockTransitionGuard
 import com.focusguard.accessibility.website.redirection.WebsiteRedirectionCoordinator
 
 import android.accessibilityservice.AccessibilityService
 import android.app.Application
-import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
@@ -37,8 +38,8 @@ class BrowserTransitionRaceTest {
     private val pkg = "com.android.chrome"
     private lateinit var service: BlockingAccessibilityService
     private lateinit var coordinator: BrowserInspectionCoordinator
-    private lateinit var guard: BlockingAccessibilityService.WebsiteBlockTransitionGuard
-    private lateinit var transition: BlockingAccessibilityService.WebsiteBlockTransitionHandle
+    private lateinit var guard: WebsiteBlockTransitionGuard
+    private lateinit var transition: WebsiteBlockTransitionHandle
 
     @Before
     fun setUp() {
@@ -100,27 +101,6 @@ class BrowserTransitionRaceTest {
         }
         assertEquals(false, call("performTransitionBack", transition))
         verify(exactly = 1) { service.performGlobalAction(AccessibilityService.GLOBAL_ACTION_BACK) }
-    }
-
-    @Test
-    fun windowChangeBeforeGuardedIntentStillStartsExplicitGoogleFallback() = runTest {
-        coordinator.observeWindow(pkg, 11)
-        assertEquals(true, callSuspend("requestSafeRedirectThroughBrowserIntent", transition))
-        verify(exactly = 1) {
-            service.startActivity(match {
-                it.action == Intent.ACTION_VIEW &&
-                    it.data?.toString() == "https://www.google.com" &&
-                    it.`package` == pkg
-            })
-        }
-    }
-
-    @Test
-    fun supersededCurtainStillPreventsExplicitGoogleFallback() = runTest {
-        coordinator.observeWindow(pkg, 11)
-        ReflectionHelpers.setField(service, "instantBlockCurtainGeneration", 2L)
-        assertEquals(false, callSuspend("requestSafeRedirectThroughBrowserIntent", transition))
-        verify(exactly = 0) { service.startActivity(any()) }
     }
 
     @Test

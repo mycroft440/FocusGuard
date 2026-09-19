@@ -39,4 +39,20 @@ class WebsiteRedirectDestinationTest {
         assertThat(destination.matchesSurface("https://example.org/")).isTrue()
         assertThat(destination.matchesSurface("https://www.google.com/")).isFalse()
     }
+    @Test(expected = IllegalArgumentException::class)
+    fun `configured host must belong to validation policy`() {
+        WebsiteRedirectDestination(
+            url = "https://example.org",
+            acceptedRootHosts = setOf("example.com")
+        )
+    }
+
+    @Test
+    fun `destination rejects non https and user info surfaces`() {
+        assertThat(WebsiteRedirectDestination.current.matchesSurface("http://www.google.com/"))
+            .isFalse()
+        assertThat(WebsiteRedirectDestination.current.matchesSurface("https://user@www.google.com/"))
+            .isFalse()
+    }
+
 }

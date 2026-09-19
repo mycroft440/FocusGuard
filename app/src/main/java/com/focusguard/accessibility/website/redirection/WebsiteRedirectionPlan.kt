@@ -23,13 +23,6 @@ internal enum class WebsiteRedirectionPhase {
 internal object WebsiteRedirectionPlan {
     const val MAX_SAME_TAB_ATTEMPTS = 2
 
-    /**
-     * Website blocking must stay bound to the tab/window that exposed the blocked
-     * destination. ACTION_VIEW hands navigation back to the browser and can create
-     * another tab while leaving the blocked tab alive, so it is deliberately not a
-     * valid fallback for a blocking transition.
-     */
-    const val ALLOW_EXTERNAL_BROWSER_INTENT_FALLBACK = false
 
     val orderedLayers: List<WebsiteRedirectionPhase> = listOf(
         WebsiteRedirectionPhase.ACTIVATE_ADDRESS_BAR,

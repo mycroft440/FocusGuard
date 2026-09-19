@@ -782,4 +782,7 @@
     <string name="forum_my_posts_empty_description">Posts you publish will appear here.</string>
     <string name="forum_notification_like">%1$s liked your post.</string>
     <string name="forum_notification_comment">%1$s commented on your post.</string>
+    <string name="website_block_overlay_message">ویب سائٹ بلاک کر دی گئی: %1$s</string>
+    <string name="website_block_overlay_message_generic">FocusGuard نے ویب سائٹ بلاک کر دی</string>
+    <string name="website_block_notice_description">اس ویب سائٹ تک رسائی بلاک کر دی گئی ہے۔</string>
 </resources>

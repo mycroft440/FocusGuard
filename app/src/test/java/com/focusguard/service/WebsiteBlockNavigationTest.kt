@@ -1,5 +1,6 @@
 package com.focusguard.service
 
+import com.focusguard.accessibility.website.redirection.WebsiteBlockTransitionGuard
 import com.focusguard.accessibility.website.redirection.WebsiteRedirectionCoordinator
 import com.focusguard.accessibility.website.redirection.WebsiteTabNeutralizationPolicy
 
@@ -165,7 +166,7 @@ class WebsiteBlockNavigationTest {
 
     @Test
     fun `website transition guard rejects overlap only for the same browser`() {
-        val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
+        val guard = WebsiteBlockTransitionGuard()
 
         assertThat(
             guard.tryStart(
@@ -202,7 +203,7 @@ class WebsiteBlockNavigationTest {
 
     @Test
     fun `safe browser event confirms only after same window sanitization request`() {
-        val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
+        val guard = WebsiteBlockTransitionGuard()
         val transition = guard.tryStart(
             CHROME_PACKAGE,
             transitionId = 11L,
@@ -237,7 +238,7 @@ class WebsiteBlockNavigationTest {
 
     @Test
     fun `strict guard rejects old Pomodoro ack and requires Google first`() {
-        val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
+        val guard = WebsiteBlockTransitionGuard()
         val transition = guard.tryStart(
             CHROME_PACKAGE,
             transitionId = 12L,
@@ -315,7 +316,7 @@ class WebsiteBlockNavigationTest {
 
     @Test
     fun `stale Google history and another browser window cannot confirm redirect`() {
-        val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
+        val guard = WebsiteBlockTransitionGuard()
         val transition = guard.tryStart(
             BRAVE_PACKAGE,
             transitionId = 21L,
@@ -371,7 +372,7 @@ class WebsiteBlockNavigationTest {
 
     @Test
     fun `text and focus events cannot release the curtain after submit`() {
-        val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
+        val guard = WebsiteBlockTransitionGuard()
         val transition = guard.tryStart(
             FIREFOX_PACKAGE,
             transitionId = 22L,
@@ -405,47 +406,8 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
-    fun `confirmed close can rebind only to the fresh Google browser window`() {
-        val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
-        val transition = guard.tryStart(
-            CHROME_PACKAGE,
-            transitionId = 23L,
-            destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
-            expectedWindowId = 7,
-            detectionEventUptimeMillis = 50L
-        )!!
-        assertThat(guard.markCloseClicked(CHROME_PACKAGE, 23L, 100L)).isTrue()
-        assertThat(guard.markCloseConfirmed(CHROME_PACKAGE, 23L, 101L)).isTrue()
-        assertThat(guard.markSanitizationRequested(CHROME_PACKAGE, 23L, 110L)).isTrue()
-
-        guard.observeBrowserEvent(
-            browserPackageName = CHROME_PACKAGE,
-            windowId = 8,
-            eventUptimeMillis = 111L,
-            eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-        )
-        assertThat(
-            guard.transitionForConfirmation(
-                CHROME_PACKAGE,
-                windowId = 8,
-                eventUptimeMillis = 111L,
-                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-            )
-        ).isSameInstanceAs(transition)
-        assertThat(
-            guard.rebindPostCloseRedirectWindow(
-                CHROME_PACKAGE,
-                transitionId = 23L,
-                windowId = 8,
-                eventUptimeMillis = 111L
-            )
-        ).isTrue()
-        assertThat(guard.confirmRedirect(CHROME_PACKAGE, 8, 111L)).isTrue()
-    }
-
-    @Test
     fun `finished website transition re-arms the same browser for Back navigation`() {
-        val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
+        val guard = WebsiteBlockTransitionGuard()
         assertThat(
   guard.tryStart(
       CHROME_PACKAGE,
@@ -465,47 +427,6 @@ class WebsiteBlockNavigationTest {
       detectionEventUptimeMillis = 200L
   )
         ).isNotNull()
-    }
-
-    @Test
-    fun `safe redirect intent stays inside the browser that exposed the blocked site`() {
-        val intent = BlockingAccessibilityService.createSafeBrowserRedirectIntent(
-  FIREFOX_PACKAGE
-        )
-        assertThat(intent.action).isEqualTo(Intent.ACTION_VIEW)
-        assertThat(intent.data?.toString()).isEqualTo("https://www.google.com")
-        assertThat(intent.`package`).isEqualTo(FIREFOX_PACKAGE)
-        assertThat(intent.categories).contains(Intent.CATEGORY_BROWSABLE)
-        assertThat(intent.flags and Intent.FLAG_ACTIVITY_NEW_TASK).isNotEqualTo(0)
-        assertThat(intent.flags and Intent.FLAG_ACTIVITY_CLEAR_TOP).isEqualTo(0)
-        assertThat(intent.flags and Intent.FLAG_ACTIVITY_SINGLE_TOP).isEqualTo(0)
-    }
-    @Test
-    fun `intent redirect fallback follows verified browser capability rather than package allowlist`() {
-        assertThat(
-            BlockingAccessibilityService.supportsCapabilityBasedIntentRedirectFallback(
-                knownBrowser = true,
-                verifiedHttpsHandler = false
-            )
-        ).isTrue()
-        assertThat(
-            BlockingAccessibilityService.supportsCapabilityBasedIntentRedirectFallback(
-                knownBrowser = false,
-                verifiedHttpsHandler = true
-            )
-        ).isTrue()
-        assertThat(
-            BlockingAccessibilityService.supportsCapabilityBasedIntentRedirectFallback(
-                knownBrowser = true,
-                verifiedHttpsHandler = true
-            )
-        ).isTrue()
-        assertThat(
-            BlockingAccessibilityService.supportsCapabilityBasedIntentRedirectFallback(
-                knownBrowser = false,
-                verifiedHttpsHandler = false
-            )
-        ).isFalse()
     }
 
     @Test
@@ -714,100 +635,6 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
-    fun `accepted close never rewrites the surviving tab`() {
-        assertThat(
-            BlockingAccessibilityService.afterChromiumCloseAttempt(
-                closeActionAccepted = true,
-                closeConfirmed = false,
-                originalBlockedSurfaceStillCurrent = true
-            )
-        ).isEqualTo(
-            BlockingAccessibilityService.WebsiteCloseFollowUp.EVACUATE_WITHOUT_REWRITE
-        )
-        assertThat(
-            BlockingAccessibilityService.afterChromiumCloseAttempt(
-                closeActionAccepted = false,
-                closeConfirmed = false,
-                originalBlockedSurfaceStillCurrent = true
-            )
-        ).isEqualTo(
-            BlockingAccessibilityService.WebsiteCloseFollowUp.REWRITE_SAME_BLOCKED_TAB
-        )
-        assertThat(
-            BlockingAccessibilityService.afterChromiumCloseAttempt(
-                closeActionAccepted = true,
-                closeConfirmed = true,
-                originalBlockedSurfaceStillCurrent = false
-            )
-        ).isEqualTo(
-            BlockingAccessibilityService.WebsiteCloseFollowUp
-                .REQUEST_SAFE_REDIRECT_AFTER_CONFIRMED_CLOSE
-        )
-    }
-
-    @Test
-    fun `close is confirmed only after an event proves the blocked surface disappeared`() {
-        assertThat(
-            BlockingAccessibilityService.isClosedSurfaceConfirmed(
-                closeActionAccepted = true,
-                browserSurfaceMutationObservedAfterClick = true,
-                originalBlockedSurfaceStillCurrent = false
-            )
-        ).isTrue()
-        assertThat(
-            BlockingAccessibilityService.isClosedSurfaceConfirmed(
-                closeActionAccepted = true,
-                browserSurfaceMutationObservedAfterClick = false,
-                originalBlockedSurfaceStillCurrent = false
-            )
-        ).isFalse()
-        assertThat(
-            BlockingAccessibilityService.isClosedSurfaceConfirmed(
-                closeActionAccepted = true,
-                browserSurfaceMutationObservedAfterClick = true,
-                originalBlockedSurfaceStillCurrent = true
-            )
-        ).isFalse()
-        assertThat(
-            BlockingAccessibilityService.isClosedSurfaceConfirmed(
-                closeActionAccepted = false,
-                browserSurfaceMutationObservedAfterClick = true,
-                originalBlockedSurfaceStillCurrent = false
-            )
-        ).isFalse()
-    }
-
-    @Test
-    fun `post-click browser window change is observed without authorizing early Google`() {
-        val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
-        val transition = guard.tryStart(
-            CHROME_PACKAGE,
-            transitionId = 24L,
-            destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
-            expectedWindowId = 7,
-            detectionEventUptimeMillis = 50L
-        )!!
-        guard.markCloseClicked(CHROME_PACKAGE, 24L, 100L)
-        guard.observeBrowserEvent(
-            browserPackageName = CHROME_PACKAGE,
-            windowId = 8,
-            eventUptimeMillis = 101L,
-            eventType = AccessibilityEvent.TYPE_WINDOWS_CHANGED
-        )
-
-        assertThat(transition.latestSurfaceMutationEventUptimeMillis).isEqualTo(101L)
-        assertThat(transition.latestWindowTransitionEventUptimeMillis).isEqualTo(101L)
-        assertThat(
-            guard.transitionForConfirmation(
-                CHROME_PACKAGE,
-                windowId = 8,
-                eventUptimeMillis = 101L,
-                eventType = AccessibilityEvent.TYPE_WINDOWS_CHANGED
-            )
-        ).isNull()
-    }
-
-    @Test
     fun `strict Pomodoro does not block browser window transitions`() {
         assertThat(
             BlockingAccessibilityService.shouldApplyStrictPomodoroToWindow(
@@ -868,22 +695,6 @@ class WebsiteBlockNavigationTest {
         assertThat(machine.onPomodoroConfirmed()).isEqualTo(
             WebsiteRedirectionCoordinator.Action.HIDE_BLOCK_PRESENTATION
         )
-    }
-
-    @Test
-    fun `blocked app notice does not request a browser redirect`() {
-        val intent = BlockingAccessibilityService.createBlockNoticeIntent(
-            context = context,
-            strictBlock = false,
-            blockedPackage = "com.example.blocked",
-            blockedDomain = null,
-            redirectBrowserPackage = null
-        )
-
-        assertThat(intent.component?.className).isEqualTo(BlockNoticeActivity::class.java.name)
-        assertThat(
-            intent.hasExtra(BlockingAccessibilityService.EXTRA_REDIRECT_BROWSER_PACKAGE)
-        ).isFalse()
     }
 
     private companion object {

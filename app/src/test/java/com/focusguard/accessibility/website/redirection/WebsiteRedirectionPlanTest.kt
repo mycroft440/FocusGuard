@@ -30,8 +30,4 @@ class WebsiteRedirectionPlanTest {
         assertThat(WebsiteRedirectionPlan.canRetry(2)).isFalse()
     }
 
-    @Test
-    fun `external browser intent fallback is disabled to preserve the blocked tab identity`() {
-        assertThat(WebsiteRedirectionPlan.ALLOW_EXTERNAL_BROWSER_INTENT_FALLBACK).isFalse()
-    }
 }
