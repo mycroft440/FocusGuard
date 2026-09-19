@@ -1,0 +1,178 @@
+name: Website test cleanup
+
+on:
+  push:
+    branches:
+      - refactor/website-blocking-pipeline
+
+permissions:
+  contents: write
+
+jobs:
+  cleanup:
+    if: ${{ !contains(github.event.head_commit.message, '[website-test-cleanup]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/website-blocking-pipeline
+          fetch-depth: 0
+
+      - name: Remove obsolete tab-close test remnants
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          service_path = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
+          service = service_path.read_text()
+          old_constants = '''        private val CHROMIUM_TAB_SWITCHER_ENTRY_NAMES = listOf(
+              "tab_switcher_button",
+              "bottom_tab_switcher_button"
+          )
+          private const val WEBSITE_TAB_MENU_SETTLE_MILLIS = 120L
+          private const val WEBSITE_TAB_CLOSE_CONFIRM_MILLIS = 180L
+          '''
+          if old_constants not in service:
+              raise SystemExit('obsolete tab-close constants fragment not found')
+          service = service.replace(old_constants, '', 1)
+          old_helper = '''        internal fun chromiumTabSwitcherEntryNamesForTest(): List<String> =
+              CHROMIUM_TAB_SWITCHER_ENTRY_NAMES
+
+          '''
+          if old_helper not in service:
+              raise SystemExit('obsolete tab-switcher test helper not found')
+          service = service.replace(old_helper, '', 1)
+          service_path.write_text(service)
+
+          test_path = Path('app/src/test/java/com/focusguard/service/WebsiteBlockNavigationTest.kt')
+          test = test_path.read_text()
+          test = test.replace(
+              'fun `Chromium capability policy is package based and rejects stale surfaces`() {',
+              'fun `same tab policy is package and window bound`() {'
+          )
+          old_close_asserts = '''        assertThat(
+              policy.mayAttemptChromiumClose(
+                  arbitraryChromiumPackage,
+                  activeWindowId = 7,
+                  phaseStartedAtUptimeMillis = 100L,
+                  latestWindowTransitionEventUptimeMillis = 100L
+              )
+          ).isTrue()
+          assertThat(
+              policy.mayAttemptChromiumClose(
+                  arbitraryChromiumPackage,
+                  activeWindowId = 7,
+                  phaseStartedAtUptimeMillis = 100L,
+                  latestWindowTransitionEventUptimeMillis = 101L
+              )
+          ).isFalse()
+          '''
+          if old_close_asserts not in test:
+              raise SystemExit('obsolete close assertions not found')
+          test = test.replace(old_close_asserts, '', 1)
+
+          old_tab_test = '''    @Test
+          fun `Chromium tab closing supports Brave top and bottom tab switchers`() {
+              assertThat(BlockingAccessibilityService.chromiumTabSwitcherEntryNamesForTest())
+                  .containsExactly("tab_switcher_button", "bottom_tab_switcher_button")
+                  .inOrder()
+          }
+
+          '''
+          if old_tab_test not in test:
+              raise SystemExit('obsolete tab-closing test not found')
+          test = test.replace(old_tab_test, '', 1)
+
+          old_normal = '''    @Test
+          fun `normal transition hides only after Google was sanitized`() {
+              val machine = WebsiteRedirectionCoordinator.Session(
+                  strict = false
+              )
+
+              assertThat(machine.begin()).containsExactly(
+                  WebsiteRedirectionCoordinator.Action.SHOW_BLOCK_PRESENTATION,
+                  WebsiteRedirectionCoordinator.Action.NEUTRALIZE_BLOCKED_TAB
+              ).inOrder()
+              assertThat(machine.afterRedirectConfirmed()).isEqualTo(
+                  WebsiteRedirectionCoordinator.Action.HIDE_BLOCK_PRESENTATION
+              )
+          }
+          '''
+          new_normal = '''    @Test
+          fun `normal transition hides only after redirect was confirmed`() {
+              val machine = WebsiteRedirectionCoordinator.Session(strict = false)
+
+              machine.begin()
+              assertThat(machine.afterRedirectConfirmed()).isEqualTo(
+                  WebsiteRedirectionCoordinator.Action.HIDE_BLOCK_PRESENTATION
+              )
+          }
+          '''
+          if old_normal not in test:
+              raise SystemExit('obsolete normal-transition test not found')
+          test = test.replace(old_normal, new_normal, 1)
+
+          old_strict = '''    @Test
+          fun `strict transition opens Pomodoro only after Google sanitization`() {
+              val machine = WebsiteRedirectionCoordinator.Session(
+                  strict = true
+              )
+
+              val initialActions = machine.begin()
+              assertThat(initialActions.first()).isEqualTo(
+                  WebsiteRedirectionCoordinator.Action.SHOW_BLOCK_PRESENTATION
+              )
+              assertThat(initialActions.last()).isEqualTo(
+                  WebsiteRedirectionCoordinator.Action.NEUTRALIZE_BLOCKED_TAB
+              )
+              assertThat(machine.afterRedirectConfirmed()).isEqualTo(
+                  WebsiteRedirectionCoordinator.Action.OPEN_POMODORO
+              )
+              assertThat(machine.onPomodoroConfirmed()).isEqualTo(
+                  WebsiteRedirectionCoordinator.Action.HIDE_BLOCK_PRESENTATION
+              )
+          }
+          '''
+          new_strict = '''    @Test
+          fun `strict transition opens Pomodoro only after redirect confirmation`() {
+              val machine = WebsiteRedirectionCoordinator.Session(strict = true)
+
+              machine.begin()
+              assertThat(machine.afterRedirectConfirmed()).isEqualTo(
+                  WebsiteRedirectionCoordinator.Action.OPEN_POMODORO
+              )
+              assertThat(machine.onPomodoroConfirmed()).isEqualTo(
+                  WebsiteRedirectionCoordinator.Action.HIDE_BLOCK_PRESENTATION
+              )
+          }
+          '''
+          if old_strict not in test:
+              raise SystemExit('obsolete strict-transition test not found')
+          test = test.replace(old_strict, new_strict, 1)
+          test = test.replace(
+              'fun `close click alone never authorizes destination`() {',
+              'fun `redirect remains fail closed until destination confirmation`() {'
+          )
+          test_path.write_text(test)
+
+          docs_path = Path('docs/WEBSITE_BLOCKING_ARCHITECTURE.md')
+          docs = docs_path.read_text()
+          docs = docs.replace(
+              'O fluxo não abre outra aba como substituto do redirecionamento na aba bloqueada. O fallback externo permanece desabilitado enquanto não puder provar a neutralização da aba original.',
+              'O fluxo não abre outra aba como substituto do redirecionamento na aba bloqueada. Não existe fallback externo por `ACTION_VIEW`: ao esgotar as tentativas certificáveis na mesma aba, o fluxo permanece fail-closed.'
+          )
+          docs_path.write_text(docs)
+          PY
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt \
+                  app/src/test/java/com/focusguard/service/WebsiteBlockNavigationTest.kt \
+                  docs/WEBSITE_BLOCKING_ARCHITECTURE.md
+          git commit -m "test: align website tests with final architecture [website-test-cleanup]"
+          git push origin HEAD:refactor/website-blocking-pipeline
