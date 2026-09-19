@@ -33,12 +33,27 @@ jobs:
           set -euo pipefail
           python3 scripts/apply_redirect_fix_once.py
           python3 scripts/apply_redirect_fix_guard_once.py
-      - name: Run unit tests
+      - name: Compile modified app code
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew testDebugUnitTest --no-daemon --stacktrace
+          ./gradlew compileDebugKotlin --no-daemon --stacktrace
+      - name: Test redirection coordinator
+        shell: bash
+        run: ./gradlew testDebugUnitTest --tests "com.focusguard.accessibility.website.redirection.WebsiteRedirectionCoordinatorTest" --no-daemon --stacktrace
+      - name: Test address bar redirection policy
+        shell: bash
+        run: ./gradlew testDebugUnitTest --tests "com.focusguard.accessibility.website.redirection.AddressBarRedirectionActionsPolicyTest" --no-daemon --stacktrace
+      - name: Test redirection timing plan
+        shell: bash
+        run: ./gradlew testDebugUnitTest --tests "com.focusguard.accessibility.website.redirection.WebsiteRedirectionPlanTest" --no-daemon --stacktrace
+      - name: Test Firefox redirection regression coverage
+        shell: bash
+        run: ./gradlew testDebugUnitTest --tests "com.focusguard.service.FirefoxWebsiteRedirectReliabilityTest" --no-daemon --stacktrace
+      - name: Run full unit test suite
+        shell: bash
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
       - name: Commit validated fix
         shell: bash
         run: |
