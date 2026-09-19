@@ -19,6 +19,13 @@ internal object BrowserUiCapabilityPolicy {
     internal const val FIREFOX_COMPOSE_URL_ENTRY = "ADDRESSBAR_URL_BOX"
     internal const val FIREFOX_COMPOSE_SEARCH_ENTRY = "ADDRESSBAR_SEARCH_BOX"
 
+    private val chromePackages: Set<String> = setOf(
+        "com.android.chrome",
+        "com.chrome.beta",
+        "com.chrome.dev",
+        "com.chrome.canary"
+    )
+
     private val firefoxPackages: Set<String> = setOf(
         "org.mozilla.firefox",
         "org.mozilla.firefox_beta",
@@ -171,6 +178,8 @@ internal object BrowserUiCapabilityPolicy {
         "configurações",
         "configuracoes"
     )
+
+    internal fun isChromePackage(packageName: String): Boolean = packageName in chromePackages
 
     internal fun isFirefoxPackage(packageName: String): Boolean = packageName in firefoxPackages
 
@@ -514,19 +523,25 @@ internal object BrowserUiCapabilityPolicy {
 
     fun canUseImeEnter(apiLevel: Int): Boolean = apiLevel >= IME_ENTER_MIN_API
 
-    fun prefersClickAddressBarActivation(expectedBrowserPackage: String): Boolean = when (
-        BrowserCompatibilityStore.preferredActivationMethod(expectedBrowserPackage)
-    ) {
-        BrowserActivationMethod.CLICK -> true
-        BrowserActivationMethod.FOCUS -> false
-        null -> expectedBrowserPackage == DUCKDUCKGO_PACKAGE ||
-            isFirefoxPackage(expectedBrowserPackage) ||
-            expectedBrowserPackage in setOf(
-                "com.android.chrome", "com.chrome.beta", "com.chrome.dev", "com.chrome.canary",
-                "com.sec.android.app.sbrowser", "com.sec.android.app.sbrowser.beta",
-                "mark.via", "mark.via.gp", "com.yandex.browser", "com.yandex.browser.beta",
-                "com.yandex.browser.alpha", "com.yandex.browser.lite"
-            )
+    fun prefersClickAddressBarActivation(expectedBrowserPackage: String): Boolean {
+        // Chrome's url_bar is itself an editable/focusable native URI control. A
+        // reported ACTION_CLICK success can race the omnibox transition and leave
+        // no focused editor for ACTION_SET_TEXT. Prefer explicit accessibility
+        // focus for Chrome; AddressBarRedirectionActions still keeps CLICK as the
+        // secondary fallback when focus is unavailable.
+        if (isChromePackage(expectedBrowserPackage)) return false
+
+        return when (BrowserCompatibilityStore.preferredActivationMethod(expectedBrowserPackage)) {
+            BrowserActivationMethod.CLICK -> true
+            BrowserActivationMethod.FOCUS -> false
+            null -> expectedBrowserPackage == DUCKDUCKGO_PACKAGE ||
+                isFirefoxPackage(expectedBrowserPackage) ||
+                expectedBrowserPackage in setOf(
+                    "com.sec.android.app.sbrowser", "com.sec.android.app.sbrowser.beta",
+                    "mark.via", "mark.via.gp", "com.yandex.browser", "com.yandex.browser.beta",
+                    "com.yandex.browser.alpha", "com.yandex.browser.lite"
+                )
+        }
     }
 
     fun mayRewriteBlockedTabAfterCloseAttempt(
