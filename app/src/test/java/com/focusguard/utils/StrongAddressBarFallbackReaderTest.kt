@@ -13,20 +13,20 @@ class StrongAddressBarFallbackReaderTest {
     fun nestedExactChromeAddressResourceIsReadBelowWebContainer() {
         val pkg = "com.android.chrome"
         val strong = node(
-            packageName = pkg,
-            windowId = 7,
+            pkg = pkg,
+            win = 7,
             viewId = "$pkg:id/url_bar",
-            text = "https://blocked.example/path",
+            nodeText = "https://blocked.example/path",
             editable = true,
             focused = true
         )
         val webContainer = node(
-            packageName = pkg,
-            windowId = 7,
-            className = "android.webkit.WebView",
+            pkg = pkg,
+            win = 7,
+            nodeClassName = "android.webkit.WebView",
             children = listOf(strong)
         )
-        val root = node(packageName = pkg, windowId = 7, children = listOf(webContainer))
+        val root = node(pkg = pkg, win = 7, children = listOf(webContainer))
 
         val evidence = StrongAddressBarFallbackReader.read(
             root = root,
@@ -44,18 +44,18 @@ class StrongAddressBarFallbackReaderTest {
     fun arbitraryHtmlTextInsideWebContainerIsNeverAcceptedAsAddress() {
         val pkg = "com.android.chrome"
         val htmlField = node(
-            packageName = pkg,
-            windowId = 8,
+            pkg = pkg,
+            win = 8,
             viewId = "$pkg:id/page_search_field",
-            text = "https://blocked.example"
+            nodeText = "https://blocked.example"
         )
         val webContainer = node(
-            packageName = pkg,
-            windowId = 8,
-            className = "android.webkit.WebView",
+            pkg = pkg,
+            win = 8,
+            nodeClassName = "android.webkit.WebView",
             children = listOf(htmlField)
         )
-        val root = node(packageName = pkg, windowId = 8, children = listOf(webContainer))
+        val root = node(pkg = pkg, win = 8, children = listOf(webContainer))
 
         val evidence = StrongAddressBarFallbackReader.read(
             root = root,
@@ -71,20 +71,20 @@ class StrongAddressBarFallbackReaderTest {
     fun nonUrlTextOnOneStrongNodeDoesNotHideLaterStrongUrl() {
         val pkg = "com.android.chrome"
         val labelOnly = node(
-            packageName = pkg,
-            windowId = 9,
+            pkg = pkg,
+            win = 9,
             viewId = "$pkg:id/location_bar",
-            text = "Search or type URL"
+            nodeText = "Search or type URL"
         )
         val actualAddress = node(
-            packageName = pkg,
-            windowId = 9,
+            pkg = pkg,
+            win = 9,
             viewId = "$pkg:id/url_bar",
-            text = "https://blocked.example/page"
+            nodeText = "https://blocked.example/page"
         )
         val root = node(
-            packageName = pkg,
-            windowId = 9,
+            pkg = pkg,
+            win = 9,
             children = listOf(labelOnly, actualAddress)
         )
 
@@ -100,23 +100,23 @@ class StrongAddressBarFallbackReaderTest {
     }
 
     private fun node(
-        packageName: String,
-        windowId: Int,
+        pkg: String,
+        win: Int,
         viewId: String? = null,
-        text: String? = null,
-        className: String = "android.view.View",
+        nodeText: String? = null,
+        nodeClassName: String = "android.view.View",
         editable: Boolean = false,
         focused: Boolean = false,
         children: List<AccessibilityNodeInfo> = emptyList()
     ): AccessibilityNodeInfo = mockk(relaxed = true) {
-        every { this@mockk.packageName } returns packageName
-        every { this@mockk.windowId } returns windowId
+        every { packageName } returns pkg
+        every { windowId } returns win
         every { isVisibleToUser } returns true
         every { viewIdResourceName } returns viewId
-        every { this@mockk.text } returns text
+        every { text } returns nodeText
         every { contentDescription } returns null
         every { hintText } returns null
-        every { this@mockk.className } returns className
+        every { className } returns nodeClassName
         every { isEditable } returns editable
         every { isFocused } returns focused
         every { childCount } returns children.size
