@@ -2965,16 +2965,34 @@ class BlockingAccessibilityService : AccessibilityService() {
         return null
     }
 
+    private fun accessibilityEventSourceWindowId(event: AccessibilityEvent): Int? {
+        val source = runCatching { event.source }.getOrNull() ?: return null
+        return try {
+            source.windowId.takeIf { it >= 0 }
+        } catch (_: RuntimeException) {
+            null
+        } finally {
+            recycleSafely(source)
+        }
+    }
+
     private fun handleImmediateBrowserAddressEvent(
         event: AccessibilityEvent,
         packageName: String
     ): Boolean {
         if (event.eventType !in immediateBrowserBlockEventTypes ||
             packageName !in browserPackages ||
-            event.windowId < 0 ||
             blockedWebsitesDomainSet.isEmpty() ||
             websiteBlockTransitionGuard.isActive(packageName)
         ) return false
+
+        val sourceWindowId = accessibilityEventSourceWindowId(event)
+        val immediateWindowId = resolveImmediateBrowserWindowId(
+            eventWindowId = event.windowId,
+            sourceWindowId = sourceWindowId,
+            currentWindowId = browserInspectionCoordinator.currentToken(packageName)?.windowId
+        )
+        if (immediateWindowId < 0) return false
 
         val addressText = WebsiteBlocker.extractAddressBarTextFromEvent(
             event = event,
@@ -2994,7 +3012,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         // browser window that emitted the address-bar event.
         val offer = browserInspectionCoordinator.offer(
             packageName = packageName,
-            windowId = event.windowId,
+            windowId = immediateWindowId,
             eventType = event.eventType,
             eventUptimeMillis = event.eventTime,
             receivedUptimeMillis = SystemClock.uptimeMillis(),
@@ -3006,7 +3024,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         foregroundPackageName = packageName
         routeWebsiteBlockByHierarchy(
             browserPackageName = packageName,
-            browserWindowId = event.windowId,
+            browserWindowId = immediateWindowId,
             blockedCandidate = candidate,
             detectionEventUptimeMillis = event.eventTime
         )
@@ -5014,13 +5032,11 @@ class BlockingAccessibilityService : AccessibilityService() {
             val current = currentAddress?.takeIf(String::isNotBlank) ?: return false
             val candidateRule = WebsiteBlocker.findMatchingRule(candidate, rules) ?: return false
             val currentRule = WebsiteBlocker.findMatchingRule(current, rules) ?: return false
-            if (candidateRule != currentRule) return false
-            val candidateDomain = WebsiteBlocker.extractDomain(candidate)
-            val currentDomain = WebsiteBlocker.extractDomain(current)
-            if (candidateDomain.isNotBlank() && currentDomain.isNotBlank() &&
-                candidateDomain != currentDomain
-            ) return false
-            return browserTargetIdentity(candidate) == browserTargetIdentity(current)
+            // Enforcement is rule-scoped, not path-scoped. If the live browser surface
+            // is still covered by the exact same blocked rule, rewriting it is correct
+            // even when Chrome has shortened/canonicalized the visible path or the user
+            // moved to another still-blocked page under that rule.
+            return candidateRule == currentRule
         }
 
         private fun browserTargetIdentity(value: String): String {
@@ -5059,6 +5075,17 @@ class BlockingAccessibilityService : AccessibilityService() {
             eventWindowId: Int,
             currentWindowId: Int?
         ): Int = when {
+            eventWindowId >= 0 -> eventWindowId
+            currentWindowId != null && currentWindowId >= 0 -> currentWindowId
+            else -> INVALID_BROWSER_WINDOW_ID
+        }
+
+        internal fun resolveImmediateBrowserWindowId(
+            eventWindowId: Int,
+            sourceWindowId: Int?,
+            currentWindowId: Int?
+        ): Int = when {
+            sourceWindowId != null && sourceWindowId >= 0 -> sourceWindowId
             eventWindowId >= 0 -> eventWindowId
             currentWindowId != null && currentWindowId >= 0 -> currentWindowId
             else -> INVALID_BROWSER_WINDOW_ID

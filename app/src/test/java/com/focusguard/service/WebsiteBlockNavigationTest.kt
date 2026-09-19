@@ -599,7 +599,7 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
-    fun `obsolete detection in same window cannot touch a changed tab`() {
+    fun `same blocked rule remains current while stale or safe targets are rejected`() {
         val rules = setOf("facebook.com", "instagram.com")
 
         assertThat(
@@ -619,7 +619,7 @@ class WebsiteBlockNavigationTest {
                 detectionEventUptimeMillis = 100L,
                 latestObservedEventUptimeMillis = 101L
             )
-        ).isFalse()
+        ).isTrue()
         assertThat(
             BlockingAccessibilityService.detectedBrowserTargetStillCurrent(
                 blockedCandidate = "https://m.facebook.com/profile",
@@ -960,6 +960,31 @@ class WebsiteBlockNavigationTest {
                 currentWindowId = 7
             )
         ).isEqualTo(8)
+    }
+
+    @Test
+    fun `immediate browser detection prefers source window and survives missing event window`() {
+        assertThat(
+            BlockingAccessibilityService.resolveImmediateBrowserWindowId(
+                eventWindowId = -1,
+                sourceWindowId = 7,
+                currentWindowId = null
+            )
+        ).isEqualTo(7)
+        assertThat(
+            BlockingAccessibilityService.resolveImmediateBrowserWindowId(
+                eventWindowId = -1,
+                sourceWindowId = null,
+                currentWindowId = 8
+            )
+        ).isEqualTo(8)
+        assertThat(
+            BlockingAccessibilityService.resolveImmediateBrowserWindowId(
+                eventWindowId = 9,
+                sourceWindowId = 7,
+                currentWindowId = 8
+            )
+        ).isEqualTo(7)
     }
 
     private companion object {
