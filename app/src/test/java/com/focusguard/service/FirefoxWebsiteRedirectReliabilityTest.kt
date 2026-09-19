@@ -1,5 +1,8 @@
 package com.focusguard.service
 
+import com.focusguard.accessibility.website.redirection.WebsiteBlockTransitionGuard
+import com.focusguard.accessibility.website.redirection.WebsiteRedirectionCoordinator
+
 import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
@@ -94,12 +97,12 @@ class FirefoxWebsiteRedirectReliabilityTest {
     }
 
     @Test
-    fun `stable current Google surface can confirm a missed Firefox navigation event`() {
-        val guard = BlockingAccessibilityService.WebsiteBlockTransitionGuard()
+    fun `stable current redirect surface can confirm a missed Firefox navigation event`() {
+        val guard = WebsiteBlockTransitionGuard()
         val transition = guard.tryStart(
             browserPackageName = "org.mozilla.firefox",
             transitionId = 11L,
-            destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+            destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
             expectedWindowId = 7,
             inspectionGeneration = 3L,
             blockedCandidate = "example.com",
@@ -108,7 +111,7 @@ class FirefoxWebsiteRedirectReliabilityTest {
         )!!
 
         assertThat(
-            guard.confirmGoogleFromStableCurrentSurface(
+            guard.confirmRedirectFromStableCurrentSurface(
                 browserPackageName = "org.mozilla.firefox",
                 windowId = 7,
                 observedAtUptimeMillis = 160L
@@ -124,26 +127,26 @@ class FirefoxWebsiteRedirectReliabilityTest {
         ).isTrue()
 
         assertThat(
-            guard.confirmGoogleFromStableCurrentSurface(
+            guard.confirmRedirectFromStableCurrentSurface(
                 browserPackageName = "org.mozilla.firefox",
                 windowId = 8,
                 observedAtUptimeMillis = 160L
             )
         ).isFalse()
         assertThat(
-            guard.confirmGoogleFromStableCurrentSurface(
+            guard.confirmRedirectFromStableCurrentSurface(
                 browserPackageName = "org.mozilla.firefox",
                 windowId = 7,
                 observedAtUptimeMillis = 149L
             )
         ).isFalse()
         assertThat(
-            guard.confirmGoogleFromStableCurrentSurface(
+            guard.confirmRedirectFromStableCurrentSurface(
                 browserPackageName = "org.mozilla.firefox",
                 windowId = 7,
                 observedAtUptimeMillis = 160L
             )
         ).isTrue()
-        assertThat(transition.safeGoogleConfirmed.isCompleted).isTrue()
+        assertThat(transition.safeRedirectConfirmed.isCompleted).isTrue()
     }
 }

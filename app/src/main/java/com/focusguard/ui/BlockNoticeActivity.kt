@@ -37,7 +37,8 @@ internal fun websiteSurfaceFor(
  * exactly one owner Activity:
  *
  *  - [PasswordUnlockActivity] for a plain PASSWORD-session app or website target;
- *  - [GenericBlockNoticeActivity] for every non-password/stronger protection.
+ *  - [WebsiteBlockNoticeActivity] for a known non-password website target;
+ *  - [GenericBlockNoticeActivity] for app targets and target-unknown fail-closed states.
  *
  * TIME commitments and active usage limits have a second invariant: on a Device
  * Owner installation their target package is reconciled into Android's suspended
@@ -45,8 +46,8 @@ internal fun websiteSurfaceFor(
  * Activities and removes it from Recents instead of leaving the intercepted app
  * alive as a background task. Plain PASSWORD visits deliberately skip that step.
  *
- * Keeping the router UI-free prevents the generic hard-block screen from ever
- * being shown for a password-protected target, even while Room is being queried.
+ * Keeping the router UI-free prevents app and website presentation from becoming
+ * coupled while Room ownership is being resolved.
  */
 @AndroidEntryPoint
 class BlockNoticeActivity : AppCompatActivity() {
@@ -278,9 +279,16 @@ class BlockNoticeActivity : AppCompatActivity() {
             sourceIntent: Intent,
             surface: AppBlockSurfacePolicy.Surface
         ): Intent {
-            val destination = when (surface) {
-                AppBlockSurfacePolicy.Surface.PASSWORD_UNLOCK -> PasswordUnlockActivity::class.java
-                AppBlockSurfacePolicy.Surface.GENERIC_BLOCK -> GenericBlockNoticeActivity::class.java
+            val blockedDomain = sourceIntent.getStringExtra(
+                BlockingAccessibilityService.EXTRA_BLOCKED_DOMAIN
+            )?.takeIf(String::isNotBlank)
+            val destination = when {
+                surface == AppBlockSurfacePolicy.Surface.PASSWORD_UNLOCK ->
+                    PasswordUnlockActivity::class.java
+                blockedDomain != null ->
+                    WebsiteBlockNoticeActivity::class.java
+                else ->
+                    GenericBlockNoticeActivity::class.java
             }
             return Intent(context, destination).apply {
                 sourceIntent.extras?.let { putExtras(it) }

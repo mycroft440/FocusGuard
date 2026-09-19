@@ -32,7 +32,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.view.doOnPreDraw
-import androidx.lifecycle.lifecycleScope
 import com.focusguard.R
 import com.focusguard.security.CurtainDestinationReadyCoordinator
 import com.focusguard.security.SafeSurfaceReadinessPolicy
@@ -43,21 +42,22 @@ import com.focusguard.ui.compose.theme.FocusGuardTheme
 import com.focusguard.ui.compose.theme.TextHint
 import com.focusguard.ui.compose.theme.TextPrimary
 import com.focusguard.ui.compose.theme.TextSecondary
-import com.focusguard.usage.UsageImpactRouter
 import com.focusguard.utils.FocusGuardLogger
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /**
- * Non-interactive app/generic fail-closed block surface.
+ * Terminal fail-closed presentation for a known website target.
  *
- * Known website targets are owned by [WebsiteBlockNoticeActivity]. PASSWORD
- * credentials are owned by [PasswordUnlockActivity]. Keeping this Activity free
- * from website URL/redirection behavior prevents the app-block UI from becoming
- * a second owner of the website pipeline.
+ * The normal browser HARD path never opens this Activity before redirection: doing
+ * so would steal foreground ownership from the browser and make same-tab address-bar
+ * manipulation impossible. The normal block presentation is the opaque accessibility
+ * overlay. This Activity is used only when the redirect cannot be certified, when a
+ * website is represented by a native app/PWA surface, or when another terminal
+ * website block needs a safe FocusGuard-owned foreground surface.
+ *
+ * It never identifies URLs and never performs browser navigation.
  */
-class GenericBlockNoticeActivity : AppCompatActivity() {
+class WebsiteBlockNoticeActivity : AppCompatActivity() {
 
     private var strictBlock = false
     private var noticeDrawn = false
@@ -66,16 +66,9 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
     private var pendingCurtainGeneration = 0L
     private var freshFrameGeneration = 0L
 
-    // A usage-limit block can reuse this singleTop Activity many times. Keep an
-    // attempt id so every interception gets its own impact-route decision.
-    private var blockAttemptId = 0L
-    private var pendingUsageImpactAttemptId = 0L
-    private var pendingUsageImpactPackage: String? = null
-    private var usageImpactJob: Job? = null
-
     private data class NoticePayload(
         val strictBlock: Boolean,
-        val blockedPackage: String?
+        val blockedDomain: String?
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -98,7 +91,6 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
         super.onResume()
         activityResumed = true
         acknowledgePendingNoticeIfPresented()
-        routeToUsageImpactIfReady()
     }
 
     override fun onPause() {
@@ -109,16 +101,7 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
     override fun onWindowFocusChanged(hasFocus: Boolean) {
         super.onWindowFocusChanged(hasFocus)
         windowFocused = hasFocus
-        if (hasFocus) {
-            acknowledgePendingNoticeIfPresented()
-            routeToUsageImpactIfReady()
-        }
-    }
-
-    override fun onDestroy() {
-        usageImpactJob?.cancel()
-        usageImpactJob = null
-        super.onDestroy()
+        if (hasFocus) acknowledgePendingNoticeIfPresented()
     }
 
     private fun showBlockNotice(sourceIntent: Intent) {
@@ -131,24 +114,21 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
                 BlockingAccessibilityService.EXTRA_STRICT_BLOCK,
                 false
             ),
-            blockedPackage = sourceIntent.getStringExtra(
-                BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE
+            blockedDomain = sourceIntent.getStringExtra(
+                BlockingAccessibilityService.EXTRA_BLOCKED_DOMAIN
             )?.takeIf(String::isNotBlank)
         )
 
         strictBlock = payload.strictBlock
         pendingCurtainGeneration = curtainGeneration
         freshFrameGeneration = 0L
-
-        val attemptId = ++blockAttemptId
-        scheduleUsageImpactRoute(payload, attemptId)
         noticeDrawn = false
 
         setContent {
             FocusGuardTheme {
-                GenericBlockNoticeContent(
+                WebsiteBlockNoticeContent(
                     strictBlock = payload.strictBlock,
-                    blockedPackage = payload.blockedPackage,
+                    blockedDomain = payload.blockedDomain,
                     onGoToPomodoroLock = ::goToPomodoroLock
                 )
             }
@@ -169,72 +149,19 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
             )
             if (detectedAt > 0L) {
                 FocusGuardLogger.log(
-                    "GenericBlockNotice",
+                    "WebsiteBlockNotice",
                     "Evento→primeiro desenho=${SystemClock.uptimeMillis() - detectedAt}ms"
                 )
             }
             acknowledgePendingNoticeIfPresented()
-            routeToUsageImpactIfReady()
         }
         window.decorView.invalidate()
     }
 
-    /**
-     * Resolve whether this exact attempt came from an active non-password app
-     * usage limit. Navigation waits for the curtain handshake so the impact screen
-     * cannot race the instant opaque protection surface.
-     */
-    private fun scheduleUsageImpactRoute(payload: NoticePayload, attemptId: Long) {
-        usageImpactJob?.cancel()
-        usageImpactJob = null
-        pendingUsageImpactAttemptId = 0L
-        pendingUsageImpactPackage = null
-
-        val packageName = payload.blockedPackage
-        if (payload.strictBlock || packageName.isNullOrBlank()) return
-
-        usageImpactJob = lifecycleScope.launch {
-            val shouldShow = UsageImpactRouter.shouldShowForBlockedApp(
-                this@GenericBlockNoticeActivity,
-                packageName
-            )
-            if (
-                !shouldShow ||
-                attemptId != blockAttemptId ||
-                isFinishing ||
-                isDestroyed
-            ) return@launch
-
-            pendingUsageImpactAttemptId = attemptId
-            pendingUsageImpactPackage = packageName
-            routeToUsageImpactIfReady()
-        }
-    }
-
-    private fun routeToUsageImpactIfReady() {
-        val packageName = pendingUsageImpactPackage ?: return
-        if (pendingUsageImpactAttemptId != blockAttemptId) return
-        if (
-            pendingCurtainGeneration > 0L ||
-            !noticeDrawn ||
-            !activityResumed ||
-            !windowFocused ||
-            isFinishing ||
-            isDestroyed
-        ) return
-
-        pendingUsageImpactPackage = null
-        pendingUsageImpactAttemptId = 0L
-        usageImpactJob = null
-        goToUsageImpact(packageName)
-    }
-
     private fun acknowledgePendingNoticeIfPresented(): Boolean {
         val generation = pendingCurtainGeneration
-        if (generation <= 0L) {
-            routeToUsageImpactIfReady()
-            return false
-        }
+        if (generation <= 0L) return false
+
         val ready = SafeSurfaceReadinessPolicy.decide(
             alreadyDrawn = noticeDrawn,
             freshFrameAfterRequest = freshFrameGeneration == generation,
@@ -247,7 +174,6 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
         pendingCurtainGeneration = 0L
         freshFrameGeneration = 0L
         CurtainDestinationReadyCoordinator.notifyReady(generation)
-        routeToUsageImpactIfReady()
         return true
     }
 
@@ -264,11 +190,6 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
         finish()
     }
 
-    private fun goToUsageImpact(packageName: String) {
-        startActivity(UsageImpactActivity.createIntent(this, packageName))
-        finish()
-    }
-
     private fun goHome() {
         startActivity(
             Intent(Intent.ACTION_MAIN).apply {
@@ -281,9 +202,9 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
 }
 
 @Composable
-private fun GenericBlockNoticeContent(
+private fun WebsiteBlockNoticeContent(
     strictBlock: Boolean,
-    blockedPackage: String?,
+    blockedDomain: String?,
     onGoToPomodoroLock: () -> Unit
 ) {
     LaunchedEffect(strictBlock) {
@@ -320,11 +241,7 @@ private fun GenericBlockNoticeContent(
 
             Spacer(Modifier.height(28.dp))
             Text(
-                text = if (blockedPackage != null) {
-                    "App bloqueado pelo FocusGuard"
-                } else {
-                    "Acesso bloqueado pelo FocusGuard"
-                },
+                text = stringResource(R.string.website_block_overlay_message_generic),
                 color = TextPrimary,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
@@ -332,13 +249,12 @@ private fun GenericBlockNoticeContent(
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                text = blockedPackage ?: "Mantenha o foco em seus objetivos.",
+                text = blockedDomain ?: stringResource(R.string.website_block_notice_description),
                 color = TextSecondary,
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center
             )
             Spacer(Modifier.height(28.dp))
-
             Text(
                 text = stringResource(
                     if (strictBlock) {

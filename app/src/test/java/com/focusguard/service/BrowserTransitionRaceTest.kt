@@ -1,8 +1,11 @@
 package com.focusguard.service
 
+import com.focusguard.accessibility.website.redirection.WebsiteBlockTransitionHandle
+import com.focusguard.accessibility.website.redirection.WebsiteBlockTransitionGuard
+import com.focusguard.accessibility.website.redirection.WebsiteRedirectionCoordinator
+
 import android.accessibilityservice.AccessibilityService
 import android.app.Application
-import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
@@ -11,7 +14,9 @@ import com.focusguard.accessibility.website.identification.WebsiteIdentification
 import com.focusguard.accessibility.website.identification.WebsiteIdentificationResult
 import com.focusguard.accessibility.website.identification.WebsiteIdentificationStatus
 import com.focusguard.accessibility.website.redirection.AddressBarRedirectionActions
+import com.focusguard.accessibility.website.redirection.WebsiteTabNeutralizationPolicy
 import com.focusguard.utils.BrowserSurfaceInspector
+import com.focusguard.utils.WebsiteBlocker
 import io.mockk.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
@@ -34,8 +39,8 @@ class BrowserTransitionRaceTest {
     private val pkg = "com.android.chrome"
     private lateinit var service: BlockingAccessibilityService
     private lateinit var coordinator: BrowserInspectionCoordinator
-    private lateinit var guard: BlockingAccessibilityService.WebsiteBlockTransitionGuard
-    private lateinit var transition: BlockingAccessibilityService.WebsiteBlockTransitionHandle
+    private lateinit var guard: WebsiteBlockTransitionGuard
+    private lateinit var transition: WebsiteBlockTransitionHandle
 
     @Before
     fun setUp() {
@@ -51,7 +56,7 @@ class BrowserTransitionRaceTest {
         guard = ReflectionHelpers.getField(service, "websiteBlockTransitionGuard")
         val token = coordinator.offer(pkg, 10, 32, 1L, 1L, "", emptyList(), null).snapshot.token
         transition = guard.tryStart(
-            pkg, 1L, BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+            pkg, 1L, WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
             expectedWindowId = 10, inspectionGeneration = token.generation,
             blockedCandidate = "https://blocked.example", blockedRules = setOf("blocked.example"),
             detectionEventUptimeMillis = 1L
@@ -65,7 +70,7 @@ class BrowserTransitionRaceTest {
     @After
     fun tearDown() = unmockkAll()
 
-    private fun call(name: String, vararg args: Any): Any? {
+    private fun call(name: String, vararg args: Any?): Any? {
         val method = BlockingAccessibilityService::class.java.declaredMethods.single {
             it.name == name && it.parameterCount == args.size
         }
@@ -100,31 +105,10 @@ class BrowserTransitionRaceTest {
     }
 
     @Test
-    fun windowChangeBeforeGuardedIntentStillStartsExplicitGoogleFallback() = runTest {
-        coordinator.observeWindow(pkg, 11)
-        assertEquals(true, callSuspend("requestSafeGoogleThroughBrowserIntent", transition))
-        verify(exactly = 1) {
-            service.startActivity(match {
-                it.action == Intent.ACTION_VIEW &&
-                    it.data?.toString() == "https://www.google.com" &&
-                    it.`package` == pkg
-            })
-        }
-    }
-
-    @Test
-    fun supersededCurtainStillPreventsExplicitGoogleFallback() = runTest {
-        coordinator.observeWindow(pkg, 11)
-        ReflectionHelpers.setField(service, "instantBlockCurtainGeneration", 2L)
-        assertEquals(false, callSuspend("requestSafeGoogleThroughBrowserIntent", transition))
-        verify(exactly = 0) { service.startActivity(any()) }
-    }
-
-    @Test
     fun windowChangeDuringOwnedCurtainStillAllowsFailClosedHandoff() {
         coordinator.observeWindow(pkg, 11)
         call("failClosedWebsiteTransition", transition)
-        call("finishWebsiteTransition", transition)
+        call("finishWebsiteTransition", transition, null)
         verify(exactly = 1) { service.startActivity(any()) }
         verify(exactly = 0) { BrowserCompatibilityStore.recordRedirectionFailure(any()) }
         assertFalse(guard.isActive(pkg))
@@ -135,7 +119,7 @@ class BrowserTransitionRaceTest {
         coordinator.observeWindow(pkg, 11)
         ReflectionHelpers.setField(service, "instantBlockCurtainGeneration", 2L)
         call("failClosedWebsiteTransition", transition)
-        call("finishWebsiteTransition", transition)
+        call("finishWebsiteTransition", transition, null)
         verify(exactly = 0) { service.startActivity(any()) }
         verify(exactly = 0) { BrowserCompatibilityStore.recordRedirectionFailure(any()) }
         assertFalse(guard.isActive(pkg))
@@ -144,13 +128,13 @@ class BrowserTransitionRaceTest {
     @Test
     fun oldFinallyCannotClearReplacementTransitionOrCompatibilityState() {
         coordinator.observeWindow(pkg, 11)
-        call("finishWebsiteTransition", transition)
+        call("finishWebsiteTransition", transition, null)
         val newer = guard.tryStart(
-            pkg, 2L, BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+            pkg, 2L, WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
             expectedWindowId = 11, inspectionGeneration = coordinator.currentGeneration(pkg, 11)!!
         )!!
         clearMocks(BrowserCompatibilityStore, answers = false)
-        call("finishWebsiteTransition", transition)
+        call("finishWebsiteTransition", transition, null)
         assertSame(newer, guard.activeTransition(pkg))
         verify(exactly = 0) { BrowserCompatibilityStore.finishRedirection(any()) }
         verify(exactly = 0) { BrowserCompatibilityStore.recordRedirectionFailure(any()) }
@@ -158,14 +142,19 @@ class BrowserTransitionRaceTest {
 
     @Test
     fun currentFailureIsStillRecorded() {
-        call("finishWebsiteTransition", transition)
+        call("finishWebsiteTransition", transition, null)
         verify(exactly = 1) { BrowserCompatibilityStore.recordRedirectionFailure(pkg) }
         verify(exactly = 1) { BrowserCompatibilityStore.finishRedirection(pkg) }
     }
 
     @Test
-    fun windowChangeAfterSetTextPreventsEverySubmitAndLearning() = runTest {
-        mockkObject(AddressBarRedirectionActions, BrowserSurfaceInspector, WebsiteIdentificationEngine)
+    fun windowChangeAfterSetTextPreventsWriteLearning() = runTest {
+        mockkObject(
+            AddressBarRedirectionActions,
+            BrowserSurfaceInspector,
+            WebsiteIdentificationEngine,
+            WebsiteBlocker
+        )
         val window = mockk<AccessibilityWindowInfo> {
             every { id } returns 10
             every { isActive } returns true
@@ -180,6 +169,7 @@ class BrowserTransitionRaceTest {
         every { BrowserSurfaceInspector.inspect(any(), pkg) } returns BrowserSurfaceInspector.Surface.WEB_CONTENT
         every { WebsiteIdentificationEngine.identifyFromRoot(any(), pkg, 10, any(), any()) } returns
             WebsiteIdentificationResult(WebsiteIdentificationStatus.IDENTIFIED, urlCandidate = "https://blocked.example")
+        every { WebsiteBlocker.extractAddressBarTextFromRoot(any(), pkg, any()) } returns "https://blocked.example"
         every { BrowserCompatibilityStore.preferredWriteMethod(pkg) } returns null
         every { AddressBarRedirectionActions.activate(any(), pkg, 10, any(), any(), any()) } returns
             AddressBarRedirectionActions.Result(AddressBarRedirectionActions.Status.ACCEPTED, "$pkg:id/url_bar")
@@ -190,15 +180,16 @@ class BrowserTransitionRaceTest {
         }
 
         val result = callSuspend(
-            "requestSafeGoogleInCurrentTab", pkg, 10,
-            BlockingAccessibilityService.WebsiteTabNeutralizationPolicy(pkg, 10), transition
+            "prepareSafeAddressBar",
+            pkg,
+            10,
+            WebsiteTabNeutralizationPolicy(pkg, 10),
+            transition,
+            1L
         )
 
-        assertEquals(false, result)
+        assertEquals(0L, result)
         verify(exactly = 1) { AddressBarRedirectionActions.setText(any(), pkg, 10, any(), any(), any()) }
-        verify(exactly = 0) { AddressBarRedirectionActions.submitImeEnter(any(), any(), any(), any(), any(), any()) }
-        verify(exactly = 0) { AddressBarRedirectionActions.submitAnnouncedEditorAction(any(), any(), any(), any(), any(), any()) }
-        verify(exactly = 0) { AddressBarRedirectionActions.clickCertifiedGoButton(any(), any(), any(), any()) }
         verify(exactly = 0) { BrowserCompatibilityStore.recordWriteSuccess(any(), any(), any(), any()) }
     }
 

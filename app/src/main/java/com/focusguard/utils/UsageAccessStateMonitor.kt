@@ -135,6 +135,8 @@ object UsageAccessStateMonitor {
 
         scope.launch {
             try {
+                currentCoroutineContext().ensureActive()
+                if (!isGenerationActive(generation)) return@launch
                 val granted = PermissionUtils.isUsageAccessEnabled(context)
                 currentCoroutineContext().ensureActive()
                 if (!isGenerationActive(generation)) return@launch

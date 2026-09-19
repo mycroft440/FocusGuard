@@ -100,7 +100,9 @@ internal object BrowserCompatibilityStore {
 
     private data class PendingRedirect(
         val normalizedTarget: String,
-        val submitted: Boolean
+        val submitted: Boolean,
+        val candidateSubmitMethod: BrowserSubmitMethod? = null,
+        val candidateSubmitEntryName: String? = null
     )
 
     fun initialize(context: Context) {
@@ -216,6 +218,9 @@ internal object BrowserCompatibilityStore {
                     status = BrowserCompatibilityStatus.SUPPORTED,
                     packageVersionCode = installedVersionCodeLocked(packageName)
                         ?: previous.packageVersionCode,
+                    preferredAddressBarEntryName = pending.candidateSubmitEntryName
+                        ?: previous.preferredAddressBarEntryName,
+                    submitMethod = pending.candidateSubmitMethod ?: previous.submitMethod,
                     consecutiveRedirectionFailures = 0,
                     updatedAtMillis = System.currentTimeMillis()
                 )
@@ -320,15 +325,16 @@ internal object BrowserCompatibilityStore {
         packageName: String,
         viewIdResourceName: String?,
         method: BrowserSubmitMethod
-    ) = updateMethod(packageName, viewIdResourceName) { previous, entryName ->
-        pendingRedirects[packageName]?.let { pending ->
-            pendingRedirects[packageName] = pending.copy(submitted = true)
+    ) {
+        if (packageName.isBlank()) return
+        synchronized(lock) {
+            val pending = pendingRedirects[packageName] ?: return
+            pendingRedirects[packageName] = pending.copy(
+                submitted = true,
+                candidateSubmitMethod = method,
+                candidateSubmitEntryName = browserOwnedEntryName(packageName, viewIdResourceName)
+            )
         }
-        previous.copy(
-            preferredAddressBarEntryName = entryName,
-            submitMethod = method,
-            updatedAtMillis = System.currentTimeMillis()
-        )
     }
 
     /**
@@ -416,6 +422,7 @@ internal object BrowserCompatibilityStore {
                     } else {
                         previous.status
                     },
+                    submitMethod = if (unsupported) null else previous.submitMethod,
                     consecutiveRedirectionFailures = failures,
                     updatedAtMillis = now
                 )

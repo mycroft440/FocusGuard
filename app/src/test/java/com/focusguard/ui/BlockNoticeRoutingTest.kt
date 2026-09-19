@@ -40,7 +40,28 @@ class BlockNoticeRoutingTest {
     }
 
     @Test
-    fun `generic surface never targets password activity`() {
+    fun `password website still targets password activity`() {
+        val context = RuntimeEnvironment.getApplication().applicationContext
+        val source = Intent().apply {
+            putExtra(BlockingAccessibilityService.EXTRA_BLOCKED_DOMAIN, "example.com")
+            putExtra(BlockingAccessibilityService.EXTRA_CURTAIN_GENERATION, 88L)
+        }
+
+        val routed = BlockNoticeActivity.createDestinationIntent(
+            context,
+            source,
+            AppBlockSurfacePolicy.Surface.PASSWORD_UNLOCK
+        )
+
+        assertThat(routed.component?.className)
+            .isEqualTo(PasswordUnlockActivity::class.java.name)
+        assertThat(
+            routed.getStringExtra(BlockingAccessibilityService.EXTRA_BLOCKED_DOMAIN)
+        ).isEqualTo("example.com")
+    }
+
+    @Test
+    fun `generic app surface targets app block activity`() {
         val context = RuntimeEnvironment.getApplication().applicationContext
         val source = Intent().apply {
             putExtra(BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE, "com.example.blocked")

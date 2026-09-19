@@ -1,8 +1,14 @@
 package com.focusguard.service
 
-import com.focusguard.utils.WebsiteBlocker
+import com.focusguard.accessibility.website.blocking.WebsiteBlockDecisionPolicy
 
-/** Resolves only the PASSWORD-vs-stronger ownership of a website attempt. */
+/**
+ * Compatibility facade for service callers.
+ *
+ * The rule decision itself lives in `accessibility.website.blocking`; the service
+ * package keeps this facade only so the accessibility orchestrator does not own
+ * matching policy.
+ */
 internal object WebsiteProtectionHierarchyPolicy {
     enum class Owner { HARD, PASSWORD, NONE }
 
@@ -16,16 +22,18 @@ internal object WebsiteProtectionHierarchyPolicy {
         passwordRules: Collection<String>,
         strongerRules: Collection<String>
     ): Resolution {
-        WebsiteBlocker.findMatchingRulesIgnoringGrants(
-            candidate,
-            strongerRules
-        ).firstOrNull()?.let { return Resolution(Owner.HARD, it) }
-
-        WebsiteBlocker.findMatchingRulesIgnoringGrants(
-            candidate,
-            passwordRules
-        ).firstOrNull()?.let { return Resolution(Owner.PASSWORD, it) }
-
-        return Resolution(Owner.NONE)
+        val resolution = WebsiteBlockDecisionPolicy.resolve(
+            candidate = candidate,
+            passwordRules = passwordRules,
+            strongerRules = strongerRules
+        )
+        return Resolution(
+            owner = when (resolution.owner) {
+                WebsiteBlockDecisionPolicy.Owner.HARD -> Owner.HARD
+                WebsiteBlockDecisionPolicy.Owner.PASSWORD -> Owner.PASSWORD
+                WebsiteBlockDecisionPolicy.Owner.NONE -> Owner.NONE
+            },
+            matchedRule = resolution.matchedRule
+        )
     }
 }

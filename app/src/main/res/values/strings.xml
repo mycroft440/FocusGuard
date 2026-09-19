@@ -782,4 +782,7 @@
     <string name="forum_my_posts_empty_description">Posts you publish will appear here.</string>
     <string name="forum_notification_like">%1$s liked your post.</string>
     <string name="forum_notification_comment">%1$s commented on your post.</string>
+    <string name="website_block_overlay_message">Site bloqueado: %1$s</string>
+    <string name="website_block_overlay_message_generic">Site bloqueado pelo FocusGuard</string>
+    <string name="website_block_notice_description">O acesso a este site foi bloqueado.</string>
 </resources>

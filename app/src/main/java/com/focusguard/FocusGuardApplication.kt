@@ -24,6 +24,7 @@ import dagger.hilt.android.HiltAndroidApp
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 
 /**
@@ -113,5 +114,13 @@ class FocusGuardApplication : Application() {
             deviceOwnerManager.applyDirectBootShield()
             deviceOwnerManager.applyFocusModeAtDirectBoot()
         }
+    }
+
+    /** Robolectric calls this during sandbox teardown; Android production normally does not. */
+    override fun onTerminate() {
+        UsageAccessStateMonitor.stop()
+        AccessibilityStateMonitor.stop(this)
+        applicationScope.cancel()
+        super.onTerminate()
     }
 }

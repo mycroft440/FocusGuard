@@ -782,4 +782,7 @@
     <string name="forum_my_posts_empty_description">Posts you publish will appear here.</string>
     <string name="forum_notification_like">%1$s liked your post.</string>
     <string name="forum_notification_comment">%1$s commented on your post.</string>
+    <string name="website_block_overlay_message">Trang web đã bị chặn: %1$s</string>
+    <string name="website_block_overlay_message_generic">Trang web đã bị FocusGuard chặn</string>
+    <string name="website_block_notice_description">Quyền truy cập trang web này đã bị chặn.</string>
 </resources>
