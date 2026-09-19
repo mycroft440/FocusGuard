@@ -13,7 +13,10 @@ import java.util.concurrent.atomic.AtomicLong
 internal class BrowserInspectionBudget(
     private val maxNodes: Int = 512,
     private val maxChildQueries: Int = 640,
-    private val maxIdQueries: Int = 24,
+    // The address compatibility catalog includes browser-specific selectors plus
+    // read-only fallbacks. Keep enough bounded id probes for the full catalog so
+    // Firefox/Fenix can still reach its semantic Compose traversal afterwards.
+    private val maxIdQueries: Int = 32,
     private val maxAncestorQueries: Int = 128,
     timeoutMillis: Long = 80L
 ) {
