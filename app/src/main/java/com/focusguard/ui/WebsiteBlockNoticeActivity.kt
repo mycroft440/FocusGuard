@@ -46,22 +46,20 @@ import com.focusguard.utils.FocusGuardLogger
 import kotlinx.coroutines.delay
 
 /**
- * Presentation owner for a website block.
+ * Terminal fail-closed presentation for a known website target.
  *
- * This Activity deliberately does not identify URLs and does not manipulate the
- * browser address bar. Identification belongs to `accessibility.website.identification`
- * and same-tab navigation belongs to `accessibility.website.redirection` plus the
- * accessibility-service orchestrator. The only responsibilities here are:
+ * The normal browser HARD path never opens this Activity before redirection: doing
+ * so would steal foreground ownership from the browser and make same-tab address-bar
+ * manipulation impossible. The normal block presentation is the opaque accessibility
+ * overlay. This Activity is used only when the redirect cannot be certified, when a
+ * website is represented by a native app/PWA surface, or when another terminal
+ * website block needs a safe FocusGuard-owned foreground surface.
  *
- * 1. render the blocked-site surface;
- * 2. acknowledge the opaque-curtain handoff only after a fresh visible frame;
- * 3. route the user to the safe terminal surface when this Activity is used as a
- *    fallback/password/strict-block destination.
+ * It never identifies URLs and never performs browser navigation.
  */
 class WebsiteBlockNoticeActivity : AppCompatActivity() {
 
     private var strictBlock = false
-    private var redirectBrowserPackage: String? = null
     private var noticeDrawn = false
     private var activityResumed = false
     private var windowFocused = false
@@ -70,8 +68,7 @@ class WebsiteBlockNoticeActivity : AppCompatActivity() {
 
     private data class NoticePayload(
         val strictBlock: Boolean,
-        val blockedDomain: String?,
-        val redirectBrowserPackage: String?
+        val blockedDomain: String?
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -119,14 +116,10 @@ class WebsiteBlockNoticeActivity : AppCompatActivity() {
             ),
             blockedDomain = sourceIntent.getStringExtra(
                 BlockingAccessibilityService.EXTRA_BLOCKED_DOMAIN
-            )?.takeIf(String::isNotBlank),
-            redirectBrowserPackage = sourceIntent.getStringExtra(
-                BlockingAccessibilityService.EXTRA_REDIRECT_BROWSER_PACKAGE
             )?.takeIf(String::isNotBlank)
         )
 
         strictBlock = payload.strictBlock
-        redirectBrowserPackage = payload.redirectBrowserPackage
         pendingCurtainGeneration = curtainGeneration
         freshFrameGeneration = 0L
         noticeDrawn = false
@@ -136,8 +129,6 @@ class WebsiteBlockNoticeActivity : AppCompatActivity() {
                 WebsiteBlockNoticeContent(
                     strictBlock = payload.strictBlock,
                     blockedDomain = payload.blockedDomain,
-                    redirectBrowserPackage = payload.redirectBrowserPackage,
-                    onFinishWebsiteFallback = ::finishWebsiteFallback,
                     onGoToPomodoroLock = ::goToPomodoroLock
                 )
             }
@@ -186,15 +177,6 @@ class WebsiteBlockNoticeActivity : AppCompatActivity() {
         return true
     }
 
-    /**
-     * A website notice is not the redirect engine. If it is reached as the
-     * fail-closed/fallback surface, leave the browser hidden rather than trying
-     * to perform a second navigation from UI code.
-     */
-    private fun finishWebsiteFallback(@Suppress("UNUSED_PARAMETER") browserPackageName: String) {
-        if (strictBlock) goToPomodoroLock() else goHome()
-    }
-
     private fun goToPomodoroLock() {
         startActivity(
             Intent(this, PomodoroLockActivity::class.java).apply {
@@ -223,23 +205,12 @@ class WebsiteBlockNoticeActivity : AppCompatActivity() {
 private fun WebsiteBlockNoticeContent(
     strictBlock: Boolean,
     blockedDomain: String?,
-    redirectBrowserPackage: String?,
-    onFinishWebsiteFallback: (String) -> Unit,
     onGoToPomodoroLock: () -> Unit
 ) {
-    LaunchedEffect(strictBlock, redirectBrowserPackage) {
-        when {
-            strictBlock && redirectBrowserPackage != null -> {
-                delay(BlockingAccessibilityService.STRICT_BLOCK_NOTICE_DURATION_MILLIS)
-                onFinishWebsiteFallback(redirectBrowserPackage)
-            }
-            strictBlock -> {
-                delay(BlockingAccessibilityService.STRICT_BLOCK_NOTICE_DURATION_MILLIS)
-                onGoToPomodoroLock()
-            }
-            redirectBrowserPackage != null -> {
-                onFinishWebsiteFallback(redirectBrowserPackage)
-            }
+    LaunchedEffect(strictBlock) {
+        if (strictBlock) {
+            delay(BlockingAccessibilityService.STRICT_BLOCK_NOTICE_DURATION_MILLIS)
+            onGoToPomodoroLock()
         }
     }
 
@@ -283,15 +254,6 @@ private fun WebsiteBlockNoticeContent(
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center
             )
-            if (redirectBrowserPackage != null && !strictBlock) {
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    text = "Mantendo a página bloqueada protegida…",
-                    color = TextHint,
-                    fontSize = 13.sp,
-                    textAlign = TextAlign.Center
-                )
-            }
             Spacer(Modifier.height(28.dp))
             Text(
                 text = stringResource(
