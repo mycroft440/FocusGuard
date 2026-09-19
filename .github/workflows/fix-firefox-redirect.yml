@@ -1,0 +1,406 @@
+name: Apply Firefox redirect reliability fix
+
+on:
+  push:
+    branches: [ main ]
+
+permissions:
+  contents: write
+
+jobs:
+  patch-firefox-redirect:
+    if: github.event.head_commit.message == 'chore: apply Firefox redirect reliability fix'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Patch Firefox address-bar and recovery flow
+        shell: python
+        run: |
+          from pathlib import Path
+
+          def replace_once(path, old, new):
+              p = Path(path)
+              text = p.read_text()
+              count = text.count(old)
+              if count != 1:
+                  raise SystemExit(f"{path}: expected one match, found {count}")
+              p.write_text(text.replace(old, new, 1))
+
+          policy = "app/src/main/java/com/focusguard/utils/BrowserUiCapabilityPolicy.kt"
+          replace_once(policy, '''    internal fun isStableUrlEntryName(entryName: String?): Boolean =
+        !entryName.isNullOrBlank() && entryName in strongAddressBarEntryNames &&
+            entryName !in editorEntryNames
+
+    fun isStrongAddressBarResource(''', '''    internal fun isStableUrlEntryName(entryName: String?): Boolean =
+        !entryName.isNullOrBlank() && entryName in strongAddressBarEntryNames &&
+            entryName !in editorEntryNames
+
+    /**
+     * Firefox/Fenix may expose the display URL semantics node as a native parent
+     * while the edit-only SEARCH_BOX appears below it after a tap. Keep walking
+     * only below stable Firefox address-display nodes; editor nodes and other
+     * browsers remain terminal so page fields cannot broaden action discovery.
+     */
+    internal fun shouldSearchAddressBarDescendants(
+        packageName: String,
+        viewIdResourceName: String?
+    ): Boolean {
+        if (!isFirefoxPackage(packageName)) return false
+        return isStableUrlEntryName(browserOwnedEntryName(packageName, viewIdResourceName))
+    }
+
+    fun isStrongAddressBarResource(''')
+
+          replace_once(policy, '''        if (isChromePackage(expectedBrowserPackage)) return false
+
+        return when (BrowserCompatibilityStore.preferredActivationMethod(expectedBrowserPackage)) {''', '''        if (isChromePackage(expectedBrowserPackage)) return false
+        // Fenix switches from ADDRESSBAR_URL_BOX (display mode) to the edit-only
+        // ADDRESSBAR_SEARCH_BOX through a click/tap. Do not let an old cached FOCUS
+        // result override that transition; FOCUS remains the secondary fallback.
+        if (isFirefoxPackage(expectedBrowserPackage)) return true
+
+        return when (BrowserCompatibilityStore.preferredActivationMethod(expectedBrowserPackage)) {''')
+
+          replace_once(policy, '''            null -> expectedBrowserPackage == DUCKDUCKGO_PACKAGE ||
+                isFirefoxPackage(expectedBrowserPackage) ||
+                expectedBrowserPackage in setOf(''', '''            null -> expectedBrowserPackage == DUCKDUCKGO_PACKAGE ||
+                expectedBrowserPackage in setOf(''')
+
+          actions = "app/src/main/java/com/focusguard/accessibility/website/redirection/AddressBarRedirectionActions.kt"
+          replace_once(actions, '''        if (nativeEnough && node.packageName?.toString() == browserPackageName &&
+            BrowserUiCapabilityPolicy.isStrongAddressBarResource(viewId, browserPackageName)
+        ) {
+            if (output.none { existing -> existing == node }) {
+                @Suppress("DEPRECATION")
+                output += AccessibilityNodeInfo.obtain(node)
+            }
+            return
+        }
+
+        for (index in 0 until node.childCount) {''', '''        if (nativeEnough && node.packageName?.toString() == browserPackageName &&
+            BrowserUiCapabilityPolicy.isStrongAddressBarResource(viewId, browserPackageName)
+        ) {
+            if (output.none { existing -> existing == node }) {
+                @Suppress("DEPRECATION")
+                output += AccessibilityNodeInfo.obtain(node)
+            }
+            if (!BrowserUiCapabilityPolicy.shouldSearchAddressBarDescendants(
+                    browserPackageName,
+                    viewId
+                )
+            ) return
+        }
+
+        for (index in 0 until node.childCount) {''')
+
+          blocker = "app/src/main/java/com/focusguard/utils/WebsiteBlocker.kt"
+          replace_once(blocker, '''        if (belongsToBrowser && BrowserUiCapabilityPolicy.isStrongAddressBarResource(
+                node.viewIdResourceName.orEmpty(),
+                browserPackageName
+            )
+        ) {
+            if (output.none { existing -> existing == node }) {
+                @Suppress("DEPRECATION")
+                output += AccessibilityNodeInfo.obtain(node)
+            }
+            return
+        }
+
+        for (index in 0 until node.childCount) {''', '''        val viewId = node.viewIdResourceName.orEmpty()
+        if (belongsToBrowser && BrowserUiCapabilityPolicy.isStrongAddressBarResource(
+                viewId,
+                browserPackageName
+            )
+        ) {
+            if (output.none { existing -> existing == node }) {
+                @Suppress("DEPRECATION")
+                output += AccessibilityNodeInfo.obtain(node)
+            }
+            if (!BrowserUiCapabilityPolicy.shouldSearchAddressBarDescendants(
+                    browserPackageName,
+                    viewId
+                )
+            ) return
+        }
+
+        for (index in 0 until node.childCount) {''')
+
+          service = "app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt"
+          replace_once(service, '''    internal enum class WebsiteSanitizationDecision {
+        SUBMIT_ADDRESS_BAR,
+        AWAIT_GOOGLE_CONFIRMATION,
+        ABORT_REDIRECT
+    }
+
+    internal enum class WebsiteCloseFollowUp {''', '''    internal enum class WebsiteSanitizationDecision {
+        SUBMIT_ADDRESS_BAR,
+        AWAIT_GOOGLE_CONFIRMATION,
+        ABORT_REDIRECT
+    }
+
+    internal enum class WebsiteRestoreDecision {
+        BACK_TO_BLOCKED_SURFACE,
+        RETRY_CURRENT_BLOCKED_SURFACE,
+        KEEP_CURRENT_SURFACE
+    }
+
+    internal enum class WebsiteCloseFollowUp {''')
+
+          replace_once(service, '''        @Synchronized
+        fun transitionForConfirmation(
+            browserPackageName: String,''', '''        /**
+         * A fresh, stable browser root is itself navigation evidence when the
+         * exact safe Google root URL is visible as WEB_CONTENT and no address
+         * editor is focused. This covers browsers such as Fenix when the submit
+         * succeeds but the corresponding accessibility mutation event is lost.
+         */
+        @Synchronized
+        fun confirmGoogleFromStableCurrentSurface(
+            browserPackageName: String,
+            windowId: Int,
+            observedAtUptimeMillis: Long
+        ): Boolean {
+            val transition = activeTransitions[browserPackageName] ?: return false
+            if (transition.externalRedirectRequested ||
+                !transition.sanitizationRequested ||
+                transition.expectedWindowId != windowId ||
+                observedAtUptimeMillis < transition.sanitizationRequestedAtUptimeMillis
+            ) return false
+            transition.latestObservedEventUptimeMillis = maxOf(
+                transition.latestObservedEventUptimeMillis,
+                observedAtUptimeMillis
+            )
+            return transition.safeGoogleConfirmed.complete(Unit) ||
+                transition.safeGoogleConfirmed.isCompleted
+        }
+
+        @Synchronized
+        fun transitionForConfirmation(
+            browserPackageName: String,''')
+
+          replace_once(service, '''    private suspend fun restoreBlockedSurfaceAfterAddressEdit(
+        transition: WebsiteBlockTransitionHandle
+    ): Boolean {
+        if (!curtainReadyForTransition(transition)) return false
+        if (transition.activatedAddressViewId == null && transition.editorAddressViewId == null) return true
+        if (!performTransitionBack(transition)) return false
+        delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
+        if (!curtainReadyForTransition(transition)) return false
+        val restored = websiteTreeWorker.run {
+            currentBrowserSurfaceMatchesBlockedTransition(transition)
+        }
+        if (!curtainReadyForTransition(transition)) return false
+        transition.activatedAddressViewId = null
+        transition.editorAddressViewId = null
+        return restored
+    }
+''', '''    private suspend fun restoreBlockedSurfaceAfterAddressEdit(
+        transition: WebsiteBlockTransitionHandle
+    ): Boolean {
+        if (!curtainReadyForTransition(transition)) return false
+        if (transition.activatedAddressViewId == null && transition.editorAddressViewId == null) return true
+
+        // Never use BACK merely because we touched the address bar. If Fenix has
+        // already submitted Google and the navigation-confirmation event was late,
+        // BACK would resurrect the blocked page from browser history. BACK is safe
+        // only while the exact redirect URL is still sitting in a focused editor.
+        val https = isVerifiedHttpsHandler(transition.browserPackageName)
+        val editorRoot = activeBrowserRoot(
+            transition.browserPackageName,
+            transition.expectedWindowId
+        ) ?: return false
+        val safeRedirectStillEditing = try {
+            AddressBarRedirectionActions.hasFocusedAddressEditor(
+                editorRoot,
+                transition.browserPackageName,
+                transition.expectedWindowId,
+                https,
+                ::isSafeGoogleRedirectSurface
+            )
+        } finally { recycleSafely(editorRoot) }
+        if (!curtainReadyForTransition(transition)) return false
+
+        val blockedSurfaceStillCurrent = if (safeRedirectStillEditing) {
+            false
+        } else {
+            websiteTreeWorker.run { currentBrowserSurfaceMatchesBlockedTransition(transition) }
+        }
+        if (!curtainReadyForTransition(transition)) return false
+
+        when (websiteRestoreDecision(
+            safeRedirectStillEditing = safeRedirectStillEditing,
+            blockedSurfaceStillCurrent = blockedSurfaceStillCurrent
+        )) {
+            WebsiteRestoreDecision.RETRY_CURRENT_BLOCKED_SURFACE -> {
+                transition.activatedAddressViewId = null
+                transition.editorAddressViewId = null
+                return true
+            }
+            WebsiteRestoreDecision.KEEP_CURRENT_SURFACE -> {
+                transition.activatedAddressViewId = null
+                transition.editorAddressViewId = null
+                return false
+            }
+            WebsiteRestoreDecision.BACK_TO_BLOCKED_SURFACE -> Unit
+        }
+
+        if (!performTransitionBack(transition)) return false
+        delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
+        if (!curtainReadyForTransition(transition)) return false
+        val restored = websiteTreeWorker.run {
+            currentBrowserSurfaceMatchesBlockedTransition(transition)
+        }
+        if (!curtainReadyForTransition(transition)) return false
+        transition.activatedAddressViewId = null
+        transition.editorAddressViewId = null
+        return restored
+    }
+''')
+
+          replace_once(service, '''            val deadline = SystemClock.uptimeMillis() + WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS
+            var editorReady = false''', '''            val deadline = SystemClock.uptimeMillis() +
+                websiteAddressBarActionTimeoutMillis(browserPackageName)
+            var editorReady = false''')
+
+          replace_once(service, '''                val writeDeadline = SystemClock.uptimeMillis() + WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS
+                while (curtainReadyForTransition(transition) && SystemClock.uptimeMillis() <= writeDeadline) {''', '''                val writeDeadline = SystemClock.uptimeMillis() +
+                    websiteAddressBarActionTimeoutMillis(browserPackageName)
+                while (curtainReadyForTransition(transition) && SystemClock.uptimeMillis() <= writeDeadline) {''')
+
+          replace_once(service, '''            // An accepted submit action is not navigation proof. Only a positively
+            // confirmed Google surface may complete this attempt. If the editor
+            // disappeared without confirmation, stop touching that surface and let
+            // the guarded restore/retry/intent fallback revalidate what is current.
+            if (!curtainReadyForTransition(transition)) return 0L
+            if (mayOpenDestinationAfterSanitization(
+                    safeGoogleConfirmed = transition.safeGoogleConfirmed.isCompleted
+                )
+            ) return submittedAt
+''', '''            // An accepted submit action is not navigation proof. Usually the
+            // accessibility mutation confirms Google above. Fenix can occasionally
+            // lose that event after a successful IME submit, so certify the same
+            // package/window only after two fresh, stable WEB_CONTENT observations
+            // of the exact safe root URL with the editor closed.
+            if (!curtainReadyForTransition(transition)) return 0L
+            if (mayOpenDestinationAfterSanitization(
+                    safeGoogleConfirmed = transition.safeGoogleConfirmed.isCompleted
+                ) || confirmSafeGoogleFromFreshBrowserSurface(transition)
+            ) return submittedAt
+''')
+
+          replace_once(service, '''    private fun transitionWindowIsCurrent(transition: WebsiteBlockTransitionHandle): Boolean =
+        websiteBlockTransitionGuard.activeTransition(transition.browserPackageName)?.id == transition.id &&''', '''    private suspend fun confirmSafeGoogleFromFreshBrowserSurface(
+        transition: WebsiteBlockTransitionHandle
+    ): Boolean {
+        if (!curtainReadyForTransition(transition) ||
+            !transition.sanitizationRequested ||
+            transition.externalRedirectRequested
+        ) return false
+
+        repeat(2) { pass ->
+            val root = activeBrowserRoot(
+                transition.browserPackageName,
+                transition.expectedWindowId
+            ) ?: return false
+            val stableSafeSurface = try {
+                val identification = WebsiteIdentificationEngine.identifyFromRoot(
+                    root,
+                    transition.browserPackageName,
+                    transition.expectedWindowId,
+                    isVerifiedHttpsHandler(transition.browserPackageName),
+                    isCurrent = { transitionWindowIsCurrent(transition) }
+                )
+                val session = BrowserInspectionSessionStore.sessionFor(
+                    root,
+                    transition.browserPackageName
+                )
+                isSafeGoogleRedirectSurface(identification.bestCandidate) &&
+                    (session.surface ?: BrowserSurfaceInspector.inspect(
+                        root,
+                        transition.browserPackageName
+                    )) == BrowserSurfaceInspector.Surface.WEB_CONTENT &&
+                    !session.focusedAddressEditor
+            } finally { recycleSafely(root) }
+            if (!stableSafeSurface || !curtainReadyForTransition(transition)) return false
+            if (pass == 0) {
+                delay(WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS)
+                if (!curtainReadyForTransition(transition)) return false
+            }
+        }
+
+        val confirmed = websiteBlockTransitionGuard.confirmGoogleFromStableCurrentSurface(
+            browserPackageName = transition.browserPackageName,
+            windowId = transition.expectedWindowId,
+            observedAtUptimeMillis = SystemClock.uptimeMillis()
+        )
+        if (confirmed) {
+            BrowserCompatibilityStore.recordNavigationConfirmed(transition.browserPackageName)
+        }
+        return confirmed
+    }
+
+    private fun transitionWindowIsCurrent(transition: WebsiteBlockTransitionHandle): Boolean =
+        websiteBlockTransitionGuard.activeTransition(transition.browserPackageName)?.id == transition.id &&''')
+
+          replace_once(service, '''        private const val WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS = 360L
+        private const val WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS = 120L''', '''        private const val WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS = 360L
+        private const val WEBSITE_FIREFOX_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS = 800L
+        private const val WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS = 120L''')
+
+          replace_once(service, '''        internal fun canUseCertifiableImeSubmit(apiLevel: Int): Boolean =
+            BrowserUiCapabilityPolicy.canUseImeEnter(apiLevel)
+
+        internal fun settingsTransitionGuardMillisForTest(): Long =''', '''        internal fun canUseCertifiableImeSubmit(apiLevel: Int): Boolean =
+            BrowserUiCapabilityPolicy.canUseImeEnter(apiLevel)
+
+        internal fun websiteAddressBarActionTimeoutMillis(
+            browserPackageName: String
+        ): Long = if (BrowserUiCapabilityPolicy.isFirefoxPackage(browserPackageName)) {
+            WEBSITE_FIREFOX_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS
+        } else {
+            WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS
+        }
+
+        internal fun websiteRestoreDecision(
+            safeRedirectStillEditing: Boolean,
+            blockedSurfaceStillCurrent: Boolean
+        ): WebsiteRestoreDecision = when {
+            safeRedirectStillEditing -> WebsiteRestoreDecision.BACK_TO_BLOCKED_SURFACE
+            blockedSurfaceStillCurrent -> WebsiteRestoreDecision.RETRY_CURRENT_BLOCKED_SURFACE
+            else -> WebsiteRestoreDecision.KEEP_CURRENT_SURFACE
+        }
+
+        internal fun settingsTransitionGuardMillisForTest(): Long =''')
+
+          # The workflow removes itself in the resulting code commit.
+          Path('.github/workflows/fix-firefox-redirect.yml').unlink()
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Install Android 16 SDK
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Validate patch
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest :app:lintDebug :app:compileDebugKotlin --stacktrace
+
+      - name: Commit Firefox redirect fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Fix intermittent Firefox website redirect"
+          git push origin HEAD:main
