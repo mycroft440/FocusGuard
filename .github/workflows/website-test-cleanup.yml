@@ -30,10 +30,12 @@ jobs:
               start = text.find(marker)
               if start < 0:
                   raise SystemExit(f"test not found: {name}")
-              next_test = text.find("    @Test", start + len(marker))
-              if next_test < 0:
-                  raise SystemExit(f"next test not found after: {name}")
-              return text[:start] + replacement.rstrip() + "\n\n" + text[next_test:]
+              end = text.find("    @Test", start + len(marker))
+              if end < 0:
+                  end = text.find("    private companion object", start + len(marker))
+              if end < 0:
+                  raise SystemExit(f"test boundary not found after: {name}")
+              return text[:start] + replacement.rstrip() + "\n\n" + text[end:]
 
           def remove_test(text: str, name: str) -> str:
               return replace_test(text, name, "")
