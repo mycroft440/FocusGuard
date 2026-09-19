@@ -16,6 +16,7 @@ import com.focusguard.accessibility.website.identification.WebsiteIdentification
 import com.focusguard.accessibility.website.redirection.AddressBarRedirectionActions
 import com.focusguard.accessibility.website.redirection.WebsiteTabNeutralizationPolicy
 import com.focusguard.utils.BrowserSurfaceInspector
+import com.focusguard.utils.WebsiteBlocker
 import io.mockk.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
@@ -147,8 +148,13 @@ class BrowserTransitionRaceTest {
     }
 
     @Test
-    fun windowChangeAfterSetTextPreventsEverySubmitAndLearning() = runTest {
-        mockkObject(AddressBarRedirectionActions, BrowserSurfaceInspector, WebsiteIdentificationEngine)
+    fun windowChangeAfterSetTextPreventsWriteLearning() = runTest {
+        mockkObject(
+            AddressBarRedirectionActions,
+            BrowserSurfaceInspector,
+            WebsiteIdentificationEngine,
+            WebsiteBlocker
+        )
         val window = mockk<AccessibilityWindowInfo> {
             every { id } returns 10
             every { isActive } returns true
@@ -163,6 +169,7 @@ class BrowserTransitionRaceTest {
         every { BrowserSurfaceInspector.inspect(any(), pkg) } returns BrowserSurfaceInspector.Surface.WEB_CONTENT
         every { WebsiteIdentificationEngine.identifyFromRoot(any(), pkg, 10, any(), any()) } returns
             WebsiteIdentificationResult(WebsiteIdentificationStatus.IDENTIFIED, urlCandidate = "https://blocked.example")
+        every { WebsiteBlocker.extractAddressBarTextFromRoot(any(), pkg, any()) } returns "https://blocked.example"
         every { BrowserCompatibilityStore.preferredWriteMethod(pkg) } returns null
         every { AddressBarRedirectionActions.activate(any(), pkg, 10, any(), any(), any()) } returns
             AddressBarRedirectionActions.Result(AddressBarRedirectionActions.Status.ACCEPTED, "$pkg:id/url_bar")
@@ -173,15 +180,16 @@ class BrowserTransitionRaceTest {
         }
 
         val result = callSuspend(
-            "requestSafeRedirectInCurrentTab", pkg, 10,
-            WebsiteTabNeutralizationPolicy(pkg, 10), transition
+            "prepareSafeAddressBar",
+            pkg,
+            10,
+            WebsiteTabNeutralizationPolicy(pkg, 10),
+            transition,
+            1L
         )
 
-        assertEquals(false, result)
+        assertEquals(0L, result)
         verify(exactly = 1) { AddressBarRedirectionActions.setText(any(), pkg, 10, any(), any(), any()) }
-        verify(exactly = 0) { AddressBarRedirectionActions.submitImeEnter(any(), any(), any(), any(), any(), any()) }
-        verify(exactly = 0) { AddressBarRedirectionActions.submitAnnouncedEditorAction(any(), any(), any(), any(), any(), any()) }
-        verify(exactly = 0) { AddressBarRedirectionActions.clickCertifiedGoButton(any(), any(), any(), any()) }
         verify(exactly = 0) { BrowserCompatibilityStore.recordWriteSuccess(any(), any(), any(), any()) }
     }
 
