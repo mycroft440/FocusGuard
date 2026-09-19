@@ -16,7 +16,6 @@ import org.json.JSONObject
 internal enum class BrowserCompatibilityStatus {
     UNKNOWN,
     SUPPORTED,
-    DEGRADED,
     UNSUPPORTED
 }
 
@@ -161,7 +160,6 @@ internal object BrowserCompatibilityStore {
             return false
         }
         return record.status == BrowserCompatibilityStatus.SUPPORTED ||
-            record.status == BrowserCompatibilityStatus.DEGRADED ||
             (!record.preferredUrlEntryName.isNullOrBlank() && record.preferredUrlMethod != null) ||
             record.urlRecoveryMethod != null
     }
@@ -391,11 +389,10 @@ internal object BrowserCompatibilityStore {
             val previous = recordForLocked(packageName)
             val failures = previous.consecutiveObservationFailures + 1
             val sustainedFailure = now - firstFailureAt >= OBSERVATION_FAILURE_MIN_SPAN_MILLIS
-            val trustedPreviousStatus = previous.status == BrowserCompatibilityStatus.SUPPORTED ||
-                previous.status == BrowserCompatibilityStatus.DEGRADED
             val unsupported = sustainedFailure && (
-                !trustedPreviousStatus || failures >= SUPPORTED_FAILURE_THRESHOLD
-            )
+                previous.status != BrowserCompatibilityStatus.SUPPORTED ||
+                    failures >= SUPPORTED_FAILURE_THRESHOLD
+                )
             saveLocked(
                 previous.copy(
                     status = if (unsupported) {
@@ -428,10 +425,11 @@ internal object BrowserCompatibilityStore {
     }
 
     /**
-     * The active website transition currently performs two full same-tab attempts. Two failures
-     * now degrade the learned profile and clear the preferred submit method instead of permanently
-     * declaring the browser unsupported. Continued failures eventually mark it unsupported; any
-     * later confirmed navigation immediately restores SUPPORTED and resets the failure counter.
+     * The active website transition currently performs two full same-tab attempts. After two
+     * failures the package remains eligible for rediscovery but its cached submit preference is
+     * cleared so the next transition explores the certified fallbacks again. Only sustained
+     * failure across five debounced attempts marks the browser unsupported. Any later confirmed
+     * navigation restores SUPPORTED and resets the failure counter.
      */
     fun recordRedirectionFailure(packageName: String) {
         if (packageName.isBlank()) return
@@ -443,12 +441,15 @@ internal object BrowserCompatibilityStore {
 
             val previous = recordForLocked(packageName)
             val failures = previous.consecutiveRedirectionFailures + 1
+            val degraded = isRedirectionDegraded(failures)
             val nextStatus = statusAfterRedirectionFailure(previous.status, failures)
-            if (failures >= REDIRECTION_DEGRADED_THRESHOLD) pendingRedirects.remove(packageName)
+            if (degraded || nextStatus == BrowserCompatibilityStatus.UNSUPPORTED) {
+                pendingRedirects.remove(packageName)
+            }
             saveLocked(
                 previous.copy(
                     status = nextStatus,
-                    submitMethod = if (failures >= REDIRECTION_DEGRADED_THRESHOLD) {
+                    submitMethod = if (degraded || nextStatus == BrowserCompatibilityStatus.UNSUPPORTED) {
                         null
                     } else {
                         previous.submitMethod
@@ -460,13 +461,16 @@ internal object BrowserCompatibilityStore {
         }
     }
 
+    internal fun isRedirectionDegraded(failures: Int): Boolean =
+        failures in REDIRECTION_DEGRADED_THRESHOLD until REDIRECTION_UNSUPPORTED_THRESHOLD
+
     internal fun statusAfterRedirectionFailure(
         previousStatus: BrowserCompatibilityStatus,
         failures: Int
-    ): BrowserCompatibilityStatus = when {
-        failures >= REDIRECTION_UNSUPPORTED_THRESHOLD -> BrowserCompatibilityStatus.UNSUPPORTED
-        failures >= REDIRECTION_DEGRADED_THRESHOLD -> BrowserCompatibilityStatus.DEGRADED
-        else -> previousStatus
+    ): BrowserCompatibilityStatus = if (failures >= REDIRECTION_UNSUPPORTED_THRESHOLD) {
+        BrowserCompatibilityStatus.UNSUPPORTED
+    } else {
+        previousStatus
     }
 
     private inline fun updateMethod(
