@@ -8,6 +8,14 @@
     <string name="website_diagnostics_description" translatable="false">Falhas e resultados não confirmados são gravados separadamente em TXT. O relatório aponta a última etapa comprovada sem inventar uma causa.</string>
     <string name="website_diagnostics_empty" translatable="false">Nenhum relatório de falha foi gerado ainda.</string>
     <string name="website_diagnostics_refresh" translatable="false">Atualizar relatórios</string>
+    <string name="website_diagnostics_clear" translatable="false">Limpar relatórios</string>
+    <string name="website_diagnostics_clear_title" translatable="false">Limpar todos os relatórios?</string>
+    <string name="website_diagnostics_clear_message" translatable="false">Esta ação apaga permanentemente os %1$d arquivo(s) TXT de diagnóstico de bloqueio de sites. Ela não altera bloqueios ativos nem configurações.</string>
+    <string name="website_diagnostics_clear_confirm" translatable="false">Limpar tudo</string>
+    <string name="website_diagnostics_cancel" translatable="false">Cancelar</string>
+    <string name="website_diagnostics_clear_result" translatable="false">%1$d relatório(s) removido(s).</string>
+    <string name="website_diagnostics_clear_result_partial" translatable="false">%1$d relatório(s) removido(s); %2$d não puderam ser removido(s).</string>
+    <string name="website_diagnostics_storage_size" translatable="false">Armazenamento atual: %1$d bytes</string>
     <string name="website_diagnostics_back" translatable="false">Voltar</string>
     <string name="website_diagnostics_close" translatable="false">Fechar</string>
     <string name="website_diagnostics_open_report" translatable="false">Abrir relatório</string>
