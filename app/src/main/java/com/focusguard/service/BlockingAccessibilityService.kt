@@ -3192,13 +3192,14 @@ class BlockingAccessibilityService : AccessibilityService() {
                                 browserPackageName = browserPackageName,
                                 expectedWindowId = transition.expectedWindowId
                             )
+                            val phaseStartedAtUptimeMillis = SystemClock.uptimeMillis()
                             val setRequestedAt = websiteTreeWorker.run {
                                 prepareSafeAddressBar(
                                     browserPackageName = browserPackageName,
                                     expectedWindowId = transition.expectedWindowId,
                                     policy = policy,
                                     transition = transition,
-                                    phaseStartedAtUptimeMillis = transition.detectionEventUptimeMillis
+                                    phaseStartedAtUptimeMillis = phaseStartedAtUptimeMillis
                                 )
                             }
                             if (setRequestedAt <= 0L || !curtainReadyForTransition(transition)) {
@@ -3493,7 +3494,6 @@ class BlockingAccessibilityService : AccessibilityService() {
                     if (!curtainReadyForTransition(transition)) return 0L
                 }
                 val editRoot = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
-                val writtenAt = SystemClock.uptimeMillis()
                 val written = try {
                     if (!curtainReadyForTransition(transition)) return 0L
                     if (!policy.mayTouchBlockedTab(browserPackageName, editRoot.windowId) ||
@@ -3531,7 +3531,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                         BrowserCompatibilityStore.recordActivationSuccess(browserPackageName, result.selectedViewId,
                             if (action == BrowserUiCapabilityPolicy.NodeAction.CLICK) BrowserActivationMethod.CLICK else BrowserActivationMethod.FOCUS)
                         BrowserCompatibilityStore.recordWriteSuccess(browserPackageName, written.selectedViewId, method, WebsiteRedirectDestination.current.url)
-                        return writtenAt
+                        // The submission epoch starts from a positively re-read safe editor,
+                        // not from the earlier mutation request.
+                        return SystemClock.uptimeMillis()
                     }
                 }
             }
