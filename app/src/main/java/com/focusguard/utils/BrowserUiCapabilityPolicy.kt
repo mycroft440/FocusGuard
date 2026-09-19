@@ -23,7 +23,10 @@ internal object BrowserUiCapabilityPolicy {
         "org.mozilla.firefox",
         "org.mozilla.firefox_beta",
         "org.mozilla.fenix",
-        "org.mozilla.fenix.nightly"
+        "org.mozilla.fenix.nightly",
+        "org.mozilla.fennec_aurora",
+        "org.mozilla.focus",
+        "org.mozilla.klar"
     )
 
     internal val firefoxComposeAddressBarEntryNames: Set<String> = setOf(
@@ -379,6 +382,14 @@ internal object BrowserUiCapabilityPolicy {
             // package-qualified Android resource ids. They are actionable only after
             // the package/window/native/editable/URI checks above have all succeeded.
             return viewId == FIREFOX_COMPOSE_SEARCH_ENTRY
+        }
+
+        // Firefox has changed toolbar implementations more than once. When a
+        // native Firefox editor keeps the URI input semantics and an explicit
+        // address-bar accessibility label but drops/changes its resource id, keep
+        // redirection working without authorizing arbitrary page fields.
+        if (isFirefoxPackage(expectedBrowserPackage) && hasAddressBarLabel(node)) {
+            return true
         }
 
         val prefix = "$expectedBrowserPackage:id/"
