@@ -40,60 +40,67 @@ Código principal:
 
 Esta camada resolve domínio/subdomínio, aliases, categoria Pornografia, concessões PASSWORD e prioridade de proteção. Ela não manipula a barra do navegador.
 
-## 4. Proteção visual imediata
+## 4. Apresentação normal do site bloqueado
 
-**Objetivo:** impedir que a página bloqueada fique visível/utilizável durante a transição.
+**Objetivo:** impedir imediatamente a visualização e interação com a página bloqueada sem retirar o navegador do foreground.
 
-A cortina de acessibilidade é uma proteção transitória. Ela é mostrada antes de tocar na barra de endereço e permanece até existir uma superfície segura confirmada.
+No caminho HARD normal, a tela de bloqueio é a **cortina opaca de Accessibility** (`TYPE_ACCESSIBILITY_OVERLAY`). Ela é mostrada antes de qualquer ação na barra de endereço e permanece visível durante toda a transação.
 
-A cortina não é a tela final de bloqueio.
+Essa escolha é intencional: abrir uma `Activity` nesse ponto faria o navegador deixar de ser a janela ativa e quebraria o redirecionamento na mesma aba.
 
-## 5. Tela de site bloqueado
+A cortina exibe o alvo bloqueado quando ele é conhecido e continua consumindo interação até que o destino seguro seja confirmado ou o fluxo seja entregue a uma superfície fail-closed.
 
-**Objetivo:** apresentar exclusivamente o estado visual de um alvo web conhecido.
+## 5. Destino de redirecionamento
 
-Código principal:
-
-- `ui/WebsiteBlockNoticeActivity.kt`
-- `ui/BlockNoticeActivity.kt` como router UI-free
-
-Regras:
-
-- `WebsiteBlockNoticeActivity` não identifica URL.
-- `WebsiteBlockNoticeActivity` não executa automação de barra de endereço.
-- `GenericBlockNoticeActivity` fica restrita a apps e estados fail-closed sem alvo web conhecido.
-- `PasswordUnlockActivity` continua sendo a única proprietária das credenciais e da concessão PASSWORD.
-
-## 6. Redirecionamento
-
-**Objetivo:** substituir o endereço bloqueado por um destino seguro na mesma aba.
+**Objetivo:** ser a única fonte de verdade do endereço seguro e da regra que certifica sua chegada.
 
 Código principal:
 
-- `accessibility/website/redirection/AddressBarRedirectionActions.kt`
-- `accessibility/website/redirection/ClipboardPasteFallback.kt`
-- `accessibility/website/redirection/WebsiteRedirectionPlan.kt`
-- orquestração da transição em `BlockingAccessibilityService`
+- `accessibility/website/redirection/WebsiteRedirectDestination.kt`
 
 Destino inicial: `https://www.google.com`.
 
+O `BlockingAccessibilityService` não deve possuir a URL escolhida. Uma futura seleção de outro site deve alterar essa camada/configuração, não o mecanismo de identificação nem a lógica de manipulação da barra.
+
+## 6. Coordenação e execução do redirecionamento
+
+**Objetivo:** substituir o endereço bloqueado pelo destino configurado na mesma aba, mantendo estado e ordem de fases fora da regra de negócio de identificação.
+
+Código principal:
+
+- `accessibility/website/redirection/WebsiteRedirectionCoordinator.kt`
+- `accessibility/website/redirection/WebsiteRedirectionPlan.kt`
+- `accessibility/website/redirection/AddressBarRedirectionActions.kt`
+- `accessibility/website/redirection/ClipboardPasteFallback.kt`
+
+O coordenador possui a ordem da transação e a política de neutralização da aba. O `BlockingAccessibilityService` funciona como adaptador Android para obter janelas/raízes frescas, executar `AccessibilityAction`s e receber eventos de confirmação.
+
 Ordem conceitual:
 
-1. ativar a barra de endereço certificada;
-2. reacquirir a árvore;
-3. selecionar/substituir o conteúdo;
-4. escrever o destino seguro;
-5. reacquirir a árvore;
-6. enviar com uma ação certificável;
-7. aguardar confirmação da superfície segura.
+1. mostrar a apresentação opaca de site bloqueado;
+2. ativar a barra de endereço certificada;
+3. reacquirir a árvore;
+4. selecionar/substituir o conteúdo;
+5. escrever `WebsiteRedirectDestination.current.url`;
+6. reacquirir a árvore;
+7. enviar com uma ação certificável;
+8. confirmar `WebsiteRedirectDestination.current.matchesSurface(...)`.
 
-O fluxo não deve abrir outra aba como substituto do redirecionamento na aba bloqueada.
+O fluxo não abre outra aba como substituto do redirecionamento na aba bloqueada.
 
 ## 7. Confirmação e fail-closed
 
 **Objetivo:** só liberar a proteção depois de provar que o destino seguro realmente assumiu a superfície.
 
-Se identificação, escrita, envio ou confirmação falhar, a página bloqueada não volta a ser revelada. O fluxo deve permanecer fail-closed e cair numa superfície segura do FocusGuard.
+Se identificação, escrita, envio ou confirmação falhar, a página bloqueada não volta a ser revelada. A cortina permanece até a entrega para uma superfície FocusGuard segura.
+
+Quando o domínio bloqueado é conhecido, `ui/WebsiteBlockNoticeActivity.kt` é a superfície terminal fail-closed. Ela não identifica URLs, não manipula a barra e não tenta iniciar uma segunda navegação. Para um navegador opaco cujo domínio não pode ser provado, o fallback genérico continua sendo usado.
+
+## 8. PASSWORD e outros terminais
+
+`PasswordUnlockActivity` continua sendo a única proprietária de credenciais e da concessão de uma visita PASSWORD. O PASSWORD não usa o redirecionamento HARD enquanto a autenticação estiver pendente.
+
+`GenericBlockNoticeActivity` permanece restrita a apps e estados genéricos sem alvo web conhecido.
 
 ## Fluxo resumido
 
@@ -111,28 +118,36 @@ Comparar regras / hierarquia
         │
         ├── permitido ──► continuar observação
         │
-        └── bloqueado
+        └── bloqueado HARD
                │
                ▼
-        Mostrar cortina imediata
+   Cortina "site bloqueado"
+   (navegador continua ativo)
                │
                ▼
-        Redirecionar na mesma aba
+ WebsiteRedirectDestination
                │
                ▼
-        Confirmar destino seguro
+ WebsiteRedirectionCoordinator
                │
-        ┌───────┴────────┐
+               ▼
+  reescrever a mesma aba
+               │
+               ▼
+ confirmar destino configurado
+               │
+        ┌──────┴─────────┐
         │                │
      sucesso           falha
         │                │
         ▼                ▼
- liberar cortina   manter fail-closed
+ liberar cortina   manter cortina
                          │
                          ▼
-              tela segura de bloqueio
+          WebsiteBlockNoticeActivity
+          (fail-closed, se alvo conhecido)
 ```
 
 ## Regra de manutenção
 
-Novas estratégias de leitura de URL entram em `identification`. Novas decisões de propriedade da proteção entram em `blocking`. Novos métodos de escrita/envio entram em `redirection`. Mudanças visuais do bloqueio web entram em `WebsiteBlockNoticeActivity`. Regras de domínio entram no matcher/políticas. O `BlockingAccessibilityService` deve apenas coordenar essas etapas, sem criar um segundo mecanismo paralelo para a mesma responsabilidade.
+Novas estratégias de leitura entram em `identification`. Novas decisões de propriedade entram em `blocking`. O endereço seguro e sua certificação entram em `WebsiteRedirectDestination`. Ordem/estado de redirecionamento entram em `WebsiteRedirectionCoordinator`. Ações de barra entram em `AddressBarRedirectionActions`. A apresentação normal permanece no overlay de acessibilidade; `WebsiteBlockNoticeActivity` é somente terminal/fail-closed. O `BlockingAccessibilityService` é o adaptador Android que conecta essas etapas e não deve voltar a ser a fonte de verdade do destino ou da máquina de estados.
