@@ -96,7 +96,7 @@ class BrowserProfileRegistryTest {
     }
 
     @Test
-    fun `address bar evidence can infer family for learned browsers`() {
+    fun `strong engine specific address evidence can infer family`() {
         assertThat(BrowserProfileRegistry.inferFamilyFromAddressBarEntryName("url_bar"))
             .isEqualTo(BrowserFamily.CHROMIUM)
         assertThat(
@@ -104,10 +104,22 @@ class BrowserProfileRegistryTest {
                 "mozac_browser_toolbar_edit_url_view"
             )
         ).isEqualTo(BrowserFamily.GECKO)
-        assertThat(BrowserProfileRegistry.inferFamilyFromAddressBarEntryName("custom_url_input"))
-            .isEqualTo(BrowserFamily.WEBVIEW_BASED)
         assertThat(BrowserProfileRegistry.inferFamilyFromAddressBarEntryName("message_field"))
             .isEqualTo(BrowserFamily.GENERIC)
+    }
+
+    @Test
+    fun `shared or generic address ids never guess an unknown browser family`() {
+        listOf(
+            "address_bar",
+            "url_field",
+            "url_edit_text",
+            "omnibarTextInput",
+            "custom_url_input"
+        ).forEach { entryName ->
+            assertThat(BrowserProfileRegistry.inferFamilyFromAddressBarEntryName(entryName))
+                .isEqualTo(BrowserFamily.GENERIC)
+        }
     }
 
     @Test
