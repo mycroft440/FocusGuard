@@ -1,0 +1,38 @@
+name: Finalize website redirect confirmation
+
+on:
+  push:
+    branches:
+      - refactor/website-blocking-pipeline
+    paths:
+      - scripts/finalize_website_pipeline_confirmation.py
+      - .github/workflows/finalize-website-pipeline-confirmation.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/website-blocking-pipeline
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply final confirmation hardening
+        run: python scripts/finalize_website_pipeline_confirmation.py
+      - name: Remove temporary automation
+        run: |
+          git rm scripts/finalize_website_pipeline_confirmation.py
+          git rm .github/workflows/finalize-website-pipeline-confirmation.yml
+      - name: Commit and push
+        run: |
+          git config user.name "FocusGuard Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Harden redirect confirmation retry boundaries"
+          git push origin HEAD:refactor/website-blocking-pipeline
