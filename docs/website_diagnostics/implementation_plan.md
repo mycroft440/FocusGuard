@@ -15,6 +15,7 @@ Criar um subsistema separado do logger geral do FocusGuard para responder, com e
 - Limitar retenção a 14 dias e no máximo 60 relatórios para impedir crescimento indefinido.
 - Diferenciar falha comprovada de resultado inconclusivo; ausência de evidência nunca vira causa inventada.
 - Serializar leitura, gravação, retenção e limpeza dos TXT para evitar leitura parcial ou corrida entre exclusão e criação.
+- A limpeza avança uma geração de armazenamento: gravações assíncronas agendadas antes de “Limpar relatórios” não podem reaparecer depois da limpeza; falhas novas continuam sendo registradas normalmente.
 
 ## Pontos observados
 
@@ -49,6 +50,7 @@ A classificação diferencia explicitamente **envio aceito sem qualquer evidênc
 - A tela também mostra o espaço total atualmente ocupado pelos TXT.
 - Tocar em um relatório abre seu conteúdo dentro do app com texto selecionável.
 - A opção **“Limpar relatórios”** remove somente os TXT desse subsistema, após confirmação explícita; ela não altera bloqueios ativos nem configurações.
+- Relatórios de falhas antigas que ainda estavam apenas enfileirados para I/O também são invalidados pela limpeza e não reaparecem depois.
 - Após a limpeza, a tela informa quantos arquivos foram removidos e se algum arquivo não pôde ser excluído.
 - As ferramentas de manutenção/ANR existentes continuam disponíveis em uma opção separada do mesmo Modo Dev.
 
@@ -62,3 +64,4 @@ A classificação diferencia explicitamente **envio aceito sem qualquer evidênc
 - Confirmar que texto que não forma uma origem válida não é persistido como alvo.
 - Confirmar que uma transação bem-sucedida não gera TXT e que falhas são listadas em ordem decrescente de modificação.
 - Confirmar que “Limpar relatórios” apaga apenas arquivos `website_block_failure_*.txt` do diretório dedicado.
+- Confirmar que uma gravação agendada antes da limpeza não recria um TXT após a operação terminar.
