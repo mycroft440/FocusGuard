@@ -30,7 +30,7 @@ internal object WebsiteRedirectionCoordinator {
     interface Adapter {
         suspend fun awaitPresentationFrame(): Boolean
         fun ownsProtection(): Boolean
-        suspend fun requestSameTabRedirect(): Boolean
+        suspend fun requestSameTabRedirect(attemptNumber: Int): Boolean
         suspend fun restoreBlockedSurfaceForRetry(): Boolean
         suspend fun beforeRetry(nextAttemptNumber: Int)
         suspend fun requestExternalFallback(): Boolean
@@ -93,7 +93,7 @@ internal object WebsiteRedirectionCoordinator {
             adapter.ownsProtection() &&
             attemptNumber <= WebsiteRedirectionPlan.MAX_SAME_TAB_ATTEMPTS
         ) {
-            redirectRequested = adapter.requestSameTabRedirect()
+            redirectRequested = adapter.requestSameTabRedirect(attemptNumber)
             if (redirectRequested) break
             if (!adapter.ownsProtection()) return Outcome.ABORTED
             if (!WebsiteRedirectionPlan.canRetry(attemptNumber)) break
