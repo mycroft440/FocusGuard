@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dev_mode_website_diagnostics_title">Diagnóstico de bloqueio de sites</string>
+    <string name="dev_mode_website_diagnostics_subtitle">Relatórios TXT gerados quando a proteção de sites termina sem confirmação suficiente.</string>
+    <string name="dev_mode_tools_title">Ferramentas de manutenção</string>
+    <string name="dev_mode_tools_subtitle">Abrir as ferramentas atuais do Modo Dev, incluindo diagnóstico de ANR e ações de manutenção.</string>
+    <string name="website_diagnostics_title">Diagnóstico de bloqueio de sites</string>
+    <string name="website_diagnostics_description">Falhas e resultados não confirmados são gravados separadamente em TXT. O relatório aponta a última etapa comprovada sem inventar uma causa.</string>
+    <string name="website_diagnostics_empty">Nenhum relatório de falha foi gerado ainda.</string>
+    <string name="website_diagnostics_refresh">Atualizar relatórios</string>
+    <string name="website_diagnostics_back">Voltar</string>
+    <string name="website_diagnostics_close">Fechar</string>
+    <string name="website_diagnostics_open_report">Abrir relatório</string>
+    <string name="website_diagnostics_read_error">Não foi possível ler este relatório.</string>
+    <string name="website_diagnostics_report_size">%1$d bytes</string>
+    <string name="website_diagnostics_reports_count">%1$d relatório(s)</string>
+</resources>
