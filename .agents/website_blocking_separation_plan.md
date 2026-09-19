@@ -28,14 +28,14 @@ Deixar o fluxo web legível como uma pipeline com responsabilidades independente
 5. **Destino seguro**
    - `WebsiteRedirectDestination` é a única fonte de verdade do endereço e da certificação do destino.
    - Destino inicial: `https://www.google.com`.
-   - O Service não deve possuir a URL segura.
+   - O Service não possui a URL segura.
 
 6. **Coordenação e redirecionamento**
-   - `WebsiteRedirectionCoordinator` possui a máquina de estados e a política da aba.
-   - `AddressBarRedirectionActions`, `ClipboardPasteFallback` e `WebsiteRedirectionPlan` executam/definem as fases certificáveis.
-   - Prioriza substituição na mesma aba.
-   - Não usa `ACTION_VIEW` como fallback quando isso não pode provar a neutralização da aba original.
-   - O `BlockingAccessibilityService` fornece somente o adaptador Android para janela/root/action/evento.
+   - `WebsiteRedirectionCoordinator` é dono da transação após a apresentação: tentativas na mesma aba, retry limitado, confirmação, terminal estrito e fail-closed.
+   - `WebsiteTabNeutralizationPolicy` pertence à mesma camada.
+   - `AddressBarRedirectionActions`, `ClipboardPasteFallback` e `WebsiteRedirectionPlan` executam/definem as primitivas e os limites certificáveis.
+   - O `BlockingAccessibilityService` fornece somente o adaptador Android: roots/janelas, ações, eventos, terminal estrito e handoff da cortina.
+   - O fluxo prioriza substituição na mesma aba e não usa `ACTION_VIEW` quando não pode provar a neutralização da aba original.
 
 7. **Confirmação e fail-closed**
    - A cortina só é liberada depois de confirmar a superfície definida por `WebsiteRedirectDestination`.
@@ -54,7 +54,7 @@ Deixar o fluxo web legível como uma pipeline com responsabilidades independente
 - A Activity terminal de website nunca tenta descobrir URL nem manipular a barra.
 - Redirecionamento nunca decide se uma regra está bloqueada.
 - O destino seguro não pertence ao `BlockingAccessibilityService`.
-- A máquina de estados de redirecionamento não pertence ao `BlockingAccessibilityService`.
+- A sequência/retry/fail-closed do redirecionamento não pertence ao `BlockingAccessibilityService`.
 - Apps e sites não compartilham a mesma Activity visual quando o alvo web é conhecido.
 - `AccessibilityNodeInfo` não atravessa fases assíncronas; cada fase reacquire a raiz.
 - O redirecionamento continua sendo na mesma aba sempre que certificável.
@@ -66,7 +66,7 @@ Deixar o fluxo web legível como uma pipeline com responsabilidades independente
 - Usar a cortina opaca como apresentação HARD normal do website, preservando a janela ativa do navegador.
 - Manter `WebsiteBlockNoticeActivity` como terminal/fail-closed conhecido, sem navegação própria.
 - Criar `WebsiteRedirectDestination` como fonte de verdade do destino seguro.
-- Criar `WebsiteRedirectionCoordinator` e extrair `WebsiteTabNeutralizationPolicy` do Service.
+- Criar `WebsiteRedirectionCoordinator`, extrair `WebsiteTabNeutralizationPolicy` e mover para o coordinator a sequência de tentativas/confirmação/fail-closed.
 - Simplificar `GenericBlockNoticeActivity` para apps/estado genérico.
-- Adicionar testes de roteamento, destino e coordenação.
+- Adicionar testes de roteamento, destino e execução do coordinator.
 - Atualizar o mapa e `docs/WEBSITE_BLOCKING_ARCHITECTURE.md`.
