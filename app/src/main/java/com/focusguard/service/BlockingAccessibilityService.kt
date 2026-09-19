@@ -2909,7 +2909,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         // Establish/update the same package/window generation used by the async path
         // before routing the block. This keeps transition guards bound to the exact
         // browser window that emitted the address-bar event.
-        browserInspectionCoordinator.offer(
+        val offer = browserInspectionCoordinator.offer(
             packageName = packageName,
             windowId = event.windowId,
             eventType = event.eventType,
@@ -2919,6 +2919,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             directText = listOf(addressText),
             contentDescription = event.contentDescription?.toString()
         )
+        if (offer.startWorker) scope.launch { drainBrowserInspections() }
         foregroundPackageName = packageName
         routeWebsiteBlockByHierarchy(
             browserPackageName = packageName,
