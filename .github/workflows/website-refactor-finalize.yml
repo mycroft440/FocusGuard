@@ -1,0 +1,37 @@
+name: Website refactor finalizer
+
+on:
+  push:
+    branches:
+      - refactor/website-blocking-pipeline
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: ${{ !contains(github.event.head_commit.message, '[website-finalized]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@v4
+        with:
+          ref: refactor/website-blocking-pipeline
+          fetch-depth: 0
+
+      - name: Apply final website blocking cleanup
+        run: python3 scripts/finalize_website_blocking_refactor.py
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No changes required"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "refactor: finish website blocking separation [website-finalized]"
+          git push origin HEAD:refactor/website-blocking-pipeline
