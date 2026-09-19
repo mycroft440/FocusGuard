@@ -48,6 +48,7 @@ internal object WebsiteBlockingDiagnostics {
     private val transitions = ConcurrentHashMap<String, TransitionState>()
     private val recentIdentificationFailures = ConcurrentHashMap<String, Long>()
     private val reportSequence = AtomicLong(0L)
+    private val reportClearGeneration = AtomicLong(0L)
     private val reportFileLock = Any()
 
     @Volatile private var appContext: Context? = null
@@ -257,6 +258,11 @@ internal object WebsiteBlockingDiagnostics {
 
     /** Deletes only website diagnostic TXT files; active protection state is untouched. */
     fun clearReports(): WebsiteBlockingDiagnosticsClearResult = synchronized(reportFileLock) {
+        // Invalidate writes that were scheduled before the user requested cleanup.
+        // A failure observed after this cleanup completes receives the new generation
+        // and can be persisted normally.
+        reportClearGeneration.incrementAndGet()
+
         val directory = reportDirectory()
             ?: return@synchronized WebsiteBlockingDiagnosticsClearResult(0, 0)
         if (!directory.exists()) {
@@ -277,6 +283,7 @@ internal object WebsiteBlockingDiagnostics {
         extraLines: List<String> = emptyList()
     ) {
         val context = appContext ?: return
+        val scheduledClearGeneration = reportClearGeneration.get()
         scope.launch {
             runCatching {
                 val now = System.currentTimeMillis()
@@ -338,6 +345,9 @@ internal object WebsiteBlockingDiagnostics {
                 }
 
                 synchronized(reportFileLock) {
+                    if (scheduledClearGeneration != reportClearGeneration.get()) {
+                        return@synchronized
+                    }
                     val directory = reportDirectory() ?: return@synchronized
                     if (!directory.exists() && !directory.mkdirs()) return@synchronized
                     val stamp = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss-SSS", Locale.US)
