@@ -1271,8 +1271,19 @@ class BlockingAccessibilityService : AccessibilityService() {
             // after the immediate self-protection/browser paths and before nodes.
             if (!inspectWindowEarly && consumeInputUiEvent(event, directPackage, true)) return
 
-            // Website inspection is always asynchronous. Never dereference event.source,
-            // rootInActiveWindow or a browser tree from the accessibility callback.
+            // Address-bar text changes are the strongest low-latency signal Chromium
+            // exposes through Accessibility. Inspect only the event source here (never the
+            // whole tree) so a blocked host can be stopped even when rootInActiveWindow is
+            // stale, incomplete, or the toolbar is temporarily absent from the active root.
+            if (browserInspectionEvent && directPackage.isNotBlank() &&
+                websiteSurfaceInspectionNeeded() &&
+                handleImmediateBrowserAddressEvent(event, directPackage)
+            ) {
+                return
+            }
+
+            // Full website inspection stays asynchronous. The immediate source path above
+            // complements this root/window walk; it does not replace the normal verification.
             if (browserInspectionEvent && directPackage.isNotBlank() &&
                 websiteSurfaceInspectionNeeded()
             ) {
@@ -2869,6 +2880,53 @@ class BlockingAccessibilityService : AccessibilityService() {
         if (rootMatches) return root
         recycleSafely(root)
         return null
+    }
+
+    private fun handleImmediateBrowserAddressEvent(
+        event: AccessibilityEvent,
+        packageName: String
+    ): Boolean {
+        if (event.eventType !in immediateBrowserBlockEventTypes ||
+            packageName !in browserPackages ||
+            event.windowId < 0 ||
+            blockedWebsitesDomainSet.isEmpty() ||
+            websiteBlockTransitionGuard.isActive(packageName)
+        ) return false
+
+        val addressText = WebsiteBlocker.extractAddressBarTextFromEvent(
+            event = event,
+            browserPackageName = packageName,
+            httpsHandlerRecognized = isVerifiedHttpsHandler(packageName)
+        ) ?: return false
+        val url = WebsiteBlocker.extractUrlCandidate(addressText)
+        val blocked = immediateWebsiteBlockTarget(
+            addressText = addressText,
+            url = url,
+            blockedRules = blockedWebsitesDomainSet
+        ) ?: return false
+        val candidate = url ?: addressText
+
+        // Establish/update the same package/window generation used by the async path
+        // before routing the block. This keeps transition guards bound to the exact
+        // browser window that emitted the address-bar event.
+        browserInspectionCoordinator.offer(
+            packageName = packageName,
+            windowId = event.windowId,
+            eventType = event.eventType,
+            eventUptimeMillis = event.eventTime,
+            receivedUptimeMillis = SystemClock.uptimeMillis(),
+            className = event.className?.toString().orEmpty(),
+            directText = listOf(addressText),
+            contentDescription = event.contentDescription?.toString()
+        )
+        foregroundPackageName = packageName
+        routeWebsiteBlockByHierarchy(
+            browserPackageName = packageName,
+            browserWindowId = event.windowId,
+            blockedCandidate = candidate,
+            detectionEventUptimeMillis = event.eventTime
+        )
+        return true
     }
 
     private fun scheduleBrowserInspection(event: AccessibilityEvent, packageName: String) {
