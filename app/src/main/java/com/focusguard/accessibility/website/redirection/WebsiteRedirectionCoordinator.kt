@@ -89,7 +89,10 @@ internal object WebsiteRedirectionCoordinator {
 
         var redirectRequested = false
         var attemptNumber = 1
-        while (adapter.ownsProtection() && attemptNumber <= WebsiteRedirectionPlan.MAX_SAME_TAB_ATTEMPTS) {
+        while (
+            adapter.ownsProtection() &&
+            attemptNumber <= WebsiteRedirectionPlan.MAX_SAME_TAB_ATTEMPTS
+        ) {
             redirectRequested = adapter.requestSameTabRedirect(attemptNumber)
             if (redirectRequested) break
             if (!adapter.ownsProtection()) return Outcome.ABORTED
