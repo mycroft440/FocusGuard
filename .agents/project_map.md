@@ -21,7 +21,7 @@
 - `WebsiteBlockNoticeActivity`: superfície terminal/fail-closed para um site bloqueado conhecido. Não participa antes do redirecionamento normal, não identifica URL e não manipula a barra do navegador.
 - `GenericBlockNoticeActivity`: superfície de bloqueio de apps e estados fail-closed sem alvo web conhecido; não contém automação de website.
 - `accessibility/website/redirection/WebsiteRedirectDestination`: única fonte de verdade do destino seguro e da validação de sua superfície. O destino inicial é `https://www.google.com`.
-- `accessibility/website/redirection/WebsiteRedirectionCoordinator`: possui a máquina de estados da transação e `WebsiteTabNeutralizationPolicy`; não acessa diretamente janelas/nodes Android.
-- `AddressBarRedirectionActions`, `ClipboardPasteFallback` e `WebsiteRedirectionPlan`: executam/definem somente ações certificáveis de barra e fases do redirecionamento na mesma aba.
-- `BlockingAccessibilityService`: adaptador Android que conecta identificação → decisão → apresentação overlay → coordinator/destino → confirmação/fail-closed. Não é fonte de verdade da URL segura nem da máquina de estados de redirecionamento.
+- `accessibility/website/redirection/WebsiteRedirectionCoordinator`: dono da transação de redirecionamento após a apresentação; controla tentativas na mesma aba, retry limitado, confirmação, terminal estrito e fail-closed. Também contém `WebsiteTabNeutralizationPolicy`.
+- `AddressBarRedirectionActions`, `ClipboardPasteFallback` e `WebsiteRedirectionPlan`: executam/definem somente ações certificáveis de barra e limites/fases do redirecionamento.
+- `BlockingAccessibilityService`: adaptador Android que conecta identificação → decisão → apresentação overlay → coordinator/destino → confirmação/fail-closed. Fornece janelas/roots/actions/eventos ao coordinator; não é fonte de verdade da URL segura nem decide a sequência da transação.
 - Arquitetura detalhada: `docs/WEBSITE_BLOCKING_ARCHITECTURE.md`.
