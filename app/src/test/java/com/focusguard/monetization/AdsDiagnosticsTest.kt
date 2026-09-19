@@ -6,21 +6,19 @@ import org.junit.Test
 
 class AdsDiagnosticsTest {
     @Test
-    fun loadFailureKeepsAllActionableFields() {
+    fun loadFailureKeepsAllNextGenDiagnosticFields() {
         val diagnostic = AdsDiagnostics.formatLoadFailure(
             format = "Banner",
-            code = 3,
-            domain = "com.google.android.gms.ads",
+            code = "NO_FILL",
             message = "Account not approved yet",
-            cause = "network cause",
+            errorDump = "LoadAdError(code=NO_FILL, message=Account not approved yet)",
             responseInfo = "response-id=abc\nadapter=AdMob"
         )
 
         assertTrue(diagnostic.contains("Banner falhou"))
-        assertTrue(diagnostic.contains("domain=com.google.android.gms.ads"))
-        assertTrue(diagnostic.contains("code=3"))
+        assertTrue(diagnostic.contains("code=NO_FILL"))
         assertTrue(diagnostic.contains("Account not approved yet"))
-        assertTrue(diagnostic.contains("cause=network cause"))
+        assertTrue(diagnostic.contains("LoadAdError(code=NO_FILL"))
         assertTrue(diagnostic.contains("response-id=abc adapter=AdMob"))
         assertFalse(diagnostic.contains('\n'))
     }
@@ -29,16 +27,15 @@ class AdsDiagnosticsTest {
     fun loadFailureUsesExplicitFallbacksForMissingDetails() {
         val diagnostic = AdsDiagnostics.formatLoadFailure(
             format = "Rewarded",
-            code = 0,
-            domain = "",
+            code = "",
             message = "",
-            cause = null,
+            errorDump = "",
             responseInfo = null
         )
 
-        assertTrue(diagnostic.contains("domain=desconhecido"))
+        assertTrue(diagnostic.contains("code=desconhecido"))
         assertTrue(diagnostic.contains("message=sem mensagem"))
-        assertTrue(diagnostic.contains("cause=sem causa"))
+        assertTrue(diagnostic.contains("error=indisponível"))
         assertTrue(diagnostic.contains("responseInfo=indisponível"))
     }
 }
