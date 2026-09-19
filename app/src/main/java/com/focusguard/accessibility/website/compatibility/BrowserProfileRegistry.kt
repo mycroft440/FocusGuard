@@ -255,13 +255,19 @@ internal object BrowserProfileRegistry {
         packageName: String,
         defaults: Iterable<String>
     ): List<String> {
+        val candidates = defaults.filter(String::isNotBlank).distinct()
+        val candidateSet = candidates.toSet()
         val profile = profileFor(packageName)
+        val hasFamilyCandidate = candidates.any(profile.preferredAddressBarEntryNames::contains)
         return buildList {
+            // Generic discovery may be enriched with the family vocabulary. Once the caller has
+            // supplied a family-specific candidate, however, its candidate set is intentional and
+            // must stay bounded (for example Firefox Compose URL_BOX vs SEARCH_BOX reads).
             profile.preferredAddressBarEntryNames.forEach { entry ->
-                if (entry.isNotBlank() && entry !in this) add(entry)
+                if ((!hasFamilyCandidate || entry in candidateSet) && entry !in this) add(entry)
             }
-            defaults.forEach { entry ->
-                if (entry.isNotBlank() && entry !in this) add(entry)
+            candidates.forEach { entry ->
+                if (entry !in this) add(entry)
             }
         }
     }
