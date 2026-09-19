@@ -14,6 +14,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -26,6 +27,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -38,12 +40,14 @@ import androidx.compose.ui.window.DialogProperties
 import com.focusguard.R
 import com.focusguard.accessibility.website.diagnostics.WebsiteBlockingDiagnosticReport
 import com.focusguard.accessibility.website.diagnostics.WebsiteBlockingDiagnostics
+import com.focusguard.accessibility.website.diagnostics.WebsiteBlockingDiagnosticsClearResult
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.FocusCard
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 @Composable
@@ -55,6 +59,9 @@ internal fun WebsiteBlockingDiagnosticsDialog(
     var selectedContent by remember { mutableStateOf<String?>(null) }
     var loading by remember { mutableStateOf(true) }
     var refreshNonce by remember { mutableIntStateOf(0) }
+    var showClearConfirmation by remember { mutableStateOf(false) }
+    var clearResult by remember { mutableStateOf<WebsiteBlockingDiagnosticsClearResult?>(null) }
+    val coroutineScope = rememberCoroutineScope()
 
     LaunchedEffect(refreshNonce) {
         loading = true
@@ -87,8 +94,13 @@ internal fun WebsiteBlockingDiagnosticsDialog(
                 ReportList(
                     reports = reports,
                     loading = loading,
+                    clearResult = clearResult,
                     onOpen = { selectedFileName = it },
-                    onRefresh = { refreshNonce++ },
+                    onRefresh = {
+                        clearResult = null
+                        refreshNonce++
+                    },
+                    onClear = { showClearConfirmation = true },
                     onDismiss = onDismiss
                 )
             } else {
@@ -101,19 +113,62 @@ internal fun WebsiteBlockingDiagnosticsDialog(
             }
         }
     }
+
+    if (showClearConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirmation = false },
+            title = {
+                Text(stringResource(R.string.website_diagnostics_clear_title))
+            },
+            text = {
+                Text(stringResource(R.string.website_diagnostics_clear_message, reports.size))
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showClearConfirmation = false
+                        coroutineScope.launch {
+                            loading = true
+                            val result = withContext(Dispatchers.IO) {
+                                WebsiteBlockingDiagnostics.clearReports()
+                            }
+                            reports = withContext(Dispatchers.IO) {
+                                WebsiteBlockingDiagnostics.listReports()
+                            }
+                            clearResult = result
+                            loading = false
+                        }
+                    }
+                ) {
+                    Text(
+                        text = stringResource(R.string.website_diagnostics_clear_confirm),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirmation = false }) {
+                    Text(stringResource(R.string.website_diagnostics_cancel))
+                }
+            }
+        )
+    }
 }
 
 @Composable
 private fun ReportList(
     reports: List<WebsiteBlockingDiagnosticReport>,
     loading: Boolean,
+    clearResult: WebsiteBlockingDiagnosticsClearResult?,
     onOpen: (String) -> Unit,
     onRefresh: () -> Unit,
+    onClear: () -> Unit,
     onDismiss: () -> Unit
 ) {
     val formatter = remember {
         SimpleDateFormat("dd/MM/yyyy HH:mm:ss", Locale.getDefault())
     }
+    val totalBytes = reports.sumOf { it.sizeBytes }
 
     Column(
         modifier = Modifier
@@ -150,7 +205,36 @@ private fun ReportList(
             style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold
         )
+        Text(
+            text = stringResource(R.string.website_diagnostics_storage_size, totalBytes),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         Spacer(Modifier.height(10.dp))
+
+        clearResult?.let { result ->
+            Text(
+                text = if (result.failedCount == 0) {
+                    stringResource(
+                        R.string.website_diagnostics_clear_result,
+                        result.deletedCount
+                    )
+                } else {
+                    stringResource(
+                        R.string.website_diagnostics_clear_result_partial,
+                        result.deletedCount,
+                        result.failedCount
+                    )
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = if (result.failedCount == 0) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.error
+                }
+            )
+            Spacer(Modifier.height(10.dp))
+        }
 
         if (loading) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
@@ -216,6 +300,17 @@ private fun ReportList(
             onClick = onRefresh
         ) {
             Text(stringResource(R.string.website_diagnostics_refresh))
+        }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !loading && reports.isNotEmpty(),
+            onClick = onClear
+        ) {
+            Text(
+                text = stringResource(R.string.website_diagnostics_clear),
+                color = MaterialTheme.colorScheme.error
+            )
         }
         Spacer(Modifier.height(24.dp))
     }
