@@ -255,13 +255,17 @@ internal object BrowserProfileRegistry {
         packageName: String,
         defaults: Iterable<String>
     ): List<String> {
+        val candidates = defaults.filter(String::isNotBlank).distinct()
+        val candidateSet = candidates.toSet()
         val profile = profileFor(packageName)
         return buildList {
+            // Family metadata defines precedence only. It must never expand a caller's bounded
+            // candidate set, because URL-specific reads intentionally provide a narrower list.
             profile.preferredAddressBarEntryNames.forEach { entry ->
-                if (entry.isNotBlank() && entry !in this) add(entry)
+                if (entry in candidateSet && entry !in this) add(entry)
             }
-            defaults.forEach { entry ->
-                if (entry.isNotBlank() && entry !in this) add(entry)
+            candidates.forEach { entry ->
+                if (entry !in this) add(entry)
             }
         }
     }
