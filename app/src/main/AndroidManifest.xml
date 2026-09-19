@@ -175,6 +175,15 @@
             android:theme="@style/Theme.FocusGuard" />
 
         <activity
+            android:name=".ui.WebsiteBlockNoticeActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:noHistory="true"
+            android:resizeableActivity="false"
+            android:theme="@style/Theme.FocusGuard" />
+
+        <activity
             android:name=".ui.PasswordUnlockActivity"
             android:excludeFromRecents="true"
             android:exported="false"
