@@ -5,20 +5,22 @@ import org.junit.Test
 
 class BrowserCompatibilityDegradedPolicyTest {
     @Test
-    fun `two redirect failures degrade instead of permanently disabling browser`() {
+    fun `two redirect failures enter degraded rediscovery without disabling browser`() {
+        assertThat(BrowserCompatibilityStore.isRedirectionDegraded(2)).isTrue()
         assertThat(
             BrowserCompatibilityStore.statusAfterRedirectionFailure(
                 previousStatus = BrowserCompatibilityStatus.SUPPORTED,
                 failures = 2
             )
-        ).isEqualTo(BrowserCompatibilityStatus.DEGRADED)
+        ).isEqualTo(BrowserCompatibilityStatus.SUPPORTED)
     }
 
     @Test
     fun `continued redirect failures eventually mark browser unsupported`() {
+        assertThat(BrowserCompatibilityStore.isRedirectionDegraded(5)).isFalse()
         assertThat(
             BrowserCompatibilityStore.statusAfterRedirectionFailure(
-                previousStatus = BrowserCompatibilityStatus.DEGRADED,
+                previousStatus = BrowserCompatibilityStatus.SUPPORTED,
                 failures = 5
             )
         ).isEqualTo(BrowserCompatibilityStatus.UNSUPPORTED)
@@ -26,6 +28,7 @@ class BrowserCompatibilityDegradedPolicyTest {
 
     @Test
     fun `single transient redirect failure preserves previous status`() {
+        assertThat(BrowserCompatibilityStore.isRedirectionDegraded(1)).isFalse()
         assertThat(
             BrowserCompatibilityStore.statusAfterRedirectionFailure(
                 previousStatus = BrowserCompatibilityStatus.SUPPORTED,
@@ -35,11 +38,12 @@ class BrowserCompatibilityDegradedPolicyTest {
     }
 
     @Test
-    fun `degraded exact version remains strong browser evidence`() {
+    fun `supported exact version remains strong browser evidence while rediscovery is allowed`() {
         val record = BrowserCompatibilityRecord(
             packageName = "example.browser",
-            status = BrowserCompatibilityStatus.DEGRADED,
-            packageVersionCode = 42L
+            status = BrowserCompatibilityStatus.SUPPORTED,
+            packageVersionCode = 42L,
+            consecutiveRedirectionFailures = 2
         )
 
         assertThat(
