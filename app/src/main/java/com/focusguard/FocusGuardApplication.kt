@@ -7,6 +7,7 @@ import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
 import com.focusguard.accessibility.website.compatibility.BrowserDetector
+import com.focusguard.accessibility.website.diagnostics.WebsiteBlockingDiagnostics
 import com.focusguard.accessibility.website.redirection.ClipboardPasteFallback
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeManager
@@ -53,6 +54,7 @@ class FocusGuardApplication : Application() {
         BrowserDetector.initialize(browserCompatibilityContext)
         BrowserCompatibilityStore.initialize(browserCompatibilityContext)
         FocusGuardLogger.init(startupContext)
+        WebsiteBlockingDiagnostics.initialize(startupContext)
 
         // A nova geração é criada apenas quando o PROCESSO do app volta ao
         // primeiro plano. Trocas internas de Activity e rotação não relockam a
