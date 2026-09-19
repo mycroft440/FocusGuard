@@ -912,6 +912,56 @@ class WebsiteBlockNavigationTest {
         ).isFalse()
     }
 
+    @Test
+    fun `transient omnibox window cannot replace same tab transition target`() {
+        assertThat(
+            BlockingAccessibilityService.resolveTransitionInspectionWindowId(
+                expectedWindowId = 7,
+                eventWindowId = 8,
+                externalRedirectRequested = false,
+                closeConfirmed = false
+            )
+        ).isEqualTo(-1)
+        assertThat(
+            BlockingAccessibilityService.resolveTransitionInspectionWindowId(
+                expectedWindowId = 7,
+                eventWindowId = -1,
+                externalRedirectRequested = false,
+                closeConfirmed = false
+            )
+        ).isEqualTo(7)
+        assertThat(
+            BlockingAccessibilityService.resolveTransitionInspectionWindowId(
+                expectedWindowId = 7,
+                eventWindowId = 8,
+                externalRedirectRequested = true,
+                closeConfirmed = false
+            )
+        ).isEqualTo(8)
+    }
+
+    @Test
+    fun `invalid browser window event reuses the last valid inspected window`() {
+        assertThat(
+            BlockingAccessibilityService.resolveBrowserInspectionWindowId(
+                eventWindowId = -1,
+                currentWindowId = 7
+            )
+        ).isEqualTo(7)
+        assertThat(
+            BlockingAccessibilityService.resolveBrowserInspectionWindowId(
+                eventWindowId = -1,
+                currentWindowId = null
+            )
+        ).isEqualTo(-1)
+        assertThat(
+            BlockingAccessibilityService.resolveBrowserInspectionWindowId(
+                eventWindowId = 8,
+                currentWindowId = 7
+            )
+        ).isEqualTo(8)
+    }
+
     private companion object {
         const val CHROME_PACKAGE = "com.android.chrome"
         const val BRAVE_PACKAGE = "com.brave.browser"
