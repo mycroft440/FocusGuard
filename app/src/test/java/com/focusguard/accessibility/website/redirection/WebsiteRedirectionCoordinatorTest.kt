@@ -95,11 +95,13 @@ class WebsiteRedirectionCoordinatorTest {
     }
 
     @Test(expected = CancellationException::class)
-    fun `cancellation is never converted into fail closed`() = runBlocking {
-        WebsiteRedirectionCoordinator.execute(
-            normalSession(),
-            FakeAdapter(throwCancellationOnSubmit = true)
-        )
+    fun `cancellation is never converted into fail closed`() {
+        runBlocking {
+            WebsiteRedirectionCoordinator.execute(
+                normalSession(),
+                FakeAdapter(throwCancellationOnSubmit = true)
+            )
+        }
     }
 
     private fun normalSession() = WebsiteRedirectionCoordinator.Session(strict = false).also { it.begin() }
