@@ -236,6 +236,26 @@ private fun ReportList(
             Spacer(Modifier.height(10.dp))
         }
 
+        OutlinedButton(
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !loading,
+            onClick = onRefresh
+        ) {
+            Text(stringResource(R.string.website_diagnostics_refresh))
+        }
+        Spacer(Modifier.height(8.dp))
+        OutlinedButton(
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !loading && reports.isNotEmpty(),
+            onClick = onClear
+        ) {
+            Text(
+                text = stringResource(R.string.website_diagnostics_clear),
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+        Spacer(Modifier.height(18.dp))
+
         if (loading) {
             CircularProgressIndicator(modifier = Modifier.align(Alignment.CenterHorizontally))
         } else if (reports.isEmpty()) {
@@ -293,25 +313,6 @@ private fun ReportList(
             }
         }
 
-        Spacer(Modifier.height(18.dp))
-        OutlinedButton(
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !loading,
-            onClick = onRefresh
-        ) {
-            Text(stringResource(R.string.website_diagnostics_refresh))
-        }
-        Spacer(Modifier.height(8.dp))
-        OutlinedButton(
-            modifier = Modifier.fillMaxWidth(),
-            enabled = !loading && reports.isNotEmpty(),
-            onClick = onClear
-        ) {
-            Text(
-                text = stringResource(R.string.website_diagnostics_clear),
-                color = MaterialTheme.colorScheme.error
-            )
-        }
         Spacer(Modifier.height(24.dp))
     }
 }
