@@ -50,17 +50,16 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Non-interactive block surface.
+ * Non-interactive app/generic fail-closed block surface.
  *
- * PASSWORD target credentials deliberately do not exist in this Activity. The
- * router sends those attempts to [PasswordUnlockActivity] before this surface is
- * created, so a generic hard-block screen can never accidentally own biometric,
- * password, pattern, or one-visit grant state.
+ * Known website targets are owned by [WebsiteBlockNoticeActivity]. PASSWORD
+ * credentials are owned by [PasswordUnlockActivity]. Keeping this Activity free
+ * from website URL/redirection behavior prevents the app-block UI from becoming
+ * a second owner of the website pipeline.
  */
 class GenericBlockNoticeActivity : AppCompatActivity() {
 
     private var strictBlock = false
-    private var redirectBrowserPackage: String? = null
     private var noticeDrawn = false
     private var activityResumed = false
     private var windowFocused = false
@@ -76,21 +75,14 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
 
     private data class NoticePayload(
         val strictBlock: Boolean,
-        val blockedPackage: String?,
-        val blockedDomain: String?,
-        val redirectBrowserPackage: String?
+        val blockedPackage: String?
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         onBackPressedDispatcher.addCallback(this, object : OnBackPressedCallback(true) {
             override fun handleOnBackPressed() {
-                val browserPackage = redirectBrowserPackage
-                when {
-                    strictBlock -> Unit
-                    browserPackage != null -> redirectBlockedWebsite(browserPackage)
-                    else -> goHome()
-                }
+                if (!strictBlock) goHome()
             }
         })
         showBlockNotice(intent)
@@ -141,16 +133,10 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
             ),
             blockedPackage = sourceIntent.getStringExtra(
                 BlockingAccessibilityService.EXTRA_BLOCKED_PACKAGE
-            ),
-            blockedDomain = sourceIntent.getStringExtra(
-                BlockingAccessibilityService.EXTRA_BLOCKED_DOMAIN
-            ),
-            redirectBrowserPackage = sourceIntent.getStringExtra(
-                BlockingAccessibilityService.EXTRA_REDIRECT_BROWSER_PACKAGE
             )?.takeIf(String::isNotBlank)
         )
+
         strictBlock = payload.strictBlock
-        redirectBrowserPackage = payload.redirectBrowserPackage
         pendingCurtainGeneration = curtainGeneration
         freshFrameGeneration = 0L
 
@@ -163,9 +149,6 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
                 GenericBlockNoticeContent(
                     strictBlock = payload.strictBlock,
                     blockedPackage = payload.blockedPackage,
-                    blockedDomain = payload.blockedDomain,
-                    redirectBrowserPackage = payload.redirectBrowserPackage,
-                    onRedirectBlockedWebsite = ::redirectBlockedWebsite,
                     onGoToPomodoroLock = ::goToPomodoroLock
                 )
             }
@@ -208,9 +191,7 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
         pendingUsageImpactPackage = null
 
         val packageName = payload.blockedPackage
-        if (payload.strictBlock || payload.blockedDomain != null || packageName.isNullOrBlank()) {
-            return
-        }
+        if (payload.strictBlock || packageName.isNullOrBlank()) return
 
         usageImpactJob = lifecycleScope.launch {
             val shouldShow = UsageImpactRouter.shouldShowForBlockedApp(
@@ -254,12 +235,11 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
             routeToUsageImpactIfReady()
             return false
         }
-        val decor = window.decorView
         val ready = SafeSurfaceReadinessPolicy.decide(
             alreadyDrawn = noticeDrawn,
             freshFrameAfterRequest = freshFrameGeneration == generation,
             lifecycleResumed = activityResumed,
-            decorShown = decor.isShown,
+            decorShown = window.decorView.isShown,
             windowFocused = windowFocused
         ) == SafeSurfaceReadinessPolicy.Decision.ACK_NOW
         if (!ready) return false
@@ -269,14 +249,6 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
         CurtainDestinationReadyCoordinator.notifyReady(generation)
         routeToUsageImpactIfReady()
         return true
-    }
-
-    private fun redirectBlockedWebsite(@Suppress("UNUSED_PARAMETER") browserPackageName: String) {
-        if (strictBlock) {
-            goToPomodoroLock()
-        } else {
-            goHome()
-        }
     }
 
     private fun goToPomodoroLock() {
@@ -312,24 +284,12 @@ class GenericBlockNoticeActivity : AppCompatActivity() {
 private fun GenericBlockNoticeContent(
     strictBlock: Boolean,
     blockedPackage: String?,
-    blockedDomain: String?,
-    redirectBrowserPackage: String?,
-    onRedirectBlockedWebsite: (String) -> Unit,
     onGoToPomodoroLock: () -> Unit
 ) {
-    LaunchedEffect(strictBlock, redirectBrowserPackage) {
-        when {
-            strictBlock && redirectBrowserPackage != null -> {
-                delay(BlockingAccessibilityService.STRICT_BLOCK_NOTICE_DURATION_MILLIS)
-                onRedirectBlockedWebsite(redirectBrowserPackage)
-            }
-            strictBlock -> {
-                delay(BlockingAccessibilityService.STRICT_BLOCK_NOTICE_DURATION_MILLIS)
-                onGoToPomodoroLock()
-            }
-            redirectBrowserPackage != null -> {
-                onRedirectBlockedWebsite(redirectBrowserPackage)
-            }
+    LaunchedEffect(strictBlock) {
+        if (strictBlock) {
+            delay(BlockingAccessibilityService.STRICT_BLOCK_NOTICE_DURATION_MILLIS)
+            onGoToPomodoroLock()
         }
     }
 
@@ -360,8 +320,11 @@ private fun GenericBlockNoticeContent(
 
             Spacer(Modifier.height(28.dp))
             Text(
-                text = if (blockedDomain != null) "Site bloqueado pelo FocusGuard"
-                else "App bloqueado pelo FocusGuard",
+                text = if (blockedPackage != null) {
+                    "App bloqueado pelo FocusGuard"
+                } else {
+                    "Acesso bloqueado pelo FocusGuard"
+                },
                 color = TextPrimary,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold,
@@ -369,20 +332,11 @@ private fun GenericBlockNoticeContent(
             )
             Spacer(Modifier.height(12.dp))
             Text(
-                text = blockedDomain ?: blockedPackage ?: "Mantenha o foco em seus objetivos.",
+                text = blockedPackage ?: "Mantenha o foco em seus objetivos.",
                 color = TextSecondary,
                 fontSize = 14.sp,
                 textAlign = TextAlign.Center
             )
-            if (redirectBrowserPackage != null && !strictBlock) {
-                Spacer(Modifier.height(12.dp))
-                Text(
-                    text = "Voltando à tela inicial…",
-                    color = TextHint,
-                    fontSize = 13.sp,
-                    textAlign = TextAlign.Center
-                )
-            }
             Spacer(Modifier.height(28.dp))
 
             Text(
