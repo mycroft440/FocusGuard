@@ -38,12 +38,16 @@ class BrowserInspectionSessionTest {
     @Test
     fun defaultBudgetAllowsFullAddressSelectorCatalogBeforeSemanticFallback() {
         val budget = BrowserInspectionBudget(timeoutMillis = 5_000L)
+        val selectorCount = (
+            BrowserUiCapabilityPolicy.strongAddressBarEntryNames +
+                BrowserUiCapabilityPolicy.weakReadOnlyAddressBarEntryNames
+            ).size
 
-        repeat(27) {
+        repeat(selectorCount) {
             assertTrue("address id probe ${it + 1} should remain within budget", budget.tryIdQuery())
         }
 
-        assertEquals(27, budget.idQueries)
+        assertEquals(selectorCount, budget.idQueries)
         assertFalse(budget.isExhausted)
         assertTrue("semantic traversal must still be eligible", budget.tryVisitNode(0, 24))
     }
