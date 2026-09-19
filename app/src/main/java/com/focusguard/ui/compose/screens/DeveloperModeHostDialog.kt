@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BugReport
 import androidx.compose.material.icons.filled.Build
@@ -95,7 +96,7 @@ internal fun DeveloperModeHostDialog(
                         onClick = { destination = DeveloperModeDestination.WEBSITE_DIAGNOSTICS }
                     ) {
                         Icon(Icons.Default.BugReport, contentDescription = null)
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.dev_mode_website_diagnostics_title))
                     }
                     Spacer(Modifier.height(6.dp))
@@ -111,6 +112,7 @@ internal fun DeveloperModeHostDialog(
                         onClick = { destination = DeveloperModeDestination.MAINTENANCE }
                     ) {
                         Icon(Icons.Default.Build, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
                         Text(stringResource(R.string.dev_mode_tools_title))
                     }
                     Spacer(Modifier.height(6.dp))
