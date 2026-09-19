@@ -419,11 +419,10 @@ class BlockingAccessibilityService : AccessibilityService() {
             eventUptimeMillis: Long
         ): Boolean {
             val transition = activeTransitions[browserPackageName] ?: return false
-            // ACTION_VIEW can open Google in a fresh tab/window while the blocked
-            // tab remains intact. A safe destination therefore cannot prove
-            // neutralization after an external fallback unless the original tab
-            // was independently confirmed closed first.
-            if (transition.externalRedirectRequested && !transition.closeConfirmed) return false
+            // The caller has already verified that this inspection is the safe Google
+            // destination. For an external fallback the transition is rebound to the
+            // newly observed browser window first; the old blocked tab remains protected
+            // by the normal HardBlock detector if the user returns to it.
             if (!transition.sanitizationRequested ||
                 transition.expectedWindowId != windowId ||
                 eventUptimeMillis < transition.sanitizationRequestedAtUptimeMillis ||
@@ -449,8 +448,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             observedAtUptimeMillis: Long
         ): Boolean {
             val transition = activeTransitions[browserPackageName] ?: return false
-            if (transition.externalRedirectRequested ||
-                !transition.sanitizationRequested ||
+            if (!transition.sanitizationRequested ||
                 transition.expectedWindowId != windowId ||
                 observedAtUptimeMillis < transition.sanitizationRequestedAtUptimeMillis
             ) return false
@@ -3628,10 +3626,10 @@ class BlockingAccessibilityService : AccessibilityService() {
                     transition = transition
                 )
 
-                // Same-tab rewrite is the only website redirect path. If the first
-                // attempt raced an editor/focus animation, restore the exact blocked surface
-                // and retry once with a fresh capability state. We still never close a tab,
-                // launch a second browser document or evict the browser to HOME.
+                // Same-tab rewrite remains the preferred website redirect path. If the
+                // first attempt raced an editor/focus animation, restore the exact blocked
+                // surface and retry once with a fresh capability state. Only after both
+                // certified same-tab attempts fail may the guarded ACTION_VIEW fallback run.
                 if (!redirectRequested) {
                     val blockedSurfaceRestored =
                         restoreBlockedSurfaceAfterAddressEdit(transition)
@@ -3654,11 +3652,28 @@ class BlockingAccessibilityService : AccessibilityService() {
                     }
                 }
 
-                // HardBlock must not treat ACTION_VIEW as neutralization. It can open
-                // Google in another tab/window while the blocked tab remains reachable.
-                // If both certified same-tab rewrites fail, keep the curtain and fall
-                // through to fail-closed protection below instead of opening a second
-                // browser surface that cannot satisfy the transition guarantee.
+                // Some browser versions expose a readable address bar but reject or omit
+                // the Accessibility actions required to submit a replacement URL. When both
+                // certified same-tab attempts fail, use the browser's verified ACTION_VIEW
+                // capability as the final redirect path. The curtain stays up until a fresh
+                // exact Google root is observed and the transition is rebound to that window.
+                // If the user later returns to the old blocked tab, HardBlock detects it again.
+                if (!redirectRequested &&
+                    supportsCapabilityBasedIntentRedirectFallback(
+                        knownBrowser = browserPackageName in knownBrowserPackages,
+                        verifiedHttpsHandler = isVerifiedHttpsHandler(browserPackageName)
+                    )
+                ) {
+                    val blockedSurfaceRestored =
+                        restoreBlockedSurfaceForSafeIntentFallback(transition)
+                    if (blockedSurfaceRestored && curtainReadyForTransition(transition)) {
+                        FocusGuardLogger.log(
+                            "A11y",
+                            "Usando fallback por intent para Google em $browserPackageName"
+                        )
+                        redirectRequested = requestSafeGoogleThroughBrowserIntent(transition)
+                    }
+                }
 
                 if (!curtainReadyForTransition(transition)) return@launch
                 if (!redirectRequested) {
@@ -4103,8 +4118,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         transition: WebsiteBlockTransitionHandle
     ): Boolean {
         if (!curtainReadyForTransition(transition) ||
-            !transition.sanitizationRequested ||
-            transition.externalRedirectRequested
+            !transition.sanitizationRequested
         ) return false
 
         repeat(2) { pass ->

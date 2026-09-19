@@ -9,7 +9,7 @@ import org.junit.Test
 class ExternalRedirectNeutralizationTest {
 
     @Test
-    fun `external Google window does not confirm while blocked tab remains unneutralized`() {
+    fun `external Google window confirms after guarded rebind without close proof`() {
         val guard = WebsiteBlockTransitionGuard()
         val transition = guard.tryStart(
             browserPackageName = FIREFOX_PACKAGE,
@@ -52,12 +52,12 @@ class ExternalRedirectNeutralizationTest {
                 windowId = SAFE_WINDOW_ID,
                 eventUptimeMillis = 130L
             )
-        ).isFalse()
-        assertThat(transition.safeGoogleConfirmed.isCompleted).isFalse()
+        ).isTrue()
+        assertThat(transition.safeGoogleConfirmed.isCompleted).isTrue()
     }
 
     @Test
-    fun `external Google window may confirm only after original tab close is independently confirmed`() {
+    fun `external Google window also confirms when original tab close was recorded`() {
         val guard = WebsiteBlockTransitionGuard()
         val transition = guard.tryStart(
             browserPackageName = FIREFOX_PACKAGE,
@@ -139,6 +139,85 @@ class ExternalRedirectNeutralizationTest {
                 browserPackageName = FIREFOX_PACKAGE,
                 windowId = BLOCKED_WINDOW_ID,
                 eventUptimeMillis = 120L
+            )
+        ).isTrue()
+        assertThat(transition.safeGoogleConfirmed.isCompleted).isTrue()
+    }
+
+
+    @Test
+    fun `external Google window cannot confirm before transition is rebound`() {
+        val guard = WebsiteBlockTransitionGuard()
+        val transition = guard.tryStart(
+            browserPackageName = FIREFOX_PACKAGE,
+            transitionId = 4L,
+            destination = WebsiteTransitionDestination.GOOGLE,
+            expectedWindowId = BLOCKED_WINDOW_ID,
+            inspectionGeneration = 1L,
+            blockedCandidate = "https://blocked.example/path",
+            blockedRules = setOf("blocked.example"),
+            detectionEventUptimeMillis = 100L
+        )!!
+
+        assertThat(
+            guard.markExternalRedirectRequested(
+                browserPackageName = FIREFOX_PACKAGE,
+                transitionId = transition.id,
+                requestedAtUptimeMillis = 110L
+            )
+        ).isTrue()
+        guard.observeBrowserEvent(
+            browserPackageName = FIREFOX_PACKAGE,
+            windowId = SAFE_WINDOW_ID,
+            eventUptimeMillis = 120L,
+            eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+        )
+
+        assertThat(
+            guard.confirmGoogle(
+                browserPackageName = FIREFOX_PACKAGE,
+                windowId = SAFE_WINDOW_ID,
+                eventUptimeMillis = 120L
+            )
+        ).isFalse()
+        assertThat(transition.safeGoogleConfirmed.isCompleted).isFalse()
+    }
+
+    @Test
+    fun `stable external Google surface confirms after guarded rebind`() {
+        val guard = WebsiteBlockTransitionGuard()
+        val transition = guard.tryStart(
+            browserPackageName = FIREFOX_PACKAGE,
+            transitionId = 5L,
+            destination = WebsiteTransitionDestination.GOOGLE,
+            expectedWindowId = BLOCKED_WINDOW_ID,
+            inspectionGeneration = 1L,
+            blockedCandidate = "https://blocked.example/path",
+            blockedRules = setOf("blocked.example"),
+            detectionEventUptimeMillis = 100L
+        )!!
+
+        assertThat(
+            guard.markExternalRedirectRequested(
+                browserPackageName = FIREFOX_PACKAGE,
+                transitionId = transition.id,
+                requestedAtUptimeMillis = 110L
+            )
+        ).isTrue()
+        assertThat(
+            guard.rebindExternalRedirectWindow(
+                browserPackageName = FIREFOX_PACKAGE,
+                transitionId = transition.id,
+                windowId = SAFE_WINDOW_ID,
+                inspectionGeneration = 2L,
+                eventUptimeMillis = 120L
+            )
+        ).isTrue()
+        assertThat(
+            guard.confirmGoogleFromStableCurrentSurface(
+                browserPackageName = FIREFOX_PACKAGE,
+                windowId = SAFE_WINDOW_ID,
+                observedAtUptimeMillis = 130L
             )
         ).isTrue()
         assertThat(transition.safeGoogleConfirmed.isCompleted).isTrue()
