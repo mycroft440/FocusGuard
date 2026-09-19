@@ -40,6 +40,17 @@ class BrowserRecognitionPolicyTest {
     }
 
     @Test
+    fun `confirmed browser with address bar but no url enters bounded recovery`() {
+        val surface = BrowserRecognitionPolicy.recoverySurface(
+            classification = BrowserClassification.CONFIRMED_BROWSER,
+            identificationStatus = WebsiteIdentificationStatus.ADDRESS_BAR_OBSERVABLE,
+            observedSurface = BrowserSurfaceInspector.Surface.UNKNOWN
+        )
+
+        assertThat(surface).isEqualTo(BrowserSurfaceInspector.Surface.WEB_CONTENT)
+    }
+
+    @Test
     fun `probable browser policy state also enters bounded recovery`() {
         val surface = BrowserRecognitionPolicy.recoverySurface(
             classification = BrowserClassification.PROBABLE_BROWSER,
@@ -55,6 +66,17 @@ class BrowserRecognitionPolicyTest {
         val surface = BrowserRecognitionPolicy.recoverySurface(
             classification = BrowserClassification.UNKNOWN,
             identificationStatus = WebsiteIdentificationStatus.UNOBSERVABLE,
+            observedSurface = BrowserSurfaceInspector.Surface.UNKNOWN
+        )
+
+        assertThat(surface).isEqualTo(BrowserSurfaceInspector.Surface.UNKNOWN)
+    }
+
+    @Test
+    fun `unknown package with merely observable field is not promoted`() {
+        val surface = BrowserRecognitionPolicy.recoverySurface(
+            classification = BrowserClassification.UNKNOWN,
+            identificationStatus = WebsiteIdentificationStatus.ADDRESS_BAR_OBSERVABLE,
             observedSurface = BrowserSurfaceInspector.Surface.UNKNOWN
         )
 

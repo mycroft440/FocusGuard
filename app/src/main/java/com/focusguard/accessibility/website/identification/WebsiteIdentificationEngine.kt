@@ -4,6 +4,7 @@ import android.view.accessibility.AccessibilityNodeInfo
 import com.focusguard.utils.BrowserInspectionSessionStore
 import com.focusguard.utils.BrowserSurfaceInspector
 import com.focusguard.utils.BrowserUiCapabilityPolicy
+import com.focusguard.utils.StrongAddressBarFallbackReader
 import com.focusguard.utils.WebsiteBlocker
 
 /**
@@ -96,21 +97,51 @@ internal object WebsiteIdentificationEngine {
         val evidence = linkedSetOf(WebsiteIdentificationLayer.BROWSER_PACKAGE_AND_WINDOW)
         // These accessors all resolve through the same BrowserInspectionSession for
         // this root. Calling each accessor does not start an independent tree walk.
-        val url = WebsiteBlocker.extractUrlFromRoot(
+        var url = WebsiteBlocker.extractUrlFromRoot(
             root = root,
             browserPackageName = browserPackageName,
             httpsHandlerRecognized = httpsHandlerRecognized
         )
-        val rawText = WebsiteBlocker.extractAddressBarTextFromRoot(
+        var rawText = WebsiteBlocker.extractAddressBarTextFromRoot(
             root = root,
             browserPackageName = browserPackageName,
             httpsHandlerRecognized = httpsHandlerRecognized
         )
-        val observable = url != null || rawText != null || WebsiteBlocker.hasAddressBarNode(
+        var observable = url != null || rawText != null || WebsiteBlocker.hasAddressBarNode(
             root = root,
             browserPackageName = browserPackageName,
             httpsHandlerRecognized = httpsHandlerRecognized
         )
+
+        // A direct ID lookup can fail even though an exact browser-owned native bar is
+        // nested below a WebView-like container. The normal semantic walker correctly
+        // refuses to cross that boundary. If no usable URL was obtained, perform one
+        // bounded strong-resource-only traversal. Arbitrary HTML text remains ineligible.
+        if (url == null && isCurrent()) {
+            StrongAddressBarFallbackReader.read(
+                root = root,
+                browserPackageName = browserPackageName,
+                expectedWindowId = expectedWindowId,
+                isCurrent = isCurrent
+            )?.let { fallback ->
+                val session = BrowserInspectionSessionStore.sessionFor(root, browserPackageName)
+                url = fallback.url ?: url
+                if (rawText.isNullOrBlank() || WebsiteBlocker.extractUrlCandidate(rawText!!) == null) {
+                    rawText = fallback.text ?: rawText
+                }
+                observable = true
+                session.addressBarObservable = true
+                session.strongAddressBarObserved = true
+                session.focusedAddressEditor = session.focusedAddressEditor ||
+                    fallback.focusedAddressEditor
+                if (session.url == null) session.url = fallback.url
+                if (session.addressText.isNullOrBlank() ||
+                    WebsiteBlocker.extractUrlCandidate(session.addressText!!) == null
+                ) {
+                    session.addressText = fallback.text ?: session.addressText
+                }
+            }
+        }
 
         if (!isCurrent()) return WebsiteIdentificationResult(WebsiteIdentificationStatus.REJECTED_CONTEXT)
         if (BrowserInspectionSessionStore.sessionFor(root, browserPackageName).strongAddressBarObserved) {

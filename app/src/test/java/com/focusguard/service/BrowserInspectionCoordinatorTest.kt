@@ -33,6 +33,24 @@ class BrowserInspectionCoordinatorTest {
     }
 
     @Test
+    fun runningInitialInspectionSurvivesNewSequenceBeforeFinishPass() {
+        val coordinator = BrowserInspectionCoordinator()
+        val running = coordinator.offer(
+            "com.android.chrome", 10, 2048, 1L, 1L, "", emptyList(), null
+        )
+        assertSame(running.snapshot, coordinator.takePending())
+
+        coordinator.offer(
+            "com.android.chrome", 10, 2048, 2L, 2L, "", listOf("new content"), null
+        )
+
+        assertTrue(
+            "same-window content events must not invalidate the running first inspection",
+            coordinator.isCurrent(running.snapshot.token, requireLatestSequence = true)
+        )
+    }
+
+    @Test
     fun validatedPassMaySurviveNewSequenceButNotNewWindow() {
         val coordinator = BrowserInspectionCoordinator()
         val validated = coordinator.offer("com.android.chrome", 10, 2048, 1L, 1L, "", emptyList(), null)

@@ -36,6 +36,36 @@ class BrowserInspectionSessionTest {
     }
 
     @Test
+    fun completedScopedReadRetainsObservedFocusForImmediateConfirmationOnly() {
+        val pkg = "com.brave.browser"
+        val root = mockk<AccessibilityNodeInfo> { every { windowId } returns 12 }
+
+        BrowserInspectionSessionStore.withInspection(root, pkg, { true }) {
+            BrowserInspectionSessionStore.sessionFor(root, pkg).apply {
+                url = "https://www.google.com"
+                surface = BrowserSurfaceInspector.Surface.WEB_CONTENT
+                focusedAddressEditor = true
+                addressBarObservable = true
+                addressComplete = true
+            }
+        }
+
+        val immediate = BrowserInspectionSessionStore.sessionFor(root, pkg)
+        assertEquals("https://www.google.com", immediate.url)
+        assertEquals(BrowserSurfaceInspector.Surface.WEB_CONTENT, immediate.surface)
+        assertTrue(immediate.focusedAddressEditor)
+        assertTrue(immediate.addressBarObservable)
+        assertFalse("detached observation must not escape as a scoped session", immediate.scoped)
+
+        BrowserInspectionSessionStore.withInspection(root, pkg, { true }) {
+            val nextPass = BrowserInspectionSessionStore.sessionFor(root, pkg)
+            assertFalse(nextPass.focusedAddressEditor)
+            assertNull(nextPass.url)
+            assertNull(nextPass.surface)
+        }
+    }
+
+    @Test
     fun defaultBudgetAllowsFullAddressSelectorCatalogBeforeSemanticFallback() {
         val budget = BrowserInspectionBudget(timeoutMillis = 5_000L)
         val selectorCount = (

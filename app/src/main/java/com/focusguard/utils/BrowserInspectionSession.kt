@@ -118,6 +118,28 @@ internal class BrowserInspectionSession(
     var focusedAddressEditor: Boolean = false
     var strongAddressBarObserved: Boolean = false
     var identificationMethod: BrowserIdentificationMethod? = null
+
+    /**
+     * Keeps only immutable/primitive observations after a scoped pass. The scoped
+     * currentness predicate and budget are deliberately not retained. This lets an
+     * immediate consumer re-read the exact focus/surface observation that produced
+     * the URL without allowing a stale predicate to escape its inspection scope.
+     */
+    fun detachedForReuse(): BrowserInspectionSession = BrowserInspectionSession(
+        rootIdentity = rootIdentity,
+        windowId = windowId,
+        browserPackage = browserPackage
+    ).also { copy ->
+        copy.surface = surface
+        copy.addressComplete = addressComplete
+        copy.addressHttpsHandlerRecognized = addressHttpsHandlerRecognized
+        copy.url = url
+        copy.addressText = addressText
+        copy.addressBarObservable = addressBarObservable
+        copy.focusedAddressEditor = focusedAddressEditor
+        copy.strongAddressBarObserved = strongAddressBarObserved
+        copy.identificationMethod = identificationMethod
+    }
 }
 
 internal object BrowserInspectionSessionStore {
@@ -128,7 +150,11 @@ internal object BrowserInspectionSessionStore {
     private val sessionLocal = ThreadLocal<BrowserInspectionSession?>()
     private val lastPerfLogElapsed = AtomicLong(0L)
 
-    /** Pins one budget to one synchronous pass; no predicate or node survives it. */
+    /**
+     * Pins one budget to one synchronous pass. When the outermost pass completes,
+     * only a detached observation snapshot is retained briefly so callers that must
+     * correlate URL + surface + editor focus do not fall back to default values.
+     */
     fun <T> withInspection(
         root: AccessibilityNodeInfo,
         browserPackage: String,
@@ -136,10 +162,15 @@ internal object BrowserInspectionSessionStore {
         block: () -> T
     ): T {
         val previous = sessionLocal.get()
+        // A detached observation is a short-lived result for an immediate consumer,
+        // not an enclosing inspection scope. Only an actually scoped session may be
+        // restored after a nested pass; otherwise an older detached observation could
+        // overwrite the newer focus/URL facts produced by this pass.
+        val enclosing = previous?.takeIf { it.scoped }
         val identity = System.identityHashCode(root)
-        val session = if (previous?.scoped == true && previous.rootIdentity == identity &&
-            previous.browserPackage == browserPackage && previous.windowId == root.windowId
-        ) previous else BrowserInspectionSession(
+        val session = if (enclosing != null && enclosing.rootIdentity == identity &&
+            enclosing.browserPackage == browserPackage && enclosing.windowId == root.windowId
+        ) enclosing else BrowserInspectionSession(
             rootIdentity = identity,
             windowId = root.windowId,
             browserPackage = browserPackage,
@@ -147,8 +178,14 @@ internal object BrowserInspectionSessionStore {
             scoped = true
         )
         sessionLocal.set(session)
-        return try { block() } finally {
-            if (previous == null) sessionLocal.remove() else sessionLocal.set(previous)
+        return try {
+            block()
+        } finally {
+            if (enclosing == null) {
+                sessionLocal.set(session.detachedForReuse())
+            } else {
+                sessionLocal.set(enclosing)
+            }
         }
     }
 

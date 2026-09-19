@@ -101,6 +101,11 @@ internal class BrowserInspectionCoordinator {
         pending.also {
             pending = null
             running = it
+            // A running pass owns the live package/window/generation, not one quiet
+            // sequence number. Let same-window event storms coalesce behind it instead
+            // of invalidating the first inspection before it can publish a result.
+            // A real package/window generation change still invalidates the token.
+            it?.token?.permitSequenceAdvance()
         }
     }
 
@@ -117,6 +122,7 @@ internal class BrowserInspectionCoordinator {
             pending = null
             running = it
             if (it == null) workerActive = false
+            else it.token.permitSequenceAdvance()
         }
     }
 
