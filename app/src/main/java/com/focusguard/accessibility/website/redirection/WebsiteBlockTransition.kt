@@ -1,6 +1,7 @@
 package com.focusguard.accessibility.website.redirection
 
 import android.view.accessibility.AccessibilityEvent
+import com.focusguard.accessibility.website.diagnostics.WebsiteBlockingDiagnostics
 import kotlinx.coroutines.CompletableDeferred
 
 /** Mutable state for one browser-bound website redirection transaction. */
@@ -63,7 +64,19 @@ internal class WebsiteBlockTransitionGuard {
             blockedCandidate = blockedCandidate,
             blockedRules = blockedRules,
             detectionEventUptimeMillis = detectionEventUptimeMillis
-        ).also { activeTransitions[browserPackageName] = it }
+        ).also { transition ->
+            activeTransitions[browserPackageName] = transition
+            WebsiteBlockingDiagnostics.beginTransition(
+                browserPackageName = browserPackageName,
+                transitionId = transitionId,
+                expectedWindowId = expectedWindowId,
+                inspectionGeneration = inspectionGeneration,
+                blockedCandidate = blockedCandidate,
+                blockedRules = blockedRules,
+                strictDestination = destination ==
+                    WebsiteRedirectionCoordinator.TerminalDestination.POMODORO
+            )
+        }
     }
 
     @Synchronized
@@ -90,6 +103,7 @@ internal class WebsiteBlockTransitionGuard {
         // Each retry owns a fresh temporal boundary. Evidence from an older submit
         // must never certify a later attempt.
         transition.sanitizationRequestedAtUptimeMillis = requestedAtUptimeMillis
+        WebsiteBlockingDiagnostics.markSubmitAccepted(browserPackageName, transitionId)
         return true
     }
 
@@ -106,6 +120,7 @@ internal class WebsiteBlockTransitionGuard {
         ) return false
         transition.destinationRequested = true
         transition.destinationRequestedAtUptimeMillis = requestedAtUptimeMillis
+        WebsiteBlockingDiagnostics.markDestinationRequested(browserPackageName, transitionId)
         return true
     }
 
@@ -118,6 +133,7 @@ internal class WebsiteBlockTransitionGuard {
         val transition = activeTransitions[browserPackageName] ?: return false
         if (transition.id != transitionId || curtainGeneration <= 0L) return false
         transition.curtainGeneration = curtainGeneration
+        WebsiteBlockingDiagnostics.markCurtain(browserPackageName, transitionId, curtainGeneration)
         return true
     }
 
@@ -137,7 +153,14 @@ internal class WebsiteBlockTransitionGuard {
             transition.latestObservedEventUptimeMillis,
             eventUptimeMillis
         )
-        return transition.safeRedirectConfirmed.complete(Unit)
+        val confirmed = transition.safeRedirectConfirmed.complete(Unit)
+        if (confirmed || transition.safeRedirectConfirmed.isCompleted) {
+            WebsiteBlockingDiagnostics.markRedirectConfirmed(
+                browserPackageName,
+                transition.id
+            )
+        }
+        return confirmed
     }
 
     @Synchronized
@@ -155,8 +178,15 @@ internal class WebsiteBlockTransitionGuard {
             transition.latestObservedEventUptimeMillis,
             observedAtUptimeMillis
         )
-        return transition.safeRedirectConfirmed.complete(Unit) ||
+        val confirmed = transition.safeRedirectConfirmed.complete(Unit) ||
             transition.safeRedirectConfirmed.isCompleted
+        if (confirmed) {
+            WebsiteBlockingDiagnostics.markRedirectConfirmed(
+                browserPackageName,
+                transition.id
+            )
+        }
+        return confirmed
     }
 
     /** Same-window confirmation path used after ordinary navigation evidence. */
@@ -234,6 +264,11 @@ internal class WebsiteBlockTransitionGuard {
             transition.latestNavigationEvidenceEventUptimeMillis,
             eventUptimeMillis
         )
+        WebsiteBlockingDiagnostics.markWindowRebound(
+            browserPackageName,
+            transitionId,
+            windowId
+        )
         return true
     }
 
@@ -262,15 +297,22 @@ internal class WebsiteBlockTransitionGuard {
                 eventUptimeMillis
             )
         }
-        if (transition.sanitizationRequested &&
+        val navigationEvidence = transition.sanitizationRequested &&
             isRedirectNavigationEvidenceEvent(eventType) &&
             eventUptimeMillis >= transition.sanitizationRequestedAtUptimeMillis
-        ) {
+        if (navigationEvidence) {
             transition.latestNavigationEvidenceEventUptimeMillis = maxOf(
                 transition.latestNavigationEvidenceEventUptimeMillis,
                 eventUptimeMillis
             )
         }
+        WebsiteBlockingDiagnostics.observeBrowserEvent(
+            browserPackageName = browserPackageName,
+            transitionId = transition.id,
+            eventUptimeMillis = eventUptimeMillis,
+            eventType = eventType,
+            navigationEvidence = navigationEvidence
+        )
     }
 
     @Synchronized
@@ -281,18 +323,32 @@ internal class WebsiteBlockTransitionGuard {
                 it.curtainGeneration == curtainGeneration &&
                 readyAtUptimeMillis >= it.destinationRequestedAtUptimeMillis
         } ?: return false
-        return transition.destinationConfirmed.complete(Unit)
+        val confirmed = transition.destinationConfirmed.complete(Unit)
+        if (confirmed || transition.destinationConfirmed.isCompleted) {
+            WebsiteBlockingDiagnostics.markDestinationConfirmed(
+                transition.browserPackageName,
+                transition.id
+            )
+        }
+        return confirmed
     }
 
     @Synchronized
     fun finish(browserPackageName: String, transitionId: Long): Boolean {
         if (activeTransitions[browserPackageName]?.id != transitionId) return false
+        WebsiteBlockingDiagnostics.finishTransition(browserPackageName, transitionId)
         activeTransitions.remove(browserPackageName)
         return true
     }
 
     @Synchronized
     fun clear() {
+        activeTransitions.values.forEach { transition ->
+            WebsiteBlockingDiagnostics.discardTransition(
+                transition.browserPackageName,
+                transition.id
+            )
+        }
         activeTransitions.clear()
     }
 
