@@ -60,7 +60,7 @@ Código principal:
 
 Destino inicial: `https://www.google.com`.
 
-O `BlockingAccessibilityService` não deve possuir a URL escolhida. Uma futura seleção de outro site deve alterar essa camada/configuração, não o mecanismo de identificação nem a lógica de manipulação da barra.
+O `BlockingAccessibilityService` não possui a URL escolhida. Uma futura seleção de outro site deve alterar essa camada/configuração, não o mecanismo de identificação nem a lógica de manipulação da barra.
 
 ## 6. Coordenação e execução do redirecionamento
 
@@ -73,7 +73,9 @@ Código principal:
 - `accessibility/website/redirection/AddressBarRedirectionActions.kt`
 - `accessibility/website/redirection/ClipboardPasteFallback.kt`
 
-O coordenador possui a ordem da transação e a política de neutralização da aba. O `BlockingAccessibilityService` funciona como adaptador Android para obter janelas/raízes frescas, executar `AccessibilityAction`s e receber eventos de confirmação.
+`WebsiteRedirectionCoordinator` é dono da transação após a apresentação: controla tentativas na mesma aba, retry limitado, confirmação do destino, terminal estrito e fail-closed. `WebsiteTabNeutralizationPolicy` também vive nessa camada.
+
+O `BlockingAccessibilityService` funciona como adaptador Android: entrega ao coordinator operações concretas para obter janelas/raízes frescas, executar `AccessibilityAction`s, aguardar eventos/confirmar a navegação, abrir o terminal estrito e liberar/manter a cortina. Ele não decide a sequência da transação.
 
 Ordem conceitual:
 
@@ -84,9 +86,11 @@ Ordem conceitual:
 5. escrever `WebsiteRedirectDestination.current.url`;
 6. reacquirir a árvore;
 7. enviar com uma ação certificável;
-8. confirmar `WebsiteRedirectDestination.current.matchesSurface(...)`.
+8. repetir uma vez na mesma aba somente se a superfície original continuar certificada;
+9. confirmar `WebsiteRedirectDestination.current.matchesSurface(...)`;
+10. liberar a apresentação somente após confirmação.
 
-O fluxo não abre outra aba como substituto do redirecionamento na aba bloqueada.
+O fluxo não abre outra aba como substituto do redirecionamento na aba bloqueada. O fallback externo permanece desabilitado enquanto não puder provar a neutralização da aba original.
 
 ## 7. Confirmação e fail-closed
 
@@ -130,8 +134,9 @@ Comparar regras / hierarquia
                ▼
  WebsiteRedirectionCoordinator
                │
-               ▼
-  reescrever a mesma aba
+               ├─ tentativa mesma aba
+               ├─ retry limitado
+               └─ confirmação/fail-closed
                │
                ▼
  confirmar destino configurado
@@ -150,4 +155,4 @@ Comparar regras / hierarquia
 
 ## Regra de manutenção
 
-Novas estratégias de leitura entram em `identification`. Novas decisões de propriedade entram em `blocking`. O endereço seguro e sua certificação entram em `WebsiteRedirectDestination`. Ordem/estado de redirecionamento entram em `WebsiteRedirectionCoordinator`. Ações de barra entram em `AddressBarRedirectionActions`. A apresentação normal permanece no overlay de acessibilidade; `WebsiteBlockNoticeActivity` é somente terminal/fail-closed. O `BlockingAccessibilityService` é o adaptador Android que conecta essas etapas e não deve voltar a ser a fonte de verdade do destino ou da máquina de estados.
+Novas estratégias de leitura entram em `identification`. Novas decisões de propriedade entram em `blocking`. O endereço seguro e sua certificação entram em `WebsiteRedirectDestination`. Ordem, retry e estado de redirecionamento entram em `WebsiteRedirectionCoordinator`. Ações de barra entram em `AddressBarRedirectionActions`. A apresentação normal permanece no overlay de acessibilidade; `WebsiteBlockNoticeActivity` é somente terminal/fail-closed. O `BlockingAccessibilityService` é o adaptador Android que conecta essas etapas e não deve voltar a ser a fonte de verdade do destino ou da máquina de estados.
