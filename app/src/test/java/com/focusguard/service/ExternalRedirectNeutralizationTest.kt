@@ -2,7 +2,7 @@ package com.focusguard.service
 
 import android.view.accessibility.AccessibilityEvent
 import com.focusguard.service.BlockingAccessibilityService.WebsiteBlockTransitionGuard
-import com.focusguard.service.BlockingAccessibilityService.WebsiteTransitionDestination
+import com.focusguard.accessibility.website.redirection.WebsiteRedirectionCoordinator
 import com.google.common.truth.Truth.assertThat
 import org.junit.Test
 
@@ -14,7 +14,7 @@ class ExternalRedirectNeutralizationTest {
         val transition = guard.tryStart(
             browserPackageName = FIREFOX_PACKAGE,
             transitionId = 1L,
-            destination = WebsiteTransitionDestination.GOOGLE,
+            destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
             expectedWindowId = BLOCKED_WINDOW_ID,
             inspectionGeneration = 1L,
             blockedCandidate = "https://blocked.example/path",
@@ -62,7 +62,7 @@ class ExternalRedirectNeutralizationTest {
         val transition = guard.tryStart(
             browserPackageName = FIREFOX_PACKAGE,
             transitionId = 2L,
-            destination = WebsiteTransitionDestination.GOOGLE,
+            destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
             expectedWindowId = BLOCKED_WINDOW_ID,
             inspectionGeneration = 1L,
             blockedCandidate = "https://blocked.example/path",
@@ -112,7 +112,7 @@ class ExternalRedirectNeutralizationTest {
         val transition = guard.tryStart(
             browserPackageName = FIREFOX_PACKAGE,
             transitionId = 3L,
-            destination = WebsiteTransitionDestination.GOOGLE,
+            destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
             expectedWindowId = BLOCKED_WINDOW_ID,
             inspectionGeneration = 1L,
             blockedCandidate = "https://blocked.example/path",
@@ -151,7 +151,7 @@ class ExternalRedirectNeutralizationTest {
         val transition = guard.tryStart(
             browserPackageName = FIREFOX_PACKAGE,
             transitionId = 4L,
-            destination = WebsiteTransitionDestination.GOOGLE,
+            destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
             expectedWindowId = BLOCKED_WINDOW_ID,
             inspectionGeneration = 1L,
             blockedCandidate = "https://blocked.example/path",
@@ -189,7 +189,7 @@ class ExternalRedirectNeutralizationTest {
         val transition = guard.tryStart(
             browserPackageName = FIREFOX_PACKAGE,
             transitionId = 5L,
-            destination = WebsiteTransitionDestination.GOOGLE,
+            destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
             expectedWindowId = BLOCKED_WINDOW_ID,
             inspectionGeneration = 1L,
             blockedCandidate = "https://blocked.example/path",

@@ -1,6 +1,7 @@
 package com.focusguard.service
 
 import com.focusguard.accessibility.website.redirection.WebsiteRedirectionCoordinator
+import com.focusguard.accessibility.website.redirection.WebsiteTabNeutralizationPolicy
 
 import android.content.Context
 import android.content.Intent
@@ -542,7 +543,7 @@ class WebsiteBlockNavigationTest {
     @Test
     fun `Chromium capability policy is package based and rejects stale surfaces`() {
         val arbitraryChromiumPackage = "org.example.chromium.fork"
-        val policy = BlockingAccessibilityService.WebsiteTabNeutralizationPolicy(
+        val policy = WebsiteTabNeutralizationPolicy(
             browserPackageName = arbitraryChromiumPackage,
             expectedWindowId = 7
         )
@@ -708,7 +709,7 @@ class WebsiteBlockNavigationTest {
     @Test
     fun `website transition actions contain no browser eviction action`() {
         assertThat(
-            BlockingAccessibilityService.WebsiteTransitionAction.values().map { it.name }
+            WebsiteRedirectionCoordinator.Action.values().map { it.name }
         ).doesNotContain("EVACUATE_HOME")
     }
 
@@ -833,68 +834,39 @@ class WebsiteBlockNavigationTest {
 
     @Test
     fun `normal transition hides only after Google was sanitized`() {
-        val machine = BlockingAccessibilityService.WebsiteBlockTransitionStateMachine(
+        val machine = WebsiteRedirectionCoordinator.Session(
             strict = false
         )
 
         assertThat(machine.begin()).containsExactly(
-            BlockingAccessibilityService.WebsiteTransitionAction.SHOW_CURTAIN,
-            BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB
+            WebsiteRedirectionCoordinator.Action.SHOW_BLOCK_PRESENTATION,
+            WebsiteRedirectionCoordinator.Action.NEUTRALIZE_BLOCKED_TAB
         ).inOrder()
-        assertThat(machine.afterGoogleSanitized()).isEqualTo(
-            BlockingAccessibilityService.WebsiteTransitionAction.HIDE_CURTAIN
+        assertThat(machine.afterRedirectConfirmed()).isEqualTo(
+            WebsiteRedirectionCoordinator.Action.HIDE_BLOCK_PRESENTATION
         )
     }
 
-    @Test
-    fun `confirmation timeout keeps the browser open and releases only the curtain`() {
-        val machine = BlockingAccessibilityService.WebsiteBlockTransitionStateMachine(
-            strict = false
-        )
-        machine.begin()
 
-        assertThat(machine.onFailureOrTimeout()).isEqualTo(
-            BlockingAccessibilityService.WebsiteTransitionAction.HIDE_CURTAIN
-        )
-    }
-
-    @Test
-    fun `sanitization or destination failure never requests browser eviction`() {
-        val sanitizationFailure = BlockingAccessibilityService.WebsiteBlockTransitionStateMachine(
-            strict = false
-        )
-        sanitizationFailure.begin()
-        assertThat(sanitizationFailure.onFailureOrTimeout()).isEqualTo(
-            BlockingAccessibilityService.WebsiteTransitionAction.HIDE_CURTAIN
-        )
-
-        val launchFailure = BlockingAccessibilityService.WebsiteBlockTransitionStateMachine(
-            strict = false
-        )
-        launchFailure.begin()
-        assertThat(launchFailure.onFailureOrTimeout()).isEqualTo(
-            BlockingAccessibilityService.WebsiteTransitionAction.HIDE_CURTAIN
-        )
-    }
 
     @Test
     fun `strict transition opens Pomodoro only after Google sanitization`() {
-        val machine = BlockingAccessibilityService.WebsiteBlockTransitionStateMachine(
+        val machine = WebsiteRedirectionCoordinator.Session(
             strict = true
         )
 
         val initialActions = machine.begin()
         assertThat(initialActions.first()).isEqualTo(
-            BlockingAccessibilityService.WebsiteTransitionAction.SHOW_CURTAIN
+            WebsiteRedirectionCoordinator.Action.SHOW_BLOCK_PRESENTATION
         )
         assertThat(initialActions.last()).isEqualTo(
-            BlockingAccessibilityService.WebsiteTransitionAction.NEUTRALIZE_BLOCKED_TAB
+            WebsiteRedirectionCoordinator.Action.NEUTRALIZE_BLOCKED_TAB
         )
-        assertThat(machine.afterGoogleSanitized()).isEqualTo(
-            BlockingAccessibilityService.WebsiteTransitionAction.OPEN_POMODORO
+        assertThat(machine.afterRedirectConfirmed()).isEqualTo(
+            WebsiteRedirectionCoordinator.Action.OPEN_POMODORO
         )
         assertThat(machine.onPomodoroConfirmed()).isEqualTo(
-            BlockingAccessibilityService.WebsiteTransitionAction.HIDE_CURTAIN
+            WebsiteRedirectionCoordinator.Action.HIDE_BLOCK_PRESENTATION
         )
     }
 

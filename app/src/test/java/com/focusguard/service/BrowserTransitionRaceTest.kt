@@ -13,6 +13,7 @@ import com.focusguard.accessibility.website.identification.WebsiteIdentification
 import com.focusguard.accessibility.website.identification.WebsiteIdentificationResult
 import com.focusguard.accessibility.website.identification.WebsiteIdentificationStatus
 import com.focusguard.accessibility.website.redirection.AddressBarRedirectionActions
+import com.focusguard.accessibility.website.redirection.WebsiteTabNeutralizationPolicy
 import com.focusguard.utils.BrowserSurfaceInspector
 import io.mockk.*
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -193,7 +194,7 @@ class BrowserTransitionRaceTest {
 
         val result = callSuspend(
             "requestSafeRedirectInCurrentTab", pkg, 10,
-            BlockingAccessibilityService.WebsiteTabNeutralizationPolicy(pkg, 10), transition
+            WebsiteTabNeutralizationPolicy(pkg, 10), transition
         )
 
         assertEquals(false, result)
