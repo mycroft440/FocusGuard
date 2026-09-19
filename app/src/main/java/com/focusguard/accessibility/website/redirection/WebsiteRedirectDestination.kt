@@ -34,17 +34,6 @@ internal data class WebsiteRedirectDestination(
     }
 
     companion object {
-        /** Initial FocusGuard destination. Future selection belongs in this layer. */
-        val GOOGLE = WebsiteRedirectDestination(
-            url = "https://www.google.com",
-            acceptedRootHosts = GOOGLE_ROOT_HOSTS,
-            acceptedRootQueryParameters = setOf("gl", "gws_rd", "hl")
-        )
-
-        /** Single source of truth consumed by the redirection pipeline. */
-        val current: WebsiteRedirectDestination
-            get() = GOOGLE
-
         /** Exact hosts published by Google's supported-domains endpoint. */
         private val GOOGLE_ROOT_HOSTS = """
             google.com google.ad google.ae google.com.af google.com.ag google.al google.am
@@ -73,5 +62,16 @@ internal data class WebsiteRedirectDestination(
             google.co.uk google.com.uy google.co.uz google.com.vc google.co.ve google.co.vi google.com.vn
             google.vu google.ws google.rs google.co.za google.co.zm google.co.zw google.cat
         """.trimIndent().split(Regex("\\s+")).toSet()
+
+        /** Initial FocusGuard destination. Future selection belongs in this layer. */
+        val GOOGLE = WebsiteRedirectDestination(
+            url = "https://www.google.com",
+            acceptedRootHosts = GOOGLE_ROOT_HOSTS,
+            acceptedRootQueryParameters = setOf("gl", "gws_rd", "hl")
+        )
+
+        /** Single source of truth consumed by the redirection pipeline. */
+        val current: WebsiteRedirectDestination
+            get() = GOOGLE
     }
 }
