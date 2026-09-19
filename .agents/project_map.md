@@ -15,7 +15,8 @@
 - `BrowserObservationSignal`: publica somente um contador monotônico por pacote/janela para sincronizar recovery com novos eventos de Accessibility; nunca compartilha `AccessibilityNodeInfo`.
 - `BrowserDetector`: confirma navegador por capacidade genérica HTTP+HTTPS; estados `UNKNOWN` usam retry com backoff curto e só podem virar `PROBABLE_BROWSER` por evidência positiva forte da mesma versão instalada.
 - `BrowserCompatibilityStore`: persiste identificação de URL e recuperação por pacote, separadas das preferências de edição; endereço injetado e aceitação de ação não confirmam navegação. Evidência usada para promover navegador fica vinculada ao `versionCode` que realmente a produziu.
-- `WebsiteBlocker` + `WebsiteProtectionHierarchyPolicy`: normalizam/matcheiam regras e resolvem a propriedade da proteção. Não são donos da UI nem do redirecionamento.
+- `WebsiteBlocker`: normaliza/matcheia regras de site e utilidades de domínio.
+- `accessibility/website/blocking/WebsiteBlockDecisionPolicy`: resolve a propriedade HARD/PASSWORD/NONE de um candidato já identificado. Não é dona da UI nem do redirecionamento. `service/WebsiteProtectionHierarchyPolicy` é apenas facade de compatibilidade para o orquestrador atual.
 - `WebsiteBlockNoticeActivity`: única superfície visual dedicada a um site bloqueado conhecido. Não identifica URL e não manipula a barra do navegador.
 - `GenericBlockNoticeActivity`: superfície de bloqueio de apps e estados fail-closed sem alvo web conhecido; não contém automação de website.
 - `accessibility/website/redirection`: executa somente ações certificáveis de barra de endereço para redirecionamento na mesma aba.
