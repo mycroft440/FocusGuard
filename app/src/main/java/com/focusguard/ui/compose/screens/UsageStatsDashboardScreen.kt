@@ -43,6 +43,7 @@ private data class UsageInsightsData(
     val phoneUsage: PhoneUsageInsights,
     val mostUsedApps: List<AppUsageStat>,
     val mostUsedAverageDays: Int,
+    val mostUsedTodayApps: List<AppUsageStat>,
     val mostOpenedApps: List<AppAccessStat>,
     val neverUsedApps: List<String>
 )
@@ -60,6 +61,7 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
     }
     var mostUsedApps by remember { mutableStateOf<List<AppUsageStat>>(emptyList()) }
     var mostUsedAverageDays by remember { mutableIntStateOf(1) }
+    var mostUsedTodayApps by remember { mutableStateOf<List<AppUsageStat>>(emptyList()) }
     var mostOpenedApps by remember { mutableStateOf<List<AppAccessStat>>(emptyList()) }
     var neverUsedApps by remember { mutableStateOf<List<String>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
@@ -67,6 +69,9 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
     var loadFailed by remember { mutableStateOf(false) }
 
     var showAverageForMostUsed by remember { mutableStateOf(false) }
+    var expandMostUsed by remember { mutableStateOf(false) }
+    var expandMostUsedToday by remember { mutableStateOf(false) }
+    var expandMostOpened by remember { mutableStateOf(false) }
     var expandNeverUsed by remember { mutableStateOf(false) }
 
     // Recarrega ao voltar das configurações sem manter um CoroutineScope
@@ -121,6 +126,11 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                         endTime = monthPeriod.endMillis
                     ),
                     mostUsedAverageDays = monthPeriod.elapsedDays,
+                    mostUsedTodayApps = MonthlyMostUsedAppsProvider.load(
+                        context = context.applicationContext,
+                        startTime = startToday,
+                        endTime = end
+                    ),
                     mostOpenedApps = analytics.getMostOpenedApps(startToday, end),
                     neverUsedApps = analytics.getNeverUsedApps(start7Days, end)
                 )
@@ -130,6 +140,7 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                 phoneUsage = data.phoneUsage
                 mostUsedApps = data.mostUsedApps
                 mostUsedAverageDays = data.mostUsedAverageDays
+                mostUsedTodayApps = data.mostUsedTodayApps
                 mostOpenedApps = data.mostOpenedApps
                 neverUsedApps = data.neverUsedApps
             }
@@ -222,14 +233,27 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                                 pm = pm,
                                 averageDays = mostUsedAverageDays,
                                 showAverage = showAverageForMostUsed,
-                                onToggleAverage = { showAverageForMostUsed = it }
+                                onToggleAverage = { showAverageForMostUsed = it },
+                                expanded = expandMostUsed,
+                                onToggleExpand = { expandMostUsed = it }
+                            )
+                        }
+
+                        item(key = "most_used_today_apps") {
+                            MostUsedTodayAppsSection(
+                                apps = mostUsedTodayApps,
+                                pm = pm,
+                                expanded = expandMostUsedToday,
+                                onToggleExpand = { expandMostUsedToday = it }
                             )
                         }
 
                         item(key = "most_opened_apps") {
                             MostOpenedAppsSection(
                                 apps = mostOpenedApps,
-                                pm = pm
+                                pm = pm,
+                                expanded = expandMostOpened,
+                                onToggleExpand = { expandMostOpened = it }
                             )
                         }
 
@@ -735,7 +759,9 @@ fun MostUsedAppsSection(
     pm: PackageManager,
     averageDays: Int = 1,
     showAverage: Boolean,
-    onToggleAverage: (Boolean) -> Unit
+    onToggleAverage: (Boolean) -> Unit,
+    expanded: Boolean,
+    onToggleExpand: (Boolean) -> Unit
 ) {
     FocusCard(
         modifier = Modifier.fillMaxWidth(),
@@ -743,17 +769,31 @@ fun MostUsedAppsSection(
         border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween, modifier = Modifier.fillMaxWidth()) {
-                Text(stringResource(R.string.dashboard_most_used_month), color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(stringResource(R.string.dashboard_daily_avg), color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 12.sp)
-                    Switch(checked = showAverage, onCheckedChange = onToggleAverage, modifier = Modifier.scale(0.8f))
-                }
+            Text(
+                stringResource(R.string.dashboard_most_used_month),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(6.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    stringResource(R.string.dashboard_daily_avg),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp
+                )
+                Spacer(Modifier.width(8.dp))
+                Switch(
+                    checked = showAverage,
+                    onCheckedChange = onToggleAverage,
+                    modifier = Modifier.scale(0.8f)
+                )
             }
 
-            Spacer(Modifier.height(16.dp))
+            Spacer(Modifier.height(12.dp))
 
-            val displayList = apps.take(3)
+            val orderedApps = remember(apps) { apps.sortedByDescending(AppUsageStat::timeSpentMs) }
+            val displayList = if (expanded) orderedApps else orderedApps.take(3)
             val divisor = averageDays.coerceAtLeast(1).toLong()
 
             if (displayList.isEmpty()) {
@@ -765,6 +805,68 @@ fun MostUsedAppsSection(
                     Spacer(Modifier.height(12.dp))
                 }
             }
+
+            if (orderedApps.size > 3) {
+                TextButton(
+                    onClick = { onToggleExpand(!expanded) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        if (expanded) stringResource(R.string.dashboard_hide)
+                        else stringResource(R.string.dashboard_show_all, orderedApps.size),
+                        color = AccentCyan
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun MostUsedTodayAppsSection(
+    apps: List<AppUsageStat>,
+    pm: PackageManager,
+    expanded: Boolean,
+    onToggleExpand: (Boolean) -> Unit
+) {
+    FocusCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, CardBorder)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                stringResource(R.string.dashboard_most_used_today),
+                color = MaterialTheme.colorScheme.onSurface,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(Modifier.height(16.dp))
+
+            val orderedApps = remember(apps) { apps.sortedByDescending(AppUsageStat::timeSpentMs) }
+            val displayList = if (expanded) orderedApps else orderedApps.take(3)
+
+            if (displayList.isEmpty()) {
+                Text(stringResource(R.string.dashboard_no_data), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                displayList.forEach { stat ->
+                    AppUsageRow(stat.packageName, stat.timeSpentMs, pm)
+                    Spacer(Modifier.height(12.dp))
+                }
+            }
+
+            if (orderedApps.size > 3) {
+                TextButton(
+                    onClick = { onToggleExpand(!expanded) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        if (expanded) stringResource(R.string.dashboard_hide)
+                        else stringResource(R.string.dashboard_show_all, orderedApps.size),
+                        color = AccentCyan
+                    )
+                }
+            }
         }
     }
 }
@@ -772,7 +874,9 @@ fun MostUsedAppsSection(
 @Composable
 fun MostOpenedAppsSection(
     apps: List<AppAccessStat>,
-    pm: PackageManager
+    pm: PackageManager,
+    expanded: Boolean,
+    onToggleExpand: (Boolean) -> Unit
 ) {
     FocusCard(
         modifier = Modifier.fillMaxWidth(),
@@ -783,7 +887,13 @@ fun MostOpenedAppsSection(
             Text(stringResource(R.string.dashboard_most_opened_title), color = MaterialTheme.colorScheme.onSurface, fontSize = 18.sp, fontWeight = FontWeight.Bold)
             Spacer(Modifier.height(16.dp))
 
-            val displayList = apps.take(3)
+            val orderedApps = remember(apps) {
+                apps.sortedWith(
+                    compareByDescending<AppAccessStat> { it.accessCount }
+                        .thenBy { it.packageName }
+                )
+            }
+            val displayList = if (expanded) orderedApps else orderedApps.take(3)
 
             if (displayList.isEmpty()) {
                 Text(stringResource(R.string.dashboard_no_accesses), color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -804,6 +914,19 @@ fun MostOpenedAppsSection(
                             fontWeight = FontWeight.Bold
                         )
                     }
+                }
+            }
+
+            if (orderedApps.size > 3) {
+                TextButton(
+                    onClick = { onToggleExpand(!expanded) },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        if (expanded) stringResource(R.string.dashboard_hide)
+                        else stringResource(R.string.dashboard_show_all, orderedApps.size),
+                        color = AccentCyan
+                    )
                 }
             }
         }
