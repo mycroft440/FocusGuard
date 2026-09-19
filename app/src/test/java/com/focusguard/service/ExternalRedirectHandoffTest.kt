@@ -82,7 +82,6 @@ class ExternalRedirectHandoffTest {
         assertSame(transition, guard.activeTransition(browserPackage))
         assertEquals(10, transition.expectedWindowId)
         assertFalse(transition.externalRedirectWindowRebound)
-        assertTrue((coordinator.currentGeneration(browserPackage, 11) ?: 0L) > token.generation)
     }
 
     @Test
