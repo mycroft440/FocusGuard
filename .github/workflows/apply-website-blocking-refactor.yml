@@ -20,7 +20,7 @@ jobs:
           ref: refactor/website-blocking-pipeline
           fetch-depth: 0
 
-      - name: Apply codemod
+      - name: Apply coordinator extraction
         run: python3 .github/scripts/apply_website_blocking_refactor.py
 
       - name: Verify patch formatting
@@ -35,5 +35,5 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add app/src/main app/src/test
-          git commit -m "refactor: finish website blocking separation"
+          git commit -m "refactor: move redirect sequence into coordinator"
           git push origin HEAD:refactor/website-blocking-pipeline
