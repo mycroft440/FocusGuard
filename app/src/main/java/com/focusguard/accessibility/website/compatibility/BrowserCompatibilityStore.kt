@@ -102,7 +102,8 @@ internal object BrowserCompatibilityStore {
         val normalizedTarget: String,
         val submitted: Boolean,
         val candidateSubmitMethod: BrowserSubmitMethod? = null,
-        val candidateSubmitEntryName: String? = null
+        val candidateSubmitEntryName: String? = null,
+        val acceptedSubmitMethods: Set<BrowserSubmitMethod> = emptySet()
     )
 
     fun initialize(context: Context) {
@@ -241,6 +242,19 @@ internal object BrowserCompatibilityStore {
     fun preferredSubmitMethod(packageName: String): BrowserSubmitMethod? =
         synchronized(lock) { cache[packageName]?.submitMethod }
 
+    /**
+     * Submission acceptance is transaction-local evidence only. If a method already
+     * returned true for the current replacement address but no navigation was later
+     * confirmed, retries must advance to another certified strategy instead of
+     * repeating that accepted no-op forever.
+     */
+    fun mayAttemptSubmitMethod(
+        packageName: String,
+        method: BrowserSubmitMethod
+    ): Boolean = synchronized(lock) {
+        method !in pendingRedirects[packageName]?.acceptedSubmitMethods.orEmpty()
+    }
+
     fun prioritizeAddressBarEntryNames(
         packageName: String,
         defaults: Iterable<String>
@@ -309,9 +323,16 @@ internal object BrowserCompatibilityStore {
     ) = updateMethod(packageName, viewIdResourceName) { previous, entryName ->
         val normalizedTarget = normalizeAddress(replacementText)
         if (normalizedTarget.isNotEmpty()) {
+            val existing = pendingRedirects[packageName]
+            val acceptedMethods = if (existing?.normalizedTarget == normalizedTarget) {
+                existing.acceptedSubmitMethods
+            } else {
+                emptySet()
+            }
             pendingRedirects[packageName] = PendingRedirect(
                 normalizedTarget = normalizedTarget,
-                submitted = false
+                submitted = false,
+                acceptedSubmitMethods = acceptedMethods
             )
         }
         previous.copy(
@@ -332,7 +353,8 @@ internal object BrowserCompatibilityStore {
             pendingRedirects[packageName] = pending.copy(
                 submitted = true,
                 candidateSubmitMethod = method,
-                candidateSubmitEntryName = browserOwnedEntryName(packageName, viewIdResourceName)
+                candidateSubmitEntryName = browserOwnedEntryName(packageName, viewIdResourceName),
+                acceptedSubmitMethods = pending.acceptedSubmitMethods + method
             )
         }
     }
