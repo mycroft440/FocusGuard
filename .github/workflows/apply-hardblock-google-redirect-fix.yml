@@ -22,200 +22,33 @@ jobs:
           java-version: '17'
 
       - name: Install Android 16 SDK
+        shell: bash
         run: |
-          yes | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --licenses >/dev/null || true
-          ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager "platforms;android-36" "build-tools;36.0.0"
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Apply redirect fallback fix
-        run: |
-          python3 - <<'PY'
-          from pathlib import Path
-
-          service_path = Path('app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt')
-          service = service_path.read_text()
-
-          old = '''            // ACTION_VIEW can open Google in a fresh tab/window while the blocked
-            // tab remains intact. A safe destination therefore cannot prove
-            // neutralization after an external fallback unless the original tab
-            // was independently confirmed closed first.
-            if (transition.externalRedirectRequested && !transition.closeConfirmed) return false
-'''
-          new = '''            // The caller has already verified that this inspection is the safe Google
-            // destination. For an external fallback the transition is rebound to the
-            // newly observed browser window first; the old blocked tab remains protected
-            // by the normal HardBlock detector if the user returns to it.
-'''
-          assert service.count(old) == 1, 'confirmGoogle external-close gate changed unexpectedly'
-          service = service.replace(old, new)
-
-          old = '''            if (transition.externalRedirectRequested ||
-                !transition.sanitizationRequested ||
-                transition.expectedWindowId != windowId ||
-'''
-          new = '''            if (!transition.sanitizationRequested ||
-                transition.expectedWindowId != windowId ||
-'''
-          assert service.count(old) == 1, 'stable-surface external gate changed unexpectedly'
-          service = service.replace(old, new)
-
-          old = '''                // HardBlock must not treat ACTION_VIEW as neutralization. It can open
-                // Google in another tab/window while the blocked tab remains reachable.
-                // If both certified same-tab rewrites fail, keep the curtain and fall
-                // through to fail-closed protection below instead of opening a second
-                // browser surface that cannot satisfy the transition guarantee.
-
-                if (!curtainReadyForTransition(transition)) return@launch
-'''
-          new = '''                // Same-tab rewriting remains the preferred path. Some browser versions
-                // expose a readable address bar but reject/omit the Accessibility actions
-                // required to submit a replacement URL. In that case use the browser's
-                // verified ACTION_VIEW capability as the final redirect path. The first
-                // browser event from a new window rebinds this transition, and Google is
-                // still positively verified before the curtain is released. Returning to
-                // the old blocked tab simply triggers HardBlock again.
-                if (!redirectRequested &&
-                    supportsCapabilityBasedIntentRedirectFallback(
-                        knownBrowser = browserPackageName in knownBrowserPackages,
-                        verifiedHttpsHandler = isVerifiedHttpsHandler(browserPackageName)
-                    )
-                ) {
-                    val blockedSurfaceRestored =
-                        restoreBlockedSurfaceForSafeIntentFallback(transition)
-                    if (blockedSurfaceRestored && curtainReadyForTransition(transition)) {
-                        FocusGuardLogger.log(
-                            "A11y",
-                            "Usando fallback por intent para Google em $browserPackageName"
-                        )
-                        redirectRequested = requestSafeGoogleThroughBrowserIntent(transition)
-                    }
-                }
-
-                if (!curtainReadyForTransition(transition)) return@launch
-'''
-          assert service.count(old) == 1, 'HardBlock fallback insertion point changed unexpectedly'
-          service = service.replace(old, new)
-          service_path.write_text(service)
-
-          test_path = Path('app/src/test/java/com/focusguard/service/ExternalRedirectNeutralizationTest.kt')
-          test = test_path.read_text()
-          test = test.replace(
-              'fun `external Google window does not confirm while blocked tab remains unneutralized`() {',
-              'fun `external Google window confirms after guarded rebind without close proof`() {'
-          )
-          old_assert = '''        assertThat(
-            guard.confirmGoogle(
-                browserPackageName = FIREFOX_PACKAGE,
-                windowId = SAFE_WINDOW_ID,
-                eventUptimeMillis = 130L
-            )
-        ).isFalse()
-        assertThat(transition.safeGoogleConfirmed.isCompleted).isFalse()
-'''
-          new_assert = '''        assertThat(
-            guard.confirmGoogle(
-                browserPackageName = FIREFOX_PACKAGE,
-                windowId = SAFE_WINDOW_ID,
-                eventUptimeMillis = 130L
-            )
-        ).isTrue()
-        assertThat(transition.safeGoogleConfirmed.isCompleted).isTrue()
-'''
-          assert test.count(old_assert) == 1, 'external redirect expectation changed unexpectedly'
-          test = test.replace(old_assert, new_assert)
-
-          insertion = '''
-    @Test
-    fun `external Google window cannot confirm before transition is rebound`() {
-        val guard = WebsiteBlockTransitionGuard()
-        val transition = guard.tryStart(
-            browserPackageName = FIREFOX_PACKAGE,
-            transitionId = 4L,
-            destination = WebsiteTransitionDestination.GOOGLE,
-            expectedWindowId = BLOCKED_WINDOW_ID,
-            inspectionGeneration = 1L,
-            blockedCandidate = "https://blocked.example/path",
-            blockedRules = setOf("blocked.example"),
-            detectionEventUptimeMillis = 100L
-        )!!
-
-        assertThat(
-            guard.markExternalRedirectRequested(
-                browserPackageName = FIREFOX_PACKAGE,
-                transitionId = transition.id,
-                requestedAtUptimeMillis = 110L
-            )
-        ).isTrue()
-        guard.observeBrowserEvent(
-            browserPackageName = FIREFOX_PACKAGE,
-            windowId = SAFE_WINDOW_ID,
-            eventUptimeMillis = 120L,
-            eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
-        )
-
-        assertThat(
-            guard.confirmGoogle(
-                browserPackageName = FIREFOX_PACKAGE,
-                windowId = SAFE_WINDOW_ID,
-                eventUptimeMillis = 120L
-            )
-        ).isFalse()
-        assertThat(transition.safeGoogleConfirmed.isCompleted).isFalse()
-    }
-
-    @Test
-    fun `stable external Google surface may confirm after guarded rebind`() {
-        val guard = WebsiteBlockTransitionGuard()
-        val transition = guard.tryStart(
-            browserPackageName = FIREFOX_PACKAGE,
-            transitionId = 5L,
-            destination = WebsiteTransitionDestination.GOOGLE,
-            expectedWindowId = BLOCKED_WINDOW_ID,
-            inspectionGeneration = 1L,
-            blockedCandidate = "https://blocked.example/path",
-            blockedRules = setOf("blocked.example"),
-            detectionEventUptimeMillis = 100L
-        )!!
-
-        assertThat(guard.markExternalRedirectRequested(FIREFOX_PACKAGE, transition.id, 110L)).isTrue()
-        assertThat(
-            guard.rebindExternalRedirectWindow(
-                browserPackageName = FIREFOX_PACKAGE,
-                transitionId = transition.id,
-                windowId = SAFE_WINDOW_ID,
-                inspectionGeneration = 2L,
-                eventUptimeMillis = 120L
-            )
-        ).isTrue()
-        assertThat(
-            guard.confirmGoogleFromStableCurrentSurface(
-                browserPackageName = FIREFOX_PACKAGE,
-                windowId = SAFE_WINDOW_ID,
-                observedAtUptimeMillis = 130L
-            )
-        ).isTrue()
-        assertThat(transition.safeGoogleConfirmed.isCompleted).isTrue()
-    }
-'''
-          marker = '''    private companion object {'''
-          assert marker in test
-          test = test.replace(marker, insertion + '\n' + marker, 1)
-          test_path.write_text(test)
-          PY
+        run: python3 scripts/apply_hardblock_redirect_fix.py
 
       - name: Compile and test redirect flow
+        shell: bash
         run: |
           chmod +x gradlew
           ./gradlew :app:compileDebugKotlin \
-            :app:testDebugUnitTest --tests 'com.focusguard.service.ExternalRedirectNeutralizationTest' \
+            :app:testDebugUnitTest \
+            --tests 'com.focusguard.service.ExternalRedirectNeutralizationTest' \
             --tests 'com.focusguard.accessibility.website.redirection.AddressBarRedirectionActionsPolicyTest' \
             --tests 'com.focusguard.service.BrowserInspectionCoordinatorTest' \
             --no-daemon
 
       - name: Commit validated fix
+        shell: bash
         run: |
+          set -euo pipefail
           git config user.name "FocusGuard CI"
           git config user.email "actions@users.noreply.github.com"
           git rm .github/workflows/apply-hardblock-google-redirect-fix.yml
+          git rm scripts/apply_hardblock_redirect_fix.py
           git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt \
                   app/src/test/java/com/focusguard/service/ExternalRedirectNeutralizationTest.kt
           git commit -m "Fix HardBlock Google redirect fallback [redirect-fix-applied]"
