@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.text.InputType
 import android.view.accessibility.AccessibilityNodeInfo
 import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
+import com.focusguard.accessibility.website.compatibility.BrowserSubmitMethod
 import com.focusguard.utils.BrowserSurfaceInspector
 import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.focusguard.utils.WebsiteBlocker
@@ -189,6 +190,11 @@ internal object AddressBarRedirectionActions {
         httpsHandlerRecognized: Boolean,
         isCurrent: () -> Boolean
     ): Result {
+        if (!BrowserCompatibilityStore.mayAttemptSubmitMethod(
+                browserPackageName,
+                BrowserSubmitMethod.IME_ENTER
+            )
+        ) return Result(Status.NOT_FOUND)
         if (!isCurrent() || !BrowserUiCapabilityPolicy.canUseImeEnter(Build.VERSION.SDK_INT)) {
             return Result(Status.NOT_FOUND)
         }
@@ -211,6 +217,11 @@ internal object AddressBarRedirectionActions {
         httpsHandlerRecognized: Boolean,
         isCurrent: () -> Boolean
     ): Result {
+        if (!BrowserCompatibilityStore.mayAttemptSubmitMethod(
+                browserPackageName,
+                BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION
+            )
+        ) return Result(Status.NOT_FOUND)
         if (!isCurrent()) return Result(Status.REJECTED)
         val nodes = collectAddressBarNodes(
             root, browserPackageName, expectedWindowId, httpsHandlerRecognized
@@ -265,6 +276,11 @@ internal object AddressBarRedirectionActions {
         expectedWindowId: Int,
         isCurrent: () -> Boolean
     ): Result {
+        if (!BrowserCompatibilityStore.mayAttemptSubmitMethod(
+                browserPackageName,
+                BrowserSubmitMethod.CERTIFIED_GO_BUTTON
+            )
+        ) return Result(Status.NOT_FOUND)
         if (!isCurrent() || !rootMatches(root, browserPackageName, expectedWindowId)) {
             return Result(Status.NOT_FOUND)
         }
