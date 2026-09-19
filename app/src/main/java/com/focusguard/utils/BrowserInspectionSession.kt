@@ -162,10 +162,15 @@ internal object BrowserInspectionSessionStore {
         block: () -> T
     ): T {
         val previous = sessionLocal.get()
+        // A detached observation is a short-lived result for an immediate consumer,
+        // not an enclosing inspection scope. Only an actually scoped session may be
+        // restored after a nested pass; otherwise an older detached observation could
+        // overwrite the newer focus/URL facts produced by this pass.
+        val enclosing = previous?.takeIf { it.scoped }
         val identity = System.identityHashCode(root)
-        val session = if (previous?.scoped == true && previous.rootIdentity == identity &&
-            previous.browserPackage == browserPackage && previous.windowId == root.windowId
-        ) previous else BrowserInspectionSession(
+        val session = if (enclosing != null && enclosing.rootIdentity == identity &&
+            enclosing.browserPackage == browserPackage && enclosing.windowId == root.windowId
+        ) enclosing else BrowserInspectionSession(
             rootIdentity = identity,
             windowId = root.windowId,
             browserPackage = browserPackage,
@@ -176,10 +181,10 @@ internal object BrowserInspectionSessionStore {
         return try {
             block()
         } finally {
-            if (previous == null) {
+            if (enclosing == null) {
                 sessionLocal.set(session.detachedForReuse())
             } else {
-                sessionLocal.set(previous)
+                sessionLocal.set(enclosing)
             }
         }
     }
