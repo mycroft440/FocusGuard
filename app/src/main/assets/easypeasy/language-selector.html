@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="referrer" content="no-referrer">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'none'; connect-src 'none'; object-src 'none'; frame-src 'none'; base-uri 'none'; form-action 'none'">
+  <title>Escolha o idioma · EasyPeasy</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #f6f7fb;
+      --surface: #ffffff;
+      --surface-hover: #f0f3fa;
+      --text: #171923;
+      --muted: #687083;
+      --border: #dfe3ec;
+      --accent: #4c6fff;
+      --accent-soft: #e9eeff;
+    }
+
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #202333;
+        --surface: #2d3143;
+        --surface-hover: #363b50;
+        --text: #f5f6fb;
+        --muted: #b7bdd0;
+        --border: #42485f;
+        --accent: #8da2ff;
+        --accent-soft: #343c63;
+      }
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body { min-height: 100%; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    main {
+      width: min(760px, 100%);
+      margin: 0 auto;
+      padding: max(34px, env(safe-area-inset-top)) 20px max(36px, env(safe-area-inset-bottom));
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 18px;
+      padding: 7px 11px;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--accent);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+
+    h1 {
+      margin: 0;
+      font-size: clamp(32px, 8vw, 46px);
+      line-height: 1.05;
+      letter-spacing: -0.035em;
+    }
+
+    .subtitle {
+      margin: 12px 0 8px;
+      color: var(--muted);
+      font-size: 17px;
+      line-height: 1.5;
+    }
+
+    .offline-note {
+      margin: 0 0 28px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .languages {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 12px;
+    }
+
+    .language {
+      display: flex;
+      align-items: center;
+      min-height: 70px;
+      padding: 14px 16px;
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      background: var(--surface);
+      color: var(--text);
+      text-decoration: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .language:active,
+    .language:focus-visible {
+      background: var(--surface-hover);
+      outline: 2px solid var(--accent);
+      outline-offset: 1px;
+    }
+
+    .language-copy {
+      min-width: 0;
+      flex: 1;
+    }
+
+    .language-name {
+      display: block;
+      font-size: 17px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+
+    .language-code {
+      display: block;
+      margin-top: 4px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+    }
+
+    .arrow {
+      margin-left: 12px;
+      color: var(--accent);
+      font-size: 23px;
+      line-height: 1;
+    }
+  </style>
+</head>
+<body>
+<main>
+  <div class="eyebrow"><span class="dot"></span>16 idiomas disponíveis offline</div>
+  <h1>EasyPeasy</h1>
+  <p class="subtitle">Escolha o idioma em que deseja ler.</p>
+  <p class="offline-note">Todas as opções abaixo estão incluídas no aplicativo e funcionam sem internet.</p>
+
+  <div class="languages" role="list" aria-label="Idiomas do EasyPeasy">
+    <a class="language" role="listitem" href="index.html">
+      <span class="language-copy"><span class="language-name">Português brasileiro</span><span class="language-code">pt-BR</span></span><span class="arrow" aria-hidden="true">›</span>
+    </a>
+    <a class="language" role="listitem" href="translations/en/index.html">
+      <span class="language-copy"><span class="language-name">English</span><span class="language-code">en</span></span><span class="arrow" aria-hidden="true">›</span>
+    </a>
+    <a class="language" role="listitem" href="translations/de/index.html">
+      <span class="language-copy"><span class="language-name">Deutsch</span><span class="language-code">de</span></span><span class="arrow" aria-hidden="true">›</span>
+    </a>
+    <a class="language" role="listitem" href="translations/es/index.html">
+      <span class="language-copy"><span class="language-name">Español</span><span class="language-code">es</span></span><span class="arrow" aria-hidden="true">›</span>
+    </a>
+    <a class="language" role="listitem" href="translations/it/index.html">
+      <span class="language-copy"><span class="language-name">Italiano</span><span class="language-code">it</span></span><span class="arrow" aria-hidden="true">›</span>
+    </a>
+    <a class="language" role="listitem" href="translations/hu/index.html">
+      <span class="language-copy"><span class="language-name">Magyar</span><span class="language-code">hu</span></span><span class="arrow" aria-hidden="true">›</span>
+    </a>
+    <a class="language" role="listitem" href="translations/nl/index.html">
+      <span class="language-copy"><span class="language-name">Nederlands</span><span class="language-code">nl</span></span><span class="arrow" aria-hidden="true">›</span>
+    </a>
+    <a class="language" role="listitem" href="translations/pl/index.html">
+      <span class="language-copy"><span class="language-name">Polski</span><span class="language-code">pl</span></span><span class="arrow" aria-hidden="true">›</span>
+    </a>
+    <a class="language" role="listitem" href="translations/ro/index.html">
+      <span class="language-copy"><span class="language-name">Română</span><span class="language-code">ro</span></span><span class="arrow" aria-hidden="true">›</span>
+    </a>
+    <a class="language" role="listitem" href="translations/sq/index.html">
+      <span class="language-copy"><span class="language-name">Shqip</span><span class="language-code">sq</span></span><span class="arrow" aria-hidden="true">›</span>
+    </a>
+    <a class="language" role="listitem" href="translations/so/index.html">
+      <span class="language-copy"><span class="language-name">Soomaaliga</span><span class="language-code">so</span></span><span class="arrow" aria-hidden="true">›</span>
+    </a>
+    <a class="language" role="listitem" href="translations/sv/index.html">
+      <span class="language-copy"><span class="language-name">Svenska</span><span class="language-code">sv</span></span><span class="arrow" aria-hidden="true">›</span>
+    </a>
+    <a class="language" role="listitem" href="translations/tr/index.html">
+      <span class="language-copy"><span class="language-name">Türkçe</span><span class="language-code">tr</span></span><span class="arrow" aria-hidden="true">›</span>
+    </a>
+    <a class="language" role="listitem" href="translations/ru/index.html">
+      <span class="language-copy"><span class="language-name">Русский</span><span class="language-code">ru</span></span><span class="arrow" aria-hidden="true">›</span>
+    </a>
+    <a class="language" role="listitem" href="translations/uk/index.html">
+      <span class="language-copy"><span class="language-name">Українська</span><span class="language-code">uk</span></span><span class="arrow" aria-hidden="true">›</span>
+    </a>
+    <a class="language" role="listitem" href="translations/ko/index.html">
+      <span class="language-copy"><span class="language-name">한국어</span><span class="language-code">ko</span></span><span class="arrow" aria-hidden="true">›</span>
+    </a>
+  </div>
+</main>
+</body>
+</html>
