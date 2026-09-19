@@ -26,6 +26,7 @@ internal enum class BrowserProbeResult {
 internal enum class BrowserDetectionReason {
     HTTP_HTTPS_CONFIRMED,
     CURRENT_VERSION_HISTORY,
+    KNOWN_BROWSER_PROFILE,
     PACKAGE_QUERY_UNKNOWN,
     PARTIAL_GENERIC_HANDLER,
     NO_GENERIC_HANDLER,
@@ -50,7 +51,8 @@ internal object BrowserClassificationPolicy {
 
     fun decide(
         evidence: BrowserCapabilityEvidence,
-        strongCurrentVersionHistory: Boolean
+        strongCurrentVersionHistory: Boolean,
+        knownBrowserProfile: Boolean = false
     ): BrowserDetectionDecision {
         if (evidence.genericHttp == BrowserProbeResult.HANDLED &&
             evidence.genericHttps == BrowserProbeResult.HANDLED
@@ -70,6 +72,16 @@ internal object BrowserClassificationPolicy {
             return BrowserDetectionDecision(
                 BrowserClassification.PROBABLE_BROWSER,
                 BrowserDetectionReason.CURRENT_VERSION_HISTORY
+            )
+        }
+
+        // An exact shipped profile is only a fallback for a PackageManager query failure. It never
+        // overrides an explicit NOT_HANDLED/NOT_HANDLED result, so a stale or reused package name
+        // cannot become a browser merely because it appears in the profile registry.
+        if (queryUncertain && knownBrowserProfile) {
+            return BrowserDetectionDecision(
+                BrowserClassification.PROBABLE_BROWSER,
+                BrowserDetectionReason.KNOWN_BROWSER_PROFILE
             )
         }
 
@@ -106,7 +118,8 @@ internal object BrowserUnknownRetryPolicy {
  * therefore cannot enable the new opaque-browser fail-closed path. Stable results are cached until
  * the package changes. UNKNOWN results are retried with a short bounded backoff; a PackageManager
  * query failure may become PROBABLE_BROWSER only when the compatibility store has strong positive
- * evidence recorded for the exact currently installed package version.
+ * evidence recorded for the exact currently installed package version or the installed package is
+ * one of FocusGuard's exact browser profiles.
  */
 internal object BrowserDetector {
     internal const val HTTP_PROBE = "http://focusguard-browser-check.invalid/"
@@ -162,7 +175,9 @@ internal object BrowserDetector {
         val decision = BrowserClassificationPolicy.decide(
             evidence = evidence,
             strongCurrentVersionHistory = rawUncertain &&
-                BrowserCompatibilityStore.hasStrongCurrentVersionBrowserEvidence(packageName)
+                BrowserCompatibilityStore.hasStrongCurrentVersionBrowserEvidence(packageName),
+            knownBrowserProfile = rawUncertain &&
+                BrowserProfileRegistry.isKnownBrowserPackage(packageName)
         )
         val unknownAttempt = if (decision.classification == BrowserClassification.UNKNOWN) {
             (previous?.unknownAttempt ?: 0) + 1

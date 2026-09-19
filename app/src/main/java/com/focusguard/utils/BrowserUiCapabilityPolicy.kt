@@ -1,7 +1,7 @@
 package com.focusguard.utils
 
-import com.focusguard.accessibility.website.compatibility.BrowserActivationMethod
 import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
+import com.focusguard.accessibility.website.compatibility.BrowserProfileRegistry
 import java.util.Locale
 
 /**
@@ -18,23 +18,6 @@ internal object BrowserUiCapabilityPolicy {
     private const val DUCKDUCKGO_NATIVE_INPUT_ENTRY = "inputField"
     internal const val FIREFOX_COMPOSE_URL_ENTRY = "ADDRESSBAR_URL_BOX"
     internal const val FIREFOX_COMPOSE_SEARCH_ENTRY = "ADDRESSBAR_SEARCH_BOX"
-
-    private val chromePackages: Set<String> = setOf(
-        "com.android.chrome",
-        "com.chrome.beta",
-        "com.chrome.dev",
-        "com.chrome.canary"
-    )
-
-    private val firefoxPackages: Set<String> = setOf(
-        "org.mozilla.firefox",
-        "org.mozilla.firefox_beta",
-        "org.mozilla.fenix",
-        "org.mozilla.fenix.nightly",
-        "org.mozilla.fennec_aurora",
-        "org.mozilla.focus",
-        "org.mozilla.klar"
-    )
 
     internal val firefoxComposeAddressBarEntryNames: Set<String> = setOf(
         FIREFOX_COMPOSE_URL_ENTRY,
@@ -76,42 +59,16 @@ internal object BrowserUiCapabilityPolicy {
         val index: Int? = null
     )
 
-    val strongAddressBarEntryNames: Set<String> = linkedSetOf(
-        // Chromium and Chromium forks.
-        "url_bar",
-        "url_bar_edit_text",
-        "url_text",
-        "location_bar_edit_text",
-        "location_bar",
-        "url_field",
-        "url_edit_text",
-        "omnibarTextInput",
-        "omnibox_text",
-        // DuckDuckGo's native input rollout. Authorization remains package- and
-        // semantics-gated below because the id itself is intentionally generic.
-        DUCKDUCKGO_NATIVE_INPUT_ENTRY,
-        // Gecko/Fenix toolbars.
-        "mozac_browser_toolbar_url_view",
-        "mozac_browser_toolbar_edit_url_view",
-        "mozac_browser_toolbar_url",
-        "mozac_browser_toolbar_edit_url",
-        "mozac_browser_toolbar_address_view",
-        "browser_toolbar_url_view",
-        "browser_toolbar_edit_url_view",
-        "browser_toolbar_address_view",
-        "toolbar_url",
-        "toolbar_url_view",
-        // Current Firefox Compose semantics tags. These bare names are never
-        // trusted globally: isStrongAddressBarResource() scopes them to Firefox
-        // packages and callers still enforce package/window/visibility/native UI.
-        FIREFOX_COMPOSE_URL_ENTRY,
-        FIREFOX_COMPOSE_SEARCH_ENTRY,
-        // Samsung Internet and compact browsers such as Via use variants above
-        // plus this generic browser-owned id.
-        "address_bar",
-        "bro_omnibox_address_title",
-        "bro_omnibox_address_bar"
-    )
+    /**
+     * Global safe vocabulary. BrowserProfileRegistry determines family ordering and
+     * BrowserCompatibilityStore keeps the package/version-specific winner.
+     */
+    val strongAddressBarEntryNames: Set<String> = linkedSetOf<String>().apply {
+        addAll(BrowserProfileRegistry.allKnownAddressBarEntryNames)
+        add(DUCKDUCKGO_NATIVE_INPUT_ENTRY)
+        add(FIREFOX_COMPOSE_URL_ENTRY)
+        add(FIREFOX_COMPOSE_SEARCH_ENTRY)
+    }
 
     val weakReadOnlyAddressBarEntryNames: Set<String> = setOf(
         "search_box_text",
@@ -179,9 +136,11 @@ internal object BrowserUiCapabilityPolicy {
         "configuracoes"
     )
 
-    internal fun isChromePackage(packageName: String): Boolean = packageName in chromePackages
+    internal fun isChromePackage(packageName: String): Boolean =
+        BrowserProfileRegistry.isKnownChromePackage(packageName)
 
-    internal fun isFirefoxPackage(packageName: String): Boolean = packageName in firefoxPackages
+    internal fun isFirefoxPackage(packageName: String): Boolean =
+        BrowserProfileRegistry.isKnownFirefoxPackage(packageName)
 
     internal fun isFirefoxComposeAddressBarResource(
         viewIdResourceName: String,
@@ -206,6 +165,11 @@ internal object BrowserUiCapabilityPolicy {
     internal fun isStableUrlEntryName(entryName: String?): Boolean =
         !entryName.isNullOrBlank() && entryName in strongAddressBarEntryNames &&
             entryName !in editorEntryNames
+
+    internal fun prioritizedAddressBarEntryNames(
+        packageName: String,
+        defaults: Iterable<String> = strongAddressBarEntryNames
+    ): List<String> = BrowserProfileRegistry.prioritizeAddressBarEntryNames(packageName, defaults)
 
     /**
      * Firefox/Fenix can expose a stable display URL node while the edit-only
@@ -538,27 +502,11 @@ internal object BrowserUiCapabilityPolicy {
     fun canUseImeEnter(apiLevel: Int): Boolean = apiLevel >= IME_ENTER_MIN_API
 
     fun prefersClickAddressBarActivation(expectedBrowserPackage: String): Boolean {
-        // Chrome's url_bar is itself an editable/focusable native URI control. A
-        // reported ACTION_CLICK success can race the omnibox transition and leave
-        // no focused editor for ACTION_SET_TEXT. Prefer explicit accessibility
-        // focus for Chrome; AddressBarRedirectionActions still keeps CLICK as the
-        // secondary fallback when focus is unavailable.
-        if (isChromePackage(expectedBrowserPackage)) return false
-        // Fenix enters edit mode through a click from ADDRESSBAR_URL_BOX to the
-        // edit-only ADDRESSBAR_SEARCH_BOX. An old cached FOCUS result must not
-        // override that transition; FOCUS remains the secondary fallback.
-        if (isFirefoxPackage(expectedBrowserPackage)) return true
-
-        return when (BrowserCompatibilityStore.preferredActivationMethod(expectedBrowserPackage)) {
-            BrowserActivationMethod.CLICK -> true
-            BrowserActivationMethod.FOCUS -> false
-            null -> expectedBrowserPackage == DUCKDUCKGO_PACKAGE ||
-                expectedBrowserPackage in setOf(
-                    "com.sec.android.app.sbrowser", "com.sec.android.app.sbrowser.beta",
-                    "mark.via", "mark.via.gp", "com.yandex.browser", "com.yandex.browser.beta",
-                    "com.yandex.browser.alpha", "com.yandex.browser.lite"
-                )
-        }
+        val preferred = BrowserProfileRegistry.preferredActivationMethod(
+            packageName = expectedBrowserPackage,
+            learnedMethod = BrowserCompatibilityStore.preferredActivationMethod(expectedBrowserPackage)
+        )
+        return preferred == com.focusguard.accessibility.website.compatibility.BrowserActivationMethod.CLICK
     }
 
     fun mayRewriteBlockedTabAfterCloseAttempt(

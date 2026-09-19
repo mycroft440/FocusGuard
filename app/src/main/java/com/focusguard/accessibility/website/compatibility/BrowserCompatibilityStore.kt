@@ -78,7 +78,8 @@ internal object BrowserCompatibilityStore {
     private const val KEY_PREFIX = "record:"
     private const val OBSERVATION_FAILURE_MIN_SPAN_MILLIS = 200L
     private const val SUPPORTED_FAILURE_THRESHOLD = 3
-    private const val REDIRECTION_FAILURE_THRESHOLD = 2
+    private const val REDIRECTION_DEGRADED_THRESHOLD = 2
+    private const val REDIRECTION_UNSUPPORTED_THRESHOLD = 5
     private const val REDIRECTION_FAILURE_DEBOUNCE_MILLIS = 150L
     private const val NATIVE_UI_EVIDENCE_MAX_AGE_NANOS = 1_500_000_000L
 
@@ -179,7 +180,10 @@ internal object BrowserCompatibilityStore {
     fun prioritizeUrlEntryNames(packageName: String, defaults: Iterable<String>): List<String> =
         synchronized(lock) {
             val preferred = cache[packageName]?.preferredUrlEntryName?.takeIf(String::isNotBlank)
-            val orderedDefaults = defaults.filter(String::isNotBlank).distinct()
+            val orderedDefaults = BrowserProfileRegistry.prioritizeAddressBarEntryNames(
+                packageName = packageName,
+                defaults = defaults
+            )
             buildList {
                 // A temporary editor can expose a valid URL while typing. Once a
                 // stable display selector is available, do not keep that editor
@@ -187,7 +191,7 @@ internal object BrowserCompatibilityStore {
                 if (BrowserUiCapabilityPolicy.isStableUrlEntryName(preferred)) add(preferred!!)
                 orderedDefaults
                     .filter(BrowserUiCapabilityPolicy::isStableUrlEntryName)
-                    .forEach(::add)
+                    .forEach { entry -> if (entry !in this) add(entry) }
                 if (!preferred.isNullOrBlank() && preferred !in this) add(preferred)
                 orderedDefaults.forEach { entry -> if (entry !in this) add(entry) }
             }
@@ -421,9 +425,11 @@ internal object BrowserCompatibilityStore {
     }
 
     /**
-     * The active website transition currently performs two full same-tab attempts.
-     * A failed phase is debounced so repeated calls inside one UI frame do not count
-     * twice; exhausting both attempts classifies the browser as unsupported.
+     * The active website transition currently performs two full same-tab attempts. After two
+     * failures the package remains eligible for rediscovery but its cached submit preference is
+     * cleared so the next transition explores the certified fallbacks again. Only sustained
+     * failure across five debounced attempts marks the browser unsupported. Any later confirmed
+     * navigation restores SUPPORTED and resets the failure counter.
      */
     fun recordRedirectionFailure(packageName: String) {
         if (packageName.isBlank()) return
@@ -435,21 +441,36 @@ internal object BrowserCompatibilityStore {
 
             val previous = recordForLocked(packageName)
             val failures = previous.consecutiveRedirectionFailures + 1
-            val unsupported = failures >= REDIRECTION_FAILURE_THRESHOLD
-            if (unsupported) pendingRedirects.remove(packageName)
+            val degraded = isRedirectionDegraded(failures)
+            val nextStatus = statusAfterRedirectionFailure(previous.status, failures)
+            if (degraded || nextStatus == BrowserCompatibilityStatus.UNSUPPORTED) {
+                pendingRedirects.remove(packageName)
+            }
             saveLocked(
                 previous.copy(
-                    status = if (unsupported) {
-                        BrowserCompatibilityStatus.UNSUPPORTED
+                    status = nextStatus,
+                    submitMethod = if (degraded || nextStatus == BrowserCompatibilityStatus.UNSUPPORTED) {
+                        null
                     } else {
-                        previous.status
+                        previous.submitMethod
                     },
-                    submitMethod = if (unsupported) null else previous.submitMethod,
                     consecutiveRedirectionFailures = failures,
                     updatedAtMillis = now
                 )
             )
         }
+    }
+
+    internal fun isRedirectionDegraded(failures: Int): Boolean =
+        failures in REDIRECTION_DEGRADED_THRESHOLD until REDIRECTION_UNSUPPORTED_THRESHOLD
+
+    internal fun statusAfterRedirectionFailure(
+        previousStatus: BrowserCompatibilityStatus,
+        failures: Int
+    ): BrowserCompatibilityStatus = if (failures >= REDIRECTION_UNSUPPORTED_THRESHOLD) {
+        BrowserCompatibilityStatus.UNSUPPORTED
+    } else {
+        previousStatus
     }
 
     private inline fun updateMethod(
