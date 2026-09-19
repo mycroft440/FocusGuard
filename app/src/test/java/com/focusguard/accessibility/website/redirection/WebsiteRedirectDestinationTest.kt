@@ -39,11 +39,28 @@ class WebsiteRedirectDestinationTest {
         assertThat(destination.matchesSurface("https://example.org/")).isTrue()
         assertThat(destination.matchesSurface("https://www.google.com/")).isFalse()
     }
+
     @Test(expected = IllegalArgumentException::class)
     fun `configured host must belong to validation policy`() {
         WebsiteRedirectDestination(
             url = "https://example.org",
             acceptedRootHosts = setOf("example.com")
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `configured destination must target certified root surface`() {
+        WebsiteRedirectDestination(
+            url = "https://example.org/path",
+            acceptedRootHosts = setOf("example.org")
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun `configured query parameters must be explicitly accepted`() {
+        WebsiteRedirectDestination(
+            url = "https://example.org/?source=focusguard",
+            acceptedRootHosts = setOf("example.org")
         )
     }
 
@@ -54,5 +71,4 @@ class WebsiteRedirectDestinationTest {
         assertThat(WebsiteRedirectDestination.current.matchesSurface("https://user@www.google.com/"))
             .isFalse()
     }
-
 }
