@@ -23,6 +23,14 @@ internal enum class WebsiteRedirectionPhase {
 internal object WebsiteRedirectionPlan {
     const val MAX_SAME_TAB_ATTEMPTS = 2
 
+    /**
+     * Website blocking must stay bound to the tab/window that exposed the blocked
+     * destination. ACTION_VIEW hands navigation back to the browser and can create
+     * another tab while leaving the blocked tab alive, so it is deliberately not a
+     * valid fallback for a blocking transition.
+     */
+    const val ALLOW_EXTERNAL_BROWSER_INTENT_FALLBACK = false
+
     val orderedLayers: List<WebsiteRedirectionPhase> = listOf(
         WebsiteRedirectionPhase.ACTIVATE_ADDRESS_BAR,
         WebsiteRedirectionPhase.REIDENTIFY_EDITOR,
@@ -41,11 +49,10 @@ internal object WebsiteRedirectionPlan {
 
     /**
      * Coordinate taps and keyboard-position guessing intentionally do not belong
-     * to this same-tab plan. The service may request an ACTION_VIEW safe-browser
-     * fallback after these phases fail, but launching that intent is only a
-     * navigation request: it is not evidence that the original blocked tab was
-     * replaced or otherwise neutralized. The blocking curtain must remain guarded
-     * by post-navigation/original-surface confirmation.
+     * to this same-tab plan. After the bounded same-tab attempts are exhausted the
+     * transition stays fail-closed rather than launching a browser ACTION_VIEW,
+     * because an external navigation request cannot prove that the original blocked
+     * tab was replaced or otherwise neutralized.
      */
     fun canRetry(attemptNumber: Int): Boolean = attemptNumber < MAX_SAME_TAB_ATTEMPTS
 }

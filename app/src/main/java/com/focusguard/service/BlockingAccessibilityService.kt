@@ -43,6 +43,7 @@ import com.focusguard.accessibility.website.compatibility.BrowserWriteMethod
 import com.focusguard.accessibility.website.compatibility.BrowserSubmitMethod
 import com.focusguard.accessibility.website.redirection.AddressBarRedirectionActions
 import com.focusguard.accessibility.website.redirection.ClipboardPasteFallback
+import com.focusguard.accessibility.website.redirection.WebsiteRedirectionPlan
 import com.focusguard.MainActivity
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
@@ -3686,6 +3687,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                 // the exact browser package that exposed the blocked page. Keep the curtain
                 // up and use this fallback whenever Google was not positively confirmed.
                 if (!redirectRequested &&
+                    WebsiteRedirectionPlan.ALLOW_EXTERNAL_BROWSER_INTENT_FALLBACK &&
                     transitionOwnsCurtain(transition) &&
                     supportsCapabilityBasedIntentRedirectFallback(
                         knownBrowser = browserPackageName in knownBrowserPackages,
@@ -4783,12 +4785,12 @@ class BlockingAccessibilityService : AccessibilityService() {
         )
         private const val WEBSITE_TAB_MENU_SETTLE_MILLIS = 120L
         private const val WEBSITE_TAB_CLOSE_CONFIRM_MILLIS = 180L
-        private const val WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS = 48L
-        private const val WEBSITE_ADDRESS_BAR_ACTION_RETRY_MILLIS = 32L
+        private const val WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS = 32L
+        private const val WEBSITE_ADDRESS_BAR_ACTION_RETRY_MILLIS = 16L
         private const val WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS = 360L
         private const val WEBSITE_FIREFOX_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS = 800L
-        private const val WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS = 120L
-        internal const val WEBSITE_MIN_BLOCK_NOTICE_MILLIS = 1_000L
+        private const val WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS = 80L
+        internal const val WEBSITE_MIN_BLOCK_NOTICE_MILLIS = 250L
         /** Exact hosts published by Google's supported-domains endpoint. */
         private val SAFE_GOOGLE_HOSTS = """
             google.com google.ad google.ae google.com.af google.com.ag google.al google.am
