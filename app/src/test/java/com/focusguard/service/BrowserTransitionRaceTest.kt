@@ -70,7 +70,7 @@ class BrowserTransitionRaceTest {
     @After
     fun tearDown() = unmockkAll()
 
-    private fun call(name: String, vararg args: Any): Any? {
+    private fun call(name: String, vararg args: Any?): Any? {
         val method = BlockingAccessibilityService::class.java.declaredMethods.single {
             it.name == name && it.parameterCount == args.size
         }
@@ -108,7 +108,7 @@ class BrowserTransitionRaceTest {
     fun windowChangeDuringOwnedCurtainStillAllowsFailClosedHandoff() {
         coordinator.observeWindow(pkg, 11)
         call("failClosedWebsiteTransition", transition)
-        call("finishWebsiteTransition", transition)
+        call("finishWebsiteTransition", transition, null)
         verify(exactly = 1) { service.startActivity(any()) }
         verify(exactly = 0) { BrowserCompatibilityStore.recordRedirectionFailure(any()) }
         assertFalse(guard.isActive(pkg))
@@ -119,7 +119,7 @@ class BrowserTransitionRaceTest {
         coordinator.observeWindow(pkg, 11)
         ReflectionHelpers.setField(service, "instantBlockCurtainGeneration", 2L)
         call("failClosedWebsiteTransition", transition)
-        call("finishWebsiteTransition", transition)
+        call("finishWebsiteTransition", transition, null)
         verify(exactly = 0) { service.startActivity(any()) }
         verify(exactly = 0) { BrowserCompatibilityStore.recordRedirectionFailure(any()) }
         assertFalse(guard.isActive(pkg))
@@ -128,13 +128,13 @@ class BrowserTransitionRaceTest {
     @Test
     fun oldFinallyCannotClearReplacementTransitionOrCompatibilityState() {
         coordinator.observeWindow(pkg, 11)
-        call("finishWebsiteTransition", transition)
+        call("finishWebsiteTransition", transition, null)
         val newer = guard.tryStart(
             pkg, 2L, WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
             expectedWindowId = 11, inspectionGeneration = coordinator.currentGeneration(pkg, 11)!!
         )!!
         clearMocks(BrowserCompatibilityStore, answers = false)
-        call("finishWebsiteTransition", transition)
+        call("finishWebsiteTransition", transition, null)
         assertSame(newer, guard.activeTransition(pkg))
         verify(exactly = 0) { BrowserCompatibilityStore.finishRedirection(any()) }
         verify(exactly = 0) { BrowserCompatibilityStore.recordRedirectionFailure(any()) }
@@ -142,7 +142,7 @@ class BrowserTransitionRaceTest {
 
     @Test
     fun currentFailureIsStillRecorded() {
-        call("finishWebsiteTransition", transition)
+        call("finishWebsiteTransition", transition, null)
         verify(exactly = 1) { BrowserCompatibilityStore.recordRedirectionFailure(pkg) }
         verify(exactly = 1) { BrowserCompatibilityStore.finishRedirection(pkg) }
     }
