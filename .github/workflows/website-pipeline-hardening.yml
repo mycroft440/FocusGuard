@@ -1,0 +1,38 @@
+name: Website pipeline hardening
+
+on:
+  push:
+    branches:
+      - refactor/website-blocking-pipeline
+    paths:
+      - scripts/apply_website_pipeline_hardening.py
+      - .github/workflows/website-pipeline-hardening.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: refactor/website-blocking-pipeline
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Apply hardening
+        run: python scripts/apply_website_pipeline_hardening.py
+      - name: Verify no temporary automation remains in result
+        run: |
+          git rm scripts/apply_website_pipeline_hardening.py
+          git rm .github/workflows/website-pipeline-hardening.yml
+      - name: Commit and push
+        run: |
+          git config user.name "FocusGuard Automation"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Fix website redirect reliability hardening"
+          git push origin HEAD:refactor/website-blocking-pipeline
