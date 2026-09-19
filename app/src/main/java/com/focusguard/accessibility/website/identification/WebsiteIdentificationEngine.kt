@@ -3,7 +3,6 @@ package com.focusguard.accessibility.website.identification
 import android.view.accessibility.AccessibilityNodeInfo
 import com.focusguard.utils.BrowserInspectionSessionStore
 import com.focusguard.utils.BrowserSurfaceInspector
-import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.focusguard.utils.WebsiteBlocker
 
 /**
@@ -65,20 +64,17 @@ internal object WebsiteIdentificationEngine {
             )
         }
 
-        // Fenix/Firefox increasingly exposes address chrome through Compose semantics.
-        // Those bare semantics tags cannot be resolved by a normal package-qualified
-        // findAccessibilityNodeInfosByViewId lookup and therefore depend on the bounded
-        // semantic walk. Give that walk first use of the shared inspection budget before
-        // the GeckoView surface classifier visits the native hierarchy. The result is
-        // cached in BrowserInspectionSession, so the normal accessors below remain a
-        // single-pass operation and Chromium keeps its existing ordering.
-        if (BrowserUiCapabilityPolicy.isFirefoxPackage(browserPackageName)) {
-            WebsiteBlocker.extractUrlFromRoot(
-                root = root,
-                browserPackageName = browserPackageName,
-                httpsHandlerRecognized = httpsHandlerRecognized
-            )
-        }
+        // The address bar is the strongest browser-owned signal and must get first
+        // use of the shared inspection budget. A full WebView/ContentView/GeckoView
+        // surface walk can consume the bounded deadline on complex pages before a
+        // later url_bar lookup runs. Reading the address first keeps Chromium/Chrome
+        // deterministic while preserving Firefox Compose semantics and the same
+        // package/window/native-chrome validation inside WebsiteBlocker.
+        WebsiteBlocker.extractUrlFromRoot(
+            root = root,
+            browserPackageName = browserPackageName,
+            httpsHandlerRecognized = httpsHandlerRecognized
+        )
         if (!isCurrent()) {
             return WebsiteIdentificationResult(WebsiteIdentificationStatus.REJECTED_CONTEXT)
         }
