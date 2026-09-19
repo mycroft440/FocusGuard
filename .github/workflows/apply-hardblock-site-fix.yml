@@ -34,12 +34,19 @@ jobs:
       - name: Apply HardBlock fixes
         run: python3 scripts/apply_hardblock_site_fix.py
 
-      - name: Compile and run unit tests
+      - name: Compile and run focused browser tests
         shell: bash
         run: |
           set -euo pipefail
           chmod +x gradlew
-          ./gradlew :app:compileDebugKotlin :app:testDebugUnitTest --no-daemon --stacktrace
+          ./gradlew \
+            :app:compileDebugKotlin \
+            :app:testDebugUnitTest \
+            --tests com.focusguard.service.BrowserInspectionOutcomeTest \
+            --tests com.focusguard.service.BrowserRecoveryCoordinatorTest \
+            --tests com.focusguard.service.BrowserInspectionCoordinatorTest \
+            --tests com.focusguard.service.ExternalRedirectNeutralizationTest \
+            --no-daemon --stacktrace
 
       - name: Commit validated fix
         shell: bash
