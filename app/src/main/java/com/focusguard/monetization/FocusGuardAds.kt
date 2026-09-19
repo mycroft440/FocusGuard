@@ -145,10 +145,9 @@ object FocusGuardAds {
             "Ads",
             AdsDiagnostics.formatLoadFailure(
                 format = format,
-                code = adError.code,
-                domain = adError.domain,
+                code = adError.code.toString(),
                 message = adError.message,
-                cause = adError.cause?.toString(),
+                errorDump = adError.toString(),
                 responseInfo = adError.responseInfo?.toString()
             )
         )
