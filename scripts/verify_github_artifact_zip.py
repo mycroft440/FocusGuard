@@ -104,6 +104,15 @@ def verify_archive(
 
             if expected_files:
                 expected_names = [archive_name for archive_name, _ in expected_files]
+                if (
+                    len(names) == 1
+                    and names[0].lower().endswith(".zip")
+                    and names[0] not in expected_names
+                ):
+                    raise VerificationError(
+                        "Artifact ZIP is unexpectedly wrapped in a nested ZIP: "
+                        f"found {names[0]!r}, expected {sorted(expected_names)}"
+                    )
                 if set(names) != set(expected_names) or len(names) != len(expected_names):
                     raise VerificationError(
                         "Artifact ZIP file set mismatch: "
@@ -167,6 +176,26 @@ def _self_test() -> None:
             pass
         else:
             raise AssertionError("Self-test failed to detect content mismatch")
+
+        inner_archive = root / "inner.zip"
+        with zipfile.ZipFile(inner_archive, "w", compression=zipfile.ZIP_STORED) as zipped:
+            zipped.write(source, arcname="payload.apk")
+        nested_archive = root / "nested.zip"
+        with zipfile.ZipFile(nested_archive, "w", compression=zipfile.ZIP_STORED) as zipped:
+            zipped.write(inner_archive, arcname="inner.zip")
+        try:
+            verify_archive(
+                nested_archive,
+                None,
+                [("payload.apk", source)],
+            )
+        except VerificationError as exc:
+            if "nested ZIP" not in str(exc):
+                raise AssertionError(
+                    f"Self-test detected nested ZIP with the wrong error: {exc}"
+                ) from exc
+        else:
+            raise AssertionError("Self-test failed to detect nested ZIP wrapper")
 
         truncated = root / "truncated.zip"
         truncated.write_bytes(archive.read_bytes()[:-8])
