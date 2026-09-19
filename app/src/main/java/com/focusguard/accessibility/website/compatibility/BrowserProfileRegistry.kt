@@ -144,6 +144,7 @@ internal object BrowserProfileRegistry {
             "com.opera.browser.beta",
             "com.opera.gx"
         ).forEach { put(it, chromium(BrowserProduct.OPERA)) }
+        put("com.opera.mini.native", webView(BrowserProduct.OPERA, BrowserActivationMethod.CLICK))
 
         listOf(
             "com.kiwibrowser.browser",
@@ -208,6 +209,8 @@ internal object BrowserProfileRegistry {
     }
 
     fun familyFor(packageName: String): BrowserFamily = profileFor(packageName).family
+
+    fun isKnownBrowserPackage(packageName: String): Boolean = packageName in exactProfiles
 
     fun isKnownChromePackage(packageName: String): Boolean =
         exactProfiles[packageName]?.product == BrowserProduct.CHROME
