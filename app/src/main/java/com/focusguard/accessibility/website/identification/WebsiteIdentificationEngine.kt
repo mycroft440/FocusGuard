@@ -1,6 +1,7 @@
 package com.focusguard.accessibility.website.identification
 
 import android.view.accessibility.AccessibilityNodeInfo
+import com.focusguard.accessibility.website.compatibility.BrowserProfileRegistry
 import com.focusguard.utils.BrowserInspectionSessionStore
 import com.focusguard.utils.BrowserSurfaceInspector
 import com.focusguard.utils.BrowserUiCapabilityPolicy
@@ -66,14 +67,12 @@ internal object WebsiteIdentificationEngine {
             )
         }
 
-        // Chrome and Firefox expose their strongest address evidence through native
-        // browser chrome, but a full WebView/ContentView/GeckoView surface walk can
-        // consume the bounded shared budget first on complex pages. Give their URL
-        // reader first use of that budget. Other browser families keep their existing
-        // ordering until runtime evidence shows they need the same treatment.
-        if (BrowserUiCapabilityPolicy.isChromePackage(browserPackageName) ||
-            BrowserUiCapabilityPolicy.isFirefoxPackage(browserPackageName)
-        ) {
+        // Chromium and Gecko families expose their strongest address evidence through native
+        // browser chrome, but a full WebView/ContentView/GeckoView surface walk can consume the
+        // bounded shared budget first on complex pages. Give the family URL reader first use of
+        // that budget. Exact package overrides still live in BrowserProfileRegistry, while an
+        // unknown package can acquire the same optimization from learned address-bar evidence.
+        if (BrowserProfileRegistry.shouldPrioritizeUrlInspection(browserPackageName)) {
             WebsiteBlocker.extractUrlFromRoot(
                 root = root,
                 browserPackageName = browserPackageName,
