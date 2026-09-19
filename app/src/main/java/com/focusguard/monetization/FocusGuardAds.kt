@@ -17,6 +17,7 @@ import com.google.android.libraries.ads.mobile.sdk.common.FullScreenContentError
 import com.google.android.libraries.ads.mobile.sdk.common.LoadAdError
 import com.google.android.libraries.ads.mobile.sdk.common.PreloadConfiguration
 import com.google.android.libraries.ads.mobile.sdk.initialization.InitializationConfig
+import com.google.android.libraries.ads.mobile.sdk.initialization.InitializationStatus
 import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAd
 import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAdEventCallback
 import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAd
@@ -26,6 +27,7 @@ import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdRequest
 import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardedAd
 import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardedAdEventCallback
 import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -33,6 +35,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 /**
  * Ponto único de integração de anúncios do FocusGuard.
@@ -45,6 +48,7 @@ object FocusGuardAds {
 
     private const val ADAPTIVE_BANNER_PRELOAD_BUFFER_SIZE = 2
     private const val ADAPTIVE_BANNER_PRELOAD_PREFIX = "focusguard-adaptive-banner"
+    private const val INITIALIZATION_TIMEOUT_MILLIS = 35_000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val initMutex = Mutex()
@@ -52,6 +56,7 @@ object FocusGuardAds {
     @Volatile
     private var initialized = false
 
+    private val runtimeConfigurationLogged = AtomicBoolean(false)
     private val pomodoroAdInFlight = AtomicBoolean(false)
 
     /**
@@ -87,12 +92,65 @@ object FocusGuardAds {
         if (initialized) return
         initMutex.withLock {
             if (initialized) return
+
+            logRuntimeConfiguration(context)
+            val completion = CompletableDeferred<InitializationStatus>()
             MobileAds.initialize(
-                context,
+                context.applicationContext,
                 InitializationConfig.Builder(BuildConfig.ADMOB_APP_ID).build()
-            ) { }
+            ) { status ->
+                completion.complete(status)
+            }
+
+            val initializationStatus = withTimeout(INITIALIZATION_TIMEOUT_MILLIS) {
+                completion.await()
+            }
+            logInitializationStatus(initializationStatus)
             initialized = true
+            FocusGuardLogger.log("Ads", "GMA Next-Gen inicializado; requests de anúncios liberados")
         }
+    }
+
+    private fun logRuntimeConfiguration(context: Context) {
+        if (!runtimeConfigurationLogged.compareAndSet(false, true)) return
+        FocusGuardLogger.log(
+            "Ads",
+            "Configuração runtime: package=${context.packageName}, " +
+                "buildType=${BuildConfig.BUILD_TYPE}, appId=${BuildConfig.ADMOB_APP_ID}, " +
+                "banner=${BuildConfig.ADMOB_BANNER_AD_UNIT_ID}, " +
+                "interstitial=${BuildConfig.ADMOB_INTERSTITIAL_AD_UNIT_ID}, " +
+                "rewarded=${BuildConfig.ADMOB_REWARDED_AD_UNIT_ID}, " +
+                "native=${BuildConfig.ADMOB_NATIVE_AD_UNIT_ID}"
+        )
+    }
+
+    private fun logInitializationStatus(status: InitializationStatus) {
+        val adapters = status.adapterStatusMap.entries
+            .sortedBy { it.key }
+            .joinToString(" | ") { (adapterName, adapterStatus) ->
+                val description = adapterStatus.description.replace('\n', ' ').trim()
+                "$adapterName=${adapterStatus.initializationState}," +
+                    "${adapterStatus.latency}ms,$description"
+            }
+            .ifBlank { "nenhum adaptador reportado" }
+
+        FocusGuardLogger.log(
+            "Ads",
+            "Inicialização GMA concluída em ${status.totalLatency}ms; adapters=[$adapters]"
+        )
+    }
+
+    private fun logLoadFailure(format: String, adError: LoadAdError) {
+        FocusGuardLogger.log(
+            "Ads",
+            AdsDiagnostics.formatLoadFailure(
+                format = format,
+                code = adError.code.toString(),
+                message = adError.message,
+                errorDump = adError.toString(),
+                responseInfo = adError.responseInfo?.toString()
+            )
+        )
     }
 
     private fun withAdsReady(
@@ -115,6 +173,11 @@ object FocusGuardAds {
                 scope.launch {
                     runCatching { ensureInitialized(activity.applicationContext) }
                         .onFailure { error ->
+                            FocusGuardLogger.logError(
+                                "Ads",
+                                "Falha ao inicializar GMA Next-Gen",
+                                error
+                            )
                             withContext(Dispatchers.Main) {
                                 onUnavailable(
                                     error.message ?: "Não foi possível inicializar os anúncios."
@@ -186,6 +249,7 @@ object FocusGuardAds {
                     request,
                     object : NativeAdLoaderCallback {
                         override fun onNativeAdLoaded(nativeAd: NativeAd) {
+                            FocusGuardLogger.log("Ads", "Native carregado")
                             if (activity.isFinishing || activity.isDestroyed) {
                                 nativeAd.destroy()
                             } else {
@@ -194,6 +258,7 @@ object FocusGuardAds {
                         }
 
                         override fun onAdFailedToLoad(adError: LoadAdError) {
+                            logLoadFailure("Native", adError)
                             onUnavailable(
                                 adError.message.ifBlank {
                                     "Nenhum anúncio nativo está disponível agora."
@@ -247,10 +312,7 @@ object FocusGuardAds {
                         }
 
                         override fun onAdFailedToLoad(adError: LoadAdError) {
-                            FocusGuardLogger.log(
-                                "Ads",
-                                "Banner adaptativo indisponível: ${adError.message}"
-                            )
+                            logLoadFailure("Banner adaptativo", adError)
                             onUnavailable(
                                 adError.message.ifBlank { "Nenhum banner está disponível agora." }
                             )
@@ -281,15 +343,24 @@ object FocusGuardAds {
                     AdRequest.Builder(BuildConfig.ADMOB_REWARDED_AD_UNIT_ID).build(),
                     object : AdLoadCallback<RewardedAd> {
                         override fun onAdLoaded(ad: RewardedAd) {
+                            FocusGuardLogger.log("Ads", "Rewarded carregado")
                             var rewardEarned = false
                             ad.adEventCallback = object : RewardedAdEventCallback {
                                 override fun onAdDismissedFullScreenContent() {
+                                    FocusGuardLogger.log(
+                                        "Ads",
+                                        "Rewarded fechado; rewardEarned=$rewardEarned"
+                                    )
                                     if (!rewardEarned) onClosedWithoutReward()
                                 }
 
                                 override fun onAdFailedToShowFullScreenContent(
                                     fullScreenContentError: FullScreenContentError
                                 ) {
+                                    FocusGuardLogger.log(
+                                        "Ads",
+                                        "Rewarded falhou ao exibir: $fullScreenContentError"
+                                    )
                                     if (!rewardEarned) {
                                         onUnavailable(
                                             fullScreenContentError.message.ifBlank {
@@ -302,12 +373,14 @@ object FocusGuardAds {
                             ad.show(activity) {
                                 if (!rewardEarned) {
                                     rewardEarned = true
+                                    FocusGuardLogger.log("Ads", "Rewarded creditado pelo callback real")
                                     onRewardEarned()
                                 }
                             }
                         }
 
                         override fun onAdFailedToLoad(adError: LoadAdError) {
+                            logLoadFailure("Rewarded", adError)
                             onUnavailable(
                                 adError.message.ifBlank {
                                     "Nenhum anúncio está disponível agora."
@@ -348,6 +421,7 @@ object FocusGuardAds {
                     AdRequest.Builder(BuildConfig.ADMOB_INTERSTITIAL_AD_UNIT_ID).build(),
                     object : AdLoadCallback<InterstitialAd> {
                         override fun onAdLoaded(ad: InterstitialAd) {
+                            FocusGuardLogger.log("Ads", "Interstitial Pomodoro carregado")
                             if (activity.isFinishing || activity.isDestroyed ||
                                 !activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
                             ) {
@@ -370,6 +444,7 @@ object FocusGuardAds {
 
                             ad.adEventCallback = object : InterstitialAdEventCallback {
                                 override fun onAdDismissedFullScreenContent() {
+                                    FocusGuardLogger.log("Ads", "Interstitial Pomodoro fechado")
                                     pomodoroAdInFlight.set(false)
                                 }
 
@@ -380,7 +455,7 @@ object FocusGuardAds {
                                     pomodoroAdInFlight.set(false)
                                     FocusGuardLogger.log(
                                         "Ads",
-                                        "Interstitial Pomodoro indisponível: ${fullScreenContentError.message}"
+                                        "Interstitial Pomodoro falhou ao exibir: $fullScreenContentError"
                                     )
                                 }
                             }
@@ -399,10 +474,7 @@ object FocusGuardAds {
 
                         override fun onAdFailedToLoad(adError: LoadAdError) {
                             pomodoroAdInFlight.set(false)
-                            FocusGuardLogger.log(
-                                "Ads",
-                                "Interstitial Pomodoro não carregou: ${adError.message}"
-                            )
+                            logLoadFailure("Interstitial Pomodoro", adError)
                         }
                     }
                 )
