@@ -78,6 +78,17 @@ internal object BrowserProfileRegistry {
         "url_edit_text"
     )
 
+    /**
+     * These names occur in more than one engine/family. They are useful for finding a browser-owned
+     * address field but are intentionally too weak to infer the rendering family of an unknown app.
+     */
+    private val ambiguousSharedEntryNames = setOf(
+        "address_bar",
+        "url_field",
+        "url_edit_text",
+        "omnibarTextInput"
+    )
+
     val allKnownAddressBarEntryNames: Set<String> = linkedSetOf<String>().apply {
         addAll(chromiumEntryNames)
         addAll(geckoEntryNames)
@@ -257,7 +268,7 @@ internal object BrowserProfileRegistry {
 
     internal fun inferFamilyFromAddressBarEntryName(entryName: String?): BrowserFamily {
         val value = entryName?.substringAfterLast("/")?.trim().orEmpty()
-        if (value.isEmpty()) return BrowserFamily.GENERIC
+        if (value.isEmpty() || value in ambiguousSharedEntryNames) return BrowserFamily.GENERIC
         return when {
             value in geckoEntryNames -> BrowserFamily.GECKO
             value in chromiumEntryNames -> BrowserFamily.CHROMIUM
@@ -266,9 +277,9 @@ internal object BrowserProfileRegistry {
                 value.contains("location_bar", ignoreCase = true) -> BrowserFamily.CHROMIUM
             value.contains("mozac", ignoreCase = true) ||
                 value.startsWith("ADDRESSBAR_", ignoreCase = true) -> BrowserFamily.GECKO
-            value.contains("address", ignoreCase = true) ||
-                value.contains("url", ignoreCase = true) ||
-                value.contains("uri", ignoreCase = true) -> BrowserFamily.WEBVIEW_BASED
+            // Unknown package resource names that only say URL/address/URI prove that the app owns
+            // a browser-like field, not which rendering family it uses. Keep it generic so family
+            // optimizations never outrun the evidence.
             else -> BrowserFamily.GENERIC
         }
     }
