@@ -120,6 +120,82 @@ class FirefoxComposeAddressBarCompatibilityTest {
     }
 
     @Test
+    fun `Firefox native URI editor remains actionable when its resource id changes`() {
+        val editor = node(
+            viewId = "",
+            editable = true,
+            focused = true,
+            uriInput = true,
+            text = "blocked.example",
+            contentDescription = "Search or enter address",
+            actions = setOf(NodeAction.SET_TEXT, NodeAction.IME_ENTER)
+        )
+
+        assertThat(
+            BrowserUiCapabilityPolicy.isSemanticActionableAddressBarNode(
+                editor,
+                FIREFOX_PACKAGE,
+                WINDOW_ID,
+                httpsHandlerRecognized = true
+            )
+        ).isTrue()
+        assertThat(
+            BrowserUiCapabilityPolicy.resolveUniqueAddressBarNode(
+                nodes = listOf(editor),
+                expectedBrowserPackage = FIREFOX_PACKAGE,
+                expectedWindowId = WINDOW_ID,
+                requiredAction = NodeAction.SET_TEXT,
+                httpsHandlerRecognized = true
+            ).status
+        ).isEqualTo(SelectionStatus.SELECTED)
+    }
+
+    @Test
+    fun `Firefox semantic editor fallback never authorizes page content`() {
+        val pageField = node(
+            viewId = "",
+            editable = true,
+            focused = true,
+            uriInput = true,
+            text = "blocked.example",
+            contentDescription = "Search or enter address",
+            actions = setOf(NodeAction.SET_TEXT, NodeAction.IME_ENTER)
+        ).copy(inWebContent = true)
+
+        assertThat(
+            BrowserUiCapabilityPolicy.isSemanticActionableAddressBarNode(
+                pageField,
+                FIREFOX_PACKAGE,
+                WINDOW_ID,
+                httpsHandlerRecognized = true
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `Mozilla Firefox family accepts Compose tags while foreign packages do not`() {
+        listOf(
+            FIREFOX_PACKAGE,
+            "org.mozilla.firefox_beta",
+            "org.mozilla.fenix",
+            "org.mozilla.fenix.nightly",
+            "org.mozilla.fennec_aurora",
+            "org.mozilla.focus",
+            "org.mozilla.klar"
+        ).forEach { packageName ->
+            assertThat(
+                BrowserUiCapabilityPolicy.isFirefoxPackage(packageName)
+            ).isTrue()
+            assertThat(
+                BrowserUiCapabilityPolicy.isStrongAddressBarResource(
+                    BrowserUiCapabilityPolicy.FIREFOX_COMPOSE_URL_ENTRY,
+                    packageName
+                )
+            ).isTrue()
+        }
+    }
+
+    @Test
     fun `mixed Firefox content description yields URL only after component trust`() {
         val description = "Example title, https://blocked.example/path?q=1, Search or enter address"
 
