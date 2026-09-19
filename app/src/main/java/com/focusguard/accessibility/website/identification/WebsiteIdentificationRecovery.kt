@@ -5,6 +5,7 @@ import com.focusguard.accessibility.website.compatibility.BrowserCompatibilitySt
 import com.focusguard.accessibility.website.compatibility.BrowserDetector
 import com.focusguard.accessibility.website.compatibility.BrowserRecognitionPolicy
 import com.focusguard.accessibility.website.compatibility.BrowserUrlRecoveryMethod
+import com.focusguard.accessibility.website.diagnostics.WebsiteBlockingDiagnostics
 import com.focusguard.utils.BrowserSurfaceInspector
 import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.focusguard.utils.FocusGuardLogger
@@ -161,6 +162,14 @@ internal class WebsiteIdentificationRecovery(
             )
         ) {
             trace(BrowserRecoveryReason.FAIL_CLOSED)
+            WebsiteBlockingDiagnostics.recordIdentificationFailure(
+                browserPackageName = browserPackage,
+                windowId = windowId,
+                status = postRecovery.status.name,
+                addressBarObservable = postRecovery.addressBarObservable,
+                webContentObserved = postRecovery.webContentObserved,
+                evidence = postRecovery.evidence.map { it.name }
+            )
             postRecovery.copy(
                 webContentObserved = true,
                 evidence = postRecovery.evidence + WebsiteIdentificationLayer.FAIL_CLOSED

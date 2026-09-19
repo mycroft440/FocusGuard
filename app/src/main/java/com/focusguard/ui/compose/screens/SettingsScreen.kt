@@ -265,7 +265,7 @@ fun SettingsScreen(
     }
 
     if (showDeveloperMode) {
-        DeveloperModeDialog(
+        DeveloperModeHostDialog(
             onDismiss = { showDeveloperMode = false }
         )
     }
