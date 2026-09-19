@@ -740,7 +740,7 @@ class WebsiteBlockNavigationTest {
             )
         ).isEqualTo(
             BlockingAccessibilityService.WebsiteCloseFollowUp
-                .REQUEST_SAFE_GOOGLE_AFTER_CONFIRMED_CLOSE
+                .REQUEST_SAFE_REDIRECT_AFTER_CONFIRMED_CLOSE
         )
     }
 

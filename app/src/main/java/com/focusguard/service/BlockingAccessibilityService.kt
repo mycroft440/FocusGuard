@@ -126,7 +126,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     internal enum class WebsiteSanitizationDecision {
         SUBMIT_ADDRESS_BAR,
-        AWAIT_GOOGLE_CONFIRMATION,
+        AWAIT_REDIRECT_CONFIRMATION,
         ABORT_REDIRECT
     }
 
@@ -138,7 +138,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     internal enum class WebsiteCloseFollowUp {
         REWRITE_SAME_BLOCKED_TAB,
-        REQUEST_SAFE_GOOGLE_AFTER_CONFIRMED_CLOSE,
+        REQUEST_SAFE_REDIRECT_AFTER_CONFIRMED_CLOSE,
         EVACUATE_WITHOUT_REWRITE
     }
 
@@ -3533,129 +3533,90 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         scope.launch(Dispatchers.Main.immediate) {
             try {
-                // Let the already-warm overlay commit one display frame before
-                // touching the browser UI. This is normally only 8-17 ms and
-                // avoids exposing a flash of the blocked page during redirect.
-                awaitNextWebsiteRedirectFrame()
-                if (!transitionOwnsCurtain(transition)) return@launch
+                WebsiteRedirectionCoordinator.execute(
+                    session = stateMachine,
+                    adapter = object : WebsiteRedirectionCoordinator.Adapter {
+                        override suspend fun awaitPresentationFrame(): Boolean {
+                            // Let the already-warm overlay commit one display frame
+                            // before touching browser UI, avoiding a blocked-page flash.
+                            awaitNextWebsiteRedirectFrame()
+                            return transitionOwnsCurtain(transition)
+                        }
 
-                var redirectRequested = false
-                if (curtainReadyForTransition(transition)) {
-                    val rewritePolicy = WebsiteTabNeutralizationPolicy(
-                        browserPackageName = browserPackageName,
-                        expectedWindowId = expectedWindowId
-                    )
-                    redirectRequested = requestSafeRedirectInCurrentTab(
-                        browserPackageName = browserPackageName,
-                        expectedWindowId = expectedWindowId,
-                        policy = rewritePolicy,
-                        transition = transition
-                    )
+                        override fun ownsProtection(): Boolean =
+                            transitionOwnsCurtain(transition)
 
-                    // Same-tab rewrite remains preferred. Retry only while the original
-                    // browser window is still current. If the browser changes window while
-                    // focusing/submitting the omnibox, preserve the curtain and fall through
-                    // to the explicit package-scoped Google intent instead of abandoning the
-                    // redirect transaction.
-                    if (!redirectRequested && curtainReadyForTransition(transition)) {
-                        val blockedSurfaceRestored =
+                        override suspend fun requestSameTabRedirect(
+                            attemptNumber: Int
+                        ): Boolean {
+                            if (!curtainReadyForTransition(transition)) return false
+                            return requestSafeRedirectInCurrentTab(
+                                browserPackageName = browserPackageName,
+                                expectedWindowId = expectedWindowId,
+                                policy = WebsiteTabNeutralizationPolicy(
+                                    browserPackageName = browserPackageName,
+                                    expectedWindowId = expectedWindowId
+                                ),
+                                transition = transition
+                            )
+                        }
+
+                        override suspend fun restoreBlockedSurfaceForRetry(): Boolean =
                             restoreBlockedSurfaceAfterAddressEdit(transition)
-                        if (blockedSurfaceRestored && curtainReadyForTransition(transition)) {
+
+                        override suspend fun beforeRetry(nextAttemptNumber: Int) {
                             FocusGuardLogger.log(
                                 "A11y",
-                                "Repetindo redirecionamento seguro na mesma aba de $browserPackageName"
+                                "Repetindo redirecionamento seguro na mesma aba de " +
+                                    "$browserPackageName (tentativa $nextAttemptNumber)"
                             )
                             delay(WEBSITE_ADDRESS_BAR_ACTION_RETRY_MILLIS)
-                            if (curtainReadyForTransition(transition)) {
-                                redirectRequested = requestSafeRedirectInCurrentTab(
-                                    browserPackageName = browserPackageName,
-                                    expectedWindowId = expectedWindowId,
-                                    policy = WebsiteTabNeutralizationPolicy(
-                                        browserPackageName = browserPackageName,
-                                        expectedWindowId = expectedWindowId
-                                    ),
-                                    transition = transition
-                                )
-                            }
                         }
-                    }
-                }
 
-                // A failed/partial omnibox navigation can legitimately replace the Android
-                // accessibility window before the redirect destination is visible. The safe intent does not
-                // need the old blocked root: it is bound to the configured safe redirect destination and to
-                // the exact browser package that exposed the blocked page. Keep the curtain
-                // up and use this fallback whenever the redirect destination was not positively confirmed.
-                if (!redirectRequested &&
-                    WebsiteRedirectionPlan.ALLOW_EXTERNAL_BROWSER_INTENT_FALLBACK &&
-                    transitionOwnsCurtain(transition) &&
-                    supportsCapabilityBasedIntentRedirectFallback(
-                        knownBrowser = browserPackageName in knownBrowserPackages,
-                        verifiedHttpsHandler = isVerifiedHttpsHandler(browserPackageName)
-                    )
-                ) {
-                    FocusGuardLogger.log(
-                        "A11y",
-                        "Usando fallback por intent para destino seguro em $browserPackageName"
-                    )
-                    redirectRequested = requestSafeRedirectThroughBrowserIntent(transition)
-                }
+                        override suspend fun requestExternalFallback(): Boolean {
+                            if (!transitionOwnsCurtain(transition) ||
+                                !supportsCapabilityBasedIntentRedirectFallback(
+                                    knownBrowser = browserPackageName in knownBrowserPackages,
+                                    verifiedHttpsHandler = isVerifiedHttpsHandler(browserPackageName)
+                                )
+                            ) return false
+                            FocusGuardLogger.log(
+                                "A11y",
+                                "Usando fallback por intent para destino seguro em $browserPackageName"
+                            )
+                            return requestSafeRedirectThroughBrowserIntent(transition)
+                        }
 
-                if (!transitionOwnsCurtain(transition)) return@launch
-                if (!redirectRequested) {
-                    FocusGuardLogger.log(
-                        "A11y",
-                        "Redirecionamento seguro não pôde ser certificado para " +
-                            "$browserPackageName (API ${Build.VERSION.SDK_INT}); bloqueando fail-closed"
-                    )
-                    stateMachine.failClosed()
-                    failClosedWebsiteTransition(transition)
-                    return@launch
-                }
+                        override suspend fun awaitRedirectConfirmation(): Boolean =
+                            withTimeoutOrNull(WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS) {
+                                transition.safeRedirectConfirmed.await()
+                                true
+                            } == true
 
-                val redirectConfirmed = withTimeoutOrNull(
-                    WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS
-                ) {
-                    transition.safeRedirectConfirmed.await()
-                    true
-                } == true
-                if (!transitionOwnsCurtain(transition)) return@launch
-                if (!redirectConfirmed) {
-                    stateMachine.failClosed()
-                    failClosedWebsiteTransition(transition)
-                    return@launch
-                }
-
-                when (stateMachine.afterRedirectConfirmed()) {
-                    WebsiteRedirectionCoordinator.Action.HIDE_BLOCK_PRESENTATION -> {
-                        releaseWebsiteCurtainAfterMinimumNotice(
-                            curtainGeneration = curtainGeneration,
-                            curtainShownAtUptimeMillis = curtainShownAtUptimeMillis
-                        )
-                    }
-
-                    WebsiteRedirectionCoordinator.Action.OPEN_POMODORO -> {
-                        if (completeStrictWebsiteDestination(
+                        override suspend fun completeStrictDestination(): Boolean =
+                            completeStrictWebsiteDestination(
                                 transition = transition,
                                 curtainGeneration = curtainGeneration
                             )
-                        ) {
-                            stateMachine.onPomodoroConfirmed()
+
+                        override suspend fun releasePresentation() {
                             releaseWebsiteCurtainAfterMinimumNotice(
                                 curtainGeneration = curtainGeneration,
                                 curtainShownAtUptimeMillis = curtainShownAtUptimeMillis
                             )
-                        } else {
-                            stateMachine.failClosed()
+                        }
+
+                        override fun failClosed() {
+                            FocusGuardLogger.log(
+                                "A11y",
+                                "Redirecionamento seguro não pôde ser certificado para " +
+                                    "$browserPackageName (API ${Build.VERSION.SDK_INT}); " +
+                                    "bloqueando fail-closed"
+                            )
                             failClosedWebsiteTransition(transition)
                         }
                     }
-
-                    else -> {
-                        stateMachine.failClosed()
-                        failClosedWebsiteTransition(transition)
-                    }
-                }
+                )
             } finally {
                 finishWebsiteTransition(transition)
             }
@@ -3742,7 +3703,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
         if (!curtainReadyForTransition(transition)) return false
         if (afterSafeAddressSubmit(submitRequestedAt > 0L) !=
-            WebsiteSanitizationDecision.AWAIT_GOOGLE_CONFIRMATION
+            WebsiteSanitizationDecision.AWAIT_REDIRECT_CONFIRMATION
         ) return false
 
         policy.markRedirectRequested()
@@ -4913,7 +4874,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal fun afterSafeAddressSubmit(
             accepted: Boolean
         ): WebsiteSanitizationDecision = if (accepted) {
-            WebsiteSanitizationDecision.AWAIT_GOOGLE_CONFIRMATION
+            WebsiteSanitizationDecision.AWAIT_REDIRECT_CONFIRMATION
         } else {
             WebsiteSanitizationDecision.ABORT_REDIRECT
         }
@@ -4924,7 +4885,7 @@ class BlockingAccessibilityService : AccessibilityService() {
             originalBlockedSurfaceStillCurrent: Boolean
         ): WebsiteCloseFollowUp = when {
             closeConfirmed ->
-                WebsiteCloseFollowUp.REQUEST_SAFE_GOOGLE_AFTER_CONFIRMED_CLOSE
+                WebsiteCloseFollowUp.REQUEST_SAFE_REDIRECT_AFTER_CONFIRMED_CLOSE
             BrowserUiCapabilityPolicy.mayRewriteBlockedTabAfterCloseAttempt(
                 closeActionAccepted = closeActionAccepted,
                 originalBlockedSurfaceStillCurrent = originalBlockedSurfaceStillCurrent
