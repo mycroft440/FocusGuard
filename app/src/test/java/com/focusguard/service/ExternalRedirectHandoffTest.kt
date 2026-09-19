@@ -35,7 +35,7 @@ class ExternalRedirectHandoffTest {
         }
 
     @Test
-    fun `first new browser window after external redirect inherits transition`() = runTest {
+    fun `transient new browser window does not inherit redirect before safe Google inspection`() = runTest {
         val service = spyk(BlockingAccessibilityService())
         every { service.packageName } returns ownPackage
         val newWindow = mockk<AccessibilityWindowInfo> {
@@ -80,12 +80,8 @@ class ExternalRedirectHandoffTest {
         runCurrent()
 
         assertSame(transition, guard.activeTransition(browserPackage))
-        assertEquals(11, transition.expectedWindowId)
-        assertTrue(transition.externalRedirectWindowRebound)
-        assertEquals(
-            coordinator.currentGeneration(browserPackage, 11),
-            transition.inspectionGeneration
-        )
+        assertEquals(10, transition.expectedWindowId)
+        assertFalse(transition.externalRedirectWindowRebound)
     }
 
     @Test

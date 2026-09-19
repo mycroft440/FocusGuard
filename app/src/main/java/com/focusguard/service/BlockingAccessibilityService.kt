@@ -1204,31 +1204,35 @@ class BlockingAccessibilityService : AccessibilityService() {
             // Android window. Hand the first post-intent browser window to the existing
             // transition before generic window retirement. This is provisional only:
             // the curtain remains until a stable safe Google surface is confirmed.
-            val transitionPackage = directPackage.ifBlank { foregroundPackageName.orEmpty() }
+            val foregroundTransitionPackage = foregroundPackageName.orEmpty()
+            val resolvedTransitionPackage = if (
+                browserInspectionEvent &&
+                (directPackage.isBlank() || event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED)
+            ) {
+                resolveEventPackageName(event)
+            } else {
+                ""
+            }
+            val transitionPackage = when {
+                directPackage.isNotBlank() && websiteBlockTransitionGuard.isActive(directPackage) ->
+                    directPackage
+                resolvedTransitionPackage.isNotBlank() &&
+                    websiteBlockTransitionGuard.isActive(resolvedTransitionPackage) ->
+                    resolvedTransitionPackage
+                directPackage.isBlank() && foregroundTransitionPackage.isNotBlank() &&
+                    websiteBlockTransitionGuard.isActive(foregroundTransitionPackage) ->
+                    foregroundTransitionPackage
+                else -> ""
+            }
             val activeBrowserTransition = transitionPackage
                 .takeIf(String::isNotBlank)
                 ?.let(websiteBlockTransitionGuard::activeTransition)
             if (activeBrowserTransition != null) {
-                val canRebindExternalWindow =
-                    activeBrowserTransition.externalRedirectRequested &&
-                        !activeBrowserTransition.externalRedirectWindowRebound &&
-                        browserInspectionEvent &&
-                        event.windowId >= 0 &&
-                        event.windowId != activeBrowserTransition.expectedWindowId &&
-                        event.eventTime >= activeBrowserTransition.externalRedirectRequestedAtUptimeMillis
-                if (canRebindExternalWindow) {
-                    val reboundGeneration = browserInspectionCoordinator.observeWindow(
-                        transitionPackage,
-                        event.windowId
-                    )
-                    websiteBlockTransitionGuard.rebindExternalRedirectWindow(
-                        browserPackageName = transitionPackage,
-                        transitionId = activeBrowserTransition.id,
-                        windowId = event.windowId,
-                        inspectionGeneration = reboundGeneration,
-                        eventUptimeMillis = event.eventTime
-                    )
-                } else if (isWindowOrTabTransitionEvent(event.eventType)) {
+                // Do not bind an external redirect to the first browser-owned window.
+                // Chromium and Fenix can expose suggestion/native/transient windows before
+                // the destination page. Only a positively identified Google WEB_CONTENT
+                // inspection is allowed to rebind the transition later.
+                if (isWindowOrTabTransitionEvent(event.eventType) && event.windowId >= 0) {
                     browserInspectionCoordinator.observeWindow(transitionPackage, event.windowId)
                 }
                 retireStaleWebsiteTransitions()
@@ -3132,10 +3136,29 @@ class BlockingAccessibilityService : AccessibilityService() {
             eventUptimeMillis = outcome.eventUptimeMillis,
             eventType = outcome.eventType
         ) ?: return
-        if (!transitionWindowIsCurrent(transition) || !isSafeGoogleRedirectSurface(outcome.bestCandidate) ||
-            outcome.surface != BrowserSurfaceInspector.Surface.WEB_CONTENT ||
-            outcome.focusedAddressEditor
-        ) return
+        val stableGoogleCandidate =
+            isSafeGoogleRedirectSurface(outcome.bestCandidate) &&
+                outcome.surface == BrowserSurfaceInspector.Surface.WEB_CONTENT &&
+                !outcome.focusedAddressEditor
+        if (!stableGoogleCandidate) return
+
+        // ACTION_VIEW may pass through several browser-owned Accessibility windows.
+        // Rebind only after this exact inspected window has already proved that it is
+        // the safe Google web surface; an arbitrary first post-intent window must never
+        // consume the one allowed external handoff.
+        if (transition.externalRedirectRequested &&
+            token.windowId != transition.expectedWindowId
+        ) {
+            if (!websiteBlockTransitionGuard.rebindExternalRedirectWindow(
+                    browserPackageName = token.packageName,
+                    transitionId = transition.id,
+                    windowId = token.windowId,
+                    inspectionGeneration = token.generation,
+                    eventUptimeMillis = outcome.eventUptimeMillis
+                )
+            ) return
+        }
+        if (!transitionWindowIsCurrent(transition)) return
         scope.launch {
             delay(WEBSITE_GOOGLE_SURFACE_SETTLE_MILLIS)
             if (!browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)) return@launch
@@ -3248,11 +3271,11 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun failClosedWebsiteTransition(transition: WebsiteBlockTransitionHandle) {
-        if (!curtainReadyForTransition(transition)) return
+        if (!transitionOwnsCurtain(transition)) return
         transition.handedOff = true
         launchOpaqueBrowserFailClosedNotice(
             transition.browserPackageName, SystemClock.uptimeMillis(), transition.curtainGeneration,
-            isCurrent = { transitionWindowIsCurrent(transition) }
+            isCurrent = { transitionOwnsCurtain(transition) }
         )
     }
 
@@ -3613,69 +3636,70 @@ class BlockingAccessibilityService : AccessibilityService() {
                 // touching the browser UI. This is normally only 8-17 ms and
                 // avoids exposing a flash of the blocked page during redirect.
                 awaitNextWebsiteRedirectFrame()
-                if (!curtainReadyForTransition(transition)) return@launch
+                if (!transitionOwnsCurtain(transition)) return@launch
 
-                val rewritePolicy = WebsiteTabNeutralizationPolicy(
-                    browserPackageName = browserPackageName,
-                    expectedWindowId = expectedWindowId
-                )
-                var redirectRequested = requestSafeGoogleInCurrentTab(
-                    browserPackageName = browserPackageName,
-                    expectedWindowId = expectedWindowId,
-                    policy = rewritePolicy,
-                    transition = transition
-                )
+                var redirectRequested = false
+                if (curtainReadyForTransition(transition)) {
+                    val rewritePolicy = WebsiteTabNeutralizationPolicy(
+                        browserPackageName = browserPackageName,
+                        expectedWindowId = expectedWindowId
+                    )
+                    redirectRequested = requestSafeGoogleInCurrentTab(
+                        browserPackageName = browserPackageName,
+                        expectedWindowId = expectedWindowId,
+                        policy = rewritePolicy,
+                        transition = transition
+                    )
 
-                // Same-tab rewrite remains the preferred website redirect path. If the
-                // first attempt raced an editor/focus animation, restore the exact blocked
-                // surface and retry once with a fresh capability state. Only after both
-                // certified same-tab attempts fail may the guarded ACTION_VIEW fallback run.
-                if (!redirectRequested) {
-                    val blockedSurfaceRestored =
-                        restoreBlockedSurfaceAfterAddressEdit(transition)
-                    if (blockedSurfaceRestored && curtainReadyForTransition(transition)) {
-                        FocusGuardLogger.log(
-                            "A11y",
-                            "Repetindo redirecionamento seguro na mesma aba de $browserPackageName"
-                        )
-                        delay(WEBSITE_ADDRESS_BAR_ACTION_RETRY_MILLIS)
-                        if (!curtainReadyForTransition(transition)) return@launch
-                        redirectRequested = requestSafeGoogleInCurrentTab(
-                            browserPackageName = browserPackageName,
-                            expectedWindowId = expectedWindowId,
-                            policy = WebsiteTabNeutralizationPolicy(
-                                browserPackageName = browserPackageName,
-                                expectedWindowId = expectedWindowId
-                            ),
-                            transition = transition
-                        )
+                    // Same-tab rewrite remains preferred. Retry only while the original
+                    // browser window is still current. If the browser changes window while
+                    // focusing/submitting the omnibox, preserve the curtain and fall through
+                    // to the explicit package-scoped Google intent instead of abandoning the
+                    // redirect transaction.
+                    if (!redirectRequested && curtainReadyForTransition(transition)) {
+                        val blockedSurfaceRestored =
+                            restoreBlockedSurfaceAfterAddressEdit(transition)
+                        if (blockedSurfaceRestored && curtainReadyForTransition(transition)) {
+                            FocusGuardLogger.log(
+                                "A11y",
+                                "Repetindo redirecionamento seguro na mesma aba de $browserPackageName"
+                            )
+                            delay(WEBSITE_ADDRESS_BAR_ACTION_RETRY_MILLIS)
+                            if (curtainReadyForTransition(transition)) {
+                                redirectRequested = requestSafeGoogleInCurrentTab(
+                                    browserPackageName = browserPackageName,
+                                    expectedWindowId = expectedWindowId,
+                                    policy = WebsiteTabNeutralizationPolicy(
+                                        browserPackageName = browserPackageName,
+                                        expectedWindowId = expectedWindowId
+                                    ),
+                                    transition = transition
+                                )
+                            }
+                        }
                     }
                 }
 
-                // Some browser versions expose a readable address bar but reject or omit
-                // the Accessibility actions required to submit a replacement URL. When both
-                // certified same-tab attempts fail, use the browser's verified ACTION_VIEW
-                // capability as the final redirect path. The curtain stays up until a fresh
-                // exact Google root is observed and the transition is rebound to that window.
-                // If the user later returns to the old blocked tab, HardBlock detects it again.
+                // A failed/partial omnibox navigation can legitimately replace the Android
+                // accessibility window before Google is visible. The safe intent does not
+                // need the old blocked root: it is fixed to https://www.google.com and to
+                // the exact browser package that exposed the blocked page. Keep the curtain
+                // up and use this fallback whenever Google was not positively confirmed.
                 if (!redirectRequested &&
+                    transitionOwnsCurtain(transition) &&
                     supportsCapabilityBasedIntentRedirectFallback(
                         knownBrowser = browserPackageName in knownBrowserPackages,
                         verifiedHttpsHandler = isVerifiedHttpsHandler(browserPackageName)
                     )
                 ) {
-                    val blockedSurfaceRestored =
-                        restoreBlockedSurfaceForSafeIntentFallback(transition)
-                    if (blockedSurfaceRestored && curtainReadyForTransition(transition)) {
-                        FocusGuardLogger.log(
-                            "A11y",
-                            "Usando fallback por intent para Google em $browserPackageName"
-                        )
-                        redirectRequested = requestSafeGoogleThroughBrowserIntent(transition)
-                    }
+                    FocusGuardLogger.log(
+                        "A11y",
+                        "Usando fallback por intent para Google em $browserPackageName"
+                    )
+                    redirectRequested = requestSafeGoogleThroughBrowserIntent(transition)
                 }
 
-                if (!curtainReadyForTransition(transition)) return@launch
+                if (!transitionOwnsCurtain(transition)) return@launch
                 if (!redirectRequested) {
                     FocusGuardLogger.log(
                         "A11y",
@@ -3693,7 +3717,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                     transition.safeGoogleConfirmed.await()
                     true
                 } == true
-                if (!curtainReadyForTransition(transition)) return@launch
+                if (!transitionOwnsCurtain(transition)) return@launch
                 if (!googleConfirmed) {
                     stateMachine.onFailureOrTimeout()
                     failClosedWebsiteTransition(transition)
@@ -3883,25 +3907,21 @@ class BlockingAccessibilityService : AccessibilityService() {
     private suspend fun requestSafeGoogleThroughBrowserIntent(
         transition: WebsiteBlockTransitionHandle
     ): Boolean {
-        if (!curtainReadyForTransition(transition)) return false
-        val blockedSurfaceStillCurrent = websiteTreeWorker.run {
-            currentBrowserSurfaceMatchesBlockedTransition(transition)
-        }
-        if (!curtainReadyForTransition(transition) || !blockedSurfaceStillCurrent) return false
+        if (!transitionOwnsCurtain(transition)) return false
 
         return withContext(Dispatchers.Main.immediate) {
-            if (!curtainReadyForTransition(transition)) return@withContext false
+            if (!transitionOwnsCurtain(transition)) return@withContext false
             val intent = createSafeBrowserRedirectIntent(transition.browserPackageName)
             if (!websiteBlockTransitionGuard.markExternalRedirectRequested(
                     transition.browserPackageName, transition.id, SystemClock.uptimeMillis()
                 )
             ) return@withContext false
             try {
-                if (!curtainReadyForTransition(transition)) return@withContext false
+                if (!transitionOwnsCurtain(transition)) return@withContext false
                 startActivity(intent)
                 true
             } catch (error: RuntimeException) {
-                if (transitionWindowIsCurrent(transition)) {
+                if (transitionOwnsCurtain(transition)) {
                     FocusGuardLogger.logError(
                         "A11y",
                         "Falha ao solicitar redirecionamento seguro",
@@ -4169,19 +4189,27 @@ class BlockingAccessibilityService : AccessibilityService() {
                 transition.browserPackageName, transition.expectedWindowId, transition.inspectionGeneration
             )
 
+    private fun transitionOwnsCurtain(transition: WebsiteBlockTransitionHandle): Boolean =
+        websiteBlockTransitionGuard.activeTransition(transition.browserPackageName)?.id == transition.id &&
+            curtainReadyForTabAction(
+                attached = instantBlockCurtainAttached,
+                visible = instantBlockCurtainVisible,
+                currentGeneration = instantBlockCurtainGeneration,
+                expectedGeneration = transition.curtainGeneration
+            )
+
     private fun curtainReadyForTransition(transition: WebsiteBlockTransitionHandle): Boolean =
-        transitionWindowIsCurrent(transition) && curtainReadyForTabAction(
-            attached = instantBlockCurtainAttached,
-            visible = instantBlockCurtainVisible,
-            currentGeneration = instantBlockCurtainGeneration,
-            expectedGeneration = transition.curtainGeneration
-        )
+        transitionWindowIsCurrent(transition) && transitionOwnsCurtain(transition)
 
     private fun retireStaleWebsiteTransitions() {
         websiteBlockTransitionGuard.activeBrowserPackages().forEach { packageName ->
             val transition = websiteBlockTransitionGuard.activeTransition(packageName) ?: return@forEach
+            // Browser navigation itself can replace the Accessibility window. While the
+            // transition still owns the opaque curtain, keep it alive long enough to hand
+            // off to a confirmed Google window or to the explicit browser intent fallback.
             if (!transition.handedOff && !transition.destinationRequested &&
-                !transitionWindowIsCurrent(transition)
+                !transitionWindowIsCurrent(transition) &&
+                !transitionOwnsCurtain(transition)
             ) finishWebsiteTransition(transition)
         }
     }
@@ -5231,11 +5259,10 @@ class BlockingAccessibilityService : AccessibilityService() {
             return Intent(Intent.ACTION_VIEW, Uri.parse(SAFE_REDIRECT_URL)).apply {
                 addCategory(Intent.CATEGORY_BROWSABLE)
                 setPackage(browserPackageName)
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
-                )
+                // Let the browser's normal ACTION_VIEW dispatcher choose the correct
+                // activity/tab. CLEAR_TOP/SINGLE_TOP can merely resurface an existing
+                // browser activity on some builds without consuming the new URL intent.
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             }
         }
 
