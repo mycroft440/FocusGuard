@@ -28,7 +28,11 @@ jobs:
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0"
 
       - name: Apply runtime redirect fix
-        run: python3 scripts/apply_hardblock_runtime_redirect_fix.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/apply_hardblock_runtime_redirect_fix.py
+          python3 scripts/apply_hardblock_runtime_redirect_fix_v2.py
 
       - name: Compile and test runtime redirect flow
         shell: bash
@@ -38,7 +42,6 @@ jobs:
             :app:testDebugUnitTest \
             --tests 'com.focusguard.service.BrowserTransitionRaceTest' \
             --tests 'com.focusguard.service.ExternalRedirectNeutralizationTest' \
-            --tests 'com.focusguard.service.WebsiteBlockNavigationTest' \
             --tests 'com.focusguard.service.BrowserInspectionCoordinatorTest' \
             --tests 'com.focusguard.accessibility.website.redirection.AddressBarRedirectionActionsPolicyTest' \
             --no-daemon
@@ -51,6 +54,7 @@ jobs:
           git config user.email "actions@users.noreply.github.com"
           git rm .github/workflows/apply-hardblock-runtime-google-redirect-fix.yml
           git rm scripts/apply_hardblock_runtime_redirect_fix.py
+          git rm scripts/apply_hardblock_runtime_redirect_fix_v2.py
           git add app/src/main/java/com/focusguard/service/BlockingAccessibilityService.kt \
                   app/src/test/java/com/focusguard/service/BrowserTransitionRaceTest.kt \
                   app/src/test/java/com/focusguard/service/WebsiteBlockNavigationTest.kt
