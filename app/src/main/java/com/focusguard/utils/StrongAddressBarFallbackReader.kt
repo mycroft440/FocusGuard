@@ -37,7 +37,8 @@ internal object StrongAddressBarFallbackReader {
         ) return null
 
         var visited = 0
-        var result: Evidence? = null
+        var urlEvidence: Evidence? = null
+        var textEvidence: Evidence? = null
 
         fun inspectCertifiedSubtree(node: AccessibilityNodeInfo): Evidence? {
             var subtreeVisited = 0
@@ -89,7 +90,7 @@ internal object StrongAddressBarFallbackReader {
         }
 
         fun visit(node: AccessibilityNodeInfo, depth: Int) {
-            if (!isCurrent() || result != null || depth > MAX_TREE_DEPTH ||
+            if (!isCurrent() || urlEvidence != null || depth > MAX_TREE_DEPTH ||
                 visited >= MAX_TREE_NODES || !node.isVisibleToUser ||
                 node.packageName?.toString() != browserPackageName ||
                 node.windowId != expectedWindowId
@@ -103,13 +104,16 @@ internal object StrongAddressBarFallbackReader {
                 )
             ) {
                 inspectCertifiedSubtree(node)?.let { evidence ->
-                    result = evidence
-                    return
+                    if (evidence.url != null) {
+                        urlEvidence = evidence
+                        return
+                    }
+                    if (textEvidence == null) textEvidence = evidence
                 }
             }
 
             for (index in 0 until node.childCount) {
-                if (!isCurrent() || result != null || visited >= MAX_TREE_NODES) break
+                if (!isCurrent() || urlEvidence != null || visited >= MAX_TREE_NODES) break
                 val child = runCatching { node.getChild(index) }.getOrNull() ?: continue
                 try {
                     visit(child, depth + 1)
@@ -120,7 +124,7 @@ internal object StrongAddressBarFallbackReader {
         }
 
         runCatching { visit(root, 0) }
-        val evidence = result?.takeIf { isCurrent() } ?: return null
+        val evidence = (urlEvidence ?: textEvidence)?.takeIf { isCurrent() } ?: return null
         BrowserCompatibilityStore.recordIdentificationSuccess(
             packageName = browserPackageName,
             viewIdResourceName = evidence.viewIdResourceName,
