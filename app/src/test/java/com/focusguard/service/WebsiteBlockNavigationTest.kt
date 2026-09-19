@@ -474,8 +474,8 @@ class WebsiteBlockNavigationTest {
         assertThat(intent.`package`).isEqualTo(FIREFOX_PACKAGE)
         assertThat(intent.categories).contains(Intent.CATEGORY_BROWSABLE)
         assertThat(intent.flags and Intent.FLAG_ACTIVITY_NEW_TASK).isNotEqualTo(0)
-        assertThat(intent.flags and Intent.FLAG_ACTIVITY_CLEAR_TOP).isNotEqualTo(0)
-        assertThat(intent.flags and Intent.FLAG_ACTIVITY_SINGLE_TOP).isNotEqualTo(0)
+        assertThat(intent.flags and Intent.FLAG_ACTIVITY_CLEAR_TOP).isEqualTo(0)
+        assertThat(intent.flags and Intent.FLAG_ACTIVITY_SINGLE_TOP).isEqualTo(0)
     }
     @Test
     fun `intent redirect fallback follows verified browser capability rather than package allowlist`() {

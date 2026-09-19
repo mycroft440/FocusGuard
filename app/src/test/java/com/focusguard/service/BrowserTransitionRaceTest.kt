@@ -2,6 +2,7 @@ package com.focusguard.service
 
 import android.accessibilityservice.AccessibilityService
 import android.app.Application
+import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
@@ -99,15 +100,40 @@ class BrowserTransitionRaceTest {
     }
 
     @Test
-    fun windowChangeBeforeIntentNeverStartsActivity() = runTest {
+    fun windowChangeBeforeGuardedIntentStillStartsExplicitGoogleFallback() = runTest {
         coordinator.observeWindow(pkg, 11)
+        assertEquals(true, callSuspend("requestSafeGoogleThroughBrowserIntent", transition))
+        verify(exactly = 1) {
+            service.startActivity(match {
+                it.action == Intent.ACTION_VIEW &&
+                    it.data?.toString() == "https://www.google.com" &&
+                    it.`package` == pkg
+            })
+        }
+    }
+
+    @Test
+    fun supersededCurtainStillPreventsExplicitGoogleFallback() = runTest {
+        coordinator.observeWindow(pkg, 11)
+        ReflectionHelpers.setField(service, "instantBlockCurtainGeneration", 2L)
         assertEquals(false, callSuspend("requestSafeGoogleThroughBrowserIntent", transition))
         verify(exactly = 0) { service.startActivity(any()) }
     }
 
     @Test
-    fun oldTimeoutCannotLaunchFailClosedOrRecordFailure() {
+    fun windowChangeDuringOwnedCurtainStillAllowsFailClosedHandoff() {
         coordinator.observeWindow(pkg, 11)
+        call("failClosedWebsiteTransition", transition)
+        call("finishWebsiteTransition", transition)
+        verify(exactly = 1) { service.startActivity(any()) }
+        verify(exactly = 0) { BrowserCompatibilityStore.recordRedirectionFailure(any()) }
+        assertFalse(guard.isActive(pkg))
+    }
+
+    @Test
+    fun supersededCurtainPreventsStaleFailClosedHandoff() {
+        coordinator.observeWindow(pkg, 11)
+        ReflectionHelpers.setField(service, "instantBlockCurtainGeneration", 2L)
         call("failClosedWebsiteTransition", transition)
         call("finishWebsiteTransition", transition)
         verify(exactly = 0) { service.startActivity(any()) }
