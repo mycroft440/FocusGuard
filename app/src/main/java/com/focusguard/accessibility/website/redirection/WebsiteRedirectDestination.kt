@@ -19,20 +19,30 @@ internal data class WebsiteRedirectDestination(
     val acceptedRootHosts: Set<String>,
     val acceptedRootQueryParameters: Set<String> = emptySet()
 ) {
+    private val normalizedAcceptedRootHosts = acceptedRootHosts
+        .mapTo(linkedSetOf()) { host -> normalizeHost(host) }
+
     init {
-        require(acceptedRootHosts.isNotEmpty()) { "At least one destination host is required" }
+        require(normalizedAcceptedRootHosts.isNotEmpty()) {
+            "At least one destination host is required"
+        }
+        require(normalizedAcceptedRootHosts.none(String::isBlank)) {
+            "Destination hosts cannot be blank"
+        }
         val configured = runCatching { URI(url) }.getOrNull()
             ?: throw IllegalArgumentException("Website redirect destination must be a valid URI")
-        val configuredHost = configured.host?.lowercase(Locale.US)?.removePrefix("www.")
+        val configuredHost = configured.host?.let(::normalizeHost)
             ?: throw IllegalArgumentException("Website redirect destination must have a host")
         require(configured.scheme.equals("https", ignoreCase = true)) {
             "Website redirect destination must use HTTPS"
         }
-        require(configured.userInfo == null) { "Website redirect destination cannot contain user info" }
+        require(configured.userInfo == null) {
+            "Website redirect destination cannot contain user info"
+        }
         require(configured.port == -1 || configured.port == 443) {
             "Website redirect destination must use the default HTTPS port"
         }
-        require(configuredHost in acceptedRootHosts.map { it.lowercase(Locale.US).removePrefix("www.") }) {
+        require(configuredHost in normalizedAcceptedRootHosts) {
             "Configured destination host must be accepted by its validation policy"
         }
         require(configured.rawFragment.isNullOrEmpty()) {
@@ -45,10 +55,11 @@ internal data class WebsiteRedirectDestination(
         val candidate = WebsiteBlocker.extractUrlCandidate(raw) ?: raw
         val withScheme = if ("://" in candidate) candidate else "https://$candidate"
         val uri = runCatching { URI(withScheme) }.getOrNull() ?: return false
-        if (!uri.scheme.equals("https", ignoreCase = true) || uri.userInfo != null ||
+        if (!uri.scheme.equals("https", ignoreCase = true) ||
+            uri.userInfo != null ||
             (uri.port != -1 && uri.port != 443)
         ) return false
-        val host = uri.host?.lowercase(Locale.US)?.removePrefix("www.") ?: return false
+        val host = uri.host?.let(::normalizeHost) ?: return false
         val queryParameterNames = uri.rawQuery
             ?.split('&')
             ?.asSequence()
@@ -56,13 +67,16 @@ internal data class WebsiteRedirectDestination(
             ?.map { parameter -> parameter.substringBefore('=') }
             ?.toSet()
             .orEmpty()
-        return host in acceptedRootHosts &&
+        return host in normalizedAcceptedRootHosts &&
             (uri.rawPath.isNullOrEmpty() || uri.rawPath == "/") &&
             queryParameterNames.all(acceptedRootQueryParameters::contains) &&
             uri.rawFragment.isNullOrEmpty()
     }
 
     companion object {
+        private fun normalizeHost(host: String): String =
+            host.trim().lowercase(Locale.US).removePrefix("www.")
+
         /** Exact hosts published by Google's supported-domains endpoint. */
         private val GOOGLE_ROOT_HOSTS = """
             google.com google.ad google.ae google.com.af google.com.ag google.al google.am
