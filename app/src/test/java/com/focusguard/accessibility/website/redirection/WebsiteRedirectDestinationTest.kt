@@ -9,16 +9,25 @@ class WebsiteRedirectDestinationTest {
         assertThat(WebsiteRedirectDestination.current.url).isEqualTo("https://www.google.com")
         assertThat(WebsiteRedirectDestination.current.matchesSurface("https://www.google.com/"))
             .isTrue()
-        assertThat(WebsiteRedirectDestination.current.matchesSurface("https://www.google.com.br/?hl=pt-BR"))
-            .isTrue()
+        assertThat(
+            WebsiteRedirectDestination.current.matchesSurface(
+                "https://www.google.com.br/?hl=pt-BR"
+            )
+        ).isTrue()
     }
 
     @Test
     fun `destination rejects search paths and lookalikes`() {
-        assertThat(WebsiteRedirectDestination.current.matchesSurface("https://www.google.com/search?q=x"))
-            .isFalse()
-        assertThat(WebsiteRedirectDestination.current.matchesSurface("https://google.com.evil.example/"))
-            .isFalse()
+        assertThat(
+            WebsiteRedirectDestination.current.matchesSurface(
+                "https://www.google.com/search?q=x"
+            )
+        ).isFalse()
+        assertThat(
+            WebsiteRedirectDestination.current.matchesSurface(
+                "https://google.com.evil.example/"
+            )
+        ).isFalse()
     }
 
     @Test
@@ -27,7 +36,7 @@ class WebsiteRedirectDestinationTest {
             url = "https://example.org",
             acceptedRootHosts = setOf("example.org")
         )
-        assertThat(destination.matchesSurface("https://example.org/" )).isTrue()
-        assertThat(destination.matchesSurface("https://www.google.com/" )).isFalse()
+        assertThat(destination.matchesSurface("https://example.org/")).isTrue()
+        assertThat(destination.matchesSurface("https://www.google.com/")).isFalse()
     }
 }
