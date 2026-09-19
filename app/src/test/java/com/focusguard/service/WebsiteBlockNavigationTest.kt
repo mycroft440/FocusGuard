@@ -371,6 +371,35 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
+    fun `new submit attempt rejects navigation evidence from previous attempt`() {
+        val guard = WebsiteBlockTransitionGuard()
+        val transition = guard.tryStart(
+            CHROME_PACKAGE,
+            transitionId = 24L,
+            destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
+            expectedWindowId = 7,
+            detectionEventUptimeMillis = 50L
+        )!!
+        assertThat(guard.markSanitizationRequested(CHROME_PACKAGE, 24L, 100L)).isTrue()
+        assertThat(guard.markSanitizationRequested(CHROME_PACKAGE, 24L, 200L)).isTrue()
+
+        assertThat(
+            guard.transitionForDestinationCandidate(
+                CHROME_PACKAGE,
+                eventUptimeMillis = 150L,
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            )
+        ).isNull()
+        assertThat(
+            guard.transitionForDestinationCandidate(
+                CHROME_PACKAGE,
+                eventUptimeMillis = 200L,
+                eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+            )
+        ).isSameInstanceAs(transition)
+    }
+
+    @Test
     fun `verified destination can rebind one recreated accessibility window`() {
         val guard = WebsiteBlockTransitionGuard()
         val transition = guard.tryStart(

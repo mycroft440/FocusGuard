@@ -87,10 +87,9 @@ internal class WebsiteBlockTransitionGuard {
             requestedAtUptimeMillis < transition.detectionEventUptimeMillis
         ) return false
         transition.sanitizationRequested = true
-        transition.sanitizationRequestedAtUptimeMillis = minOf(
-            transition.sanitizationRequestedAtUptimeMillis,
-            requestedAtUptimeMillis
-        )
+        // Each retry owns a fresh temporal boundary. Evidence from an older submit
+        // must never certify a later attempt.
+        transition.sanitizationRequestedAtUptimeMillis = requestedAtUptimeMillis
         return true
     }
 

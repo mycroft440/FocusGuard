@@ -3244,8 +3244,23 @@ class BlockingAccessibilityService : AccessibilityService() {
 
                         override suspend fun awaitRedirectConfirmation(): Boolean =
                             withTimeoutOrNull(WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS) {
-                                transition.safeRedirectConfirmed.await()
-                                true
+                                while (transitionOwnsCurtain(transition)) {
+                                    if (transition.safeRedirectConfirmed.isCompleted) {
+                                        return@withTimeoutOrNull true
+                                    }
+                                    // Event delivery can be delayed/lost on Fenix. Keep the
+                                    // fallback inside this same timeout instead of creating a
+                                    // second confirmation wait in the submit layer.
+                                    if (curtainReadyForTransition(transition) &&
+                                        websiteTreeWorker.run {
+                                            confirmSafeRedirectFromFreshBrowserSurface(transition)
+                                        }
+                                    ) {
+                                        return@withTimeoutOrNull true
+                                    }
+                                    delay(WEBSITE_REDIRECT_SURFACE_SETTLE_MILLIS)
+                                }
+                                false
                             } == true
 
                         override suspend fun completeStrictDestination(): Boolean =

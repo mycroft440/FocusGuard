@@ -161,7 +161,7 @@ Novas estratégias de leitura entram em `identification`. Novas decisões de pro
 ### Hardening de confirmação e aprendizagem
 
 - Ação de submit aceita não é navegação confirmada: a preferência de submit só é persistida depois da confirmação positiva do destino.
-- Cada tentativa tem exatamente um timeout de confirmação, controlado pelo `WebsiteRedirectionCoordinator`; timeout pode restaurar a superfície e consumir o retry same-tab.
+- Cada tentativa tem exatamente um timeout de confirmação, controlado pelo `WebsiteRedirectionCoordinator`; dentro dele, eventos e uma releitura estável bounded compartilham o mesmo orçamento. Timeout pode restaurar a superfície e consumir o retry same-tab.
 - `Outcome` diferencia sucesso, fail-closed e abort por perda de ownership para evitar penalizar o navegador por supersessão.
 - Se a navegação same-tab recriar a janela de Accessibility, o guard aceita no máximo um rebind e apenas depois de duas leituras estáveis da superfície exata de `WebsiteRedirectDestination`, no mesmo pacote e após o submit.
 - Antes da escrita, o editor precisa continuar pertencendo à regra bloqueada original ou já conter o próprio destino seguro.
