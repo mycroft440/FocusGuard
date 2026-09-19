@@ -1,5 +1,7 @@
 package com.focusguard.service
 
+import com.focusguard.accessibility.website.redirection.WebsiteRedirectionCoordinator
+
 import android.app.Application
 import android.view.accessibility.AccessibilityEvent
 import android.view.accessibility.AccessibilityWindowInfo
@@ -61,7 +63,7 @@ class ExternalRedirectHandoffTest {
         val transition = guard.tryStart(
             browserPackageName = browserPackage,
             transitionId = 1L,
-            destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+            destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
             expectedWindowId = 10,
             inspectionGeneration = token.generation,
             blockedCandidate = "https://blocked.example",
@@ -101,7 +103,7 @@ class ExternalRedirectHandoffTest {
         ).snapshot.token
         val transition = guard.tryStart(
             browserPackage, 1L,
-            BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+            WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
             expectedWindowId = 10,
             inspectionGeneration = token.generation,
             detectionEventUptimeMillis = 1L

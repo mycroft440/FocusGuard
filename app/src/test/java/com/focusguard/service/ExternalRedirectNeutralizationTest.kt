@@ -47,13 +47,13 @@ class ExternalRedirectNeutralizationTest {
         )
 
         assertThat(
-            guard.confirmGoogle(
+            guard.confirmRedirect(
                 browserPackageName = FIREFOX_PACKAGE,
                 windowId = SAFE_WINDOW_ID,
                 eventUptimeMillis = 130L
             )
         ).isTrue()
-        assertThat(transition.safeGoogleConfirmed.isCompleted).isTrue()
+        assertThat(transition.safeRedirectConfirmed.isCompleted).isTrue()
     }
 
     @Test
@@ -97,13 +97,13 @@ class ExternalRedirectNeutralizationTest {
         )
 
         assertThat(
-            guard.confirmGoogle(
+            guard.confirmRedirect(
                 browserPackageName = FIREFOX_PACKAGE,
                 windowId = SAFE_WINDOW_ID,
                 eventUptimeMillis = 130L
             )
         ).isTrue()
-        assertThat(transition.safeGoogleConfirmed.isCompleted).isTrue()
+        assertThat(transition.safeRedirectConfirmed.isCompleted).isTrue()
     }
 
     @Test
@@ -135,13 +135,13 @@ class ExternalRedirectNeutralizationTest {
         )
 
         assertThat(
-            guard.confirmGoogle(
+            guard.confirmRedirect(
                 browserPackageName = FIREFOX_PACKAGE,
                 windowId = BLOCKED_WINDOW_ID,
                 eventUptimeMillis = 120L
             )
         ).isTrue()
-        assertThat(transition.safeGoogleConfirmed.isCompleted).isTrue()
+        assertThat(transition.safeRedirectConfirmed.isCompleted).isTrue()
     }
 
 
@@ -174,13 +174,13 @@ class ExternalRedirectNeutralizationTest {
         )
 
         assertThat(
-            guard.confirmGoogle(
+            guard.confirmRedirect(
                 browserPackageName = FIREFOX_PACKAGE,
                 windowId = SAFE_WINDOW_ID,
                 eventUptimeMillis = 120L
             )
         ).isFalse()
-        assertThat(transition.safeGoogleConfirmed.isCompleted).isFalse()
+        assertThat(transition.safeRedirectConfirmed.isCompleted).isFalse()
     }
 
     @Test
@@ -214,13 +214,13 @@ class ExternalRedirectNeutralizationTest {
             )
         ).isTrue()
         assertThat(
-            guard.confirmGoogleFromStableCurrentSurface(
+            guard.confirmRedirectFromStableCurrentSurface(
                 browserPackageName = FIREFOX_PACKAGE,
                 windowId = SAFE_WINDOW_ID,
                 observedAtUptimeMillis = 130L
             )
         ).isTrue()
-        assertThat(transition.safeGoogleConfirmed.isCompleted).isTrue()
+        assertThat(transition.safeRedirectConfirmed.isCompleted).isTrue()
     }
 
     private companion object {

@@ -1,5 +1,7 @@
 package com.focusguard.service
 
+import com.focusguard.accessibility.website.redirection.WebsiteRedirectionCoordinator
+
 import android.accessibilityservice.AccessibilityService
 import android.app.Application
 import android.content.Intent
@@ -51,7 +53,7 @@ class BrowserTransitionRaceTest {
         guard = ReflectionHelpers.getField(service, "websiteBlockTransitionGuard")
         val token = coordinator.offer(pkg, 10, 32, 1L, 1L, "", emptyList(), null).snapshot.token
         transition = guard.tryStart(
-            pkg, 1L, BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+            pkg, 1L, WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
             expectedWindowId = 10, inspectionGeneration = token.generation,
             blockedCandidate = "https://blocked.example", blockedRules = setOf("blocked.example"),
             detectionEventUptimeMillis = 1L
@@ -102,7 +104,7 @@ class BrowserTransitionRaceTest {
     @Test
     fun windowChangeBeforeGuardedIntentStillStartsExplicitGoogleFallback() = runTest {
         coordinator.observeWindow(pkg, 11)
-        assertEquals(true, callSuspend("requestSafeGoogleThroughBrowserIntent", transition))
+        assertEquals(true, callSuspend("requestSafeRedirectThroughBrowserIntent", transition))
         verify(exactly = 1) {
             service.startActivity(match {
                 it.action == Intent.ACTION_VIEW &&
@@ -116,7 +118,7 @@ class BrowserTransitionRaceTest {
     fun supersededCurtainStillPreventsExplicitGoogleFallback() = runTest {
         coordinator.observeWindow(pkg, 11)
         ReflectionHelpers.setField(service, "instantBlockCurtainGeneration", 2L)
-        assertEquals(false, callSuspend("requestSafeGoogleThroughBrowserIntent", transition))
+        assertEquals(false, callSuspend("requestSafeRedirectThroughBrowserIntent", transition))
         verify(exactly = 0) { service.startActivity(any()) }
     }
 
@@ -146,7 +148,7 @@ class BrowserTransitionRaceTest {
         coordinator.observeWindow(pkg, 11)
         call("finishWebsiteTransition", transition)
         val newer = guard.tryStart(
-            pkg, 2L, BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+            pkg, 2L, WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
             expectedWindowId = 11, inspectionGeneration = coordinator.currentGeneration(pkg, 11)!!
         )!!
         clearMocks(BrowserCompatibilityStore, answers = false)
@@ -190,7 +192,7 @@ class BrowserTransitionRaceTest {
         }
 
         val result = callSuspend(
-            "requestSafeGoogleInCurrentTab", pkg, 10,
+            "requestSafeRedirectInCurrentTab", pkg, 10,
             BlockingAccessibilityService.WebsiteTabNeutralizationPolicy(pkg, 10), transition
         )
 

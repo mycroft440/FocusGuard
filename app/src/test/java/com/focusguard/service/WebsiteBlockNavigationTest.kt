@@ -1,5 +1,7 @@
 package com.focusguard.service
 
+import com.focusguard.accessibility.website.redirection.WebsiteRedirectionCoordinator
+
 import android.content.Context
 import android.content.Intent
 import android.view.accessibility.AccessibilityEvent
@@ -168,21 +170,21 @@ class WebsiteBlockNavigationTest {
             guard.tryStart(
                 CHROME_PACKAGE,
                 transitionId = 1L,
-                destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE
+                destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT
             )
         ).isNotNull()
         assertThat(
             guard.tryStart(
                 CHROME_PACKAGE,
                 transitionId = 2L,
-                destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE
+                destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT
             )
         ).isNull()
         assertThat(
             guard.tryStart(
                 FIREFOX_PACKAGE,
                 transitionId = 3L,
-                destination = BlockingAccessibilityService.WebsiteTransitionDestination.POMODORO
+                destination = WebsiteRedirectionCoordinator.TerminalDestination.POMODORO
             )
         ).isNotNull()
         assertThat(guard.finish(CHROME_PACKAGE, transitionId = 2L)).isFalse()
@@ -192,7 +194,7 @@ class WebsiteBlockNavigationTest {
             guard.tryStart(
                 CHROME_PACKAGE,
                 transitionId = 4L,
-                destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE
+                destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT
             )
         ).isNotNull()
     }
@@ -203,14 +205,14 @@ class WebsiteBlockNavigationTest {
         val transition = guard.tryStart(
             CHROME_PACKAGE,
             transitionId = 11L,
-            destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+            destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
             expectedWindowId = 7,
             detectionEventUptimeMillis = 50L
         )!!
 
-        assertThat(guard.confirmGoogle(CHROME_PACKAGE, windowId = 7, eventUptimeMillis = 99L))
+        assertThat(guard.confirmRedirect(CHROME_PACKAGE, windowId = 7, eventUptimeMillis = 99L))
             .isFalse()
-        assertThat(transition.safeGoogleConfirmed.isCompleted).isFalse()
+        assertThat(transition.safeRedirectConfirmed.isCompleted).isFalse()
         assertThat(
             guard.markSanitizationRequested(
                 CHROME_PACKAGE,
@@ -218,18 +220,18 @@ class WebsiteBlockNavigationTest {
                 requestedAtUptimeMillis = 100L
             )
         ).isTrue()
-        assertThat(guard.confirmGoogle(CHROME_PACKAGE, windowId = 7, eventUptimeMillis = 99L))
+        assertThat(guard.confirmRedirect(CHROME_PACKAGE, windowId = 7, eventUptimeMillis = 99L))
             .isFalse()
-        assertThat(transition.safeGoogleConfirmed.isCompleted).isFalse()
+        assertThat(transition.safeRedirectConfirmed.isCompleted).isFalse()
         guard.observeBrowserEvent(
             browserPackageName = CHROME_PACKAGE,
             windowId = 7,
             eventUptimeMillis = 100L,
             eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
         )
-        assertThat(guard.confirmGoogle(CHROME_PACKAGE, windowId = 7, eventUptimeMillis = 100L))
+        assertThat(guard.confirmRedirect(CHROME_PACKAGE, windowId = 7, eventUptimeMillis = 100L))
             .isTrue()
-        assertThat(transition.safeGoogleConfirmed.isCompleted).isTrue()
+        assertThat(transition.safeRedirectConfirmed.isCompleted).isTrue()
     }
 
     @Test
@@ -238,7 +240,7 @@ class WebsiteBlockNavigationTest {
         val transition = guard.tryStart(
             CHROME_PACKAGE,
             transitionId = 12L,
-            destination = BlockingAccessibilityService.WebsiteTransitionDestination.POMODORO,
+            destination = WebsiteRedirectionCoordinator.TerminalDestination.POMODORO,
             expectedWindowId = 7,
             detectionEventUptimeMillis = 50L
         )!!
@@ -253,7 +255,7 @@ class WebsiteBlockNavigationTest {
             eventUptimeMillis = 80L,
             eventType = AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
         )
-        assertThat(guard.confirmGoogle(CHROME_PACKAGE, windowId = 7, eventUptimeMillis = 80L))
+        assertThat(guard.confirmRedirect(CHROME_PACKAGE, windowId = 7, eventUptimeMillis = 80L))
             .isTrue()
         guard.markDestinationRequested(
             CHROME_PACKAGE,
@@ -274,37 +276,37 @@ class WebsiteBlockNavigationTest {
     @Test
     fun `google confirmation accepts homepage but rejects search and lookalike`() {
         assertThat(
-            BlockingAccessibilityService.isSafeGoogleRedirectSurface(
+            BlockingAccessibilityService.isSafeRedirectSurface(
                 "https://www.google.com/"
             )
         ).isTrue()
         assertThat(
-            BlockingAccessibilityService.isSafeGoogleRedirectSurface(
+            BlockingAccessibilityService.isSafeRedirectSurface(
                 "https://google.com/"
             )
         ).isTrue()
         assertThat(
-            BlockingAccessibilityService.isSafeGoogleRedirectSurface(
+            BlockingAccessibilityService.isSafeRedirectSurface(
                 "https://www.google.com.br/?hl=pt-BR&gl=br"
             )
         ).isTrue()
         assertThat(
-            BlockingAccessibilityService.isSafeGoogleRedirectSurface(
+            BlockingAccessibilityService.isSafeRedirectSurface(
                 "https://www.google.co.za/"
             )
         ).isTrue()
         assertThat(
-            BlockingAccessibilityService.isSafeGoogleRedirectSurface(
+            BlockingAccessibilityService.isSafeRedirectSurface(
                 "https://www.google.com/search?q=blocked"
             )
         ).isFalse()
         assertThat(
-            BlockingAccessibilityService.isSafeGoogleRedirectSurface(
+            BlockingAccessibilityService.isSafeRedirectSurface(
                 "https://google.com.evil.example/"
             )
         ).isFalse()
         assertThat(
-            BlockingAccessibilityService.isSafeGoogleRedirectSurface(
+            BlockingAccessibilityService.isSafeRedirectSurface(
                 "https://google.evil/"
             )
         ).isFalse()
@@ -316,7 +318,7 @@ class WebsiteBlockNavigationTest {
         val transition = guard.tryStart(
             BRAVE_PACKAGE,
             transitionId = 21L,
-            destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+            destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
             expectedWindowId = 7
         )!!
         guard.markSanitizationRequested(
@@ -349,7 +351,7 @@ class WebsiteBlockNavigationTest {
                 eventType = AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED
             )
         ).isNull()
-        assertThat(transition.safeGoogleConfirmed.isCompleted).isFalse()
+        assertThat(transition.safeRedirectConfirmed.isCompleted).isFalse()
         guard.observeBrowserEvent(
             browserPackageName = BRAVE_PACKAGE,
             windowId = 7,
@@ -372,7 +374,7 @@ class WebsiteBlockNavigationTest {
         val transition = guard.tryStart(
             FIREFOX_PACKAGE,
             transitionId = 22L,
-            destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+            destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
             expectedWindowId = 9,
             detectionEventUptimeMillis = 50L
         )!!
@@ -396,9 +398,9 @@ class WebsiteBlockNavigationTest {
                     eventType = eventType
                 )
             ).isNull()
-            assertThat(guard.confirmGoogle(FIREFOX_PACKAGE, 9, eventTime)).isFalse()
+            assertThat(guard.confirmRedirect(FIREFOX_PACKAGE, 9, eventTime)).isFalse()
         }
-        assertThat(transition.safeGoogleConfirmed.isCompleted).isFalse()
+        assertThat(transition.safeRedirectConfirmed.isCompleted).isFalse()
     }
 
     @Test
@@ -407,7 +409,7 @@ class WebsiteBlockNavigationTest {
         val transition = guard.tryStart(
             CHROME_PACKAGE,
             transitionId = 23L,
-            destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+            destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
             expectedWindowId = 7,
             detectionEventUptimeMillis = 50L
         )!!
@@ -430,14 +432,14 @@ class WebsiteBlockNavigationTest {
             )
         ).isSameInstanceAs(transition)
         assertThat(
-            guard.rebindPostCloseGoogleWindow(
+            guard.rebindPostCloseRedirectWindow(
                 CHROME_PACKAGE,
                 transitionId = 23L,
                 windowId = 8,
                 eventUptimeMillis = 111L
             )
         ).isTrue()
-        assertThat(guard.confirmGoogle(CHROME_PACKAGE, 8, 111L)).isTrue()
+        assertThat(guard.confirmRedirect(CHROME_PACKAGE, 8, 111L)).isTrue()
     }
 
     @Test
@@ -447,7 +449,7 @@ class WebsiteBlockNavigationTest {
   guard.tryStart(
       CHROME_PACKAGE,
       transitionId = 26L,
-      destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+      destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
       expectedWindowId = 7,
       detectionEventUptimeMillis = 100L
   )
@@ -457,7 +459,7 @@ class WebsiteBlockNavigationTest {
   guard.tryStart(
       CHROME_PACKAGE,
       transitionId = 27L,
-      destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+      destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
       expectedWindowId = 7,
       detectionEventUptimeMillis = 200L
   )
@@ -681,12 +683,12 @@ class WebsiteBlockNavigationTest {
     fun `close click alone never authorizes destination`() {
         assertThat(
             BlockingAccessibilityService.mayOpenDestinationAfterSanitization(
-                safeGoogleConfirmed = false
+                safeRedirectConfirmed = false
             )
         ).isFalse()
         assertThat(
             BlockingAccessibilityService.mayOpenDestinationAfterSanitization(
-                safeGoogleConfirmed = true
+                safeRedirectConfirmed = true
             )
         ).isTrue()
     }
@@ -780,7 +782,7 @@ class WebsiteBlockNavigationTest {
         val transition = guard.tryStart(
             CHROME_PACKAGE,
             transitionId = 24L,
-            destination = BlockingAccessibilityService.WebsiteTransitionDestination.GOOGLE,
+            destination = WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT,
             expectedWindowId = 7,
             detectionEventUptimeMillis = 50L
         )!!
