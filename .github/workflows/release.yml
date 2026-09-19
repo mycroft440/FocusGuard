@@ -302,70 +302,102 @@ jobs:
         id: upload_release_apk_zip
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
+          name: HardBlock-vc${{ steps.version.outputs.version_code }}-APK.zip
           path: release/HardBlock-vc${{ steps.version.outputs.version_code }}-APK.zip
           if-no-files-found: error
           retention-days: 90
           overwrite: true
           archive: false
 
-      - name: Verify uploaded APK ZIP digest
+      - name: Verify downloaded APK artifact ZIP
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.upload_release_apk_zip.outputs['artifact-id'] }}
           ARTIFACT_DIGEST: ${{ steps.upload_release_apk_zip.outputs['artifact-digest'] }}
         run: |
           set -euo pipefail
-          ZIP="release/HardBlock-vc${CI_VERSION_CODE}-APK.zip"
-          LOCAL_DIGEST="$(sha256sum "$ZIP" | awk '{print $1}')"
-          REMOTE_DIGEST="${ARTIFACT_DIGEST#sha256:}"
-          test -n "$REMOTE_DIGEST"
-          test "$LOCAL_DIGEST" = "$REMOTE_DIGEST"
-          echo "APK ZIP upload digest verified: $LOCAL_DIGEST"
+          ARCHIVE="$RUNNER_TEMP/HardBlock-vc${CI_VERSION_CODE}-APK-downloaded.zip"
+          curl --fail --silent --show-error --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            --output "$ARCHIVE"
+          python3 scripts/verify_github_artifact_zip.py \
+            --archive "$ARCHIVE" \
+            --expected-digest "$ARTIFACT_DIGEST" \
+            --expect "HardBlock-vc${CI_VERSION_CODE}.apk=${{ steps.collect.outputs.apk }}"
+          unzip -t "$ARCHIVE"
 
       - name: Upload Play AAB ZIP directly
         id: upload_release_aab_zip
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
+          name: HardBlock-vc${{ steps.version.outputs.version_code }}-AAB.zip
           path: release/HardBlock-vc${{ steps.version.outputs.version_code }}-AAB.zip
           if-no-files-found: error
           retention-days: 90
           overwrite: true
           archive: false
 
-      - name: Verify uploaded AAB ZIP digest
+      - name: Verify downloaded AAB artifact ZIP
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.upload_release_aab_zip.outputs['artifact-id'] }}
           ARTIFACT_DIGEST: ${{ steps.upload_release_aab_zip.outputs['artifact-digest'] }}
         run: |
           set -euo pipefail
-          ZIP="release/HardBlock-vc${CI_VERSION_CODE}-AAB.zip"
-          LOCAL_DIGEST="$(sha256sum "$ZIP" | awk '{print $1}')"
-          REMOTE_DIGEST="${ARTIFACT_DIGEST#sha256:}"
-          test -n "$REMOTE_DIGEST"
-          test "$LOCAL_DIGEST" = "$REMOTE_DIGEST"
-          echo "AAB ZIP upload digest verified: $LOCAL_DIGEST"
+          ARCHIVE="$RUNNER_TEMP/HardBlock-vc${CI_VERSION_CODE}-AAB-downloaded.zip"
+          curl --fail --silent --show-error --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            --output "$ARCHIVE"
+          python3 scripts/verify_github_artifact_zip.py \
+            --archive "$ARCHIVE" \
+            --expected-digest "$ARTIFACT_DIGEST" \
+            --expect "HardBlock-vc${CI_VERSION_CODE}.aab=${{ steps.collect.outputs.aab }}"
+          unzip -t "$ARCHIVE"
 
       - name: Upload identity ZIP directly
         id: upload_release_identity_zip
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
+          name: HardBlock-vc${{ steps.version.outputs.version_code }}-identity.zip
           path: release/HardBlock-vc${{ steps.version.outputs.version_code }}-identity.zip
           if-no-files-found: error
           retention-days: 90
           overwrite: true
           archive: false
 
-      - name: Verify uploaded identity ZIP digest
+      - name: Verify downloaded identity artifact ZIP
         shell: bash
         env:
+          GH_TOKEN: ${{ github.token }}
+          ARTIFACT_ID: ${{ steps.upload_release_identity_zip.outputs['artifact-id'] }}
           ARTIFACT_DIGEST: ${{ steps.upload_release_identity_zip.outputs['artifact-digest'] }}
         run: |
           set -euo pipefail
-          ZIP="release/HardBlock-vc${CI_VERSION_CODE}-identity.zip"
-          LOCAL_DIGEST="$(sha256sum "$ZIP" | awk '{print $1}')"
-          REMOTE_DIGEST="${ARTIFACT_DIGEST#sha256:}"
-          test -n "$REMOTE_DIGEST"
-          test "$LOCAL_DIGEST" = "$REMOTE_DIGEST"
-          echo "Identity ZIP upload digest verified: $LOCAL_DIGEST"
+          ARCHIVE="$RUNNER_TEMP/HardBlock-vc${CI_VERSION_CODE}-identity-downloaded.zip"
+          curl --fail --silent --show-error --location \
+            --retry 5 --retry-all-errors --retry-delay 2 \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            -H "X-GitHub-Api-Version: 2022-11-28" \
+            "https://api.github.com/repos/$GITHUB_REPOSITORY/actions/artifacts/$ARTIFACT_ID/zip" \
+            --output "$ARCHIVE"
+          python3 scripts/verify_github_artifact_zip.py \
+            --archive "$ARCHIVE" \
+            --expected-digest "$ARTIFACT_DIGEST" \
+            --expect "SHA256SUMS.txt=release/SHA256SUMS.txt" \
+            --expect "apksigner.txt=release/apksigner.txt" \
+            --expect "package.txt=release/package.txt"
+          unzip -t "$ARCHIVE"
 
       - name: Publish GitHub Release
         id: publish_release
@@ -377,7 +409,7 @@ jobs:
           set -euo pipefail
           TAG="${{ steps.collect.outputs.tag }}"
           TITLE="Hard Block update vc${CI_VERSION_CODE}"
-          NOTES="Canonical Hard Block update from ${GITHUB_SHA}. Package: com.focusguard.v2. Signed with the permanent production update key. Android versionCode ${CI_VERSION_CODE}. The portable ZIP assets are created and CRC/SHA-256 validated before publication."
+          NOTES="Canonical Hard Block update from ${GITHUB_SHA}. Package: com.focusguard.v2. Signed with the permanent production update key. Android versionCode ${CI_VERSION_CODE}. The portable ZIP assets are created, uploaded, downloaded again, and CRC/SHA-256/content validated before publication."
           APK_ZIP="release/HardBlock-vc${CI_VERSION_CODE}-APK.zip"
           AAB_ZIP="release/HardBlock-vc${CI_VERSION_CODE}-AAB.zip"
           IDENTITY_ZIP="release/HardBlock-vc${CI_VERSION_CODE}-identity.zip"
@@ -410,7 +442,7 @@ jobs:
         run: |
           {
             echo "### Canonical signed build completed"
-            echo "The production Release APK/AAB and their validated portable ZIPs passed package, signature, CRC, and SHA-256 verification and were uploaded as workflow artifacts."
+            echo "The production Release APK/AAB and their validated portable ZIPs passed package, signature, local CRC, upload/download round-trip, CRC, and SHA-256/content verification and were uploaded as workflow artifacts."
             echo "Only the optional GitHub Release publication failed."
           } >> "$GITHUB_STEP_SUMMARY"
 
