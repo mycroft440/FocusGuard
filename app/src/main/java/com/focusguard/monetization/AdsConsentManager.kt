@@ -41,11 +41,14 @@ object AdsConsentManager {
         onResult: (Boolean) -> Unit
     ) {
         if (activity.isFinishing || activity.isDestroyed) {
+            FocusGuardLogger.log("AdsConsent", "Activity indisponível antes da validação UMP")
             onResult(false)
             return
         }
         ensureUpdated(activity) { consentInformation ->
-            onResult(consentInformation.canRequestAds())
+            val canRequestAds = consentInformation.canRequestAds()
+            logState("decisão de request", consentInformation)
+            onResult(canRequestAds)
         }
     }
 
@@ -69,6 +72,7 @@ object AdsConsentManager {
             if (consentInformation.privacyOptionsRequirementStatus !=
                 ConsentInformation.PrivacyOptionsRequirementStatus.REQUIRED
             ) {
+                logState("opções de privacidade não necessárias", consentInformation)
                 onDismissed(null)
                 return@ensureUpdated
             }
@@ -76,8 +80,11 @@ object AdsConsentManager {
                 if (formError != null) {
                     FocusGuardLogger.log(
                         "AdsConsent",
-                        "Falha ao abrir opções de privacidade: ${formError.message}"
+                        "Falha ao abrir opções de privacidade: " +
+                            "code=${formError.errorCode}, message=${formError.message}"
                     )
+                } else {
+                    logState("opções de privacidade concluídas", consentInformation)
                 }
                 onDismissed(formError?.message)
             }
@@ -104,16 +111,24 @@ object AdsConsentManager {
             updateInFlight = true
         }
 
+        logState("antes da atualização", consentInformation)
         val params = ConsentRequestParameters.Builder().build()
         consentInformation.requestConsentInfoUpdate(
             activity,
             params,
             {
+                logState("atualização UMP recebida", consentInformation)
                 UserMessagingPlatform.loadAndShowConsentFormIfRequired(activity) { formError ->
                     if (formError != null) {
                         FocusGuardLogger.log(
                             "AdsConsent",
-                            "Formulário de privacidade terminou com aviso: ${formError.message}"
+                            "Formulário de privacidade terminou com aviso: " +
+                                "code=${formError.errorCode}, message=${formError.message}"
+                        )
+                    } else {
+                        FocusGuardLogger.log(
+                            "AdsConsent",
+                            "Formulário de privacidade concluído ou não necessário"
                         )
                     }
                     finish(consentInformation)
@@ -122,7 +137,8 @@ object AdsConsentManager {
             { requestError ->
                 FocusGuardLogger.log(
                     "AdsConsent",
-                    "Falha ao atualizar consentimento: ${requestError.message}"
+                    "Falha ao atualizar consentimento: " +
+                        "code=${requestError.errorCode}, message=${requestError.message}"
                 )
                 // A UMP pode reutilizar uma decisão válida de uma sessão anterior.
                 finish(consentInformation)
@@ -131,11 +147,28 @@ object AdsConsentManager {
     }
 
     private fun finish(consentInformation: ConsentInformation) {
+        logState("estado final", consentInformation)
         val callbacks = synchronized(lock) {
             updateInFlight = false
             updateCompletedThisProcess = true
             pendingCallbacks.toList().also { pendingCallbacks.clear() }
         }
         callbacks.forEach { callback -> callback(consentInformation) }
+    }
+
+    private fun logState(stage: String, consentInformation: ConsentInformation) {
+        val consentStatus = when (consentInformation.consentStatus) {
+            ConsentInformation.ConsentStatus.NOT_REQUIRED -> "NOT_REQUIRED"
+            ConsentInformation.ConsentStatus.REQUIRED -> "REQUIRED"
+            ConsentInformation.ConsentStatus.OBTAINED -> "OBTAINED"
+            else -> "UNKNOWN"
+        }
+        FocusGuardLogger.log(
+            "AdsConsent",
+            "UMP $stage: consentStatus=$consentStatus, " +
+                "privacyOptions=${consentInformation.privacyOptionsRequirementStatus}, " +
+                "formAvailable=${consentInformation.isConsentFormAvailable}, " +
+                "canRequestAds=${consentInformation.canRequestAds()}"
+        )
     }
 }
