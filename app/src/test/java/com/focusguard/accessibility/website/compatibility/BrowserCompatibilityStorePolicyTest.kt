@@ -145,6 +145,93 @@ class BrowserCompatibilityStorePolicyTest {
     }
 
     @Test
+    fun `accepted submit without navigation is skipped on retry for same target`() {
+        val packageName = "example.submit.retry.browser"
+        BrowserCompatibilityStore.recordWriteSuccess(
+            packageName,
+            "$packageName:id/url_bar",
+            BrowserWriteMethod.SET_TEXT,
+            "https://www.google.com"
+        )
+        assertThat(
+            BrowserCompatibilityStore.mayAttemptSubmitMethod(
+                packageName,
+                BrowserSubmitMethod.IME_ENTER
+            )
+        ).isTrue()
+
+        BrowserCompatibilityStore.recordSubmitAccepted(
+            packageName,
+            "$packageName:id/url_bar",
+            BrowserSubmitMethod.IME_ENTER
+        )
+        assertThat(
+            BrowserCompatibilityStore.mayAttemptSubmitMethod(
+                packageName,
+                BrowserSubmitMethod.IME_ENTER
+            )
+        ).isFalse()
+        assertThat(
+            BrowserCompatibilityStore.mayAttemptSubmitMethod(
+                packageName,
+                BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION
+            )
+        ).isTrue()
+
+        // The retry writes the same certified target again. That must not erase the
+        // fact that IME_ENTER already accepted without producing navigation.
+        BrowserCompatibilityStore.recordWriteSuccess(
+            packageName,
+            "$packageName:id/url_bar",
+            BrowserWriteMethod.SET_TEXT,
+            "https://www.google.com"
+        )
+        assertThat(
+            BrowserCompatibilityStore.mayAttemptSubmitMethod(
+                packageName,
+                BrowserSubmitMethod.IME_ENTER
+            )
+        ).isFalse()
+        BrowserCompatibilityStore.finishRedirection(packageName)
+    }
+
+    @Test
+    fun `submit attempt history resets for a different redirect target`() {
+        val packageName = "example.submit.target.browser"
+        BrowserCompatibilityStore.recordWriteSuccess(
+            packageName,
+            "$packageName:id/url_bar",
+            BrowserWriteMethod.SET_TEXT,
+            "https://www.google.com"
+        )
+        BrowserCompatibilityStore.recordSubmitAccepted(
+            packageName,
+            "$packageName:id/url_bar",
+            BrowserSubmitMethod.IME_ENTER
+        )
+        assertThat(
+            BrowserCompatibilityStore.mayAttemptSubmitMethod(
+                packageName,
+                BrowserSubmitMethod.IME_ENTER
+            )
+        ).isFalse()
+
+        BrowserCompatibilityStore.recordWriteSuccess(
+            packageName,
+            "$packageName:id/url_bar",
+            BrowserWriteMethod.SET_TEXT,
+            "https://google.com/search?q=focus"
+        )
+        assertThat(
+            BrowserCompatibilityStore.mayAttemptSubmitMethod(
+                packageName,
+                BrowserSubmitMethod.IME_ENTER
+            )
+        ).isTrue()
+        BrowserCompatibilityStore.finishRedirection(packageName)
+    }
+
+    @Test
     fun `weak activation evidence alone never promotes browser`() {
         val record = BrowserCompatibilityRecord(
             packageName = "example.browser",
