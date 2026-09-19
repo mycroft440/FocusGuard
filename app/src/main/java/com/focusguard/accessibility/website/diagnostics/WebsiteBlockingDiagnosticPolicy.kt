@@ -1,10 +1,12 @@
 package com.focusguard.accessibility.website.diagnostics
 
 import java.net.URI
+import java.util.Locale
 
 internal enum class WebsiteBlockingFailureStage {
     PRESENTATION,
     SAME_TAB_PREPARATION,
+    NAVIGATION_EVIDENCE,
     REDIRECT_CONFIRMATION,
     STRICT_DESTINATION,
     IDENTIFICATION
@@ -13,6 +15,7 @@ internal enum class WebsiteBlockingFailureStage {
 internal data class WebsiteBlockingTransitionEvidence(
     val curtainShown: Boolean,
     val submitAccepted: Boolean,
+    val navigationEvidenceObserved: Boolean,
     val safeRedirectConfirmed: Boolean,
     val strictDestination: Boolean,
     val destinationRequested: Boolean,
@@ -55,24 +58,38 @@ internal object WebsiteBlockingDiagnosticPolicy {
                 )
             )
 
+            !evidence.navigationEvidenceObserved && !evidence.safeRedirectConfirmed ->
+                WebsiteBlockingFailureDiagnosis(
+                    stage = WebsiteBlockingFailureStage.NAVIGATION_EVIDENCE,
+                    summary = "O envio foi aceito, mas nenhum evento de navegação posterior foi observado.",
+                    conclusion = inconclusive(
+                        "O FocusGuard aceitou a ação de envio, porém não observou uma mutação de conteúdo/janela elegível depois dessa submissão."
+                    )
+                )
+
             !evidence.safeRedirectConfirmed -> WebsiteBlockingFailureDiagnosis(
                 stage = WebsiteBlockingFailureStage.REDIRECT_CONFIRMATION,
-                summary = "O envio foi aceito, mas a navegação segura não foi confirmada.",
+                summary = "Houve evidência de navegação, mas o destino seguro não foi confirmado.",
                 conclusion = inconclusive(
-                    "O FocusGuard chegou à etapa de envio, porém não comprovou uma superfície estável do destino seguro."
+                    "O FocusGuard observou atividade de navegação após o envio, porém não comprovou uma superfície estável do destino seguro."
                 )
             )
+
+            evidence.strictDestination && !evidence.destinationRequested ->
+                WebsiteBlockingFailureDiagnosis(
+                    stage = WebsiteBlockingFailureStage.STRICT_DESTINATION,
+                    summary = "O redirecionamento foi confirmado, mas o destino rigoroso não chegou a ser solicitado.",
+                    conclusion = inconclusive(
+                        "A sanitização da mesma aba foi confirmada, porém a etapa terminal do modo rigoroso não foi iniciada de forma comprovada."
+                    )
+                )
 
             evidence.strictDestination && !evidence.destinationConfirmed ->
                 WebsiteBlockingFailureDiagnosis(
                     stage = WebsiteBlockingFailureStage.STRICT_DESTINATION,
-                    summary = if (evidence.destinationRequested) {
-                        "O redirecionamento foi confirmado, mas o destino rigoroso não foi confirmado."
-                    } else {
-                        "O redirecionamento foi confirmado, mas a solicitação do destino rigoroso não foi confirmada."
-                    },
+                    summary = "O destino rigoroso foi solicitado, mas sua superfície final não foi confirmada.",
                     conclusion = inconclusive(
-                        "A etapa de sanitização terminou, porém a superfície terminal do modo rigoroso não foi comprovada."
+                        "A solicitação do destino rigoroso foi registrada, porém sua superfície terminal não foi comprovada."
                     )
                 )
 
@@ -100,18 +117,24 @@ internal object WebsiteBlockingDiagnosticPolicy {
             val uri = URI(candidate)
             val host = uri.host?.trim()?.takeIf(String::isNotEmpty) ?: return@runCatching null
             val port = uri.port.takeIf { it >= 0 }?.let { ":$it" }.orEmpty()
-            val scheme = uri.scheme?.takeIf { it.isNotBlank() } ?: "https"
+            val scheme = uri.scheme
+                ?.takeIf { it.isNotBlank() }
+                ?.lowercase(Locale.ROOT)
+                ?: "https"
             "$scheme://$host$port"
         }.getOrNull()
 
-        return (authorityOnly ?: withoutFragment.substringBefore('/'))
-            .take(MAX_TARGET_CHARS)
-            .takeIf(String::isNotBlank)
+        // Never persist arbitrary fallback text when URL parsing cannot prove an authority.
+        // Losing an unparseable target is preferable to accidentally storing a path or secret.
+        return authorityOnly
+            ?.take(MAX_TARGET_CHARS)
+            ?.takeIf(String::isNotBlank)
     }
 
     fun stageLabel(stage: WebsiteBlockingFailureStage): String = when (stage) {
         WebsiteBlockingFailureStage.PRESENTATION -> "apresentação do bloqueio"
         WebsiteBlockingFailureStage.SAME_TAB_PREPARATION -> "preparação/envio na mesma aba"
+        WebsiteBlockingFailureStage.NAVIGATION_EVIDENCE -> "evidência de navegação após o envio"
         WebsiteBlockingFailureStage.REDIRECT_CONFIRMATION -> "confirmação do redirecionamento"
         WebsiteBlockingFailureStage.STRICT_DESTINATION -> "confirmação do destino rigoroso"
         WebsiteBlockingFailureStage.IDENTIFICATION -> "identificação do site"
