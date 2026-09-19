@@ -45,6 +45,12 @@ internal data class WebsiteRedirectDestination(
         require(configuredHost in normalizedAcceptedRootHosts) {
             "Configured destination host must be accepted by its validation policy"
         }
+        require(configured.rawPath.isNullOrEmpty() || configured.rawPath == "/") {
+            "Website redirect destination must target the site root"
+        }
+        require(queryParameterNames(configured).all(acceptedRootQueryParameters::contains)) {
+            "Configured destination query must use accepted parameters"
+        }
         require(configured.rawFragment.isNullOrEmpty()) {
             "Website redirect destination cannot contain a fragment"
         }
@@ -60,18 +66,19 @@ internal data class WebsiteRedirectDestination(
             (uri.port != -1 && uri.port != 443)
         ) return false
         val host = uri.host?.let(::normalizeHost) ?: return false
-        val queryParameterNames = uri.rawQuery
-            ?.split('&')
-            ?.asSequence()
-            ?.filter(String::isNotBlank)
-            ?.map { parameter -> parameter.substringBefore('=') }
-            ?.toSet()
-            .orEmpty()
         return host in normalizedAcceptedRootHosts &&
             (uri.rawPath.isNullOrEmpty() || uri.rawPath == "/") &&
-            queryParameterNames.all(acceptedRootQueryParameters::contains) &&
+            queryParameterNames(uri).all(acceptedRootQueryParameters::contains) &&
             uri.rawFragment.isNullOrEmpty()
     }
+
+    private fun queryParameterNames(uri: URI): Set<String> = uri.rawQuery
+        ?.split('&')
+        ?.asSequence()
+        ?.filter(String::isNotBlank)
+        ?.map { parameter -> parameter.substringBefore('=') }
+        ?.toSet()
+        .orEmpty()
 
     companion object {
         private fun normalizeHost(host: String): String =
