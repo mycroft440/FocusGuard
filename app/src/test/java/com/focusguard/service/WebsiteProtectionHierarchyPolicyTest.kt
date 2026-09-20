@@ -5,31 +5,29 @@ import org.junit.Test
 
 class WebsiteProtectionHierarchyPolicyTest {
     @Test
-    fun `strong website layer always outranks PASSWORD`() {
+    fun `configured stronger and password rules have no owner while runtime is reset`() {
         val result = WebsiteProtectionHierarchyPolicy.resolve(
             candidate = "https://www.youtube.com/watch?v=1",
             passwordRules = setOf("youtube.com"),
             strongerRules = setOf("youtube.com")
         )
 
-        assertThat(result.owner).isEqualTo(WebsiteProtectionHierarchyPolicy.Owner.HARD)
-        assertThat(result.matchedRule).isEqualTo("youtube.com")
-        assertThat(result.nextStep)
-            .isEqualTo(WebsiteProtectionHierarchyPolicy.NextStep.REDIRECT_BLOCKED_TAB)
+        assertThat(result.owner).isEqualTo(WebsiteProtectionHierarchyPolicy.Owner.NONE)
+        assertThat(result.matchedRule).isNull()
+        assertThat(result.nextStep).isEqualTo(WebsiteProtectionHierarchyPolicy.NextStep.ALLOW)
     }
 
     @Test
-    fun `PASSWORD owns site while no stronger layer is active`() {
+    fun `configured password rule has no owner while runtime is reset`() {
         val result = WebsiteProtectionHierarchyPolicy.resolve(
             candidate = "https://m.youtube.com/shorts/1",
             passwordRules = setOf("youtube.com"),
             strongerRules = emptySet()
         )
 
-        assertThat(result.owner).isEqualTo(WebsiteProtectionHierarchyPolicy.Owner.PASSWORD)
-        assertThat(result.matchedRule).isEqualTo("youtube.com")
-        assertThat(result.nextStep)
-            .isEqualTo(WebsiteProtectionHierarchyPolicy.NextStep.SHOW_PASSWORD_BLOCK)
+        assertThat(result.owner).isEqualTo(WebsiteProtectionHierarchyPolicy.Owner.NONE)
+        assertThat(result.matchedRule).isNull()
+        assertThat(result.nextStep).isEqualTo(WebsiteProtectionHierarchyPolicy.NextStep.ALLOW)
     }
 
     @Test
@@ -41,6 +39,7 @@ class WebsiteProtectionHierarchyPolicyTest {
         )
 
         assertThat(result.owner).isEqualTo(WebsiteProtectionHierarchyPolicy.Owner.NONE)
+        assertThat(result.matchedRule).isNull()
         assertThat(result.nextStep).isEqualTo(WebsiteProtectionHierarchyPolicy.NextStep.ALLOW)
     }
 }

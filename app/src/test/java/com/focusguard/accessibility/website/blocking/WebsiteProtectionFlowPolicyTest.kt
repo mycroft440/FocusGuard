@@ -5,43 +5,42 @@ import org.junit.Test
 
 class WebsiteProtectionFlowPolicyTest {
     @Test
-    fun `hard ownership redirects the blocked tab`() {
+    fun `configured hard candidate is allowed while website runtime is reset`() {
         val decision = WebsiteProtectionFlowPolicy.afterIdentification(
             identifiedCandidate = "https://www.youtube.com/watch?v=1",
             passwordRules = emptySet(),
             strongerRules = setOf("youtube.com")
         )
 
-        assertThat(decision.owner).isEqualTo(WebsiteBlockDecisionPolicy.Owner.HARD)
-        assertThat(decision.matchedRule).isEqualTo("youtube.com")
-        assertThat(decision.nextStep)
-            .isEqualTo(WebsiteProtectionFlowPolicy.NextStep.REDIRECT_BLOCKED_TAB)
+        assertThat(decision.owner).isEqualTo(WebsiteBlockDecisionPolicy.Owner.NONE)
+        assertThat(decision.matchedRule).isNull()
+        assertThat(decision.nextStep).isEqualTo(WebsiteProtectionFlowPolicy.NextStep.ALLOW)
     }
 
     @Test
-    fun `password ownership shows password block without entering redirect pipeline`() {
+    fun `configured password candidate is allowed while website runtime is reset`() {
         val decision = WebsiteProtectionFlowPolicy.afterIdentification(
             identifiedCandidate = "reddit.com/r/android",
             passwordRules = setOf("reddit.com"),
             strongerRules = emptySet()
         )
 
-        assertThat(decision.owner).isEqualTo(WebsiteBlockDecisionPolicy.Owner.PASSWORD)
-        assertThat(decision.nextStep)
-            .isEqualTo(WebsiteProtectionFlowPolicy.NextStep.SHOW_PASSWORD_BLOCK)
+        assertThat(decision.owner).isEqualTo(WebsiteBlockDecisionPolicy.Owner.NONE)
+        assertThat(decision.matchedRule).isNull()
+        assertThat(decision.nextStep).isEqualTo(WebsiteProtectionFlowPolicy.NextStep.ALLOW)
     }
 
     @Test
-    fun `stronger rule wins when the same candidate is present in both layers`() {
+    fun `candidate configured in both layers is allowed while website runtime is reset`() {
         val decision = WebsiteProtectionFlowPolicy.afterIdentification(
             identifiedCandidate = "https://example.com/path",
             passwordRules = setOf("example.com"),
             strongerRules = setOf("example.com")
         )
 
-        assertThat(decision.owner).isEqualTo(WebsiteBlockDecisionPolicy.Owner.HARD)
-        assertThat(decision.nextStep)
-            .isEqualTo(WebsiteProtectionFlowPolicy.NextStep.REDIRECT_BLOCKED_TAB)
+        assertThat(decision.owner).isEqualTo(WebsiteBlockDecisionPolicy.Owner.NONE)
+        assertThat(decision.matchedRule).isNull()
+        assertThat(decision.nextStep).isEqualTo(WebsiteProtectionFlowPolicy.NextStep.ALLOW)
     }
 
     @Test
@@ -66,6 +65,7 @@ class WebsiteProtectionFlowPolicyTest {
         )
 
         assertThat(decision.owner).isEqualTo(WebsiteBlockDecisionPolicy.Owner.NONE)
+        assertThat(decision.matchedRule).isNull()
         assertThat(decision.nextStep).isEqualTo(WebsiteProtectionFlowPolicy.NextStep.ALLOW)
     }
 }

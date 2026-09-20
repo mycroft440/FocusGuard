@@ -5,24 +5,25 @@ import org.junit.Test
 
 class WebsiteBlockDecisionPolicyTest {
     @Test
-    fun `stronger protection wins when hard and password both match`() {
+    fun `configured hard and password rules have no owner while runtime is reset`() {
         val resolution = WebsiteBlockDecisionPolicy.resolve(
             candidate = "https://m.example.com/path",
             passwordRules = setOf("example.com"),
             strongerRules = setOf("example.com")
         )
-        assertThat(resolution.owner).isEqualTo(WebsiteBlockDecisionPolicy.Owner.HARD)
-        assertThat(resolution.matchedRule).isEqualTo("example.com")
+        assertThat(resolution.owner).isEqualTo(WebsiteBlockDecisionPolicy.Owner.NONE)
+        assertThat(resolution.matchedRule).isNull()
     }
 
     @Test
-    fun `password owns candidate when no stronger rule matches`() {
+    fun `configured password rule has no owner while runtime is reset`() {
         val resolution = WebsiteBlockDecisionPolicy.resolve(
             candidate = "https://example.com/path",
             passwordRules = setOf("example.com"),
             strongerRules = setOf("other.example")
         )
-        assertThat(resolution.owner).isEqualTo(WebsiteBlockDecisionPolicy.Owner.PASSWORD)
+        assertThat(resolution.owner).isEqualTo(WebsiteBlockDecisionPolicy.Owner.NONE)
+        assertThat(resolution.matchedRule).isNull()
     }
 
     @Test
