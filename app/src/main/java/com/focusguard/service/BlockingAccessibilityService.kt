@@ -1064,7 +1064,9 @@ class BlockingAccessibilityService : AccessibilityService() {
             currentPackage in focusModeAllowedAppsSet
         ) return
 
-        if (currentPackage in browserPackages && blockedWebsitesDomainSet.isNotEmpty()) {
+        if (websiteSurfaceInspectionNeeded() &&
+            currentPackage in browserPackages && blockedWebsitesDomainSet.isNotEmpty()
+        ) {
             val token = browserInspectionCoordinator.currentToken(currentPackage) ?: return
             val now = SystemClock.uptimeMillis()
             val offer = browserInspectionCoordinator.offer(
@@ -1551,8 +1553,10 @@ class BlockingAccessibilityService : AccessibilityService() {
         if (packageName in focusModeAllowedAppsSet) return
         if (packageName == defaultLauncherPackage) return
 
-        val blockedWebsiteDomain = blockedWebsiteAppDomains[packageName]
-        val limitedWebsiteDomain = limitedWebsiteAppDomains[packageName]
+        // Native apps are no longer treated as an enforcement extension of a
+        // configured website while the website runtime is being rebuilt.
+        val blockedWebsiteDomain: String? = null
+        val limitedWebsiteDomain: String? = null
         when {
             // Website/focus/strict protections keep precedence over a PASSWORD
             // visit. The grant only bypasses this app's PASSWORD-session edge.
@@ -2785,11 +2789,11 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
-    private fun websiteSurfaceInspectionNeeded(): Boolean =
-        blockedWebsitesDomainSet.isNotEmpty() || limitedWebsiteDomains.isNotEmpty()
+    // Website configuration remains persisted, but its runtime enforcement is
+    // intentionally reset. No browser inspection/redirect pipeline is started.
+    private fun websiteSurfaceInspectionNeeded(): Boolean = false
 
-    private fun websiteObservationRequired(): Boolean =
-        blockedWebsitesDomainSet.isNotEmpty() || hardLimitedWebsiteDomains.isNotEmpty()
+    private fun websiteObservationRequired(): Boolean = false
 
     private fun clearOpaqueBrowserObservation(packageName: String) {
         browserRecoveryCoordinator.cancel(packageName)

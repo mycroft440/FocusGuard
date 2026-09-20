@@ -1,13 +1,12 @@
 package com.focusguard.accessibility.website.blocking
 
-import com.focusguard.utils.WebsiteBlocker
-
 /**
- * Pure website-rule ownership decision.
+ * Runtime seam for website protection.
  *
- * This layer receives an already identified candidate and decides only which
- * configured protection owns it. It never reads Accessibility nodes, renders UI
- * or performs browser navigation.
+ * Website selection, normalization and persistence intentionally remain available,
+ * but enforcement is reset: no configured website currently owns a browser visit.
+ * This keeps the configuration UI intact while the blocking implementation can be
+ * rebuilt from zero without leaving an old redirect path active.
  */
 internal object WebsiteBlockDecisionPolicy {
     enum class Owner { HARD, PASSWORD, NONE }
@@ -17,21 +16,10 @@ internal object WebsiteBlockDecisionPolicy {
         val matchedRule: String? = null
     )
 
+    @Suppress("UNUSED_PARAMETER")
     fun resolve(
         candidate: String,
         passwordRules: Collection<String>,
         strongerRules: Collection<String>
-    ): Resolution {
-        WebsiteBlocker.findMatchingRulesIgnoringGrants(
-            candidate,
-            strongerRules
-        ).firstOrNull()?.let { return Resolution(Owner.HARD, it) }
-
-        WebsiteBlocker.findMatchingRulesIgnoringGrants(
-            candidate,
-            passwordRules
-        ).firstOrNull()?.let { return Resolution(Owner.PASSWORD, it) }
-
-        return Resolution(Owner.NONE)
-    }
+    ): Resolution = Resolution(Owner.NONE)
 }
