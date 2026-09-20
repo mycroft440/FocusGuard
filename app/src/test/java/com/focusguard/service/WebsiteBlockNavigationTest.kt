@@ -579,7 +579,7 @@ class WebsiteBlockNavigationTest {
                 activeWindowId = 7,
                 latestWindowTransitionEventUptimeMillis = 201L
             )
-        ).isFalse()
+        ).isTrue()
     }
 
     @Test

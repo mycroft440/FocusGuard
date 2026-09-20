@@ -45,6 +45,7 @@ import com.focusguard.accessibility.website.redirection.AddressBarRedirectionAct
 import com.focusguard.accessibility.website.redirection.ClipboardPasteFallback
 import com.focusguard.accessibility.website.redirection.WebsiteRedirectDestination
 import com.focusguard.accessibility.website.redirection.WebsiteRedirectionCoordinator
+import com.focusguard.accessibility.website.redirection.WebsiteRedirectionPlan
 import com.focusguard.accessibility.website.redirection.WebsiteBlockTransitionGuard
 import com.focusguard.accessibility.website.redirection.WebsiteBlockTransitionHandle
 import com.focusguard.accessibility.website.redirection.WebsiteTabNeutralizationPolicy
@@ -3305,6 +3306,7 @@ class BlockingAccessibilityService : AccessibilityService() {
      */
     private fun showWebsiteBlockPresentation(blockedCandidate: String?): Long {
         val generation = showInstantBlockCurtain(mode = CurtainMode.BLOCK_NOTICE)
+        renewInstantCurtainFailsafe(WebsiteRedirectionPlan.CURTAIN_FAILSAFE_MILLIS)
         val displayTarget = blockedCandidate
             ?.takeIf(String::isNotBlank)
             ?.let { candidate ->
@@ -3356,6 +3358,10 @@ class BlockingAccessibilityService : AccessibilityService() {
     ): Boolean {
         if (!curtainReadyForTransition(transition)) return false
         if (transition.activatedAddressViewId == null && transition.editorAddressViewId == null) return true
+        if (transition.safeRedirectConfirmed.isCompleted ||
+            websiteTreeWorker.run { confirmSafeRedirectFromFreshBrowserSurface(transition) }
+        ) return false
+        if (!curtainReadyForTransition(transition)) return false
 
         // BACK is allowed only while the exact safe URL is still being edited.
         // If submission already navigated away from the blocked page, going BACK
@@ -3400,6 +3406,10 @@ class BlockingAccessibilityService : AccessibilityService() {
             WebsiteRestoreDecision.BACK_TO_BLOCKED_SURFACE -> Unit
         }
 
+        if (transition.safeRedirectConfirmed.isCompleted ||
+            websiteTreeWorker.run { confirmSafeRedirectFromFreshBrowserSurface(transition) }
+        ) return false
+        if (!curtainReadyForTransition(transition)) return false
         if (!performTransitionBack(transition)) return false
         delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
         if (!curtainReadyForTransition(transition)) return false
@@ -3522,7 +3532,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                     if (!curtainReadyForTransition(transition)) return 0L
                     val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: continue
                     val verified = try {
-                        AddressBarRedirectionActions.hasFocusedAddressEditor(fresh, browserPackageName,
+                        AddressBarRedirectionActions.hasCertifiedAddressEditor(fresh, browserPackageName,
                             expectedWindowId, https, ::isSafeRedirectSurface)
                     } finally { recycleSafely(fresh) }
                     if (verified) {
@@ -3587,7 +3597,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                         root.windowId,
                         transition.latestWindowTransitionEventUptimeMillis
                     ) ||
-                    !AddressBarRedirectionActions.hasFocusedAddressEditor(
+                    !AddressBarRedirectionActions.hasCertifiedAddressEditor(
                         root, browserPackageName, expectedWindowId, https, ::isSafeRedirectSurface
                     )
                 ) return 0L
@@ -4001,9 +4011,11 @@ class BlockingAccessibilityService : AccessibilityService() {
         renewInstantCurtainFailsafe()
     }
 
-    private fun renewInstantCurtainFailsafe() {
+    private fun renewInstantCurtainFailsafe(
+        timeoutMillis: Long = INSTANT_CURTAIN_FAILSAFE_MILLIS
+    ) {
         mainHandler.removeCallbacks(instantCurtainFailsafe)
-        mainHandler.postDelayed(instantCurtainFailsafe, INSTANT_CURTAIN_FAILSAFE_MILLIS)
+        mainHandler.postDelayed(instantCurtainFailsafe, timeoutMillis)
     }
 
     private fun handleInstantCurtainFailsafe() {
@@ -4349,7 +4361,8 @@ class BlockingAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
             AccessibilityEvent.TYPE_WINDOWS_CHANGED
         )
-        internal const val WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS = 2_000L
+        internal const val WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS =
+            WebsiteRedirectionPlan.DESTINATION_CONFIRM_TIMEOUT_MILLIS
         internal const val STRICT_BLOCK_NOTICE_DURATION_MILLIS = 1_000L
         const val ACTION_REFRESH_BLOCKING = "com.focusguard.ACTION_REFRESH_BLOCKING"
         internal const val ACTION_DEV_RELINQUISH_ACCESSIBILITY =
