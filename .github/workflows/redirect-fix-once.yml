@@ -54,6 +54,14 @@ jobs:
       - name: Run full unit test suite
         shell: bash
         run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+      - name: Upload unit test report on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: redirect-fix-unit-test-results
+          path: app/build/test-results/testDebugUnitTest/
+          if-no-files-found: error
+          retention-days: 1
       - name: Commit validated fix
         shell: bash
         run: |
