@@ -33,6 +33,11 @@ internal object AddressBarRedirectionActions {
         textCertified: Boolean
     ): Boolean = editable && (focused || textCertified)
 
+    internal fun isActiveAddressEdit(
+        editable: Boolean,
+        focused: Boolean
+    ): Boolean = editable && focused
+
     private val certifiedEditorActionLabels = setOf(
         "go", "ir", "navigate", "navegar", "enter", "search", "pesquisar", "done",
         "concluído", "concluido"
@@ -93,12 +98,7 @@ internal object AddressBarRedirectionActions {
         isCurrent = isCurrent
     )
 
-    /**
-     * The historical name is retained because callers use this as their submitter
-     * guard. With no text predicate it still requires focus. When an exact redirect
-     * predicate is supplied, an unfocused editor is accepted only while it still
-     * contains that certified replacement address.
-     */
+    /** Active editing requires real focus, regardless of the current address text. */
     fun hasFocusedAddressEditor(
         root: AccessibilityNodeInfo,
         browserPackageName: String,
@@ -112,11 +112,40 @@ internal object AddressBarRedirectionActions {
             nodes.count { node ->
                 val fact = node.toFact()
                 val textMatches = textPredicate == null || textPredicate(fact.text)
-                val exactTextCertified = textPredicate != null && textMatches
+                isActiveAddressEdit(
+                    editable = fact.editable,
+                    focused = fact.focused
+                ) &&
+                    BrowserUiCapabilityPolicy.isActionableAddressBarNode(
+                        fact, browserPackageName, expectedWindowId, httpsHandlerRecognized
+                    ) && textMatches
+            }.let { count -> if (requireUnique) count == 1 else count > 0 }
+        } finally { nodes.forEach(::recycleSafely) }
+    }
+
+    /**
+     * Submission may continue after a browser collapses focus only when the exact
+     * safe replacement address is still present in a unique actionable editor.
+     */
+    fun hasCertifiedAddressEditor(
+        root: AccessibilityNodeInfo,
+        browserPackageName: String,
+        expectedWindowId: Int,
+        httpsHandlerRecognized: Boolean,
+        textPredicate: (String?) -> Boolean,
+        requireUnique: Boolean = true
+    ): Boolean {
+        val nodes = collectAddressBarNodes(
+            root, browserPackageName, expectedWindowId, httpsHandlerRecognized
+        )
+        return try {
+            nodes.count { node ->
+                val fact = node.toFact()
+                val textMatches = textPredicate(fact.text)
                 canUseEditorForCertifiedSubmission(
                     editable = fact.editable,
                     focused = fact.focused,
-                    textCertified = exactTextCertified
+                    textCertified = textMatches
                 ) &&
                     BrowserUiCapabilityPolicy.isActionableAddressBarNode(
                         fact, browserPackageName, expectedWindowId, httpsHandlerRecognized

@@ -87,19 +87,32 @@ internal object WebsiteRedirectionCoordinator {
             val prepared = adapter.prepareSameTabRedirect(attemptNumber)
             if (!adapter.ownsProtection()) return Outcome.ABORTED
 
-            val submitted = prepared && adapter.submitSameTabRedirect(attemptNumber)
-            if (!adapter.ownsProtection()) return Outcome.ABORTED
+            var submittedAtLeastOnce = false
+            if (prepared) {
+                var submitAlternativeNumber = 1
+                while (submitAlternativeNumber <= WebsiteRedirectionPlan.MAX_SUBMIT_ALTERNATIVES) {
+                    val submitted = adapter.submitSameTabRedirect(attemptNumber)
+                    submittedAtLeastOnce = submittedAtLeastOnce || submitted
+                    if (!adapter.ownsProtection()) return Outcome.ABORTED
 
-            if (submitted && adapter.awaitRedirectConfirmation()) {
-                if (!adapter.ownsProtection()) return Outcome.ABORTED
-                return completeConfirmedRedirect(session, adapter)
+                    if (submitted && adapter.awaitRedirectConfirmation()) {
+                        if (!adapter.ownsProtection()) return Outcome.ABORTED
+                        return completeConfirmedRedirect(session, adapter)
+                    }
+                    if (!adapter.ownsProtection()) return Outcome.ABORTED
+                    submitAlternativeNumber += 1
+                }
             }
-            if (!adapter.ownsProtection()) return Outcome.ABORTED
 
             if (!WebsiteRedirectionPlan.canRetry(attemptNumber)) {
                 return failClosed(session, adapter)
             }
             if (!adapter.restoreBlockedSurfaceForRetry()) {
+                if (!adapter.ownsProtection()) return Outcome.ABORTED
+                if (submittedAtLeastOnce && adapter.awaitRedirectConfirmation()) {
+                    if (!adapter.ownsProtection()) return Outcome.ABORTED
+                    return completeConfirmedRedirect(session, adapter)
+                }
                 if (!adapter.ownsProtection()) return Outcome.ABORTED
                 return failClosed(session, adapter)
             }
@@ -176,14 +189,18 @@ internal class WebsiteTabNeutralizationPolicy(
         activePackageName: String,
         activeWindowId: Int,
         latestWindowTransitionEventUptimeMillis: Long
-    ): Boolean = state == State.SAFE_ADDRESS_SET &&
-        safeAddressSetAtUptimeMillis > 0L &&
-        latestWindowTransitionEventUptimeMillis <= safeAddressSetAtUptimeMillis &&
+    ): Boolean = safeAddressSetAtUptimeMillis > 0L &&
         activePackageName == browserPackageName &&
-        activeWindowId == expectedWindowId
+        activeWindowId == expectedWindowId &&
+        when (state) {
+            State.SAFE_ADDRESS_SET ->
+                latestWindowTransitionEventUptimeMillis <= safeAddressSetAtUptimeMillis
+            State.REDIRECT_REQUESTED -> true
+            State.BLOCKED_TAB -> false
+        }
 
     fun markRedirectRequested() {
-        check(state == State.SAFE_ADDRESS_SET)
+        check(state == State.SAFE_ADDRESS_SET || state == State.REDIRECT_REQUESTED)
         state = State.REDIRECT_REQUESTED
     }
 }

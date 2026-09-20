@@ -19,15 +19,15 @@ class WebsiteRedirectionCoordinatorTest {
     }
 
     @Test
-    fun `confirmation timeout retries whole same tab transaction once`() = runBlocking {
+    fun `confirmation timeout advances submit alternative before whole retry`() = runBlocking {
         val adapter = FakeAdapter(confirmResults = ArrayDeque(listOf(false, true)))
         val outcome = WebsiteRedirectionCoordinator.execute(normalSession(), adapter)
 
         assertThat(outcome).isEqualTo(WebsiteRedirectionCoordinator.Outcome.REDIRECT_CONFIRMED)
-        assertThat(adapter.prepareAttempts).containsExactly(1, 2).inOrder()
-        assertThat(adapter.submitAttempts).containsExactly(1, 2).inOrder()
+        assertThat(adapter.prepareAttempts).containsExactly(1)
+        assertThat(adapter.submitAttempts).containsExactly(1, 1).inOrder()
         assertThat(adapter.confirmCalls).isEqualTo(2)
-        assertThat(adapter.restoreCalls).isEqualTo(1)
+        assertThat(adapter.restoreCalls).isEqualTo(0)
         assertThat(adapter.failClosedCalls).isEqualTo(0)
     }
 
@@ -43,13 +43,55 @@ class WebsiteRedirectionCoordinatorTest {
     }
 
     @Test
-    fun `submit failure retries from restored blocked surface`() = runBlocking {
+    fun `submit failure advances another submit alternative before restoring`() = runBlocking {
         val adapter = FakeAdapter(submitResults = ArrayDeque(listOf(false, true)))
         val outcome = WebsiteRedirectionCoordinator.execute(normalSession(), adapter)
 
         assertThat(outcome).isEqualTo(WebsiteRedirectionCoordinator.Outcome.REDIRECT_CONFIRMED)
-        assertThat(adapter.submitAttempts).containsExactly(1, 2).inOrder()
+        assertThat(adapter.submitAttempts).containsExactly(1, 1).inOrder()
+        assertThat(adapter.restoreCalls).isEqualTo(0)
+    }
+
+    @Test
+    fun `all three submit alternatives are exhausted before consuming whole retry`() = runBlocking {
+        val adapter = FakeAdapter(
+            submitResults = ArrayDeque(listOf(true, true, true, true)),
+            confirmResults = ArrayDeque(listOf(false, false, false, true))
+        )
+        val outcome = WebsiteRedirectionCoordinator.execute(normalSession(), adapter)
+
+        assertThat(outcome).isEqualTo(WebsiteRedirectionCoordinator.Outcome.REDIRECT_CONFIRMED)
+        assertThat(adapter.prepareAttempts).containsExactly(1, 2).inOrder()
+        assertThat(adapter.submitAttempts).containsExactly(1, 1, 1, 2).inOrder()
+        assertThat(adapter.confirmCalls).isEqualTo(4)
         assertThat(adapter.restoreCalls).isEqualTo(1)
+    }
+
+    @Test
+    fun `delayed confirmation discovered during recovery completes redirect`() = runBlocking {
+        val adapter = FakeAdapter(
+            submitResults = ArrayDeque(listOf(true, true, true)),
+            confirmResults = ArrayDeque(listOf(false, false, false, true)),
+            restoreResult = false
+        )
+        val outcome = WebsiteRedirectionCoordinator.execute(normalSession(), adapter)
+
+        assertThat(outcome).isEqualTo(WebsiteRedirectionCoordinator.Outcome.REDIRECT_CONFIRMED)
+        assertThat(adapter.restoreCalls).isEqualTo(1)
+        assertThat(adapter.confirmCalls).isEqualTo(4)
+        assertThat(adapter.failClosedCalls).isEqualTo(0)
+    }
+
+    @Test
+    fun `redirect requested state allows the next certified submit alternative`() {
+        val policy = WebsiteTabNeutralizationPolicy("org.mozilla.firefox", 7)
+        policy.markSafeAddressSet(100L)
+        assertThat(policy.maySubmitSafeAddress("org.mozilla.firefox", 7, 90L)).isTrue()
+
+        policy.markRedirectRequested()
+
+        assertThat(policy.maySubmitSafeAddress("org.mozilla.firefox", 7, 150L)).isTrue()
+        policy.markRedirectRequested()
     }
 
     @Test

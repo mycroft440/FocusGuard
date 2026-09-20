@@ -38,6 +38,22 @@ class AddressBarRedirectionActionsPolicyTest {
     }
 
     @Test
+    fun `active editing requires actual focus`() {
+        assertThat(
+            AddressBarRedirectionActions.isActiveAddressEdit(
+                editable = true,
+                focused = false
+            )
+        ).isFalse()
+        assertThat(
+            AddressBarRedirectionActions.isActiveAddressEdit(
+                editable = true,
+                focused = true
+            )
+        ).isTrue()
+    }
+
+    @Test
     fun `non editable node is rejected even when redirect text is certified`() {
         assertThat(
             AddressBarRedirectionActions.canUseEditorForCertifiedSubmission(
