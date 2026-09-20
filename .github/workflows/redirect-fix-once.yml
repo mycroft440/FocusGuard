@@ -51,6 +51,9 @@ jobs:
       - name: Test Firefox redirection regression coverage
         shell: bash
         run: ./gradlew testDebugUnitTest --tests "com.focusguard.service.FirefoxWebsiteRedirectReliabilityTest" --no-daemon --stacktrace
+      - name: Test same-tab navigation policy
+        shell: bash
+        run: ./gradlew testDebugUnitTest --tests "com.focusguard.service.WebsiteBlockNavigationTest" --no-daemon --stacktrace
       - name: Run full unit test suite
         shell: bash
         run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
