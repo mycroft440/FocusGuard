@@ -23,34 +23,28 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Keep redirect translations in dedicated resource files
+      - name: Prepare redirect locale resource containers
         shell: bash
         run: |
           set -euo pipefail
           python3 - <<'PY'
           from pathlib import Path
+          import re
 
-          path = Path('.github/scripts/finalize_website_blocking_v4.py')
-          text = path.read_text()
+          script = Path('.github/scripts/finalize_website_blocking_v4.py').read_text()
+          start = script.index('translations = {')
+          end = script.index('\n}\n\nkeys = (', start)
+          translation_section = script[start:end]
+          folders = sorted(set(re.findall(r'^\s+"(values[^"]*)": \($', translation_section, re.MULTILINE)))
+          if not folders:
+              raise SystemExit('no redirect translation locales found')
 
-          old_path = 'path = Path("app/src/main/res") / folder / "strings.xml"'
-          new_path = 'path = Path("app/src/main/res") / folder / "website_redirect_strings.xml"'
-          if text.count(old_path) != 1:
-              raise SystemExit('redirect resource path seam changed unexpectedly')
-          text = text.replace(old_path, new_path)
-
-          old_open = '''    if not path.is_file():
-              raise SystemExit(f"supported locale file missing: {path}")
-          text = path.read_text()
-          '''
-          new_open = '''    path.parent.mkdir(parents=True, exist_ok=True)
-          if not path.exists():
-              path.write_text('<?xml version="1.0" encoding="utf-8"?>\\n<resources>\\n</resources>\\n')
-          text = path.read_text()
-          '''
-          if text.count(old_open) != 1:
-              raise SystemExit('redirect locale creation seam changed unexpectedly')
-          path.write_text(text.replace(old_open, new_open))
+          for folder in folders:
+              directory = Path('app/src/main/res') / folder
+              directory.mkdir(parents=True, exist_ok=True)
+              path = directory / 'strings.xml'
+              if not path.exists():
+                  path.write_text('<?xml version="1.0" encoding="utf-8"?>\n<resources>\n</resources>\n')
           PY
 
       - name: Apply guarded final website v4 integration
