@@ -5,22 +5,22 @@ import java.net.URI
 import java.util.Locale
 
 /**
- * Immutable description of the safe destination used after a website block.
+ * Immutable description of the destination used after a website block.
  *
- * The accessibility service is deliberately not the owner of the target URL.
- * Switching away from Google must happen here (or in a future persisted selector),
- * while the same-tab redirection engine only consumes this contract.
- *
- * This class intentionally uses only JVM URL primitives so destination policy can
- * be tested without an Android runtime and remains independent from UI/platform code.
+ * The redirection engine consumes only this contract. Persistence and conflict
+ * validation live in [WebsiteRedirectDestinationStore], so changing the target
+ * does not require editing browser-specific redirection code.
  */
 internal data class WebsiteRedirectDestination(
     val url: String,
     val acceptedRootHosts: Set<String>,
-    val acceptedRootQueryParameters: Set<String> = emptySet()
+    val acceptedRootQueryParameters: Set<String> = emptySet(),
+    val acceptedSchemes: Set<String> = setOf("https")
 ) {
     private val normalizedAcceptedRootHosts = acceptedRootHosts
         .mapTo(linkedSetOf()) { host -> normalizeHost(host) }
+    private val normalizedAcceptedSchemes = acceptedSchemes
+        .mapTo(linkedSetOf()) { scheme -> scheme.trim().lowercase(Locale.US) }
 
     init {
         require(normalizedAcceptedRootHosts.isNotEmpty()) {
@@ -29,18 +29,26 @@ internal data class WebsiteRedirectDestination(
         require(normalizedAcceptedRootHosts.none(String::isBlank)) {
             "Destination hosts cannot be blank"
         }
+        require(normalizedAcceptedSchemes.isNotEmpty() &&
+            normalizedAcceptedSchemes.all { it == "http" || it == "https" }
+        ) {
+            "Website redirect destination must use HTTP or HTTPS"
+        }
+
         val configured = runCatching { URI(url) }.getOrNull()
             ?: throw IllegalArgumentException("Website redirect destination must be a valid URI")
         val configuredHost = configured.host?.let(::normalizeHost)
             ?: throw IllegalArgumentException("Website redirect destination must have a host")
-        require(configured.scheme.equals("https", ignoreCase = true)) {
-            "Website redirect destination must use HTTPS"
+        val configuredScheme = configured.scheme?.lowercase(Locale.US)
+            ?: throw IllegalArgumentException("Website redirect destination must have a scheme")
+        require(configuredScheme in normalizedAcceptedSchemes) {
+            "Website redirect destination scheme is not accepted"
         }
         require(configured.userInfo == null) {
             "Website redirect destination cannot contain user info"
         }
-        require(configured.port == -1 || configured.port == 443) {
-            "Website redirect destination must use the default HTTPS port"
+        require(isDefaultPort(configuredScheme, configured.port)) {
+            "Website redirect destination must use the default web port"
         }
         require(configuredHost in normalizedAcceptedRootHosts) {
             "Configured destination host must be accepted by its validation policy"
@@ -61,9 +69,10 @@ internal data class WebsiteRedirectDestination(
         val candidate = WebsiteBlocker.extractUrlCandidate(raw) ?: raw
         val withScheme = if ("://" in candidate) candidate else "https://$candidate"
         val uri = runCatching { URI(withScheme) }.getOrNull() ?: return false
-        if (!uri.scheme.equals("https", ignoreCase = true) ||
+        val scheme = uri.scheme?.lowercase(Locale.US) ?: return false
+        if (scheme !in normalizedAcceptedSchemes ||
             uri.userInfo != null ||
-            (uri.port != -1 && uri.port != 443)
+            !isDefaultPort(scheme, uri.port)
         ) return false
         val host = uri.host?.let(::normalizeHost) ?: return false
         return host in normalizedAcceptedRootHosts &&
@@ -82,7 +91,10 @@ internal data class WebsiteRedirectDestination(
 
     companion object {
         private fun normalizeHost(host: String): String =
-            host.trim().lowercase(Locale.US)
+            host.trim().trimEnd('.').lowercase(Locale.US)
+
+        private fun isDefaultPort(scheme: String, port: Int): Boolean =
+            port == -1 || (scheme == "https" && port == 443) || (scheme == "http" && port == 80)
 
         /** Exact hosts published by Google's supported-domains endpoint. */
         private val GOOGLE_ROOT_HOSTS = """
@@ -116,15 +128,26 @@ internal data class WebsiteRedirectDestination(
         private val GOOGLE_ACCEPTED_ROOT_HOSTS = GOOGLE_ROOT_HOSTS
             .flatMapTo(linkedSetOf()) { host -> listOf(host, "www.$host") }
 
-        /** Initial FocusGuard destination. Future selection belongs in this layer. */
+        /** Initial FocusGuard destination required by the product contract. */
         val GOOGLE = WebsiteRedirectDestination(
-            url = "https://www.google.com",
+            url = "https://google.com/",
             acceptedRootHosts = GOOGLE_ACCEPTED_ROOT_HOSTS,
             acceptedRootQueryParameters = setOf("gl", "gws_rd", "hl")
         )
 
+        @Volatile
+        private var configuredCurrent: WebsiteRedirectDestination = GOOGLE
+
         /** Single source of truth consumed by the redirection pipeline. */
         val current: WebsiteRedirectDestination
-            get() = GOOGLE
+            get() = configuredCurrent
+
+        internal fun install(destination: WebsiteRedirectDestination) {
+            configuredCurrent = destination
+        }
+
+        internal fun resetToDefault() {
+            configuredCurrent = GOOGLE
+        }
     }
 }
