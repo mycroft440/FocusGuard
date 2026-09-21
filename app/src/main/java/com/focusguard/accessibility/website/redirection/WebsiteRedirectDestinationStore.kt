@@ -37,8 +37,11 @@ internal object WebsiteRedirectDestinationStore {
         activeBlockedRules: Collection<String> = emptySet()
     ): SaveResult {
         val destination = destinationFromUserInput(rawUrl) ?: return SaveResult.INVALID_URL
-        val normalizedRules = WebsiteBlocker.normalizeRules(activeBlockedRules)
-        if (WebsiteBlocker.findMatchingRule(destination.url, normalizedRules) != null) {
+        if (WebsiteBlocker.findMatchingRulesIgnoringGrants(
+                urlOrDomain = destination.url,
+                configuredRules = activeBlockedRules
+            ).isNotEmpty()
+        ) {
             return SaveResult.BLOCKED_BY_ACTIVE_RULE
         }
 
