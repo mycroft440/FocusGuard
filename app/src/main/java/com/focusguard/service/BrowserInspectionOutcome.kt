@@ -1,7 +1,9 @@
 package com.focusguard.service
 
 import android.view.accessibility.AccessibilityEvent
+import com.focusguard.accessibility.website.compatibility.BrowserClassification
 import com.focusguard.accessibility.website.compatibility.BrowserDetector
+import com.focusguard.accessibility.website.compatibility.BrowserProfileRegistry
 import com.focusguard.accessibility.website.compatibility.BrowserRecognitionPolicy
 import com.focusguard.accessibility.website.identification.WebsiteIdentificationLayer
 import com.focusguard.accessibility.website.identification.WebsiteIdentificationResult
@@ -73,16 +75,26 @@ internal data class BrowserInspectionOutcome(
             recognizedBrowser: Boolean
         ): BrowserInspectionOutcome {
             val token = snapshot.token
-            val classification = BrowserDetector.classify(token.packageName)
+            val hasSpecificOwner = BrowserProfileRegistry.isKnownBrowserPackage(token.packageName)
+            // Generic detection is intentionally skipped for specifically owned packages. A
+            // version/read failure stays on that browser's route instead of handing ownership to
+            // the generic detector.
+            val classification = if (hasSpecificOwner) {
+                BrowserClassification.UNKNOWN
+            } else {
+                BrowserDetector.classify(token.packageName)
+            }
             val effectiveRecognizedBrowser = BrowserRecognitionPolicy.isRecognizedBrowser(
                 classification = classification,
                 legacyRecognizedBrowser = recognizedBrowser,
-                addressBarObservable = identification.addressBarObservable
+                addressBarObservable = identification.addressBarObservable,
+                hasSpecificOwner = hasSpecificOwner
             )
             val effectiveSurface = BrowserRecognitionPolicy.recoverySurface(
                 classification = classification,
                 identificationStatus = identification.status,
-                observedSurface = surface
+                observedSurface = surface,
+                hasSpecificOwner = hasSpecificOwner
             )
             return BrowserInspectionOutcome(
                 packageName = token.packageName,
