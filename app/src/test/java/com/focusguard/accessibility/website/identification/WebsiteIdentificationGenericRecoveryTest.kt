@@ -34,11 +34,11 @@ import org.robolectric.annotation.Config
 @Config(sdk = [34], application = Application::class)
 class WebsiteIdentificationGenericRecoveryTest {
     private val pkg = "test.structural.browser"
-    private val windowId = 41
+    private val browserWindowId = 41
 
     @Before
     fun setUp() {
-        BrowserObservationSignal.clearForTest(pkg, windowId)
+        BrowserObservationSignal.clearForTest(pkg, browserWindowId)
         mockkObject(
             BrowserCompatibilityStore,
             BrowserDetector,
@@ -57,16 +57,16 @@ class WebsiteIdentificationGenericRecoveryTest {
             BrowserSurfaceInspector.Surface.WEB_CONTENT
         every { BrowserSurfaceInspector.isWebContainer(any()) } returns false
         every {
-            WebsiteIdentificationEngine.identifyFromRoot(any(), pkg, windowId, true, any())
+            WebsiteIdentificationEngine.identifyFromRoot(any(), pkg, browserWindowId, true, any())
         } returns WebsiteIdentificationResult(
             status = WebsiteIdentificationStatus.UNOBSERVABLE,
             browserPackageName = pkg,
-            windowId = windowId,
+            windowId = browserWindowId,
             webContentObserved = true
         )
         every {
             WebsiteBlocker.performUniqueAddressBarAction(
-                any(), pkg, windowId, any(), any(), any(), true, false, any()
+                any(), pkg, browserWindowId, any(), any(), any(), true, false, any()
             )
         } returns WebsiteBlocker.AddressBarActionResult(
             WebsiteBlocker.AddressBarActionStatus.ACCEPTED
@@ -85,7 +85,7 @@ class WebsiteIdentificationGenericRecoveryTest {
 
     @After
     fun tearDown() {
-        BrowserObservationSignal.clearForTest(pkg, windowId)
+        BrowserObservationSignal.clearForTest(pkg, browserWindowId)
         unmockkAll()
     }
 
@@ -94,12 +94,12 @@ class WebsiteIdentificationGenericRecoveryTest {
         val roots = mutableListOf<AccessibilityNodeInfo>()
         val recovery = WebsiteIdentificationRecovery(
             browserPackage = pkg,
-            windowId = windowId,
+            windowId = browserWindowId,
             httpsHandlerRecognized = true,
             rootProvider = {
                 mockk<AccessibilityNodeInfo>(relaxed = true) {
                     every { packageName } returns pkg
-                    every { this@mockk.windowId } returns this@WebsiteIdentificationGenericRecoveryTest.windowId
+                    every { windowId } returns browserWindowId
                     every { isVisibleToUser } returns true
                     every { childCount } returns 0
                 }.also(roots::add)
@@ -117,7 +117,7 @@ class WebsiteIdentificationGenericRecoveryTest {
         assertThat(result.evidence).contains(WebsiteIdentificationLayer.FAIL_CLOSED)
         verify(atMost = WebsiteIdentificationRecovery.GENERIC_MAX_RECOVERY_TECHNIQUES) {
             WebsiteBlocker.performUniqueAddressBarAction(
-                any(), pkg, windowId, any<BrowserUiCapabilityPolicy.NodeAction>(),
+                any(), pkg, browserWindowId, any<BrowserUiCapabilityPolicy.NodeAction>(),
                 any(), any(), true, false, any()
             )
         }
