@@ -37,11 +37,7 @@ internal object WebsiteRedirectDestinationStore {
         activeBlockedRules: Collection<String> = emptySet()
     ): SaveResult {
         val destination = destinationFromUserInput(rawUrl) ?: return SaveResult.INVALID_URL
-        if (WebsiteBlocker.findMatchingRulesIgnoringGrants(
-                urlOrDomain = destination.url,
-                configuredRules = activeBlockedRules
-            ).isNotEmpty()
-        ) {
+        if (conflictsWithRules(destination, activeBlockedRules)) {
             return SaveResult.BLOCKED_BY_ACTIVE_RULE
         }
 
@@ -57,6 +53,14 @@ internal object WebsiteRedirectDestinationStore {
         WebsiteRedirectDestination.install(destination)
         return SaveResult.SAVED
     }
+
+    /**
+     * Revalidates the already persisted destination against the rules that are
+     * effective now. A later rule change must never turn the destination into an
+     * implicit bypass or a redirect loop.
+     */
+    fun currentConflictsWith(activeBlockedRules: Collection<String>): Boolean =
+        conflictsWithRules(WebsiteRedirectDestination.current, activeBlockedRules)
 
     fun reset(context: Context) {
         val preferences = preferences(context)
@@ -98,6 +102,14 @@ internal object WebsiteRedirectDestinationStore {
             )
         }.getOrNull()
     }
+
+    private fun conflictsWithRules(
+        destination: WebsiteRedirectDestination,
+        activeBlockedRules: Collection<String>
+    ): Boolean = WebsiteBlocker.findMatchingRulesIgnoringGrants(
+        urlOrDomain = destination.url,
+        configuredRules = activeBlockedRules
+    ).isNotEmpty()
 
     private fun preferences(context: Context) = storageContext(context)
         .getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
