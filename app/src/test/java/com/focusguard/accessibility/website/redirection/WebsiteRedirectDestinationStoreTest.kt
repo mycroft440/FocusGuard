@@ -39,7 +39,11 @@ class WebsiteRedirectDestinationStoreTest {
     fun `save publishes destination and increments revision`() {
         val before = WebsiteRedirectDestinationStore.revision(context)
 
-        val result = WebsiteRedirectDestinationStore.save(context, "https://example.org/")
+        val result = WebsiteRedirectDestinationStore.save(
+            context = context,
+            rawUrl = "https://example.org/",
+            activeBlockedRules = emptySet()
+        )
 
         assertThat(result).isEqualTo(WebsiteRedirectDestinationStore.SaveResult.SAVED)
         assertThat(WebsiteRedirectDestination.current.url).isEqualTo("https://example.org/")
@@ -62,7 +66,11 @@ class WebsiteRedirectDestinationStoreTest {
     @Test
     fun `later rule change suspends already configured destination`() {
         assertThat(
-            WebsiteRedirectDestinationStore.save(context, "https://example.org/")
+            WebsiteRedirectDestinationStore.save(
+                context = context,
+                rawUrl = "https://example.org/",
+                activeBlockedRules = emptySet()
+            )
         ).isEqualTo(WebsiteRedirectDestinationStore.SaveResult.SAVED)
 
         assertThat(
@@ -76,7 +84,11 @@ class WebsiteRedirectDestinationStoreTest {
     @Test
     fun `temporary password grant never turns blocked destination into redirect bypass`() {
         assertThat(
-            WebsiteRedirectDestinationStore.save(context, "https://example.org/")
+            WebsiteRedirectDestinationStore.save(
+                context = context,
+                rawUrl = "https://example.org/",
+                activeBlockedRules = emptySet()
+            )
         ).isEqualTo(WebsiteRedirectDestinationStore.SaveResult.SAVED)
 
         assertThat(
