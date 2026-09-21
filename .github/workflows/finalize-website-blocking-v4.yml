@@ -23,18 +23,55 @@ jobs:
           distribution: temurin
           java-version: '17'
 
+      - name: Keep redirect translations in dedicated resource files
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          from pathlib import Path
+
+          path = Path('.github/scripts/finalize_website_blocking_v4.py')
+          text = path.read_text()
+
+          old_path = 'path = Path("app/src/main/res") / folder / "strings.xml"'
+          new_path = 'path = Path("app/src/main/res") / folder / "website_redirect_strings.xml"'
+          if text.count(old_path) != 1:
+              raise SystemExit('redirect resource path seam changed unexpectedly')
+          text = text.replace(old_path, new_path)
+
+          old_open = '''    if not path.is_file():
+              raise SystemExit(f"supported locale file missing: {path}")
+          text = path.read_text()
+          '''
+          new_open = '''    path.parent.mkdir(parents=True, exist_ok=True)
+          if not path.exists():
+              path.write_text('<?xml version="1.0" encoding="utf-8"?>\\n<resources>\\n</resources>\\n')
+          text = path.read_text()
+          '''
+          if text.count(old_open) != 1:
+              raise SystemExit('redirect locale creation seam changed unexpectedly')
+          path.write_text(text.replace(old_open, new_open))
+          PY
+
       - name: Apply guarded final website v4 integration
         run: python3 .github/scripts/finalize_website_blocking_v4.py
 
-      - name: Build, test and lint website blocking changes
+      - name: Build and lint website blocking changes
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
           ./gradlew \
             :app:assembleDebug \
-            :app:testDebugUnitTest \
             :app:lintDebug \
+            --no-daemon
+
+      - name: Run focused website blocking tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew \
+            :app:testDebugUnitTest \
             --tests 'com.focusguard.accessibility.website.blocking.*' \
             --tests 'com.focusguard.accessibility.website.compatibility.*' \
             --tests 'com.focusguard.accessibility.website.identification.*' \
