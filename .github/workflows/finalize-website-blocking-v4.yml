@@ -50,34 +50,68 @@ jobs:
       - name: Apply guarded final website v4 integration
         run: python3 .github/scripts/finalize_website_blocking_v4.py
 
-      - name: Build and lint website blocking changes
+      - name: Run blocking ownership tests
         shell: bash
         run: |
           set -euo pipefail
           chmod +x ./gradlew
-          ./gradlew \
-            :app:assembleDebug \
-            :app:lintDebug \
+          ./gradlew :app:testDebugUnitTest \
+            --tests 'com.focusguard.accessibility.website.blocking.*' \
+            --tests 'com.focusguard.service.WebsiteProtectionHierarchyPolicyTest' \
             --no-daemon
 
-      - name: Run focused website blocking tests
+      - name: Run browser compatibility tests
         shell: bash
         run: |
           set -euo pipefail
-          ./gradlew \
-            :app:testDebugUnitTest \
-            --tests 'com.focusguard.accessibility.website.blocking.*' \
+          ./gradlew :app:testDebugUnitTest \
             --tests 'com.focusguard.accessibility.website.compatibility.*' \
+            --no-daemon
+
+      - name: Run website identification tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest \
             --tests 'com.focusguard.accessibility.website.identification.*' \
+            --no-daemon
+
+      - name: Run website redirection tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest \
             --tests 'com.focusguard.accessibility.website.redirection.*' \
-            --tests 'com.focusguard.service.WebsiteProtectionHierarchyPolicyTest' \
+            --no-daemon
+
+      - name: Run accessibility service website tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest \
             --tests 'com.focusguard.service.BlockingAccessibilityInputTest' \
             --tests 'com.focusguard.service.WebsiteCurtainInputPolicyTest' \
             --tests 'com.focusguard.service.WebsiteBlockNavigationTest' \
+            --no-daemon
+
+      - name: Run website utility tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew :app:testDebugUnitTest \
             --tests 'com.focusguard.utils.BrowserInspectionSessionTest' \
             --tests 'com.focusguard.utils.WebsiteBlockerTest' \
             --no-daemon
           git diff --check
+
+      - name: Build and lint website blocking changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./gradlew \
+            :app:assembleDebug \
+            :app:lintDebug \
+            --no-daemon
 
       - name: Commit final integration and remove temporary automation
         shell: bash
