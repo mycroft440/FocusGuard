@@ -21,7 +21,7 @@ internal object WebsiteRedirectDestinationStore {
     private const val KEY_REVISION = "revision"
 
     fun initialize(context: Context) {
-        val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+        val preferences = preferences(context)
         val stored = preferences.getString(KEY_URL, null)
         val destination = stored?.let(::destinationFromUserInput)
         if (destination != null) {
@@ -42,7 +42,7 @@ internal object WebsiteRedirectDestinationStore {
             return SaveResult.BLOCKED_BY_ACTIVE_RULE
         }
 
-        val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+        val preferences = preferences(context)
         val nextRevision = preferences.getLong(KEY_REVISION, 0L) + 1L
         if (!preferences.edit()
                 .putString(KEY_URL, destination.url)
@@ -56,7 +56,7 @@ internal object WebsiteRedirectDestinationStore {
     }
 
     fun reset(context: Context) {
-        val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+        val preferences = preferences(context)
         val nextRevision = preferences.getLong(KEY_REVISION, 0L) + 1L
         preferences.edit()
             .remove(KEY_URL)
@@ -65,9 +65,7 @@ internal object WebsiteRedirectDestinationStore {
         WebsiteRedirectDestination.resetToDefault()
     }
 
-    fun revision(context: Context): Long =
-        context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
-            .getLong(KEY_REVISION, 0L)
+    fun revision(context: Context): Long = preferences(context).getLong(KEY_REVISION, 0L)
 
     internal fun destinationFromUserInput(rawUrl: String): WebsiteRedirectDestination? {
         val trimmed = rawUrl.trim()
@@ -97,6 +95,13 @@ internal object WebsiteRedirectDestinationStore {
             )
         }.getOrNull()
     }
+
+    private fun preferences(context: Context) = storageContext(context)
+        .getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
+
+    private fun storageContext(context: Context): Context = runCatching {
+        context.createDeviceProtectedStorageContext()
+    }.getOrDefault(context.applicationContext)
 
     private val SCHEME_REGEX = Regex("^[A-Za-z][A-Za-z0-9+.-]*://")
 }
