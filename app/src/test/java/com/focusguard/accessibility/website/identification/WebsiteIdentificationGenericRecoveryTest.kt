@@ -48,6 +48,7 @@ class WebsiteIdentificationGenericRecoveryTest {
             WebsiteBlocker
         )
         every { BrowserCompatibilityStore.preferredUrlRecoveryMethod(pkg) } returns null
+        every { BrowserCompatibilityStore.preferredActivationMethod(pkg) } returns null
         every { BrowserCompatibilityStore.recordUrlRecoverySuccess(any(), any()) } just Runs
         every { BrowserDetector.detect(pkg) } returns BrowserDetectionDecision(
             BrowserClassification.CONFIRMED_BROWSER,
