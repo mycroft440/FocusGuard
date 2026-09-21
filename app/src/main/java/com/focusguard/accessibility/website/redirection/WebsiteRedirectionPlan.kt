@@ -2,8 +2,10 @@ package com.focusguard.accessibility.website.redirection
 
 /** Executable retry policy consumed directly by [WebsiteRedirectionCoordinator]. */
 internal object WebsiteRedirectionPlan {
-    const val MAX_SAME_TAB_ATTEMPTS = 2
-    const val MAX_SUBMIT_ALTERNATIVES = 3
+    // One automatic navigation operation per blocking occurrence. A late result may
+    // still be observed, but failure never authorizes a second automatic submit.
+    const val MAX_SAME_TAB_ATTEMPTS = 1
+    const val MAX_SUBMIT_ALTERNATIVES = 1
     const val DESTINATION_CONFIRM_TIMEOUT_MILLIS = 2_000L
 
     private const val PREPARE_AND_RECOVERY_BUDGET_PER_ATTEMPT_MILLIS = 4_000L
@@ -18,7 +20,7 @@ internal object WebsiteRedirectionPlan {
 
     /**
      * Coordinate taps, guessed keyboard positions and ACTION_VIEW are deliberately
-     * excluded. Exhausting this bounded same-tab budget is terminal fail-closed.
+     * excluded. Exhausting the single same-tab operation is terminal fail-closed.
      */
     fun canRetry(attemptNumber: Int): Boolean = attemptNumber < MAX_SAME_TAB_ATTEMPTS
 }
