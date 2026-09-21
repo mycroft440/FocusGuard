@@ -34,7 +34,7 @@ internal object WebsiteRedirectDestinationStore {
     fun save(
         context: Context,
         rawUrl: String,
-        activeBlockedRules: Collection<String> = emptySet()
+        activeBlockedRules: Collection<String>
     ): SaveResult {
         val destination = destinationFromUserInput(rawUrl) ?: return SaveResult.INVALID_URL
         if (conflictsWithRules(destination, activeBlockedRules)) {
