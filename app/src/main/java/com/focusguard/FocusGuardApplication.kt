@@ -9,6 +9,7 @@ import com.focusguard.accessibility.website.compatibility.BrowserCompatibilitySt
 import com.focusguard.accessibility.website.compatibility.BrowserDetector
 import com.focusguard.accessibility.website.diagnostics.WebsiteBlockingDiagnostics
 import com.focusguard.accessibility.website.redirection.ClipboardPasteFallback
+import com.focusguard.accessibility.website.redirection.WebsiteRedirectDestinationStore
 import com.focusguard.admin.DeviceOwnerManager
 import com.focusguard.focusmode.FocusModeManager
 import com.focusguard.focusmode.FocusModeStore
@@ -53,6 +54,7 @@ class FocusGuardApplication : Application() {
         }.getOrDefault(startupContext)
         BrowserDetector.initialize(browserCompatibilityContext)
         BrowserCompatibilityStore.initialize(browserCompatibilityContext)
+        WebsiteRedirectDestinationStore.initialize(browserCompatibilityContext)
         FocusGuardLogger.init(startupContext)
         WebsiteBlockingDiagnostics.initialize(startupContext)
 
