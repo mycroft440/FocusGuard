@@ -785,4 +785,10 @@
     <string name="website_block_overlay_message">ওয়েবসাইট ব্লক করা হয়েছে: %1$s</string>
     <string name="website_block_overlay_message_generic">FocusGuard ওয়েবসাইটটি ব্লক করেছে</string>
     <string name="website_block_notice_description">এই ওয়েবসাইটে প্রবেশ ব্লক করা হয়েছে।</string>
+    <!-- Website redirect destination -->
+    <string name="settings_redirect_destination_title">পুনঃনির্দেশের গন্তব্য</string>
+    <string name="settings_redirect_destination_subtitle">সাইট ব্লক করার পরে: %1$s</string>
+    <string name="settings_redirect_destination_helper">কোনো ওয়েবসাইট ব্লক করার পরে HardBlock যে মূল ঠিকানাটি খুলবে সেটি বেছে নিন। HTTP এবং HTTPS সমর্থিত।</string>
+    <string name="settings_redirect_destination_invalid">লগইন তথ্য, পাথ, কোয়েরি বা ফ্র্যাগমেন্ট ছাড়া একটি বৈধ মূল ঠিকানা লিখুন।</string>
+    <string name="settings_redirect_destination_blocked">এই ঠিকানাটি বর্তমানে ব্লক করা আছে। অন্য গন্তব্য বেছে নিন।</string>
 </resources>

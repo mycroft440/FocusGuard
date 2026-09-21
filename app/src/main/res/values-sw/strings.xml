@@ -785,4 +785,10 @@
     <string name="website_block_overlay_message">Tovuti imezuiwa: %1$s</string>
     <string name="website_block_overlay_message_generic">Tovuti imezuiwa na FocusGuard</string>
     <string name="website_block_notice_description">Ufikiaji wa tovuti hii umezuiwa.</string>
+    <!-- Website redirect destination -->
+    <string name="settings_redirect_destination_title">Mahali pa kuelekeza upya</string>
+    <string name="settings_redirect_destination_subtitle">Baada ya kuzuia tovuti: %1$s</string>
+    <string name="settings_redirect_destination_helper">Chagua anwani ya msingi ambayo HardBlock itafungua baada ya kuzuia tovuti. HTTP na HTTPS zinatumika.</string>
+    <string name="settings_redirect_destination_invalid">Weka anwani halali ya msingi bila taarifa za kuingia, njia, hoja au kipande.</string>
+    <string name="settings_redirect_destination_blocked">Anwani hii imezuiwa kwa sasa. Chagua mahali pengine.</string>
 </resources>

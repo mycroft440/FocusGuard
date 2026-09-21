@@ -785,4 +785,10 @@
     <string name="website_block_overlay_message">ویب سائٹ بلاک کر دی گئی: %1$s</string>
     <string name="website_block_overlay_message_generic">FocusGuard نے ویب سائٹ بلاک کر دی</string>
     <string name="website_block_notice_description">اس ویب سائٹ تک رسائی بلاک کر دی گئی ہے۔</string>
+    <!-- Website redirect destination -->
+    <string name="settings_redirect_destination_title">ری ڈائریکٹ منزل</string>
+    <string name="settings_redirect_destination_subtitle">سائٹ بلاک ہونے کے بعد: %1$s</string>
+    <string name="settings_redirect_destination_helper">ویب سائٹ بلاک ہونے کے بعد HardBlock جو بنیادی پتہ کھولے، اسے منتخب کریں۔ HTTP اور HTTPS معاون ہیں۔</string>
+    <string name="settings_redirect_destination_invalid">اسناد، راستے، استفسار یا فریگمنٹ کے بغیر درست بنیادی پتہ درج کریں۔</string>
+    <string name="settings_redirect_destination_blocked">یہ پتہ اس وقت بلاک ہے۔ کوئی دوسری منزل منتخب کریں۔</string>
 </resources>

@@ -785,4 +785,10 @@
     <string name="website_block_overlay_message">An toshe shafin yanar gizo: %1$s</string>
     <string name="website_block_overlay_message_generic">FocusGuard ya toshe shafin yanar gizo</string>
     <string name="website_block_notice_description">An toshe damar shiga wannan shafin yanar gizo.</string>
+    <!-- Website redirect destination -->
+    <string name="settings_redirect_destination_title">Wurin turawa</string>
+    <string name="settings_redirect_destination_subtitle">Bayan an toshe shafi: %1$s</string>
+    <string name="settings_redirect_destination_helper">Zaɓi tushen adireshin da HardBlock zai buɗe bayan ya toshe shafin yanar gizo. Ana tallafa wa HTTP da HTTPS.</string>
+    <string name="settings_redirect_destination_invalid">Shigar da ingantaccen tushen adireshi ba tare da bayanan shiga, hanya, tambaya ko fragment ba.</string>
+    <string name="settings_redirect_destination_blocked">An toshe wannan adireshin yanzu. Zaɓi wani wuri.</string>
 </resources>

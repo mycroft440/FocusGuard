@@ -793,4 +793,10 @@
     <string name="website_block_overlay_message">الموقع اتحظر: %1$s</string>
     <string name="website_block_overlay_message_generic">FocusGuard حظر الموقع</string>
     <string name="website_block_notice_description">الوصول للموقع ده اتحظر.</string>
+    <!-- Website redirect destination -->
+    <string name="settings_redirect_destination_title">وجهة التحويل</string>
+    <string name="settings_redirect_destination_subtitle">بعد ما الموقع يتمنع: %1$s</string>
+    <string name="settings_redirect_destination_helper">اختار العنوان الرئيسي اللي HardBlock يفتحه بعد ما يمنع موقع. HTTP وHTTPS مدعومين.</string>
+    <string name="settings_redirect_destination_invalid">اكتب عنوان رئيسي صحيح من غير بيانات دخول أو مسار أو استعلام أو جزء.</string>
+    <string name="settings_redirect_destination_blocked">العنوان ده محظور دلوقتي. اختار وجهة تانية.</string>
 </resources>

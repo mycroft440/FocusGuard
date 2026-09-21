@@ -789,4 +789,10 @@
     <string name="website_block_overlay_message">Сайт заблокирован: %1$s</string>
     <string name="website_block_overlay_message_generic">Сайт заблокирован FocusGuard</string>
     <string name="website_block_notice_description">Доступ к этому сайту заблокирован.</string>
+    <!-- Website redirect destination -->
+    <string name="settings_redirect_destination_title">Адрес перенаправления</string>
+    <string name="settings_redirect_destination_subtitle">После блокировки сайта: %1$s</string>
+    <string name="settings_redirect_destination_helper">Выберите корневой адрес, который HardBlock должен открыть после блокировки сайта. Поддерживаются HTTP и HTTPS.</string>
+    <string name="settings_redirect_destination_invalid">Введите корректный корневой адрес без учетных данных, пути, запроса и фрагмента.</string>
+    <string name="settings_redirect_destination_blocked">Этот адрес сейчас заблокирован. Выберите другой.</string>
 </resources>

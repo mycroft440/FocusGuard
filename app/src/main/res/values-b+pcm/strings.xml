@@ -785,4 +785,10 @@
     <string name="website_block_overlay_message">Website don block: %1$s</string>
     <string name="website_block_overlay_message_generic">FocusGuard don block website</string>
     <string name="website_block_notice_description">Access to dis website don block.</string>
+    <!-- Website redirect destination -->
+    <string name="settings_redirect_destination_title">Where redirect go</string>
+    <string name="settings_redirect_destination_subtitle">After site block: %1$s</string>
+    <string name="settings_redirect_destination_helper">Choose di root address wey HardBlock go open after e block website. HTTP and HTTPS dey work.</string>
+    <string name="settings_redirect_destination_invalid">Enter correct root address without login details, path, query or fragment.</string>
+    <string name="settings_redirect_destination_blocked">Dis address dey blocked now. Choose another place.</string>
 </resources>

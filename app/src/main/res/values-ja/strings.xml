@@ -785,4 +785,10 @@
     <string name="website_block_overlay_message">ウェブサイトをブロックしました: %1$s</string>
     <string name="website_block_overlay_message_generic">FocusGuard がウェブサイトをブロックしました</string>
     <string name="website_block_notice_description">このウェブサイトへのアクセスはブロックされています。</string>
+    <!-- Website redirect destination -->
+    <string name="settings_redirect_destination_title">リダイレクト先</string>
+    <string name="settings_redirect_destination_subtitle">サイトをブロックした後: %1$s</string>
+    <string name="settings_redirect_destination_helper">Web サイトをブロックした後に HardBlock が開くルートアドレスを選択します。HTTP と HTTPS に対応しています。</string>
+    <string name="settings_redirect_destination_invalid">認証情報、パス、クエリ、フラグメントを含まない有効なルートアドレスを入力してください。</string>
+    <string name="settings_redirect_destination_blocked">このアドレスは現在ブロックされています。別の宛先を選択してください。</string>
 </resources>

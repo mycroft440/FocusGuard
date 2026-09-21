@@ -785,4 +785,10 @@
     <string name="website_block_overlay_message">Website blockiert: %1$s</string>
     <string name="website_block_overlay_message_generic">Website von FocusGuard blockiert</string>
     <string name="website_block_notice_description">Der Zugriff auf diese Website wurde blockiert.</string>
+    <!-- Website redirect destination -->
+    <string name="settings_redirect_destination_title">Weiterleitungsziel</string>
+    <string name="settings_redirect_destination_subtitle">Nach dem Blockieren einer Website: %1$s</string>
+    <string name="settings_redirect_destination_helper">Wähle die Stammadresse, die HardBlock nach dem Blockieren einer Website öffnen soll. HTTP und HTTPS werden unterstützt.</string>
+    <string name="settings_redirect_destination_invalid">Gib eine gültige Stammadresse ohne Zugangsdaten, Pfad, Abfrage oder Fragment ein.</string>
+    <string name="settings_redirect_destination_blocked">Diese Adresse ist derzeit blockiert. Wähle ein anderes Ziel.</string>
 </resources>

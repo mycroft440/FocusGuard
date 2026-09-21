@@ -38,6 +38,8 @@ import com.focusguard.accessibility.website.identification.WebsiteIdentification
 import com.focusguard.accessibility.website.identification.WebsiteIdentificationRecovery
 import com.focusguard.accessibility.website.identification.WebsiteIdentificationStatus
 import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
+import com.focusguard.accessibility.website.compatibility.BrowserDetector
+import com.focusguard.accessibility.website.compatibility.BrowserProfileRegistry
 import com.focusguard.accessibility.website.compatibility.BrowserActivationMethod
 import com.focusguard.accessibility.website.compatibility.BrowserWriteMethod
 import com.focusguard.accessibility.website.compatibility.BrowserSubmitMethod
@@ -234,6 +236,7 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private enum class CurtainMode {
         BLOCK_NOTICE,
+        WEBSITE_BLOCK_NOTICE,
         SELF_PROTECTION
     }
 
@@ -279,7 +282,8 @@ class BlockingAccessibilityService : AccessibilityService() {
     private var pendingSettingsProtectionUntilElapsed = 0L
 
     @Volatile private var browserPackages: Set<String> = emptySet()
-    private var verifiedHttpsHandlerPackages: Set<String> = emptySet()
+    @Volatile private var verifiedHttpsHandlerPackages: Set<String> = emptySet()
+    private var browserClassificationJob: Job? = null
     private data class BrowserDiscoveryMiss(
         val windowId: Int,
         val checkedAtElapsed: Long
@@ -312,6 +316,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         "org.mozilla.firefox",
         "org.mozilla.firefox_beta",
         "org.mozilla.fenix",
+        "org.mozilla.fenix.nightly",
         "org.mozilla.fennec_aurora",
         "org.mozilla.focus",
         "org.mozilla.klar",
@@ -559,27 +564,49 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private fun calculateBrowserPackages() {
         browserDiscoveryMisses.clear()
-        browserPackages = try {
-            val browserIntent = Intent(
-                Intent.ACTION_VIEW,
-                android.net.Uri.parse("https://example.com")
-            ).apply {
-                addCategory(Intent.CATEGORY_BROWSABLE)
-            }
-            val dynamicBrowsers = packageManager.queryIntentActivities(
+        browserClassificationJob?.cancel()
+
+        val browserIntent = Intent(
+            Intent.ACTION_VIEW,
+            android.net.Uri.parse("https://example.com")
+        ).apply {
+            addCategory(Intent.CATEGORY_BROWSABLE)
+        }
+        val dynamicCandidates = try {
+            packageManager.queryIntentActivities(
                 browserIntent,
                 PackageManagerCompat.MATCH_ALL
             ).mapNotNull { it.activityInfo?.packageName }.toSet()
-            verifiedHttpsHandlerPackages = dynamicBrowsers
-            knownBrowserPackages + dynamicBrowsers
         } catch (error: RuntimeException) {
             FocusGuardLogger.logError(
                 "A11y",
-                "Falha ao identificar navegadores",
+                "Falha ao identificar candidatos a navegador",
                 error
             )
-            verifiedHttpsHandlerPackages = emptySet()
-            knownBrowserPackages
+            emptySet()
+        }
+
+        // Exact shipped profiles remain immediately available. Every other package
+        // must pass BrowserDetector's structural contract off the callback thread
+        // before it is allowed to enter any Accessibility tree inspection.
+        val exactProfiles = knownBrowserPackages
+            .filter(BrowserProfileRegistry::isKnownBrowserPackage)
+            .toSet()
+        browserPackages = exactProfiles
+        verifiedHttpsHandlerPackages = emptySet()
+        if (dynamicCandidates.isEmpty()) return
+
+        browserClassificationJob = scope.launch {
+            val confirmedDynamic = linkedSetOf<String>()
+            for (candidate in dynamicCandidates) {
+                if (!isActive) return@launch
+                if (BrowserDetector.detect(candidate).classification.isBrowserLike) {
+                    confirmedDynamic += candidate
+                }
+            }
+            if (!isActive) return@launch
+            verifiedHttpsHandlerPackages = confirmedDynamic
+            browserPackages = exactProfiles + confirmedDynamic
         }
     }
 
@@ -1143,6 +1170,13 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
+        if (shouldConsumeWebsiteCurtainKey(
+                curtainVisible = instantBlockCurtainVisible,
+                websiteCurtain = instantBlockCurtainMode == CurtainMode.WEBSITE_BLOCK_NOTICE,
+                keyCode = event.keyCode
+            )
+        ) return true
+
         val isBackOrHomeKey = event.keyCode == KeyEvent.KEYCODE_BACK ||
             event.keyCode == KeyEvent.KEYCODE_HOME
         if (!isBackOrHomeKey) return false
@@ -2745,9 +2779,24 @@ class BlockingAccessibilityService : AccessibilityService() {
                         browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true) &&
                         foregroundPackageName == packageName && websiteObservationRequired() &&
                         !websiteBlockTransitionGuard.isActive(packageName)
+                val genericRecovery =
+                    !BrowserProfileRegistry.isKnownBrowserPackage(packageName)
+                var genericCurtainGeneration = 0L
                 try {
                     if (current()) {
-                        delay(WebsiteObservabilityPolicy.OPAQUE_BROWSER_GRACE_MILLIS)
+                        if (genericRecovery) {
+                            genericCurtainGeneration = withContext(Dispatchers.Main.immediate) {
+                                if (current()) {
+                                    showInstantBlockCurtain(
+                                        mode = CurtainMode.WEBSITE_BLOCK_NOTICE
+                                    )
+                                } else {
+                                    0L
+                                }
+                            }
+                        } else {
+                            delay(WebsiteObservabilityPolicy.OPAQUE_BROWSER_GRACE_MILLIS)
+                        }
                         if (current()) {
                             val identification = WebsiteIdentificationRecovery(
                                 browserPackage = packageName,
@@ -2782,6 +2831,13 @@ class BlockingAccessibilityService : AccessibilityService() {
                 } catch (error: RuntimeException) {
                     if (current()) FocusGuardLogger.logError("A11y", "Falha na recuperação do navegador", error)
                 } finally {
+                    if (genericCurtainGeneration > 0L) {
+                        mainHandler.post {
+                            // Generation ownership prevents an old generic inspection from
+                            // dismissing a newer HARD/PASSWORD/fail-closed presentation.
+                            dismissInstantBlockCurtain(genericCurtainGeneration)
+                        }
+                    }
                     next = browserRecoveryCoordinator.finish(token)
                 }
             }
@@ -3318,7 +3374,7 @@ class BlockingAccessibilityService : AccessibilityService() {
      * executed. A foreground Activity is reserved for terminal fail-closed paths.
      */
     private fun showWebsiteBlockPresentation(blockedCandidate: String?): Long {
-        val generation = showInstantBlockCurtain(mode = CurtainMode.BLOCK_NOTICE)
+        val generation = showInstantBlockCurtain(mode = CurtainMode.WEBSITE_BLOCK_NOTICE)
         renewInstantCurtainFailsafe(WebsiteRedirectionPlan.CURTAIN_FAILSAFE_MILLIS)
         val displayTarget = blockedCandidate
             ?.takeIf(String::isNotBlank)
@@ -3928,6 +3984,17 @@ class BlockingAccessibilityService : AccessibilityService() {
                 }
             )
         }
+        curtain.isClickable = true
+        curtain.isFocusable = true
+        curtain.isFocusableInTouchMode = true
+        curtain.setOnTouchListener { _, _ -> instantBlockCurtainVisible }
+        curtain.setOnKeyListener { _, keyCode, _ ->
+            shouldConsumeWebsiteCurtainKey(
+                curtainVisible = instantBlockCurtainVisible,
+                websiteCurtain = instantBlockCurtainMode == CurtainMode.WEBSITE_BLOCK_NOTICE,
+                keyCode = keyCode
+            )
+        }
         instantBlockCurtain = curtain
         instantBlockCurtainLayoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -4006,13 +4073,19 @@ class BlockingAccessibilityService : AccessibilityService() {
             }
         }
 
+        val websiteCurtain = mode == CurtainMode.WEBSITE_BLOCK_NOTICE
         params.alpha = 1f
-        params.flags = visibleOverlayFlags(params.flags)
+        params.flags = visibleOverlayFlags(params.flags, focusable = websiteCurtain)
         val curtain = instantBlockCurtain ?: return
         val manager = windowManager ?: return
         runCatching {
             manager.updateViewLayout(curtain, params)
             instantBlockCurtainVisible = true
+            if (websiteCurtain) {
+                curtain.requestFocus()
+            } else {
+                curtain.clearFocus()
+            }
         }.onFailure { error ->
             FocusGuardLogger.logError(
                 "A11y",
@@ -4640,9 +4713,39 @@ class BlockingAccessibilityService : AccessibilityService() {
             flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
 
-        internal fun visibleOverlayFlags(flags: Int): Int =
-            (flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()) or
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        internal fun visibleOverlayFlags(
+            flags: Int,
+            focusable: Boolean = false
+        ): Int {
+            val touchable = flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+            return if (focusable) {
+                touchable and WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE.inv()
+            } else {
+                touchable or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+            }
+        }
+
+        internal fun shouldConsumeWebsiteCurtainKey(
+            curtainVisible: Boolean,
+            websiteCurtain: Boolean,
+            keyCode: Int
+        ): Boolean {
+            if (!curtainVisible || !websiteCurtain) return false
+            return keyCode !in setOf(
+                KeyEvent.KEYCODE_VOLUME_UP,
+                KeyEvent.KEYCODE_VOLUME_DOWN,
+                KeyEvent.KEYCODE_VOLUME_MUTE,
+                KeyEvent.KEYCODE_POWER,
+                KeyEvent.KEYCODE_CAMERA,
+                KeyEvent.KEYCODE_HEADSETHOOK,
+                KeyEvent.KEYCODE_MEDIA_PLAY,
+                KeyEvent.KEYCODE_MEDIA_PAUSE,
+                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
+                KeyEvent.KEYCODE_MEDIA_NEXT,
+                KeyEvent.KEYCODE_MEDIA_PREVIOUS,
+                KeyEvent.KEYCODE_MEDIA_STOP
+            )
+        }
 
         /**
          * The opaque accessibility curtain already prevents interaction with the
