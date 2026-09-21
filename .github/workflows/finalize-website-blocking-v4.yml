@@ -1,0 +1,62 @@
+name: Finalize website blocking v4
+
+on:
+  push:
+    branches:
+      - hardblock-website-blocking-v4
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Apply guarded final website v4 integration
+        run: python3 .github/scripts/finalize_website_blocking_v4.py
+
+      - name: Build, test and lint website blocking changes
+        shell: bash
+        run: |
+          set -euo pipefail
+          chmod +x ./gradlew
+          ./gradlew \
+            :app:assembleDebug \
+            :app:testDebugUnitTest \
+            :app:lintDebug \
+            --tests 'com.focusguard.accessibility.website.blocking.*' \
+            --tests 'com.focusguard.accessibility.website.compatibility.*' \
+            --tests 'com.focusguard.accessibility.website.identification.*' \
+            --tests 'com.focusguard.accessibility.website.redirection.*' \
+            --tests 'com.focusguard.service.WebsiteProtectionHierarchyPolicyTest' \
+            --tests 'com.focusguard.service.BlockingAccessibilityInputTest' \
+            --tests 'com.focusguard.service.WebsiteCurtainInputPolicyTest' \
+            --tests 'com.focusguard.service.WebsiteBlockNavigationTest' \
+            --tests 'com.focusguard.utils.BrowserInspectionSessionTest' \
+            --tests 'com.focusguard.utils.WebsiteBlockerTest' \
+            --no-daemon
+          git diff --check
+
+      - name: Commit final integration and remove temporary automation
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -f .github/scripts/finalize_website_blocking_v4.py
+          rm -f .github/workflows/finalize-website-blocking-v4.yml
+          git config user.name 'FocusGuard website implementation'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git diff --cached --quiet && exit 0
+          git commit -m 'feat: finalize website blocking v4 runtime'
+          git push origin HEAD:hardblock-website-blocking-v4
