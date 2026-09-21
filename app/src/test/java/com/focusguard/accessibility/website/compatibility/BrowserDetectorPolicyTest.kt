@@ -5,59 +5,74 @@ import org.junit.Test
 
 class BrowserDetectorPolicyTest {
     @Test
-    fun `generic http and https handling confirms browser`() {
+    fun `G B and browser category confirm browser without http`() {
         val result = BrowserClassificationPolicy.decide(
             BrowserCapabilityEvidence(
-                genericHttp = BrowserProbeResult.HANDLED,
-                genericHttps = BrowserProbeResult.HANDLED
-            ),
-            strongCurrentVersionHistory = false
+                genericHttps = BrowserProbeResult.HANDLED,
+                broadHttpsFilter = BrowserProbeResult.HANDLED,
+                browserCategory = BrowserProbeResult.HANDLED
+            )
         )
 
         assertThat(result.classification).isEqualTo(BrowserClassification.CONFIRMED_BROWSER)
-        assertThat(result.reason).isEqualTo(BrowserDetectionReason.HTTP_HTTPS_CONFIRMED)
+        assertThat(result.reason).isEqualTo(BrowserDetectionReason.STRUCTURAL_BROWSER_CONFIRMED)
     }
 
     @Test
-    fun `https only handler is not enough to classify as browser`() {
+    fun `G B H and custom tabs confirm browser without category`() {
         val result = BrowserClassificationPolicy.decide(
-            BrowserCapabilityEvidence(genericHttps = BrowserProbeResult.HANDLED),
+            BrowserCapabilityEvidence(
+                genericHttps = BrowserProbeResult.HANDLED,
+                broadHttpsFilter = BrowserProbeResult.HANDLED,
+                genericHttp = BrowserProbeResult.HANDLED,
+                customTabsService = BrowserProbeResult.HANDLED
+            )
+        )
+
+        assertThat(result.classification).isEqualTo(BrowserClassification.CONFIRMED_BROWSER)
+        assertThat(result.reason).isEqualTo(BrowserDetectionReason.STRUCTURAL_BROWSER_CONFIRMED)
+    }
+
+    @Test
+    fun `G without broad filter remains probable and cannot enter generic route`() {
+        val result = BrowserClassificationPolicy.decide(
+            BrowserCapabilityEvidence(
+                genericHttps = BrowserProbeResult.HANDLED,
+                broadHttpsFilter = BrowserProbeResult.NOT_HANDLED,
+                browserCategory = BrowserProbeResult.HANDLED,
+                genericHttp = BrowserProbeResult.HANDLED,
+                customTabsService = BrowserProbeResult.HANDLED
+            ),
             strongCurrentVersionHistory = true
         )
 
-        assertThat(result.classification).isEqualTo(BrowserClassification.UNKNOWN)
-        assertThat(result.reason).isEqualTo(BrowserDetectionReason.PARTIAL_GENERIC_HANDLER)
+        assertThat(result.classification).isEqualTo(BrowserClassification.PROBABLE_BROWSER)
+        assertThat(result.classification.isBrowserLike).isFalse()
+        assertThat(result.reason).isEqualTo(BrowserDetectionReason.STRUCTURAL_BROWSER_INCOMPLETE)
     }
 
     @Test
-    fun `http only handler is not enough to classify as browser`() {
+    fun `G and B without C or H T remains probable`() {
         val result = BrowserClassificationPolicy.decide(
-            BrowserCapabilityEvidence(genericHttp = BrowserProbeResult.HANDLED),
+            BrowserCapabilityEvidence(
+                genericHttps = BrowserProbeResult.HANDLED,
+                broadHttpsFilter = BrowserProbeResult.HANDLED
+            )
+        )
+
+        assertThat(result.classification).isEqualTo(BrowserClassification.PROBABLE_BROWSER)
+        assertThat(result.classification.isBrowserLike).isFalse()
+    }
+
+    @Test
+    fun `central package query failure is inconclusive even with history`() {
+        val result = BrowserClassificationPolicy.decide(
+            BrowserCapabilityEvidence(
+                genericHttps = BrowserProbeResult.UNKNOWN,
+                broadHttpsFilter = BrowserProbeResult.UNKNOWN,
+                genericHttp = BrowserProbeResult.HANDLED
+            ),
             strongCurrentVersionHistory = true
-        )
-
-        assertThat(result.classification).isEqualTo(BrowserClassification.UNKNOWN)
-        assertThat(result.reason).isEqualTo(BrowserDetectionReason.PARTIAL_GENERIC_HANDLER)
-    }
-
-    @Test
-    fun `app without generic web handlers is not browser`() {
-        val result = BrowserClassificationPolicy.decide(
-            BrowserCapabilityEvidence(),
-            strongCurrentVersionHistory = true,
-            knownBrowserProfile = true
-        )
-
-        assertThat(result.classification).isEqualTo(BrowserClassification.NOT_BROWSER)
-        assertThat(result.reason).isEqualTo(BrowserDetectionReason.NO_GENERIC_HANDLER)
-    }
-
-    @Test
-    fun `query failure preserves unknown without strong evidence`() {
-        val result = BrowserClassificationPolicy.decide(
-            BrowserCapabilityEvidence(genericHttp = BrowserProbeResult.UNKNOWN),
-            strongCurrentVersionHistory = false,
-            knownBrowserProfile = false
         )
 
         assertThat(result.classification).isEqualTo(BrowserClassification.UNKNOWN)
@@ -65,62 +80,23 @@ class BrowserDetectorPolicyTest {
     }
 
     @Test
-    fun `query failure may use strong evidence from exact installed version`() {
-        val result = BrowserClassificationPolicy.decide(
-            BrowserCapabilityEvidence(
-                genericHttp = BrowserProbeResult.HANDLED,
-                genericHttps = BrowserProbeResult.UNKNOWN
-            ),
-            strongCurrentVersionHistory = true
-        )
-
-        assertThat(result.classification).isEqualTo(BrowserClassification.PROBABLE_BROWSER)
-        assertThat(result.reason).isEqualTo(BrowserDetectionReason.CURRENT_VERSION_HISTORY)
-    }
-
-    @Test
-    fun `query failure may use exact shipped browser profile`() {
-        val result = BrowserClassificationPolicy.decide(
-            BrowserCapabilityEvidence(
-                genericHttp = BrowserProbeResult.HANDLED,
-                genericHttps = BrowserProbeResult.UNKNOWN
-            ),
-            strongCurrentVersionHistory = false,
-            knownBrowserProfile = true
-        )
-
-        assertThat(result.classification).isEqualTo(BrowserClassification.PROBABLE_BROWSER)
-        assertThat(result.reason).isEqualTo(BrowserDetectionReason.KNOWN_BROWSER_PROFILE)
-    }
-
-    @Test
-    fun `known browser profile never overrides deterministic no handler result`() {
-        val result = BrowserClassificationPolicy.decide(
-            BrowserCapabilityEvidence(
-                genericHttp = BrowserProbeResult.NOT_HANDLED,
-                genericHttps = BrowserProbeResult.NOT_HANDLED
-            ),
-            strongCurrentVersionHistory = false,
-            knownBrowserProfile = true
-        )
+    fun `no G with complete evidence is not browser`() {
+        val result = BrowserClassificationPolicy.decide(BrowserCapabilityEvidence())
 
         assertThat(result.classification).isEqualTo(BrowserClassification.NOT_BROWSER)
         assertThat(result.reason).isEqualTo(BrowserDetectionReason.NO_GENERIC_HANDLER)
     }
 
     @Test
-    fun `partial deterministic handler never becomes probable from history alone`() {
+    fun `registered owner bypasses generic structural evidence`() {
         val result = BrowserClassificationPolicy.decide(
-            BrowserCapabilityEvidence(
-                genericHttp = BrowserProbeResult.HANDLED,
-                genericHttps = BrowserProbeResult.NOT_HANDLED
-            ),
-            strongCurrentVersionHistory = true,
+            evidence = BrowserCapabilityEvidence(),
+            strongCurrentVersionHistory = false,
             knownBrowserProfile = true
         )
 
-        assertThat(result.classification).isEqualTo(BrowserClassification.UNKNOWN)
-        assertThat(result.reason).isEqualTo(BrowserDetectionReason.PARTIAL_GENERIC_HANDLER)
+        assertThat(result.classification).isEqualTo(BrowserClassification.CONFIRMED_BROWSER)
+        assertThat(result.reason).isEqualTo(BrowserDetectionReason.KNOWN_BROWSER_PROFILE)
     }
 
     @Test

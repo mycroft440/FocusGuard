@@ -793,4 +793,10 @@
     <string name="website_block_overlay_message">تم حظر الموقع: %1$s</string>
     <string name="website_block_overlay_message_generic">تم حظر الموقع بواسطة FocusGuard</string>
     <string name="website_block_notice_description">تم حظر الوصول إلى هذا الموقع.</string>
+    <!-- Website redirect destination -->
+    <string name="settings_redirect_destination_title">وجهة إعادة التوجيه</string>
+    <string name="settings_redirect_destination_subtitle">بعد حظر موقع: %1$s</string>
+    <string name="settings_redirect_destination_helper">اختر العنوان الجذري الذي يفتحه HardBlock بعد حظر موقع. يتم دعم HTTP وHTTPS.</string>
+    <string name="settings_redirect_destination_invalid">أدخل عنوانًا جذريًا صالحًا من دون بيانات اعتماد أو مسار أو استعلام أو جزء.</string>
+    <string name="settings_redirect_destination_blocked">هذا العنوان محظور حاليًا. اختر وجهة أخرى.</string>
 </resources>

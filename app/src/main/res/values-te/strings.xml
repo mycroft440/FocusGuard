@@ -785,4 +785,10 @@
     <string name="website_block_overlay_message">వెబ్‌సైట్ బ్లాక్ చేయబడింది: %1$s</string>
     <string name="website_block_overlay_message_generic">FocusGuard వెబ్‌సైట్‌ను బ్లాక్ చేసింది</string>
     <string name="website_block_notice_description">ఈ వెబ్‌సైట్‌కు ప్రాప్యత బ్లాక్ చేయబడింది.</string>
+    <!-- Website redirect destination -->
+    <string name="settings_redirect_destination_title">దారి మళ్లింపు గమ్యం</string>
+    <string name="settings_redirect_destination_subtitle">సైట్‌ను బ్లాక్ చేసిన తర్వాత: %1$s</string>
+    <string name="settings_redirect_destination_helper">వెబ్‌సైట్‌ను బ్లాక్ చేసిన తర్వాత HardBlock తెరవాల్సిన మూల చిరునామాను ఎంచుకోండి. HTTP మరియు HTTPS మద్దతు ఉన్నాయి.</string>
+    <string name="settings_redirect_destination_invalid">క్రెడెన్షియల్స్, పాత్, క్వెరీ లేదా ఫ్రాగ్మెంట్ లేని చెల్లుబాటు అయ్యే మూల చిరునామాను నమోదు చేయండి.</string>
+    <string name="settings_redirect_destination_blocked">ఈ చిరునామా ప్రస్తుతం బ్లాక్ చేయబడింది. మరో గమ్యాన్ని ఎంచుకోండి.</string>
 </resources>

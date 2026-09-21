@@ -785,4 +785,10 @@
     <string name="website_block_overlay_message">Situs diblokir: %1$s</string>
     <string name="website_block_overlay_message_generic">Situs diblokir oleh FocusGuard</string>
     <string name="website_block_notice_description">Akses ke situs ini telah diblokir.</string>
+    <!-- Website redirect destination -->
+    <string name="settings_redirect_destination_title">Tujuan pengalihan</string>
+    <string name="settings_redirect_destination_subtitle">Setelah situs diblokir: %1$s</string>
+    <string name="settings_redirect_destination_helper">Pilih alamat root yang akan dibuka HardBlock setelah memblokir situs. HTTP dan HTTPS didukung.</string>
+    <string name="settings_redirect_destination_invalid">Masukkan alamat root yang valid tanpa kredensial, path, kueri, atau fragmen.</string>
+    <string name="settings_redirect_destination_blocked">Alamat ini sedang diblokir. Pilih tujuan lain.</string>
 </resources>

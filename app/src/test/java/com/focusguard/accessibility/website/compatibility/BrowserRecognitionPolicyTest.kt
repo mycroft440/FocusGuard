@@ -18,12 +18,34 @@ class BrowserRecognitionPolicyTest {
     }
 
     @Test
-    fun `observable address bar remains strong browser evidence`() {
+    fun `browser looking field alone cannot promote non browser app`() {
         assertThat(
             BrowserRecognitionPolicy.isRecognizedBrowser(
                 classification = BrowserClassification.NOT_BROWSER,
                 legacyRecognizedBrowser = false,
                 addressBarObservable = true
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `legacy https handler cannot promote probable browser`() {
+        assertThat(
+            BrowserRecognitionPolicy.isRecognizedBrowser(
+                classification = BrowserClassification.PROBABLE_BROWSER,
+                legacyRecognizedBrowser = true,
+                addressBarObservable = true
+            )
+        ).isFalse()
+    }
+
+    @Test
+    fun `structurally confirmed browser is recognized without legacy evidence`() {
+        assertThat(
+            BrowserRecognitionPolicy.isRecognizedBrowser(
+                classification = BrowserClassification.CONFIRMED_BROWSER,
+                legacyRecognizedBrowser = false,
+                addressBarObservable = false
             )
         ).isTrue()
     }
@@ -51,20 +73,9 @@ class BrowserRecognitionPolicyTest {
     }
 
     @Test
-    fun `probable browser policy state also enters bounded recovery`() {
+    fun `probable browser never enters automatic generic recovery`() {
         val surface = BrowserRecognitionPolicy.recoverySurface(
             classification = BrowserClassification.PROBABLE_BROWSER,
-            identificationStatus = WebsiteIdentificationStatus.UNOBSERVABLE,
-            observedSurface = BrowserSurfaceInspector.Surface.UNKNOWN
-        )
-
-        assertThat(surface).isEqualTo(BrowserSurfaceInspector.Surface.WEB_CONTENT)
-    }
-
-    @Test
-    fun `unknown legacy handler does not promote opaque tree`() {
-        val surface = BrowserRecognitionPolicy.recoverySurface(
-            classification = BrowserClassification.UNKNOWN,
             identificationStatus = WebsiteIdentificationStatus.UNOBSERVABLE,
             observedSurface = BrowserSurfaceInspector.Surface.UNKNOWN
         )
@@ -73,10 +84,10 @@ class BrowserRecognitionPolicyTest {
     }
 
     @Test
-    fun `unknown package with merely observable field is not promoted`() {
+    fun `unknown legacy handler does not promote opaque tree`() {
         val surface = BrowserRecognitionPolicy.recoverySurface(
             classification = BrowserClassification.UNKNOWN,
-            identificationStatus = WebsiteIdentificationStatus.ADDRESS_BAR_OBSERVABLE,
+            identificationStatus = WebsiteIdentificationStatus.UNOBSERVABLE,
             observedSurface = BrowserSurfaceInspector.Surface.UNKNOWN
         )
 
@@ -107,7 +118,7 @@ class BrowserRecognitionPolicyTest {
     }
 
     @Test
-    fun `probable same-version browser may fail closed after bounded recovery`() {
+    fun `probable browser never gains automatic opaque fail closed ownership`() {
         assertThat(
             BrowserRecognitionPolicy.shouldFailClosedAfterRecovery(
                 classification = BrowserClassification.PROBABLE_BROWSER,
@@ -115,7 +126,7 @@ class BrowserRecognitionPolicyTest {
                 addressBarObservable = false,
                 urlCandidatePresent = false
             )
-        ).isTrue()
+        ).isFalse()
     }
 
     @Test

@@ -3,6 +3,7 @@ package com.focusguard.accessibility.website.identification
 import android.view.accessibility.AccessibilityNodeInfo
 import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
 import com.focusguard.accessibility.website.compatibility.BrowserDetector
+import com.focusguard.accessibility.website.compatibility.BrowserProfileRegistry
 import com.focusguard.accessibility.website.compatibility.BrowserRecognitionPolicy
 import com.focusguard.accessibility.website.compatibility.BrowserUrlRecoveryMethod
 import com.focusguard.accessibility.website.diagnostics.WebsiteBlockingDiagnostics
@@ -15,6 +16,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 internal enum class BrowserRecoveryReason {
     URL_RECOVERED,
@@ -57,10 +59,17 @@ internal class WebsiteIdentificationRecovery(
 
     suspend fun recover(): WebsiteIdentificationResult = recoveryMutex.withLock {
         if (!isCurrent()) return@withLock rejected()
-        recoverSerially()
+        if (BrowserProfileRegistry.isKnownBrowserPackage(browserPackage)) {
+            recoverKnownProfileSerially()
+        } else {
+            withTimeoutOrNull(GENERIC_RECOVERY_TOTAL_TIMEOUT_MILLIS) {
+                recoverGenericSerially()
+            } ?: genericTimeoutResult()
+        }
     }
 
-    private suspend fun recoverSerially(): WebsiteIdentificationResult {
+    /** Existing compatibility behavior remains untouched for exact shipped browser profiles. */
+    private suspend fun recoverKnownProfileSerially(): WebsiteIdentificationResult {
         if (!isCurrent()) return rejected()
         var result = read()
         if (resolved(result)) {
@@ -91,26 +100,10 @@ internal class WebsiteIdentificationRecovery(
                 val observationBaseline = BrowserObservationSignal.currentVersion(browserPackage, windowId)
                 val root = rootProvider() ?: continue
                 val accepted = try {
-                    if (!isCurrent() || root.packageName?.toString() != browserPackage ||
-                        root.windowId != windowId ||
-                        BrowserSurfaceInspector.inspect(root, browserPackage).isNativeUi ||
-                        !isCurrent()
-                    ) false else when (method) {
+                    if (!validRecoveryRoot(root)) false else when (method) {
                         BrowserUrlRecoveryMethod.REVEAL_TOOLBAR ->
                             pass == 0 && isCurrent() && revealToolbar(root)
-                        else -> if (!isCurrent()) false else WebsiteBlocker.performUniqueAddressBarAction(
-                            root,
-                            browserPackage,
-                            windowId,
-                            if (method == BrowserUrlRecoveryMethod.CLICK) {
-                                BrowserUiCapabilityPolicy.NodeAction.CLICK
-                            } else {
-                                BrowserUiCapabilityPolicy.NodeAction.FOCUS
-                            },
-                            httpsHandlerRecognized = httpsHandlerRecognized,
-                            allowFallbacks = false,
-                            isCurrent = isCurrent
-                        ).accepted
+                        else -> performAddressBarRecoveryAction(root, method)
                     }
                 } finally { recycle(root) }
                 if (!isCurrent()) return rejected()
@@ -143,9 +136,121 @@ internal class WebsiteIdentificationRecovery(
         if (!isCurrent()) return rejected()
         val finalResult = read()
         rememberIfCurrent(finalResult, lastAccepted)
-        if (!isCurrent()) return rejected()
+        return finalizeRecovery(finalResult)
+    }
 
-        val postRecovery = BrowserSiteOnlyBlockingPolicy.applyAfterRecovery(finalResult)
+    /**
+     * Generic v4 recovery is deliberately smaller than the browser-specific path:
+     * at most three distinct techniques and at most 500 ms for the whole attempt.
+     * The outer timeout includes fresh tree acquisition, actions and observation waits.
+     */
+    private suspend fun recoverGenericSerially(): WebsiteIdentificationResult {
+        if (!isCurrent()) return rejected()
+        var result = read()
+        if (resolved(result)) {
+            traceResolution(result)
+            return result
+        }
+
+        val preferred = BrowserCompatibilityStore.preferredUrlRecoveryMethod(browserPackage)
+        val activationOrder = if (BrowserUiCapabilityPolicy.prefersClickAddressBarActivation(browserPackage)) {
+            listOf(BrowserUrlRecoveryMethod.CLICK, BrowserUrlRecoveryMethod.FOCUS)
+        } else {
+            listOf(BrowserUrlRecoveryMethod.FOCUS, BrowserUrlRecoveryMethod.CLICK)
+        }
+        val methods = (listOfNotNull(preferred) + activationOrder +
+            BrowserUrlRecoveryMethod.REVEAL_TOOLBAR)
+            .distinct()
+            .take(GENERIC_MAX_RECOVERY_TECHNIQUES)
+        var lastAccepted: BrowserUrlRecoveryMethod? = null
+
+        for (method in methods) {
+            if (!isCurrent()) return rejected()
+            result = read()
+            if (resolved(result)) {
+                rememberIfCurrent(result, lastAccepted)
+                traceResolution(result)
+                return result
+            }
+
+            val observationBaseline = BrowserObservationSignal.currentVersion(browserPackage, windowId)
+            val root = rootProvider() ?: continue
+            val accepted = try {
+                if (!validRecoveryRoot(root)) false else when (method) {
+                    BrowserUrlRecoveryMethod.REVEAL_TOOLBAR -> revealToolbar(
+                        root = root,
+                        maxNodes = GENERIC_REVEAL_MAX_NODES,
+                        maxDepth = GENERIC_REVEAL_MAX_DEPTH
+                    )
+                    else -> performAddressBarRecoveryAction(root, method)
+                }
+            } finally { recycle(root) }
+            if (!isCurrent()) return rejected()
+
+            if (accepted) {
+                lastAccepted = method
+                BrowserObservationSignal.awaitAfter(
+                    browserPackage,
+                    windowId,
+                    observationBaseline,
+                    GENERIC_ACTION_OBSERVATION_TIMEOUT_MILLIS
+                )
+            }
+            if (!isCurrent()) return rejected()
+            result = read()
+            if (resolved(result)) {
+                rememberIfCurrent(result, lastAccepted)
+                traceResolution(result)
+                return result
+            }
+        }
+
+        rememberIfCurrent(result, lastAccepted)
+        return finalizeRecovery(result)
+    }
+
+    private fun validRecoveryRoot(root: AccessibilityNodeInfo): Boolean =
+        isCurrent() &&
+            root.packageName?.toString() == browserPackage &&
+            root.windowId == windowId &&
+            !BrowserSurfaceInspector.inspect(root, browserPackage).isNativeUi &&
+            isCurrent()
+
+    private fun performAddressBarRecoveryAction(
+        root: AccessibilityNodeInfo,
+        method: BrowserUrlRecoveryMethod
+    ): Boolean {
+        if (!isCurrent()) return false
+        return WebsiteBlocker.performUniqueAddressBarAction(
+            root,
+            browserPackage,
+            windowId,
+            if (method == BrowserUrlRecoveryMethod.CLICK) {
+                BrowserUiCapabilityPolicy.NodeAction.CLICK
+            } else {
+                BrowserUiCapabilityPolicy.NodeAction.FOCUS
+            },
+            httpsHandlerRecognized = httpsHandlerRecognized,
+            allowFallbacks = false,
+            isCurrent = isCurrent
+        ).accepted
+    }
+
+    private fun genericTimeoutResult(): WebsiteIdentificationResult {
+        if (!isCurrent()) return rejected()
+        return finalizeRecovery(
+            WebsiteIdentificationResult(
+                status = WebsiteIdentificationStatus.UNOBSERVABLE,
+                browserPackageName = browserPackage,
+                windowId = windowId,
+                webContentObserved = true
+            )
+        )
+    }
+
+    private fun finalizeRecovery(result: WebsiteIdentificationResult): WebsiteIdentificationResult {
+        if (!isCurrent()) return rejected()
+        val postRecovery = BrowserSiteOnlyBlockingPolicy.applyAfterRecovery(result)
         when {
             postRecovery.urlCandidate != null -> trace(BrowserRecoveryReason.URL_RECOVERED)
             postRecovery.status == WebsiteIdentificationStatus.NATIVE_BROWSER_UI ->
@@ -205,12 +310,16 @@ internal class WebsiteIdentificationRecovery(
     }
 
     /** Scroll only a unique web viewport, never a page link, form or menu. */
-    private fun revealToolbar(root: AccessibilityNodeInfo): Boolean {
+    private fun revealToolbar(
+        root: AccessibilityNodeInfo,
+        maxNodes: Int = KNOWN_REVEAL_MAX_NODES,
+        maxDepth: Int = KNOWN_REVEAL_MAX_DEPTH
+    ): Boolean {
         if (!isCurrent()) return false
         val candidates = mutableListOf<AccessibilityNodeInfo>()
         var visited = 0
         fun collect(node: AccessibilityNodeInfo, depth: Int) {
-            if (!isCurrent() || ++visited > 256 || depth > 24 || !node.isVisibleToUser ||
+            if (!isCurrent() || ++visited > maxNodes || depth > maxDepth || !node.isVisibleToUser ||
                 node.packageName?.toString() != browserPackage || node.windowId != windowId
             ) return
             if (BrowserSurfaceInspector.isWebContainer(node)) {
@@ -222,7 +331,7 @@ internal class WebsiteIdentificationRecovery(
                 return
             }
             for (index in 0 until node.childCount) {
-                if (!isCurrent() || visited >= 256) break
+                if (!isCurrent() || visited >= maxNodes) break
                 val child = node.getChild(index) ?: continue
                 try { collect(child, depth + 1) } finally { recycle(child) }
             }
@@ -247,11 +356,19 @@ internal class WebsiteIdentificationRecovery(
         if (node != null) runCatching { node.recycle() }
     }
 
-    private companion object {
+    internal companion object {
         /** Only one complementary browser-recovery pipeline may inspect at a time. */
-        val recoveryMutex = Mutex()
+        private val recoveryMutex = Mutex()
 
         const val ACTION_OBSERVATION_TIMEOUT_MILLIS = 180L
         const val FINAL_OBSERVATION_TIMEOUT_MILLIS = 160L
+
+        const val GENERIC_MAX_RECOVERY_TECHNIQUES = 3
+        const val GENERIC_RECOVERY_TOTAL_TIMEOUT_MILLIS = 500L
+        const val GENERIC_ACTION_OBSERVATION_TIMEOUT_MILLIS = 100L
+        const val GENERIC_REVEAL_MAX_NODES = 200
+        const val GENERIC_REVEAL_MAX_DEPTH = 20
+        private const val KNOWN_REVEAL_MAX_NODES = 256
+        private const val KNOWN_REVEAL_MAX_DEPTH = 24
     }
 }

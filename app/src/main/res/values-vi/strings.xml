@@ -785,4 +785,10 @@
     <string name="website_block_overlay_message">Trang web đã bị chặn: %1$s</string>
     <string name="website_block_overlay_message_generic">Trang web đã bị FocusGuard chặn</string>
     <string name="website_block_notice_description">Quyền truy cập trang web này đã bị chặn.</string>
+    <!-- Website redirect destination -->
+    <string name="settings_redirect_destination_title">Đích chuyển hướng</string>
+    <string name="settings_redirect_destination_subtitle">Sau khi chặn trang web: %1$s</string>
+    <string name="settings_redirect_destination_helper">Chọn địa chỉ gốc mà HardBlock sẽ mở sau khi chặn một trang web. Hỗ trợ HTTP và HTTPS.</string>
+    <string name="settings_redirect_destination_invalid">Nhập địa chỉ gốc hợp lệ, không có thông tin đăng nhập, đường dẫn, truy vấn hoặc đoạn neo.</string>
+    <string name="settings_redirect_destination_blocked">Địa chỉ này hiện đang bị chặn. Hãy chọn đích khác.</string>
 </resources>

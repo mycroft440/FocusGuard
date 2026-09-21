@@ -25,6 +25,14 @@ internal object WebsiteRedirectionCoordinator {
     interface Adapter {
         suspend fun awaitPresentationFrame(): Boolean
         fun ownsProtection(): Boolean
+
+        /**
+         * Revalidated before every operation that could navigate. Returning false
+         * means the configured destination is no longer eligible (for example a
+         * newly active rule now blocks it), so protection remains fail-closed.
+         */
+        fun mayAttemptRedirect(): Boolean = true
+
         suspend fun prepareSameTabRedirect(attemptNumber: Int): Boolean
         suspend fun submitSameTabRedirect(attemptNumber: Int): Boolean
         suspend fun restoreBlockedSurfaceForRetry(): Boolean
@@ -79,18 +87,24 @@ internal object WebsiteRedirectionCoordinator {
         if (!adapter.awaitPresentationFrame() || !adapter.ownsProtection()) {
             return Outcome.ABORTED
         }
+        if (!adapter.mayAttemptRedirect()) {
+            return failClosed(session, adapter)
+        }
 
         var attemptNumber = 1
         while (attemptNumber <= WebsiteRedirectionPlan.MAX_SAME_TAB_ATTEMPTS) {
             if (!adapter.ownsProtection()) return Outcome.ABORTED
+            if (!adapter.mayAttemptRedirect()) return failClosed(session, adapter)
 
             val prepared = adapter.prepareSameTabRedirect(attemptNumber)
             if (!adapter.ownsProtection()) return Outcome.ABORTED
+            if (!adapter.mayAttemptRedirect()) return failClosed(session, adapter)
 
             var submittedAtLeastOnce = false
             if (prepared) {
                 var submitAlternativeNumber = 1
                 while (submitAlternativeNumber <= WebsiteRedirectionPlan.MAX_SUBMIT_ALTERNATIVES) {
+                    if (!adapter.mayAttemptRedirect()) return failClosed(session, adapter)
                     val submitted = adapter.submitSameTabRedirect(attemptNumber)
                     submittedAtLeastOnce = submittedAtLeastOnce || submitted
                     if (!adapter.ownsProtection()) return Outcome.ABORTED
@@ -104,6 +118,7 @@ internal object WebsiteRedirectionCoordinator {
                 }
             }
 
+            if (!adapter.mayAttemptRedirect()) return failClosed(session, adapter)
             if (!WebsiteRedirectionPlan.canRetry(attemptNumber)) {
                 return failClosed(session, adapter)
             }

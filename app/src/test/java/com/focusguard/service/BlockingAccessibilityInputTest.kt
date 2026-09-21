@@ -24,7 +24,7 @@ class BlockingAccessibilityInputTest {
 
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
-    fun `browser callback does not acquire tree while website runtime is reset`() = runTest {
+    fun `browser callback snapshots primitives and only worker acquires root`() = runTest {
         val service = spyk(BlockingAccessibilityService())
         val browserWindow = mockk<AccessibilityWindowInfo> {
             every { id } returns 10
@@ -46,7 +46,7 @@ class BlockingAccessibilityInputTest {
         verify(exactly = 0) { content.source }
         verify(exactly = 0) { browserWindow.root }
         runCurrent()
-        verify(exactly = 0) { browserWindow.root }
+        verify(exactly = 1) { browserWindow.root }
         verify(exactly = 0) { content.source }
     }
 

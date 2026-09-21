@@ -3,6 +3,7 @@ package com.focusguard.utils
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
 import com.focusguard.accessibility.website.compatibility.BrowserIdentificationMethod
+import com.focusguard.accessibility.website.compatibility.BrowserProfileRegistry
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -18,10 +19,12 @@ internal class BrowserInspectionBudget(
     // Firefox/Fenix can still reach its semantic Compose traversal afterwards.
     private val maxIdQueries: Int = 32,
     private val maxAncestorQueries: Int = 128,
+    private val absoluteMaxDepth: Int = Int.MAX_VALUE,
     timeoutMillis: Long = 80L
 ) {
     private val startedAtNanos = SystemClock.elapsedRealtimeNanos()
-    private val deadlineNanos = startedAtNanos + timeoutMillis * 1_000_000L
+    private val timeoutBudgetMillis = timeoutMillis.coerceAtLeast(1L)
+    private val deadlineNanos = startedAtNanos + timeoutBudgetMillis * 1_000_000L
 
     var nodesVisited: Int = 0
         private set
@@ -36,6 +39,13 @@ internal class BrowserInspectionBudget(
     var exhaustedReason: String? = null
         private set
 
+    internal val configuredMaxNodes: Int
+        get() = maxNodes
+    internal val configuredMaxDepth: Int
+        get() = absoluteMaxDepth
+    internal val configuredTimeoutMillis: Long
+        get() = timeoutBudgetMillis
+
     val elapsedMillis: Long
         get() = ((SystemClock.elapsedRealtimeNanos() - startedAtNanos).coerceAtLeast(0L)) / 1_000_000L
 
@@ -46,7 +56,8 @@ internal class BrowserInspectionBudget(
         get() = exhaustedReason != null || deadlineExceeded
 
     fun tryVisitNode(depth: Int, maxDepth: Int): Boolean {
-        if (depth > maxDepth) {
+        val effectiveMaxDepth = minOf(maxDepth, absoluteMaxDepth)
+        if (depth > effectiveMaxDepth) {
             depthStops += 1
             return false
         }
@@ -98,6 +109,31 @@ internal class BrowserInspectionBudget(
         exhaustedReason = exhaustedReason ?: "deadline"
         return false
     }
+
+    companion object {
+        internal const val GENERIC_MAX_NODES = 200
+        internal const val GENERIC_MAX_DEPTH = 20
+        internal const val GENERIC_TIMEOUT_MILLIS = 20L
+
+        /**
+         * Exact registered browser profiles keep the existing compatibility budget.
+         * Packages without a profile use the stricter v4 generic budget so an
+         * unknown browser candidate cannot monopolize Accessibility tree work.
+         */
+        fun forBrowserPackage(browserPackage: String): BrowserInspectionBudget =
+            if (BrowserProfileRegistry.isKnownBrowserPackage(browserPackage)) {
+                BrowserInspectionBudget()
+            } else {
+                BrowserInspectionBudget(
+                    maxNodes = GENERIC_MAX_NODES,
+                    maxChildQueries = 240,
+                    maxIdQueries = 20,
+                    maxAncestorQueries = 64,
+                    absoluteMaxDepth = GENERIC_MAX_DEPTH,
+                    timeoutMillis = GENERIC_TIMEOUT_MILLIS
+                )
+            }
+    }
 }
 
 internal class BrowserInspectionSession(
@@ -105,7 +141,7 @@ internal class BrowserInspectionSession(
     val windowId: Int,
     val browserPackage: String,
     val createdAtElapsedNanos: Long = SystemClock.elapsedRealtimeNanos(),
-    val budget: BrowserInspectionBudget = BrowserInspectionBudget(),
+    val budget: BrowserInspectionBudget = BrowserInspectionBudget.forBrowserPackage(browserPackage),
     val isCurrent: () -> Boolean = { true },
     val scoped: Boolean = false
 ) {

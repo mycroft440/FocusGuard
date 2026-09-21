@@ -81,4 +81,56 @@ class BrowserInspectionSessionTest {
         assertFalse(budget.isExhausted)
         assertTrue("semantic traversal must still be eligible", budget.tryVisitNode(0, 24))
     }
+
+    @Test
+    fun unknownPackageUsesStrictGenericTreeBudget() {
+        val session = BrowserInspectionSession(
+            rootIdentity = 1,
+            windowId = 7,
+            browserPackage = "test.unknown.browser"
+        )
+
+        assertEquals(BrowserInspectionBudget.GENERIC_MAX_NODES, session.budget.configuredMaxNodes)
+        assertEquals(BrowserInspectionBudget.GENERIC_MAX_DEPTH, session.budget.configuredMaxDepth)
+        assertEquals(
+            BrowserInspectionBudget.GENERIC_TIMEOUT_MILLIS,
+            session.budget.configuredTimeoutMillis
+        )
+    }
+
+    @Test
+    fun knownProfileKeepsCompatibilityBudgetAndGenericDepthDoesNotLeakIntoIt() {
+        val session = BrowserInspectionSession(
+            rootIdentity = 2,
+            windowId = 8,
+            browserPackage = "com.android.chrome"
+        )
+
+        assertEquals(512, session.budget.configuredMaxNodes)
+        assertEquals(Int.MAX_VALUE, session.budget.configuredMaxDepth)
+        assertEquals(80L, session.budget.configuredTimeoutMillis)
+    }
+
+    @Test
+    fun genericBudgetEnforcesTwoHundredNodesAndTwentyLevels() {
+        val budget = BrowserInspectionBudget(
+            maxNodes = BrowserInspectionBudget.GENERIC_MAX_NODES,
+            absoluteMaxDepth = BrowserInspectionBudget.GENERIC_MAX_DEPTH,
+            timeoutMillis = 5_000L
+        )
+
+        repeat(BrowserInspectionBudget.GENERIC_MAX_NODES) { index ->
+            assertTrue(budget.tryVisitNode(index % 20, 24))
+        }
+        assertFalse(budget.tryVisitNode(0, 24))
+
+        val depthBudget = BrowserInspectionBudget(
+            maxNodes = BrowserInspectionBudget.GENERIC_MAX_NODES,
+            absoluteMaxDepth = BrowserInspectionBudget.GENERIC_MAX_DEPTH,
+            timeoutMillis = 5_000L
+        )
+        assertTrue(depthBudget.tryVisitNode(20, 24))
+        assertFalse(depthBudget.tryVisitNode(21, 24))
+        assertEquals(1, depthBudget.depthStops)
+    }
 }

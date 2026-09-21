@@ -785,4 +785,10 @@
     <string name="website_block_overlay_message">网站已屏蔽：%1$s</string>
     <string name="website_block_overlay_message_generic">FocusGuard 已屏蔽网站</string>
     <string name="website_block_notice_description">对此网站的访问已被屏蔽。</string>
+    <!-- Website redirect destination -->
+    <string name="settings_redirect_destination_title">重定向目标</string>
+    <string name="settings_redirect_destination_subtitle">网站被拦截后打开：%1$s</string>
+    <string name="settings_redirect_destination_helper">选择 HardBlock 在拦截网站后应打开的根地址。支持 HTTP 和 HTTPS。</string>
+    <string name="settings_redirect_destination_invalid">请输入有效的根地址，不要包含凭据、路径、查询参数或片段。</string>
+    <string name="settings_redirect_destination_blocked">此地址当前已被拦截。请选择其他目标。</string>
 </resources>

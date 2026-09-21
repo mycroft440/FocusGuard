@@ -27,6 +27,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -47,9 +48,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.focusguard.BuildConfig
 import com.focusguard.R
+import com.focusguard.accessibility.website.redirection.WebsiteRedirectDestination
+import com.focusguard.accessibility.website.redirection.WebsiteRedirectDestinationStore
 import com.focusguard.data.UserProfile
 import com.focusguard.monetization.AdsConsentManager
 import com.focusguard.security.PermissionRevocationFlow
+import com.focusguard.security.SelfProtectionStateStore
 import com.focusguard.ui.MasterPasswordActivity
 import com.focusguard.ui.RemoveAllBlocksActivity
 import com.focusguard.ui.compose.layout.FocusGuardScreenScaffold
@@ -84,6 +88,12 @@ fun SettingsScreen(
     var showRevokeCredential by remember { mutableStateOf(false) }
     var showDeveloperMode by remember { mutableStateOf(false) }
     var revocationWorking by remember { mutableStateOf(false) }
+    var showRedirectDestination by remember { mutableStateOf(false) }
+    var redirectDestinationUrl by remember {
+        mutableStateOf(WebsiteRedirectDestination.current.url)
+    }
+    var redirectDestinationInput by remember { mutableStateOf(redirectDestinationUrl) }
+    var redirectDestinationErrorRes by remember { mutableStateOf<Int?>(null) }
 
     val masterPasswordLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -173,6 +183,19 @@ fun SettingsScreen(
                 onClick = onTestedBrowsersClick
             )
             SettingsItem(
+                Icons.Default.Language,
+                stringResource(R.string.settings_redirect_destination_title),
+                stringResource(
+                    R.string.settings_redirect_destination_subtitle,
+                    redirectDestinationUrl
+                ),
+                onClick = {
+                    redirectDestinationInput = redirectDestinationUrl
+                    redirectDestinationErrorRes = null
+                    showRedirectDestination = true
+                }
+            )
+            SettingsItem(
                 Icons.Default.DeleteForever,
                 stringResource(R.string.master_remove_all_blocks_title),
                 stringResource(R.string.master_remove_all_blocks_subtitle),
@@ -220,6 +243,79 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
             )
         }
+    }
+
+    if (showRedirectDestination) {
+        AlertDialog(
+            onDismissRequest = { showRedirectDestination = false },
+            title = {
+                Text(stringResource(R.string.settings_redirect_destination_title))
+            },
+            text = {
+                Column {
+                    Text(
+                        text = stringResource(R.string.settings_redirect_destination_helper),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(Modifier.height(12.dp))
+                    OutlinedTextField(
+                        value = redirectDestinationInput,
+                        onValueChange = {
+                            redirectDestinationInput = it
+                            redirectDestinationErrorRes = null
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        isError = redirectDestinationErrorRes != null,
+                        label = {
+                            Text(stringResource(R.string.settings_redirect_destination_title))
+                        }
+                    )
+                    redirectDestinationErrorRes?.let { errorRes ->
+                        Spacer(Modifier.height(8.dp))
+                        Text(
+                            text = stringResource(errorRes),
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 13.sp
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val activeBlockedRules = SelfProtectionStateStore.read(context).blockedSites
+                        when (WebsiteRedirectDestinationStore.save(
+                            context = context,
+                            rawUrl = redirectDestinationInput,
+                            activeBlockedRules = activeBlockedRules
+                        )) {
+                            WebsiteRedirectDestinationStore.SaveResult.SAVED -> {
+                                redirectDestinationUrl = WebsiteRedirectDestination.current.url
+                                redirectDestinationInput = redirectDestinationUrl
+                                redirectDestinationErrorRes = null
+                                showRedirectDestination = false
+                            }
+                            WebsiteRedirectDestinationStore.SaveResult.INVALID_URL -> {
+                                redirectDestinationErrorRes =
+                                    R.string.settings_redirect_destination_invalid
+                            }
+                            WebsiteRedirectDestinationStore.SaveResult.BLOCKED_BY_ACTIVE_RULE -> {
+                                redirectDestinationErrorRes =
+                                    R.string.settings_redirect_destination_blocked
+                            }
+                        }
+                    }
+                ) {
+                    Text(stringResource(R.string.save))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRedirectDestination = false }) {
+                    Text(stringResource(R.string.cancel))
+                }
+            }
+        )
     }
 
     if (showRevokeConfirmation) {
