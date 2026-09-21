@@ -1583,12 +1583,18 @@ class BlockingSessionManager @Inject constructor(
                 // Publish website ownership before deriving associated native-app
                 // packages. A PASSWORD visit grant for the same site must not hide
                 // a TIME/limit rule from that derivation.
-                // Keep website rules configured in Room/UI, but publish no runtime
-                // website owner while the blocking implementation is reset.
-                val strongerWebsiteRules = emptySet<String>()
-                PasswordTargetAccessGrant.updateStrongerWebsiteRules(emptySet())
-                val sitesToBlock = emptyList<String>()
-                deviceOwnerManager.setPornographyCategoryActive(false)
+                val strongerWebsiteRules = WebsiteBlocker.normalizeRules(
+                    strongerSessionSites + limitSites + adultFilterRules
+                )
+                PasswordTargetAccessGrant.updateStrongerWebsiteRules(strongerWebsiteRules)
+
+                val sitesToBlock = (sessionSites + limitSites + adultFilterRules)
+                    .map(WebsiteBlocker::normalizeRule)
+                    .filter { it.isNotBlank() }
+                    .distinct()
+                val pornographyCategoryActive =
+                    WebsiteBlocker.containsPornographyRule(sitesToBlock)
+                deviceOwnerManager.setPornographyCategoryActive(pornographyCategoryActive)
                 // A Focus Mode allowlist is an explicit temporary override:
                 // phone, SMS and the apps chosen for that session must remain
                 // fully launchable even if another FocusGuard rule also names them.
@@ -1637,20 +1643,19 @@ class BlockingSessionManager @Inject constructor(
                     allowedSystemApps = deviceOwnerAppsToSuspend.toSet()
                 )
 
-                // Do not leave a Device Owner URLBlocklist active after resetting
-                // the Accessibility website runtime. Global adult-DNS configuration is
-                // intentionally owned by its separate setting and is not changed here.
-                deviceOwnerManager.clearWebsiteRestrictions()
+                if (sitesToBlock.isEmpty() && !adultFilterEnabled) {
+                    deviceOwnerManager.clearWebsiteRestrictions()
+                } else {
+                    deviceOwnerManager.enforceWebsiteRestrictions(sitesToBlock)
+                }
 
                 val selfProtectionRequired = shouldArmSelfProtection(
-                    // A website-only session must not arm app/device enforcement while
-                    // website runtime blocking is intentionally disabled.
-                    hasEnforcingSessions = appsToBlock.isNotEmpty() || strictPomodoro,
+                    hasEnforcingSessions = enforcingSessions.isNotEmpty(),
                     hasBlockedApps = appsToBlock.isNotEmpty(),
-                    hasBlockedSites = false,
+                    hasBlockedSites = sitesToBlock.isNotEmpty(),
                     adultFilterEnabled = adultFilterEnabled,
                     focusModeActive = focusModeSession != null
-                ) || (activeTimeCommitment && appsToBlock.isNotEmpty())
+                ) || activeTimeCommitment
                 if (selfProtectionRequired) {
                     // Persist before DevicePolicyManager/broadcast work. The
                     // AccessibilityService can be recreated between any two of
@@ -1680,11 +1685,11 @@ class BlockingSessionManager @Inject constructor(
                     BlockingAccessibilityService.createRefreshBlockingIntent(
                         context = context,
                         blockedApps = accessibilityAppsToBlock,
-                        blockedSites = emptyList(),
+                        blockedSites = sitesToBlock,
                         blockingActive = selfProtectionRequired,
                         strictPomodoro = strictPomodoro,
-                        passwordSites = emptyList(),
-                        strongerSites = emptySet()
+                        passwordSites = passwordSessionSites,
+                        strongerSites = strongerWebsiteRules
                     )
                 )
         }

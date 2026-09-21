@@ -1553,10 +1553,8 @@ class BlockingAccessibilityService : AccessibilityService() {
         if (packageName in focusModeAllowedAppsSet) return
         if (packageName == defaultLauncherPackage) return
 
-        // Native apps are no longer treated as an enforcement extension of a
-        // configured website while the website runtime is being rebuilt.
-        val blockedWebsiteDomain: String? = null
-        val limitedWebsiteDomain: String? = null
+        val blockedWebsiteDomain = blockedWebsiteAppDomains[packageName]
+        val limitedWebsiteDomain = limitedWebsiteAppDomains[packageName]
         when {
             // Website/focus/strict protections keep precedence over a PASSWORD
             // visit. The grant only bypasses this app's PASSWORD-session edge.
@@ -2789,11 +2787,11 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
-    // Website configuration remains persisted, but its runtime enforcement is
-    // intentionally reset. No browser inspection/redirect pipeline is started.
-    private fun websiteSurfaceInspectionNeeded(): Boolean = false
+    private fun websiteSurfaceInspectionNeeded(): Boolean =
+        blockedWebsitesDomainSet.isNotEmpty() || limitedWebsiteDomains.isNotEmpty()
 
-    private fun websiteObservationRequired(): Boolean = false
+    private fun websiteObservationRequired(): Boolean =
+        blockedWebsitesDomainSet.isNotEmpty() || hardLimitedWebsiteDomains.isNotEmpty()
 
     private fun clearOpaqueBrowserObservation(packageName: String) {
         browserRecoveryCoordinator.cancel(packageName)
