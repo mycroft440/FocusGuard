@@ -44,6 +44,7 @@ import com.focusguard.accessibility.website.compatibility.BrowserSubmitMethod
 import com.focusguard.accessibility.website.redirection.AddressBarRedirectionActions
 import com.focusguard.accessibility.website.redirection.ClipboardPasteFallback
 import com.focusguard.accessibility.website.redirection.WebsiteRedirectDestination
+import com.focusguard.accessibility.website.redirection.WebsiteRedirectDestinationStore
 import com.focusguard.accessibility.website.redirection.WebsiteRedirectionCoordinator
 import com.focusguard.accessibility.website.redirection.WebsiteRedirectionPlan
 import com.focusguard.accessibility.website.redirection.WebsiteBlockTransitionGuard
@@ -3096,10 +3097,14 @@ class BlockingAccessibilityService : AccessibilityService() {
                 )
                 return
             }
+            if (resolution.nextStep == WebsiteProtectionHierarchyPolicy.NextStep.ALLOW) {
+                stopWebsiteTracking()
+                return
+            }
         }
 
-        // HARD or stale/unknown ownership stays fail-closed and uses the
-        // existing opaque-curtain + safe-browser redirect pipeline.
+        // HARD ownership (or strict Pomodoro) uses the existing opaque-curtain +
+        // safe-browser redirect pipeline. NONE/ALLOW has already returned above.
         blockWebsite(
             browserPackageName = browserPackageName,
             browserWindowId = browserWindowId,
@@ -3188,6 +3193,12 @@ class BlockingAccessibilityService : AccessibilityService() {
                         }
 
                         override fun ownsProtection(): Boolean = transitionOwnsCurtain(transition)
+
+                        override fun mayAttemptRedirect(): Boolean =
+                            transitionOwnsCurtain(transition) &&
+                                !WebsiteRedirectDestinationStore.currentConflictsWith(
+                                    blockedWebsitesDomainSet
+                                )
 
                         override suspend fun prepareSameTabRedirect(attemptNumber: Int): Boolean {
                             if (!curtainReadyForTransition(transition)) return false
