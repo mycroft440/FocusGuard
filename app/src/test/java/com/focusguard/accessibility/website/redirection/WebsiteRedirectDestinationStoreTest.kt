@@ -60,6 +60,31 @@ class WebsiteRedirectDestinationStoreTest {
     }
 
     @Test
+    fun `later rule change suspends already configured destination`() {
+        assertThat(
+            WebsiteRedirectDestinationStore.save(context, "https://example.org/")
+        ).isEqualTo(WebsiteRedirectDestinationStore.SaveResult.SAVED)
+
+        assertThat(
+            WebsiteRedirectDestinationStore.currentConflictsWith(setOf("example.org"))
+        ).isTrue()
+        assertThat(
+            WebsiteRedirectDestinationStore.currentConflictsWith(setOf("allowed.example"))
+        ).isFalse()
+    }
+
+    @Test
+    fun `temporary password grant never turns blocked destination into redirect bypass`() {
+        assertThat(
+            WebsiteRedirectDestinationStore.save(context, "https://example.org/")
+        ).isEqualTo(WebsiteRedirectDestinationStore.SaveResult.SAVED)
+
+        assertThat(
+            WebsiteRedirectDestinationStore.currentConflictsWith(setOf("example.org"))
+        ).isTrue()
+    }
+
+    @Test
     fun `credentials path query and non web schemes are rejected`() {
         assertThat(
             WebsiteRedirectDestinationStore.destinationFromUserInput(
