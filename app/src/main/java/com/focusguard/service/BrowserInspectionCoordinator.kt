@@ -1,6 +1,7 @@
 package com.focusguard.service
 
 import android.view.accessibility.AccessibilityEvent
+import com.focusguard.accessibility.website.BrowserSurfaceIdentityRegistry
 import com.focusguard.accessibility.website.identification.BrowserObservationSignal
 
 /**
@@ -75,6 +76,7 @@ internal class BrowserInspectionCoordinator {
         val windowChanged = packageName != currentPackage || windowId != currentWindowId
         if (windowChanged) {
             BrowserObservationSignal.forget(currentPackage, currentWindowId)
+            BrowserSurfaceIdentityRegistry.forget(currentPackage, currentWindowId)
             generation += 1L
             surfaceEpoch += 1L
             currentPackage = packageName
@@ -87,6 +89,12 @@ internal class BrowserInspectionCoordinator {
             running?.token?.revokeSequenceAdvance()
         }
         sequence += 1L
+        BrowserSurfaceIdentityRegistry.publish(
+            packageName = packageName,
+            windowId = windowId,
+            generation = generation,
+            surfaceEpoch = surfaceEpoch
+        )
         val snapshot = Snapshot(
             token = Token(
                 packageName = packageName,
@@ -113,6 +121,7 @@ internal class BrowserInspectionCoordinator {
     fun observeWindow(packageName: String, windowId: Int): Long = synchronized(lock) {
         if (packageName != currentPackage || windowId != currentWindowId) {
             BrowserObservationSignal.forget(currentPackage, currentWindowId)
+            BrowserSurfaceIdentityRegistry.forget(currentPackage, currentWindowId)
             generation += 1L
             surfaceEpoch += 1L
             currentPackage = packageName
@@ -120,6 +129,12 @@ internal class BrowserInspectionCoordinator {
             pending = null
             running?.token?.revokeSequenceAdvance()
         }
+        BrowserSurfaceIdentityRegistry.publish(
+            packageName = currentPackage,
+            windowId = currentWindowId,
+            generation = generation,
+            surfaceEpoch = surfaceEpoch
+        )
         generation
     }
 
@@ -185,6 +200,7 @@ internal class BrowserInspectionCoordinator {
 
     fun invalidate() = synchronized(lock) {
         BrowserObservationSignal.forget(currentPackage, currentWindowId)
+        BrowserSurfaceIdentityRegistry.forget(currentPackage, currentWindowId)
         generation += 1L
         surfaceEpoch += 1L
         currentPackage = ""
