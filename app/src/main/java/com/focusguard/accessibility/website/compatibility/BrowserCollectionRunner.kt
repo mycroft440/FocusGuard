@@ -49,7 +49,8 @@ internal class BrowserCollectionRunner(
     ): T? {
         val executor = synchronized(lock) {
             acquireExecutorLocked()
-        } ?: run {
+        }
+        if (executor == null) {
             onAbort(AbortReason.SATURATED)
             return null
         }
