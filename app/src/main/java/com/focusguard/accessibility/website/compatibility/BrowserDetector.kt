@@ -1,5 +1,6 @@
 package com.focusguard.accessibility.website.compatibility
 
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -226,10 +227,20 @@ internal object BrowserDetector {
         deadlineMillis = COLLECTION_DEADLINE_MILLIS,
         maxRetiredWorkers = MAX_RETIRED_COLLECTION_WORKERS
     )
+    private val packageReceiverLock = Any()
+    @Volatile private var packageReceiverContext: Context? = null
+    private val packageStateReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            val changedPackage = intent?.data?.schemeSpecificPart.orEmpty()
+            if (changedPackage.isBlank()) invalidateAll() else invalidate(changedPackage)
+        }
+    }
 
     fun initialize(context: Context) {
-        appContext = context.applicationContext
+        val application = context.applicationContext ?: context
+        appContext = application
         classificationCache.clear()
+        registerPackageStateReceiver(application)
     }
 
     fun invalidate(packageName: String) {
@@ -259,6 +270,33 @@ internal object BrowserDetector {
             BrowserDetectionReason.DETECTOR_UNINITIALIZED
         )
         return detectUnknownBounded(context, packageName)
+    }
+
+    private fun registerPackageStateReceiver(context: Context) = synchronized(packageReceiverLock) {
+        if (packageReceiverContext === context) return@synchronized
+        packageReceiverContext?.let { previous ->
+            runCatching { previous.unregisterReceiver(packageStateReceiver) }
+        }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_PACKAGE_ADDED)
+            addAction(Intent.ACTION_PACKAGE_REMOVED)
+            addAction(Intent.ACTION_PACKAGE_REPLACED)
+            addAction(Intent.ACTION_PACKAGE_CHANGED)
+            addDataScheme("package")
+        }
+        val registered = runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                context.registerReceiver(
+                    packageStateReceiver,
+                    filter,
+                    Context.RECEIVER_NOT_EXPORTED
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                context.registerReceiver(packageStateReceiver, filter)
+            }
+        }.isSuccess
+        packageReceiverContext = context.takeIf { registered }
     }
 
     private fun detectUnknownBounded(
