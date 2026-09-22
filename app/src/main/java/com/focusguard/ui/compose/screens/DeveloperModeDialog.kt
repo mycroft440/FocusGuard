@@ -61,8 +61,6 @@ import kotlinx.coroutines.withContext
 
 private const val ALL_EXIT_RECORDS = 0
 private const val MAX_TRACE_CHARS = 160_000
-// Set to true to restore the destructive maintenance actions in Dev Mode.
-private const val SHOW_DESTRUCTIVE_MAINTENANCE_ACTIONS = false
 
 /**
  * Maintenance-only surface opened from Settings.
@@ -153,78 +151,76 @@ internal fun DeveloperModeDialog(
                     style = MaterialTheme.typography.bodyMedium
                 )
 
-                if (SHOW_DESTRUCTIVE_MAINTENANCE_ACTIONS) {
-                    Spacer(Modifier.height(24.dp))
-                    Text(
-                        text = stringResource(R.string.dev_mode_revoke_blocks),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = stringResource(R.string.dev_mode_revoke_blocks_desc),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Button(
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !maintenanceWorking,
-                        onClick = {
-                            maintenanceWorking = true
-                            statusMessage = null
-                            scope.launch {
-                                val removed = revokeAllBlocksForDeveloperMode(context)
-                                statusMessage = context.getString(
-                                    if (removed) R.string.master_remove_all_blocks_success
-                                    else R.string.master_remove_all_blocks_failed
-                                )
-                                maintenanceWorking = false
-                            }
+                Spacer(Modifier.height(24.dp))
+                Text(
+                    text = stringResource(R.string.dev_mode_revoke_blocks),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.dev_mode_revoke_blocks_desc),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !maintenanceWorking,
+                    onClick = {
+                        maintenanceWorking = true
+                        statusMessage = null
+                        scope.launch {
+                            val removed = revokeAllBlocksForDeveloperMode(context)
+                            statusMessage = context.getString(
+                                if (removed) R.string.master_remove_all_blocks_success
+                                else R.string.master_remove_all_blocks_failed
+                            )
+                            maintenanceWorking = false
                         }
-                    ) {
-                        Text(stringResource(R.string.dev_mode_revoke_blocks))
                     }
+                ) {
+                    Text(stringResource(R.string.dev_mode_revoke_blocks))
+                }
 
-                    Spacer(Modifier.height(22.dp))
-                    Text(
-                        text = stringResource(R.string.dev_mode_revoke_permissions),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                    Spacer(Modifier.height(4.dp))
-                    Text(
-                        text = stringResource(R.string.dev_mode_revoke_permissions_desc),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(Modifier.height(10.dp))
-                    Button(
-                        modifier = Modifier.fillMaxWidth(),
-                        enabled = !maintenanceWorking,
-                        onClick = {
-                            maintenanceWorking = true
-                            statusMessage = null
-                            scope.launch {
-                                val result = runCatching {
-                                    PermissionRevocationFlow.revokeRequestedAccess(context)
-                                }.getOrNull()
-                                statusMessage = context.getString(
-                                    when {
-                                        result == null -> R.string.settings_revoke_permissions_incomplete
-                                        !result.hadRequestedAccess ->
-                                            R.string.settings_revoke_permissions_none_active
-                                        result.allRequestedAccessRevoked ->
-                                            R.string.settings_revoke_permissions_success
-                                        else -> R.string.settings_revoke_permissions_incomplete
-                                    }
-                                )
-                                maintenanceWorking = false
-                            }
+                Spacer(Modifier.height(22.dp))
+                Text(
+                    text = stringResource(R.string.dev_mode_revoke_permissions),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold
+                )
+                Spacer(Modifier.height(4.dp))
+                Text(
+                    text = stringResource(R.string.dev_mode_revoke_permissions_desc),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(Modifier.height(10.dp))
+                Button(
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !maintenanceWorking,
+                    onClick = {
+                        maintenanceWorking = true
+                        statusMessage = null
+                        scope.launch {
+                            val result = runCatching {
+                                PermissionRevocationFlow.revokeRequestedAccess(context)
+                            }.getOrNull()
+                            statusMessage = context.getString(
+                                when {
+                                    result == null -> R.string.settings_revoke_permissions_incomplete
+                                    !result.hadRequestedAccess ->
+                                        R.string.settings_revoke_permissions_none_active
+                                    result.allRequestedAccessRevoked ->
+                                        R.string.settings_revoke_permissions_success
+                                    else -> R.string.settings_revoke_permissions_incomplete
+                                }
+                            )
+                            maintenanceWorking = false
                         }
-                    ) {
-                        Text(stringResource(R.string.dev_mode_revoke_permissions))
                     }
+                ) {
+                    Text(stringResource(R.string.dev_mode_revoke_permissions))
                 }
 
                 if (maintenanceWorking) {
