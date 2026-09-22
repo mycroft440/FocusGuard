@@ -11,11 +11,6 @@ import android.os.Build
 import android.os.SystemClock
 import com.focusguard.utils.FocusGuardLogger
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.RejectedExecutionException
-import java.util.concurrent.SynchronousQueue
-import java.util.concurrent.ThreadPoolExecutor
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
@@ -164,15 +159,17 @@ internal object BrowserUnknownRetryPolicy {
  * Custom Tabs provider service usable by FocusGuard. All queries are package-scoped
  * and local; no network request is performed.
  *
- * Unknown-package PackageManager collection is executed by one bounded worker. A
- * result that exceeds the v4 deadline is returned as inconclusive and its late
- * worker result is never allowed to populate the cache.
+ * Unknown-package PackageManager collection uses one active worker at a time. A
+ * timed-out Binder worker is quarantined and replaced within a small bounded budget,
+ * so one stuck query cannot poison discovery for the rest of the process. Late
+ * results are lease-invalidated and can never populate the cache.
  */
 internal object BrowserDetector {
     private const val CUSTOM_TABS_SERVICE_ACTION =
         "android.support.customtabs.action.CustomTabsService"
     private const val POSITIVE_CACHE_MILLIS = 60_000L
     private const val NEGATIVE_CACHE_MILLIS = 5_000L
+    private const val MAX_RETIRED_COLLECTION_WORKERS = 2
     internal const val COLLECTION_DEADLINE_MILLIS = 1_000L
 
     internal val HTTPS_PROBES = listOf(
@@ -225,19 +222,10 @@ internal object BrowserDetector {
     private var appContext: Context? = null
     private val classificationCache = ConcurrentHashMap<String, CacheEntry>()
     private val collectionLeaseCounter = AtomicLong(0L)
-    private val collectionExecutor = ThreadPoolExecutor(
-        1,
-        1,
-        30L,
-        TimeUnit.SECONDS,
-        SynchronousQueue(),
-        { runnable ->
-            Thread(runnable, "FocusGuard-BrowserDetector").apply { isDaemon = true }
-        },
-        ThreadPoolExecutor.AbortPolicy()
-    ).apply {
-        allowCoreThreadTimeOut(true)
-    }
+    private val collectionRunner = BrowserCollectionRunner(
+        deadlineMillis = COLLECTION_DEADLINE_MILLIS,
+        maxRetiredWorkers = MAX_RETIRED_COLLECTION_WORKERS
+    )
 
     fun initialize(context: Context) {
         appContext = context.applicationContext
@@ -278,32 +266,27 @@ internal object BrowserDetector {
         packageName: String
     ): BrowserDetectionDecision {
         val lease = CollectionLease(collectionLeaseCounter.incrementAndGet())
-        val future = try {
-            collectionExecutor.submit<BrowserDetectionDecision> {
-                detectUnknownBlocking(context, packageName, lease)
+        val decision = collectionRunner.run(
+            onAbort = { reason ->
+                // This callback runs before cancellation/retirement on timeout, so
+                // a worker returning at the deadline cannot race a late cache write.
+                lease.invalidate()
+                when (reason) {
+                    BrowserCollectionRunner.AbortReason.TIMEOUT ->
+                        FocusGuardLogger.addBreadcrumb(
+                            "BrowserDetector[$packageName]: collection_timeout"
+                        )
+                    BrowserCollectionRunner.AbortReason.SATURATED ->
+                        FocusGuardLogger.addBreadcrumb(
+                            "BrowserDetector[$packageName]: collection_workers_saturated"
+                        )
+                    else -> Unit
+                }
             }
-        } catch (_: RejectedExecutionException) {
-            return unknownDecision()
+        ) {
+            detectUnknownBlocking(context, packageName, lease)
         }
-
-        return try {
-            future.get(COLLECTION_DEADLINE_MILLIS, TimeUnit.MILLISECONDS)
-        } catch (_: TimeoutException) {
-            lease.invalidate()
-            future.cancel(true)
-            FocusGuardLogger.addBreadcrumb(
-                "BrowserDetector[$packageName]: collection_timeout"
-            )
-            unknownDecision()
-        } catch (_: InterruptedException) {
-            lease.invalidate()
-            future.cancel(true)
-            Thread.currentThread().interrupt()
-            unknownDecision()
-        } catch (_: java.util.concurrent.ExecutionException) {
-            lease.invalidate()
-            unknownDecision()
-        }
+        return decision ?: unknownDecision()
     }
 
     private fun detectUnknownBlocking(
