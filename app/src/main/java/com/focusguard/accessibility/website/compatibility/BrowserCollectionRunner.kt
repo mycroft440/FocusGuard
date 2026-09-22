@@ -1,9 +1,9 @@
 package com.focusguard.accessibility.website.compatibility
 
 import java.util.ArrayDeque
+import java.util.concurrent.ArrayBlockingQueue
 import java.util.concurrent.ExecutionException
 import java.util.concurrent.RejectedExecutionException
-import java.util.concurrent.SynchronousQueue
 import java.util.concurrent.ThreadPoolExecutor
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
@@ -19,6 +19,10 @@ import java.util.concurrent.atomic.AtomicLong
  * is available; once the budget is exhausted, calls fail inconclusively until one
  * retired worker actually terminates. This keeps both forward progress after an
  * isolated stall and a hard bound on leaked/stuck worker threads.
+ *
+ * The active worker has exactly one pending slot. This avoids rejecting the next
+ * sequential detection during the tiny hand-off window in which a completed worker
+ * has not yet returned to its queue, while still keeping queue growth strictly bounded.
  */
 internal class BrowserCollectionRunner(
     private val deadlineMillis: Long,
@@ -113,7 +117,7 @@ internal class BrowserCollectionRunner(
         1,
         30L,
         TimeUnit.SECONDS,
-        SynchronousQueue(),
+        ArrayBlockingQueue(1),
         { runnable ->
             Thread(
                 runnable,
