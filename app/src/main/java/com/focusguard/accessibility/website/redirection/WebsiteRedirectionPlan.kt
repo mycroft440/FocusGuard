@@ -4,6 +4,14 @@ package com.focusguard.accessibility.website.redirection
 internal object WebsiteRedirectionPlan {
     const val MAX_SAME_TAB_ATTEMPTS = 2
     const val MAX_SUBMIT_ALTERNATIVES = 3
+
+    /**
+     * The 601f93e release tried a package-scoped safe ACTION_VIEW only after the
+     * certified same-tab path was exhausted. The opaque curtain stays up until the
+     * destination is positively observed, so this request is never treated as proof.
+     */
+    const val ALLOW_EXTERNAL_BROWSER_INTENT_FALLBACK = true
+
     const val DESTINATION_CONFIRM_TIMEOUT_MILLIS = 2_000L
 
     private const val PREPARE_AND_RECOVERY_BUDGET_PER_ATTEMPT_MILLIS = 4_000L
@@ -17,8 +25,10 @@ internal object WebsiteRedirectionPlan {
             ) + POST_REDIRECT_DESTINATION_BUDGET_MILLIS + CURTAIN_FAILSAFE_MARGIN_MILLIS
 
     /**
-     * Coordinate taps, guessed keyboard positions and ACTION_VIEW are deliberately
-     * excluded. Exhausting this bounded same-tab budget is terminal fail-closed.
+     * Coordinate taps and guessed keyboard positions remain excluded. Once this
+     * bounded same-tab budget is exhausted, the legacy package-scoped browser
+     * intent fallback gets one chance; failure or unconfirmed navigation remains
+     * terminal fail-closed.
      */
     fun canRetry(attemptNumber: Int): Boolean = attemptNumber < MAX_SAME_TAB_ATTEMPTS
 }

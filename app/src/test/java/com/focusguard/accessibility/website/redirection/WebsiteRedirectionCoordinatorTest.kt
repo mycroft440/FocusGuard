@@ -95,6 +95,43 @@ class WebsiteRedirectionCoordinatorTest {
     }
 
     @Test
+    fun `same tab exhaustion uses legacy package scoped browser fallback`() = runBlocking {
+        val adapter = FakeAdapter(
+            prepareResults = ArrayDeque(listOf(false, false)),
+            externalRedirectResult = true
+        )
+        val outcome = WebsiteRedirectionCoordinator.execute(normalSession(), adapter)
+
+        assertThat(outcome).isEqualTo(WebsiteRedirectionCoordinator.Outcome.REDIRECT_CONFIRMED)
+        assertThat(adapter.prepareAttempts).containsExactly(1, 2).inOrder()
+        assertThat(adapter.externalRedirectCalls).isEqualTo(1)
+        assertThat(adapter.failClosedCalls).isEqualTo(0)
+        assertThat(adapter.releaseCalls).isEqualTo(1)
+    }
+
+    @Test
+    fun `legacy same window policy ignores unrelated transition timestamps`() {
+        val policy = WebsiteTabNeutralizationPolicy("com.android.chrome", 7)
+
+        assertThat(
+            policy.mayActivateBlockedAddressBar(
+                activePackageName = "com.android.chrome",
+                activeWindowId = 7,
+                phaseStartedAtUptimeMillis = 100L,
+                latestWindowTransitionEventUptimeMillis = 999L
+            )
+        ).isTrue()
+        policy.markSafeAddressSet(101L)
+        assertThat(
+            policy.maySubmitSafeAddress(
+                activePackageName = "com.android.chrome",
+                activeWindowId = 7,
+                latestWindowTransitionEventUptimeMillis = 999L
+            )
+        ).isTrue()
+    }
+
+    @Test
     fun `restore failure is terminal fail closed`() = runBlocking {
         val adapter = FakeAdapter(
             prepareResults = ArrayDeque(listOf(false)),
@@ -155,6 +192,7 @@ class WebsiteRedirectionCoordinatorTest {
         private val confirmResults: ArrayDeque<Boolean> = ArrayDeque(listOf(true, true)),
         private val restoreResult: Boolean = true,
         private val strictDestinationResult: Boolean = true,
+        private val externalRedirectResult: Boolean = false,
         private val loseOwnershipAfterPrepare: Boolean = false,
         private val throwOnSubmit: Boolean = false,
         private val throwCancellationOnSubmit: Boolean = false
@@ -165,6 +203,7 @@ class WebsiteRedirectionCoordinatorTest {
         var restoreCalls = 0
         var releaseCalls = 0
         var failClosedCalls = 0
+        var externalRedirectCalls = 0
         private var owned = true
 
         override suspend fun awaitPresentationFrame(): Boolean = true
@@ -193,6 +232,11 @@ class WebsiteRedirectionCoordinatorTest {
         override suspend fun awaitRedirectConfirmation(): Boolean {
             confirmCalls += 1
             return confirmResults.removeFirstOrNull() ?: false
+        }
+
+        override suspend fun requestExternalBrowserRedirect(): Boolean {
+            externalRedirectCalls += 1
+            return externalRedirectResult
         }
 
         override suspend fun completeStrictDestination(): Boolean = strictDestinationResult

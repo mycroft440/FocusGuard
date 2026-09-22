@@ -12,6 +12,11 @@ class WebsiteRedirectionPlanTest {
     }
 
     @Test
+    fun `legacy package scoped browser intent fallback is enabled`() {
+        assertThat(WebsiteRedirectionPlan.ALLOW_EXTERNAL_BROWSER_INTENT_FALLBACK).isTrue()
+    }
+
+    @Test
     fun `submit alternatives are independent from whole redirect attempts`() {
         assertThat(WebsiteRedirectionPlan.MAX_SUBMIT_ALTERNATIVES).isEqualTo(3)
     }
