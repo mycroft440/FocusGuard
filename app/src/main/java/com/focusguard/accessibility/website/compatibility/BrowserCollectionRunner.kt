@@ -127,7 +127,7 @@ internal class BrowserCollectionRunner(
     internal fun closeForTest() = synchronized(lock) {
         activeExecutor?.shutdownNow()
         activeExecutor = null
-        retiredExecutors.forEach(ThreadPoolExecutor::shutdownNow)
+        retiredExecutors.forEach { it.shutdownNow() }
         retiredExecutors.clear()
     }
 
