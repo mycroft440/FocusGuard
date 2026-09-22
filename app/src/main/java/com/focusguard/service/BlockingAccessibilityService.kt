@@ -3334,6 +3334,9 @@ class BlockingAccessibilityService : AccessibilityService() {
                                 false
                             } == true
 
+                        override suspend fun requestExternalBrowserRedirect(): Boolean =
+                            requestSafeRedirectThroughBrowserIntent(transition)
+
                         override suspend fun completeStrictDestination(): Boolean =
                             completeStrictWebsiteDestination(
                                 transition = transition,
@@ -3489,6 +3492,70 @@ class BlockingAccessibilityService : AccessibilityService() {
         transition.activatedAddressViewId = null
         transition.editorAddressViewId = null
         return restored
+    }
+
+    private suspend fun restoreBlockedSurfaceForSafeIntentFallback(
+        transition: WebsiteBlockTransitionHandle
+    ): Boolean {
+        if (!curtainReadyForTransition(transition)) return false
+        if (transition.activatedAddressViewId != null ||
+            transition.editorAddressViewId != null
+        ) {
+            if (!performTransitionBack(transition)) return false
+            delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
+            if (!curtainReadyForTransition(transition)) return false
+        }
+        val restored = websiteTreeWorker.run {
+            currentBrowserSurfaceMatchesBlockedTransition(transition)
+        }
+        if (!curtainReadyForTransition(transition)) return false
+        transition.activatedAddressViewId = null
+        transition.editorAddressViewId = null
+        return restored
+    }
+
+    private suspend fun requestSafeRedirectThroughBrowserIntent(
+        transition: WebsiteBlockTransitionHandle
+    ): Boolean {
+        val browserPackageName = transition.browserPackageName
+        if (!WebsiteRedirectionPlan.ALLOW_EXTERNAL_BROWSER_INTENT_FALLBACK ||
+            !supportsCapabilityBasedIntentRedirectFallback(
+                knownBrowser = browserPackageName in knownBrowserPackages,
+                verifiedHttpsHandler = isVerifiedHttpsHandler(browserPackageName)
+            ) ||
+            !transitionOwnsCurtain(transition)
+        ) return false
+
+        // Match 601f93e: the external request is allowed only after the original
+        // blocked surface has been restored and re-certified in the same window.
+        if (!restoreBlockedSurfaceForSafeIntentFallback(transition) ||
+            !curtainReadyForTransition(transition)
+        ) return false
+
+        val requestedAt = SystemClock.uptimeMillis()
+        if (!websiteBlockTransitionGuard.markSanitizationRequested(
+                browserPackageName = browserPackageName,
+                transitionId = transition.id,
+                requestedAtUptimeMillis = requestedAt
+            )
+        ) return false
+
+        return withContext(Dispatchers.Main.immediate) {
+            if (!transitionOwnsCurtain(transition)) return@withContext false
+            runCatching {
+                startActivity(createSafeBrowserRedirectIntent(browserPackageName))
+                true
+            }.getOrElse { error ->
+                if (transitionOwnsCurtain(transition)) {
+                    FocusGuardLogger.logError(
+                        "A11y",
+                        "Falha ao solicitar redirecionamento seguro no navegador",
+                        error
+                    )
+                }
+                false
+            }
+        }
     }
 
     private suspend fun completeStrictWebsiteDestination(
@@ -4389,12 +4456,12 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val INVALID_BROWSER_WINDOW_ID = -1
-        private const val WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS = 32L
-        private const val WEBSITE_ADDRESS_BAR_ACTION_RETRY_MILLIS = 16L
+        private const val WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS = 48L
+        private const val WEBSITE_ADDRESS_BAR_ACTION_RETRY_MILLIS = 32L
         private const val WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS = 360L
         private const val WEBSITE_FIREFOX_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS = 800L
-        private const val WEBSITE_REDIRECT_SURFACE_SETTLE_MILLIS = 80L
-        internal const val WEBSITE_MIN_BLOCK_NOTICE_MILLIS = 250L
+        private const val WEBSITE_REDIRECT_SURFACE_SETTLE_MILLIS = 120L
+        internal const val WEBSITE_MIN_BLOCK_NOTICE_MILLIS = 1_000L
         /**
          * How long a relevant click keeps intercepting follow-up events.
          *
@@ -4517,6 +4584,27 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         internal fun isSafeRedirectSurface(urlOrAddress: String?): Boolean =
             WebsiteRedirectDestination.current.matchesSurface(urlOrAddress)
+
+        internal fun supportsCapabilityBasedIntentRedirectFallback(
+            knownBrowser: Boolean,
+            verifiedHttpsHandler: Boolean
+        ): Boolean = knownBrowser || verifiedHttpsHandler
+
+        internal fun createSafeBrowserRedirectIntent(browserPackageName: String): Intent {
+            require(browserPackageName.isNotBlank())
+            return Intent(
+                Intent.ACTION_VIEW,
+                Uri.parse(WebsiteRedirectDestination.current.url)
+            ).apply {
+                addCategory(Intent.CATEGORY_BROWSABLE)
+                setPackage(browserPackageName)
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            }
+        }
 
         internal fun curtainReadyForTabAction(
             attached: Boolean,

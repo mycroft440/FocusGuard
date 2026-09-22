@@ -159,9 +159,28 @@ class WebsiteBlockNavigationTest {
     }
 
     @Test
-    fun `website curtain remains briefly visible while redirect starts immediately`() {
+    fun `website curtain keeps the known good one second handoff window`() {
         assertThat(BlockingAccessibilityService.WEBSITE_MIN_BLOCK_NOTICE_MILLIS)
-            .isEqualTo(250L)
+            .isEqualTo(1_000L)
+    }
+
+    @Test
+    fun `legacy browser intent fallback is explicit package scoped and safe`() {
+        val intent = BlockingAccessibilityService.createSafeBrowserRedirectIntent(BRAVE_PACKAGE)
+
+        assertThat(intent.action).isEqualTo(Intent.ACTION_VIEW)
+        assertThat(intent.`package`).isEqualTo(BRAVE_PACKAGE)
+        assertThat(BlockingAccessibilityService.isSafeRedirectSurface(intent.data?.toString()))
+            .isTrue()
+        assertThat(intent.flags and Intent.FLAG_ACTIVITY_NEW_TASK).isNotEqualTo(0)
+        assertThat(intent.flags and Intent.FLAG_ACTIVITY_CLEAR_TOP).isNotEqualTo(0)
+        assertThat(intent.flags and Intent.FLAG_ACTIVITY_SINGLE_TOP).isNotEqualTo(0)
+        assertThat(
+            BlockingAccessibilityService.supportsCapabilityBasedIntentRedirectFallback(
+                knownBrowser = true,
+                verifiedHttpsHandler = false
+            )
+        ).isTrue()
     }
 
     @Test
@@ -559,7 +578,7 @@ class WebsiteBlockNavigationTest {
                 phaseStartedAtUptimeMillis = 100L,
                 latestWindowTransitionEventUptimeMillis = 101L
             )
-        ).isFalse()
+        ).isTrue()
         assertThat(policy.mayTouchBlockedTab(browserPackage, 8)).isFalse()
         assertThat(policy.mayTouchBlockedTab(CHROME_PACKAGE, 7)).isFalse()
 

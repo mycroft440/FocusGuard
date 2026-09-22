@@ -38,6 +38,7 @@ internal object WebsiteRedirectionCoordinator {
         suspend fun restoreBlockedSurfaceForRetry(): Boolean
         suspend fun beforeRetry(nextAttemptNumber: Int)
         suspend fun awaitRedirectConfirmation(): Boolean
+        suspend fun requestExternalBrowserRedirect(): Boolean = false
         suspend fun completeStrictDestination(): Boolean
         suspend fun releasePresentation()
         fun failClosed()
@@ -120,7 +121,7 @@ internal object WebsiteRedirectionCoordinator {
 
             if (!adapter.mayAttemptRedirect()) return failClosed(session, adapter)
             if (!WebsiteRedirectionPlan.canRetry(attemptNumber)) {
-                return failClosed(session, adapter)
+                return completeExternalFallbackOrFailClosed(session, adapter)
             }
             if (!adapter.restoreBlockedSurfaceForRetry()) {
                 if (!adapter.ownsProtection()) return Outcome.ABORTED
@@ -129,7 +130,7 @@ internal object WebsiteRedirectionCoordinator {
                     return completeConfirmedRedirect(session, adapter)
                 }
                 if (!adapter.ownsProtection()) return Outcome.ABORTED
-                return failClosed(session, adapter)
+                return completeExternalFallbackOrFailClosed(session, adapter)
             }
             if (!adapter.ownsProtection()) return Outcome.ABORTED
 
@@ -137,7 +138,29 @@ internal object WebsiteRedirectionCoordinator {
             adapter.beforeRetry(attemptNumber)
         }
 
-        return failClosed(session, adapter)
+        return completeExternalFallbackOrFailClosed(session, adapter)
+    }
+
+    private suspend fun completeExternalFallbackOrFailClosed(
+        session: Session,
+        adapter: Adapter
+    ): Outcome {
+        if (!adapter.ownsProtection()) return Outcome.ABORTED
+        if (!adapter.mayAttemptRedirect()) return failClosed(session, adapter)
+        if (!WebsiteRedirectionPlan.ALLOW_EXTERNAL_BROWSER_INTENT_FALLBACK) {
+            return failClosed(session, adapter)
+        }
+        if (!adapter.requestExternalBrowserRedirect()) {
+            if (!adapter.ownsProtection()) return Outcome.ABORTED
+            return failClosed(session, adapter)
+        }
+        if (!adapter.ownsProtection()) return Outcome.ABORTED
+        if (!adapter.awaitRedirectConfirmation()) {
+            if (!adapter.ownsProtection()) return Outcome.ABORTED
+            return failClosed(session, adapter)
+        }
+        if (!adapter.ownsProtection()) return Outcome.ABORTED
+        return completeConfirmedRedirect(session, adapter)
     }
 
     private suspend fun completeConfirmedRedirect(
@@ -185,11 +208,9 @@ internal class WebsiteTabNeutralizationPolicy(
     fun mayActivateBlockedAddressBar(
         activePackageName: String,
         activeWindowId: Int,
-        phaseStartedAtUptimeMillis: Long,
-        latestWindowTransitionEventUptimeMillis: Long
+        @Suppress("UNUSED_PARAMETER") phaseStartedAtUptimeMillis: Long,
+        @Suppress("UNUSED_PARAMETER") latestWindowTransitionEventUptimeMillis: Long
     ): Boolean = state == State.BLOCKED_TAB &&
-        phaseStartedAtUptimeMillis > 0L &&
-        latestWindowTransitionEventUptimeMillis <= phaseStartedAtUptimeMillis &&
         activePackageName == browserPackageName &&
         activeWindowId == expectedWindowId
 
@@ -203,16 +224,11 @@ internal class WebsiteTabNeutralizationPolicy(
     fun maySubmitSafeAddress(
         activePackageName: String,
         activeWindowId: Int,
-        latestWindowTransitionEventUptimeMillis: Long
+        @Suppress("UNUSED_PARAMETER") latestWindowTransitionEventUptimeMillis: Long
     ): Boolean = safeAddressSetAtUptimeMillis > 0L &&
         activePackageName == browserPackageName &&
         activeWindowId == expectedWindowId &&
-        when (state) {
-            State.SAFE_ADDRESS_SET ->
-                latestWindowTransitionEventUptimeMillis <= safeAddressSetAtUptimeMillis
-            State.REDIRECT_REQUESTED -> true
-            State.BLOCKED_TAB -> false
-        }
+        (state == State.SAFE_ADDRESS_SET || state == State.REDIRECT_REQUESTED)
 
     fun markRedirectRequested() {
         check(state == State.SAFE_ADDRESS_SET || state == State.REDIRECT_REQUESTED)
