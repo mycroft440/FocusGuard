@@ -171,6 +171,10 @@ fun CreateSessionWizard(
         when (page) {
             0 -> AppSelectionStep(
                 kinds = kinds,
+                // Sessões são camadas independentes. Um alvo já protegido por
+                // outro bloqueio continua selecionável para receber uma nova
+                // camada (por exemplo, período diário + bloqueio TIME contínuo).
+                allowCompatibleProtection = true,
                 // Voltar da segunda página reabre esta com a escolha intacta, em
                 // vez de exigir que tudo seja marcado de novo.
                 initialSelectedPackages = selectedApps.mapTo(linkedSetOf()) {
