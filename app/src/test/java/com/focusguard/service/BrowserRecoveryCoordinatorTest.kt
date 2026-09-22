@@ -7,8 +7,14 @@ class BrowserRecoveryCoordinatorTest {
     private fun token(generation: Long, sequence: Long = generation) =
         BrowserInspectionCoordinator.Token("com.android.chrome", generation.toInt(), generation, sequence)
 
-    private fun sameDocumentToken(sequence: Long) =
-        BrowserInspectionCoordinator.Token("com.android.chrome", 10, 1L, sequence)
+    private fun sameDocumentToken(sequence: Long, surfaceEpoch: Long = 1L) =
+        BrowserInspectionCoordinator.Token(
+            "com.android.chrome",
+            10,
+            1L,
+            sequence,
+            surfaceEpoch = surfaceEpoch
+        )
 
     @Test
     fun newGenerationWaitsForOldRecoveryButIsNeverLost() {
@@ -35,6 +41,19 @@ class BrowserRecoveryCoordinatorTest {
         assertTrue(queue.isCurrent(active))
         assertTrue(active.allowSequenceAdvance)
         assertNull(queue.finish(active))
+    }
+
+    @Test
+    fun newSurfaceEpochCancelsOldRecoveryAndQueuesReplacement() {
+        val queue = BrowserRecoveryCoordinator()
+        val old = sameDocumentToken(sequence = 1L, surfaceEpoch = 1L)
+        val replacement = sameDocumentToken(sequence = 2L, surfaceEpoch = 2L)
+
+        assertTrue(queue.offer(old))
+        assertFalse(queue.offer(replacement))
+        assertFalse(queue.isCurrent(old))
+        assertSame(replacement, queue.finish(old))
+        assertTrue(queue.isCurrent(replacement))
     }
 
     @Test
