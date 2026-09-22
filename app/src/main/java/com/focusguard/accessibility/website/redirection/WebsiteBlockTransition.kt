@@ -111,8 +111,6 @@ internal class WebsiteBlockTransitionGuard {
             requestedAtUptimeMillis < transition.detectionEventUptimeMillis
         ) return false
         transition.sanitizationRequested = true
-        // Each retry owns a fresh temporal boundary. Evidence from an older submit
-        // must never certify a later attempt.
         transition.sanitizationRequestedAtUptimeMillis = requestedAtUptimeMillis
         WebsiteBlockingDiagnostics.markSubmitAccepted(browserPackageName, transitionId)
         return true
@@ -203,7 +201,6 @@ internal class WebsiteBlockTransitionGuard {
         return confirmed
     }
 
-    /** Same-window confirmation path used after ordinary navigation evidence. */
     @Synchronized
     fun transitionForConfirmation(
         browserPackageName: String,
@@ -219,13 +216,6 @@ internal class WebsiteBlockTransitionGuard {
         return transition.takeIf { it.expectedWindowId == windowId }
     }
 
-    /**
-     * Returns a transaction that is temporally eligible for destination validation.
-     * Window ownership is deliberately not changed here; the caller must first prove
-     * the exact stable destination surface, then call [rebindVerifiedDestinationWindow].
-     * A surface-epoch mismatch deliberately leaves [expectedWindowId] invalid so the
-     * existing verified-rebind path also runs when Android reused the same window id.
-     */
     @Synchronized
     fun transitionForDestinationCandidate(
         browserPackageName: String,
@@ -242,9 +232,10 @@ internal class WebsiteBlockTransitionGuard {
 
     /**
      * One-time rebind after the caller independently inspected the exact stable
-     * configured destination. This also handles a new surface epoch that reused the
-     * same Android window id: the stale binding is first invalidated to -1, making
-     * the caller enter this verified path exactly as it would for a new window.
+     * configured destination. Production transitions created from an inspection
+     * token carry a positive surface epoch and must match the registry. Epoch-zero
+     * transitions retain the older generation/window contract for tests and legacy
+     * callers that do not participate in the v4 surface identity protocol.
      */
     @Synchronized
     fun rebindVerifiedDestinationWindow(
@@ -265,23 +256,28 @@ internal class WebsiteBlockTransitionGuard {
             !isRedirectNavigationEvidenceEvent(eventType)
         ) return false
 
-        val surfaceIdentity = BrowserSurfaceIdentityRegistry.current(
-            browserPackageName,
-            windowId
-        ) ?: return false
-        if (surfaceIdentity.generation != inspectionGeneration) return false
+        val surfaceIdentity = if (transition.inspectionSurfaceEpoch > 0L) {
+            BrowserSurfaceIdentityRegistry.current(browserPackageName, windowId)
+                ?.takeIf { it.generation == inspectionGeneration }
+                ?: return false
+        } else {
+            null
+        }
 
         val alreadyBoundToExactSurface =
             transition.expectedWindowId == windowId &&
                 transition.inspectionGeneration == inspectionGeneration &&
-                transition.inspectionSurfaceEpoch == surfaceIdentity.surfaceEpoch
+                (surfaceIdentity == null ||
+                    transition.inspectionSurfaceEpoch == surfaceIdentity.surfaceEpoch)
         if (alreadyBoundToExactSurface) return true
         if (transition.verifiedDestinationWindowRebound) return false
 
         transition.expectedWindowId = windowId
         transition.pendingSurfaceWindowId = INVALID_BROWSER_WINDOW_ID
         transition.inspectionGeneration = inspectionGeneration
-        transition.inspectionSurfaceEpoch = surfaceIdentity.surfaceEpoch
+        if (surfaceIdentity != null) {
+            transition.inspectionSurfaceEpoch = surfaceIdentity.surfaceEpoch
+        }
         transition.verifiedDestinationWindowRebound = true
         transition.latestObservedEventUptimeMillis = maxOf(
             transition.latestObservedEventUptimeMillis,
@@ -383,11 +379,6 @@ internal class WebsiteBlockTransitionGuard {
         activeTransitions.clear()
     }
 
-    /**
-     * Invalidates only the browser-surface binding, not transition ownership. The
-     * opaque curtain therefore remains fail-closed while safe-destination inspection
-     * decides whether this surface may be rebound.
-     */
     private fun invalidateChangedSurfaceBinding(transition: WebsiteBlockTransitionHandle) {
         if (transition.inspectionSurfaceEpoch <= 0L) return
         val boundWindowId = when {
