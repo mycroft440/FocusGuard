@@ -57,6 +57,21 @@ class BrowserDetectorPackageManagerTest {
     }
 
     @Test
+    fun `duplicate narrow filter after broad filter does not make B order dependent`() {
+        BrowserDetector.HTTPS_PROBES.forEach { url ->
+            registerHandler(url, "$packageName.BrowserActivity", broad = true)
+            registerHandler(url, "$packageName.BrowserActivity", broad = false)
+        }
+        registerBrowserCategory(activityName = "$packageName.BrowserActivity")
+
+        val decision = BrowserDetector.detect(packageName)
+
+        assertThat(decision.classification).isEqualTo(BrowserClassification.CONFIRMED_BROWSER)
+        assertThat(decision.reason)
+            .isEqualTo(BrowserDetectionReason.STRUCTURAL_BROWSER_CONFIRMED)
+    }
+
+    @Test
     fun `distributed specialized activities do not satisfy common https activity`() {
         BrowserDetector.HTTPS_PROBES.forEachIndexed { index, url ->
             registerHandler(
@@ -109,6 +124,7 @@ class BrowserDetectorPackageManagerTest {
         val packageInfo = PackageInfo().apply {
             packageName = this@BrowserDetectorPackageManagerTest.packageName
             versionCode = 1
+            firstInstallTime = 5L
             lastUpdateTime = 10L
             this.applicationInfo = applicationInfo
         }
