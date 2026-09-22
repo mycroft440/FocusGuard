@@ -5,13 +5,19 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
-import android.content.pm.ResolveInfo
 import android.content.pm.ServiceInfo
 import android.net.Uri
 import android.os.Build
 import android.os.SystemClock
 import com.focusguard.utils.FocusGuardLogger
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.RejectedExecutionException
+import java.util.concurrent.SynchronousQueue
+import java.util.concurrent.ThreadPoolExecutor
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 internal enum class BrowserClassification {
     NOT_BROWSER,
@@ -155,14 +161,19 @@ internal object BrowserUnknownRetryPolicy {
  * exported/enabled Activity. B requires the matching filters for that Activity to
  * be broad: no authority/path/SSP/relative-URI restriction. C is MAIN+APP_BROWSER,
  * H is two HTTP hosts with a common usable Activity, and T is an exported/enabled
- * Custom Tabs provider service. All queries are package-scoped and local; no network
- * request is performed.
+ * Custom Tabs provider service usable by FocusGuard. All queries are package-scoped
+ * and local; no network request is performed.
+ *
+ * Unknown-package PackageManager collection is executed by one bounded worker. A
+ * result that exceeds the v4 deadline is returned as inconclusive and its late
+ * worker result is never allowed to populate the cache.
  */
 internal object BrowserDetector {
     private const val CUSTOM_TABS_SERVICE_ACTION =
         "android.support.customtabs.action.CustomTabsService"
     private const val POSITIVE_CACHE_MILLIS = 60_000L
     private const val NEGATIVE_CACHE_MILLIS = 5_000L
+    internal const val COLLECTION_DEADLINE_MILLIS = 1_000L
 
     internal val HTTPS_PROBES = listOf(
         "https://focusguard-a.invalid/",
@@ -183,7 +194,10 @@ internal object BrowserDetector {
 
     private data class PackageIdentity(
         val versionCode: Long,
-        val lastUpdateTime: Long
+        val firstInstallTime: Long,
+        val lastUpdateTime: Long,
+        val applicationEnabled: Boolean,
+        val enabledSetting: Int
     )
 
     private data class CacheEntry(
@@ -201,9 +215,29 @@ internal object BrowserDetector {
             get() = broadByComponent.keys
     }
 
+    private class CollectionLease(val id: Long) {
+        private val valid = AtomicBoolean(true)
+        fun invalidate() = valid.set(false)
+        fun isValid(): Boolean = valid.get()
+    }
+
     @Volatile
     private var appContext: Context? = null
     private val classificationCache = ConcurrentHashMap<String, CacheEntry>()
+    private val collectionLeaseCounter = AtomicLong(0L)
+    private val collectionExecutor = ThreadPoolExecutor(
+        1,
+        1,
+        30L,
+        TimeUnit.SECONDS,
+        SynchronousQueue(),
+        { runnable ->
+            Thread(runnable, "FocusGuard-BrowserDetector").apply { isDaemon = true }
+        },
+        ThreadPoolExecutor.AbortPolicy()
+    ).apply {
+        allowCoreThreadTimeOut(true)
+    }
 
     fun initialize(context: Context) {
         appContext = context.applicationContext
@@ -221,12 +255,7 @@ internal object BrowserDetector {
     fun classify(packageName: String): BrowserClassification = detect(packageName).classification
 
     fun detect(packageName: String): BrowserDetectionDecision {
-        if (packageName.isBlank()) {
-            return BrowserDetectionDecision(
-                BrowserClassification.UNKNOWN,
-                BrowserDetectionReason.PACKAGE_QUERY_UNKNOWN
-            )
-        }
+        if (packageName.isBlank()) return unknownDecision()
 
         // Registered packages never enter unknown-browser collection, even when a
         // particular browser version/mode later proves unavailable to its adapter.
@@ -241,11 +270,49 @@ internal object BrowserDetector {
             BrowserClassification.UNKNOWN,
             BrowserDetectionReason.DETECTOR_UNINITIALIZED
         )
-        val identity = readPackageIdentity(context, packageName)
-            ?: return BrowserDetectionDecision(
-                BrowserClassification.UNKNOWN,
-                BrowserDetectionReason.PACKAGE_QUERY_UNKNOWN
+        return detectUnknownBounded(context, packageName)
+    }
+
+    private fun detectUnknownBounded(
+        context: Context,
+        packageName: String
+    ): BrowserDetectionDecision {
+        val lease = CollectionLease(collectionLeaseCounter.incrementAndGet())
+        val future = try {
+            collectionExecutor.submit<BrowserDetectionDecision> {
+                detectUnknownBlocking(context, packageName, lease)
+            }
+        } catch (_: RejectedExecutionException) {
+            return unknownDecision()
+        }
+
+        return try {
+            future.get(COLLECTION_DEADLINE_MILLIS, TimeUnit.MILLISECONDS)
+        } catch (_: TimeoutException) {
+            lease.invalidate()
+            future.cancel(true)
+            FocusGuardLogger.addBreadcrumb(
+                "BrowserDetector[$packageName]: collection_timeout"
             )
+            unknownDecision()
+        } catch (_: InterruptedException) {
+            lease.invalidate()
+            future.cancel(true)
+            Thread.currentThread().interrupt()
+            unknownDecision()
+        } catch (_: java.util.concurrent.ExecutionException) {
+            lease.invalidate()
+            unknownDecision()
+        }
+    }
+
+    private fun detectUnknownBlocking(
+        context: Context,
+        packageName: String,
+        lease: CollectionLease
+    ): BrowserDetectionDecision {
+        val identity = readPackageIdentity(context, packageName) ?: return unknownDecision()
+        if (!lease.isValid()) return unknownDecision()
 
         val now = SystemClock.elapsedRealtime()
         val previous = classificationCache[packageName]
@@ -257,6 +324,8 @@ internal object BrowserDetector {
         }
 
         val evidence = collectEvidence(context, packageName)
+        if (!lease.isValid()) return unknownDecision()
+
         val decision = BrowserClassificationPolicy.decide(evidence)
         val unknownAttempt = if (decision.classification == BrowserClassification.UNKNOWN) {
             (previous?.takeIf { it.identity == identity }?.unknownAttempt ?: 0) + 1
@@ -272,10 +341,11 @@ internal object BrowserDetector {
             BrowserClassification.PROBABLE_BROWSER,
             BrowserClassification.NOT_BROWSER -> NEGATIVE_CACHE_MILLIS
         }
+        if (!lease.isValid()) return unknownDecision()
         classificationCache[packageName] = CacheEntry(
             identity = identity,
             decision = decision,
-            expiresAtElapsedMillis = now + cacheMillis,
+            expiresAtElapsedMillis = SystemClock.elapsedRealtime() + cacheMillis,
             unknownAttempt = unknownAttempt
         )
         FocusGuardLogger.addBreadcrumb(
@@ -362,16 +432,18 @@ internal object BrowserDetector {
             if (includeResolvedFilter) PackageManager.GET_RESOLVED_FILTER else 0
         @Suppress("DEPRECATION")
         val matches = context.packageManager.queryIntentActivities(intent, flags)
-        val usable = matches.mapNotNull { resolveInfo ->
+        val usable = linkedMapOf<String, Boolean>()
+        matches.forEach { resolveInfo ->
             val activity = resolveInfo.activityInfo
-                ?.takeIf { isUsableActivity(it, packageName) }
-                ?: return@mapNotNull null
-            componentKey(activity) to if (includeResolvedFilter) {
-                isBroadWebFilter(resolveInfo.filter)
-            } else {
-                false
-            }
-        }.toMap()
+                ?.takeIf { isUsableActivity(context, it, packageName) }
+                ?: return@forEach
+            val component = componentKey(activity)
+            val broad = includeResolvedFilter && isBroadWebFilter(resolveInfo.filter)
+            // PackageManager may return more than one matching filter for the same
+            // Activity. The Activity is broad for this probe when at least one of
+            // those filters is broad; result ordering must never change B.
+            usable[component] = usable[component] == true || broad
+        }
         ActivityProbe(
             status = if (usable.isEmpty()) {
                 BrowserProbeResult.NOT_HANDLED
@@ -398,7 +470,7 @@ internal object BrowserDetector {
             PackageManager.MATCH_DEFAULT_ONLY
         )
         if (matches.any { resolve ->
-                resolve.activityInfo?.let { isUsableActivity(it, packageName) } == true
+                resolve.activityInfo?.let { isUsableActivity(context, it, packageName) } == true
             }
         ) {
             BrowserProbeResult.HANDLED
@@ -417,7 +489,7 @@ internal object BrowserDetector {
         @Suppress("DEPRECATION")
         val matches = context.packageManager.queryIntentServices(intent, 0)
         if (matches.any { resolve ->
-                resolve.serviceInfo?.let { isUsableService(it, packageName) } == true
+                resolve.serviceInfo?.let { isUsableService(context, it, packageName) } == true
             }
         ) {
             BrowserProbeResult.HANDLED
@@ -428,17 +500,32 @@ internal object BrowserDetector {
         BrowserProbeResult.UNKNOWN
     }
 
-    private fun isUsableActivity(activity: ActivityInfo, packageName: String): Boolean =
+    private fun isUsableActivity(
+        context: Context,
+        activity: ActivityInfo,
+        packageName: String
+    ): Boolean =
         activity.packageName == packageName &&
             activity.exported &&
             activity.enabled &&
-            activity.applicationInfo?.enabled != false
+            activity.applicationInfo?.enabled != false &&
+            permissionUsableByFocusGuard(context, activity.permission)
 
-    private fun isUsableService(service: ServiceInfo, packageName: String): Boolean =
+    private fun isUsableService(
+        context: Context,
+        service: ServiceInfo,
+        packageName: String
+    ): Boolean =
         service.packageName == packageName &&
             service.exported &&
             service.enabled &&
-            service.applicationInfo?.enabled != false
+            service.applicationInfo?.enabled != false &&
+            permissionUsableByFocusGuard(context, service.permission)
+
+    private fun permissionUsableByFocusGuard(context: Context, permission: String?): Boolean =
+        permission.isNullOrBlank() ||
+            context.packageManager.checkPermission(permission, context.packageName) ==
+            PackageManager.PERMISSION_GRANTED
 
     private fun componentKey(activity: ActivityInfo): String =
         "${activity.packageName}/${activity.name}"
@@ -461,6 +548,9 @@ internal object BrowserDetector {
     ): PackageIdentity? = try {
         @Suppress("DEPRECATION")
         val info = context.packageManager.getPackageInfo(packageName, 0)
+        val enabledSetting = runCatching {
+            context.packageManager.getApplicationEnabledSetting(packageName)
+        }.getOrDefault(PackageManager.COMPONENT_ENABLED_STATE_DEFAULT)
         PackageIdentity(
             versionCode = if (Build.VERSION.SDK_INT >= 28) {
                 info.longVersionCode
@@ -468,11 +558,19 @@ internal object BrowserDetector {
                 @Suppress("DEPRECATION")
                 info.versionCode.toLong()
             },
-            lastUpdateTime = info.lastUpdateTime
+            firstInstallTime = info.firstInstallTime,
+            lastUpdateTime = info.lastUpdateTime,
+            applicationEnabled = info.applicationInfo?.enabled != false,
+            enabledSetting = enabledSetting
         )
     } catch (_: PackageManager.NameNotFoundException) {
         null
     } catch (_: RuntimeException) {
         null
     }
+
+    private fun unknownDecision(): BrowserDetectionDecision = BrowserDetectionDecision(
+        BrowserClassification.UNKNOWN,
+        BrowserDetectionReason.PACKAGE_QUERY_UNKNOWN
+    )
 }
