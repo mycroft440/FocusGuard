@@ -1,6 +1,7 @@
 package com.focusguard.accessibility.website.redirection
 
 import android.view.accessibility.AccessibilityEvent
+import com.focusguard.accessibility.website.BrowserSurfaceIdentityRegistry
 import com.focusguard.accessibility.website.diagnostics.WebsiteBlockingDiagnostics
 import kotlinx.coroutines.CompletableDeferred
 
@@ -11,6 +12,8 @@ internal data class WebsiteBlockTransitionHandle(
     val destination: WebsiteRedirectionCoordinator.TerminalDestination,
     @Volatile internal var expectedWindowId: Int,
     @Volatile internal var inspectionGeneration: Long,
+    @Volatile internal var inspectionSurfaceEpoch: Long = 0L,
+    @Volatile internal var pendingSurfaceWindowId: Int = -1,
     val blockedCandidate: String?,
     val blockedRules: Set<String>,
     val detectionEventUptimeMillis: Long,
@@ -34,9 +37,11 @@ internal data class WebsiteBlockTransitionHandle(
 /**
  * Owns active transaction registration and confirmation ordering.
  *
- * The original browser window remains authoritative while editing. A different
- * Accessibility window may inherit the transition exactly once, and only after the
- * service has independently proved that it is the stable configured destination.
+ * The original browser surface remains authoritative while editing. If Android
+ * reuses that Accessibility window for another document/tab, the binding is made
+ * temporarily invalid while the curtain stays owned by this transition. A window
+ * (including the same numeric window id) may be rebound exactly once, and only by
+ * the caller after independently proving the stable configured destination.
  */
 internal class WebsiteBlockTransitionGuard {
     private val activeTransitions = mutableMapOf<String, WebsiteBlockTransitionHandle>()
@@ -55,12 +60,17 @@ internal class WebsiteBlockTransitionGuard {
         require(browserPackageName.isNotBlank())
         require(transitionId > 0L)
         if (browserPackageName in activeTransitions) return null
+        val surfaceIdentity = BrowserSurfaceIdentityRegistry.current(
+            browserPackageName,
+            expectedWindowId
+        )?.takeIf { it.generation == inspectionGeneration }
         return WebsiteBlockTransitionHandle(
             id = transitionId,
             browserPackageName = browserPackageName,
             destination = destination,
             expectedWindowId = expectedWindowId,
             inspectionGeneration = inspectionGeneration,
+            inspectionSurfaceEpoch = surfaceIdentity?.surfaceEpoch ?: 0L,
             blockedCandidate = blockedCandidate,
             blockedRules = blockedRules,
             detectionEventUptimeMillis = detectionEventUptimeMillis
@@ -84,7 +94,7 @@ internal class WebsiteBlockTransitionGuard {
 
     @Synchronized
     fun activeTransition(browserPackageName: String): WebsiteBlockTransitionHandle? =
-        activeTransitions[browserPackageName]
+        activeTransitions[browserPackageName]?.also(::invalidateChangedSurfaceBinding)
 
     @Synchronized
     fun activeBrowserPackages(): Set<String> = activeTransitions.keys.toSet()
@@ -95,8 +105,9 @@ internal class WebsiteBlockTransitionGuard {
         transitionId: Long,
         requestedAtUptimeMillis: Long
     ): Boolean {
-        val transition = activeTransitions[browserPackageName] ?: return false
+        val transition = activeTransition(browserPackageName) ?: return false
         if (transition.id != transitionId || transition.destinationRequested ||
+            transition.expectedWindowId < 0 ||
             requestedAtUptimeMillis < transition.detectionEventUptimeMillis
         ) return false
         transition.sanitizationRequested = true
@@ -113,8 +124,9 @@ internal class WebsiteBlockTransitionGuard {
         transitionId: Long,
         requestedAtUptimeMillis: Long
     ): Boolean {
-        val transition = activeTransitions[browserPackageName] ?: return false
+        val transition = activeTransition(browserPackageName) ?: return false
         if (transition.id != transitionId ||
+            transition.expectedWindowId < 0 ||
             !transition.safeRedirectConfirmed.isCompleted ||
             requestedAtUptimeMillis < transition.sanitizationRequestedAtUptimeMillis
         ) return false
@@ -143,8 +155,9 @@ internal class WebsiteBlockTransitionGuard {
         windowId: Int,
         eventUptimeMillis: Long
     ): Boolean {
-        val transition = activeTransitions[browserPackageName] ?: return false
+        val transition = activeTransition(browserPackageName) ?: return false
         if (!transition.sanitizationRequested ||
+            transition.expectedWindowId < 0 ||
             transition.expectedWindowId != windowId ||
             eventUptimeMillis < transition.sanitizationRequestedAtUptimeMillis ||
             transition.latestNavigationEvidenceEventUptimeMillis < eventUptimeMillis
@@ -169,8 +182,9 @@ internal class WebsiteBlockTransitionGuard {
         windowId: Int,
         observedAtUptimeMillis: Long
     ): Boolean {
-        val transition = activeTransitions[browserPackageName] ?: return false
+        val transition = activeTransition(browserPackageName) ?: return false
         if (!transition.sanitizationRequested ||
+            transition.expectedWindowId < 0 ||
             transition.expectedWindowId != windowId ||
             observedAtUptimeMillis < transition.sanitizationRequestedAtUptimeMillis
         ) return false
@@ -209,6 +223,8 @@ internal class WebsiteBlockTransitionGuard {
      * Returns a transaction that is temporally eligible for destination validation.
      * Window ownership is deliberately not changed here; the caller must first prove
      * the exact stable destination surface, then call [rebindVerifiedDestinationWindow].
+     * A surface-epoch mismatch deliberately leaves [expectedWindowId] invalid so the
+     * existing verified-rebind path also runs when Android reused the same window id.
      */
     @Synchronized
     fun transitionForDestinationCandidate(
@@ -216,7 +232,7 @@ internal class WebsiteBlockTransitionGuard {
         eventUptimeMillis: Long,
         eventType: Int
     ): WebsiteBlockTransitionHandle? {
-        val transition = activeTransitions[browserPackageName] ?: return null
+        val transition = activeTransition(browserPackageName) ?: return null
         return transition.takeIf {
             it.sanitizationRequested &&
                 eventUptimeMillis >= it.sanitizationRequestedAtUptimeMillis &&
@@ -225,9 +241,10 @@ internal class WebsiteBlockTransitionGuard {
     }
 
     /**
-     * One-time rebind for browsers that recreate their Accessibility window during
-     * a certified same-tab navigation. Call only after the new window has been
-     * independently inspected twice as the exact configured destination.
+     * One-time rebind after the caller independently inspected the exact stable
+     * configured destination. This also handles a new surface epoch that reused the
+     * same Android window id: the stale binding is first invalidated to -1, making
+     * the caller enter this verified path exactly as it would for a new window.
      */
     @Synchronized
     fun rebindVerifiedDestinationWindow(
@@ -239,6 +256,7 @@ internal class WebsiteBlockTransitionGuard {
         eventType: Int
     ): Boolean {
         val transition = activeTransitions[browserPackageName] ?: return false
+        invalidateChangedSurfaceBinding(transition)
         if (transition.id != transitionId ||
             !transition.sanitizationRequested ||
             transition.destinationRequested ||
@@ -246,11 +264,24 @@ internal class WebsiteBlockTransitionGuard {
             eventUptimeMillis < transition.sanitizationRequestedAtUptimeMillis ||
             !isRedirectNavigationEvidenceEvent(eventType)
         ) return false
-        if (transition.expectedWindowId == windowId) return true
+
+        val surfaceIdentity = BrowserSurfaceIdentityRegistry.current(
+            browserPackageName,
+            windowId
+        ) ?: return false
+        if (surfaceIdentity.generation != inspectionGeneration) return false
+
+        val alreadyBoundToExactSurface =
+            transition.expectedWindowId == windowId &&
+                transition.inspectionGeneration == inspectionGeneration &&
+                transition.inspectionSurfaceEpoch == surfaceIdentity.surfaceEpoch
+        if (alreadyBoundToExactSurface) return true
         if (transition.verifiedDestinationWindowRebound) return false
 
         transition.expectedWindowId = windowId
+        transition.pendingSurfaceWindowId = INVALID_BROWSER_WINDOW_ID
         transition.inspectionGeneration = inspectionGeneration
+        transition.inspectionSurfaceEpoch = surfaceIdentity.surfaceEpoch
         transition.verifiedDestinationWindowRebound = true
         transition.latestObservedEventUptimeMillis = maxOf(
             transition.latestObservedEventUptimeMillis,
@@ -279,7 +310,7 @@ internal class WebsiteBlockTransitionGuard {
         eventUptimeMillis: Long,
         eventType: Int
     ) {
-        val transition = activeTransitions[browserPackageName] ?: return
+        val transition = activeTransition(browserPackageName) ?: return
         if (transition.expectedWindowId != windowId) return
         transition.latestObservedEventUptimeMillis = maxOf(
             transition.latestObservedEventUptimeMillis,
@@ -350,6 +381,31 @@ internal class WebsiteBlockTransitionGuard {
             )
         }
         activeTransitions.clear()
+    }
+
+    /**
+     * Invalidates only the browser-surface binding, not transition ownership. The
+     * opaque curtain therefore remains fail-closed while safe-destination inspection
+     * decides whether this surface may be rebound.
+     */
+    private fun invalidateChangedSurfaceBinding(transition: WebsiteBlockTransitionHandle) {
+        if (transition.inspectionSurfaceEpoch <= 0L) return
+        val boundWindowId = when {
+            transition.expectedWindowId >= 0 -> transition.expectedWindowId
+            transition.pendingSurfaceWindowId >= 0 -> transition.pendingSurfaceWindowId
+            else -> return
+        }
+        val current = BrowserSurfaceIdentityRegistry.current(
+            transition.browserPackageName,
+            boundWindowId
+        )
+        val stillSameSurface = current != null &&
+            current.generation == transition.inspectionGeneration &&
+            current.surfaceEpoch == transition.inspectionSurfaceEpoch
+        if (stillSameSurface || transition.expectedWindowId < 0) return
+
+        transition.pendingSurfaceWindowId = transition.expectedWindowId
+        transition.expectedWindowId = INVALID_BROWSER_WINDOW_ID
     }
 
     private companion object {
