@@ -1,5 +1,6 @@
 package com.focusguard.service
 
+import android.view.accessibility.AccessibilityEvent
 import com.focusguard.accessibility.website.identification.BrowserObservationSignal
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -28,7 +29,7 @@ class BrowserInspectionCoordinatorTest {
             assertFalse(coordinator.isCurrent(it.snapshot.token, requireLatestSequence = true))
         }
         // A pass that was actually validated against the live root may continue
-        // async confirmation/recovery while newer events arrive in this generation.
+        // async confirmation/recovery while newer content events arrive in this epoch.
         assertTrue(coordinator.isCurrent(first.snapshot.token, requireLatestSequence = true))
     }
 
@@ -48,6 +49,39 @@ class BrowserInspectionCoordinatorTest {
             "same-window content events must not invalidate the running first inspection",
             coordinator.isCurrent(running.snapshot.token, requireLatestSequence = true)
         )
+    }
+
+    @Test
+    fun sameWindowSurfaceBoundaryInvalidatesValidatedOldDocument() {
+        val coordinator = BrowserInspectionCoordinator()
+        val oldSurface = coordinator.offer(
+            "com.android.chrome",
+            10,
+            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
+            1L,
+            1L,
+            "",
+            emptyList(),
+            null
+        )
+        assertSame(oldSurface.snapshot, coordinator.takePending())
+        coordinator.finishPass()
+        assertTrue(coordinator.isCurrent(oldSurface.snapshot.token, requireLatestSequence = true))
+
+        val newSurface = coordinator.offer(
+            "com.android.chrome",
+            10,
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+            2L,
+            2L,
+            "BrowserActivity",
+            emptyList(),
+            null
+        )
+
+        assertFalse(coordinator.isCurrent(oldSurface.snapshot.token, requireLatestSequence = true))
+        assertTrue(coordinator.isCurrent(newSurface.snapshot.token, requireLatestSequence = true))
+        assertNotEquals(oldSurface.snapshot.token.surfaceEpoch, newSurface.snapshot.token.surfaceEpoch)
     }
 
     @Test
