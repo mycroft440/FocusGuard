@@ -1,9 +1,9 @@
 package com.focusguard.service
 
 /**
- * Runs at most one heavy recovery per live browser generation. Repeated content events
- * from the same window are coalesced into that recovery instead of restarting its
- * grace/deadline. A real package/window/generation change still cancels the old work.
+ * Runs at most one heavy recovery per live browser surface. Repeated content events
+ * from the same surface epoch are coalesced into that recovery instead of restarting
+ * its grace/deadline. A real package/window/generation/surface change cancels the old work.
  */
 internal class BrowserRecoveryCoordinator {
     private var active: BrowserInspectionCoordinator.Token? = null
@@ -62,5 +62,6 @@ internal class BrowserRecoveryCoordinator {
         second: BrowserInspectionCoordinator.Token
     ): Boolean = first.packageName == second.packageName &&
         first.windowId == second.windowId &&
-        first.generation == second.generation
+        first.generation == second.generation &&
+        first.surfaceEpoch == second.surfaceEpoch
 }
