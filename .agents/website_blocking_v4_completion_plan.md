@@ -39,7 +39,7 @@ Finish the remaining implementation gaps against the reviewed v4 plan without ch
    - stale same-window transition rejection and verified same-window destination rebind.
 
 ## Automated validation
-GitHub Actions `Android CI Pro` passes on the implementation before this documentation-only update:
+The code implementation was validated by GitHub Actions `Android CI Pro` with:
 - `testDebugUnitTest` (1,118 unit tests);
 - `lintDebug`;
 - macrobenchmark/baseline-profile performance harness compilation and helper-script validation.
