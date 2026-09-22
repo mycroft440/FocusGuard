@@ -9,6 +9,7 @@ import android.content.pm.ApplicationInfo
 import android.content.pm.PackageInfo
 import android.content.pm.ResolveInfo
 import android.net.Uri
+import android.os.Looper
 import com.google.common.truth.Truth.assertThat
 import java.util.concurrent.TimeUnit
 import org.junit.Before
@@ -111,6 +112,25 @@ class BrowserDetectorPackageManagerTest {
         ShadowSystemClock.advanceBy(5_001L, TimeUnit.MILLISECONDS)
         val retried = BrowserDetector.detect(packageName)
 
+        assertThat(retried.classification).isEqualTo(BrowserClassification.CONFIRMED_BROWSER)
+        assertThat(retried.fromCache).isFalse()
+    }
+
+    @Test
+    fun `package changed broadcast invalidates cached classification immediately`() {
+        registerAllHttpsHandlers(activityName = "$packageName.BrowserActivity", broad = true)
+        registerBrowserCategory(activityName = "$packageName.BrowserActivity")
+
+        assertThat(BrowserDetector.detect(packageName).classification)
+            .isEqualTo(BrowserClassification.CONFIRMED_BROWSER)
+        assertThat(BrowserDetector.detect(packageName).fromCache).isTrue()
+
+        context.sendBroadcast(
+            Intent(Intent.ACTION_PACKAGE_CHANGED, Uri.parse("package:$packageName"))
+        )
+        shadowOf(Looper.getMainLooper()).idle()
+
+        val retried = BrowserDetector.detect(packageName)
         assertThat(retried.classification).isEqualTo(BrowserClassification.CONFIRMED_BROWSER)
         assertThat(retried.fromCache).isFalse()
     }
