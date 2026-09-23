@@ -45,11 +45,9 @@ internal fun isWebsiteRuleAlreadyBlocked(
 }
 
 /**
- * The protection modes are independent layers. A target is unavailable for a mode
- * only when that same mode is already configured for it. Other configured layers
- * (including a scheduled daily period) remain selectable so PASSWORD, daily limit,
- * scheduled periods and the dopamine fast can coexist and let
- * [com.focusguard.security.ProtectionHierarchy] decide which one owns access.
+ * PASSWORD and daily limits have one configuration per target. TIME uses
+ * independent sessions and can be added for another period on the same target.
+ * The runtime hierarchy decides which layer owns access at each instant.
  */
 internal fun configuredAppPackagesForMode(
     mode: ProtectionMode,
@@ -57,7 +55,7 @@ internal fun configuredAppPackagesForMode(
 ): Set<String> = when (mode) {
     ProtectionMode.LIMIT -> configured.limitedAppPackageNames
     ProtectionMode.PASSWORD -> configured.passwordAppPackageNames
-    ProtectionMode.DOPAMINE_FAST -> configured.continuousAppPackageNames
+    ProtectionMode.DOPAMINE_FAST -> emptySet()
 }
 
 internal fun configuredWebsiteRulesForMode(
@@ -66,7 +64,7 @@ internal fun configuredWebsiteRulesForMode(
 ): Set<String> = when (mode) {
     ProtectionMode.LIMIT -> configured.limitedWebsiteRules
     ProtectionMode.PASSWORD -> configured.passwordWebsiteRules
-    ProtectionMode.DOPAMINE_FAST -> configured.continuousWebsiteRules
+    ProtectionMode.DOPAMINE_FAST -> emptySet()
 }
 
 /** Converte a duração informada na UI em um limite diário válido de até 24 horas. */

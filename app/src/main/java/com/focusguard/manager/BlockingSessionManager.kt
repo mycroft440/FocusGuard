@@ -238,48 +238,13 @@ class BlockingSessionManager @Inject constructor(
         val limitedAppPackageNames: Set<String> = emptySet(),
         val limitedWebsiteRules: Set<String> = emptySet(),
         val exclusiveAppPackageNames: Set<String> = emptySet(),
-        val exclusiveWebsiteRules: Set<String> = emptySet(),
-        val unavailableAppPackageNames: Set<String> = emptySet(),
-        val unavailableWebsiteRules: Set<String> = emptySet(),
-        /** Subconjunto de [exclusiveAppPackageNames] vindo de períodos agendados. */
-        val scheduledAppPackageNames: Set<String> = emptySet(),
-        val scheduledWebsiteRules: Set<String> = emptySet(),
-        /** Subconjunto de [exclusiveAppPackageNames] vindo de jejuns contínuos. */
-        val continuousAppPackageNames: Set<String> = exclusiveAppPackageNames,
-        val continuousWebsiteRules: Set<String> = exclusiveWebsiteRules
+        val exclusiveWebsiteRules: Set<String> = emptySet()
     ) {
         val allAppPackageNames: Set<String>
             get() = passwordAppPackageNames + limitedAppPackageNames + exclusiveAppPackageNames
 
         val allWebsiteRules: Set<String>
             get() = passwordWebsiteRules + limitedWebsiteRules + exclusiveWebsiteRules
-
-        /**
-         * Alvos que já têm o MESMO tipo de bloqueio. Só esses ficam indisponíveis
-         * ao criar outro bloqueio daquele tipo: tipos diferentes convivem no mesmo
-         * alvo e a [ProtectionHierarchy] decide quem manda em cada instante.
-         */
-        fun appPackageNamesFor(kind: ProtectionKind): Set<String> = when (kind) {
-            ProtectionKind.PASSWORD -> passwordAppPackageNames
-            ProtectionKind.DAILY_LIMIT -> limitedAppPackageNames
-            ProtectionKind.DAILY_PERIODS -> scheduledAppPackageNames
-            ProtectionKind.DOPAMINE_FAST -> continuousAppPackageNames
-        }
-
-        fun websiteRulesFor(kind: ProtectionKind): Set<String> = when (kind) {
-            ProtectionKind.PASSWORD -> passwordWebsiteRules
-            ProtectionKind.DAILY_LIMIT -> limitedWebsiteRules
-            ProtectionKind.DAILY_PERIODS -> scheduledWebsiteRules
-            ProtectionKind.DOPAMINE_FAST -> continuousWebsiteRules
-        }
-    }
-
-    /** Os quatro tipos de bloqueio que o usuário configura na tela inicial. */
-    enum class ProtectionKind {
-        PASSWORD,
-        DAILY_LIMIT,
-        DAILY_PERIODS,
-        DOPAMINE_FAST
     }
 
     data class DailyLimitAppTarget(
@@ -347,11 +312,7 @@ class BlockingSessionManager @Inject constructor(
             exclusiveSessionAppPackages: Collection<String>,
             exclusiveSessionWebsiteRules: Collection<String>,
             limitedAppPackages: Collection<String>,
-            limitedWebsiteRules: Collection<String>,
-            scheduledSessionAppPackages: Collection<String> = emptyList(),
-            scheduledSessionWebsiteRules: Collection<String> = emptyList(),
-            continuousSessionAppPackages: Collection<String> = exclusiveSessionAppPackages,
-            continuousSessionWebsiteRules: Collection<String> = exclusiveSessionWebsiteRules
+            limitedWebsiteRules: Collection<String>
         ): ConfiguredBlockedTargets {
             // Aplicativo e site são superfícies independentes. Bloquear o pacote
             // do YouTube não cobre youtube.com no navegador, e bloquear o domínio
@@ -369,40 +330,13 @@ class BlockingSessionManager @Inject constructor(
                 normalizeConfiguredAppPackages(limitedAppPackages)
             val exclusiveAppPackageNames =
                 normalizeConfiguredAppPackages(exclusiveSessionAppPackages)
-            val allWebsiteRules = WebsiteBlocker.normalizeRules(
-                passwordWebsiteRules + normalizedLimitedWebsiteRules + exclusiveWebsiteRules
-            )
-
-            // A seleção inicial só fica indisponível quando os três modos já
-            // existem. Ter uma ou duas camadas nunca impede adicionar a restante.
-            val unavailableWebsiteRules = allWebsiteRules.filterTo(linkedSetOf()) { candidate ->
-                isWebsiteRuleCoveredBy(candidate, passwordWebsiteRules) &&
-                    isWebsiteRuleCoveredBy(candidate, normalizedLimitedWebsiteRules) &&
-                    isWebsiteRuleCoveredBy(candidate, exclusiveWebsiteRules)
-            }
-            val unavailableAppPackageNames = passwordAppPackageNames
-                .intersect(normalizedLimitedAppPackages)
-                .intersect(exclusiveAppPackageNames)
-                .filter(String::isNotBlank)
-                .toSet()
-
             return ConfiguredBlockedTargets(
                 passwordAppPackageNames = passwordAppPackageNames,
                 passwordWebsiteRules = passwordWebsiteRules,
                 limitedAppPackageNames = normalizedLimitedAppPackages,
                 limitedWebsiteRules = normalizedLimitedWebsiteRules,
                 exclusiveAppPackageNames = exclusiveAppPackageNames,
-                exclusiveWebsiteRules = exclusiveWebsiteRules,
-                unavailableAppPackageNames = unavailableAppPackageNames,
-                unavailableWebsiteRules = unavailableWebsiteRules,
-                scheduledAppPackageNames =
-                    normalizeConfiguredAppPackages(scheduledSessionAppPackages),
-                scheduledWebsiteRules =
-                    WebsiteBlocker.normalizeRules(scheduledSessionWebsiteRules),
-                continuousAppPackageNames =
-                    normalizeConfiguredAppPackages(continuousSessionAppPackages),
-                continuousWebsiteRules =
-                    WebsiteBlocker.normalizeRules(continuousSessionWebsiteRules)
+                exclusiveWebsiteRules = exclusiveWebsiteRules
             )
         }
 
@@ -566,7 +500,8 @@ class BlockingSessionManager @Inject constructor(
      *
      * PASSWORD, daily limit and TIME are independent layers. The setup may attach
      * all three to one target; runtime precedence decides which layer owns access.
-     * A target is globally unavailable only after all three layers exist.
+     * The picker decides availability for the mode being created. Several TIME
+     * sessions may coexist for different windows even on a fully protected target.
      */
     suspend fun getConfiguredBlockedTargets(): ConfiguredBlockedTargets =
         withContext(Dispatchers.IO) {
@@ -577,24 +512,15 @@ class BlockingSessionManager @Inject constructor(
             val passwordSessionIds = configuredSessions
                 .filter { it.sessionType == "PASSWORD" }
                 .map { it.id }
-            val exclusiveSessions = configuredSessions.filter { it.sessionType != "PASSWORD" }
-            val exclusiveSessionIds = exclusiveSessions.map { it.id }
-            // Mesma separação da tela inicial (getBlockOverview): faixa diária é
-            // "período agendado"; o restante é jejum contínuo.
-            val scheduledSessionIds = exclusiveSessions
-                .filter { it.isRecurring && !it.isFixed24h }
+            val exclusiveSessionIds = configuredSessions
+                .filter { it.sessionType != "PASSWORD" }
                 .map { it.id }
-            val continuousSessionIds = exclusiveSessionIds - scheduledSessionIds.toSet()
 
             combineConfiguredBlockedTargets(
                 passwordSessionAppPackages = getAppsForSessions(passwordSessionIds),
                 passwordSessionWebsiteRules = getSitesForSessions(passwordSessionIds),
                 exclusiveSessionAppPackages = getAppsForSessions(exclusiveSessionIds),
                 exclusiveSessionWebsiteRules = getSitesForSessions(exclusiveSessionIds),
-                scheduledSessionAppPackages = getAppsForSessions(scheduledSessionIds),
-                scheduledSessionWebsiteRules = getSitesForSessions(scheduledSessionIds),
-                continuousSessionAppPackages = getAppsForSessions(continuousSessionIds),
-                continuousSessionWebsiteRules = getSitesForSessions(continuousSessionIds),
                 limitedAppPackages = database.appUsageLimitDao()
                     .getAllActiveLimitsStatic()
                     .map { it.packageName },
