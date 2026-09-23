@@ -19,4 +19,5 @@
     <string name="limits_pause_notice">Você atingiu o limite diário. Faça uma pausa de 30 minutos antes de usar este app novamente.</string>
     <string name="limits_daily_lock_notice">Você atingiu o limite diário. Este app ficará disponível novamente amanhã.</string>
     <string name="limits_continue_to_behavior">Continuar para o modo de bloqueio</string>
+    <string name="limits_foreground_hierarchy_hint">Só conta o tempo em que ele está aberto na tela. Enquanto um período agendado ou um bloqueio por tempo sem senha estiver bloqueando, este limite fica pausado.</string>
 </resources>

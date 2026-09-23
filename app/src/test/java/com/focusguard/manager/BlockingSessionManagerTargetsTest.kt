@@ -251,4 +251,35 @@ class BlockingSessionManagerTargetsTest {
             )
         ).containsExactly("com.example.password", "com.example.other").inOrder()
     }
+
+    @Test
+    fun `each protection kind rejects only its own existing targets`() {
+        val targets = BlockingSessionManager.combineConfiguredBlockedTargets(
+            passwordSessionAppPackages = listOf("com.example.password"),
+            passwordSessionWebsiteRules = emptyList(),
+            exclusiveSessionAppPackages = listOf("com.example.period", "com.example.fast"),
+            exclusiveSessionWebsiteRules = listOf("reddit.com", "tiktok.com"),
+            limitedAppPackages = listOf("com.example.limit"),
+            limitedWebsiteRules = emptyList(),
+            scheduledSessionAppPackages = listOf("com.example.period"),
+            scheduledSessionWebsiteRules = listOf("reddit.com"),
+            continuousSessionAppPackages = listOf("com.example.fast"),
+            continuousSessionWebsiteRules = listOf("tiktok.com")
+        )
+
+        assertThat(targets.appPackageNamesFor(BlockingSessionManager.ProtectionKind.PASSWORD))
+            .containsExactly("com.example.password")
+        assertThat(targets.appPackageNamesFor(BlockingSessionManager.ProtectionKind.DAILY_LIMIT))
+            .containsExactly("com.example.limit")
+        assertThat(
+            targets.appPackageNamesFor(BlockingSessionManager.ProtectionKind.DAILY_PERIODS)
+        ).containsExactly("com.example.period")
+        assertThat(
+            targets.appPackageNamesFor(BlockingSessionManager.ProtectionKind.DOPAMINE_FAST)
+        ).containsExactly("com.example.fast")
+        assertThat(targets.websiteRulesFor(BlockingSessionManager.ProtectionKind.DAILY_PERIODS))
+            .containsExactly("reddit.com")
+        assertThat(targets.websiteRulesFor(BlockingSessionManager.ProtectionKind.DOPAMINE_FAST))
+            .containsExactly("tiktok.com")
+    }
 }

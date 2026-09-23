@@ -160,6 +160,9 @@ fun CreateSessionWizard(
     val scope = rememberCoroutineScope()
     // O que cada bloqueio aceita como alvo é decidido por tipo, não pela tela.
     val kinds = remember(sessionType) { BlockTargetPolicy.forSessionType(sessionType) }
+    val protectionKind = remember(sessionType, timeBlockMode) {
+        protectionKindFor(sessionType, timeBlockMode)
+    }
     var selectedApps by remember { mutableStateOf<List<SelectableAppUi>>(emptyList()) }
     var selectedRules by remember { mutableStateOf<List<String>>(emptyList()) }
 
@@ -172,9 +175,11 @@ fun CreateSessionWizard(
             0 -> AppSelectionStep(
                 kinds = kinds,
                 // Sessões são camadas independentes. Um alvo já protegido por
-                // outro bloqueio continua selecionável para receber uma nova
-                // camada (por exemplo, período diário + bloqueio TIME contínuo).
+                // outro tipo de bloqueio continua selecionável para receber uma
+                // nova camada (por exemplo, limite diário + período agendado); só
+                // repetir o mesmo tipo no mesmo alvo é recusado.
                 allowCompatibleProtection = true,
+                protectionKind = protectionKind,
                 // Voltar da segunda página reabre esta com a escolha intacta, em
                 // vez de exigir que tudo seja marcado de novo.
                 initialSelectedPackages = selectedApps.mapTo(linkedSetOf()) {
@@ -214,6 +219,19 @@ fun CreateSessionWizard(
     }
 }
 
+/** Tipo de bloqueio que o assistente vai criar, para recusar só repetições dele. */
+internal fun protectionKindFor(
+    sessionType: String,
+    timeBlockMode: TimeBlockConfigMode
+): BlockingSessionManager.ProtectionKind? = when (sessionType.uppercase()) {
+    BlockTargetPolicy.SESSION_TYPE_PASSWORD -> BlockingSessionManager.ProtectionKind.PASSWORD
+    BlockTargetPolicy.SESSION_TYPE_TIME -> when (timeBlockMode) {
+        TimeBlockConfigMode.DAILY_PERIODS -> BlockingSessionManager.ProtectionKind.DAILY_PERIODS
+        TimeBlockConfigMode.CONTINUOUS -> BlockingSessionManager.ProtectionKind.DOPAMINE_FAST
+    }
+    else -> null
+}
+
 /**
  * First page of the block wizard: what the block will hold.
  *
@@ -228,7 +246,8 @@ fun AppSelectionStep(
     initialSelectedPackages: Set<String> = emptySet(),
     allowCompatibleProtection: Boolean = false,
     kinds: BlockTargetPolicy.Kinds = BlockTargetPolicy.APPS_ONLY,
-    initialRules: List<String> = emptyList()
+    initialRules: List<String> = emptyList(),
+    protectionKind: BlockingSessionManager.ProtectionKind? = null
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
     val pm = context.packageManager
@@ -252,15 +271,15 @@ fun AppSelectionStep(
                 )
                 BlockingSessionManager.ConfiguredBlockedTargets()
             }
-            val blockedPackages = if (allowCompatibleProtection) {
-                configured.unavailableAppPackageNames
-            } else {
-                configured.allAppPackageNames
+            val blockedPackages = when {
+                protectionKind != null -> configured.appPackageNamesFor(protectionKind)
+                allowCompatibleProtection -> configured.unavailableAppPackageNames
+                else -> configured.allAppPackageNames
             }
-            val blockedRules = if (allowCompatibleProtection) {
-                configured.unavailableWebsiteRules
-            } else {
-                configured.allWebsiteRules
+            val blockedRules = when {
+                protectionKind != null -> configured.websiteRulesFor(protectionKind)
+                allowCompatibleProtection -> configured.unavailableWebsiteRules
+                else -> configured.allWebsiteRules
             }
             val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
             val launcherQueryFlags = PackageManager.MATCH_DISABLED_COMPONENTS

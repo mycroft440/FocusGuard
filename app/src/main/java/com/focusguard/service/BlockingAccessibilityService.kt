@@ -76,13 +76,14 @@ import com.focusguard.security.LauncherIndexRefreshPolicy
 import com.focusguard.security.ManagedSelfProtectionPolicy
 import com.focusguard.security.PasswordTargetAccessGrant
 import com.focusguard.security.ProtectedSettingsResetWindow
+import com.focusguard.security.ProtectionHierarchy
 import com.focusguard.security.SettingsInterceptionPolicy
 import com.focusguard.security.SelfProtectionStateStore
 import com.focusguard.security.UsageAccessPausePolicy
 import com.focusguard.ui.BlockNoticeActivity
 import com.focusguard.ui.MasterRemovalActivity
 import com.focusguard.ui.PomodoroLockActivity
-import com.focusguard.utils.AppUsageLimitActivationUsage
+import com.focusguard.utils.AppUsageLimitMeter
 import com.focusguard.utils.BrowserInspectionSessionStore
 import com.focusguard.utils.BrowserSurfaceInspector
 import com.focusguard.utils.BrowserUiCapabilityPolicy
@@ -94,7 +95,6 @@ import com.focusguard.utils.WebsiteObservabilityPolicy
 import com.focusguard.utils.WebsiteUsageLimitPolicy
 import dagger.hilt.android.AndroidEntryPoint
 import java.text.SimpleDateFormat
-import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
@@ -162,6 +162,14 @@ class BlockingAccessibilityService : AccessibilityService() {
     @Volatile private var blockedWebsitesDomainSet: Set<String> = emptySet()
     @Volatile private var passwordWebsiteDomainSet: Set<String> = emptySet()
     @Volatile private var strongerWebsiteDomainSet: Set<String> = emptySet()
+    /**
+     * Sessões acima do limite diário (jejum, período agendado, Pomodoro rigoroso)
+     * com seus apps. Enquanto uma delas segura o app, o limite aguarda.
+     */
+    @Volatile private var appLimitWaitingSessions:
+        List<ProtectionHierarchy.SessionTargets> = emptyList()
+    /** Sites cujo tempo não conta para limite porque uma camada acima os segura. */
+    @Volatile private var limitWaitingWebsiteRules: Set<String> = emptySet()
     @Volatile private var blockedWebsiteAppDomains: Map<String, String> = emptyMap()
     @Volatile private var limitedWebsiteDomains: Set<String> = emptySet()
     @Volatile private var hardLimitedWebsiteDomains: Set<String> = emptySet()
@@ -1303,6 +1311,11 @@ class BlockingAccessibilityService : AccessibilityService() {
                             getSitesForSessions(strongerSessionIds)
                         )
 
+                        appLimitWaitingSessions =
+                            sessionManager.limitWaitingSessions(activeSessions)
+                        limitWaitingWebsiteRules = WebsiteBlocker.normalizeRules(
+                            strongerSessionSites + adultRules
+                        )
                         val activeAppLimits = database.appUsageLimitDao()
                             .getAllActiveLimitsStatic()
                         val limitApps = calculateExceededAppLimits(activeAppLimits)
@@ -1452,33 +1465,18 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
 
         val now = System.currentTimeMillis()
-        val startOfDay = Calendar.getInstance().apply {
-            timeInMillis = now
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
-        val usage = manager.queryAndAggregateUsageStats(startOfDay, now)
+        // Só primeiro plano real conta, e só enquanto nenhuma camada acima do
+        // limite (período agendado, jejum, Pomodoro rigoroso) segura o app.
+        val usedMillisByPackage = AppUsageLimitMeter.usedMillisByPackage(
+            usageStatsManager = manager,
+            limits = limits,
+            waitingSessions = appLimitWaitingSessions,
+            nowMillis = now,
+            isDeviceInteractive = powerManager?.isInteractive == true
+        )
 
         return limits.filter { limit ->
-            val stat = usage[limit.packageName]
-            val totalDayUsageMillis = UsageLimitForegroundPolicy.includeOpenForegroundInterval(
-                aggregatedForegroundMillis = stat?.totalTimeInForeground ?: 0L,
-                lastUsageEventMillis = stat?.lastTimeUsed ?: 0L,
-                nowMillis = now,
-                isCurrentForeground = foregroundPackageName == limit.packageName,
-                isDeviceInteractive = powerManager?.isInteractive == true
-            )
-            val effectiveUsageMillis = AppUsageLimitActivationUsage.effectiveUsageMillis(
-                context = this,
-                usageStatsManager = manager,
-                limit = limit,
-                currentDayUsageMillis = totalDayUsageMillis,
-                dayStartMillis = startOfDay,
-                nowMillis = now
-            )
-            UsageLimitForegroundPolicy.usedMinutes(effectiveUsageMillis) >=
+            UsageLimitForegroundPolicy.usedMinutes(usedMillisByPackage[limit.packageName] ?: 0L) >=
                 limit.dailyLimitMinutes &&
                 limit.preventOpeningAfterLimit &&
                 WebsiteUsageLimitPolicy.isBlockingModeActive(
@@ -3041,6 +3039,14 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private suspend fun persistWebsiteUsageNow(usage: WebsiteUsageSlice) {
+        // Com o site seguro por uma camada acima do limite, o limite aguarda: o
+        // instante até o redirecionamento não é uso e não entra na conta.
+        if (isPomodoroStrictActive ||
+            WebsiteBlocker.findMatchingRulesIgnoringGrants(
+                usage.domain,
+                limitWaitingWebsiteRules
+            ).isNotEmpty()
+        ) return
         try {
             val today = dateFormat.get()!!.format(Date())
             database.dailyUsageStatDao().addUsage(

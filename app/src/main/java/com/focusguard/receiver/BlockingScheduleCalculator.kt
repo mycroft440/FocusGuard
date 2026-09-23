@@ -42,6 +42,75 @@ internal object BlockingScheduleCalculator {
         return startMinutes != endMinutes
     }
 
+    /**
+     * Intervalos `[início, fim)` em que [session] bloqueia dentro de
+     * `[rangeStartMillis, rangeEndMillis)`.
+     *
+     * Sessões fixas contam a partir do próprio início. Já a faixa diária de uma
+     * sessão recorrente define "quando o alvo pode ser usado" para o dia inteiro,
+     * inclusive horas anteriores à criação: quem agenda às 15h que só pode usar
+     * das 19h às 21h espera que o uso das 10h também fique fora da conta do limite.
+     */
+    fun blockingIntervals(
+        session: BlockSession,
+        rangeStartMillis: Long,
+        rangeEndMillis: Long,
+        timeZone: TimeZone = TimeZone.getDefault()
+    ): List<LongRange> {
+        if (!session.isActive || rangeEndMillis <= rangeStartMillis) return emptyList()
+        val sessionEnd = session.endTime ?: Long.MAX_VALUE
+        if (session.isFixed24h) {
+            val start = maxOf(session.startTime, rangeStartMillis)
+            val end = minOf(sessionEnd, rangeEndMillis)
+            return if (end > start) listOf(start until end) else emptyList()
+        }
+        if (!isValidRecurringWindow(
+                startHour = session.recurringStartHour,
+                startMinute = session.recurringStartMinute,
+                endHour = session.recurringEndHour,
+                endMinute = session.recurringEndMinute
+            )
+        ) return emptyList()
+
+        val startMinutes = session.recurringStartHour * 60 + session.recurringStartMinute
+        val endMinutes = session.recurringEndHour * 60 + session.recurringEndMinute
+        val allowedDays = session.recurringDaysOfWeek.split(',')
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .toSet()
+        val logicalDay = Calendar.getInstance(timeZone).apply {
+            timeInMillis = rangeStartMillis
+            set(Calendar.HOUR_OF_DAY, 0)
+            set(Calendar.MINUTE, 0)
+            set(Calendar.SECOND, 0)
+            set(Calendar.MILLISECOND, 0)
+            // O dia anterior carrega o final de janelas que cruzam a meia-noite.
+            add(Calendar.DAY_OF_YEAR, -1)
+        }
+
+        val intervals = mutableListOf<LongRange>()
+        while (logicalDay.timeInMillis < rangeEndMillis) {
+            val dayAllowed = allowedDays.isEmpty() ||
+                logicalDay.get(Calendar.DAY_OF_WEEK).toString() in allowedDays
+            if (dayAllowed) {
+                val windowStart = (logicalDay.clone() as Calendar).apply {
+                    set(Calendar.HOUR_OF_DAY, session.recurringStartHour)
+                    set(Calendar.MINUTE, session.recurringStartMinute)
+                }.timeInMillis
+                val windowEnd = (logicalDay.clone() as Calendar).apply {
+                    set(Calendar.HOUR_OF_DAY, session.recurringEndHour)
+                    set(Calendar.MINUTE, session.recurringEndMinute)
+                    if (endMinutes < startMinutes) add(Calendar.DAY_OF_YEAR, 1)
+                }.timeInMillis
+                val start = maxOf(windowStart, rangeStartMillis)
+                val end = minOf(windowEnd, sessionEnd, rangeEndMillis)
+                if (end > start) intervals += start until end
+            }
+            logicalDay.add(Calendar.DAY_OF_YEAR, 1)
+        }
+        return intervals
+    }
+
     fun nextBoundary(
         sessions: Collection<BlockSession>,
         additionalBoundaries: Collection<Long>,

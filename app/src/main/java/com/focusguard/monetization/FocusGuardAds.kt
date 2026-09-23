@@ -40,9 +40,9 @@ import kotlinx.coroutines.withTimeout
 /**
  * Ponto único de integração de anúncios do FocusGuard.
  *
- * Os IDs são fornecidos pelo BuildConfig: Debug usa unidades oficiais de teste
- * do Google e Release usa as unidades reais dos formatos ativos. A seleção é
- * automática e não exige troca manual antes de publicar.
+ * Os IDs são fornecidos pelo BuildConfig. No momento todas as variantes, inclusive
+ * Release, usam as unidades oficiais de teste do Google; os IDs de produção foram
+ * retirados de app/build.gradle.kts.
  */
 object FocusGuardAds {
 

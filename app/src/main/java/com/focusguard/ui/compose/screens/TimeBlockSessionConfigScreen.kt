@@ -141,6 +141,13 @@ fun TimeBlockSessionConfigScreen(
         }
     }
 
+    // Um companheiro só some quando já tem este mesmo tipo de bloqueio; outros
+    // tipos convivem no alvo e a hierarquia decide quem manda.
+    val protectionKind = if (isScheduled) {
+        BlockingSessionManager.ProtectionKind.DAILY_PERIODS
+    } else {
+        BlockingSessionManager.ProtectionKind.DOPAMINE_FAST
+    }
     val availableWebsiteCompanionOptions = remember(
         websiteCompanionOptions,
         sites,
@@ -150,7 +157,7 @@ fun TimeBlockSessionConfigScreen(
             BlockingSessionManager.isWebsiteRuleCoveredBy(option.domain, sites) ||
                 BlockingSessionManager.isWebsiteRuleCoveredBy(
                     option.domain,
-                    configuredBlockedTargets.allWebsiteRules
+                    configuredBlockedTargets.websiteRulesFor(protectionKind)
                 )
         }
     }
@@ -161,7 +168,7 @@ fun TimeBlockSessionConfigScreen(
     ) {
         appCompanionOptions.filterNot { option ->
             option.packageName in apps ||
-                option.packageName in configuredBlockedTargets.allAppPackageNames
+                option.packageName in configuredBlockedTargets.appPackageNamesFor(protectionKind)
         }
     }
     val availableCompanionDomains = remember(availableWebsiteCompanionOptions) {

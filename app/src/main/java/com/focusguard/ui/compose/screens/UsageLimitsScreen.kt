@@ -53,7 +53,6 @@ import com.focusguard.ui.compose.components.limits.UsageLimitItem
 import com.focusguard.ui.compose.components.limits.WebsiteLimitItem
 import com.focusguard.ui.compose.rememberAppDatabase
 import com.focusguard.ui.compose.theme.*
-import com.focusguard.utils.AppUsageLimitActivationUsage
 import com.focusguard.utils.UsageLimitBehaviorPolicy
 import com.focusguard.utils.WebsiteBlocker
 import kotlinx.coroutines.Dispatchers
@@ -402,6 +401,14 @@ fun AppLimitsTab(
                 cal.timeInMillis,
                 now
             )
+            // Limites ativos mostram o mesmo número que decide o bloqueio: só
+            // primeiro plano, e sem o tempo em que outra camada segurava o app.
+            val limitedUsageMillis = runCatching {
+                BlockingSessionManager.getInstance(context).appLimitUsageMillis(
+                    limits = existingLimits.values.filter { it.isEnabled },
+                    nowMillis = now
+                )
+            }.getOrDefault(emptyMap())
             val discoveredSocialPackages = PredefinedApps.PREVENTIVE_APPS
                 .asSequence()
                 .filter { it.category.equals("Redes Sociais", ignoreCase = true) }
@@ -421,16 +428,7 @@ fun AppLimitsTab(
                     stats[packageName]?.totalTimeInForeground ?: 0L
                 val displayedUsageMillis = limit
                     ?.takeIf { it.isEnabled }
-                    ?.let { activeLimit ->
-                        AppUsageLimitActivationUsage.effectiveUsageMillis(
-                            context = context,
-                            usageStatsManager = usageStatsManager,
-                            limit = activeLimit,
-                            currentDayUsageMillis = totalDayUsageMillis,
-                            dayStartMillis = cal.timeInMillis,
-                            nowMillis = now
-                        )
-                    }
+                    ?.let { limitedUsageMillis[it.packageName] }
                     ?: totalDayUsageMillis
                 UsageLimitAppUi(
                     packageName = packageName,
@@ -604,24 +602,9 @@ fun AppLimitsTab(
                         val limitDao = db.appUsageLimitDao()
                         var companionWebsiteCreated = false
                         val updated = if (minutes != null && minutes > 0) {
+                            // AppUsageLimitMeter conta o primeiro plano a partir
+                            // de createdAt, então salvar zera a conta do dia aqui.
                             val activationTime = System.currentTimeMillis()
-                            val activationDayStart = java.util.Calendar.getInstance().apply {
-                                timeInMillis = activationTime
-                                set(java.util.Calendar.HOUR_OF_DAY, 0)
-                                set(java.util.Calendar.MINUTE, 0)
-                                set(java.util.Calendar.SECOND, 0)
-                                set(java.util.Calendar.MILLISECOND, 0)
-                            }.timeInMillis
-                            val usageStatsManager = context.getSystemService(
-                                Context.USAGE_STATS_SERVICE
-                            ) as android.app.usage.UsageStatsManager
-                            AppUsageLimitActivationUsage.captureActivationBaseline(
-                                context = context,
-                                usageStatsManager = usageStatsManager,
-                                packageName = appToSave.packageName,
-                                activatedAtMillis = activationTime,
-                                dayStartMillis = activationDayStart
-                            )
                             limitDao.insert(
                                 AppUsageLimit(
                                     packageName = appToSave.packageName,
