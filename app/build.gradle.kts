@@ -17,10 +17,10 @@ val admobTestRewardedId = "ca-app-pub-3940256099942544/5224354917"
 val admobTestBannerId = "ca-app-pub-3940256099942544/9214589741"
 val admobTestNativeId = "ca-app-pub-3940256099942544/2247696110"
 
-val admobProductionAppId = "ca-app-pub-7090310776523046~9758255269"
-val admobProductionInterstitialId = "ca-app-pub-7090310776523046/8800396811"
-val admobProductionRewardedId = "ca-app-pub-7090310776523046/1946766744"
-val admobProductionBannerId = "ca-app-pub-7090310776523046/2381881015"
+val admobProductionAppId = "ca-app-pub-3940256099942544~3347511713"
+val admobProductionInterstitialId = "ca-app-pub-3940256099942544/1033173712"
+val admobProductionRewardedId = "ca-app-pub-3940256099942544/5224354917"
+val admobProductionBannerId = "ca-app-pub-3940256099942544/9214589741"
 
 android {
     namespace = "com.focusguard"
