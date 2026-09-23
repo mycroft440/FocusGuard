@@ -12,4 +12,4 @@
 - [x] Remover a indisponibilidade global e permitir TIME adicional, preservando duplicatas de senha e limite diário.
 - [x] Permitir complementos já protegidos por outro tipo de bloqueio.
 - [x] Cobrir app e site com várias camadas e verificar seleção em cada modo.
-- [ ] Revisar diff e executar os gates Android disponíveis.
+- [x] Revisar diff e executar os gates Android disponíveis.
