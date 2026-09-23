@@ -74,7 +74,7 @@ class UsageImpactActivity : AppCompatActivity() {
             FocusGuardTheme {
                 UsageImpactScreen(
                     packageName = targetPackage,
-                    onClose = ::finish
+                    onClose = ::finishAffinity
                 )
             }
         }
