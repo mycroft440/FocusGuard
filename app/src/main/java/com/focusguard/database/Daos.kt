@@ -76,6 +76,16 @@ interface BlockSessionDao {
     @Query("SELECT * FROM block_sessions WHERE isActive = 1")
     suspend fun getAllActiveSessionsStatic(): List<BlockSession>
 
+    @Query("""
+        SELECT block_sessions.* FROM block_sessions
+        INNER JOIN session_app_cross_ref ON session_app_cross_ref.sessionId = block_sessions.id
+        WHERE session_app_cross_ref.packageName = :packageName
+            AND block_sessions.isActive = 1
+            AND block_sessions.sessionType = 'PASSWORD'
+        ORDER BY block_sessions.startTime DESC
+    """)
+    suspend fun getActivePasswordSessionsForApp(packageName: String): List<BlockSession>
+
     @Query("SELECT * FROM block_sessions WHERE id = :sessionId AND isActive = 1 LIMIT 1")
     suspend fun getActiveSessionById(sessionId: Int): BlockSession?
 

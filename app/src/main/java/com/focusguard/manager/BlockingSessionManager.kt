@@ -1191,6 +1191,13 @@ class BlockingSessionManager @Inject constructor(
         blockedPackage: String?,
         blockedDomain: String?
     ): Int? {
+        if (!blockedPackage.isNullOrBlank() && blockedDomain.isNullOrBlank()) {
+            return database.blockSessionDao()
+                .getActivePasswordSessionsForApp(blockedPackage)
+                .firstOrNull { isCurrentlyInBlockingWindow(it) }
+                ?.id
+        }
+
         val sessions = database.blockSessionDao().getAllActiveSessionsStatic()
             .filter { it.sessionType == "PASSWORD" && isCurrentlyInBlockingWindow(it) }
             .sortedByDescending { it.startTime }
@@ -1397,6 +1404,12 @@ class BlockingSessionManager @Inject constructor(
                 )
                 checkAndEnforceOrThrow()
                 return@withContext LimitUnlockResult.UNLOCKED
+            }
+
+            // An app-only attempt cannot match a website limit. Keep the website
+            // usage/statistics lookup on the website path, outside app routing.
+            if (blockedDomain.isNullOrBlank()) {
+                return@withContext LimitUnlockResult.NOT_FOUND
             }
 
             val websiteLimits = database.websiteUsageLimitDao().getAllStatic()
