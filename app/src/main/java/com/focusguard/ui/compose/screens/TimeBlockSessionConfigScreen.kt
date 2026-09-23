@@ -80,9 +80,7 @@ import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.WebsiteBlocker
 import java.util.Calendar
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 internal fun selectedTargetCount(appCount: Int, siteCount: Int): Int = appCount + siteCount
 
@@ -128,40 +126,17 @@ fun TimeBlockSessionConfigScreen(
     val appCompanionOptions = remember(sites) {
         AssociatedBlockTargets.appCompanionsForWebsiteRules(sites)
     }
-    var configuredBlockedTargets by remember {
-        mutableStateOf(BlockingSessionManager.ConfiguredBlockedTargets())
-    }
     var selectedCompanionDomains by remember { mutableStateOf<Set<String>>(emptySet()) }
     var selectedCompanionPackages by remember { mutableStateOf<Set<String>>(emptySet()) }
 
-    LaunchedEffect(apps, sites) {
-        configuredBlockedTargets = withContext(Dispatchers.IO) {
-            runCatching { sessionManager.getConfiguredBlockedTargets() }
-                .getOrDefault(BlockingSessionManager.ConfiguredBlockedTargets())
-        }
-    }
-
-    val availableWebsiteCompanionOptions = remember(
-        websiteCompanionOptions,
-        sites,
-        configuredBlockedTargets
-    ) {
+    val availableWebsiteCompanionOptions = remember(websiteCompanionOptions, sites) {
         websiteCompanionOptions.filterNot { option ->
-            BlockingSessionManager.isWebsiteRuleCoveredBy(option.domain, sites) ||
-                BlockingSessionManager.isWebsiteRuleCoveredBy(
-                    option.domain,
-                    configuredBlockedTargets.allWebsiteRules
-                )
+            BlockingSessionManager.isWebsiteRuleCoveredBy(option.domain, sites)
         }
     }
-    val availableAppCompanionOptions = remember(
-        appCompanionOptions,
-        apps,
-        configuredBlockedTargets
-    ) {
+    val availableAppCompanionOptions = remember(appCompanionOptions, apps) {
         appCompanionOptions.filterNot { option ->
-            option.packageName in apps ||
-                option.packageName in configuredBlockedTargets.allAppPackageNames
+            option.packageName in apps
         }
     }
     val availableCompanionDomains = remember(availableWebsiteCompanionOptions) {

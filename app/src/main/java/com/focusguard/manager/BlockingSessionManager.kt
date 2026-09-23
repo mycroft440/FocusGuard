@@ -238,9 +238,7 @@ class BlockingSessionManager @Inject constructor(
         val limitedAppPackageNames: Set<String> = emptySet(),
         val limitedWebsiteRules: Set<String> = emptySet(),
         val exclusiveAppPackageNames: Set<String> = emptySet(),
-        val exclusiveWebsiteRules: Set<String> = emptySet(),
-        val unavailableAppPackageNames: Set<String> = emptySet(),
-        val unavailableWebsiteRules: Set<String> = emptySet()
+        val exclusiveWebsiteRules: Set<String> = emptySet()
     ) {
         val allAppPackageNames: Set<String>
             get() = passwordAppPackageNames + limitedAppPackageNames + exclusiveAppPackageNames
@@ -332,32 +330,13 @@ class BlockingSessionManager @Inject constructor(
                 normalizeConfiguredAppPackages(limitedAppPackages)
             val exclusiveAppPackageNames =
                 normalizeConfiguredAppPackages(exclusiveSessionAppPackages)
-            val allWebsiteRules = WebsiteBlocker.normalizeRules(
-                passwordWebsiteRules + normalizedLimitedWebsiteRules + exclusiveWebsiteRules
-            )
-
-            // A seleção inicial só fica indisponível quando os três modos já
-            // existem. Ter uma ou duas camadas nunca impede adicionar a restante.
-            val unavailableWebsiteRules = allWebsiteRules.filterTo(linkedSetOf()) { candidate ->
-                isWebsiteRuleCoveredBy(candidate, passwordWebsiteRules) &&
-                    isWebsiteRuleCoveredBy(candidate, normalizedLimitedWebsiteRules) &&
-                    isWebsiteRuleCoveredBy(candidate, exclusiveWebsiteRules)
-            }
-            val unavailableAppPackageNames = passwordAppPackageNames
-                .intersect(normalizedLimitedAppPackages)
-                .intersect(exclusiveAppPackageNames)
-                .filter(String::isNotBlank)
-                .toSet()
-
             return ConfiguredBlockedTargets(
                 passwordAppPackageNames = passwordAppPackageNames,
                 passwordWebsiteRules = passwordWebsiteRules,
                 limitedAppPackageNames = normalizedLimitedAppPackages,
                 limitedWebsiteRules = normalizedLimitedWebsiteRules,
                 exclusiveAppPackageNames = exclusiveAppPackageNames,
-                exclusiveWebsiteRules = exclusiveWebsiteRules,
-                unavailableAppPackageNames = unavailableAppPackageNames,
-                unavailableWebsiteRules = unavailableWebsiteRules
+                exclusiveWebsiteRules = exclusiveWebsiteRules
             )
         }
 
@@ -521,7 +500,8 @@ class BlockingSessionManager @Inject constructor(
      *
      * PASSWORD, daily limit and TIME are independent layers. The setup may attach
      * all three to one target; runtime precedence decides which layer owns access.
-     * A target is globally unavailable only after all three layers exist.
+     * The picker decides availability for the mode being created. Several TIME
+     * sessions may coexist for different windows even on a fully protected target.
      */
     suspend fun getConfiguredBlockedTargets(): ConfiguredBlockedTargets =
         withContext(Dispatchers.IO) {

@@ -99,15 +99,18 @@ class ProtectionSetupStateTest {
     }
 
     @Test
-    fun `time mode rejects only existing time layer`() {
+    fun `time mode accepts another session alongside existing protections`() {
         val configured = BlockingSessionManager.ConfiguredBlockedTargets(
             passwordAppPackageNames = setOf("com.example.password"),
             limitedAppPackageNames = setOf("com.example.limit"),
-            exclusiveAppPackageNames = setOf("com.example.time")
+            exclusiveAppPackageNames = setOf("com.example.time"),
+            exclusiveWebsiteRules = setOf("example.com")
         )
 
         assertThat(configuredAppPackagesForMode(ProtectionMode.DOPAMINE_FAST, configured))
-            .containsExactly("com.example.time")
+            .isEmpty()
+        assertThat(configuredWebsiteRulesForMode(ProtectionMode.DOPAMINE_FAST, configured))
+            .isEmpty()
     }
 
     @Test
