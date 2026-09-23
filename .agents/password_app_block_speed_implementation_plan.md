@@ -13,4 +13,4 @@
 - [x] Consultar diretamente as sessões PASSWORD do app e manter o filtro de janela ativa.
 - [x] Evitar consultas a limites de sites em tentativas que só envolvem um app.
 - [x] Cobrir a seleção de sessões com TIME, sessões inativas e apps distintos.
-- [ ] Revisar diff e executar testes/build disponíveis, sem alterar o roteamento dos outros bloqueios.
+- [x] Revisar diff e executar testes/build disponíveis, sem alterar o roteamento dos outros bloqueios. Android CI Pro #1836: testes unitários, Android Lint e compilação do módulo de performance passaram.
