@@ -3,34 +3,44 @@ package com.focusguard.security
 /**
  * Authorization policy for Settings > Remove all blocks.
  *
- * Time blocks and usage limits can be configured without locking entry to the
- * management UI, so clearing them is sensitive. They require the master
- * credential unless this same foreground visit already verified an active app
- * entry credential (password, pattern, or biometric).
- *
- * With no time block and no usage limit, the action does not introduce an
- * additional credential prompt. PASSWORD-only protection is already guarded by
- * the app-entry flow when applicable.
+ * The dialog always shows what is about to be removed and asks for confirmation.
+ * PASSWORD blocks are already guarded by their own credential, so when they are
+ * the only thing active the confirmation is enough. Any other protection (daily
+ * limit, scheduled period, time block without password, adult filter, Focus Mode
+ * or strict Pomodoro) additionally requires the master credential.
  */
 object RemoveAllBlocksAuthorizationPolicy {
     enum class Gate {
-        ALLOW,
+        NOTHING_TO_REMOVE,
+        CONFIRM_ONLY,
         REQUIRE_MASTER_CREDENTIAL
     }
 
-    fun evaluate(
-        hasActiveTimeProtection: Boolean,
-        hasActiveUsageLimit: Boolean,
-        appEntryCredentialAuthenticated: Boolean
-    ): Gate {
-        val needsSensitiveAuthorization =
-            hasActiveTimeProtection || hasActiveUsageLimit
-        if (!needsSensitiveAuthorization) return Gate.ALLOW
+    /** What is currently active, grouped as the Home screen shows it. */
+    data class Summary(
+        val passwordBlocks: Int = 0,
+        val dailyLimits: Int = 0,
+        val scheduledPeriods: Int = 0,
+        val timeBlocks: Int = 0,
+        val adultFilterActive: Boolean = false,
+        val focusModeActive: Boolean = false,
+        val strictPomodoroActive: Boolean = false
+    ) {
+        val hasNonPasswordProtection: Boolean
+            get() = dailyLimits > 0 ||
+                scheduledPeriods > 0 ||
+                timeBlocks > 0 ||
+                adultFilterActive ||
+                focusModeActive ||
+                strictPomodoroActive
 
-        return if (appEntryCredentialAuthenticated) {
-            Gate.ALLOW
-        } else {
-            Gate.REQUIRE_MASTER_CREDENTIAL
-        }
+        val isEmpty: Boolean
+            get() = passwordBlocks == 0 && !hasNonPasswordProtection
+    }
+
+    fun evaluate(summary: Summary): Gate = when {
+        summary.isEmpty -> Gate.NOTHING_TO_REMOVE
+        summary.hasNonPasswordProtection -> Gate.REQUIRE_MASTER_CREDENTIAL
+        else -> Gate.CONFIRM_ONLY
     }
 }

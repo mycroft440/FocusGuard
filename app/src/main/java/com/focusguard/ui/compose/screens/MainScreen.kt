@@ -15,6 +15,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.rounded.ChevronRight
+import androidx.compose.material.icons.rounded.Insights
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -98,33 +100,12 @@ fun MainScreen(
                                 letterSpacing = (-0.6).sp
                             )
                         } else if (!focusModeActive) {
-                            FocusCard(
+                            MetricsShortcutButton(
                                 modifier = Modifier
                                     .align(Alignment.CenterStart)
                                     .padding(start = 16.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                border = BorderStroke(1.dp, AccentCyanEdge),
                                 onClick = { onTabChange(0) }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Default.Public,
-                                        contentDescription = null,
-                                        tint = AccentCyan,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        stringResource(R.string.nav_metrics),
-                                        color = TextPrimary,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
+                            )
                         }
 
                         IconButton(
@@ -842,6 +823,69 @@ fun SessionCard(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Atalho para a aba de métricas no topo da Home: pílula com degradê da marca,
+ * ícone de gráfico num selo circular e seta indicando navegação.
+ */
+@Composable
+private fun MetricsShortcutButton(
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val pillShape = RoundedCornerShape(percent = 50)
+    FocusCard(
+        modifier = modifier,
+        shape = pillShape,
+        brush = Brush.horizontalGradient(
+            listOf(AccentCyan.copy(alpha = 0.20f), AccentPurple.copy(alpha = 0.20f))
+        ),
+        border = BorderStroke(
+            1.dp,
+            Brush.horizontalGradient(
+                listOf(AccentCyan.copy(alpha = 0.55f), AccentPurple.copy(alpha = 0.55f))
+            )
+        ),
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 5.dp, end = 12.dp, top = 5.dp, bottom = 5.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Brush.linearGradient(listOf(AccentCyan, AccentPurple))
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.Insights,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(18.dp)
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(
+                stringResource(R.string.nav_metrics),
+                color = TextPrimary,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 0.2.sp
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Icon(
+                Icons.Rounded.ChevronRight,
+                contentDescription = null,
+                tint = TextSecondary,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }

@@ -11,4 +11,46 @@
     <string name="protected_settings_blocked_description">This setting cannot be changed while FocusGuard is enforcing any block. To end all protection, use Remove all blocks in Settings and confirm with the master password.</string>
     <string name="protected_uninstall_blocked_description">FocusGuard cannot be uninstalled while protection is active. First use Remove all blocks in Settings; the master password is requested only for that action.</string>
     <string name="uninstall_app_subtitle_no_master">Available without a password when no blocks are active</string>
+    <string name="remove_all_blocks_none_title">No active blocks</string>
+    <string name="remove_all_blocks_none_message">There are no active blocks to remove right now.</string>
+    <string name="remove_all_blocks_will_be_removed">Will be removed.</string>
+    <string name="remove_all_blocks_confirm_question">Are you sure you want to remove all blocks?</string>
+    <string name="remove_all_blocks_confirm_yes">Yes</string>
+    <string name="remove_all_blocks_master_title">Enter the master password</string>
+    <string name="remove_all_blocks_master_reason">Required because some of these blocks are not password blocks. This password does not unlock individual apps or sites.</string>
+    <string name="remove_all_blocks_adult_filter">Adult content filter</string>
+    <string name="remove_all_blocks_focus_mode">Focus Mode session</string>
+    <string name="remove_all_blocks_strict_pomodoro">Strict Pomodoro session</string>
+    <plurals name="remove_all_blocks_password_count">
+        <item quantity="zero">%1$d password blocks</item>
+        <item quantity="one">%1$d password block</item>
+        <item quantity="two">%1$d password blocks</item>
+        <item quantity="few">%1$d password blocks</item>
+        <item quantity="many">%1$d password blocks</item>
+        <item quantity="other">%1$d password blocks</item>
+    </plurals>
+    <plurals name="remove_all_blocks_limit_count">
+        <item quantity="zero">%1$d daily usage limits</item>
+        <item quantity="one">%1$d daily usage limit</item>
+        <item quantity="two">%1$d daily usage limits</item>
+        <item quantity="few">%1$d daily usage limits</item>
+        <item quantity="many">%1$d daily usage limits</item>
+        <item quantity="other">%1$d daily usage limits</item>
+    </plurals>
+    <plurals name="remove_all_blocks_period_count">
+        <item quantity="zero">%1$d blocks during periods of the day</item>
+        <item quantity="one">%1$d block during periods of the day</item>
+        <item quantity="two">%1$d blocks during periods of the day</item>
+        <item quantity="few">%1$d blocks during periods of the day</item>
+        <item quantity="many">%1$d blocks during periods of the day</item>
+        <item quantity="other">%1$d blocks during periods of the day</item>
+    </plurals>
+    <plurals name="remove_all_blocks_time_count">
+        <item quantity="zero">%1$d time blocks without password</item>
+        <item quantity="one">%1$d time block without password</item>
+        <item quantity="two">%1$d time blocks without password</item>
+        <item quantity="few">%1$d time blocks without password</item>
+        <item quantity="many">%1$d time blocks without password</item>
+        <item quantity="other">%1$d time blocks without password</item>
+    </plurals>
 </resources>
