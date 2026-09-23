@@ -142,12 +142,6 @@ fun UnifiedProtectionSetupWizard(
             configuredBlockedTargets
         }
         configuredBlockedTargets = latest
-        selectedApps = selectedApps.filterNot {
-            it.packageName in latest.unavailableAppPackageNames
-        }
-        websiteRules = websiteRules.filterNot {
-            isWebsiteRuleAlreadyBlocked(it, latest.unavailableWebsiteRules)
-        }
         return latest
     }
 
@@ -205,23 +199,7 @@ fun UnifiedProtectionSetupWizard(
                 },
                 onContinue = {
                     scope.launch {
-                        val previousAppCount = selectedApps.size
-                        val previousWebsiteCount = websiteRules.size
                         refreshConfiguredBlockedTargets()
-                        if (selectedApps.size < previousAppCount) {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.app_already_blocked),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                        if (websiteRules.size < previousWebsiteCount) {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.site_already_blocked),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
                         if (selectedApps.isNotEmpty() || websiteRules.isNotEmpty()) {
                             page = ProtectionSetupPage.MODE
                         }
@@ -235,32 +213,9 @@ fun UnifiedProtectionSetupWizard(
             // um site companheiro quando o usuário aceitar explicitamente a opção.
             ProtectionSetupPage.APP_PICKER -> AppSelectionStep(
                 onNext = { apps, companionRules ->
-                    scope.launch {
-                        val latest = refreshConfiguredBlockedTargets()
-                        val availableApps = apps.filterNot {
-                            it.packageName in latest.unavailableAppPackageNames
-                        }
-                        val availableRules = companionRules.filterNot {
-                            isWebsiteRuleAlreadyBlocked(it, latest.unavailableWebsiteRules)
-                        }
-                        if (availableApps.size != apps.size) {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.app_already_blocked),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                        if (availableRules.size != companionRules.size) {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.site_already_blocked),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-                        selectedApps = availableApps
-                        websiteRules = availableRules
-                        returnToList()
-                    }
+                    selectedApps = apps
+                    websiteRules = companionRules
+                    returnToList()
                 },
                 onBack = ::returnToList,
                 initialSelectedPackages = selectedApps.mapTo(linkedSetOf()) { it.packageName },
@@ -271,48 +226,32 @@ fun UnifiedProtectionSetupWizard(
 
             ProtectionSetupPage.WEBSITE_PICKER -> WebsiteRuleSelectionScreen(
                 initialRules = websiteRules,
-                configuredBlockedRules = configuredBlockedTargets.unavailableWebsiteRules,
+                configuredBlockedRules = emptySet(),
                 selectedAppPackages = selectedApps.mapTo(linkedSetOf()) { it.packageName },
-                configuredBlockedPackages = configuredBlockedTargets.unavailableAppPackageNames,
+                configuredBlockedPackages = emptySet(),
                 onSave = { rules, optedInCompanionPackages ->
-                    scope.launch {
-                        val latest = refreshConfiguredBlockedTargets()
-                        val availableRules = rules.filterNot {
-                            isWebsiteRuleAlreadyBlocked(it, latest.unavailableWebsiteRules)
-                        }
-                        if (availableRules.size != rules.size) {
-                            Toast.makeText(
-                                context,
-                                context.getString(R.string.site_already_blocked),
-                                Toast.LENGTH_SHORT
-                            ).show()
-                        }
-
-                        val companionApps = AssociatedBlockTargets.selectedAppsForWebsiteRules(
-                            rules = availableRules,
-                            optedInPackages = optedInCompanionPackages
-                        ).filterNot {
-                            it.packageName in latest.unavailableAppPackageNames
-                        }
-                        val companionRows = companionApps.map { appInfo ->
-                            SelectableAppUi(
-                                packageName = appInfo.packageName,
-                                appName = appInfo.appName,
-                                isSelected = true,
-                                isInstalled = context.packageManager
-                                    .getLaunchIntentForPackage(appInfo.packageName) != null,
-                                category = appInfo.category,
-                                iconUrl = appInfo.domain?.let { domain ->
-                                    "https://www.google.com/s2/favicons?domain=$domain&sz=128"
-                                }
-                            )
-                        }
-
-                        selectedApps = (selectedApps + companionRows)
-                            .distinctBy { it.packageName }
-                        websiteRules = availableRules
-                        returnToList()
+                    val companionApps = AssociatedBlockTargets.selectedAppsForWebsiteRules(
+                        rules = rules,
+                        optedInPackages = optedInCompanionPackages
+                    )
+                    val companionRows = companionApps.map { appInfo ->
+                        SelectableAppUi(
+                            packageName = appInfo.packageName,
+                            appName = appInfo.appName,
+                            isSelected = true,
+                            isInstalled = context.packageManager
+                                .getLaunchIntentForPackage(appInfo.packageName) != null,
+                            category = appInfo.category,
+                            iconUrl = appInfo.domain?.let { domain ->
+                                "https://www.google.com/s2/favicons?domain=$domain&sz=128"
+                            }
+                        )
                     }
+
+                    selectedApps = (selectedApps + companionRows)
+                        .distinctBy { it.packageName }
+                    websiteRules = rules
+                    returnToList()
                 },
                 onBack = ::returnToList
             )

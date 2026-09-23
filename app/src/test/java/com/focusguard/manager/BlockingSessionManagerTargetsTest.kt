@@ -8,7 +8,7 @@ import org.junit.Test
 class BlockingSessionManagerTargetsTest {
 
     @Test
-    fun `one or two protection layers keep target available for the missing layer`() {
+    fun `one or two protection layers keep separate target inventories`() {
         val targets = BlockingSessionManager.combineConfiguredBlockedTargets(
             passwordSessionAppPackages = listOf(
                 "com.example.password",
@@ -27,12 +27,16 @@ class BlockingSessionManagerTargetsTest {
             limitedWebsiteRules = listOf("youtube.com", "instagram.com")
         )
 
-        assertThat(targets.unavailableAppPackageNames).isEmpty()
-        assertThat(targets.unavailableWebsiteRules).isEmpty()
+        assertThat(targets.passwordAppPackageNames)
+            .containsExactly("com.example.password", "com.example.passwordLimit")
+        assertThat(targets.limitedAppPackageNames)
+            .containsExactly("com.example.limit", "com.example.passwordLimit")
+        assertThat(targets.exclusiveWebsiteRules)
+            .containsExactly("instagram.com", "reddit.com")
     }
 
     @Test
-    fun `target becomes globally unavailable only after all three layers exist`() {
+    fun `target with all three layers keeps independent ownership`() {
         val targets = BlockingSessionManager.combineConfiguredBlockedTargets(
             passwordSessionAppPackages = listOf("com.example.all", "com.example.password"),
             passwordSessionWebsiteRules = listOf("youtube.com", "reddit.com"),
@@ -42,32 +46,21 @@ class BlockingSessionManagerTargetsTest {
             limitedWebsiteRules = listOf("https://www.youtube.com/watch?v=1", "tiktok.com")
         )
 
-        assertThat(targets.unavailableAppPackageNames).containsExactly("com.example.all")
-        assertThat(targets.unavailableWebsiteRules).containsExactly("youtube.com")
+        assertThat(targets.passwordAppPackageNames).contains("com.example.all")
+        assertThat(targets.limitedAppPackageNames).contains("com.example.all")
+        assertThat(targets.exclusiveAppPackageNames).contains("com.example.all")
+        assertThat(targets.passwordWebsiteRules).contains("youtube.com")
+        assertThat(targets.limitedWebsiteRules).contains("youtube.com")
+        assertThat(targets.exclusiveWebsiteRules).contains("youtube.com")
     }
 
     @Test
-    fun `semantic website coverage requires all three layers before becoming unavailable`() {
-        val twoLayers = BlockingSessionManager.combineConfiguredBlockedTargets(
-            passwordSessionAppPackages = emptyList(),
-            passwordSessionWebsiteRules = listOf("keyword:porn"),
-            exclusiveSessionAppPackages = emptyList(),
-            exclusiveSessionWebsiteRules = emptyList(),
-            limitedAppPackages = emptyList(),
-            limitedWebsiteRules = listOf("example-porn-site.com")
-        )
-        assertThat(twoLayers.unavailableWebsiteRules).isEmpty()
-
-        val threeLayers = BlockingSessionManager.combineConfiguredBlockedTargets(
-            passwordSessionAppPackages = emptyList(),
-            passwordSessionWebsiteRules = listOf("keyword:porn"),
-            exclusiveSessionAppPackages = emptyList(),
-            exclusiveSessionWebsiteRules = listOf("example-porn-site.com"),
-            limitedAppPackages = emptyList(),
-            limitedWebsiteRules = listOf("example-porn-site.com")
-        )
-        assertThat(threeLayers.unavailableWebsiteRules)
-            .containsExactly("example-porn-site.com")
+    fun `existing keyword covers site in its own protection mode`() {
+        assertThat(
+            BlockingSessionManager.isWebsiteRuleCoveredBy(
+                "example-porn-site.com", listOf("keyword:porn")
+            )
+        ).isTrue()
     }
 
     @Test
@@ -99,8 +92,6 @@ class BlockingSessionManagerTargetsTest {
 
         assertThat(targets.allAppPackageNames).containsExactly("com.example.app")
         assertThat(targets.allWebsiteRules).containsExactly("youtube.com")
-        assertThat(targets.unavailableAppPackageNames).isEmpty()
-        assertThat(targets.unavailableWebsiteRules).isEmpty()
     }
 
     @Test

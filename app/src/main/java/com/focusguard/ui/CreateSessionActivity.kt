@@ -148,6 +148,27 @@ class CreateSessionActivity : ComponentActivity() {
     }
 }
 
+internal data class SelectionExclusions(
+    val appPackages: Set<String>,
+    val websiteRules: Set<String>
+)
+
+internal fun selectionExclusions(
+    configured: BlockingSessionManager.ConfiguredBlockedTargets,
+    allowCompatibleProtection: Boolean,
+    sessionType: String?
+): SelectionExclusions = when {
+    !allowCompatibleProtection -> SelectionExclusions(
+        configured.allAppPackageNames,
+        configured.allWebsiteRules
+    )
+    sessionType == "PASSWORD" -> SelectionExclusions(
+        configured.passwordAppPackageNames,
+        configured.passwordWebsiteRules
+    )
+    else -> SelectionExclusions(emptySet(), emptySet())
+}
+
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun CreateSessionWizard(
@@ -175,6 +196,7 @@ fun CreateSessionWizard(
                 // outro bloqueio continua selecionável para receber uma nova
                 // camada (por exemplo, período diário + bloqueio TIME contínuo).
                 allowCompatibleProtection = true,
+                selectionSessionType = sessionType,
                 // Voltar da segunda página reabre esta com a escolha intacta, em
                 // vez de exigir que tudo seja marcado de novo.
                 initialSelectedPackages = selectedApps.mapTo(linkedSetOf()) {
@@ -227,6 +249,7 @@ fun AppSelectionStep(
     onBack: () -> Unit,
     initialSelectedPackages: Set<String> = emptySet(),
     allowCompatibleProtection: Boolean = false,
+    selectionSessionType: String? = null,
     kinds: BlockTargetPolicy.Kinds = BlockTargetPolicy.APPS_ONLY,
     initialRules: List<String> = emptyList()
 ) {
@@ -238,7 +261,7 @@ fun AppSelectionStep(
     var rules by remember { mutableStateOf(initialRules) }
     var isLoading by remember { mutableStateOf(true) }
 
-    LaunchedEffect(initialSelectedPackages) {
+    LaunchedEffect(initialSelectedPackages, allowCompatibleProtection, selectionSessionType) {
         withContext(Dispatchers.IO) {
             val configured = try {
                 BlockingSessionManager.getInstance(context).getConfiguredBlockedTargets()
@@ -252,16 +275,13 @@ fun AppSelectionStep(
                 )
                 BlockingSessionManager.ConfiguredBlockedTargets()
             }
-            val blockedPackages = if (allowCompatibleProtection) {
-                configured.unavailableAppPackageNames
-            } else {
-                configured.allAppPackageNames
-            }
-            val blockedRules = if (allowCompatibleProtection) {
-                configured.unavailableWebsiteRules
-            } else {
-                configured.allWebsiteRules
-            }
+            val exclusions = selectionExclusions(
+                configured,
+                allowCompatibleProtection,
+                selectionSessionType
+            )
+            val blockedPackages = exclusions.appPackages
+            val blockedRules = exclusions.websiteRules
             val launcherIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
             val launcherQueryFlags = PackageManager.MATCH_DISABLED_COMPONENTS
             val launchables = pm.queryIntentActivities(launcherIntent, launcherQueryFlags)
