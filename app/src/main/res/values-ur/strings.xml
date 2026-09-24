@@ -147,6 +147,7 @@
     <string name="nav_protection">تحفظ</string>
     <string name="nav_focus">پومودورو</string>
     <string name="nav_metrics">اعداد و شمار</string>
+    <string name="nav_metrics_subtitle">آج کا استعمال دیکھیں</string>
     <string name="nav_recovery">AntiPorn</string>
     <string name="nav_focus_mode">فوکس موڈ</string>
     <string name="nav_forum">فورم</string>

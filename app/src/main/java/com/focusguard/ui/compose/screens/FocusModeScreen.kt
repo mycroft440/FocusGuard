@@ -4,6 +4,11 @@ import android.content.Context
 import android.content.Intent
 import android.provider.Settings
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -25,6 +30,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.CircleShape
@@ -41,6 +48,9 @@ import androidx.compose.material.icons.filled.Message
 import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material.icons.outlined.Contrast
+import androidx.compose.material.icons.outlined.Shield
+import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -58,6 +68,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -83,8 +94,10 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
@@ -99,6 +112,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -114,6 +128,7 @@ import com.focusguard.focusmode.FocusModePolicy
 import com.focusguard.focusmode.FocusModeSelectableApp
 import com.focusguard.focusmode.FocusModeSession
 import com.focusguard.ui.compose.theme.AccentCyan
+import com.focusguard.ui.compose.theme.AccentPurple
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DarkCard
 import com.focusguard.ui.compose.theme.TextHint
@@ -426,6 +441,23 @@ private fun FocusModeSetupContent(
                     listOf(Color(0xFF12151C), void, void)
                 )
             )
+            .drawBehind {
+                // Halo suave atrás do mostrador: dá profundidade sem competir
+                // com o conteúdo.
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(
+                            AccentCyan.copy(alpha = 0.16f),
+                            AccentPurple.copy(alpha = 0.06f),
+                            Color.Transparent
+                        ),
+                        center = Offset(size.width / 2f, size.height * 0.24f),
+                        radius = size.width * 0.75f
+                    ),
+                    radius = size.width * 0.75f,
+                    center = Offset(size.width / 2f, size.height * 0.24f)
+                )
+            }
     ) {
         Column(
             modifier = Modifier
@@ -435,7 +467,10 @@ private fun FocusModeSetupContent(
             Column(
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxWidth(),
+                    .fillMaxWidth()
+                    // Em telas baixas o conteúdo rola em vez de ser cortado; o
+                    // botão de iniciar continua fixo embaixo.
+                    .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(9.dp)
             ) {
                 Row(
@@ -502,15 +537,24 @@ private fun FocusModeSetupContent(
                             onValueChange = onGrayscaleEnabledChange
                         ),
                     colors = CardDefaults.cardColors(containerColor = surface),
-                    border = BorderStroke(1.dp, stroke),
-                    shape = RoundedCornerShape(16.dp)
+                    border = BorderStroke(
+                        1.dp,
+                        if (grayscaleEnabled) AccentPurple.copy(alpha = 0.55f) else stroke
+                    ),
+                    shape = RoundedCornerShape(18.dp)
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 9.dp),
+                            .padding(horizontal = 14.dp, vertical = 10.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
+                        FocusIconBadge(
+                            icon = Icons.Outlined.Contrast,
+                            accent = AccentPurple,
+                            size = 38.dp
+                        )
+                        Spacer(Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = stringResource(R.string.fg_focus_grayscale),
@@ -528,7 +572,15 @@ private fun FocusModeSetupContent(
                         }
                         Switch(
                             checked = grayscaleEnabled,
-                            onCheckedChange = null
+                            onCheckedChange = null,
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = Color.White,
+                                checkedTrackColor = AccentPurple,
+                                checkedBorderColor = AccentPurple,
+                                uncheckedThumbColor = TextSecondary,
+                                uncheckedTrackColor = surface2,
+                                uncheckedBorderColor = stroke
+                            )
                         )
                     }
                 }
@@ -545,7 +597,7 @@ private fun FocusModeSetupContent(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(containerColor = surface),
                     border = BorderStroke(1.dp, stroke),
-                    shape = RoundedCornerShape(16.dp)
+                    shape = RoundedCornerShape(18.dp)
                 ) {
                     Row(
                         modifier = Modifier
@@ -566,7 +618,7 @@ private fun FocusModeSetupContent(
                             Icon(
                                 Icons.Default.Phone,
                                 contentDescription = null,
-                                tint = TextSecondary,
+                                tint = AccentCyan,
                                 modifier = Modifier.size(22.dp)
                             )
                         }
@@ -582,7 +634,7 @@ private fun FocusModeSetupContent(
                             Icon(
                                 Icons.Default.Message,
                                 contentDescription = null,
-                                tint = TextSecondary,
+                                tint = AccentCyan,
                                 modifier = Modifier.size(22.dp)
                             )
                         }
@@ -634,25 +686,46 @@ private fun FocusModeSetupContent(
                 modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 6.dp)
             )
 
+            val startEnabled = !isStarting && durationValid && !isLoadingApps
             Button(
                 onClick = onStart,
-                enabled = !isStarting && durationValid && !isLoadingApps,
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = AccentCyan),
-                shape = RoundedCornerShape(14.dp)
+                enabled = startEnabled,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp)
+                    .clip(RoundedCornerShape(16.dp))
+                    .background(
+                        if (startEnabled) {
+                            Brush.horizontalGradient(listOf(AccentCyan, AccentPurple))
+                        } else {
+                            Brush.horizontalGradient(listOf(surface2, surface2))
+                        }
+                    ),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = Color.Transparent,
+                    disabledContainerColor = Color.Transparent
+                ),
+                shape = RoundedCornerShape(16.dp)
             ) {
                 if (isStarting) {
                     CircularProgressIndicator(
-                        color = Color(0xFF04201B),
+                        color = Color.White,
                         strokeWidth = 2.dp,
                         modifier = Modifier.size(18.dp)
                     )
                 } else {
+                    Icon(
+                        Icons.Rounded.PlayArrow,
+                        contentDescription = null,
+                        tint = if (startEnabled) Color.White else tertiaryText,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
                     Text(
                         stringResource(R.string.focus_mode_review_start),
-                        color = Color(0xFF04201B),
+                        color = if (startEnabled) Color.White else tertiaryText,
                         fontWeight = FontWeight.ExtraBold,
-                        fontSize = 15.sp
+                        fontSize = 16.sp
                     )
                 }
             }
@@ -729,9 +802,11 @@ private fun FocusDurationDial(
         "${minutes / 60} $hoursUnit ${minutes % 60} $minutesUnit"
     }
 
+    // Mostrador menor em telas baixas para caber junto com os cartões.
+    val dialSize = if (LocalConfiguration.current.screenHeightDp < 700) 176.dp else 204.dp
     Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
         Box(
-            modifier = Modifier.size(188.dp),
+            modifier = Modifier.size(dialSize),
             contentAlignment = Alignment.Center
         ) {
             Canvas(
@@ -773,9 +848,27 @@ private fun FocusDurationDial(
                         )
                     }
             ) {
-                val strokeWidth = 8.dp.toPx()
-                val radius = (size.minDimension - strokeWidth) / 2f
+                val strokeWidth = 10.dp.toPx()
+                val radius = (size.minDimension - strokeWidth) / 2f - 4.dp.toPx()
                 val center = Offset(size.width / 2f, size.height / 2f)
+                val arcBrush = Brush.horizontalGradient(
+                    listOf(AccentCyan, AccentPurple),
+                    startX = center.x - radius,
+                    endX = center.x + radius
+                )
+                val arcTopLeft = Offset(center.x - radius, center.y - radius)
+                val arcSize = androidx.compose.ui.geometry.Size(radius * 2f, radius * 2f)
+
+                // Disco interno com leve gradiente radial: o número "flutua".
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        colors = listOf(Color(0xFF1A1F29), Color(0xFF0E1117)),
+                        center = center,
+                        radius = radius - 14.dp.toPx()
+                    ),
+                    radius = radius - 14.dp.toPx(),
+                    center = center
+                )
 
                 for (index in 0..18) {
                     val tickAngle = Math.toRadians((135f + (270f * index / 18f)).toDouble())
@@ -800,14 +893,29 @@ private fun FocusDurationDial(
                     startAngle = 135f,
                     sweepAngle = 270f,
                     useCenter = false,
+                    topLeft = arcTopLeft,
+                    size = arcSize,
                     style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
                 )
                 if (progress > 0f) {
+                    // Halo largo e translúcido por baixo do arco principal.
                     drawArc(
-                        color = AccentCyan,
+                        brush = arcBrush,
                         startAngle = 135f,
                         sweepAngle = 270f * progress,
                         useCenter = false,
+                        topLeft = arcTopLeft,
+                        size = arcSize,
+                        alpha = 0.14f,
+                        style = Stroke(width = strokeWidth * 1.8f, cap = StrokeCap.Round)
+                    )
+                    drawArc(
+                        brush = arcBrush,
+                        startAngle = 135f,
+                        sweepAngle = 270f * progress,
+                        useCenter = false,
+                        topLeft = arcTopLeft,
+                        size = arcSize,
                         style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
                     )
                 }
@@ -817,30 +925,36 @@ private fun FocusDurationDial(
                     center.x + cos(handleAngle).toFloat() * radius,
                     center.y + sin(handleAngle).toFloat() * radius
                 )
-                drawCircle(color = Color(0xFF0A0C10), radius = 13.dp.toPx(), center = handle)
-                drawCircle(color = AccentCyan.copy(alpha = 0.20f), radius = 10.dp.toPx(), center = handle)
-                drawCircle(color = AccentCyan, radius = 7.dp.toPx(), center = handle)
+                drawCircle(
+                    color = AccentCyan.copy(alpha = 0.18f),
+                    radius = 15.dp.toPx(),
+                    center = handle
+                )
+                drawCircle(color = Color.White, radius = 11.dp.toPx(), center = handle)
+                drawCircle(brush = arcBrush, radius = 6.dp.toPx(), center = handle)
             }
 
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     text = displayNumber,
                     color = TextPrimary,
-                    fontSize = 40.sp,
-                    lineHeight = 42.sp,
-                    fontWeight = FontWeight.Bold
+                    fontSize = 46.sp,
+                    lineHeight = 48.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    letterSpacing = (-1).sp
                 )
                 Text(
                     text = displayUnit,
-                    color = TextSecondary,
+                    color = AccentCyan,
                     fontSize = 11.sp,
-                    letterSpacing = 1.2.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 2.sp,
                     modifier = Modifier.padding(top = 2.dp)
                 )
             }
         }
         Row(
-            modifier = Modifier.width(188.dp).padding(top = 4.dp),
+            modifier = Modifier.width(dialSize).padding(top = 2.dp),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text("1 $minutesUnit", color = tertiaryText, fontSize = 10.sp)
@@ -870,9 +984,17 @@ private fun FocusDrawerTile(
         Box(contentAlignment = Alignment.Center) {
             Box(
                 modifier = Modifier
-                    .size(44.dp)
-                    .clip(RoundedCornerShape(13.dp))
-                    .background(surface2)
+                    .size(46.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(
+                        if (dashedStyle) {
+                            Brush.linearGradient(listOf(surface2, surface2))
+                        } else {
+                            Brush.linearGradient(
+                                listOf(AccentCyan.copy(alpha = 0.16f), surface2)
+                            )
+                        }
+                    )
                     .then(
                         if (dashedStyle) {
                             Modifier.drawBehind {
@@ -1025,48 +1147,15 @@ private fun FocusModeActiveContent(
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         item {
-            Card(
-                colors = CardDefaults.cardColors(containerColor = DarkCard),
-                border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.45f)),
-                shape = RoundedCornerShape(18.dp)
-            ) {
-                Column(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    Icon(
-                        Icons.Default.LockClock,
-                        contentDescription = null,
-                        tint = AccentCyan,
-                        modifier = Modifier.size(36.dp)
-                    )
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        stringResource(R.string.focus_mode_active_title),
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp
-                    )
-                    Text(
-                        formatRemaining(session.remainingMillis(nowMillis)),
-                        color = AccentCyan,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 30.sp,
-                        modifier = Modifier.padding(top = 5.dp)
-                    )
-                    Text(
-                        stringResource(R.string.focus_mode_remaining),
-                        color = TextHint,
-                        fontSize = 13.sp
-                    )
-                }
-            }
+            FocusActiveHero(session = session, nowMillis = nowMillis)
         }
 
         item {
             FocusInfoCard(
                 title = stringResource(R.string.focus_mode_kiosk_title),
-                description = stringResource(R.string.focus_mode_kiosk_description)
+                description = stringResource(R.string.focus_mode_kiosk_description),
+                icon = Icons.Outlined.Shield,
+                accent = AccentCyan
             )
         }
 
@@ -1076,17 +1165,21 @@ private fun FocusModeActiveContent(
                     title = stringResource(R.string.focus_mode_grayscale_active_title),
                     description = stringResource(
                         R.string.focus_mode_grayscale_active_description
-                    )
+                    ),
+                    icon = Icons.Outlined.Contrast,
+                    accent = AccentPurple
                 )
             }
         }
 
         item {
             Text(
-                stringResource(R.string.focus_mode_available_apps),
-                color = TextPrimary,
+                stringResource(R.string.focus_mode_available_apps).uppercase(Locale.getDefault()),
+                color = TextSecondary,
                 fontWeight = FontWeight.Bold,
-                fontSize = 17.sp
+                fontSize = 11.sp,
+                letterSpacing = 1.4.sp,
+                modifier = Modifier.padding(top = 6.dp, start = 2.dp)
             )
         }
 
@@ -1119,9 +1212,17 @@ private fun FocusModeActiveContent(
 
             OutlinedButton(
                 onClick = onAddApps,
-                modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-                border = BorderStroke(1.dp, AccentCyan.copy(alpha = 0.55f)),
-                shape = RoundedCornerShape(14.dp)
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(50.dp),
+                border = BorderStroke(
+                    1.dp,
+                    Brush.horizontalGradient(
+                        listOf(AccentCyan.copy(alpha = 0.7f), AccentPurple.copy(alpha = 0.7f))
+                    )
+                ),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    containerColor = AccentCyan.copy(alpha = 0.06f)
+                ),
+                shape = RoundedCornerShape(16.dp)
             ) {
                 Icon(
                     Icons.Default.Add,
@@ -1170,13 +1271,24 @@ private fun FocusModeActiveContent(
         }
 
         item {
-            Text(
-                stringResource(R.string.focus_mode_no_early_stop),
-                color = TextHint,
-                fontSize = 12.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp)
-            )
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Icon(
+                    Icons.Default.Lock,
+                    contentDescription = null,
+                    tint = TextHint,
+                    modifier = Modifier.size(16.dp)
+                )
+                Spacer(Modifier.height(6.dp))
+                Text(
+                    stringResource(R.string.focus_mode_no_early_stop),
+                    color = TextHint,
+                    fontSize = 12.sp,
+                    textAlign = TextAlign.Center
+                )
+            }
         }
     }
 }
@@ -1390,13 +1502,13 @@ private fun FocusAppTile(
 ) {
     Card(
         modifier = modifier
-            .height(92.dp)
+            .height(100.dp)
             .then(
                 if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier
             ),
         colors = CardDefaults.cardColors(containerColor = DarkCard),
         border = BorderStroke(1.dp, CardBorder),
-        shape = RoundedCornerShape(14.dp)
+        shape = RoundedCornerShape(18.dp)
     ) {
         Column(
             modifier = Modifier.fillMaxSize().padding(6.dp),
@@ -1404,17 +1516,15 @@ private fun FocusAppTile(
             verticalArrangement = Arrangement.Center
         ) {
             when (entry.type) {
-                FocusGridEntryType.PHONE -> Icon(
-                    Icons.Default.Phone,
-                    contentDescription = null,
-                    tint = AccentCyan,
-                    modifier = Modifier.size(36.dp)
+                FocusGridEntryType.PHONE -> FocusIconBadge(
+                    icon = Icons.Default.Phone,
+                    accent = AccentCyan,
+                    size = 42.dp
                 )
-                FocusGridEntryType.SMS -> Icon(
-                    Icons.Default.Message,
-                    contentDescription = null,
-                    tint = AccentCyan,
-                    modifier = Modifier.size(36.dp)
+                FocusGridEntryType.SMS -> FocusIconBadge(
+                    icon = Icons.Default.Message,
+                    accent = AccentPurple,
+                    size = 42.dp
                 )
                 FocusGridEntryType.INSTALLED_APP -> InstalledAppIcon(
                     packageName = requireNotNull(entry.packageName),
@@ -1536,20 +1646,195 @@ private fun FocusModeConsentDialog(
 }
 
 @Composable
-private fun FocusInfoCard(title: String, description: String) {
+private fun FocusInfoCard(
+    title: String,
+    description: String,
+    icon: ImageVector,
+    accent: Color
+) {
     Card(
         colors = CardDefaults.cardColors(containerColor = DarkCard),
         border = BorderStroke(1.dp, CardBorder),
-        shape = RoundedCornerShape(14.dp)
+        shape = RoundedCornerShape(18.dp)
     ) {
-        Column(modifier = Modifier.fillMaxWidth().padding(14.dp)) {
-            Text(title, color = TextPrimary, fontWeight = FontWeight.Bold)
-            Text(
-                description,
-                color = TextHint,
-                fontSize = 13.sp,
-                modifier = Modifier.padding(top = 5.dp)
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(14.dp),
+            verticalAlignment = Alignment.Top
+        ) {
+            FocusIconBadge(icon = icon, accent = accent, size = 38.dp)
+            Spacer(Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(title, color = TextPrimary, fontWeight = FontWeight.Bold, fontSize = 15.sp)
+                Text(
+                    description,
+                    color = TextHint,
+                    fontSize = 13.sp,
+                    lineHeight = 18.sp,
+                    modifier = Modifier.padding(top = 3.dp)
+                )
+            }
+        }
+    }
+}
+
+/** Ícone num quadrado arredondado tingido com a cor de destaque. */
+@Composable
+private fun FocusIconBadge(icon: ImageVector, accent: Color, size: Dp) {
+    Box(
+        modifier = Modifier
+            .size(size)
+            .clip(RoundedCornerShape(size * 0.32f))
+            .background(
+                Brush.linearGradient(
+                    listOf(accent.copy(alpha = 0.26f), accent.copy(alpha = 0.08f))
+                )
             )
+            .border(1.dp, accent.copy(alpha = 0.30f), RoundedCornerShape(size * 0.32f)),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(size * 0.52f))
+    }
+}
+
+/**
+ * Cabeçalho da sessão ativa: anel de progresso com o tempo restante no centro,
+ * selo "ativo" pulsante e título. O anel esvazia conforme o tempo passa.
+ */
+@Composable
+private fun FocusActiveHero(session: FocusModeSession, nowMillis: Long) {
+    val remaining = session.remainingMillis(nowMillis)
+    val fraction = if (session.durationMillis > 0L) {
+        (remaining.toFloat() / session.durationMillis.toFloat()).coerceIn(0f, 1f)
+    } else {
+        0f
+    }
+    val pulse = rememberInfiniteTransition(label = "FocusActivePulse")
+    val pulseAlpha by pulse.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1_100),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "FocusActivePulseAlpha"
+    )
+
+    Card(
+        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
+        border = BorderStroke(
+            1.dp,
+            Brush.linearGradient(
+                listOf(AccentCyan.copy(alpha = 0.55f), AccentPurple.copy(alpha = 0.45f))
+            )
+        ),
+        shape = RoundedCornerShape(26.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(
+                    Brush.verticalGradient(
+                        listOf(Color(0xFF111723), Color(0xFF0A0E14))
+                    )
+                )
+                .drawBehind {
+                    drawCircle(
+                        brush = Brush.radialGradient(
+                            colors = listOf(AccentCyan.copy(alpha = 0.14f), Color.Transparent),
+                            center = Offset(size.width / 2f, size.height * 0.55f),
+                            radius = size.width * 0.6f
+                        ),
+                        radius = size.width * 0.6f,
+                        center = Offset(size.width / 2f, size.height * 0.55f)
+                    )
+                }
+                .padding(vertical = 20.dp, horizontal = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Row(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(50))
+                    .background(AccentCyan.copy(alpha = 0.12f))
+                    .padding(horizontal = 12.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(AccentCyan.copy(alpha = pulseAlpha))
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    stringResource(R.string.focus_mode_active_title),
+                    color = AccentCyan,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.4.sp
+                )
+            }
+            Spacer(Modifier.height(18.dp))
+            Box(modifier = Modifier.size(216.dp), contentAlignment = Alignment.Center) {
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val strokeWidth = 12.dp.toPx()
+                    val radius = (size.minDimension - strokeWidth) / 2f - 6.dp.toPx()
+                    val center = Offset(size.width / 2f, size.height / 2f)
+                    val topLeft = Offset(center.x - radius, center.y - radius)
+                    val arcSize = androidx.compose.ui.geometry.Size(radius * 2f, radius * 2f)
+                    val ringBrush = Brush.sweepGradient(
+                        listOf(AccentCyan, AccentPurple, AccentCyan),
+                        center = center
+                    )
+                    drawCircle(
+                        color = Color(0xFF1B2130),
+                        radius = radius,
+                        center = center,
+                        style = Stroke(width = strokeWidth)
+                    )
+                    if (fraction > 0f) {
+                        drawArc(
+                            brush = ringBrush,
+                            startAngle = -90f,
+                            sweepAngle = 360f * fraction,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            alpha = 0.12f,
+                            style = Stroke(width = strokeWidth * 2f, cap = StrokeCap.Round)
+                        )
+                        drawArc(
+                            brush = ringBrush,
+                            startAngle = -90f,
+                            sweepAngle = 360f * fraction,
+                            useCenter = false,
+                            topLeft = topLeft,
+                            size = arcSize,
+                            style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+                        )
+                    }
+                }
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Icon(
+                        Icons.Default.LockClock,
+                        contentDescription = null,
+                        tint = TextSecondary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Text(
+                        formatRemaining(remaining),
+                        color = TextPrimary,
+                        fontWeight = FontWeight.ExtraBold,
+                        fontSize = 34.sp,
+                        letterSpacing = (-0.5).sp,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
+                    Text(
+                        stringResource(R.string.focus_mode_remaining),
+                        color = TextHint,
+                        fontSize = 12.sp
+                    )
+                }
+            }
         }
     }
 }

@@ -147,6 +147,7 @@
     <string name="nav_protection">الحماية</string>
     <string name="nav_focus">بومودورو</string>
     <string name="nav_metrics">الإحصائيات</string>
+    <string name="nav_metrics_subtitle">استخدامك النهارده</string>
     <string name="nav_recovery">AntiPorn</string>
     <string name="nav_focus_mode">وضع التركيز</string>
     <string name="nav_forum">المنتدى</string>

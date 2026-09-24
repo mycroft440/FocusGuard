@@ -147,6 +147,7 @@
     <string name="nav_protection">రక్షణ</string>
     <string name="nav_focus">పొమోడోరో</string>
     <string name="nav_metrics">గణాంకాలు</string>
+    <string name="nav_metrics_subtitle">ఈరోజు వినియోగం చూడండి</string>
     <string name="nav_recovery">AntiPorn</string>
     <string name="nav_focus_mode">ఫోకస్ మోడ్</string>
     <string name="nav_forum">ఫోరం</string>

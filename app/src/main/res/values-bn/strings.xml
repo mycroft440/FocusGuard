@@ -147,6 +147,7 @@
     <string name="nav_protection">সুরক্ষা</string>
     <string name="nav_focus">পোমোডোরো</string>
     <string name="nav_metrics">পরিসংখ্যান</string>
+    <string name="nav_metrics_subtitle">আজকের ব্যবহার দেখুন</string>
     <string name="nav_recovery">AntiPorn</string>
     <string name="nav_focus_mode">ফোকাস মোড</string>
     <string name="nav_forum">ফোরাম</string>

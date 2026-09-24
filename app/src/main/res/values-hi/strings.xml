@@ -147,6 +147,7 @@
     <string name="nav_protection">सुरक्षा</string>
     <string name="nav_focus">पोमोडोरो</string>
     <string name="nav_metrics">आँकड़े</string>
+    <string name="nav_metrics_subtitle">आज का उपयोग देखें</string>
     <string name="nav_recovery">AntiPorn</string>
     <string name="nav_focus_mode">फ़ोकस मोड</string>
     <string name="nav_forum">फ़ोरम</string>

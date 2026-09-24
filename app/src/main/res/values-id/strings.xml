@@ -147,6 +147,7 @@
     <string name="nav_protection">Perlindungan</string>
     <string name="nav_focus">Pomodoro</string>
     <string name="nav_metrics">Metrik</string>
+    <string name="nav_metrics_subtitle">Lihat penggunaan hari ini</string>
     <string name="nav_recovery">AntiPorn</string>
     <string name="nav_focus_mode">Mode fokus</string>
     <string name="nav_forum">Forum</string>

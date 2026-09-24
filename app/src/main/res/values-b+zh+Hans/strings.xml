@@ -147,6 +147,7 @@
     <string name="nav_protection">保护</string>
     <string name="nav_focus">番茄钟</string>
     <string name="nav_metrics">数据</string>
+    <string name="nav_metrics_subtitle">查看今日使用情况</string>
     <string name="nav_recovery">AntiPorn</string>
     <string name="nav_focus_mode">专注模式</string>
     <string name="nav_forum">论坛</string>
