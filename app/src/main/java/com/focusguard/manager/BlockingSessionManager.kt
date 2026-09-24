@@ -30,14 +30,14 @@ import com.focusguard.security.BlockTargetPolicy
 import com.focusguard.security.DeactivationCredentialManager
 import com.focusguard.security.DopamineStartPolicy
 import com.focusguard.security.MasterCredentialPolicy
+import com.focusguard.security.ProtectionHierarchy
 import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.security.PasswordAppUnlockStore
 import com.focusguard.security.PasswordTargetAccessGrant
 import com.focusguard.security.SelfProtectionStateStore
 import com.focusguard.service.BlockingAccessibilityService
 import com.focusguard.service.PomodoroForegroundService
-import com.focusguard.utils.AppUsageForegroundResolver
-import com.focusguard.utils.AppUsageLimitActivationUsage
+import com.focusguard.utils.AppUsageLimitMeter
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.UsageLimitForegroundPolicy
 import com.focusguard.utils.WebsiteBlocker
@@ -1052,7 +1052,7 @@ class BlockingSessionManager @Inject constructor(
         val passwordAppLimits = database.appUsageLimitDao()
             .getAllActiveLimitsStatic()
             .filter { it.lockMode.equals("PASSWORD", ignoreCase = true) }
-        if (getExceededAppLimits(passwordAppLimits, now).isNotEmpty()) {
+        if (exceededAppLimitsNow(passwordAppLimits, now).isNotEmpty()) {
             return@withContext true
         }
 
@@ -1374,7 +1374,7 @@ class BlockingSessionManager @Inject constructor(
                         )
                 }
             if (appLimit != null &&
-                appLimit.packageName in getExceededAppLimits(listOf(appLimit), now)
+                appLimit.packageName in exceededAppLimitsNow(listOf(appLimit), now)
             ) {
                 if (!verifyMasterCredential()) {
                     return@withContext LimitUnlockResult.WRONG_PASSWORD
@@ -1517,7 +1517,11 @@ class BlockingSessionManager @Inject constructor(
                 val strongerSessionSites = getSitesForSessions(strongerSessionIds)
 
                 val activeAppLimits = database.appUsageLimitDao().getAllActiveLimitsStatic()
-                val limitApps = getExceededAppLimits(activeAppLimits, now)
+                val limitApps = getExceededAppLimits(
+                    limits = activeAppLimits,
+                    waitingSessions = limitWaitingSessions(activeSessions),
+                    now = now
+                )
 
                 val activeWebsiteLimits = database.websiteUsageLimitDao().getAllStatic()
                     .filter { it.isEnabled }
@@ -1719,50 +1723,13 @@ class BlockingSessionManager @Inject constructor(
 
     private fun getExceededAppLimits(
         limits: List<AppUsageLimit>,
+        waitingSessions: List<ProtectionHierarchy.SessionTargets>,
         now: Long
     ): List<String> {
         if (limits.isEmpty()) return emptyList()
-        val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as?
-            UsageStatsManager
-        if (usageStatsManager == null) return emptyList()
-        val startOfDay = Calendar.getInstance().apply {
-            timeInMillis = now
-            set(Calendar.HOUR_OF_DAY, 0)
-            set(Calendar.MINUTE, 0)
-            set(Calendar.SECOND, 0)
-            set(Calendar.MILLISECOND, 0)
-        }.timeInMillis
-        val usage = usageStatsManager.queryAndAggregateUsageStats(startOfDay, now)
-        val isInteractive =
-            (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive == true
-        val currentForegroundPackage = if (isInteractive) {
-            AppUsageForegroundResolver.currentForegroundPackage(
-                usageStatsManager = usageStatsManager,
-                startMillis = (startOfDay - 24L * 60L * 60L * 1_000L).coerceAtLeast(0L),
-                endMillis = now
-            )
-        } else {
-            null
-        }
-
+        val usedMillisByPackage = measureAppLimitUsage(limits, waitingSessions, now)
         return limits.filter { limit ->
-            val stat = usage[limit.packageName]
-            val totalDayUsageMillis = UsageLimitForegroundPolicy.includeOpenForegroundInterval(
-                aggregatedForegroundMillis = stat?.totalTimeInForeground ?: 0L,
-                lastUsageEventMillis = stat?.lastTimeUsed ?: 0L,
-                nowMillis = now,
-                isCurrentForeground = currentForegroundPackage == limit.packageName,
-                isDeviceInteractive = isInteractive
-            )
-            val effectiveUsageMillis = AppUsageLimitActivationUsage.effectiveUsageMillis(
-                context = context,
-                usageStatsManager = usageStatsManager,
-                limit = limit,
-                currentDayUsageMillis = totalDayUsageMillis,
-                dayStartMillis = startOfDay,
-                nowMillis = now
-            )
-            UsageLimitForegroundPolicy.usedMinutes(effectiveUsageMillis) >=
+            UsageLimitForegroundPolicy.usedMinutes(usedMillisByPackage[limit.packageName] ?: 0L) >=
                 limit.dailyLimitMinutes &&
                 limit.preventOpeningAfterLimit &&
                 WebsiteUsageLimitPolicy.isBlockingModeActive(
@@ -1772,6 +1739,68 @@ class BlockingSessionManager @Inject constructor(
                 )
         }.map { it.packageName }
     }
+
+    private suspend fun exceededAppLimitsNow(
+        limits: List<AppUsageLimit>,
+        now: Long
+    ): List<String> {
+        if (limits.isEmpty()) return emptyList()
+        val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
+        return getExceededAppLimits(limits, limitWaitingSessions(activeSessions), now)
+    }
+
+    private fun measureAppLimitUsage(
+        limits: List<AppUsageLimit>,
+        waitingSessions: List<ProtectionHierarchy.SessionTargets>,
+        now: Long
+    ): Map<String, Long> {
+        if (limits.isEmpty()) return emptyMap()
+        val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as?
+            UsageStatsManager ?: return emptyMap()
+        val isInteractive =
+            (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive == true
+        return AppUsageLimitMeter.usedMillisByPackage(
+            usageStatsManager = usageStatsManager,
+            limits = limits,
+            waitingSessions = waitingSessions,
+            nowMillis = now,
+            isDeviceInteractive = isInteractive
+        )
+    }
+
+    /**
+     * Uso já contado de cada limite de app, pelos mesmos critérios que decidem o
+     * bloqueio: só primeiro plano e só enquanto nenhuma camada acima do limite
+     * (período agendado, jejum, Pomodoro rigoroso) segurava o app.
+     */
+    suspend fun appLimitUsageMillis(
+        limits: List<AppUsageLimit>,
+        nowMillis: Long = System.currentTimeMillis()
+    ): Map<String, Long> = withContext(Dispatchers.IO) {
+        if (limits.isEmpty()) return@withContext emptyMap()
+        val activeSessions = database.blockSessionDao().getAllActiveSessionsStatic()
+        measureAppLimitUsage(limits, limitWaitingSessions(activeSessions), nowMillis)
+    }
+
+    /**
+     * Sessões capazes de fazer um limite aguardar, com os apps de cada uma.
+     *
+     * Usa as sessões ativas e não só as que bloqueiam agora: a faixa de um período
+     * agendado que já passou hoje também precisa ficar fora da conta do limite.
+     */
+    internal suspend fun limitWaitingSessions(
+        activeSessions: List<BlockSession>
+    ): List<ProtectionHierarchy.SessionTargets> = activeSessions
+        .filter { session ->
+            ProtectionHierarchy.layerOf(session)
+                ?.outranks(ProtectionHierarchy.Layer.DAILY_LIMIT) == true
+        }
+        .map { session ->
+            ProtectionHierarchy.SessionTargets(
+                session = session,
+                appPackages = getAppsForSessions(listOf(session.id)).toSet()
+            )
+        }
 
     private suspend fun getBlockingWebsiteLimitRules(
         limits: List<WebsiteUsageLimit>,

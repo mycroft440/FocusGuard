@@ -15,11 +15,13 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
+import androidx.compose.material.icons.rounded.ChevronRight
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -98,33 +100,12 @@ fun MainScreen(
                                 letterSpacing = (-0.6).sp
                             )
                         } else if (!focusModeActive) {
-                            FocusCard(
+                            MetricsShortcutButton(
                                 modifier = Modifier
                                     .align(Alignment.CenterStart)
                                     .padding(start = 16.dp),
-                                shape = RoundedCornerShape(14.dp),
-                                border = BorderStroke(1.dp, AccentCyanEdge),
                                 onClick = { onTabChange(0) }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Icon(
-                                        Icons.Default.Public,
-                                        contentDescription = null,
-                                        tint = AccentCyan,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        stringResource(R.string.nav_metrics),
-                                        color = TextPrimary,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
-                            }
+                            )
                         }
 
                         IconButton(
@@ -841,6 +822,115 @@ fun SessionCard(
                         tint = accent.copy(alpha = 0.85f)
                     )
                 }
+            }
+        }
+    }
+}
+
+/**
+ * Atalho para a aba de métricas no topo da Home.
+ *
+ * Cartão escuro com brilho ciano/roxo, um mini gráfico de barras desenhado à mão
+ * num selo em degradê, título + subtítulo e uma seta num círculo. Fica à esquerda
+ * da barra superior, equilibrando o avatar do perfil à direita.
+ */
+@Composable
+private fun MetricsShortcutButton(
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(18.dp)
+    FocusCard(
+        modifier = modifier.drawBehind {
+            // Brilho externo discreto, mais forte do lado ciano.
+            drawRoundRect(
+                brush = Brush.horizontalGradient(
+                    listOf(AccentCyan.copy(alpha = 0.10f), AccentPurple.copy(alpha = 0.06f))
+                ),
+                topLeft = androidx.compose.ui.geometry.Offset(-2.dp.toPx(), -2.dp.toPx()),
+                size = androidx.compose.ui.geometry.Size(
+                    size.width + 4.dp.toPx(),
+                    size.height + 4.dp.toPx()
+                ),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(20.dp.toPx())
+            )
+        },
+        shape = shape,
+        brush = Brush.linearGradient(
+            listOf(Color(0xFF12202A), Color(0xFF151427))
+        ),
+        border = BorderStroke(
+            1.dp,
+            Brush.horizontalGradient(
+                listOf(AccentCyan.copy(alpha = 0.75f), AccentPurple.copy(alpha = 0.65f))
+            )
+        ),
+        onClick = onClick
+    ) {
+        Row(
+            modifier = Modifier.padding(start = 6.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(36.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(Brush.linearGradient(listOf(AccentCyan, AccentPurple))),
+                contentAlignment = Alignment.Center
+            ) {
+                Canvas(modifier = Modifier.size(20.dp)) {
+                    // Quatro barras crescentes com a última destacada.
+                    val heights = listOf(0.38f, 0.62f, 0.48f, 0.92f)
+                    val gap = size.width * 0.10f
+                    val barWidth = (size.width - gap * 3) / 4f
+                    heights.forEachIndexed { index, fraction ->
+                        val barHeight = size.height * fraction
+                        drawRoundRect(
+                            color = Color.White.copy(alpha = if (index == 3) 1f else 0.72f),
+                            topLeft = androidx.compose.ui.geometry.Offset(
+                                x = index * (barWidth + gap),
+                                y = size.height - barHeight
+                            ),
+                            size = androidx.compose.ui.geometry.Size(barWidth, barHeight),
+                            cornerRadius = androidx.compose.ui.geometry.CornerRadius(
+                                barWidth / 2f
+                            )
+                        )
+                    }
+                }
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Column {
+                Text(
+                    stringResource(R.string.nav_metrics),
+                    color = TextPrimary,
+                    fontSize = 15.sp,
+                    lineHeight = 17.sp,
+                    fontWeight = FontWeight.ExtraBold
+                )
+                Text(
+                    stringResource(R.string.nav_metrics_subtitle),
+                    color = AccentCyan.copy(alpha = 0.85f),
+                    fontSize = 11.sp,
+                    lineHeight = 13.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1
+                )
+            }
+            Spacer(modifier = Modifier.width(10.dp))
+            Box(
+                modifier = Modifier
+                    .size(24.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.08f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    Icons.Rounded.ChevronRight,
+                    contentDescription = null,
+                    tint = TextPrimary,
+                    modifier = Modifier.size(18.dp)
+                )
             }
         }
     }

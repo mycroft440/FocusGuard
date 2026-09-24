@@ -147,6 +147,7 @@
     <string name="nav_protection">保護</string>
     <string name="nav_focus">ポモドーロ</string>
     <string name="nav_metrics">統計</string>
+    <string name="nav_metrics_subtitle">今日の使用状況</string>
     <string name="nav_recovery">AntiPorn</string>
     <string name="nav_focus_mode">フォーカスモード</string>
     <string name="nav_forum">フォーラム</string>

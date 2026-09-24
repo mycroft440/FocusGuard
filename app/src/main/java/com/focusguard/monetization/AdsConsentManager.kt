@@ -52,6 +52,16 @@ object AdsConsentManager {
         }
     }
 
+    /**
+     * Decisão de consentimento salva de uma sessão anterior, sem ida à rede.
+     * Serve só para adiantar o preload na abertura; toda exibição continua
+     * passando por [ensureCanRequestAds] com o consentimento atualizado.
+     */
+    fun canRequestAdsFromCachedConsent(context: Context): Boolean = runCatching {
+        UserMessagingPlatform.getConsentInformation(context.applicationContext)
+            .canRequestAds()
+    }.getOrDefault(false)
+
     fun isPrivacyOptionsRequired(context: Context): Boolean {
         val consentInformation = UserMessagingPlatform.getConsentInformation(
             context.applicationContext

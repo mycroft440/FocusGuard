@@ -1,7 +1,7 @@
 # FocusGuard — Playbook de Monetização com Anúncios
 
 > **Status:** instrução obrigatória para qualquer pessoa ou agente que adicionar, mover ou alterar anúncios no FocusGuard.
-> **Última revisão:** 2026-09-18.
+> **Última revisão:** 2026-09-24.
 > **Objetivo:** maximizar **receita líquida por usuário ao longo do tempo**, sem sacrificar retenção, confiança, estabilidade ou conformidade com AdMob/Google Play.
 
 ## 1. Regra principal de lucro
@@ -16,7 +16,8 @@ Uma posição com eCPM alto pode diminuir a receita total se fizer o usuário ab
 
 - O app usa Google Mobile Ads Next-Gen SDK e UMP/consentimento centralizado.
 - `FocusGuardAds` é o ponto único de integração. Não criar carregadores paralelos de anúncios em telas individuais.
-- **Debug usa IDs oficiais de teste do Google; Release usa IDs reais do AdMob para banner, intersticial e rewarded.** A seleção é automática por build type e não exige troca manual. Native permanece em unidade oficial de teste enquanto não houver uma posição nativa de produção ativa.
+- **Todas as variantes, inclusive Release, usam temporariamente os IDs oficiais de teste do Google** (decisão do responsável pelo projeto em 2026-09-23). Os IDs reais foram retirados de `app/build.gradle.kts`; reintroduzi-los exige autorização explícita do responsável e deve restaurar a separação Debug = teste / Release = produção. Native permanece em unidade oficial de teste enquanto não houver uma posição nativa de produção ativa.
+- **Pré-carregamento na abertura:** `FocusGuardAds.warmUp` inicia SDK e preloads assim que a `MainActivity` abre. Se a decisão UMP salva já permite anúncios, começa de imediato, em paralelo à atualização do consentimento. Ficam prontos um buffer de banners adaptativos (largura da tela) e um rewarded e um intersticial pelos preloaders oficiais; o carregamento avulso é só reserva. Nada é pré-carregado no processo do serviço de bloqueio sem a interface aberta.
 - O Pomodoro mantém conclusão de anúncio em fila persistente; término natural e encerramento manual geram uma oportunidade de intersticial.
 - Rewarded deve creditar somente pelo callback de recompensa; fechar ou falhar não conta.
 
@@ -127,7 +128,7 @@ Antes/depois ou A/B test deve acompanhar pelo menos:
 7. Falha/no-fill não pode quebrar uma função já concluída nem prender navegação.
 8. UMP/consentimento deve ser respeitado antes de qualquer request.
 9. Não criar novos IDs hardcoded espalhados. Todas as unidades passam por `FocusGuardAds`/configuração central.
-10. **Manter IDs oficiais de teste no Debug e IDs reais somente no Release** para os formatos de produção ativos. Native continua em teste até existir uma unidade e posição de produção aprovadas.
+10. **IDs oficiais de teste no Debug e IDs reais somente no Release** é a separação padrão. No momento, por decisão do responsável, o Release também está em IDs de teste; voltar aos IDs reais exige autorização explícita. Native continua em teste até existir uma unidade e posição de produção aprovadas.
 
 ## 6. Estratégia de expansão recomendada
 

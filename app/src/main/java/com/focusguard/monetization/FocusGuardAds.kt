@@ -20,12 +20,14 @@ import com.google.android.libraries.ads.mobile.sdk.initialization.Initialization
 import com.google.android.libraries.ads.mobile.sdk.initialization.InitializationStatus
 import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAd
 import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAdEventCallback
+import com.google.android.libraries.ads.mobile.sdk.interstitial.InterstitialAdPreloader
 import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAd
 import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdLoader
 import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdLoaderCallback
 import com.google.android.libraries.ads.mobile.sdk.nativead.NativeAdRequest
 import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardedAd
 import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardedAdEventCallback
+import com.google.android.libraries.ads.mobile.sdk.rewarded.RewardedAdPreloader
 import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
@@ -40,14 +42,20 @@ import kotlinx.coroutines.withTimeout
 /**
  * Ponto único de integração de anúncios do FocusGuard.
  *
- * Os IDs são fornecidos pelo BuildConfig: Debug usa unidades oficiais de teste
- * do Google e Release usa as unidades reais dos formatos ativos. A seleção é
- * automática e não exige troca manual antes de publicar.
+ * Os IDs são fornecidos pelo BuildConfig. No momento todas as variantes, inclusive
+ * Release, usam as unidades oficiais de teste do Google; os IDs de produção foram
+ * retirados de app/build.gradle.kts.
  */
 object FocusGuardAds {
 
     private const val ADAPTIVE_BANNER_PRELOAD_BUFFER_SIZE = 2
     private const val ADAPTIVE_BANNER_PRELOAD_PREFIX = "focusguard-adaptive-banner"
+    private const val REWARDED_PRELOAD_ID = "focusguard-rewarded"
+    private const val INTERSTITIAL_PRELOAD_ID = "focusguard-interstitial"
+    private const val FULL_SCREEN_PRELOAD_BUFFER_SIZE = 1
+
+    /** Diferença de arredondamento entre px→dp da tela e do Compose. */
+    private const val SCREEN_WIDTH_TOLERANCE_DP = 2
     private const val INITIALIZATION_TIMEOUT_MILLIS = 35_000L
 
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -76,16 +84,88 @@ object FocusGuardAds {
      */
     fun warmUp(activity: ComponentActivity) {
         if (activity.isFinishing || activity.isDestroyed) return
+
+        // Caminho rápido recomendado pela UMP: se a decisão salva numa sessão
+        // anterior já permite anúncios, SDK e preloads começam agora, em paralelo
+        // à atualização do consentimento, em vez de esperar a ida à rede. Assim o
+        // banner costuma estar pronto antes de o usuário chegar à tela dele.
+        if (AdsConsentManager.canRequestAdsFromCachedConsent(activity)) {
+            val appContext = activity.applicationContext
+            val widthDp = activity.resources.configuration.screenWidthDp
+            scope.launch {
+                runCatching { ensureInitialized(appContext) }
+                    .onSuccess {
+                        withContext(Dispatchers.Main) {
+                            // A medida do banner adaptativo precisa de um contexto visual.
+                            if (!activity.isFinishing && !activity.isDestroyed) {
+                                startAllPreloads(activity, widthDp)
+                            }
+                        }
+                    }
+                    .onFailure { error ->
+                        FocusGuardLogger.logError("Ads", "Falha no warm-up antecipado", error)
+                    }
+            }
+        }
+
         withAdsReady(
             activity = activity,
             onUnavailable = { message ->
                 FocusGuardLogger.log("Ads", "Warm-up indisponível: $message")
             },
             onReady = {
-                val widthDp = activity.resources.configuration.screenWidthDp.coerceAtLeast(300)
-                startAdaptiveBannerPreload(activity, widthDp)
+                startAllPreloads(activity, activity.resources.configuration.screenWidthDp)
             }
         )
+    }
+
+    /**
+     * Mantém prontos um buffer de banners e um anúncio de cada formato de tela
+     * cheia. `start` é idempotente: chamadas repetidas só confirmam o preload, e o
+     * SDK repõe o buffer sozinho depois que um anúncio é consumido.
+     */
+    private fun startAllPreloads(context: Context, screenWidthDp: Int) {
+        startAdaptiveBannerPreload(context, screenWidthDp)
+        startFullScreenPreloads()
+    }
+
+    private fun startFullScreenPreloads() {
+        val rewardedStarted = RewardedAdPreloader.start(
+            REWARDED_PRELOAD_ID,
+            PreloadConfiguration(
+                request = AdRequest.Builder(BuildConfig.ADMOB_REWARDED_AD_UNIT_ID).build(),
+                bufferSize = FULL_SCREEN_PRELOAD_BUFFER_SIZE
+            )
+        )
+        val interstitialStarted = InterstitialAdPreloader.start(
+            INTERSTITIAL_PRELOAD_ID,
+            PreloadConfiguration(
+                request = AdRequest.Builder(BuildConfig.ADMOB_INTERSTITIAL_AD_UNIT_ID).build(),
+                bufferSize = FULL_SCREEN_PRELOAD_BUFFER_SIZE
+            )
+        )
+        if (rewardedStarted || interstitialStarted) {
+            FocusGuardLogger.log(
+                "Ads",
+                "Preload de tela cheia: rewarded=$rewardedStarted, " +
+                    "interstitial=$interstitialStarted"
+            )
+        }
+    }
+
+    /**
+     * O banner mede a largura do próprio espaço; o preload usa a da tela. Se as
+     * duas diferem só pelo arredondamento, usa a da tela para que o anúncio já
+     * pré-carregado seja o servido em vez de disparar um carregamento novo.
+     */
+    internal fun normalizedBannerWidthDp(requestedWidthDp: Int, screenWidthDp: Int): Int {
+        val requested = requestedWidthDp.coerceAtLeast(300)
+        val screen = screenWidthDp.coerceAtLeast(300)
+        return if (kotlin.math.abs(requested - screen) <= SCREEN_WIDTH_TOLERANCE_DP) {
+            screen
+        } else {
+            requested
+        }
     }
 
     private suspend fun ensureInitialized(context: Context) {
@@ -199,13 +279,14 @@ object FocusGuardAds {
     }
 
     private fun startAdaptiveBannerPreload(
-        activity: ComponentActivity,
+        context: Context,
         widthDp: Int
     ) {
         val normalizedWidthDp = widthDp.coerceAtLeast(300)
         val preloadId = adaptiveBannerPreloadId(normalizedWidthDp)
+        if (BannerAdPreloader.getConfiguration(preloadId) != null) return
         val adSize = AdSize.getLargeAnchoredAdaptiveBannerAdSize(
-            activity,
+            context,
             normalizedWidthDp
         )
         val request = BannerAdRequest.Builder(
@@ -282,9 +363,15 @@ object FocusGuardAds {
             activity = activity,
             onUnavailable = onUnavailable,
             onReady = {
-                val normalizedWidthDp = widthDp.coerceAtLeast(300)
+                val normalizedWidthDp = normalizedBannerWidthDp(
+                    requestedWidthDp = widthDp,
+                    screenWidthDp = activity.resources.configuration.screenWidthDp
+                )
                 val preloadId = adaptiveBannerPreloadId(normalizedWidthDp)
                 val preloadedAd = BannerAdPreloader.pollAd(preloadId)
+                // Largura sem preload (ex.: banner dentro de um card): passa a ter
+                // um, para que a próxima abertura desta tela já seja instantânea.
+                startAdaptiveBannerPreload(activity, normalizedWidthDp)
                 if (preloadedAd != null) {
                     adView.registerBannerAd(preloadedAd, activity)
                     FocusGuardLogger.log(
@@ -339,56 +426,66 @@ object FocusGuardAds {
                     return@withAdsReady
                 }
 
-                RewardedAd.load(
-                    AdRequest.Builder(BuildConfig.ADMOB_REWARDED_AD_UNIT_ID).build(),
-                    object : AdLoadCallback<RewardedAd> {
-                        override fun onAdLoaded(ad: RewardedAd) {
-                            FocusGuardLogger.log("Ads", "Rewarded carregado")
-                            var rewardEarned = false
-                            ad.adEventCallback = object : RewardedAdEventCallback {
-                                override fun onAdDismissedFullScreenContent() {
-                                    FocusGuardLogger.log(
-                                        "Ads",
-                                        "Rewarded fechado; rewardEarned=$rewardEarned"
-                                    )
-                                    if (!rewardEarned) onClosedWithoutReward()
-                                }
-
-                                override fun onAdFailedToShowFullScreenContent(
-                                    fullScreenContentError: FullScreenContentError
-                                ) {
-                                    FocusGuardLogger.log(
-                                        "Ads",
-                                        "Rewarded falhou ao exibir: $fullScreenContentError"
-                                    )
-                                    if (!rewardEarned) {
-                                        onUnavailable(
-                                            fullScreenContentError.message.ifBlank {
-                                                "O anúncio não pôde ser exibido."
-                                            }
-                                        )
-                                    }
-                                }
+                val callback = object : AdLoadCallback<RewardedAd> {
+                    override fun onAdLoaded(ad: RewardedAd) {
+                        FocusGuardLogger.log("Ads", "Rewarded carregado")
+                        var rewardEarned = false
+                        ad.adEventCallback = object : RewardedAdEventCallback {
+                            override fun onAdDismissedFullScreenContent() {
+                                FocusGuardLogger.log(
+                                    "Ads",
+                                    "Rewarded fechado; rewardEarned=$rewardEarned"
+                                )
+                                if (!rewardEarned) onClosedWithoutReward()
                             }
-                            ad.show(activity) {
+
+                            override fun onAdFailedToShowFullScreenContent(
+                                fullScreenContentError: FullScreenContentError
+                            ) {
+                                FocusGuardLogger.log(
+                                    "Ads",
+                                    "Rewarded falhou ao exibir: $fullScreenContentError"
+                                )
                                 if (!rewardEarned) {
-                                    rewardEarned = true
-                                    FocusGuardLogger.log("Ads", "Rewarded creditado pelo callback real")
-                                    onRewardEarned()
+                                    onUnavailable(
+                                        fullScreenContentError.message.ifBlank {
+                                            "O anúncio não pôde ser exibido."
+                                        }
+                                    )
                                 }
                             }
                         }
-
-                        override fun onAdFailedToLoad(adError: LoadAdError) {
-                            logLoadFailure("Rewarded", adError)
-                            onUnavailable(
-                                adError.message.ifBlank {
-                                    "Nenhum anúncio está disponível agora."
-                                }
-                            )
+                        ad.show(activity) {
+                            if (!rewardEarned) {
+                                rewardEarned = true
+                                FocusGuardLogger.log("Ads", "Rewarded creditado pelo callback real")
+                                onRewardEarned()
+                            }
                         }
                     }
-                )
+
+                    override fun onAdFailedToLoad(adError: LoadAdError) {
+                        logLoadFailure("Rewarded", adError)
+                        onUnavailable(
+                            adError.message.ifBlank {
+                                "Nenhum anúncio está disponível agora."
+                            }
+                        )
+                    }
+                }
+
+                // Anúncio pré-carregado desde a abertura: abre na hora do toque.
+                val preloaded = RewardedAdPreloader.pollAd(REWARDED_PRELOAD_ID)
+                startFullScreenPreloads()
+                if (preloaded != null) {
+                    FocusGuardLogger.log("Ads", "Rewarded servido do preload")
+                    callback.onAdLoaded(preloaded)
+                } else {
+                    RewardedAd.load(
+                        AdRequest.Builder(BuildConfig.ADMOB_REWARDED_AD_UNIT_ID).build(),
+                        callback
+                    )
+                }
             }
         )
     }
@@ -417,67 +514,76 @@ object FocusGuardAds {
                     return@withAdsReady
                 }
 
-                InterstitialAd.load(
-                    AdRequest.Builder(BuildConfig.ADMOB_INTERSTITIAL_AD_UNIT_ID).build(),
-                    object : AdLoadCallback<InterstitialAd> {
-                        override fun onAdLoaded(ad: InterstitialAd) {
-                            FocusGuardLogger.log("Ads", "Interstitial Pomodoro carregado")
-                            if (activity.isFinishing || activity.isDestroyed ||
-                                !activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
-                            ) {
-                                pomodoroAdInFlight.set(false)
-                                return
-                            }
-
-                            if (!MonetizationStateStore.consumePomodoroCompletionAdPending(activity)) {
-                                pomodoroAdInFlight.set(false)
-                                return
-                            }
-
-                            var reservationRestored = false
-                            fun restoreReservation() {
-                                if (!reservationRestored) {
-                                    reservationRestored = true
-                                    MonetizationStateStore.restorePomodoroCompletionAdPending(activity)
-                                }
-                            }
-
-                            ad.adEventCallback = object : InterstitialAdEventCallback {
-                                override fun onAdDismissedFullScreenContent() {
-                                    FocusGuardLogger.log("Ads", "Interstitial Pomodoro fechado")
-                                    pomodoroAdInFlight.set(false)
-                                }
-
-                                override fun onAdFailedToShowFullScreenContent(
-                                    fullScreenContentError: FullScreenContentError
-                                ) {
-                                    restoreReservation()
-                                    pomodoroAdInFlight.set(false)
-                                    FocusGuardLogger.log(
-                                        "Ads",
-                                        "Interstitial Pomodoro falhou ao exibir: $fullScreenContentError"
-                                    )
-                                }
-                            }
-
-                            runCatching { ad.show(activity) }
-                                .onFailure { error ->
-                                    restoreReservation()
-                                    pomodoroAdInFlight.set(false)
-                                    FocusGuardLogger.logError(
-                                        "Ads",
-                                        "Falha ao apresentar intersticial do Pomodoro",
-                                        error
-                                    )
-                                }
-                        }
-
-                        override fun onAdFailedToLoad(adError: LoadAdError) {
+                val callback = object : AdLoadCallback<InterstitialAd> {
+                    override fun onAdLoaded(ad: InterstitialAd) {
+                        FocusGuardLogger.log("Ads", "Interstitial Pomodoro carregado")
+                        if (activity.isFinishing || activity.isDestroyed ||
+                            !activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
+                        ) {
                             pomodoroAdInFlight.set(false)
-                            logLoadFailure("Interstitial Pomodoro", adError)
+                            return
                         }
+
+                        if (!MonetizationStateStore.consumePomodoroCompletionAdPending(activity)) {
+                            pomodoroAdInFlight.set(false)
+                            return
+                        }
+
+                        var reservationRestored = false
+                        fun restoreReservation() {
+                            if (!reservationRestored) {
+                                reservationRestored = true
+                                MonetizationStateStore.restorePomodoroCompletionAdPending(activity)
+                            }
+                        }
+
+                        ad.adEventCallback = object : InterstitialAdEventCallback {
+                            override fun onAdDismissedFullScreenContent() {
+                                FocusGuardLogger.log("Ads", "Interstitial Pomodoro fechado")
+                                pomodoroAdInFlight.set(false)
+                            }
+
+                            override fun onAdFailedToShowFullScreenContent(
+                                fullScreenContentError: FullScreenContentError
+                            ) {
+                                restoreReservation()
+                                pomodoroAdInFlight.set(false)
+                                FocusGuardLogger.log(
+                                    "Ads",
+                                    "Interstitial Pomodoro falhou ao exibir: $fullScreenContentError"
+                                )
+                            }
+                        }
+
+                        runCatching { ad.show(activity) }
+                            .onFailure { error ->
+                                restoreReservation()
+                                pomodoroAdInFlight.set(false)
+                                FocusGuardLogger.logError(
+                                    "Ads",
+                                    "Falha ao apresentar intersticial do Pomodoro",
+                                    error
+                                )
+                            }
                     }
-                )
+
+                    override fun onAdFailedToLoad(adError: LoadAdError) {
+                        pomodoroAdInFlight.set(false)
+                        logLoadFailure("Interstitial Pomodoro", adError)
+                    }
+                }
+
+                val preloaded = InterstitialAdPreloader.pollAd(INTERSTITIAL_PRELOAD_ID)
+                startFullScreenPreloads()
+                if (preloaded != null) {
+                    FocusGuardLogger.log("Ads", "Interstitial Pomodoro servido do preload")
+                    callback.onAdLoaded(preloaded)
+                } else {
+                    InterstitialAd.load(
+                        AdRequest.Builder(BuildConfig.ADMOB_INTERSTITIAL_AD_UNIT_ID).build(),
+                        callback
+                    )
+                }
             }
         )
     }

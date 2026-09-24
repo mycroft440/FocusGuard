@@ -443,6 +443,12 @@ private fun AppLimitDetailsScreen(
                 title = stringResource(R.string.limits_daily_max_title)
             ) {
                 DailyMinutesEditor(dailyMinutesState)
+                Text(
+                    stringResource(R.string.limits_foreground_hierarchy_hint),
+                    color = TextHint,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
             }
 
             UsageLimitDecisionBlock(

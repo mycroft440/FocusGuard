@@ -147,6 +147,7 @@
     <string name="nav_protection">Bảo vệ</string>
     <string name="nav_focus">Pomodoro</string>
     <string name="nav_metrics">Thống kê</string>
+    <string name="nav_metrics_subtitle">Xem mức sử dụng hôm nay</string>
     <string name="nav_recovery">AntiPorn</string>
     <string name="nav_focus_mode">Chế độ tập trung</string>
     <string name="nav_forum">Diễn đàn</string>

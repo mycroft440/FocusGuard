@@ -1,79 +1,41 @@
 package com.focusguard.security
 
+import com.focusguard.security.RemoveAllBlocksAuthorizationPolicy.Gate
+import com.focusguard.security.RemoveAllBlocksAuthorizationPolicy.Summary
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class RemoveAllBlocksAuthorizationPolicyTest {
 
     @Test
-    fun `allows removal without extra credential when time and usage protections are absent`() {
+    fun `reports nothing to remove when no protection is active`() {
+        assertEquals(Gate.NOTHING_TO_REMOVE, RemoveAllBlocksAuthorizationPolicy.evaluate(Summary()))
+    }
+
+    @Test
+    fun `password blocks alone only need confirmation`() {
         assertEquals(
-            RemoveAllBlocksAuthorizationPolicy.Gate.ALLOW,
-            RemoveAllBlocksAuthorizationPolicy.evaluate(
-                hasActiveTimeProtection = false,
-                hasActiveUsageLimit = false,
-                appEntryCredentialAuthenticated = false
-            )
+            Gate.CONFIRM_ONLY,
+            RemoveAllBlocksAuthorizationPolicy.evaluate(Summary(passwordBlocks = 2))
         )
     }
 
     @Test
-    fun `requires master credential when time protection is active`() {
-        assertEquals(
-            RemoveAllBlocksAuthorizationPolicy.Gate.REQUIRE_MASTER_CREDENTIAL,
-            RemoveAllBlocksAuthorizationPolicy.evaluate(
-                hasActiveTimeProtection = true,
-                hasActiveUsageLimit = false,
-                appEntryCredentialAuthenticated = false
+    fun `any other block requires the master credential`() {
+        listOf(
+            Summary(dailyLimits = 1),
+            Summary(scheduledPeriods = 1),
+            Summary(timeBlocks = 3),
+            Summary(adultFilterActive = true),
+            Summary(focusModeActive = true),
+            Summary(strictPomodoroActive = true),
+            Summary(passwordBlocks = 2, timeBlocks = 3)
+        ).forEach { summary ->
+            assertEquals(
+                summary.toString(),
+                Gate.REQUIRE_MASTER_CREDENTIAL,
+                RemoveAllBlocksAuthorizationPolicy.evaluate(summary)
             )
-        )
-    }
-
-    @Test
-    fun `requires master credential when usage limit is active`() {
-        assertEquals(
-            RemoveAllBlocksAuthorizationPolicy.Gate.REQUIRE_MASTER_CREDENTIAL,
-            RemoveAllBlocksAuthorizationPolicy.evaluate(
-                hasActiveTimeProtection = false,
-                hasActiveUsageLimit = true,
-                appEntryCredentialAuthenticated = false
-            )
-        )
-    }
-
-    @Test
-    fun `verified app entry credential authorizes active time protection`() {
-        assertEquals(
-            RemoveAllBlocksAuthorizationPolicy.Gate.ALLOW,
-            RemoveAllBlocksAuthorizationPolicy.evaluate(
-                hasActiveTimeProtection = true,
-                hasActiveUsageLimit = false,
-                appEntryCredentialAuthenticated = true
-            )
-        )
-    }
-
-    @Test
-    fun `verified app entry credential authorizes active usage limit`() {
-        assertEquals(
-            RemoveAllBlocksAuthorizationPolicy.Gate.ALLOW,
-            RemoveAllBlocksAuthorizationPolicy.evaluate(
-                hasActiveTimeProtection = false,
-                hasActiveUsageLimit = true,
-                appEntryCredentialAuthenticated = true
-            )
-        )
-    }
-
-    @Test
-    fun `verified app entry credential authorizes combined time and usage protections`() {
-        assertEquals(
-            RemoveAllBlocksAuthorizationPolicy.Gate.ALLOW,
-            RemoveAllBlocksAuthorizationPolicy.evaluate(
-                hasActiveTimeProtection = true,
-                hasActiveUsageLimit = true,
-                appEntryCredentialAuthenticated = true
-            )
-        )
+        }
     }
 }

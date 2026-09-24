@@ -122,6 +122,73 @@ class BlockingScheduleCalculatorTest {
         assertThat(next).isNull()
     }
 
+    @Test
+    fun `overnight window yields the previous night's tail and tonight's start`() {
+        val session = BlockSession(
+            isFixed24h = false,
+            isRecurring = true,
+            recurringStartHour = 21,
+            recurringEndHour = 19
+        )
+
+        val intervals = BlockingScheduleCalculator.blockingIntervals(
+            session = session,
+            rangeStartMillis = instant(2025, 1, 6, 0, 0),
+            rangeEndMillis = instant(2025, 1, 7, 0, 0),
+            timeZone = utc
+        )
+
+        assertThat(intervals).containsExactly(
+            instant(2025, 1, 6, 0, 0) until instant(2025, 1, 6, 19, 0),
+            instant(2025, 1, 6, 21, 0) until instant(2025, 1, 7, 0, 0)
+        ).inOrder()
+    }
+
+    @Test
+    fun `window intervals respect weekdays and the session end`() {
+        val session = recurringSession(
+            startHour = 9,
+            endHour = 17,
+            allowedDay = Calendar.MONDAY
+        ).copy(endTime = instant(2025, 1, 6, 12, 0))
+
+        val monday = BlockingScheduleCalculator.blockingIntervals(
+            session = session,
+            rangeStartMillis = instant(2025, 1, 6, 0, 0),
+            rangeEndMillis = instant(2025, 1, 7, 0, 0),
+            timeZone = utc
+        )
+        val tuesday = BlockingScheduleCalculator.blockingIntervals(
+            session = session.copy(endTime = null),
+            rangeStartMillis = instant(2025, 1, 7, 0, 0),
+            rangeEndMillis = instant(2025, 1, 8, 0, 0),
+            timeZone = utc
+        )
+
+        assertThat(monday)
+            .containsExactly(instant(2025, 1, 6, 9, 0) until instant(2025, 1, 6, 12, 0))
+        assertThat(tuesday).isEmpty()
+    }
+
+    @Test
+    fun `fixed session blocks from its own start`() {
+        val session = BlockSession(
+            startTime = instant(2025, 1, 6, 14, 0),
+            endTime = instant(2025, 1, 6, 16, 0),
+            isFixed24h = true
+        )
+
+        val intervals = BlockingScheduleCalculator.blockingIntervals(
+            session = session,
+            rangeStartMillis = instant(2025, 1, 6, 0, 0),
+            rangeEndMillis = instant(2025, 1, 6, 15, 0),
+            timeZone = utc
+        )
+
+        assertThat(intervals)
+            .containsExactly(instant(2025, 1, 6, 14, 0) until instant(2025, 1, 6, 15, 0))
+    }
+
     private fun recurringSession(
         startHour: Int,
         endHour: Int,

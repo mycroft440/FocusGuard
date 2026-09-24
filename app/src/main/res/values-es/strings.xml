@@ -147,6 +147,7 @@
     <string name="nav_protection">Protección</string>
     <string name="nav_focus">Pomodoro</string>
     <string name="nav_metrics">Métricas</string>
+    <string name="nav_metrics_subtitle">Mira tu uso de hoy</string>
     <string name="nav_recovery">AntiPorn</string>
     <string name="nav_focus_mode">Modo de enfoque</string>
     <string name="nav_forum">Foro</string>

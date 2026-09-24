@@ -147,6 +147,7 @@
     <string name="nav_protection">Ulinzi</string>
     <string name="nav_focus">Pomodoro</string>
     <string name="nav_metrics">Takwimu</string>
+    <string name="nav_metrics_subtitle">Tazama matumizi ya leo</string>
     <string name="nav_recovery">AntiPorn</string>
     <string name="nav_focus_mode">Hali ya umakini</string>
     <string name="nav_forum">Jukwaa</string>

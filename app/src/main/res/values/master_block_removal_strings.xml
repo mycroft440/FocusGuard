@@ -11,4 +11,30 @@
     <string name="protected_settings_blocked_description">Esta configuração não pode ser alterada enquanto o FocusGuard estiver protegendo algum bloqueio. Para encerrar tudo, use Remover todos os bloqueios nas Configurações e confirme com a senha mestre.</string>
     <string name="protected_uninstall_blocked_description">O FocusGuard não pode ser desinstalado enquanto houver proteção ativa. Primeiro use Remover todos os bloqueios nas Configurações; a senha mestre é solicitada somente nessa ação.</string>
     <string name="uninstall_app_subtitle_no_master">Disponível sem senha quando não houver bloqueios ativos</string>
+    <string name="remove_all_blocks_none_title">Nenhum bloqueio ativo</string>
+    <string name="remove_all_blocks_none_message">Não há nenhum bloqueio ativo para remover no momento.</string>
+    <string name="remove_all_blocks_will_be_removed">Serão removidos.</string>
+    <string name="remove_all_blocks_confirm_question">Tem certeza que deseja remover todos os bloqueios?</string>
+    <string name="remove_all_blocks_confirm_yes">Sim</string>
+    <string name="remove_all_blocks_master_title">Digite a senha mestre</string>
+    <string name="remove_all_blocks_master_reason">Necessária porque há bloqueios que não são por senha. Esta senha não desbloqueia apps ou sites individualmente.</string>
+    <string name="remove_all_blocks_adult_filter">Filtro de conteúdo adulto</string>
+    <string name="remove_all_blocks_focus_mode">Sessão do Modo Foco</string>
+    <string name="remove_all_blocks_strict_pomodoro">Sessão de Pomodoro rigoroso</string>
+    <plurals name="remove_all_blocks_password_count">
+        <item quantity="one">%1$d bloqueio por senha</item>
+        <item quantity="other">%1$d bloqueios por senha</item>
+    </plurals>
+    <plurals name="remove_all_blocks_limit_count">
+        <item quantity="one">%1$d limite de uso diário</item>
+        <item quantity="other">%1$d limites de uso diário</item>
+    </plurals>
+    <plurals name="remove_all_blocks_period_count">
+        <item quantity="one">%1$d bloqueio em períodos do dia</item>
+        <item quantity="other">%1$d bloqueios em períodos do dia</item>
+    </plurals>
+    <plurals name="remove_all_blocks_time_count">
+        <item quantity="one">%1$d bloqueio por tempo sem senha</item>
+        <item quantity="other">%1$d bloqueios por tempo sem senha</item>
+    </plurals>
 </resources>

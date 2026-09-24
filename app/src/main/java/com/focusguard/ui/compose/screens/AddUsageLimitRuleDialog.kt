@@ -476,6 +476,12 @@ private fun WebsiteLimitDetailsScreen(
                         dailyMinutes = raw.filter(Char::isDigit).take(4)
                     }
                 )
+                Text(
+                    stringResource(R.string.limits_foreground_hierarchy_hint),
+                    color = TextHint,
+                    fontSize = 11.sp,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
             }
 
             WebsiteDecisionBlock(

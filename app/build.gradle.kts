@@ -17,11 +17,6 @@ val admobTestRewardedId = "ca-app-pub-3940256099942544/5224354917"
 val admobTestBannerId = "ca-app-pub-3940256099942544/9214589741"
 val admobTestNativeId = "ca-app-pub-3940256099942544/2247696110"
 
-val admobProductionAppId = "ca-app-pub-3940256099942544~3347511713"
-val admobProductionInterstitialId = "ca-app-pub-3940256099942544/1033173712"
-val admobProductionRewardedId = "ca-app-pub-3940256099942544/5224354917"
-val admobProductionBannerId = "ca-app-pub-3940256099942544/9214589741"
-
 android {
     namespace = "com.focusguard"
     compileSdk = 36
@@ -207,17 +202,13 @@ android {
 
 androidComponents {
     onVariants(selector().all()) { variant ->
-        // The Baseline Profile plugin creates benchmarkRelease/nonMinifiedRelease
-        // variants from release. Only the exact publishable release variant may
-        // use production AdMob IDs; all other variants stay on official test IDs.
-        val useProductionAds = variant.name == "release"
-        val appId = if (useProductionAds) admobProductionAppId else admobTestAppId
-        val interstitialId =
-            if (useProductionAds) admobProductionInterstitialId else admobTestInterstitialId
-        val rewardedId =
-            if (useProductionAds) admobProductionRewardedId else admobTestRewardedId
-        val bannerId =
-            if (useProductionAds) admobProductionBannerId else admobTestBannerId
+        // Every variant, release included, uses Google's official AdMob test IDs.
+        // Production IDs are intentionally absent from the build so no APK/AAB
+        // can serve (or be credited for) real ads until they are reintroduced.
+        val appId = admobTestAppId
+        val interstitialId = admobTestInterstitialId
+        val rewardedId = admobTestRewardedId
+        val bannerId = admobTestBannerId
 
         val buildConfigFields = requireNotNull(variant.buildConfigFields) {
             "BuildConfig fields must be enabled for ${variant.name}"

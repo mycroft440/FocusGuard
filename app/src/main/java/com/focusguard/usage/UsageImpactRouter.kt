@@ -1,15 +1,11 @@
 package com.focusguard.usage
 
-import android.app.usage.UsageStatsManager
 import android.content.Context
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.AppUsageLimit
 import com.focusguard.database.BlockSession
 import com.focusguard.manager.BlockingSessionManager
-import com.focusguard.utils.AppUsageLimitActivationUsage
-import com.focusguard.utils.UsageLimitForegroundPolicy
 import com.focusguard.utils.WebsiteUsageLimitPolicy
-import java.util.Calendar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
@@ -51,27 +47,9 @@ object UsageImpactRouter {
             val mode = limit.lockMode.trim().uppercase()
             if (mode == "PASSWORD" || mode == "WARNING") return@withContext false
 
-            val manager = appContext.getSystemService(Context.USAGE_STATS_SERVICE)
-                as? UsageStatsManager ?: return@withContext false
-            val startOfDay = Calendar.getInstance().apply {
-                timeInMillis = now
-                set(Calendar.HOUR_OF_DAY, 0)
-                set(Calendar.MINUTE, 0)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }.timeInMillis
-            val dayUsageMillis = manager.queryAndAggregateUsageStats(
-                startOfDay,
-                now
-            )[packageName]?.totalTimeInForeground ?: 0L
-            val usedMillis = AppUsageLimitActivationUsage.effectiveUsageMillis(
-                context = appContext,
-                usageStatsManager = manager,
-                limit = limit,
-                currentDayUsageMillis = dayUsageMillis,
-                dayStartMillis = startOfDay,
-                nowMillis = now
-            )
+            val usedMillis = BlockingSessionManager.getInstance(appContext)
+                .appLimitUsageMillis(listOf(limit), now)[packageName]
+                ?: return@withContext false
 
             val blocked = shouldRouteConfiguredAppLimit(
                 limit = limit,
