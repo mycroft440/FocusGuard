@@ -5,6 +5,10 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +17,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
@@ -23,10 +29,13 @@ import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -44,8 +53,11 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import com.focusguard.BuildConfig
 import com.focusguard.R
 import com.focusguard.accessibility.website.redirection.WebsiteRedirectDestination
@@ -64,8 +76,12 @@ import com.focusguard.ui.compose.theme.AccentCyanEdge
 import com.focusguard.ui.compose.theme.AccentIconBadge
 import com.focusguard.ui.compose.theme.CardBorder
 import com.focusguard.ui.compose.theme.DangerRed
+import com.focusguard.ui.compose.theme.DarkBg
+import com.focusguard.ui.compose.theme.DarkCard
 import com.focusguard.ui.compose.theme.FocusCard
 import com.focusguard.ui.compose.theme.TextHint
+import com.focusguard.ui.compose.theme.TextPrimary
+import com.focusguard.ui.compose.theme.TextSecondary
 import kotlinx.coroutines.launch
 
 @Composable
@@ -326,31 +342,11 @@ fun SettingsScreen(
     }
 
     if (showRevokeConfirmation) {
-        AlertDialog(
-            onDismissRequest = { showRevokeConfirmation = false },
-            title = {
-                Text(stringResource(R.string.settings_revoke_permissions_confirm_title))
-            },
-            text = {
-                Text(stringResource(R.string.settings_revoke_permissions_confirm_message))
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showRevokeConfirmation = false
-                        showRevokeCredential = true
-                    }
-                ) {
-                    Text(
-                        stringResource(R.string.settings_revoke_permissions_confirm_action),
-                        color = DangerRed
-                    )
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRevokeConfirmation = false }) {
-                    Text(stringResource(R.string.cancel))
-                }
+        RevokePermissionsConfirmationDialog(
+            onDismiss = { showRevokeConfirmation = false },
+            onConfirm = {
+                showRevokeConfirmation = false
+                showRevokeCredential = true
             }
         )
     }
@@ -359,6 +355,7 @@ fun SettingsScreen(
         ConfirmMasterCredentialDialog(
             promptRes = R.string.settings_revoke_permissions_master_prompt,
             allowRecovery = false,
+            removalStyle = true,
             onDismiss = { showRevokeCredential = false },
             onConfirmed = {
                 showRevokeCredential = false
@@ -374,20 +371,144 @@ fun SettingsScreen(
     }
 
     if (revocationWorking) {
-        AlertDialog(
-            onDismissRequest = { },
-            title = {
-                Text(stringResource(R.string.settings_revoke_permissions_title))
-            },
-            text = {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    CircularProgressIndicator(modifier = Modifier.size(22.dp))
-                    Spacer(Modifier.width(12.dp))
-                    Text(stringResource(R.string.settings_revoke_permissions_progress))
-                }
-            },
-            confirmButton = { }
+        RevokePermissionsProgressDialog()
+    }
+}
+
+@Composable
+private fun RevokePermissionsDialogFrame(
+    onDismiss: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(horizontal = 20.dp)
+                .widthIn(max = 420.dp)
+                .fillMaxWidth()
+                .background(DarkCard, RoundedCornerShape(28.dp))
+                .border(BorderStroke(1.dp, CardBorder), RoundedCornerShape(28.dp))
+                .padding(24.dp)
+        ) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun RevokePermissionsHeader(title: String) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        Box(
+            modifier = Modifier
+                .size(64.dp)
+                .background(DangerRed.copy(alpha = 0.14f), CircleShape)
+                .border(BorderStroke(1.dp, DangerRed.copy(alpha = 0.35f)), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                Icons.Default.Security,
+                contentDescription = null,
+                tint = DangerRed,
+                modifier = Modifier.size(32.dp)
+            )
+        }
+        Spacer(Modifier.height(16.dp))
+        Text(
+            title,
+            color = TextPrimary,
+            fontSize = 20.sp,
+            fontWeight = FontWeight.Bold,
+            textAlign = TextAlign.Center
         )
+    }
+}
+
+@Composable
+private fun RevokePermissionsConfirmationDialog(
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    RevokePermissionsDialogFrame(onDismiss = onDismiss) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            RevokePermissionsHeader(
+                title = stringResource(R.string.settings_revoke_permissions_confirm_title)
+            )
+            Spacer(Modifier.height(12.dp))
+            Text(
+                text = stringResource(R.string.settings_revoke_permissions_confirm_message),
+                color = TextSecondary,
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+            Spacer(Modifier.height(24.dp))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    border = BorderStroke(1.dp, CardBorder)
+                ) {
+                    Text(stringResource(R.string.cancel), color = TextSecondary)
+                }
+                Button(
+                    onClick = onConfirm,
+                    modifier = Modifier.weight(1f).height(48.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = DangerRed,
+                        contentColor = Color.White
+                    )
+                ) {
+                    Text(
+                        stringResource(R.string.settings_revoke_permissions_confirm_action),
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RevokePermissionsProgressDialog() {
+    RevokePermissionsDialogFrame(onDismiss = { }) {
+        Column(
+            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(36.dp),
+                color = AccentCyan,
+                strokeWidth = 3.dp
+            )
+            Spacer(Modifier.height(18.dp))
+            Text(
+                text = stringResource(R.string.settings_revoke_permissions_title),
+                color = TextPrimary,
+                fontSize = 18.sp,
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(8.dp))
+            Text(
+                text = stringResource(R.string.settings_revoke_permissions_progress),
+                color = TextSecondary,
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth()
+            )
+        }
     }
 }
 
