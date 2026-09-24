@@ -865,17 +865,17 @@ private fun MetricsShortcutButton(
         onClick = onClick
     ) {
         Row(
-            modifier = Modifier.padding(start = 6.dp, end = 8.dp, top = 6.dp, bottom = 6.dp),
+            modifier = Modifier.padding(start = 4.dp, end = 6.dp, top = 8.dp, bottom = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             Box(
                 modifier = Modifier
-                    .size(36.dp)
+                    .size(32.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(Brush.linearGradient(listOf(AccentCyan, AccentPurple))),
                 contentAlignment = Alignment.Center
             ) {
-                Canvas(modifier = Modifier.size(20.dp)) {
+                Canvas(modifier = Modifier.size(18.dp)) {
                     // Quatro barras crescentes com a última destacada.
                     val heights = listOf(0.38f, 0.62f, 0.48f, 0.92f)
                     val gap = size.width * 0.10f
@@ -896,28 +896,28 @@ private fun MetricsShortcutButton(
                     }
                 }
             }
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(6.dp))
             Column {
                 Text(
                     stringResource(R.string.nav_metrics),
                     color = TextPrimary,
-                    fontSize = 15.sp,
-                    lineHeight = 17.sp,
+                    fontSize = 13.sp,
+                    lineHeight = 15.sp,
                     fontWeight = FontWeight.ExtraBold
                 )
                 Text(
                     stringResource(R.string.nav_metrics_subtitle),
                     color = AccentCyan.copy(alpha = 0.85f),
-                    fontSize = 11.sp,
-                    lineHeight = 13.sp,
+                    fontSize = 10.sp,
+                    lineHeight = 12.sp,
                     fontWeight = FontWeight.Medium,
                     maxLines = 1
                 )
             }
-            Spacer(modifier = Modifier.width(10.dp))
+            Spacer(modifier = Modifier.width(6.dp))
             Box(
                 modifier = Modifier
-                    .size(24.dp)
+                    .size(20.dp)
                     .clip(CircleShape)
                     .background(Color.White.copy(alpha = 0.08f)),
                 contentAlignment = Alignment.Center
@@ -926,7 +926,7 @@ private fun MetricsShortcutButton(
                     Icons.Rounded.ChevronRight,
                     contentDescription = null,
                     tint = TextPrimary,
-                    modifier = Modifier.size(18.dp)
+                    modifier = Modifier.size(16.dp)
                 )
             }
         }
