@@ -280,29 +280,23 @@ fun FocusModeScreen(
         )
     }
 
-    if (showAppPicker) {
-        val sessionForPicker = activeSession
+    // Apps só são escolhidos antes de iniciar: com a sessão ativa a lista de
+    // liberados fica fixa até o fim, então o seletor nunca abre.
+    if (showAppPicker && activeSession == null) {
         AccessibleAppPickerDialog(
             apps = apps,
             mandatoryPackages = mandatoryPackages,
-            selectedPackages = sessionForPicker?.allowedPackages ?: selectedPackages,
+            selectedPackages = selectedPackages,
             searchQuery = searchQuery,
-            addOnly = sessionForPicker != null,
             onSearchQueryChange = { searchQuery = it },
             onTogglePackage = { packageName ->
-                if (sessionForPicker == null) {
-                    val updatedSelection = if (packageName in selectedPackages) {
-                        selectedPackages - packageName
-                    } else {
-                        selectedPackages + packageName
-                    }
-                    selectedPackages = updatedSelection
-                    manager.saveDraftPackages(updatedSelection)
-                } else if (packageName !in sessionForPicker.allowedPackages) {
-                    scope.launch {
-                        manager.addAllowedPackages(setOf(packageName))
-                    }
+                val updatedSelection = if (packageName in selectedPackages) {
+                    selectedPackages - packageName
+                } else {
+                    selectedPackages + packageName
                 }
+                selectedPackages = updatedSelection
+                manager.saveDraftPackages(updatedSelection)
             },
             onDismiss = {
                 searchQuery = ""
@@ -336,11 +330,7 @@ fun FocusModeScreen(
             session = session,
             apps = apps,
             mandatoryPackages = mandatoryPackages,
-            manager = manager,
-            onAddApps = {
-                searchQuery = ""
-                showAppPicker = true
-            }
+            manager = manager
         )
     } else {
         FocusModeSetupContent(
@@ -1113,8 +1103,7 @@ private fun FocusModeActiveContent(
     session: FocusModeSession,
     apps: List<FocusModeSelectableApp>,
     mandatoryPackages: Set<String>,
-    manager: FocusModeManager,
-    onAddApps: () -> Unit
+    manager: FocusModeManager
 ) {
     val context = LocalContext.current
     var nowMillis by remember(session.endTimeMillis) {
@@ -1207,34 +1196,6 @@ private fun FocusModeActiveContent(
                     fontSize = 12.sp,
                     modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
                     textAlign = TextAlign.Center
-                )
-            }
-
-            OutlinedButton(
-                onClick = onAddApps,
-                modifier = Modifier.fillMaxWidth().padding(top = 12.dp).height(50.dp),
-                border = BorderStroke(
-                    1.dp,
-                    Brush.horizontalGradient(
-                        listOf(AccentCyan.copy(alpha = 0.7f), AccentPurple.copy(alpha = 0.7f))
-                    )
-                ),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    containerColor = AccentCyan.copy(alpha = 0.06f)
-                ),
-                shape = RoundedCornerShape(16.dp)
-            ) {
-                Icon(
-                    Icons.Default.Add,
-                    contentDescription = null,
-                    tint = AccentCyan,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(Modifier.width(7.dp))
-                Text(
-                    stringResource(R.string.focus_mode_add_apps),
-                    color = AccentCyan,
-                    fontWeight = FontWeight.Bold
                 )
             }
         }
@@ -1341,7 +1302,6 @@ private fun AccessibleAppPickerDialog(
     mandatoryPackages: Set<String>,
     selectedPackages: Set<String>,
     searchQuery: String,
-    addOnly: Boolean = false,
     onSearchQueryChange: (String) -> Unit,
     onTogglePackage: (String) -> Unit,
     onDismiss: () -> Unit
@@ -1350,11 +1310,9 @@ private fun AccessibleAppPickerDialog(
         apps,
         mandatoryPackages,
         selectedPackages,
-        searchQuery,
-        addOnly
+        searchQuery
     ) {
         apps.filterNot { it.packageName in mandatoryPackages }
-            .filterNot { addOnly && it.packageName in selectedPackages }
             .filter {
                 searchQuery.isBlank() ||
                     it.appName.contains(searchQuery, ignoreCase = true) ||
@@ -1367,13 +1325,11 @@ private fun AccessibleAppPickerDialog(
         title = { Text(stringResource(R.string.focus_mode_picker_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                if (!addOnly) {
-                    Text(
-                        stringResource(R.string.focus_mode_picker_description),
-                        color = TextHint,
-                        fontSize = 13.sp
-                    )
-                }
+                Text(
+                    stringResource(R.string.focus_mode_picker_description),
+                    color = TextHint,
+                    fontSize = 13.sp
+                )
                 OutlinedTextField(
                     value = searchQuery,
                     onValueChange = onSearchQueryChange,
