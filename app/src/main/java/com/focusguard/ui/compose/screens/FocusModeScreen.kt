@@ -79,6 +79,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -779,6 +780,7 @@ private fun FocusDurationDial(
     hoursUnit: String
 ) {
     val progress = ((minutes - 1f) / (FOCUS_DURATION_MAX_MINUTES - 1f)).coerceIn(0f, 1f)
+    val currentOnMinutesChange by rememberUpdatedState(onMinutesChange)
     val displayNumber = FocusDurationDialMath.displayValue(minutes)
     val displayUnit = if (minutes < 60) {
         minutesUnit.uppercase(Locale.getDefault())
@@ -817,7 +819,7 @@ private fun FocusDurationDial(
                             true
                         }
                     }
-                    .pointerInput(minutes) {
+                    .pointerInput(Unit) {
                         fun update(position: Offset) {
                             val cx = size.width / 2f
                             val cy = size.height / 2f
@@ -827,7 +829,7 @@ private fun FocusDurationDial(
                                     (position.x - cx).toDouble()
                                 )
                             ).toFloat()
-                            onMinutesChange(FocusDurationDialMath.minutesForAngle(degrees))
+                            currentOnMinutesChange(FocusDurationDialMath.minutesForAngle(degrees))
                         }
                         detectDragGestures(
                             onDragStart = { update(it) },
