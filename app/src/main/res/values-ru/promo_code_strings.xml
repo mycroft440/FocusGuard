@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="promo_code_title">Промокод</string>
+    <string name="promo_code_description">Введите код, чтобы активировать Premium без рекламы и открывать функции без просмотра видео.</string>
+    <string name="promo_code_active">Premium активен • Без рекламы</string>
+    <string name="promo_code_success">Premium активирован! Вся реклама отключена, для открытия функций не нужно смотреть видео.</string>
+    <string name="promo_code_invalid">Недействительный промокод. Проверьте его и повторите попытку.</string>
+    <string name="promo_code_save_failed">Не удалось сохранить активацию. Повторите попытку.</string>
+    <string name="promo_code_activate">Активировать Premium</string>
+    <string name="promo_code_close">Закрыть</string>
+</resources>

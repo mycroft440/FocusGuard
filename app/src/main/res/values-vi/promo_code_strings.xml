@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="promo_code_title">Mã khuyến mãi</string>
+    <string name="promo_code_description">Nhập mã để kích hoạt Premium không quảng cáo và mở khóa tính năng mà không cần xem video.</string>
+    <string name="promo_code_active">Premium đã bật • Không quảng cáo</string>
+    <string name="promo_code_success">Đã kích hoạt Premium! Mọi quảng cáo đã tắt và không cần xem video để mở khóa tính năng.</string>
+    <string name="promo_code_invalid">Mã khuyến mãi không hợp lệ. Hãy kiểm tra và thử lại.</string>
+    <string name="promo_code_save_failed">Không thể lưu trạng thái kích hoạt. Hãy thử lại.</string>
+    <string name="promo_code_activate">Kích hoạt Premium</string>
+    <string name="promo_code_close">Đóng</string>
+</resources>

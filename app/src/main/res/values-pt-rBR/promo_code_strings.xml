@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="promo_code_title">Código promocional</string>
+    <string name="promo_code_description">Insira um código para ativar o Premium sem anúncios e liberar recursos sem assistir a vídeos.</string>
+    <string name="promo_code_active">Premium ativo • Sem anúncios</string>
+    <string name="promo_code_success">Premium ativado! Todos os anúncios estão desativados e os recursos não exigem vídeos para serem liberados.</string>
+    <string name="promo_code_invalid">Código promocional inválido. Confira e tente novamente.</string>
+    <string name="promo_code_save_failed">Não foi possível salvar a ativação. Tente novamente.</string>
+    <string name="promo_code_activate">Ativar Premium</string>
+    <string name="promo_code_close">Fechar</string>
+</resources>

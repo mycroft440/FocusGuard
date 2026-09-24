@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="promo_code_title">Kode promo</string>
+    <string name="promo_code_description">Masukkan kode untuk mengaktifkan Premium tanpa iklan dan membuka fitur tanpa menonton video.</string>
+    <string name="promo_code_active">Premium aktif • Tanpa iklan</string>
+    <string name="promo_code_success">Premium aktif! Semua iklan dinonaktifkan dan fitur dapat dibuka tanpa video.</string>
+    <string name="promo_code_invalid">Kode promo tidak valid. Periksa dan coba lagi.</string>
+    <string name="promo_code_save_failed">Aktivasi tidak dapat disimpan. Coba lagi.</string>
+    <string name="promo_code_activate">Aktifkan Premium</string>
+    <string name="promo_code_close">Tutup</string>
+</resources>

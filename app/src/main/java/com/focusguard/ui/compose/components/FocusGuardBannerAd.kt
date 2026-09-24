@@ -44,6 +44,8 @@ import kotlin.math.roundToInt
  */
 @Composable
 fun FocusGuardBannerAd(modifier: Modifier = Modifier) {
+    val premium by rememberPremiumStatus()
+    if (premium) return
     val context = LocalContext.current
     val activity = remember(context) { context.findComponentActivity() } ?: return
 

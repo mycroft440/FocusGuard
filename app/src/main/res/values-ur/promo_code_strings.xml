@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="promo_code_title">پرومو کوڈ</string>
+    <string name="promo_code_description">بغیر اشتہارات کے Premium فعال کرنے اور ویڈیوز دیکھے بغیر خصوصیات کھولنے کے لیے کوڈ درج کریں۔</string>
+    <string name="promo_code_active">Premium فعال • کوئی اشتہار نہیں</string>
+    <string name="promo_code_success">Premium فعال ہو گیا! تمام اشتہارات بند ہیں اور خصوصیات کھولنے کے لیے ویڈیوز دیکھنے کی ضرورت نہیں۔</string>
+    <string name="promo_code_invalid">پرومو کوڈ درست نہیں۔ جانچ کر دوبارہ کوشش کریں۔</string>
+    <string name="promo_code_save_failed">فعالیت محفوظ نہیں ہو سکی۔ دوبارہ کوشش کریں۔</string>
+    <string name="promo_code_activate">Premium فعال کریں</string>
+    <string name="promo_code_close">بند کریں</string>
+</resources>

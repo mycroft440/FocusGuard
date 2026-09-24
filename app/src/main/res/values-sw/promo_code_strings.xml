@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="promo_code_title">Msimbo wa promosheni</string>
+    <string name="promo_code_description">Weka msimbo ili kuwasha Premium bila matangazo na kufungua vipengele bila kutazama video.</string>
+    <string name="promo_code_active">Premium imewashwa • Bila matangazo</string>
+    <string name="promo_code_success">Premium imewashwa! Matangazo yote yamezimwa na vipengele havihitaji video ili kufunguliwa.</string>
+    <string name="promo_code_invalid">Msimbo si sahihi. Hakiki na ujaribu tena.</string>
+    <string name="promo_code_save_failed">Imeshindwa kuhifadhi uanzishaji. Jaribu tena.</string>
+    <string name="promo_code_activate">Washa Premium</string>
+    <string name="promo_code_close">Funga</string>
+</resources>

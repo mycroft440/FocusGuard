@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
@@ -51,6 +52,8 @@ import com.focusguard.R
 import com.focusguard.accessibility.website.redirection.WebsiteRedirectDestination
 import com.focusguard.accessibility.website.redirection.WebsiteRedirectDestinationStore
 import com.focusguard.data.UserProfile
+import com.focusguard.ui.compose.components.PromotionalCodeDialog
+import com.focusguard.ui.compose.components.rememberPremiumStatus
 import com.focusguard.monetization.AdsConsentManager
 import com.focusguard.security.PermissionRevocationFlow
 import com.focusguard.security.SelfProtectionStateStore
@@ -86,6 +89,8 @@ fun SettingsScreen(
     }
     var showRevokeConfirmation by remember { mutableStateOf(false) }
     var showRevokeCredential by remember { mutableStateOf(false) }
+    val premium by rememberPremiumStatus()
+    var showPromotionalCode by remember { mutableStateOf(false) }
     var showDeveloperMode by remember { mutableStateOf(false) }
     var revocationWorking by remember { mutableStateOf(false) }
     var showRedirectDestination by remember { mutableStateOf(false) }
@@ -229,6 +234,12 @@ fun SettingsScreen(
                 onClick = onCreatorInstagramClick
             )
             SettingsItem(
+                Icons.Default.Star,
+                stringResource(R.string.promo_code_title),
+                stringResource(if (premium) R.string.promo_code_active else R.string.promo_code_description),
+                onClick = { showPromotionalCode = true }
+            )
+            SettingsItem(
                 Icons.Default.Build,
                 stringResource(R.string.settings_dev_mode_title),
                 stringResource(R.string.settings_dev_mode_subtitle),
@@ -243,6 +254,10 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
             )
         }
+    }
+
+    if (showPromotionalCode) {
+        PromotionalCodeDialog(onDismiss = { showPromotionalCode = false })
     }
 
     if (showRedirectDestination) {

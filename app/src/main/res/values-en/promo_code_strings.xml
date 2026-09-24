@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="promo_code_title">Promotional code</string>
+    <string name="promo_code_description">Enter a code to activate Premium without ads and unlock features without watching videos.</string>
+    <string name="promo_code_active">Premium active • No ads</string>
+    <string name="promo_code_success">Premium activated! All ads are disabled and features no longer require videos to unlock.</string>
+    <string name="promo_code_invalid">Invalid promotional code. Check it and try again.</string>
+    <string name="promo_code_save_failed">Activation could not be saved. Please try again.</string>
+    <string name="promo_code_activate">Activate Premium</string>
+    <string name="promo_code_close">Close</string>
+</resources>

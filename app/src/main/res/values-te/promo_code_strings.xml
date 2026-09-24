@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="promo_code_title">ప్రోమో కోడ్</string>
+    <string name="promo_code_description">ప్రకటనలు లేని Premium ప్రారంభించడానికి, వీడియోలు చూడకుండా ఫీచర్లను తెరవడానికి కోడ్ నమోదు చేయండి.</string>
+    <string name="promo_code_active">Premium సక్రియం • ప్రకటనలు లేవు</string>
+    <string name="promo_code_success">Premium సక్రియమైంది! అన్ని ప్రకటనలు నిలిపివేయబడ్డాయి. ఫీచర్లను తెరవడానికి వీడియోలు చూడాల్సిన అవసరం లేదు.</string>
+    <string name="promo_code_invalid">ప్రోమో కోడ్ చెల్లదు. తనిఖీ చేసి మళ్లీ ప్రయత్నించండి.</string>
+    <string name="promo_code_save_failed">సక్రియతను సేవ్ చేయలేకపోయాము. మళ్లీ ప్రయత్నించండి.</string>
+    <string name="promo_code_activate">Premium ప్రారంభించండి</string>
+    <string name="promo_code_close">మూసివేయండి</string>
+</resources>

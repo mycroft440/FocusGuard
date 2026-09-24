@@ -11,6 +11,7 @@ object MonetizationStateStore {
 
     @Synchronized
     fun markPomodoroCompletionAdPending(context: Context) {
+        if (PremiumStateStore.isPremium(context)) return
         val preferences = prefs(context)
         val next = (pendingCount(preferences) + 1).coerceAtMost(MAX_PENDING_POMODORO_ADS)
         preferences.edit()
@@ -21,16 +22,17 @@ object MonetizationStateStore {
 
     @Synchronized
     fun hasPomodoroCompletionAdPending(context: Context): Boolean =
-        pendingCount(prefs(context)) > 0
+        pendingPomodoroCompletionAds(context) > 0
 
     @Synchronized
     fun pendingPomodoroCompletionAds(context: Context): Int =
-        pendingCount(prefs(context))
+        if (PremiumStateStore.isPremium(context)) 0 else pendingCount(prefs(context))
 
     /** Reserva um encerramento para uma tentativa real de exibição. */
     @Synchronized
     fun consumePomodoroCompletionAdPending(context: Context): Boolean {
         val preferences = prefs(context)
+        if (PremiumStateStore.isPremium(context)) return false
         val current = pendingCount(preferences)
         if (current <= 0) return false
         preferences.edit()
@@ -43,6 +45,14 @@ object MonetizationStateStore {
     /** Devolve à fila uma reserva cujo anúncio falhou antes de ser apresentado. */
     fun restorePomodoroCompletionAdPending(context: Context) {
         markPomodoroCompletionAdPending(context)
+    }
+
+    @Synchronized
+    fun clearPomodoroCompletionAds(context: Context) {
+        prefs(context).edit()
+            .remove(LEGACY_KEY_POMODORO_COMPLETION_PENDING)
+            .remove(KEY_POMODORO_COMPLETION_PENDING_COUNT)
+            .commit()
     }
 
     private fun pendingCount(preferences: android.content.SharedPreferences): Int {

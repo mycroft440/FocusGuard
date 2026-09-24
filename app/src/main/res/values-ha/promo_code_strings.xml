@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="promo_code_title">Lambar talla</string>
+    <string name="promo_code_description">Shigar da lamba don kunna Premium ba tare da talla ba kuma buɗe fasaloli ba tare da kallon bidiyo ba.</string>
+    <string name="promo_code_active">Premium yana aiki • Babu talla</string>
+    <string name="promo_code_success">An kunna Premium! An kashe duk tallace-tallace kuma ba sai an kalli bidiyo don buɗe fasaloli ba.</string>
+    <string name="promo_code_invalid">Lambar ba ta inganta ba. Duba ka sake gwadawa.</string>
+    <string name="promo_code_save_failed">An kasa adana kunnawa. Sake gwadawa.</string>
+    <string name="promo_code_activate">Kunna Premium</string>
+    <string name="promo_code_close">Rufe</string>
+</resources>

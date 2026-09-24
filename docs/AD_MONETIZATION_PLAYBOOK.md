@@ -21,6 +21,10 @@ Uma posição com eCPM alto pode diminuir a receita total se fizer o usuário ab
 - O Pomodoro mantém conclusão de anúncio em fila persistente; término natural e encerramento manual geram uma oportunidade de intersticial.
 - Rewarded deve creditar somente pelo callback de recompensa; fechar ou falhar não conta.
 
+### Premium por código promocional
+
+A opção “Código promocional”, abaixo do Instagram em Configurações, ativa um entitlement local persistente e sem expiração. `PremiumStateStore` é a fonte de verdade. Premium não solicita/exibe anúncios: remove banners, encerra preloads e descarta a fila do Pomodoro. Callbacks tardios revalidam o entitlement. `RewardedGateCoordinator` executa as ações diretamente, sem consumir nem fabricar créditos rewarded. O consentimento e o fluxo gratuito permanecem iguais. A ativação vale para a instalação; não existe sincronização com conta/servidor.
+
 ## 3. Ordem de preferência dos formatos
 
 ### 3.1 Rewarded — prioridade máxima quando há valor extra claro

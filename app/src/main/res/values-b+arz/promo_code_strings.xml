@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="promo_code_title">كود ترويجي</string>
+    <string name="promo_code_description">اكتب كود لتفعيل Premium من غير إعلانات وفتح المميزات من غير فيديوهات.</string>
+    <string name="promo_code_active">Premium مفعّل • من غير إعلانات</string>
+    <string name="promo_code_success">تم تفعيل Premium! كل الإعلانات اتوقفت والمميزات بتتفتح من غير فيديوهات.</string>
+    <string name="promo_code_invalid">الكود مش صحيح. راجعه وجرب تاني.</string>
+    <string name="promo_code_save_failed">تعذّر حفظ التفعيل. جرب تاني.</string>
+    <string name="promo_code_activate">تفعيل Premium</string>
+    <string name="promo_code_close">إغلاق</string>
+</resources>

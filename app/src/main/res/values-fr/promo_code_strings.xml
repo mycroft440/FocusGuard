@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="promo_code_title">Code promotionnel</string>
+    <string name="promo_code_description">Saisissez un code pour activer Premium sans publicité et débloquer les fonctionnalités sans regarder de vidéos.</string>
+    <string name="promo_code_active">Premium actif • Sans publicité</string>
+    <string name="promo_code_success">Premium activé ! Toutes les publicités sont désactivées et les fonctionnalités se débloquent sans vidéos.</string>
+    <string name="promo_code_invalid">Code promotionnel invalide. Vérifiez-le et réessayez.</string>
+    <string name="promo_code_save_failed">Impossible de sauvegarder l’activation. Réessayez.</string>
+    <string name="promo_code_activate">Activer Premium</string>
+    <string name="promo_code_close">Fermer</string>
+</resources>

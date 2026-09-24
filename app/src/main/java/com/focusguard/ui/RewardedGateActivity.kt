@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.appcompat.app.AppCompatActivity
+import com.focusguard.monetization.PremiumStateStore
 import com.focusguard.monetization.RewardedGateCoordinator
 import com.focusguard.monetization.RewardedGateStateStore
 import com.focusguard.ui.compose.components.RewardedAdGateDialog
@@ -28,7 +29,7 @@ class RewardedGateActivity : AppCompatActivity() {
         // Se o crédito foi conquistado antes de uma recriação da Activity, conclui
         // imediatamente sem exigir outro anúncio. Se o processo anterior morreu,
         // o coordinator não terá a lambda e manterá o crédito para a próxima ação.
-        if (RewardedGateStateStore.hasCredit(this, gateKey)) {
+        if (PremiumStateStore.isPremium(this) || RewardedGateStateStore.hasCredit(this, gateKey)) {
             completed = true
             RewardedGateCoordinator.complete(this, token, gateKey)
             finish()

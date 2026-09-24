@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="promo_code_title">Aktionscode</string>
+    <string name="promo_code_description">Gib einen Code ein, um Premium ohne Werbung zu aktivieren und Funktionen ohne Videos freizuschalten.</string>
+    <string name="promo_code_active">Premium aktiv • Ohne Werbung</string>
+    <string name="promo_code_success">Premium aktiviert! Alle Anzeigen sind deaktiviert und Funktionen lassen sich ohne Videos freischalten.</string>
+    <string name="promo_code_invalid">Ungültiger Aktionscode. Bitte prüfen und erneut versuchen.</string>
+    <string name="promo_code_save_failed">Aktivierung konnte nicht gespeichert werden. Bitte erneut versuchen.</string>
+    <string name="promo_code_activate">Premium aktivieren</string>
+    <string name="promo_code_close">Schließen</string>
+</resources>

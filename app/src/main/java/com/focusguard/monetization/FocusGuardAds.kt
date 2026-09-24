@@ -66,6 +66,15 @@ object FocusGuardAds {
 
     private val runtimeConfigurationLogged = AtomicBoolean(false)
     private val pomodoroAdInFlight = AtomicBoolean(false)
+    private val bannerPreloadIds = mutableSetOf<String>()
+
+    /** Called on the UI thread after the entitlement has been persisted. */
+    fun stopForPremium() {
+        bannerPreloadIds.forEach { BannerAdPreloader.destroy(it) }
+        bannerPreloadIds.clear()
+        RewardedAdPreloader.destroy(REWARDED_PRELOAD_ID)
+        InterstitialAdPreloader.destroy(INTERSTITIAL_PRELOAD_ID)
+    }
 
     /**
      * Mantido para compatibilidade com o Application. O processo ainda não possui
@@ -83,7 +92,7 @@ object FocusGuardAds {
      * depois que uma tela consome um BannerAd. Nenhum AdView invisível é mantido.
      */
     fun warmUp(activity: ComponentActivity) {
-        if (activity.isFinishing || activity.isDestroyed) return
+        if (PremiumStateStore.isPremium(activity) || activity.isFinishing || activity.isDestroyed) return
 
         // Caminho rápido recomendado pela UMP: se a decisão salva numa sessão
         // anterior já permite anúncios, SDK e preloads começam agora, em paralelo
@@ -125,6 +134,7 @@ object FocusGuardAds {
      * SDK repõe o buffer sozinho depois que um anúncio é consumido.
      */
     private fun startAllPreloads(context: Context, screenWidthDp: Int) {
+        if (PremiumStateStore.isPremium(context)) return
         startAdaptiveBannerPreload(context, screenWidthDp)
         startFullScreenPreloads()
     }
@@ -169,9 +179,9 @@ object FocusGuardAds {
     }
 
     private suspend fun ensureInitialized(context: Context) {
-        if (initialized) return
+        if (PremiumStateStore.isPremium(context) || initialized) return
         initMutex.withLock {
-            if (initialized) return
+            if (PremiumStateStore.isPremium(context) || initialized) return
 
             logRuntimeConfiguration(context)
             val completion = CompletableDeferred<InitializationStatus>()
@@ -238,14 +248,18 @@ object FocusGuardAds {
         onReady: () -> Unit,
         onUnavailable: (String) -> Unit
     ) {
-        if (activity.isFinishing || activity.isDestroyed) {
+        if (PremiumStateStore.isPremium(activity) || activity.isFinishing || activity.isDestroyed) {
             onUnavailable("A tela não está disponível para exibir anúncios.")
             return
         }
 
         activity.runOnUiThread {
+            if (PremiumStateStore.isPremium(activity)) {
+                onUnavailable("Premium ativo: anúncios desativados.")
+                return@runOnUiThread
+            }
             AdsConsentManager.ensureCanRequestAds(activity) { canRequestAds ->
-                if (!canRequestAds) {
+                if (PremiumStateStore.isPremium(activity) || !canRequestAds) {
                     onUnavailable("Os anúncios não podem ser solicitados com as escolhas de privacidade atuais.")
                     return@ensureCanRequestAds
                 }
@@ -266,7 +280,7 @@ object FocusGuardAds {
                         }
                         .onSuccess {
                             withContext(Dispatchers.Main) {
-                                if (activity.isFinishing || activity.isDestroyed) {
+                                if (PremiumStateStore.isPremium(activity) || activity.isFinishing || activity.isDestroyed) {
                                     onUnavailable("A tela não está mais disponível.")
                                 } else {
                                     onReady()
@@ -282,6 +296,7 @@ object FocusGuardAds {
         context: Context,
         widthDp: Int
     ) {
+        if (PremiumStateStore.isPremium(context)) return
         val normalizedWidthDp = widthDp.coerceAtLeast(300)
         val preloadId = adaptiveBannerPreloadId(normalizedWidthDp)
         if (BannerAdPreloader.getConfiguration(preloadId) != null) return
@@ -293,6 +308,7 @@ object FocusGuardAds {
             BuildConfig.ADMOB_BANNER_AD_UNIT_ID,
             adSize
         ).build()
+        bannerPreloadIds.add(preloadId)
         val started = BannerAdPreloader.start(
             preloadId,
             PreloadConfiguration(
@@ -331,7 +347,7 @@ object FocusGuardAds {
                     object : NativeAdLoaderCallback {
                         override fun onNativeAdLoaded(nativeAd: NativeAd) {
                             FocusGuardLogger.log("Ads", "Native carregado")
-                            if (activity.isFinishing || activity.isDestroyed) {
+                            if (PremiumStateStore.isPremium(activity) || activity.isFinishing || activity.isDestroyed) {
                                 nativeAd.destroy()
                             } else {
                                 onLoaded(nativeAd)
@@ -394,6 +410,11 @@ object FocusGuardAds {
                     request,
                     object : AdLoadCallback<BannerAd> {
                         override fun onAdLoaded(ad: BannerAd) {
+                            if (PremiumStateStore.isPremium(activity)) {
+                                adView.destroy()
+                                onUnavailable("Premium ativo: anúncios desativados.")
+                                return
+                            }
                             FocusGuardLogger.log("Ads", "Banner adaptativo carregado diretamente")
                             onLoaded()
                         }
@@ -428,6 +449,10 @@ object FocusGuardAds {
 
                 val callback = object : AdLoadCallback<RewardedAd> {
                     override fun onAdLoaded(ad: RewardedAd) {
+                        if (PremiumStateStore.isPremium(activity)) {
+                            onUnavailable("Premium ativo: anúncios desativados.")
+                            return
+                        }
                         FocusGuardLogger.log("Ads", "Rewarded carregado")
                         var rewardEarned = false
                         ad.adEventCallback = object : RewardedAdEventCallback {
@@ -496,7 +521,7 @@ object FocusGuardAds {
      * a reserva à fila para uma futura tentativa.
      */
     fun showPendingPomodoroCompletion(activity: ComponentActivity) {
-        if (activity.isFinishing || activity.isDestroyed ||
+        if (PremiumStateStore.isPremium(activity) || activity.isFinishing || activity.isDestroyed ||
             !activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
         ) return
         if (!MonetizationStateStore.hasPomodoroCompletionAdPending(activity)) return
@@ -517,7 +542,7 @@ object FocusGuardAds {
                 val callback = object : AdLoadCallback<InterstitialAd> {
                     override fun onAdLoaded(ad: InterstitialAd) {
                         FocusGuardLogger.log("Ads", "Interstitial Pomodoro carregado")
-                        if (activity.isFinishing || activity.isDestroyed ||
+                        if (PremiumStateStore.isPremium(activity) || activity.isFinishing || activity.isDestroyed ||
                             !activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
                         ) {
                             pomodoroAdInFlight.set(false)

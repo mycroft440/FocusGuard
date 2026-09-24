@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="promo_code_title">优惠码</string>
+    <string name="promo_code_description">输入代码以启用 Premium，移除广告，无需观看视频即可解锁功能。</string>
+    <string name="promo_code_active">Premium 已启用 • 无广告</string>
+    <string name="promo_code_success">Premium 已启用！所有广告已关闭，解锁功能无需观看视频。</string>
+    <string name="promo_code_invalid">优惠码无效，请检查后重试。</string>
+    <string name="promo_code_save_failed">无法保存激活状态，请重试。</string>
+    <string name="promo_code_activate">启用 Premium</string>
+    <string name="promo_code_close">关闭</string>
+</resources>

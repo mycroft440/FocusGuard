@@ -26,6 +26,10 @@ object RewardedGateCoordinator {
         description: String,
         action: () -> Unit
     ) {
+        if (PremiumStateStore.isPremium(context)) {
+            action()
+            return
+        }
         val target = requiredAds.coerceAtLeast(1)
         val gateKey = RewardedGateKeys.forRequest(title, target)
 
@@ -58,7 +62,9 @@ object RewardedGateCoordinator {
     fun complete(context: Context, token: String, gateKey: String) {
         val pending = pendingActions.remove(token) ?: return
         if (pending.gateKey != gateKey) return
-        if (RewardedGateStateStore.consumeCredit(context, gateKey)) {
+        if (PremiumStateStore.isPremium(context) ||
+            RewardedGateStateStore.consumeCredit(context, gateKey)
+        ) {
             pending.action()
         }
     }

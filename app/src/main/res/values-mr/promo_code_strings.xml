@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="promo_code_title">प्रोमो कोड</string>
+    <string name="promo_code_description">जाहिरातींशिवाय Premium सुरू करण्यासाठी आणि व्हिडिओ न पाहता सुविधा मिळवण्यासाठी कोड टाका.</string>
+    <string name="promo_code_active">Premium सुरू • जाहिराती नाहीत</string>
+    <string name="promo_code_success">Premium सुरू झाले! सर्व जाहिराती बंद आहेत आणि सुविधा मिळवण्यासाठी व्हिडिओ पाहण्याची गरज नाही.</string>
+    <string name="promo_code_invalid">प्रोमो कोड अवैध आहे. तपासून पुन्हा प्रयत्न करा.</string>
+    <string name="promo_code_save_failed">सक्रियकरण जतन करता आले नाही. पुन्हा प्रयत्न करा.</string>
+    <string name="promo_code_activate">Premium सुरू करा</string>
+    <string name="promo_code_close">बंद करा</string>
+</resources>

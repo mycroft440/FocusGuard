@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="promo_code_title">プロモーションコード</string>
+    <string name="promo_code_description">コードを入力すると、広告なしの Premium が有効になり、動画を見ずに機能を利用できます。</string>
+    <string name="promo_code_active">Premium 有効 • 広告なし</string>
+    <string name="promo_code_success">Premium が有効になりました！すべての広告が無効になり、機能の利用に動画の視聴は不要です。</string>
+    <string name="promo_code_invalid">コードが無効です。確認して再試行してください。</string>
+    <string name="promo_code_save_failed">有効化の状態を保存できませんでした。再試行してください。</string>
+    <string name="promo_code_activate">Premium を有効にする</string>
+    <string name="promo_code_close">閉じる</string>
+</resources>
