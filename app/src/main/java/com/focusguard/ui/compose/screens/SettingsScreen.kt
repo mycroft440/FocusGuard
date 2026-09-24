@@ -74,6 +74,7 @@ fun SettingsScreen(
     onProfileClick: () -> Unit,
     onLanguageClick: () -> Unit,
     onTestedBrowsersClick: () -> Unit,
+    onExtraSecurityClick: () -> Unit,
     onCreatorInstagramClick: () -> Unit,
     onBack: () -> Unit
 ) {
@@ -175,6 +176,12 @@ fun SettingsScreen(
                 onClick = {
                     masterPasswordLauncher.launch(MasterPasswordActivity.createIntent(context))
                 }
+            )
+            SettingsItem(
+                Icons.Default.Security,
+                stringResource(R.string.extra_security_menu_title),
+                stringResource(R.string.extra_security_menu_description),
+                onClick = onExtraSecurityClick
             )
             SettingsItem(
                 Icons.Default.Language,
