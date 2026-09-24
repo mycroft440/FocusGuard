@@ -36,7 +36,6 @@ import com.focusguard.security.AuthManager
 import com.focusguard.security.ProtectionPermission
 import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.CreateSessionActivity
-import com.focusguard.ui.OfflineBookActivity
 import com.focusguard.ui.PermissionsActivity
 import com.focusguard.ui.compose.screens.BlockCustomizationScreen
 import com.focusguard.ui.compose.screens.BlockTypeDetailScreen
@@ -49,9 +48,6 @@ import com.focusguard.ui.compose.screens.MainScreen
 import com.focusguard.ui.compose.screens.openCreatorInstagram
 import com.focusguard.ui.compose.screens.PomodoroScreen
 import com.focusguard.ui.compose.screens.ProfileScreen
-import com.focusguard.ui.compose.screens.RecoveryBook
-import com.focusguard.ui.compose.screens.RecoveryCourseGatewayScreen
-import com.focusguard.ui.compose.screens.RecoveryHubScreen
 import com.focusguard.ui.compose.screens.SessionsListScreen
 import com.focusguard.ui.compose.screens.SettingsScreen
 import com.focusguard.ui.compose.screens.TestedBrowsersScreen
@@ -115,7 +111,6 @@ fun FocusGuardNavHost(
         mutableStateOf(ProtectionPermission.entries.toList())
     }
     var focusModeInteractionNonce by remember { mutableStateOf(0L) }
-    var focusModeCourseActive by remember { mutableStateOf(false) }
     val navigationScope = rememberCoroutineScope()
     val userProfileStore = remember(activity.applicationContext) {
         UserProfileStore(activity.applicationContext)
@@ -138,16 +133,6 @@ fun FocusGuardNavHost(
         if (activeFocusMode?.isActive() == true) {
             currentRoute = FocusGuardRoute.Home
             selectedTab = FocusModeIdleReturnPolicy.FOCUS_MODE_TAB
-            focusModeCourseActive = false
-        }
-    }
-
-    LaunchedEffect(focusModeActive, currentRoute, selectedTab) {
-        val courseCanBeVisible = focusModeActive &&
-            currentRoute == FocusGuardRoute.Home &&
-            selectedTab == FocusModeIdleReturnPolicy.RECOVERY_TAB
-        if (!courseCanBeVisible) {
-            focusModeCourseActive = false
         }
     }
 
@@ -156,15 +141,13 @@ fun FocusGuardNavHost(
         currentRoute,
         selectedTab,
         focusModeInteractionNonce,
-        focusModeCourseActive,
         activeFocusMode?.startedAtMillis
     ) {
         val onFocusModeHome = currentRoute == FocusGuardRoute.Home &&
             selectedTab == FocusModeIdleReturnPolicy.FOCUS_MODE_TAB
         if (!FocusModeIdleReturnPolicy.shouldArm(
                 focusModeActive = focusModeActive,
-                onFocusModeHome = onFocusModeHome,
-                antiPornCourseActive = focusModeCourseActive
+                onFocusModeHome = onFocusModeHome
             )
         ) {
             return@LaunchedEffect
@@ -174,7 +157,6 @@ fun FocusGuardNavHost(
 
         currentRoute = FocusGuardRoute.Home
         selectedTab = FocusModeIdleReturnPolicy.FOCUS_MODE_TAB
-        focusModeCourseActive = false
     }
 
     LaunchedEffect(currentPomodoro, pomodoroCycle, focusModeActive) {
@@ -351,29 +333,6 @@ fun FocusGuardNavHost(
                             onBack = { currentRoute = FocusGuardRoute.Home },
                             compactLayout = focusModeActive
                         )
-                    },
-                    recoveryContent = {
-                        RecoveryCourseGatewayScreen {
-                            DisposableEffect(focusModeActive) {
-                                focusModeCourseActive = focusModeActive
-                                onDispose {
-                                    focusModeCourseActive = false
-                                }
-                            }
-                            RecoveryHubScreen(
-                                onReadBook = { book ->
-                                    val offlineBook = when (book) {
-                                        RecoveryBook.CREATOR_INSTRUCTIONS ->
-                                            OfflineBookActivity.OfflineBook.CREATOR_INSTRUCTIONS
-                                        RecoveryBook.EASYPEASY ->
-                                            OfflineBookActivity.OfflineBook.EASYPEASY
-                                    }
-                                    activity.startActivity(
-                                        OfflineBookActivity.createIntent(activity, offlineBook)
-                                    )
-                                }
-                            )
-                        }
                     },
                     focusModeContent = {
                         FocusModeScreen(
