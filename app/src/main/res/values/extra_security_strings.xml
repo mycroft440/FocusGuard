@@ -3,11 +3,11 @@
     <string name="extra_security_menu_title">Add extra security blocks</string>
     <string name="extra_security_menu_description">Optional protections you can enable manually</string>
     <string name="extra_security_title">Extra security blocks</string>
-    <string name="extra_security_intro">These protections are optional and stay separate from HardBlock's automatic blocking protections.</string>
+    <string name="extra_security_intro">These protections are optional and stay separate from HardBlock’s automatic blocking protections.</string>
     <string name="extra_security_unknown_sources_title">Block installation from unknown app sources</string>
     <string name="extra_security_unknown_sources_description">Prevents apps from enabling installation of external APKs after you review and remove permissions that were already granted.</string>
     <string name="extra_security_before_activation_title">Before enabling this block</string>
-    <string name="extra_security_before_activation_body">First remove permissions that are already active. Tap Open settings. On Android's “Install unknown apps” screen, open every app shown as allowed and turn off “Allow from this source”. Then return to HardBlock and confirm that you removed the current permissions. HardBlock will only apply the block after your confirmation.</string>
+    <string name="extra_security_before_activation_body">First remove permissions that are already active. Tap Open settings. On Android’s “Install unknown apps” screen, open every app shown as allowed and turn off “Allow from this source”. Then return to HardBlock and confirm that you removed the current permissions. HardBlock will only apply the block after your confirmation.</string>
     <string name="extra_security_open_unknown_sources_settings">Open settings</string>
     <string name="extra_security_confirmation_title">Confirm the current permissions were removed</string>
     <string name="extra_security_confirmation_body">After turning off “Allow from this source” for the apps that had it enabled, confirm below. HardBlock cannot revoke those permissions from other apps automatically with the public Android APIs, so the block is not activated until you confirm this step.</string>
