@@ -48,6 +48,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -389,7 +390,8 @@ private fun RevokePermissionsDialogFrame(
                 .padding(horizontal = 20.dp)
                 .widthIn(max = 420.dp)
                 .fillMaxWidth()
-                .background(DarkCard, RoundedCornerShape(28.dp))
+                .clip(RoundedCornerShape(28.dp))
+                .background(DarkCard)
                 .border(BorderStroke(1.dp, CardBorder), RoundedCornerShape(28.dp))
                 .padding(24.dp)
         ) {
@@ -407,7 +409,8 @@ private fun RevokePermissionsHeader(title: String) {
         Box(
             modifier = Modifier
                 .size(64.dp)
-                .background(DangerRed.copy(alpha = 0.14f), CircleShape)
+                .clip(CircleShape)
+                .background(DangerRed.copy(alpha = 0.14f))
                 .border(BorderStroke(1.dp, DangerRed.copy(alpha = 0.35f)), CircleShape),
             contentAlignment = Alignment.Center
         ) {
@@ -439,14 +442,22 @@ private fun RevokePermissionsConfirmationDialog(
             RevokePermissionsHeader(
                 title = stringResource(R.string.settings_revoke_permissions_confirm_title)
             )
-            Spacer(Modifier.height(12.dp))
-            Text(
-                text = stringResource(R.string.settings_revoke_permissions_confirm_message),
-                color = TextSecondary,
-                fontSize = 14.sp,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth()
-            )
+            Spacer(Modifier.height(20.dp))
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(DarkBg)
+                    .border(BorderStroke(1.dp, CardBorder), RoundedCornerShape(18.dp))
+                    .padding(horizontal = 16.dp, vertical = 14.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_revoke_permissions_confirm_message),
+                    color = TextSecondary,
+                    fontSize = 14.sp,
+                    lineHeight = 20.sp
+                )
+            }
             Spacer(Modifier.height(24.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
