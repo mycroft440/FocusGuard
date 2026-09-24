@@ -40,6 +40,7 @@ import com.focusguard.ui.PermissionsActivity
 import com.focusguard.ui.compose.screens.BlockCustomizationScreen
 import com.focusguard.ui.compose.screens.BlockTypeDetailScreen
 import com.focusguard.ui.compose.screens.BlockTypeUi
+import com.focusguard.ui.compose.screens.ExtraSecurityScreen
 import com.focusguard.ui.compose.screens.FocusModeScreen
 import com.focusguard.ui.compose.screens.IntruderLogScreen
 import com.focusguard.ui.compose.screens.LanguageScreen
@@ -69,6 +70,7 @@ private object FocusGuardRoute {
     const val IntruderLog = "INTRUDER_LOG"
     const val Language = "LANGUAGE"
     const val TestedBrowsers = "TESTED_BROWSERS"
+    const val ExtraSecurity = "EXTRA_SECURITY"
     const val UsageLimits = "USAGE_LIMITS"
     const val Dashboard = "DASHBOARD"
     const val BlockCustomization = "BLOCK_CUSTOMIZATION"
@@ -258,6 +260,7 @@ fun FocusGuardNavHost(
             FocusGuardRoute.Language,
             FocusGuardRoute.Profile,
             FocusGuardRoute.TestedBrowsers,
+            FocusGuardRoute.ExtraSecurity,
             FocusGuardRoute.BlockCustomization -> FocusGuardRoute.Settings
             FocusGuardRoute.IntruderLog,
             FocusGuardRoute.UsageLimits -> FocusGuardRoute.BlockTypeDetail
@@ -382,6 +385,7 @@ fun FocusGuardNavHost(
                     onProfileClick = { currentRoute = FocusGuardRoute.Profile },
                     onLanguageClick = { currentRoute = FocusGuardRoute.Language },
                     onTestedBrowsersClick = { currentRoute = FocusGuardRoute.TestedBrowsers },
+                    onExtraSecurityClick = { currentRoute = FocusGuardRoute.ExtraSecurity },
                     onCreatorInstagramClick = { openCreatorInstagram(activity) },
                     onBack = { currentRoute = FocusGuardRoute.Home }
                 )
@@ -399,7 +403,7 @@ fun FocusGuardNavHost(
                     onPermissionsRequired = {
                         activity.startActivity(
                             PermissionsActivity.createPendingProtectionIntent(activity)
-                        )
+                    )
                     },
                     onBack = { currentRoute = FocusGuardRoute.Home }
                 )
@@ -414,6 +418,9 @@ fun FocusGuardNavHost(
                     onBack = { currentRoute = FocusGuardRoute.Settings }
                 )
                 FocusGuardRoute.TestedBrowsers -> TestedBrowsersScreen(
+                    onBack = { currentRoute = FocusGuardRoute.Settings }
+                )
+                FocusGuardRoute.ExtraSecurity -> ExtraSecurityScreen(
                     onBack = { currentRoute = FocusGuardRoute.Settings }
                 )
                 FocusGuardRoute.UsageLimits -> UsageLimitsScreen(
