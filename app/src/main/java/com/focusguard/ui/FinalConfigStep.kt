@@ -60,6 +60,7 @@ import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.monetization.MonetizationPolicy
+import com.focusguard.ui.compose.components.rememberPremiumStatus
 import com.focusguard.monetization.RewardedGateCoordinator
 import com.focusguard.security.AppUnlockBiometricAuthenticator
 import com.focusguard.security.BiometricOnlyActivationPolicy
@@ -95,6 +96,7 @@ fun FinalConfigStep(
     onFinish: () -> Unit,
     onBack: () -> Unit
 ) {
+    val premium by rememberPremiumStatus()
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val sessionManager = remember(context) { BlockingSessionManager.getInstance(context) }
@@ -336,7 +338,7 @@ fun FinalConfigStep(
                                             Spacer(Modifier.height(3.dp))
                                             Text(
                                                 stringResource(
-                                                    if (biometricAppUnlockEnabled) {
+                                                    if (premium || biometricAppUnlockEnabled) {
                                                         R.string.password_app_unlock_quick_biometric_desc
                                                     } else {
                                                         R.string.password_app_unlock_biometric_rewarded_desc
