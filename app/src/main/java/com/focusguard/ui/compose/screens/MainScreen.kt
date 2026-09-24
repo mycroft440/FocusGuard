@@ -54,7 +54,6 @@ fun MainScreen(
     onSettingsClick: () -> Unit,
     usageStatsContent: @Composable () -> Unit,
     pomodoroContent: @Composable () -> Unit,
-    recoveryContent: @Composable () -> Unit,
     focusModeContent: @Composable () -> Unit
 ) {
     val settingsContentDescription = if (profile.isConfigured) {
@@ -62,7 +61,7 @@ fun MainScreen(
     } else {
         stringResource(R.string.nav_settings)
     }
-    val usesFullHeightContent = selectedTab == 2 || selectedTab == 3
+    val usesFullHeightContent = selectedTab == 2
 
     BackHandler(enabled = focusModeActive) {
         if (selectedTab != 4) onTabChange(4)
@@ -173,7 +172,6 @@ fun MainScreen(
                                 pagerHint = false
                             )
                             2 -> pomodoroContent()
-                            3 -> recoveryContent()
                             4 -> focusModeContent()
                             5 -> ForumScreen(profile = profile)
                         }
@@ -334,7 +332,6 @@ private data class FocusGuardNavigationItem(
 private val FocusGuardNavigationItems = listOf(
     FocusGuardNavigationItem(1, Icons.Default.Shield, R.string.nav_protection),
     FocusGuardNavigationItem(2, Icons.Default.Timer, R.string.nav_focus),
-    FocusGuardNavigationItem(3, Icons.Outlined.VisibilityOff, R.string.nav_recovery),
     FocusGuardNavigationItem(4, Icons.Default.LockClock, R.string.nav_focus_mode),
     FocusGuardNavigationItem(5, Icons.Outlined.Forum, R.string.nav_forum)
 )

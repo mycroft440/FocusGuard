@@ -15,8 +15,7 @@ class FocusModeIdleReturnPolicyTest {
         assertThat(
             FocusModeIdleReturnPolicy.shouldArm(
                 focusModeActive = true,
-                onFocusModeHome = false,
-                antiPornCourseActive = false
+                onFocusModeHome = false
             )
         ).isTrue()
     }
@@ -26,8 +25,7 @@ class FocusModeIdleReturnPolicyTest {
         assertThat(
             FocusModeIdleReturnPolicy.shouldArm(
                 focusModeActive = true,
-                onFocusModeHome = true,
-                antiPornCourseActive = false
+                onFocusModeHome = true
             )
         ).isFalse()
     }
@@ -37,26 +35,13 @@ class FocusModeIdleReturnPolicyTest {
         assertThat(
             FocusModeIdleReturnPolicy.shouldArm(
                 focusModeActive = false,
-                onFocusModeHome = false,
-                antiPornCourseActive = false
-            )
-        ).isFalse()
-    }
-
-    @Test
-    fun `antiporn course is exempt while user is studying`() {
-        assertThat(
-            FocusModeIdleReturnPolicy.shouldArm(
-                focusModeActive = true,
-                onFocusModeHome = false,
-                antiPornCourseActive = true
+                onFocusModeHome = false
             )
         ).isFalse()
     }
 
     @Test
     fun `navigation tab constants match main screen tabs`() {
-        assertThat(FocusModeIdleReturnPolicy.RECOVERY_TAB).isEqualTo(3)
         assertThat(FocusModeIdleReturnPolicy.FOCUS_MODE_TAB).isEqualTo(4)
     }
 }
