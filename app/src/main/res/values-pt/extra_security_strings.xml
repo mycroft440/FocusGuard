@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="extra_security_title">Adicionar bloqueios de segurança extras</string>
+    <string name="extra_security_unknown_sources">Bloquear instalação de apps de fontes desconhecidas</string>
+    <string name="extra_security_explanation">O Android aplica este bloqueio inclusive às fontes já autorizadas. No Android 10 ou superior, vale para todos os usuários; no Android 8 e 9, para o usuário atual. Lojas confiáveis e ADB não são bloqueados.</string>
+    <string name="extra_security_enabled">Bloqueio aplicado e confirmado pelo Android.</string>
+    <string name="extra_security_disabled">Bloqueio do FocusGuard desativado.</string>
+    <string name="extra_security_owner_required">O bloqueio automático exige o modo Device Owner. Administrador do aparelho comum e acessibilidade não são suficientes. Revise as permissões manualmente ou abra o guia de configuração abaixo.</string>
+    <string name="extra_security_failed">O Android não confirmou a alteração ou a proteção atual. Tente novamente.</string>
+    <string name="extra_security_scope_device">Ativo: fontes desconhecidas bloqueadas no aparelho inteiro.</string>
+    <string name="extra_security_scope_user">Ativo: fontes desconhecidas bloqueadas somente para o usuário atual.</string>
+    <string name="extra_security_review_hint">Antes de ativar, você pode abrir as configurações do Android e desativar “Permitir desta fonte” em cada app. O Android não permite que o FocusGuard redefina todas essas chaves individuais automaticamente. O bloqueio do sistema prevalece enquanto estiver ativo; fontes já autorizadas podem voltar a funcionar após desativá-lo.</string>
+    <string name="extra_security_settings_unavailable">Não foi possível abrir a tela do sistema. Abra manualmente Configurações → Segurança → Instalar apps desconhecidos.</string>
+    <string name="extra_security_review">Revisar permissões das fontes</string>
+    <string name="extra_security_disable">Desativar bloqueio</string>
+    <string name="extra_security_enable">Ativar bloqueio</string>
+    <string name="extra_security_disable_warning">A desativação permite novamente instalações de fontes desconhecidas, conforme a permissão que cada app já possuía.</string>
+</resources>

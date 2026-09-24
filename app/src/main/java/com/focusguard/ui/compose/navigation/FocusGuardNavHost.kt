@@ -37,6 +37,7 @@ import com.focusguard.security.ProtectionPermission
 import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.CreateSessionActivity
 import com.focusguard.ui.PermissionsActivity
+import com.focusguard.ui.compose.screens.ExtraSecurityScreen
 import com.focusguard.ui.compose.screens.BlockCustomizationScreen
 import com.focusguard.ui.compose.screens.BlockTypeDetailScreen
 import com.focusguard.ui.compose.screens.BlockTypeUi
@@ -63,6 +64,7 @@ import kotlinx.coroutines.withContext
 private object FocusGuardRoute {
     const val Home = "HOME"
     const val Settings = "SETTINGS"
+    const val ExtraSecurity = "EXTRA_SECURITY"
     const val Profile = "PROFILE"
     const val Pomodoro = "POMODORO"
     const val Limits = "LIMITS"
@@ -383,7 +385,11 @@ fun FocusGuardNavHost(
                     onLanguageClick = { currentRoute = FocusGuardRoute.Language },
                     onTestedBrowsersClick = { currentRoute = FocusGuardRoute.TestedBrowsers },
                     onCreatorInstagramClick = { openCreatorInstagram(activity) },
+                    onExtraSecurityClick = { currentRoute = FocusGuardRoute.ExtraSecurity },
                     onBack = { currentRoute = FocusGuardRoute.Home }
+                )
+                FocusGuardRoute.ExtraSecurity -> ExtraSecurityScreen(
+                    onBack = { currentRoute = FocusGuardRoute.Settings }
                 )
                 FocusGuardRoute.Profile -> ProfileScreen(
                     profile = userProfile,

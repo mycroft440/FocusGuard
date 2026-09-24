@@ -78,6 +78,7 @@ fun SettingsScreen(
     onLanguageClick: () -> Unit,
     onTestedBrowsersClick: () -> Unit,
     onCreatorInstagramClick: () -> Unit,
+    onExtraSecurityClick: () -> Unit,
     onBack: () -> Unit
 ) {
     val context = LocalContext.current
@@ -238,6 +239,12 @@ fun SettingsScreen(
                 stringResource(R.string.promo_code_title),
                 stringResource(if (premium) R.string.promo_code_active else R.string.promo_code_description),
                 onClick = { showPromotionalCode = true }
+            )
+            SettingsItem(
+                Icons.Default.Security,
+                stringResource(R.string.extra_security_title),
+                stringResource(R.string.extra_security_unknown_sources),
+                onClick = onExtraSecurityClick
             )
             SettingsItem(
                 Icons.Default.Build,

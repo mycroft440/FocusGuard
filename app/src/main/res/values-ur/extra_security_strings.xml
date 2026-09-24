@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="extra_security_title">Add extra security blocks</string>
+    <string name="extra_security_unknown_sources">Block app installation from unknown sources</string>
+    <string name="extra_security_explanation">Android enforces this block even for sources previously allowed. Android 10+ covers all users; Android 8 and 9 cover the current user. Trusted stores and ADB are not blocked.</string>
+    <string name="extra_security_enabled">Block applied and confirmed by Android.</string>
+    <string name="extra_security_disabled">FocusGuard block is off.</string>
+    <string name="extra_security_owner_required">Automatic blocking requires Device Owner mode. Ordinary device administrator and accessibility access are not enough. Review permissions manually or open the setup guide below.</string>
+    <string name="extra_security_failed">Android could not confirm the change or current protection. Try again.</string>
+    <string name="extra_security_scope_device">Active: unknown sources blocked across the device.</string>
+    <string name="extra_security_scope_user">Active: unknown sources blocked for the current user only.</string>
+    <string name="extra_security_review_hint">Before enabling, you can open Android settings and turn off “Allow from this source” for each app. Android does not let FocusGuard reset all these individual switches automatically. The system block overrides them while active; previously allowed sources may work again after disabling it.</string>
+    <string name="extra_security_settings_unavailable">Could not open the system page. Open Settings → Security → Install unknown apps manually.</string>
+    <string name="extra_security_review">Review source permissions</string>
+    <string name="extra_security_disable">Disable block</string>
+    <string name="extra_security_enable">Enable block</string>
+    <string name="extra_security_disable_warning">Disabling allows installation from unknown sources again, according to each app’s existing permission.</string>
+</resources>

@@ -128,7 +128,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
          * User/profile isolation used while protection is armed.
          *
          * Deliberately excluded by product choice: debugging/ADB, USB controls, unknown-source
-         * controls and installation restrictions.
+         * controls and installation restrictions. Unknown-source protection is a separate
+         * opt-in policy managed by UnknownSourcesProtection, never by this session list.
          */
         internal fun activeBlockRestrictionsForSdk(sdkInt: Int): List<String> = buildList {
             add(UserManager.DISALLOW_ADD_USER)
@@ -172,7 +173,8 @@ class DeviceOwnerManager private constructor(private val context: Context) {
 
         internal fun allRestrictionsForCleanupForSdk(sdkInt: Int): List<String> =
             allShieldRestrictionsForSdk(sdkInt) +
-                legacyGlobalAppControlRestrictionsForSdk(sdkInt)
+                legacyGlobalAppControlRestrictionsForSdk(sdkInt) +
+                UnknownSourcesProtection.restrictionsForCleanup(sdkInt)
 
         internal fun requiresAdultDns(
             globalAdultFilterEnabled: Boolean,
