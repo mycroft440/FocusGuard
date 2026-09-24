@@ -403,7 +403,7 @@ fun FocusGuardNavHost(
                     onPermissionsRequired = {
                         activity.startActivity(
                             PermissionsActivity.createPendingProtectionIntent(activity)
-                    )
+                        )
                     },
                     onBack = { currentRoute = FocusGuardRoute.Home }
                 )
