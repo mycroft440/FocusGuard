@@ -20,7 +20,7 @@ class BlockTypeBannerPolicyTest {
     }
 
     @Test
-    fun passwordBlockDoesNotShowBanner() {
-        assertThat(shouldShowBlockTypeBanner(BlockTypeUi.PASSWORD)).isFalse()
+    fun passwordBlockShowsBanner() {
+        assertThat(shouldShowBlockTypeBanner(BlockTypeUi.PASSWORD)).isTrue()
     }
 }
