@@ -66,6 +66,7 @@ import com.focusguard.manager.BlockingSessionManager
 import com.focusguard.security.AuthManager
 import com.focusguard.security.BlockTargetPolicy
 import com.focusguard.security.ProtectionPermissionGate
+import com.focusguard.ui.compose.components.FocusGuardBannerAd
 import com.focusguard.ui.compose.screens.AppSelectionList
 import com.focusguard.ui.compose.screens.AppSelectionScreen
 import com.focusguard.ui.compose.screens.KeywordRulesTab
@@ -373,7 +374,7 @@ fun AppSelectionStep(
                     onBack = onBack
                 )
             }
-            ProceedButton(onClick = proceed)
+            AppSelectionFooter(onClick = proceed)
         }
         return
     }
@@ -434,7 +435,7 @@ fun AppSelectionStep(
                 }
             }
         },
-        bottomBar = { ProceedButton(onClick = proceed) }
+        bottomBar = { AppSelectionFooter(onClick = proceed) }
     ) { padding ->
         when (selectedTab) {
             BlockTargetTab.APPS -> AppSelectionList(
@@ -467,6 +468,14 @@ private enum class BlockTargetTab(val titleRes: Int) {
     APPS(R.string.block_targets_tab_apps),
     SITES(R.string.block_targets_tab_sites),
     KEYWORDS(R.string.block_targets_tab_keywords)
+}
+
+@Composable
+private fun AppSelectionFooter(onClick: () -> Unit) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        FocusGuardBannerAd()
+        ProceedButton(onClick = onClick)
+    }
 }
 
 @Composable
