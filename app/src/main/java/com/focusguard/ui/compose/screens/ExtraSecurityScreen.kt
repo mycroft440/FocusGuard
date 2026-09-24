@@ -2,7 +2,6 @@ package com.focusguard.ui.compose.screens
 
 import android.widget.Toast
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -178,28 +177,24 @@ fun ExtraSecurityScreen(onBack: () -> Unit) {
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         Spacer(Modifier.height(16.dp))
-                        Row(
+                        OutlinedButton(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                modifier = Modifier.weight(1f),
-                                onClick = {
-                                    if (!securityManager.openUnknownSourcesSettings(context)) {
-                                        showMessage(R.string.extra_security_settings_open_failed)
-                                    }
+                            onClick = {
+                                if (!securityManager.openUnknownSourcesSettings(context)) {
+                                    showMessage(R.string.extra_security_settings_open_failed)
                                 }
-                            ) {
-                                Icon(Icons.Default.Settings, contentDescription = null)
-                                Spacer(Modifier.width(6.dp))
-                                Text(stringResource(R.string.extra_security_open_settings_again))
                             }
-                            Button(
-                                modifier = Modifier.weight(1f),
-                                onClick = ::enableAfterManualConfirmation
-                            ) {
-                                Text(stringResource(R.string.extra_security_confirm_revoked))
-                            }
+                        ) {
+                            Icon(Icons.Default.Settings, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(stringResource(R.string.extra_security_open_settings_again))
+                        }
+                        Spacer(Modifier.height(8.dp))
+                        Button(
+                            modifier = Modifier.fillMaxWidth(),
+                            onClick = ::enableAfterManualConfirmation
+                        ) {
+                            Text(stringResource(R.string.extra_security_confirm_revoked))
                         }
                     }
                 }
