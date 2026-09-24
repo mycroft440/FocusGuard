@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.sp
 import com.focusguard.R
 import com.focusguard.analytics.*
 import com.focusguard.ui.compose.components.FocusGuardAppIcon
+import com.focusguard.ui.compose.components.FocusGuardBannerAd
 import com.focusguard.ui.compose.theme.*
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
@@ -222,54 +223,86 @@ fun UsageStatsDashboardScreen(onBack: () -> Unit, showTopBar: Boolean = true) {
                 }
 
                 else -> {
+                    val hasMonthlyUsage = mostUsedApps.isNotEmpty() ||
+                        mostUsedAverageApps.isNotEmpty()
+                    val hasTodayUsage = mostUsedTodayApps.isNotEmpty()
+                    val hasMostOpened = mostOpenedApps.isNotEmpty()
+                    val hasNeverUsed = neverUsedApps.isNotEmpty()
+
                     LazyColumn(
-                        modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 16.dp),
+                        modifier = Modifier.fillMaxSize().padding(padding),
                         verticalArrangement = Arrangement.spacedBy(24.dp)
                     ) {
                         item(key = "header_spacer") { Spacer(Modifier.height(8.dp)) }
 
                         item(key = "phone_usage_chart") {
-                            PhoneUsageChartSection(phoneUsage)
+                            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                PhoneUsageChartSection(phoneUsage)
+                            }
+                        }
+
+                        if (hasMonthlyUsage) {
+                            item(key = "banner_before_month") { FocusGuardBannerAd() }
                         }
 
                         item(key = "most_used_apps") {
-                            MostUsedAppsSection(
-                                apps = mostUsedApps,
-                                averageApps = mostUsedAverageApps,
-                                pm = pm,
-                                averageDays = mostUsedAverageDays,
-                                showAverage = showAverageForMostUsed,
-                                onToggleAverage = { showAverageForMostUsed = it },
-                                expanded = expandMostUsed,
-                                onToggleExpand = { expandMostUsed = it }
-                            )
+                            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                MostUsedAppsSection(
+                                    apps = mostUsedApps,
+                                    averageApps = mostUsedAverageApps,
+                                    pm = pm,
+                                    averageDays = mostUsedAverageDays,
+                                    showAverage = showAverageForMostUsed,
+                                    onToggleAverage = { showAverageForMostUsed = it },
+                                    expanded = expandMostUsed,
+                                    onToggleExpand = { expandMostUsed = it }
+                                )
+                            }
+                        }
+
+                        if (hasTodayUsage) {
+                            item(key = "banner_before_today") { FocusGuardBannerAd() }
                         }
 
                         item(key = "most_used_today_apps") {
-                            MostUsedTodayAppsSection(
-                                apps = mostUsedTodayApps,
-                                pm = pm,
-                                expanded = expandMostUsedToday,
-                                onToggleExpand = { expandMostUsedToday = it }
-                            )
+                            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                MostUsedTodayAppsSection(
+                                    apps = mostUsedTodayApps,
+                                    pm = pm,
+                                    expanded = expandMostUsedToday,
+                                    onToggleExpand = { expandMostUsedToday = it }
+                                )
+                            }
                         }
 
                         item(key = "most_opened_apps") {
-                            MostOpenedAppsSection(
-                                apps = mostOpenedApps,
-                                pm = pm,
-                                expanded = expandMostOpened,
-                                onToggleExpand = { expandMostOpened = it }
-                            )
+                            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                MostOpenedAppsSection(
+                                    apps = mostOpenedApps,
+                                    pm = pm,
+                                    expanded = expandMostOpened,
+                                    onToggleExpand = { expandMostOpened = it }
+                                )
+                            }
+                        }
+
+                        if (hasMostOpened && hasNeverUsed) {
+                            item(key = "banner_between_opened_never") { FocusGuardBannerAd() }
                         }
 
                         item(key = "never_used_apps") {
-                            NeverUsedAppsSection(
-                                apps = neverUsedApps,
-                                pm = pm,
-                                expanded = expandNeverUsed,
-                                onToggleExpand = { expandNeverUsed = it }
-                            )
+                            Box(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                                NeverUsedAppsSection(
+                                    apps = neverUsedApps,
+                                    pm = pm,
+                                    expanded = expandNeverUsed,
+                                    onToggleExpand = { expandNeverUsed = it }
+                                )
+                            }
+                        }
+
+                        if (hasNeverUsed) {
+                            item(key = "banner_after_never_used") { FocusGuardBannerAd() }
                         }
 
                         item(key = "footer_spacer") { Spacer(Modifier.height(32.dp)) }
