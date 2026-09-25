@@ -1,200 +1,143 @@
-# Bloqueio de sites sem VPN
+# Bloqueio de sites
 
-O FocusGuard não cria uma VPN local e não intercepta o tráfego de rede. O
-bloqueio combina as duas camadas nativas disponíveis no Android:
+O bloqueio de sites do FocusGuard é o motor do antigo app **Bloquear Sites**, incorporado
+sem mudanças de comportamento no pacote `com.focusguard.sitesblocker`. Ele é o único
+bloqueio de sites do app: sessões, bloqueios por senha e limites de uso não recebem mais
+sites nem palavras-chave, e as políticas antigas de sites (`URLBlocklist` do Chrome/Edge
+por Device Owner, DNS familiar da categoria Pornografia e o filtro adulto global) são
+desfeitas na primeira reconciliação depois da atualização.
 
-1. **Política gerenciada do navegador (Device Owner)**
-   - Aplica `URLBlocklist` ao Chrome e ao Microsoft Edge instalados.
-   - Respeita o limite oficial de 1.000 filtros por navegador e mantém as
-     regras originais antes de acrescentar aliases conhecidos.
-   - No Edge para Android, a política está disponível a partir da versão 30 do
-     navegador; não se trata do nível 30 da API do Android.
-   - Desativa a navegação privada enquanto houver uma lista ativa.
-   - O próprio navegador rejeita a navegação antes de renderizar a página.
-   - A política é reaplicada quando um navegador é instalado ou atualizado.
+## Onde fica
 
-2. **Serviço de acessibilidade**
-   - É a camada comum para qualquer navegador instalado que declare suporte a
-     links HTTPS. Um navegador desconhecido também pode ser reconhecido quando
-     expõe um id forte de omnibox sob o próprio pacote; um campo URI sem essa
-     prova só é aceito se o pacote já foi confirmado como handler HTTPS.
-   - Observa alterações da janela, do conteúdo e do texto da barra de endereço.
-   - Localiza a barra por ids fortes usados por Chromium, Gecko/Firefox,
-     Samsung Internet, Via e navegadores compactos. Para handlers HTTPS
-     realmente confirmados pelo `PackageManager`, também aceita como capacidade
-     de ação um único campo nativo do próprio pacote/janela que seja editável,
-     declare `textUri` e anuncie explicitamente a ação solicitada. Ids fracos e
-     descrições localizadas continuam servindo apenas para observação.
-   - Sob uma cortina opaca e consumidora de toque, a neutralização substitui a
-     URL na própria aba bloqueada e a envia somente após certificar a escrita
-     e um método de envio disponível no mesmo campo/janela. A cortina
-     só é liberada depois de um evento posterior confirmar uma raiz segura do
-     Google.
-   - Se a primeira tentativa coincidir com uma animação/foco transitório do
-     editor, o FocusGuard restaura a superfície bloqueada exata e tenta uma vez
-     de novo com uma política de capacidade nova. A repetição nunca reutiliza
-     handles de nós de acessibilidade antigos.
-   - O fluxo de site não fecha guia, não fecha navegador, não abre um segundo
-     documento por `ACTION_VIEW` e não evacua para HOME. Em Android 8 a 10
-     (API 26–29), ignora somente o método `ACTION_IME_ENTER` indisponível e tenta
-     a ação de envio anunciada pelo editor e o botão nativo certificado.
-     Se nenhum método aplicável comprovar o destino, mantém a proteção.
+- **Configurações → Bloquear sites** (`SitesBlockerScreen`): estado do serviço de
+  acessibilidade, uso da bateria em segundo plano (e atalhos da Xiaomi), **Bloquear
+  pornografia**, lista de domínios e navegadores instalados.
+- `SiteBlockEngine` roda dentro do `BlockingAccessibilityService`, que repassa a ele os
+  eventos, o ciclo de vida e o teclado do serviço (`onCreateInputMethod`). O serviço
+  declara `canPerformGestures` e `flagInputMethodEditor`, e recebe todos os tipos de
+  evento, como o serviço original.
+- Os dados ficam nas mesmas preferências do app original (`blocked_sites`,
+  `identified_browsers`, `rejected_browsers`, `verified_browsers`, `unreadable_browsers`).
 
-## Regras de domínio
+## Como funciona
 
-- `example.com` também bloqueia `www.example.com` e qualquer subdomínio, como
-  `news.example.com`.
-- Domínios parecidos, como `notexample.com` ou `example.com.evil.test`, não
-  correspondem à regra.
-- Esquema, credenciais, porta, caminho, query e fragmento são removidos antes
-  da comparação de domínio. A categoria Pornografia tem uma verificação
-  adicional e deliberada dos parâmetros de busca do Google.
-- Domínios internacionais são convertidos para IDN ASCII (Punycode).
-- Endereços IPv4 e IPv6 literais são aceitos.
-- Limites de uso configurados para um domínio contabilizam seus subdomínios.
+1. O usuário adiciona um domínio, por exemplo `instagram.com`.
+2. O app normaliza e salva apenas o domínio localmente em `SharedPreferences`.
+3. Depois que o usuário consente e ativa manualmente o serviço nas Configurações de Acessibilidade do Android, o serviço observa mudanças da interface.
+4. Para navegadores conhecidos, o app usa o método da família do navegador (veja abaixo) para achar a barra de endereço.
+5. Um navegador fora da lista é testado com o método de cada família; se nenhuma se encaixa, ele é bloqueado enquanto houver sites na lista ou o bloqueio de pornografia estiver ligado. Apps que não são navegadores passam por um fallback genérico que procura nós cujo ID se parece com barra de URL/endereço.
+6. A URL visível é normalizada para host e comparada com a lista. `example.com` também bloqueia `www.example.com` e `sub.example.com`, mas não bloqueia `evil-example.com`.
+7. Ao detectar um domínio bloqueado, o serviço cobre a tela por alguns instantes e leva o navegador para `google.com` na própria aba: toca na barra de endereço, digita o endereço, confere o texto e confirma com o Enter de acessibilidade (Android 11+); na tela de pesquisa do Mi Browser, com a ação **Ir** do teclado de acessibilidade do serviço (Android 13+). Se a barra não puder ser usada (Android 10 ou anterior, Custom Tabs, navegador não reconhecido ou barra não encontrada), o Google é aberto em uma aba nova (no Firefox, depois da ação **Voltar**).
 
-## Categoria Pornografia
+A lista e as URLs lidas da interface permanecem no aparelho: nada disso é enviado para fora dele.
 
-- O seletor mostra uma única opção, **Pornografia**, persistida internamente
-  como `category:pornography`.
-- Durante a fiscalização, essa categoria ativa em conjunto as palavras de
-  domínio `porn`, `xxx`, `sex` e `xvideos` e a lista local de domínios adultos.
-- As mesmas palavras são verificadas na consulta `q=` do Google e Google
-  Imagens, inclusive em domínios regionais, parâmetros fora de ordem e texto
-  percentualmente codificado. Variações iniciadas pelo termo, como
-  `pornografia` e `sexual`, também correspondem; palavras como `Essex` não.
-- No modo estrito da categoria, o **Google Imagens inteiro fica bloqueado**,
-  mesmo para uma consulta segura. A cobertura inclui `images.google.*`, Lens,
-  `/imghp`, `/imgres`, busca reversa e os modos `udm=2` e `tbm=isch`. A busca
-  web comum do Google continua disponível quando não contém um termo proibido.
-- Em qualquer navegador que exponha sua interface à acessibilidade, a consulta
-  é interrompida enquanto ainda está sendo digitada na barra de endereço. Em
-  uma página do Google confirmada pela URL, o campo de busca editável também é
-  fiscalizado sem varrer texto comum da página.
-- A categoria continua aparecendo como um único item em sessões, limites e
-  telas de detalhes; as regras internas não são gravadas separadamente.
-- Em Device Owner, a lista local também é enviada à `URLBlocklist` do Chrome e
-  Edge, junto de filtros preventivos para todas as superfícies do Google
-  Imagens e para consultas que começam com cada palavra da categoria. Enquanto
-  a categoria estiver efetivamente bloqueando, o FocusGuard usa o CleanBrowsing
-  Family Filter, bloqueia alterações de DNS/VPN e desativa o DNS-over-HTTPS
-  próprio desses navegadores. Ao fim do bloqueio, a configuração de Private DNS
-  que existia antes é restaurada.
-- O Family Filter acrescenta classificação atualizada de conteúdo adulto,
-  bloqueio de sites mistos e de proxies/VPN e SafeSearch em mecanismos de busca
-  e YouTube. A lista local permanece como fallback quando o DNS gerenciado não
-  está disponível.
+## Funcionamento em segundo plano
 
-## Limitações reais do Android
+Com o app fora da tela, a otimização de bateria do Android e as economias de energia dos fabricantes atrasam o serviço de acessibilidade, e o bloqueio chegava segundos depois de o site ou o navegador abrir. A tela **Bloquear sites** mostra se o app está liberado e oferece:
 
-Sem VPN, proxy, extensão do navegador ou filtro DNS externo, um aplicativo não
-tem uma API pública para inspecionar todo o tráfego HTTPS de todos os apps. A
-camada de acessibilidade depende de o navegador expor a barra de endereço. Um
-WebView embutido que esconda completamente a URL não pode ser identificado com
-garantia. Por isso, “todos os navegadores” significa todos os navegadores HTTPS
-detectados que publiquem a URL ou seus campos à acessibilidade; não há garantia
-de zero requisição de rede em um navegador que esconda esses dados. Em aparelhos
-Device Owner, Chrome e Edge recebem a camada preventiva adicional por
-`URLBlocklist`.
+- **Liberar uso da bateria:** ao abrir a tela com a bateria otimizada, o diálogo do Android (`REQUEST_IGNORE_BATTERY_OPTIMIZATIONS`) aparece sozinho por cima do app, e basta tocar em **Permitir**. Se o pedido for recusado, ele volta na próxima abertura, e o aviso laranja e o botão **Liberar uso da bateria** o repetem na hora. Sem o diálogo, abre a lista de otimização de bateria ou os detalhes do app. Com a bateria liberada, sobra só o aviso verde.
+- **Xiaomi, Redmi e POCO (MIUI/HyperOS):** atalhos para o **Início automático** e para a **Economia de bateria** do app, onde deve ser escolhido "Sem restrições". Se a tela do fabricante não existir na versão do sistema, abre os detalhes do app.
 
-A neutralização rápida também é adaptativa: interfaces proprietárias que não
-publiquem um editor certificável simplesmente não recebem automação destrutiva. O
-Android não oferece uma API pública universal para fechar a guia atual, escolher a
-aba exata ou remover de forma portátil a tarefa do navegador da tela de Recentes.
-Por isso o FocusGuard prefere preservar navegador e abas, falha fechado diante de
-campos ambíguos e só confirma o redirecionamento quando a própria superfície
-acessível prova que a raiz segura foi carregada.
+O Google Play só aceita `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` em casos específicos; revise a política antes de publicar o app lá.
 
-Cartões exibidos no seletor de abas e na tela de Recentes continuam sob controle do
-navegador/sistema. O FocusGuard não tenta apagá-los por menus proprietários e não
-usa fechamento de aba como substituto de redirecionamento; essa escolha evita
-destruir uma aba sobrevivente quando a árvore de acessibilidade é incompleta.
+## Famílias de navegadores
 
-O DNS familiar impede a resolução dos domínios adultos classificados em todos
-os navegadores, mas DNS enxerga apenas o host. Ele não consegue ler a consulta
-`q=` dentro de HTTPS sem interceptar e descriptografar o tráfego. A consulta do
-Google é, portanto, coberta pela interface acessível e, onde disponível, pela
-política nativa do navegador.
+Navegadores que expõem a barra de endereço do mesmo jeito ficam na mesma família (`BrowserProfiles`), e cada família tem um método de identificação (`BrowserProfile.Method`). Uma diferença na forma de identificação pede uma família própria.
 
-O filtro DNS também pode ser habilitado como blindagem global 24/7 em um
-aparelho Device Owner. Nesse modo, o FocusGuard reaplica o host familiar após
-reinícios e impede alterações manuais do Private DNS fora da janela de
-manutenção. Chrome e Edge gerenciados também são obrigados a usar o resolvedor
-do sistema. O filtro global só pode ser desativado durante manutenção
-autenticada e não transforma o FocusGuard em VPN.
+| Família | Pacotes | Método | Como a barra é achada |
+|---|---|---|---|
+| Chromium | Chrome (estável/Beta/Dev/Canary), Brave, Edge, Vivaldi, Kiwi, Chromium, Cromite, Bromite, Mulch | `VIEW_ID` | `url_bar` (EditText) |
+| Firefox | Firefox, Firefox Beta, Nightly, Tor Browser, Fennec F-Droid, Iceraven, Mull | `FIREFOX_TOOLBAR` | barra em Jetpack Compose (`ADDRESSBAR_URL_BOX`, URL lida da descrição de acessibilidade) ou barras antigas em View (`mozac_browser_toolbar_url_view`, `url_bar_title`); só a URL exibida conta, confirmada por leituras estáveis |
+| Samsung Internet | Samsung Internet e Beta | `VIEW_ID_WITH_REREAD` | `location_bar_edit_text` (UrlBar) e `compact_url_text` (barra compacta ao rolar); o domínio vem precedido da marca invisível U+200E |
+| Mi Browser/AOSP | Mi Browser (`com.mi.globalbrowser`) e navegadores da base AOSP (`com.android.browser`, usado pela MIUI) | `VIEW_ID_WITH_REREAD` | no novo estilo de página (padrão nos celulares desde o Mi Browser 14), o domínio na barra de baixo (`web_bottom_url` e a descrição de `web_bottom_url_click`); na barra antiga (tablets), `url` (UrlInputView), com a URL sem o esquema. Tocar na barra de baixo abre a tela de pesquisa (`et_input`), usada só para digitar o destino |
+| Opera | Opera, Opera Beta, Opera Mini | `VIEW_ID` | `url_field` |
+| DuckDuckGo | DuckDuckGo | `VIEW_ID` | `omnibarTextInput` |
+| Yandex | Yandex e Yandex Beta | `VIEW_ID` | domínio no título central (`bro_omnibar_address_title_text`/`_view`, `bro_omnibox_collapsed_title` recolhida); edição em `suggest_omnibox_query_edit` |
+| Barra na tela | Opera GX (barra em Compose, sem IDs) | `TOOLBAR_STRUCTURE` | texto com URL ou domínio junto à borda; em seguida, ID com cara de barra de endereço, sempre fora da página |
 
-## Verificação manual recomendada
+- `VIEW_ID_WITH_REREAD` e `TOOLBAR_STRUCTURE` ouvem todos os eventos e releem a barra após um curto atraso quando a primeira leitura falha.
+- A troca só começa depois que a cortina aparece na tela (primeiro quadro desenhado, ou até 400 ms). A cortina fica acima do teclado. Ela deixa toques passarem só até a barra do navegador ser tocada pela troca (no Firefox, um toque simulado); depois disso, o site bloqueado não recebe mais toques do usuário. Eventos do navegador em troca de site são descartados antes de qualquer consulta à árvore.
+- No Firefox, o evento não consulta o navegador: ele só inicia a confirmação da URL exibida na barra. A primeira leitura sai 60 ms depois do evento, e a URL conta com o mesmo domínio em duas leituras seguidas, 120 ms depois (o bloqueio começa em cerca de 180 ms). As leituras seguem por uns 3,5 segundos, porque a barra pode mudar sem outro evento.
+- Com algo a bloquear, o navegador em uso é lido de novo a cada 2 segundos, mesmo sem eventos, até sair da tela; no Firefox, o mesmo domínio precisa aparecer numa segunda leitura, 120 ms depois. Um site bloqueado que escapou da troca (por exemplo, com Voltar) não fica liberado à espera de um evento.
+- O serviço do FocusGuard recebe os eventos sem atraso (`notificationTimeout` 0, exigido pela autoproteção); os limites de leitura acima (Firefox, Opera GX, outros apps) evitam consultas repetidas numa rajada.
+- Durante a troca, a chegada ao Google é conferida a cada 250 ms e pelos eventos, no máximo uma vez a cada 100 ms.
+- A lista de sites fica guardada já normalizada, e o domínio aberto é comparado consultando o host e cada domínio acima dele, sem percorrer a lista.
+- No Opera GX, a barra não tem IDs e é lida pela estrutura da tela, o que percorre a árvore. O evento não consulta o navegador (que demora a responder enquanto a página carrega): os eventos de uma rajada só agendam uma leitura, 120 ms depois, feita numa só passada pela árvore. Sem um campo do Opera GX conectado ao teclado do serviço (Android 13+), não há endereço em edição, e a leitura para no primeiro texto da barra com URL. A troca pela barra abre uma tela de pesquisa. A cortina fica na tela até a troca terminar (até 12 segundos), e não só os 3 segundos dos outros navegadores. No Android 13+, o destino é digitado pela conexão de entrada do serviço, como um teclado (seleciona tudo e escreve por cima): o `ACTION_SET_TEXT` às vezes não ficava no campo em Compose. A espera pela tela de pesquisa e a conferência do texto usam o teclado do serviço (`ServiceInputMethod`), sem percorrer a árvore. Se a tela de pesquisa for fechada no meio da troca (Voltar), a troca pela barra é tentada até 3 vezes antes da aba nova, e Voltar só é usado se a tela ainda estiver aberta. Se a troca desistir, o site é conferido de novo e bloqueado outra vez se continuar na tela.
+- A tela de pesquisa do Mi Browser só navega com a ação **Ir** do teclado; o Enter de acessibilidade chega com outra ação e é ignorado. Por isso o serviço declara `flagInputMethodEditor` e envia a ação pela própria conexão de entrada (Android 13+), sem ler o que é digitado. No Android 12 ou anterior, o Google abre em uma aba nova no Mi Browser.
+- Os pacotes das famílias acima formam a lista de navegadores suportados.
+- **Navegadores fora da lista** são testados com o método de cada família (`IdentifiedBrowsers`, na ordem Chromium, Firefox, Samsung Internet, Mi Browser/AOSP, Opera, DuckDuckGo e Yandex). A primeira família cujo método lê a URL da barra passa a ser a família do navegador, e o resultado fica salvo. Um derivado do Chrome, por exemplo, se encaixa pelo `url_bar`. A Barra na tela não aceita navegadores desconhecidos: ela depende de a barra mostrar a URL, e navegadores que mostram o título da página deixariam passar sites abertos por links.
 
-Com uma sessão ativa bloqueando `example.com`, validar:
+### Navegadores bloqueados
 
-- `https://example.com` e `https://a.example.com`;
-- uma URL com letras maiúsculas, porta e caminho;
-- navegação por link, digitação direta, recarregamento e troca de aba;
-- modo privado;
-- Chrome/Edge com e sem Device Owner;
-- Google Imagens com `q=porn`, `q=xxx`, `q=sex` e `q=xvideos`, digitado pela
-  barra e pelo campo da página;
-- Google Imagens com uma consulta segura, que também deve ser bloqueada;
-- Chrome, Firefox, Brave, Samsung Internet e ao menos outro navegador instalado;
-- Via e qualquer navegador adicional configurado como handler HTTPS;
-- Android API 26, 29 e 30 ou superior, confirmando que APIs 26–29 não
-  fecham o navegador nem usam HOME para simular uma submissão inexistente;
-- várias abas abertas e duas abas com a mesma URL, confirmando que nenhuma aba
-  nova é criada e nenhuma aba existente é fechada pelo redirecionamento;
-- um navegador HTTPS adicional cujo editor use id nativo desconhecido, mas
-  exponha `textUri`, `ACTION_SET_TEXT` e `ACTION_IME_ENTER`, além de um campo
-  de página semelhante para validar que o fallback semântico não o toca;
-- uma busca web comum como `Essex Inglaterra`, que deve permanecer liberada;
-- fim da sessão e remoção imediata da política;
-- reinício do aparelho durante uma sessão ativa.
+Via (`mark.via.gp`, `mark.via`), UC Browser (`com.UCMobile.intl`, `com.UCMobile`) e UC Mini (`com.uc.browser.en`) ficam em `KNOWN_UNSUPPORTED`: nos testes, a barra deles mostrava o título da página, e sites abertos por links ou pela pesquisa ficavam acessíveis. Eles nunca são identificados e são fechados assim que aparecem, enquanto houver sites na lista.
 
-## Referências oficiais
+## Navegadores sem suporte
 
-- [Serviços de acessibilidade no Android](https://developer.android.com/guide/topics/ui/accessibility/service)
-- [DevicePolicyManager](https://developer.android.com/reference/android/app/admin/DevicePolicyManager)
-- [IDNA/UTS #46 no Android](https://developer.android.com/reference/android/icu/text/IDNA)
-- [Padrão WHATWG de parsing de hosts e endereços IP](https://url.spec.whatwg.org/#host-parsing)
-- [Política URLBlocklist do Chrome](https://chromeenterprise.google/policies/url-blocklist/)
-- [Política de modo anônimo do Chrome](https://chromeenterprise.google/policies/incognito-mode-availability/)
-- [Formato dos filtros de URL do Chrome](https://support.google.com/chrome/a/answer/9942583?hl=pt-BR)
-- [Google Imagens](https://images.google.com/)
-- [Domínios regionais oficiais do Google](https://www.google.com/supported_domains)
-- [Política URLBlocklist do Microsoft Edge](https://learn.microsoft.com/pt-br/deployedge/microsoft-edge-policies/urlblocklist)
-- [Política InPrivate do Microsoft Edge](https://learn.microsoft.com/pt-br/deployedge/microsoft-edge-policies/inprivatemodeavailability)
-- [Filtros DNS gratuitos do CleanBrowsing](https://cleanbrowsing.org/filters)
+O app identifica como navegador todo app que abre um link `https` de qualquer site (`BrowserDetector`): o teste usa um domínio inexistente, então apps que só abrem links do próprio site (YouTube, redes sociais) não entram. O bloco `<queries>` do manifesto dá essa visibilidade no Android 11+, sem a permissão de ver todos os apps.
 
+Enquanto houver sites na lista ou o bloqueio de pornografia estiver ligado, só os navegadores suportados ficam liberados:
 
-## Navegadores sem URL observável (fail-closed)
+- **Navegador fora da lista:** é testado com o método de cada família, sempre com uma página web na tela. A tela inicial própria de um navegador pode mostrar um endereço que as páginas não mostram. Uma leitura não basta: a mesma família precisa ler a URL da barra, sem falhar, por 2 segundos (`IdentificationConfirmation`). Assim, navegadores que mostram a URL só enquanto a página carrega e depois trocam pelo título ficam de fora.
+- **Nenhuma família se encaixa:** o navegador volta para a tela inicial (ação **Início**), com um aviso, e fica registrado como rejeitado. O primeiro bloqueio espera 2 segundos e um novo teste, para não bloquear um navegador que mostra a URL na barra depois do conteúdo. Um navegador já rejeitado é fechado assim que mostra uma página, sem esse prazo, a menos que uma família tenha acabado de ler a URL. Ele continua sendo testado a cada abertura, para o caso de uma atualização passar a funcionar.
+- **Rede de segurança (`VerifiedBrowsers`):** mesmo um navegador suportado ou identificado precisa ter a barra achada pelo método da família ao menos uma vez em cada versão, com uma página na tela. A versão é a data da última atualização do navegador e a do próprio app. Se em 5 segundos a barra não aparece, o navegador é fechado; depois de uma falha na mesma versão, o prazo cai para 1,5 segundo. Isso cobre atualizações que mudam a barra, como a do Mi Browser 14. Basta a barra estar na tela, mesmo sem uma URL, porque o Mi Browser mostra os termos pesquisados nas páginas de resultado. Depois de achada, a barra só é conferida de novo na próxima atualização, porque ela some de verdade ao rolar a página (Chrome) e em tela cheia.
 
-Quando uma proteção de site ou um limite rígido exige conhecer a URL atual, o FocusGuard primeiro classifica a janela atual. Somente conteúdo web confirmado sem uma barra observável inicia a tolerância de 1,5 segundo. Ao terminar esse prazo, executa recuperação com releituras, clique/foco em barra certificada e uma tentativa de rolar o viewport web para trás para revelar a barra recolhida. Há no máximo duas passagens, com nova leitura após cada ação. Só após esgotar as fases aplicáveis uma nova leitura pode confirmar conteúdo web sem barra no mesmo pacote/janela e exibir a proteção. Uma URL identificada que corresponda a uma regra continua sendo bloqueada imediatamente, sem aguardar esse prazo.
+Exigir conteúdo web na tela evita fechar apps que abrem links sem navegar, como gerenciadores de download. Apps instalados a partir de sites e abertos pelo Chrome sem barra de endereço (Trusted Web Activities) também são fechados se forem a primeira página depois de uma atualização do Chrome; uma página normal aberta no Chrome confere a barra de novo.
 
-Menus, configurações, seletor de abas, favoritos, histórico, downloads e nova aba são interfaces do navegador, não evidência de site bloqueado. A classificação usa estrutura nativa fora dos contêineres web e não reutiliza uma exceção global de outro menu, aba ou navegador. Janela de teclado, diálogo do sistema, árvore ausente ou incompleta são estados inconclusivos: isoladamente não autorizam bloquear o navegador inteiro. Eventos posteriores retomam a identificação.
+A tela **Bloquear sites** lista os navegadores instalados: ✅ suportado (com a família), ⛔ não suportado ou com a barra não lida nesta versão (bloqueado), ❓ em teste (ainda não aberto com uma página).
 
-A busca semântica não percorre documentos WebView/ContentView/GeckoView. Mesmo nas buscas diretas por id, um nó dentro de conteúdo web não pode ser usado como barra de endereço, editor ou botão de envio. Isso também evita consumir todo o limite de busca no conteúdo de uma página antes de encontrar a barra nativa.
+Apps que não são navegadores continuam passando pelo fallback genérico baseado no ID do nó (`url_bar`, `address_bar`, `omnibar`…), que cobre alguns navegadores embutidos em outros apps. Depois de uma leitura, os eventos do mesmo app nos 300 ms seguintes não consultam o app e viram uma só leitura no fim desse intervalo. A conferência da barra por versão (`VerifiedBrowsers`) vale só para navegadores com família, e não roda nesses apps.
 
-Chrome, Samsung Internet, Via (pacotes `mark.via` e `mark.via.gp`) e variantes Yandex têm ativação por clique como primeira tentativa quando não existe preferência aprendida. Os ids de omnibox Yandex e rótulos de endereço em campos nativos URI também participam da seleção. O app continua exigindo ações anunciadas pelo editor e confirmação posterior do destino; reconhecer o pacote não comprova suporte universal a redirecionamento. A disponibilidade real depende da versão do navegador e da árvore que ele publica à acessibilidade.
+Os IDs vêm dos APKs de cada navegador e podem mudar em atualizações.
 
-O mesmo princípio vale para a neutralização de uma página já identificada como bloqueada: se a reescrita na mesma aba ou a confirmação do destino seguro não puder ser certificada, o FocusGuard mantém o fluxo fail-closed e mostra a superfície de bloqueio; ele não devolve a página bloqueada ao usuário.
+## Bloquear pornografia
 
+A opção **Bloquear pornografia**, na tela **Bloquear sites**, bloqueia conteúdo adulto sem depender da lista de sites (`AdultContentFilter`). Tudo roda no aparelho, e as listas vêm dentro do app. Uma página bloqueada é trocada pelo Google, como os sites da lista.
 
-## Compatibilidade com DuckDuckGo Android
+O serviço de acessibilidade só vê texto: ele não analisa o conteúdo das imagens nem dos vídeos. Por isso o filtro usa quatro sinais:
 
-O DuckDuckGo Android usa o pacote `com.duckduckgo.mobile.android` e, conforme a geração da interface, pode expor a barra como `omnibarTextInput` ou como o campo nativo `inputField`. O FocusGuard trata `omnibarTextInput` como uma barra que pode exigir `ACTION_CLICK` antes de aceitar `ACTION_SET_TEXT`. O id genérico `inputField` só é autorizado para automação no pacote oficial do DuckDuckGo e apenas quando o próprio nó se identifica semanticamente como campo de endereço (por exemplo, `Search or enter address` / `Pesquisar ou inserir endereço`); campos de Duck.ai com o mesmo id continuam rejeitados.
+1. **Domínio:** lista de sites de pornografia, webcams e plataformas adultas (com os subdomínios), domínios com trechos como `porn`, `xxx`, `xvideo` e `hentai`, palavras inteiras como `sex` e `sexo` (bloqueia `free-sex.net`, mas não `sussex.ac.uk`) e as terminações `.xxx`, `.porn`, `.sex` e `.adult`.
+2. **Endereço:** termos explícitos no caminho ou na busca, como `google.com/search?q=videos+porno` (Google Imagens e Vídeos inclusive) ou `youtube.com/results?search_query=...`. Só funciona nos navegadores que mostram o endereço completo na barra.
+3. **Pesquisa:** o texto digitado no campo de busca da página, e o que a barra mostra quando não é uma URL (o Mi Browser mostra os termos pesquisados).
+4. **Texto da página (`PageText`):** um pouco depois de a página abrir, o texto dela é conferido. A página é bloqueada se tiver a palavra "porn" (em qualquer palavra: porno, pornô, pornografia) ou a palavra "xxx", se citar dois ou mais sites adultos, como a origem que o Google Imagens mostra embaixo de cada imagem, ou se tiver três ou mais termos explícitos diferentes. O "xxx" de máscaras de formulário, como o CPF `xxx.xxx.xxx-xx`, não conta. Nos buscadores, a conferência se repete a cada 1,5 segundo, porque a pesquisa muda sem mudar o domínio; nas demais páginas, a cada 5 segundos.
 
-Se a neutralização na mesma aba ainda falhar, o handoff fail-closed reutiliza a geração da cortina já visível. Isso evita destacar/desanexar e recriar a cortina durante a falha, reduzindo o efeito de tela de bloqueio piscando enquanto a superfície genérica segura assume o primeiro plano.
+Palavras comuns fora da pornografia (sexo, nude, pelada, naked) só contam dentro de expressões ("sexo explícito", "mulheres peladas"), para não bloquear "sexo biológico", "batom nude" ou "pelada de futebol".
 
+Com a opção ligada, os navegadores sem suporte também são fechados, mesmo com a lista de sites vazia.
 
-## Registro desta correção
+Limites: uma busca inocente que retorne imagens explícitas sem citar sites adultos nem termos explícitos não é detectada. Sites adultos com nomes comuns, fora da lista, só são pegos pelo texto da página. Para reforçar, ative o SafeSearch na conta Google.
 
-Revisão estática do código, sem execução de testes, build ou validação em aparelho, conforme solicitado. A classificação distingue evidência nativa, conteúdo web e estado inconclusivo; ela não promete inspecionar superfícies que o navegador não expõe ao Android.
+## Segurança do matching
 
+A comparação é feita no **host**, e não com `contains()`. Isso evita o erro clássico de considerar `evil-example.com` como se fosse `example.com`. O código também:
 
-## Memória do método de URL e recuperação
+- remove `www.` na normalização;
+- ignora páginas internas como `chrome://` e `about:`;
+- trata portas e caminhos;
+- converte domínios internacionalizados para ASCII/Punycode;
+- bloqueia subdomínios por fronteira de label (`host.endsWith("." + dominio)`).
 
-O método de leitura, o id nativo que forneceu uma URL válida e a estratégia de recuperação que funcionou ficam persistidos por pacote do navegador. O próximo acesso prioriza essa identificação; se ela falhar, a busca completa continua na mesma leitura e aprende a alternativa bem-sucedida. Interfaces sem URL, hints, menus e ações aceitas sem resultado não comprovam identificação de URL. O endereço visitado não é salvo no perfil.
+## Limitações importantes
 
-A preferência de leitura é separada dos ids e métodos usados para editar a barra, evitando que um editor temporário substitua a identificação do endereço exibido. Se uma atualização mudar a interface, o perfil pode reaprender sem impedir o fallback. A recuperação tenta o método anteriormente bem-sucedido antes das outras ações, sempre na janela atual; não fecha abas, não usa Back e não digita URLs durante a identificação.
+Accessibility não fornece uma API oficial universal para obter a URL atual de qualquer navegador. A leitura depende do que cada navegador expõe na árvore de acessibilidade. Por isso:
 
-No redirecionamento, aceitar um clique/foco sem produzir editor não encerra a busca: a ativação alternativa continua disponível. A substituição por texto e a colagem são tentadas em ordem aprendida, e a colagem exige seleção do texto antes de substituir. Uma nova leitura confirma o endereço seguro antes de permitir o envio. A ação IME (quando disponível), a ação anunciada pelo editor e o botão nativo são tentados com raízes novas; uma ação de envio aceita que não navegar permite tentar a seguinte apenas se o editor ainda contiver o endereço seguro.
+- um navegador pode mudar o ID ou deixar de expor a URL;
+- WebViews sem barra de endereço acessível não são bloqueados por este método;
+- páginas internas do navegador são ignoradas;
+- o modo anônimo funciona apenas quando a barra de endereço continua exposta à acessibilidade;
+- o serviço reage a eventos da UI; há uma pequena janela entre a navegação e a ação de bloqueio.
 
-A confirmação requer evento posterior ao envio, endereço seguro numa superfície web atual e ausência de editor de endereço focado. Só então o perfil recebe confirmação de redirecionamento e a cortina pode ser liberada. Ambiguidade de alvo, mudança de janela ou ausência de ações certificáveis interrompem a automação; não são motivo para clicar em controles arbitrários.
+Para bloqueio de rede independente da interface do navegador, a arquitetura adequada seria VPN local/DNS, que é outra abordagem e não foi adicionada aqui.
+
+## Privacidade e Google Play
+
+O serviço define `isAccessibilityTool="false"`, porque bloqueio de sites por si só não deve ser declarado como ferramenta para pessoas com deficiência. A interface mostra uma divulgação antes de abrir as Configurações de Acessibilidade e exige a ação afirmativa **Concordo**.
+
+Se o app for publicado no Google Play, revise a política vigente de AccessibilityService, preencha a declaração exigida e forneça as informações de privacidade/Data Safety aplicáveis.
+
+## Fontes técnicas usadas
+
+- Android AccessibilityService: https://developer.android.com/reference/android/accessibilityservice/AccessibilityService
+- Configuração e flags de AccessibilityService: https://developer.android.com/reference/android/R.styleable
+- Política do Google Play para AccessibilityService: https://support.google.com/googleplay/android-developer/answer/10964491
+- Chromium `url_bar`: https://chromium.googlesource.com/chromium/src/
+- Firefox Android / Android Components: https://searchfox.org/mozilla-mobile/source/firefox-android/

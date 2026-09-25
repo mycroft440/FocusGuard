@@ -68,12 +68,10 @@ import com.focusguard.security.BlockTargetPolicy
 import com.focusguard.security.ProtectionPermissionGate
 import com.focusguard.ui.compose.screens.AppSelectionList
 import com.focusguard.ui.compose.screens.AppSelectionScreen
-import com.focusguard.ui.compose.screens.KeywordRulesTab
 import com.focusguard.ui.compose.screens.SelectableAppUi
 import com.focusguard.ui.compose.screens.TimeAwareFinalConfigStep
 import com.focusguard.ui.compose.screens.TimeBlockConfigMode
 import com.focusguard.ui.compose.screens.UnifiedProtectionSetupWizard
-import com.focusguard.ui.compose.screens.WebsiteRulesTab
 import com.focusguard.ui.compose.theme.AccentCyan
 import com.focusguard.ui.compose.theme.DangerRed
 import com.focusguard.ui.compose.theme.DarkBg
@@ -363,111 +361,19 @@ fun AppSelectionStep(
         )
     }
 
-    if (!kinds.needsTabs) {
-        Column(modifier = Modifier.fillMaxSize()) {
-            Box(modifier = Modifier.weight(1f)) {
-                AppSelectionScreen(
-                    apps = apps,
-                    isLoading = isLoading,
-                    onToggleApp = toggleApp,
-                    onBack = onBack
-                )
-            }
-            ProceedButton(onClick = proceed)
-        }
-        return
-    }
-
-    val tabs = remember(kinds) {
-        buildList {
-            if (kinds.apps) add(BlockTargetTab.APPS)
-            if (kinds.websites) add(BlockTargetTab.SITES)
-            if (kinds.keywords) add(BlockTargetTab.KEYWORDS)
-        }
-    }
-    var selectedTab by remember { mutableStateOf(tabs.first()) }
-    val onAlreadyBlocked: () -> Unit = {
-        Toast.makeText(
-            context,
-            context.getString(R.string.site_already_blocked),
-            Toast.LENGTH_SHORT
-        ).show()
-    }
-
-    Scaffold(
-        containerColor = DarkBg,
-        topBar = {
-            Column {
-                TopAppBar(
-                    title = {
-                        Text(stringResource(R.string.block_targets_title), color = TextPrimary)
-                    },
-                    navigationIcon = {
-                        IconButton(onClick = onBack) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowBack,
-                                contentDescription = stringResource(R.string.action_back),
-                                tint = TextPrimary
-                            )
-                        }
-                    },
-                    colors = TopAppBarDefaults.topAppBarColors(containerColor = DarkBg)
-                )
-                TabRow(
-                    selectedTabIndex = tabs.indexOf(selectedTab),
-                    containerColor = DarkSurface,
-                    contentColor = AccentCyan
-                ) {
-                    tabs.forEach { tab ->
-                        Tab(
-                            selected = tab == selectedTab,
-                            onClick = { selectedTab = tab },
-                            text = {
-                                Text(
-                                    stringResource(tab.titleRes),
-                                    color = if (tab == selectedTab) AccentCyan else TextHint,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        )
-                    }
-                }
-            }
-        },
-        bottomBar = { ProceedButton(onClick = proceed) }
-    ) { padding ->
-        when (selectedTab) {
-            BlockTargetTab.APPS -> AppSelectionList(
+    Column(modifier = Modifier.fillMaxSize()) {
+        Box(modifier = Modifier.weight(1f)) {
+            AppSelectionScreen(
                 apps = apps,
                 isLoading = isLoading,
                 onToggleApp = toggleApp,
-                modifier = Modifier.padding(padding)
-            )
-
-            BlockTargetTab.SITES -> WebsiteRulesTab(
-                rules = rules,
-                blockedRules = configuredBlockedRules,
-                onRulesChange = { rules = it },
-                onAlreadyBlocked = onAlreadyBlocked,
-                modifier = Modifier.padding(padding)
-            )
-
-            BlockTargetTab.KEYWORDS -> KeywordRulesTab(
-                rules = rules,
-                blockedRules = configuredBlockedRules,
-                onRulesChange = { rules = it },
-                onAlreadyBlocked = onAlreadyBlocked,
-                modifier = Modifier.padding(padding)
+                onBack = onBack
             )
         }
+        ProceedButton(onClick = proceed)
     }
 }
 
-private enum class BlockTargetTab(val titleRes: Int) {
-    APPS(R.string.block_targets_tab_apps),
-    SITES(R.string.block_targets_tab_sites),
-    KEYWORDS(R.string.block_targets_tab_keywords)
-}
 
 @Composable
 private fun ProceedButton(onClick: () -> Unit) {

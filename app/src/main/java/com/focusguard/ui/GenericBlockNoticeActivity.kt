@@ -52,7 +52,7 @@ import kotlinx.coroutines.launch
 /**
  * Non-interactive app/generic fail-closed block surface.
  *
- * Known website targets are owned by [WebsiteBlockNoticeActivity]. PASSWORD
+ * PASSWORD
  * credentials are owned by [PasswordUnlockActivity]. Keeping this Activity free
  * from website URL/redirection behavior prevents the app-block UI from becoming
  * a second owner of the website pipeline.

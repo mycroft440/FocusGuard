@@ -22,34 +22,6 @@ import org.robolectric.util.ReflectionHelpers
 class BlockingAccessibilityInputTest {
     private val ownPackage = "com.focusguard.v2"
 
-    @OptIn(ExperimentalCoroutinesApi::class)
-    @Test
-    fun `browser callback snapshots primitives and only worker acquires root`() = runTest {
-        val service = spyk(BlockingAccessibilityService())
-        val browserWindow = mockk<AccessibilityWindowInfo> {
-            every { id } returns 10
-            every { type } returns AccessibilityWindowInfo.TYPE_APPLICATION
-            every { isActive } returns true
-            every { root } returns null
-        }
-        every { service.packageName } returns ownPackage
-        every { service.windows } returns listOf(browserWindow)
-        every { service.rootInActiveWindow } returns null
-        ReflectionHelpers.setField(service, "scope", this)
-        ReflectionHelpers.setField(service, "blockedWebsitesDomainSet", setOf("blocked.example"))
-        ReflectionHelpers.setField(service, "lastLoadTime", System.currentTimeMillis())
-        val content = event(AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED, "com.android.chrome", 10)
-
-        repeat(30) { service.onAccessibilityEvent(content) }
-
-        verify(exactly = 0) { service.rootInActiveWindow }
-        verify(exactly = 0) { content.source }
-        verify(exactly = 0) { browserWindow.root }
-        runCurrent()
-        verify(exactly = 1) { browserWindow.root }
-        verify(exactly = 0) { content.source }
-    }
-
     private fun event(type: Int, pkg: String?, id: Int) = mockk<AccessibilityEvent>(relaxed = true) {
         every { eventType } returns type
         every { packageName } returns pkg

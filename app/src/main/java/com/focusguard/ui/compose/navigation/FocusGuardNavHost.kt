@@ -51,7 +51,7 @@ import com.focusguard.ui.compose.screens.PomodoroScreen
 import com.focusguard.ui.compose.screens.ProfileScreen
 import com.focusguard.ui.compose.screens.SessionsListScreen
 import com.focusguard.ui.compose.screens.SettingsScreen
-import com.focusguard.ui.compose.screens.TestedBrowsersScreen
+import com.focusguard.sitesblocker.SitesBlockerScreen
 import com.focusguard.ui.compose.screens.TimeBlockConfigMode
 import com.focusguard.ui.compose.screens.UsageLimitsScreen
 import com.focusguard.ui.compose.screens.UsageStatsDashboardScreen
@@ -69,7 +69,7 @@ private object FocusGuardRoute {
     const val Limits = "LIMITS"
     const val IntruderLog = "INTRUDER_LOG"
     const val Language = "LANGUAGE"
-    const val TestedBrowsers = "TESTED_BROWSERS"
+    const val SitesBlocker = "SITES_BLOCKER"
     const val ExtraSecurity = "EXTRA_SECURITY"
     const val UsageLimits = "USAGE_LIMITS"
     const val Dashboard = "DASHBOARD"
@@ -259,7 +259,7 @@ fun FocusGuardNavHost(
             FocusGuardRoute.Limits,
             FocusGuardRoute.Language,
             FocusGuardRoute.Profile,
-            FocusGuardRoute.TestedBrowsers,
+            FocusGuardRoute.SitesBlocker,
             FocusGuardRoute.ExtraSecurity,
             FocusGuardRoute.BlockCustomization -> FocusGuardRoute.Settings
             FocusGuardRoute.IntruderLog,
@@ -384,7 +384,7 @@ fun FocusGuardNavHost(
                     profile = userProfile,
                     onProfileClick = { currentRoute = FocusGuardRoute.Profile },
                     onLanguageClick = { currentRoute = FocusGuardRoute.Language },
-                    onTestedBrowsersClick = { currentRoute = FocusGuardRoute.TestedBrowsers },
+                    onSitesBlockerClick = { currentRoute = FocusGuardRoute.SitesBlocker },
                     onExtraSecurityClick = { currentRoute = FocusGuardRoute.ExtraSecurity },
                     onCreatorInstagramClick = { openCreatorInstagram(activity) },
                     onBack = { currentRoute = FocusGuardRoute.Home }
@@ -417,7 +417,7 @@ fun FocusGuardNavHost(
                 FocusGuardRoute.Language -> LanguageScreen(
                     onBack = { currentRoute = FocusGuardRoute.Settings }
                 )
-                FocusGuardRoute.TestedBrowsers -> TestedBrowsersScreen(
+                FocusGuardRoute.SitesBlocker -> SitesBlockerScreen(
                     onBack = { currentRoute = FocusGuardRoute.Settings }
                 )
                 FocusGuardRoute.ExtraSecurity -> ExtraSecurityScreen(

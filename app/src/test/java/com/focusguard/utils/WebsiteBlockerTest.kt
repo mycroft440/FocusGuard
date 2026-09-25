@@ -492,30 +492,6 @@ class WebsiteBlockerTest {
     }
 
     @Test
-    fun `managed browser filters add preventive pornography query prefixes`() {
-        val filters = WebsiteBlocker.managedBrowserFiltersFor(
-            listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
-        )
-
-        assertThat(filters).containsAtLeast(
-            "xvideos.com",
-            "*?q=porn*",
-            "*?q=Porn*",
-            "*?q=PORN*",
-            "*?q=xxx*",
-            "*?q=sex*",
-            "*?q=xvideo*",
-            "images.google.com",
-            "lens.google.com",
-            "*/imghp",
-            "*/imgres",
-            "*?tbm=isch",
-            "*?udm=2"
-        )
-        assertThat(filters).doesNotContain(PredefinedWebsites.PORNOGRAPHY_RULE)
-    }
-
-    @Test
     fun `youtube website rule also covers the native app bypass`() {
         assertThat(WebsiteBlocker.appPackageDomainsFor(listOf("youtube.com")))
             .containsEntry("com.google.android.youtube", "youtube.com")

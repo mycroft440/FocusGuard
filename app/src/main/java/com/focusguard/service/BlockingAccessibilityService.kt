@@ -34,28 +34,9 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.core.app.NotificationCompat
 import androidx.core.content.ContextCompat
-import com.focusguard.accessibility.website.identification.WebsiteIdentificationEngine
-import com.focusguard.accessibility.website.identification.WebsiteIdentificationRecovery
-import com.focusguard.accessibility.website.identification.WebsiteIdentificationStatus
-import com.focusguard.accessibility.website.compatibility.BrowserCompatibilityStore
-import com.focusguard.accessibility.website.compatibility.BrowserDetector
-import com.focusguard.accessibility.website.compatibility.BrowserProfileRegistry
-import com.focusguard.accessibility.website.compatibility.BrowserActivationMethod
-import com.focusguard.accessibility.website.compatibility.BrowserWriteMethod
-import com.focusguard.accessibility.website.compatibility.BrowserSubmitMethod
-import com.focusguard.accessibility.website.redirection.AddressBarRedirectionActions
-import com.focusguard.accessibility.website.redirection.ClipboardPasteFallback
-import com.focusguard.accessibility.website.redirection.WebsiteRedirectDestination
-import com.focusguard.accessibility.website.redirection.WebsiteRedirectDestinationStore
-import com.focusguard.accessibility.website.redirection.WebsiteRedirectionCoordinator
-import com.focusguard.accessibility.website.redirection.WebsiteRedirectionPlan
-import com.focusguard.accessibility.website.redirection.WebsiteBlockTransitionGuard
-import com.focusguard.accessibility.website.redirection.WebsiteBlockTransitionHandle
-import com.focusguard.accessibility.website.redirection.WebsiteTabNeutralizationPolicy
 import com.focusguard.MainActivity
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
-import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.BlockSession
 import com.focusguard.focusmode.FocusModeKioskController
@@ -80,18 +61,15 @@ import com.focusguard.security.ProtectionHierarchy
 import com.focusguard.security.SettingsInterceptionPolicy
 import com.focusguard.security.SelfProtectionStateStore
 import com.focusguard.security.UsageAccessPausePolicy
+import com.focusguard.sitesblocker.BrowserProfiles
+import com.focusguard.sitesblocker.SiteBlockEngine
 import com.focusguard.ui.BlockNoticeActivity
 import com.focusguard.ui.MasterRemovalActivity
 import com.focusguard.ui.PomodoroLockActivity
 import com.focusguard.utils.AppUsageLimitMeter
-import com.focusguard.utils.BrowserInspectionSessionStore
-import com.focusguard.utils.BrowserSurfaceInspector
-import com.focusguard.utils.BrowserUiCapabilityPolicy
 import com.focusguard.utils.FocusGuardLogger
 import com.focusguard.utils.PermissionUtils
 import com.focusguard.utils.UsageLimitForegroundPolicy
-import com.focusguard.utils.WebsiteBlocker
-import com.focusguard.utils.WebsiteObservabilityPolicy
 import com.focusguard.utils.WebsiteUsageLimitPolicy
 import dagger.hilt.android.AndroidEntryPoint
 import java.text.SimpleDateFormat
@@ -128,18 +106,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         EVACUATE_THEN_HIDE
     }
 
-    internal enum class WebsiteSanitizationDecision {
-        SUBMIT_ADDRESS_BAR,
-        AWAIT_REDIRECT_CONFIRMATION,
-        ABORT_REDIRECT
-    }
-
-    internal enum class WebsiteRestoreDecision {
-        BACK_TO_BLOCKED_SURFACE,
-        RETRY_CURRENT_BLOCKED_SURFACE,
-        KEEP_CURRENT_SURFACE
-    }
-
     @Inject lateinit var authManager: AuthManager
 
     private lateinit var database: AppDatabase
@@ -154,26 +120,16 @@ class BlockingAccessibilityService : AccessibilityService() {
     private val isRefreshingLauncherIndex = AtomicBoolean(false)
     private val launcherIndexRefreshRequested = AtomicBoolean(false)
     private val lastSlowCallbackLogElapsed = AtomicLong(0L)
-    private val browserInspectionCoordinator = BrowserInspectionCoordinator()
-    private val browserRecoveryCoordinator = BrowserRecoveryCoordinator()
-    private val websiteTreeWorker = WebsiteTreeWorker()
+    // Bloqueio de sites e de navegadores não suportados (antigo app Bloquear Sites).
+    private val siteBlockEngine = SiteBlockEngine(this)
 
     @Volatile private var blockedAppsSet: Set<String> = emptySet()
-    @Volatile private var blockedWebsitesDomainSet: Set<String> = emptySet()
-    @Volatile private var passwordWebsiteDomainSet: Set<String> = emptySet()
-    @Volatile private var strongerWebsiteDomainSet: Set<String> = emptySet()
     /**
      * Sessões acima do limite diário (jejum, período agendado, Pomodoro rigoroso)
      * com seus apps. Enquanto uma delas segura o app, o limite aguarda.
      */
     @Volatile private var appLimitWaitingSessions:
         List<ProtectionHierarchy.SessionTargets> = emptyList()
-    /** Sites cujo tempo não conta para limite porque uma camada acima os segura. */
-    @Volatile private var limitWaitingWebsiteRules: Set<String> = emptySet()
-    @Volatile private var blockedWebsiteAppDomains: Map<String, String> = emptyMap()
-    @Volatile private var limitedWebsiteDomains: Set<String> = emptySet()
-    @Volatile private var hardLimitedWebsiteDomains: Set<String> = emptySet()
-    @Volatile private var limitedWebsiteAppDomains: Map<String, String> = emptyMap()
     @Volatile private var isBlockingSessionActive = false
     @Volatile private var isPomodoroStrictActive = false
     @Volatile private var focusModeSessionActive = false
@@ -186,7 +142,6 @@ class BlockingAccessibilityService : AccessibilityService() {
     @Volatile private var lastEnforcementFingerprint: String? = null
 
     private var lastLoadTime = 0L
-    private var lastBrowserCheck = 0L
     private var lastToastTime = 0L
     private var defaultLauncherPackage: String? = null
     @Volatile private var launcherLabelIndex =
@@ -225,34 +180,17 @@ class BlockingAccessibilityService : AccessibilityService() {
     private val protectionCurtainDismiss = Runnable { handleTimedProtectionCurtainDismiss() }
     @Volatile private var protectionActionUntilElapsed = 0L
 
-    private val websiteTrackingLock = Any()
-    @Volatile private var trackedDomain: String? = null
-    @Volatile private var trackedPackageName: String? = null
-    @Volatile private var trackedSinceMillis = 0L
-    private var websiteTrackingJob: Job? = null
     private var appLimitMonitoringJob: Job? = null
     private var hierarchyBoundaryJob: Job? = null
     @Volatile private var hierarchyBoundaryAtMillis = Long.MIN_VALUE
-    private val websiteBlockTransitionCounter = AtomicLong(0L)
-    private val websiteBlockTransitionGuard = WebsiteBlockTransitionGuard()
-
-    private data class WebsiteUsageSlice(
-        val domain: String,
-        val deltaMillis: Long,
-        val packageName: String
-    )
 
     private enum class CurtainMode {
         BLOCK_NOTICE,
-        WEBSITE_BLOCK_NOTICE,
         SELF_PROTECTION
     }
 
     private val cacheTimeoutMillis = 5_000L
-    private val browserDebounceMillis = 0L
-    private val websitePulseMillis = 1_000L
     private val appLimitPulseMillis = 1_000L
-    private val maxUsageDeltaMillis = 15_000L
     private val channelId = "focusguard_service_channel"
     private val notificationId = 101
     private val dateFormat = ThreadLocal.withInitial {
@@ -289,67 +227,11 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     private var pendingSettingsProtectionUntilElapsed = 0L
 
-    @Volatile private var browserPackages: Set<String> = emptySet()
-    @Volatile private var verifiedHttpsHandlerPackages: Set<String> = emptySet()
-    private var browserClassificationJob: Job? = null
-    private data class BrowserDiscoveryMiss(
-        val windowId: Int,
-        val checkedAtElapsed: Long
-    )
-    private val browserDiscoveryMisses = mutableMapOf<String, BrowserDiscoveryMiss>()
-    private val knownBrowserPackages = setOf(
-        "com.android.chrome",
-        "com.chrome.beta",
-        "com.chrome.dev",
-        "com.chrome.canary",
-        "com.microsoft.emmx",
-        "com.microsoft.emmx.beta",
-        "com.microsoft.emmx.dev",
-        "com.microsoft.emmx.canary",
-        "com.brave.browser",
-        "com.brave.browser_beta",
-        "com.brave.browser_nightly",
-        "com.kiwibrowser.browser",
-        "com.kiwibrowser.browser.dev",
-        "com.vivaldi.browser",
-        "com.vivaldi.browser.snapshot",
-        "com.ecosia.android",
-        "com.yandex.browser",
-        "com.yandex.browser.beta",
-        "com.yandex.browser.alpha",
-        "com.yandex.browser.lite",
-        "com.UCMobile.intl",
-        "com.UCMobile.intl.mi",
-        "com.transsion.phoenix",
-        "org.mozilla.firefox",
-        "org.mozilla.firefox_beta",
-        "org.mozilla.fenix",
-        "org.mozilla.fenix.nightly",
-        "org.mozilla.fennec_aurora",
-        "org.mozilla.focus",
-        "org.mozilla.klar",
-        "com.opera.browser",
-        "com.opera.browser.beta",
-        "com.opera.mini.native",
-        "com.opera.gx",
-        "com.sec.android.app.sbrowser",
-        "com.sec.android.app.sbrowser.beta",
-        "mark.via",
-        "mark.via.gp",
-        "com.duckduckgo.mobile.android",
-        "com.google.android.googlequicksearchbox"
-    )
-
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            val changedPackage = intent?.data?.schemeSpecificPart.orEmpty()
-            calculateBrowserPackages()
             refreshLauncherIndex(force = true)
             lastLoadTime = 0L
             scope.launch {
-                if (changedPackage in knownBrowserPackages) {
-                    deviceOwnerManager.invalidateWebsitePolicyCache()
-                }
                 sessionManager.checkAndEnforce()
             }
         }
@@ -376,11 +258,6 @@ class BlockingAccessibilityService : AccessibilityService() {
     private val curtainDestinationReadyListener =
         CurtainDestinationReadyCoordinator.Listener { generation ->
             mainHandler.post {
-                if (websiteBlockTransitionGuard.confirmPomodoro(
-                        curtainGeneration = generation,
-                        readyAtUptimeMillis = SystemClock.uptimeMillis()
-                    )
-                ) return@post
                 if (shouldDismissCurtain(instantBlockCurtainGeneration, generation)) {
                     if (pendingReadyWindowValidationGeneration != generation) {
                         pendingReadyWindowValidationGeneration = generation
@@ -397,9 +274,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         override fun onReceive(context: Context?, intent: Intent?) {
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> {
-                    browserInspectionCoordinator.invalidate()
                     foregroundPackageName = null
-                    stopWebsiteTracking()
                     protectedPowerMenuController?.onScreenOff()
                     when (screenOffCurtainDecision(
                         curtainVisible = instantBlockCurtainVisible,
@@ -532,8 +407,6 @@ class BlockingAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
-        browserInspectionCoordinator.invalidate()
-        browserRecoveryCoordinator.clear()
         accessibilityServiceConnected = true
         // Do this before any node/tree work or asynchronous Room refresh. The
         // persisted snapshot exists specifically to cover the first event after
@@ -544,7 +417,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         defaultLauncherPackage = calculateDefaultLauncher()
         refreshLauncherIndex(force = true)
         foregroundPackageName = rootInActiveWindow?.packageName?.toString()
-        calculateBrowserPackages()
         refreshData()
         startAppLimitMonitoringPulse()
         scope.launch {
@@ -561,65 +433,21 @@ class BlockingAccessibilityService : AccessibilityService() {
                 AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
                 AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
             notificationTimeout = EVENT_NOTIFICATION_TIMEOUT_MILLIS
+            SiteBlockEngine.applyServiceInfo(this)
         }
+        siteBlockEngine.onServiceConnected()
         syncWarmOverlays()
     }
+
+    /** Teclado do serviço (Android 13+), usado pela troca de site do bloqueio de sites. */
+    @androidx.annotation.RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    override fun onCreateInputMethod(): android.accessibilityservice.InputMethod =
+        SiteBlockEngine.createInputMethod(this)
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         refreshLauncherIndex(force = true)
     }
-
-    private fun calculateBrowserPackages() {
-        browserDiscoveryMisses.clear()
-        browserClassificationJob?.cancel()
-
-        val browserIntent = Intent(
-            Intent.ACTION_VIEW,
-            android.net.Uri.parse("https://example.com")
-        ).apply {
-            addCategory(Intent.CATEGORY_BROWSABLE)
-        }
-        val dynamicCandidates = try {
-            packageManager.queryIntentActivities(
-                browserIntent,
-                PackageManagerCompat.MATCH_ALL
-            ).mapNotNull { it.activityInfo?.packageName }.toSet()
-        } catch (error: RuntimeException) {
-            FocusGuardLogger.logError(
-                "A11y",
-                "Falha ao identificar candidatos a navegador",
-                error
-            )
-            emptySet()
-        }
-
-        // Exact shipped profiles remain immediately available. Every other package
-        // must pass BrowserDetector's structural contract off the callback thread
-        // before it is allowed to enter any Accessibility tree inspection.
-        val exactProfiles = knownBrowserPackages
-            .filter(BrowserProfileRegistry::isKnownBrowserPackage)
-            .toSet()
-        browserPackages = exactProfiles
-        verifiedHttpsHandlerPackages = emptySet()
-        if (dynamicCandidates.isEmpty()) return
-
-        browserClassificationJob = scope.launch {
-            val confirmedDynamic = linkedSetOf<String>()
-            for (candidate in dynamicCandidates) {
-                if (!isActive) return@launch
-                if (BrowserDetector.detect(candidate).classification.isBrowserLike) {
-                    confirmedDynamic += candidate
-                }
-            }
-            if (!isActive) return@launch
-            verifiedHttpsHandlerPackages = confirmedDynamic
-            browserPackages = exactProfiles + confirmedDynamic
-        }
-    }
-
-    private fun isVerifiedHttpsHandler(packageName: String): Boolean =
-        packageName in verifiedHttpsHandlerPackages
 
     private fun calculateDefaultLauncher(): String? {
         return try {
@@ -777,60 +605,13 @@ class BlockingAccessibilityService : AccessibilityService() {
             // the switch that disables this service, so nothing that can block runs
             // ahead of the decision to bounce them out.
             val directPackage = event.packageName?.toString().orEmpty()
-            val browserInspectionEvent =
+            val windowResolutionEvent =
                 event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED ||
-                    event.eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
-                    event.eventType == AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED ||
-                    event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED
+                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
             val inspectWindowEarly = directPackage.isBlank() ||
                 event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED ||
                 event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED
             if (consumeInputUiEvent(event, directPackage, inspectWindowEarly)) return
-
-            // Keep events bound to the browser transition that owns the opaque curtain.
-            // Same-tab redirection never transfers ownership to an unproven window.
-            val foregroundTransitionPackage = foregroundPackageName.orEmpty()
-            val resolvedTransitionPackage = if (
-                browserInspectionEvent &&
-                (directPackage.isBlank() || event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED)
-            ) {
-                resolveEventPackageName(event)
-            } else {
-                ""
-            }
-            val transitionPackage = when {
-                directPackage.isNotBlank() && websiteBlockTransitionGuard.isActive(directPackage) ->
-                    directPackage
-                resolvedTransitionPackage.isNotBlank() &&
-                    websiteBlockTransitionGuard.isActive(resolvedTransitionPackage) ->
-                    resolvedTransitionPackage
-                directPackage.isBlank() && foregroundTransitionPackage.isNotBlank() &&
-                    websiteBlockTransitionGuard.isActive(foregroundTransitionPackage) ->
-                    foregroundTransitionPackage
-                else -> ""
-            }
-            val activeBrowserTransition = transitionPackage
-                .takeIf(String::isNotBlank)
-                ?.let(websiteBlockTransitionGuard::activeTransition)
-            if (activeBrowserTransition != null) {
-                // Track window transitions for staleness only; ownership remains bound
-                // to the original browser window throughout the same-tab transaction.
-                if (isWindowOrTabTransitionEvent(event.eventType) && event.windowId >= 0) {
-                    browserInspectionCoordinator.observeWindow(transitionPackage, event.windowId)
-                }
-                retireStaleWebsiteTransitions()
-                if (websiteBlockTransitionGuard.isActive(transitionPackage)) {
-                    websiteBlockTransitionGuard.observeBrowserEvent(
-                        browserPackageName = transitionPackage,
-                        windowId = event.windowId,
-                        eventUptimeMillis = event.eventTime,
-                        eventType = event.eventType
-                    )
-                    scheduleBrowserInspection(event, transitionPackage)
-                }
-                return
-            }
 
             // Shield the native System UI power menu before any other handling.
             // A touch-consuming TYPE_ACCESSIBILITY_OVERLAY stays on top while the
@@ -877,46 +658,22 @@ class BlockingAccessibilityService : AccessibilityService() {
 
             // Known IME windows were already handled above without a lookup. For
             // a new named keyboard window, identify its Android window type here,
-            // after the immediate self-protection/browser paths and before nodes.
+            // after the immediate self-protection paths and before nodes.
             if (!inspectWindowEarly && consumeInputUiEvent(event, directPackage, true)) return
 
-            // Browser window events can arrive without packageName, and
-            // TYPE_WINDOWS_CHANGED can carry the package of a different window. Resolve
-            // the package from the changed window only after the self-protection fast
-            // paths above have had a chance to return.
-            val inspectionPackage = if (browserInspectionEvent &&
+            // Bloqueio de sites e de navegadores não suportados (Bloquear Sites). O motor
+            // descarta sozinho os eventos que não são de navegador ou que são do próprio app.
+            siteBlockEngine.onAccessibilityEvent(event)
+
+            // Window events can arrive without packageName, and TYPE_WINDOWS_CHANGED can
+            // carry the package of a different window. Resolve the package from the
+            // changed window only after the self-protection fast paths above returned.
+            val inspectionPackage = if (windowResolutionEvent &&
                 (directPackage.isBlank() || event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED)
             ) {
                 resolveEventPackageName(event)
             } else {
                 directPackage
-            }
-
-            if ((event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-                    event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED) &&
-                inspectionPackage.isNotBlank()
-            ) {
-                browserInspectionCoordinator.observeWindow(inspectionPackage, event.windowId)
-                retireStaleWebsiteTransitions()
-            }
-
-            // Address-bar text changes are the strongest low-latency signal Chromium
-            // exposes through Accessibility. Inspect only the event source here (never the
-            // whole tree) so a blocked host can be stopped even when rootInActiveWindow is
-            // stale, incomplete, or the toolbar is temporarily absent from the active root.
-            if (browserInspectionEvent && inspectionPackage.isNotBlank() &&
-                websiteSurfaceInspectionNeeded() &&
-                handleImmediateBrowserAddressEvent(event, inspectionPackage)
-            ) {
-                return
-            }
-
-            // Full website inspection stays asynchronous. The immediate source path above
-            // complements this root/window walk; it does not replace the normal verification.
-            if (browserInspectionEvent && inspectionPackage.isNotBlank() &&
-                websiteSurfaceInspectionNeeded()
-            ) {
-                scheduleBrowserInspection(event, inspectionPackage)
             }
 
             val packageName = inspectionPackage.ifBlank { foregroundPackageName.orEmpty() }
@@ -958,17 +715,12 @@ class BlockingAccessibilityService : AccessibilityService() {
                     refreshFocusModeFallbackState()
                 }
                 foregroundPackageName = packageName.takeIf(String::isNotBlank)
-                if (packageName !in browserPackages &&
-                    packageName !in limitedWebsiteAppDomains
-                ) {
-                    stopWebsiteTracking(now)
-                }
             }
 
             if (shouldApplyStrictPomodoroToWindow(
                     strictActive = isPomodoroStrictActive,
                     isWindowTransition = isWindowTransition,
-                    isBrowserWindow = packageName in browserPackages
+                    isBrowserWindow = BrowserProfiles.forPackage(packageName) != null
                 )
             ) {
                 handleStrictPomodoro(packageName, event.className?.toString().orEmpty())
@@ -977,12 +729,9 @@ class BlockingAccessibilityService : AccessibilityService() {
 
             val focusLauncherMustReturn = focusModeSessionActive &&
                 packageName == defaultLauncherPackage
-            if (packageName in focusModeAllowedAppsSet && !focusLauncherMustReturn) {
-                stopWebsiteTracking(now)
-                return
-            }
+            if (packageName in focusModeAllowedAppsSet && !focusLauncherMustReturn) return
 
-            if (!isBlockingSessionActive && limitedWebsiteDomains.isEmpty()) return
+            if (!isBlockingSessionActive) return
 
             when (event.eventType) {
                 AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
@@ -1046,16 +795,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun observeOwnUiEvent(event: AccessibilityEvent) {
-        if (event.windowId >= 0) {
-            browserInspectionCoordinator.observeWindow(packageName, event.windowId)
-            retireStaleWebsiteTransitions()
-        }
         foregroundPackageName = packageName
-        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-            event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
-        ) {
-            stopWebsiteTracking()
-        }
     }
 
     private fun applyImmediateBlockingSnapshot(intent: Intent) {
@@ -1066,27 +806,14 @@ class BlockingAccessibilityService : AccessibilityService() {
             .orEmpty()
             .filter(String::isNotBlank)
             .toSet()
-        val sites = WebsiteBlocker.normalizeRules(
-            intent.getStringArrayListExtra(EXTRA_BLOCKED_SITES_SNAPSHOT).orEmpty()
-        )
-        val passwordSites = WebsiteBlocker.normalizeRules(
-            intent.getStringArrayListExtra(EXTRA_PASSWORD_SITES_SNAPSHOT).orEmpty()
-        )
-        val strongerSites = WebsiteBlocker.normalizeRules(
-            intent.getStringArrayListExtra(EXTRA_STRONGER_SITES_SNAPSHOT).orEmpty()
-        )
         blockedAppsSet = apps
-        blockedWebsitesDomainSet = sites
-        passwordWebsiteDomainSet = passwordSites
-        strongerWebsiteDomainSet = strongerSites
-        blockedWebsiteAppDomains = WebsiteBlocker.appPackageDomainsFor(sites)
         isPomodoroStrictActive = intent.getBooleanExtra(
             EXTRA_STRICT_POMODORO_SNAPSHOT,
             false
         )
         isBlockingSessionActive = intent.getBooleanExtra(
             EXTRA_BLOCKING_ACTIVE_SNAPSHOT,
-            apps.isNotEmpty() || sites.isNotEmpty()
+            apps.isNotEmpty()
         )
         syncWarmOverlays()
         lastLoadTime = System.currentTimeMillis()
@@ -1099,19 +826,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             currentPackage == defaultLauncherPackage ||
             currentPackage in focusModeAllowedAppsSet
         ) return
-
-        if (websiteSurfaceInspectionNeeded() &&
-            currentPackage in browserPackages && blockedWebsitesDomainSet.isNotEmpty()
-        ) {
-            val token = browserInspectionCoordinator.currentToken(currentPackage) ?: return
-            val now = SystemClock.uptimeMillis()
-            val offer = browserInspectionCoordinator.offer(
-                currentPackage, token.windowId, AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
-                now, now, "", emptyList(), null
-            )
-            if (offer.startWorker) scope.launch { drainBrowserInspections() }
-            return
-        }
 
         if (currentPackage !in blockedAppsSet ||
             PasswordTargetAccessGrant.isPackageGranted(currentPackage)
@@ -1130,18 +844,6 @@ class BlockingAccessibilityService : AccessibilityService() {
 
         runCatching {
             blockedAppsSet = emptySet()
-            blockedWebsitesDomainSet = emptySet()
-            passwordWebsiteDomainSet = emptySet()
-            strongerWebsiteDomainSet = emptySet()
-            blockedWebsiteAppDomains = emptyMap()
-            limitedWebsiteDomains = emptySet()
-            hardLimitedWebsiteDomains = emptySet()
-            limitedWebsiteAppDomains = emptyMap()
-
-
-
-
-            browserDiscoveryMisses.clear()
             isBlockingSessionActive = false
             focusModeSessionActive = false
             focusModeFallbackActive = false
@@ -1153,7 +855,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             StrictPomodoroLock.clear(applicationContext)
             PomodoroForegroundService.stop(applicationContext)
             foregroundPackageName = null
-            stopWebsiteTracking()
             protectedPowerMenuController?.onProtectionStateChanged(false)
             releaseInstantBlockCurtain()
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -1168,9 +869,8 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     override fun onInterrupt() {
-        browserInspectionCoordinator.invalidate()
         foregroundPackageName = null
-        stopWebsiteTracking()
+        siteBlockEngine.onInterrupt()
         // onInterrupt stops accessibility feedback; it does not prove that an
         // Android-owned power window disappeared. Keep shielding until the
         // controller confirms absence through its normal window recheck.
@@ -1178,13 +878,6 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
-        if (shouldConsumeWebsiteCurtainKey(
-                curtainVisible = instantBlockCurtainVisible,
-                websiteCurtain = instantBlockCurtainMode == CurtainMode.WEBSITE_BLOCK_NOTICE,
-                keyCode = event.keyCode
-            )
-        ) return true
-
         val isBackOrHomeKey = event.keyCode == KeyEvent.KEYCODE_BACK ||
             event.keyCode == KeyEvent.KEYCODE_HOME
         if (!isBackOrHomeKey) return false
@@ -1263,12 +956,6 @@ class BlockingAccessibilityService : AccessibilityService() {
                     try {
                         val deviceOwnerActiveNow = deviceOwnerManager.isDeviceOwnerActive()
                         deviceOwnerActiveCached = deviceOwnerActiveNow
-                        val adultFilterEnabled = authManager.isAdultFilterEnabled()
-                        val adultRules = if (adultFilterEnabled) {
-                            setOf(com.focusguard.data.PredefinedWebsites.PORNOGRAPHY_RULE)
-                        } else {
-                            emptySet()
-                        }
                         val focusModeSession = FocusModeStore.readSession(applicationContext)
                             ?.takeIf { it.isActive() }
                         val nativeFocusLockdownActive = focusModeSession != null &&
@@ -1293,58 +980,14 @@ class BlockingAccessibilityService : AccessibilityService() {
                                 sessionManager.isCurrentlyInBlockingWindow(it)
                         }
                         val enforcingIds = enforcingSessions.map { it.id }
-                        val passwordSessionIds = enforcingSessions
-                            .filter { it.sessionType.equals("PASSWORD", ignoreCase = true) }
-                            .map { it.id }
-                        val strongerSessionIds = enforcingSessions
-                            .filter { !it.sessionType.equals("PASSWORD", ignoreCase = true) }
-                            .map { it.id }
 
                         val sessionApps = getAppsForSessions(enforcingIds).toSet()
-                        val sessionSites = WebsiteBlocker.normalizeRules(
-                            getSitesForSessions(enforcingIds)
-                        )
-                        val passwordSessionSites = WebsiteBlocker.normalizeRules(
-                            getSitesForSessions(passwordSessionIds)
-                        )
-                        val strongerSessionSites = WebsiteBlocker.normalizeRules(
-                            getSitesForSessions(strongerSessionIds)
-                        )
 
                         appLimitWaitingSessions =
                             sessionManager.limitWaitingSessions(activeSessions)
-                        limitWaitingWebsiteRules = WebsiteBlocker.normalizeRules(
-                            strongerSessionSites + adultRules
-                        )
                         val activeAppLimits = database.appUsageLimitDao()
                             .getAllActiveLimitsStatic()
                         val limitApps = calculateExceededAppLimits(activeAppLimits)
-                        val websiteLimits = database.websiteUsageLimitDao().getAllStatic()
-                            .filter { it.isEnabled }
-                        val configuredWebsiteDomains = WebsiteBlocker.normalizeRules(
-                            websiteLimits.map { it.domain }
-                        )
-                        val hardConfiguredWebsiteDomains = WebsiteBlocker.normalizeRules(
-                            websiteLimits.filter { limit ->
-                                WebsiteUsageLimitPolicy.requiresUrlObservationForHardLimit(
-                                    lockMode = limit.lockMode,
-                                    lockUntilTimestamp = limit.lockUntilTimestamp,
-                                    nowMillis = System.currentTimeMillis()
-                                )
-                            }.map { it.domain }
-                        )
-                        val exceededWebsiteDomains = calculateExceededWebsiteLimits(websiteLimits)
-                        val strongerWebsiteDomains = WebsiteBlocker.normalizeRules(
-                            strongerSessionSites + exceededWebsiteDomains + adultRules
-                        )
-                        val blockedWebsiteDomains = WebsiteBlocker.normalizeRules(
-                            sessionSites + exceededWebsiteDomains + adultRules
-                        )
-                        // Native apps are enforced only when their package was
-                        // explicitly persisted. A website rule must not silently
-                        // acquire the companion app after the user declined it.
-                        val blockedWebsiteApps = emptyMap<String, String>()
-                        val limitedWebsiteApps = emptyMap<String, String>()
                         val enforcedApps = FocusModePolicy.packagesToEnforce(
                             configuredBlockedPackages = sessionApps + limitApps,
                             focusModeBlockedPackages =
@@ -1360,10 +1003,7 @@ class BlockingAccessibilityService : AccessibilityService() {
                         val enforcementFingerprint = listOf(
                             enforcingIds.sorted().joinToString(","),
                             sessionApps.sorted().joinToString(","),
-                            sessionSites.sorted().joinToString(","),
                             limitApps.sorted().joinToString(","),
-                            exceededWebsiteDomains.sorted().joinToString(","),
-                            adultFilterEnabled.toString(),
                             focusModeSession?.startedAtMillis?.toString().orEmpty()
                         ).joinToString("|")
                         val shouldReconcilePolicies = lastEnforcementFingerprint?.let {
@@ -1379,32 +1019,11 @@ class BlockingAccessibilityService : AccessibilityService() {
                             focusModeBlockedAppsSet = focusFallbackApps
                             focusModeAllowedAppsSet = focusAllowedApps
                             blockedAppsSet = accessibilityApps
-                            blockedWebsitesDomainSet = blockedWebsiteDomains
-                            passwordWebsiteDomainSet = passwordSessionSites
-                            strongerWebsiteDomainSet = strongerWebsiteDomains
-                            blockedWebsiteAppDomains = blockedWebsiteApps
-                            limitedWebsiteDomains = configuredWebsiteDomains
-                            hardLimitedWebsiteDomains = hardConfiguredWebsiteDomains
-                            limitedWebsiteAppDomains = limitedWebsiteApps
-                            if (
-                                blockedWebsiteDomains.isEmpty() &&
-                                hardConfiguredWebsiteDomains.isEmpty()
-                            ) {
-
-
-
-
-                            }
-                            if (blockedWebsiteDomains.isEmpty() && configuredWebsiteDomains.isEmpty()) {
-                                browserDiscoveryMisses.clear()
-                            }
                             activeAppLimitsByPackage = activeAppLimits.associateBy { it.packageName }
                             hasActiveAppLimits = activeAppLimits.isNotEmpty()
                             isBlockingSessionActive = isSelfProtectionEngaged(
                                 cachedActive = enforcingSessions.isNotEmpty() ||
-                                    limitApps.isNotEmpty() ||
-                                    exceededWebsiteDomains.isNotEmpty() ||
-                                    adultFilterEnabled,
+                                    limitApps.isNotEmpty(),
                                 persistedActive = SelfProtectionStateStore.isArmed(
                                     applicationContext
                                 ),
@@ -1538,31 +1157,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
     }
 
-    private suspend fun calculateExceededWebsiteLimits(
-        limits: List<com.focusguard.database.WebsiteUsageLimit>
-    ): Set<String> {
-        if (limits.isEmpty()) return emptySet()
-        val today = dateFormat.get()!!.format(Date())
-        val usage = WebsiteUsageLimitPolicy.aggregateUsageByRule(
-            usageByIdentifier = database.dailyUsageStatDao()
-                .getStatsForDateStatic(today)
-                .map { it.identifier to it.timeSpentMs },
-            configuredRules = limits.map { it.domain }
-        )
-        val now = System.currentTimeMillis()
-
-        return limits.filter { limit ->
-            val domain = WebsiteBlocker.normalizeRule(limit.domain)
-            WebsiteUsageLimitPolicy.shouldBlock(
-                usedMillis = usage[domain] ?: 0L,
-                dailyLimitMinutes = limit.dailyLimitMinutes,
-                lockMode = limit.lockMode,
-                lockUntilTimestamp = limit.lockUntilTimestamp,
-                nowMillis = now
-            )
-        }.mapTo(mutableSetOf()) { WebsiteBlocker.normalizeRule(it.domain) }
-    }
-
     private fun handleWindowStateChanged(
         event: AccessibilityEvent,
         packageName: String = event.packageName?.toString().orEmpty()
@@ -1586,23 +1180,13 @@ class BlockingAccessibilityService : AccessibilityService() {
         if (packageName in focusModeAllowedAppsSet) return
         if (packageName == defaultLauncherPackage) return
 
-        val blockedWebsiteDomain = blockedWebsiteAppDomains[packageName]
-        val limitedWebsiteDomain = limitedWebsiteAppDomains[packageName]
         when {
-            // Website/focus/strict protections keep precedence over a PASSWORD
-            // visit. The grant only bypasses this app's PASSWORD-session edge.
-            blockedWebsiteDomain != null -> blockWebsiteApp(blockedWebsiteDomain)
+            // The grant only bypasses this app's PASSWORD-session edge.
             PasswordTargetAccessGrant.isPackageGranted(packageName) -> Unit
             ImmediateInterceptionPolicy.isBlockedTargetWindow(
                 packageName,
                 blockedAppsSet
             ) -> blockApp(packageName, event.eventTime)
-            limitedWebsiteDomain != null -> updateWebsiteTracking(
-                urlOrDomain = limitedWebsiteDomain,
-                packageName = packageName,
-                now = System.currentTimeMillis()
-            )
-            websiteSurfaceInspectionNeeded() && packageName in browserPackages -> Unit
         }
     }
 
@@ -2160,8 +1744,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         refreshFocusModeFallbackState()
         val snapshot = SelfProtectionStateStore.read(applicationContext)
         blockedAppsSet = snapshot.blockedApps
-        blockedWebsitesDomainSet = WebsiteBlocker.normalizeRules(snapshot.blockedSites)
-        blockedWebsiteAppDomains = WebsiteBlocker.appPackageDomainsFor(blockedWebsitesDomainSet)
         isPomodoroStrictActive = snapshot.strictPomodoro
         isBlockingSessionActive = isSelfProtectionEngaged(
             cachedActive = isBlockingSessionActive,
@@ -2441,687 +2023,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             )
         }
     }
-
-    private fun recordBrowserDiscoveryMiss(
-        packageName: String,
-        windowId: Int,
-        checkedAtElapsed: Long
-    ) {
-        if (packageName !in browserDiscoveryMisses &&
-            browserDiscoveryMisses.size >= MAX_BROWSER_DISCOVERY_MISSES
-        ) {
-            browserDiscoveryMisses.minByOrNull { it.value.checkedAtElapsed }
-                ?.key
-                ?.let(browserDiscoveryMisses::remove)
-        }
-        browserDiscoveryMisses[packageName] = BrowserDiscoveryMiss(
-            windowId = windowId,
-            checkedAtElapsed = checkedAtElapsed
-        )
-    }
-
-    private fun currentBrowserSurfaceMatchesBlockedTransition(
-        transition: WebsiteBlockTransitionHandle
-    ): Boolean {
-        if (!transitionWindowIsCurrent(transition)) return false
-        val root = activeBrowserRoot(transition.browserPackageName, transition.expectedWindowId)
-            ?: return false
-        val currentAddress = try {
-            WebsiteIdentificationEngine.identifyFromRoot(
-                root, transition.browserPackageName, transition.expectedWindowId,
-                isVerifiedHttpsHandler(transition.browserPackageName),
-                isCurrent = { transitionWindowIsCurrent(transition) }
-            ).bestCandidate
-        } finally { recycleSafely(root) }
-        if (!transitionWindowIsCurrent(transition)) return false
-        val detected = transition.blockedCandidate?.takeIf(String::isNotBlank) ?: return false
-        val detectedRule = WebsiteBlocker.findMatchingRule(detected, transition.blockedRules) ?: return false
-        val currentRule = currentAddress?.let {
-            WebsiteBlocker.findMatchingRule(it, transition.blockedRules)
-        } ?: return false
-        return detectedRule == currentRule
-    }
-
-    private fun activeBrowserRoot(
-        browserPackageName: String,
-        expectedWindowId: Int
-    ): AccessibilityNodeInfo? = browserRootForExpectedWindow(
-        browserPackageName = browserPackageName,
-        expectedWindowId = expectedWindowId,
-        requireActive = true
-    )
-
-    private fun browserRootForExpectedWindow(
-        browserPackageName: String,
-        expectedWindowId: Int,
-        requireActive: Boolean
-    ): AccessibilityNodeInfo? {
-        if (browserPackageName.isBlank() || expectedWindowId < 0) return null
-        val window = windows.firstOrNull {
-            it.id == expectedWindowId && (!requireActive || it.isActive)
-        } ?: return null
-        val root = runCatching { window.root }.getOrNull() ?: return null
-        val rootMatches = runCatching {
-            root.packageName?.toString() == browserPackageName &&
-                root.windowId == expectedWindowId
-        }.getOrDefault(false)
-        if (rootMatches) return root
-        recycleSafely(root)
-        return null
-    }
-
-    private fun handleImmediateBrowserAddressEvent(
-        event: AccessibilityEvent,
-        packageName: String
-    ): Boolean {
-        if (event.eventType !in immediateBrowserBlockEventTypes ||
-            packageName !in browserPackages ||
-            event.windowId < 0 ||
-            blockedWebsitesDomainSet.isEmpty() ||
-            websiteBlockTransitionGuard.isActive(packageName)
-        ) return false
-
-        val addressText = WebsiteBlocker.extractAddressBarTextFromEvent(
-            event = event,
-            browserPackageName = packageName,
-            httpsHandlerRecognized = isVerifiedHttpsHandler(packageName)
-        ) ?: return false
-        val url = WebsiteBlocker.extractUrlCandidate(addressText)
-        val blocked = immediateWebsiteBlockTarget(
-            addressText = addressText,
-            url = url,
-            blockedRules = blockedWebsitesDomainSet
-        ) ?: return false
-        val candidate = url ?: addressText
-
-        // Establish/update the same package/window generation used by the async path
-        // before routing the block. This keeps transition guards bound to the exact
-        // browser window that emitted the address-bar event.
-        val offer = browserInspectionCoordinator.offer(
-            packageName = packageName,
-            windowId = event.windowId,
-            eventType = event.eventType,
-            eventUptimeMillis = event.eventTime,
-            receivedUptimeMillis = SystemClock.uptimeMillis(),
-            className = event.className?.toString().orEmpty(),
-            directText = listOf(addressText),
-            contentDescription = event.contentDescription?.toString()
-        )
-        if (offer.startWorker) scope.launch { drainBrowserInspections() }
-        foregroundPackageName = packageName
-        routeWebsiteBlockByHierarchy(
-            browserPackageName = packageName,
-            browserWindowId = event.windowId,
-            blockedCandidate = candidate,
-            detectionEventUptimeMillis = event.eventTime
-        )
-        return true
-    }
-
-    private fun scheduleBrowserInspection(event: AccessibilityEvent, packageName: String) {
-        if (packageName.isBlank() || event.windowId < 0) return
-        val offer = browserInspectionCoordinator.offer(
-            packageName = packageName,
-            windowId = event.windowId,
-            eventType = event.eventType,
-            eventUptimeMillis = event.eventTime,
-            receivedUptimeMillis = SystemClock.uptimeMillis(),
-            className = event.className?.toString().orEmpty(),
-            directText = event.text.orEmpty().mapNotNull { it?.toString() },
-            contentDescription = event.contentDescription?.toString()
-        )
-        retireStaleWebsiteTransitions()
-        if (!offer.startWorker) return
-        scope.launch { drainBrowserInspections() }
-    }
-
-    private suspend fun drainBrowserInspections() {
-        var snapshot = browserInspectionCoordinator.takePending()
-        while (snapshot != null) {
-            try {
-                val outcome = inspectBrowserSnapshotWithRetry(snapshot)
-                if (outcome != null) withContext(Dispatchers.Main.immediate) {
-                    applyBrowserInspectionOutcome(outcome)
-                }
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: RuntimeException) {
-                FocusGuardLogger.logError("A11y", "Falha na inspeção do navegador", error)
-            } finally {
-                snapshot = browserInspectionCoordinator.finishPass()
-            }
-        }
-    }
-
-    /**
-     * A missing Accessibility root during a window transition is inconclusive, not a
-     * proof that the page is safe. Retry briefly while the exact package/window/
-     * generation/sequence is still current; a newer event cancels these retries and
-     * becomes the next queued inspection.
-     */
-    private suspend fun inspectBrowserSnapshotWithRetry(
-        snapshot: BrowserInspectionCoordinator.Snapshot
-    ): BrowserInspectionOutcome? {
-        val token = snapshot.token
-        var attempt = 0
-        while (attempt < 3) {
-            if (!browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)) return null
-            inspectBrowserSnapshot(snapshot)?.let { return it }
-            if (!browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)) return null
-            attempt += 1
-            if (attempt < 3) delay(40L * attempt)
-        }
-        return null
-    }
-
-    private fun inspectBrowserSnapshot(
-        snapshot: BrowserInspectionCoordinator.Snapshot
-    ): BrowserInspectionOutcome? {
-        val token = snapshot.token
-        fun current() = browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)
-        if (!current()) return null
-        val root = activeBrowserRoot(token.packageName, token.windowId) ?: return null
-        return try {
-            if (!current() || root.packageName?.toString() != token.packageName ||
-                root.windowId != token.windowId
-            ) return null
-            BrowserInspectionSessionStore.withInspection(root, token.packageName, ::current) {
-                val identification = WebsiteIdentificationEngine.identifyFromRoot(
-                    root, token.packageName, token.windowId,
-                    isVerifiedHttpsHandler(token.packageName), isCurrent = ::current
-                )
-                val session = BrowserInspectionSessionStore.sessionFor(root, token.packageName)
-                if (!current()) null else BrowserInspectionOutcome.from(
-                    snapshot = snapshot,
-                    identification = identification,
-                    surface = session.surface ?: BrowserSurfaceInspector.Surface.UNKNOWN,
-                    focusedAddressEditor = session.focusedAddressEditor,
-                    recognizedBrowser = token.packageName in browserPackages ||
-                        identification.addressBarObservable
-                )
-            }
-        } finally {
-            recycleSafely(root)
-        }
-    }
-
-    private fun applyBrowserInspectionOutcome(outcome: BrowserInspectionOutcome) {
-        val token = outcome.token
-        if (!browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)) return
-        val packageName = token.packageName
-        if (!outcome.recognizedBrowser) {
-            recordBrowserDiscoveryMiss(packageName, token.windowId, SystemClock.elapsedRealtime())
-            return
-        }
-        if (packageName !in browserPackages) {
-            browserPackages = browserPackages + packageName
-            browserDiscoveryMisses.remove(packageName)
-        }
-        foregroundPackageName = packageName
-
-        if (websiteBlockTransitionGuard.isActive(packageName)) {
-            observeSafeDestinationFromInspection(outcome)
-            return
-        }
-
-        if (outcome.surface == BrowserSurfaceInspector.Surface.NATIVE_PANEL) {
-            clearOpaqueBrowserObservation(packageName)
-            stopWebsiteTracking()
-            return
-        }
-
-        val candidate = outcome.bestCandidate
-        val blocked = immediateWebsiteBlockTarget(
-            addressText = outcome.rawAddressText,
-            url = outcome.urlCandidate,
-            blockedRules = blockedWebsitesDomainSet
-        )
-        if (blocked != null && candidate != null &&
-            browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)
-        ) {
-            routeWebsiteBlockByHierarchy(
-                browserPackageName = packageName,
-                browserWindowId = token.windowId,
-                blockedCandidate = candidate,
-                detectionEventUptimeMillis = outcome.eventUptimeMillis
-            )
-            return
-        }
-
-        val url = outcome.urlCandidate
-        if (blockedWebsitesDomainSet.any(WebsiteBlocker::isPornographyRule) &&
-            outcome.hasBlockedGoogleSearch()
-        ) {
-            blockWebsite(packageName, token.windowId, url, outcome.eventUptimeMillis)
-            return
-        }
-        if (!url.isNullOrBlank()) {
-            clearOpaqueBrowserObservation(packageName)
-            updateWebsiteTracking(url, packageName, System.currentTimeMillis())
-            return
-        }
-
-        if (outcome.surface == BrowserSurfaceInspector.Surface.WEB_CONTENT &&
-            websiteObservationRequired() && !outcome.focusedAddressEditor
-        ) {
-            scheduleAsyncWebsiteRecovery(outcome)
-        } else {
-            clearOpaqueBrowserObservation(packageName)
-            if (outcome.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) stopWebsiteTracking()
-        }
-    }
-
-    private fun observeSafeDestinationFromInspection(outcome: BrowserInspectionOutcome) {
-        val token = outcome.token
-        val transition = websiteBlockTransitionGuard.transitionForDestinationCandidate(
-            browserPackageName = token.packageName,
-            eventUptimeMillis = outcome.eventUptimeMillis,
-            eventType = outcome.eventType
-        ) ?: return
-        val stableRedirectCandidate =
-            isSafeRedirectSurface(outcome.bestCandidate) &&
-                outcome.surface == BrowserSurfaceInspector.Surface.WEB_CONTENT &&
-                !outcome.focusedAddressEditor
-        if (!stableRedirectCandidate || !transitionOwnsCurtain(transition)) return
-
-        scope.launch {
-            delay(WEBSITE_REDIRECT_SURFACE_SETTLE_MILLIS)
-            if (!browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)) return@launch
-            val stable = inspectBrowserSnapshot(BrowserInspectionCoordinator.Snapshot(
-                token, outcome.eventType, outcome.eventUptimeMillis, SystemClock.uptimeMillis(),
-                outcome.eventClassName, outcome.directEventText, outcome.eventContentDescription
-            )) ?: return@launch
-            if (!isSafeRedirectSurface(stable.bestCandidate) ||
-                stable.surface != BrowserSurfaceInspector.Surface.WEB_CONTENT ||
-                stable.focusedAddressEditor
-            ) return@launch
-            withContext(Dispatchers.Main.immediate) {
-                if (!browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true)) return@withContext
-                val current = websiteBlockTransitionGuard.transitionForDestinationCandidate(
-                    browserPackageName = token.packageName,
-                    eventUptimeMillis = outcome.eventUptimeMillis,
-                    eventType = outcome.eventType
-                ) ?: return@withContext
-                if (current.id != transition.id || !transitionOwnsCurtain(current)) return@withContext
-
-                if (token.windowId != current.expectedWindowId &&
-                    !websiteBlockTransitionGuard.rebindVerifiedDestinationWindow(
-                        browserPackageName = token.packageName,
-                        transitionId = current.id,
-                        windowId = token.windowId,
-                        inspectionGeneration = token.generation,
-                        eventUptimeMillis = outcome.eventUptimeMillis,
-                        eventType = outcome.eventType
-                    )
-                ) return@withContext
-
-                if (!transitionWindowIsCurrent(current)) return@withContext
-                websiteBlockTransitionGuard.confirmRedirect(
-                    browserPackageName = token.packageName,
-                    windowId = token.windowId,
-                    eventUptimeMillis = outcome.eventUptimeMillis
-                )
-            }
-        }
-    }
-
-    private fun scheduleAsyncWebsiteRecovery(outcome: BrowserInspectionOutcome) {
-        if (!browserRecoveryCoordinator.offer(outcome.token)) return
-        scope.launch {
-            var next: BrowserInspectionCoordinator.Token? = outcome.token
-            while (next != null) {
-                val token = next
-                val packageName = token.packageName
-                fun current(): Boolean =
-                    browserRecoveryCoordinator.isCurrent(token) &&
-                        browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true) &&
-                        foregroundPackageName == packageName && websiteObservationRequired() &&
-                        !websiteBlockTransitionGuard.isActive(packageName)
-                val genericRecovery =
-                    !BrowserProfileRegistry.isKnownBrowserPackage(packageName)
-                var genericCurtainGeneration = 0L
-                try {
-                    if (current()) {
-                        if (genericRecovery) {
-                            genericCurtainGeneration = withContext(Dispatchers.Main.immediate) {
-                                if (current()) {
-                                    showInstantBlockCurtain(
-                                        mode = CurtainMode.WEBSITE_BLOCK_NOTICE
-                                    )
-                                } else {
-                                    0L
-                                }
-                            }
-                        } else {
-                            delay(WebsiteObservabilityPolicy.OPAQUE_BROWSER_GRACE_MILLIS)
-                        }
-                        if (current()) {
-                            val identification = WebsiteIdentificationRecovery(
-                                browserPackage = packageName,
-                                windowId = token.windowId,
-                                httpsHandlerRecognized = isVerifiedHttpsHandler(packageName),
-                                rootProvider = {
-                                    if (current()) activeBrowserRoot(packageName, token.windowId) else null
-                                },
-                                isCurrent = ::current
-                            ).recover()
-                            withContext(Dispatchers.Main.immediate) {
-                                if (!current()) return@withContext
-                                val candidate = identification.bestCandidate
-                                val url = identification.urlCandidate
-                                val blocked = immediateWebsiteBlockTarget(
-                                    identification.rawAddressText, url, blockedWebsitesDomainSet
-                                )
-                                when {
-                                    blocked != null && candidate != null -> routeWebsiteBlockByHierarchy(
-                                        packageName, token.windowId, candidate, SystemClock.uptimeMillis()
-                                    )
-                                    url != null -> updateWebsiteTracking(url, packageName, System.currentTimeMillis())
-                                    identification.webContentObserved && !identification.addressBarObservable &&
-                                        identification.status != WebsiteIdentificationStatus.REJECTED_CONTEXT ->
-                                        blockOpaqueBrowser(packageName, ::current)
-                                }
-                            }
-                        }
-                    }
-                } catch (cancelled: CancellationException) {
-                    throw cancelled
-                } catch (error: RuntimeException) {
-                    if (current()) FocusGuardLogger.logError("A11y", "Falha na recuperação do navegador", error)
-                } finally {
-                    if (genericCurtainGeneration > 0L) {
-                        mainHandler.post {
-                            // Generation ownership prevents an old generic inspection from
-                            // dismissing a newer HARD/PASSWORD/fail-closed presentation.
-                            dismissInstantBlockCurtain(genericCurtainGeneration)
-                        }
-                    }
-                    next = browserRecoveryCoordinator.finish(token)
-                }
-            }
-        }
-    }
-
-    private fun websiteSurfaceInspectionNeeded(): Boolean =
-        blockedWebsitesDomainSet.isNotEmpty() || limitedWebsiteDomains.isNotEmpty()
-
-    private fun websiteObservationRequired(): Boolean =
-        blockedWebsitesDomainSet.isNotEmpty() || hardLimitedWebsiteDomains.isNotEmpty()
-
-    private fun clearOpaqueBrowserObservation(packageName: String) {
-        browserRecoveryCoordinator.cancel(packageName)
-    }
-
-    private fun blockOpaqueBrowser(packageName: String, isCurrent: () -> Boolean) {
-        if (!isCurrent()) return
-        stopWebsiteTracking()
-        if (!websiteObservationRequired() || foregroundPackageName != packageName) return
-        FocusGuardLogger.log(
-            "A11y",
-            "URL não observável em $packageName; bloqueando o navegador fail-closed " +
-                "enquanto a proteção de sites exige observação"
-        )
-        launchOpaqueBrowserFailClosedNotice(
-            browserPackageName = packageName,
-            eventUptimeMillis = SystemClock.uptimeMillis(),
-            isCurrent = isCurrent
-        )
-    }
-
-    private fun failClosedWebsiteTransition(transition: WebsiteBlockTransitionHandle) {
-        if (!transitionOwnsCurtain(transition)) return
-        transition.handedOff = true
-        val blockedDomain = transition.blockedCandidate
-            ?.takeIf(String::isNotBlank)
-            ?.let { candidate ->
-                WebsiteBlocker.extractDomain(candidate)
-                    .ifBlank { WebsiteBlocker.displayRule(candidate) }
-            }
-        launchOpaqueBrowserFailClosedNotice(
-            browserPackageName = transition.browserPackageName,
-            eventUptimeMillis = SystemClock.uptimeMillis(),
-            curtainGeneration = transition.curtainGeneration,
-            blockedDomain = blockedDomain,
-            isCurrent = { transitionOwnsCurtain(transition) }
-        )
-    }
-
-    private fun launchOpaqueBrowserFailClosedNotice(
-        browserPackageName: String,
-        eventUptimeMillis: Long,
-        curtainGeneration: Long = 0L,
-        blockedDomain: String? = null,
-        isCurrent: () -> Boolean
-    ) {
-        if (!isCurrent()) return
-        val canReuseCurtain = curtainGeneration > 0L && instantBlockCurtainAttached &&
-            instantBlockCurtainVisible && instantBlockCurtainGeneration == curtainGeneration
-        if (!canReuseCurtain) {
-            launchBlockNotice(null, null, eventUptimeMillis = eventUptimeMillis, isCurrent = isCurrent)
-            return
-        }
-        val intent = createBlockNoticeIntent(
-            context = this,
-            strictBlock = isPomodoroStrictActive,
-            blockedPackage = null,
-            blockedDomain = blockedDomain,
-            curtainGeneration = curtainGeneration,
-            eventUptimeMillis = eventUptimeMillis
-        )
-        if (!isCurrent()) return
-        awaitingSafeSurfaceGeneration = curtainGeneration
-        try {
-            if (!isCurrent()) return
-            startActivity(intent)
-        } catch (error: RuntimeException) {
-            if (isCurrent()) {
-                FocusGuardLogger.logError("A11y", "Falha ao abrir bloqueio de $browserPackageName", error)
-                beginCurtainEvacuationBeforeHide(curtainGeneration)
-            } else dismissInstantBlockCurtain(curtainGeneration)
-        }
-    }
-
-    private fun updateWebsiteTracking(urlOrDomain: String, packageName: String, now: Long) {
-        val matchingRules = WebsiteBlocker.findMatchingRulesIgnoringGrants(
-            urlOrDomain,
-            limitedWebsiteDomains
-        )
-        if (matchingRules.isEmpty()) {
-            stopWebsiteTracking(now)
-            return
-        }
-        val pornographyGoogleSurface =
-            WebsiteBlocker.isPornographySearchUrl(urlOrDomain) ||
-                WebsiteBlocker.isGoogleImagesUrl(urlOrDomain)
-        val usageDomain = if (
-            PredefinedWebsites.PORNOGRAPHY_RULE in matchingRules &&
-            pornographyGoogleSurface
-        ) {
-            PredefinedWebsites.PORNOGRAPHY_RULE
-        } else {
-            WebsiteBlocker.extractDomain(urlOrDomain)
-                .ifBlank { WebsiteBlocker.normalizeRule(urlOrDomain) }
-        }
-
-        var usageToPersist: WebsiteUsageSlice? = null
-        synchronized(websiteTrackingLock) {
-            val previousDomain = trackedDomain
-            val previousPackage = trackedPackageName
-            if (previousDomain == usageDomain && previousPackage == packageName) {
-                val delta = (now - trackedSinceMillis).coerceIn(0L, maxUsageDeltaMillis)
-                if (delta >= 1_000L) {
-                    usageToPersist = WebsiteUsageSlice(usageDomain, delta, packageName)
-                    trackedSinceMillis = now
-                }
-            } else {
-                if (previousDomain != null && previousPackage != null) {
-                    val delta = (now - trackedSinceMillis).coerceIn(0L, maxUsageDeltaMillis)
-                    if (delta >= 1_000L) {
-                        usageToPersist = WebsiteUsageSlice(
-                            previousDomain,
-                            delta,
-                            previousPackage
-                        )
-                    }
-                }
-                trackedDomain = usageDomain
-                trackedPackageName = packageName
-                trackedSinceMillis = now
-            }
-        }
-        usageToPersist?.let(::persistWebsiteUsage)
-        startWebsiteTrackingPulse()
-    }
-
-    private fun startWebsiteTrackingPulse() {
-        if (websiteTrackingJob?.isActive == true) return
-        websiteTrackingJob = scope.launch {
-            while (isActive) {
-                delay(websitePulseMillis)
-                var usageToPersist: WebsiteUsageSlice? = null
-                var shouldStopTracking = false
-                synchronized(websiteTrackingLock) {
-                    val domain = trackedDomain
-                    val packageName = trackedPackageName
-                    if (domain == null || packageName == null) {
-                        return@launch
-                    }
-                    if (
-                        !UsageLimitForegroundPolicy.shouldCountWebsiteUsage(
-                            trackedPackageName = packageName,
-                            foregroundPackageName = foregroundPackageName,
-                            isDeviceInteractive = powerManager?.isInteractive == true
-                        )
-                    ) {
-                        trackedDomain = null
-                        trackedPackageName = null
-                        trackedSinceMillis = 0L
-                        shouldStopTracking = true
-                        return@synchronized
-                    }
-                    val now = System.currentTimeMillis()
-                    val delta = (now - trackedSinceMillis).coerceIn(0L, maxUsageDeltaMillis)
-                    if (delta >= 1_000L) {
-                        trackedSinceMillis = now
-                        usageToPersist = WebsiteUsageSlice(domain, delta, packageName)
-                    }
-                }
-                if (shouldStopTracking) return@launch
-                usageToPersist?.let { persistWebsiteUsageNow(it) }
-            }
-        }
-    }
-
-    private fun stopWebsiteTracking(now: Long = System.currentTimeMillis()) {
-        var usageToPersist: WebsiteUsageSlice? = null
-        synchronized(websiteTrackingLock) {
-            val domain = trackedDomain
-            val packageName = trackedPackageName
-            if (domain != null && packageName != null) {
-                val delta = (now - trackedSinceMillis).coerceIn(0L, maxUsageDeltaMillis)
-                if (delta >= 1_000L) {
-                    usageToPersist = WebsiteUsageSlice(domain, delta, packageName)
-                }
-            }
-            trackedDomain = null
-            trackedPackageName = null
-            trackedSinceMillis = 0L
-        }
-        websiteTrackingJob?.cancel()
-        websiteTrackingJob = null
-        usageToPersist?.let(::persistWebsiteUsage)
-    }
-
-    private fun persistWebsiteUsage(usage: WebsiteUsageSlice) {
-        scope.launch {
-            persistWebsiteUsageNow(usage)
-        }
-    }
-
-    private suspend fun persistWebsiteUsageNow(usage: WebsiteUsageSlice) {
-        // Com o site seguro por uma camada acima do limite, o limite aguarda: o
-        // instante até o redirecionamento não é uso e não entra na conta.
-        if (isPomodoroStrictActive ||
-            WebsiteBlocker.findMatchingRulesIgnoringGrants(
-                usage.domain,
-                limitWaitingWebsiteRules
-            ).isNotEmpty()
-        ) return
-        try {
-            val today = dateFormat.get()!!.format(Date())
-            database.dailyUsageStatDao().addUsage(
-                usage.domain,
-                today,
-                usage.deltaMillis
-            )
-            val limits = database.websiteUsageLimitDao().getAllStatic()
-                .filter { it.isEnabled }
-            val matchingRules = WebsiteBlocker.findMatchingRulesIgnoringGrants(
-                usage.domain,
-                WebsiteBlocker.normalizeRules(limits.map { it.domain })
-            )
-            if (matchingRules.isEmpty()) return
-
-            val usageByRule = WebsiteUsageLimitPolicy.aggregateUsageByRule(
-                usageByIdentifier = database.dailyUsageStatDao()
-                    .getStatsForDateStatic(today)
-                    .map { it.identifier to it.timeSpentMs },
-                configuredRules = limits.map { it.domain }
-            )
-            val now = System.currentTimeMillis()
-            val exceededRules = limits.mapNotNullTo(linkedSetOf()) { limit ->
-                val rule = WebsiteBlocker.normalizeRule(limit.domain)
-                rule.takeIf {
-                    rule in matchingRules && WebsiteUsageLimitPolicy.shouldBlock(
-                        usedMillis = usageByRule[rule] ?: 0L,
-                        dailyLimitMinutes = limit.dailyLimitMinutes,
-                        lockMode = limit.lockMode,
-                        lockUntilTimestamp = limit.lockUntilTimestamp,
-                        nowMillis = now
-                    )
-                }
-            }
-            if (exceededRules.isNotEmpty()) {
-                enforceExceededWebsiteImmediately(usage, exceededRules)
-                sessionManager.checkAndEnforce()
-            }
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (error: Exception) {
-            FocusGuardLogger.logError(
-                "A11y",
-                "Falha ao registrar uso de ${usage.domain}",
-                error
-            )
-        }
-    }
-
-    private fun enforceExceededWebsiteImmediately(
-        usage: WebsiteUsageSlice,
-        exceededRules: Set<String>
-    ) {
-        scope.launch(Dispatchers.Main) {
-            val stillActive = synchronized(websiteTrackingLock) {
-                trackedDomain == usage.domain && trackedPackageName == usage.packageName
-            }
-            if (!stillActive) return@launch
-
-            strongerWebsiteDomainSet = WebsiteBlocker.normalizeRules(
-                strongerWebsiteDomainSet + exceededRules
-            )
-            exceededRules.forEach(PasswordTargetAccessGrant::claimStrongerWebsiteProtection)
-            blockedWebsitesDomainSet = blockedWebsitesDomainSet + exceededRules
-            if (usage.packageName in browserPackages) {
-                enforceCurrentForegroundFromSnapshot()
-            } else {
-                val displayRule = exceededRules.firstOrNull() ?: usage.domain
-                blockedWebsiteAppDomains = blockedWebsiteAppDomains +
-                    (usage.packageName to displayRule)
-                blockWebsiteApp(displayRule)
-            }
-        }
-    }
-
     private fun blockApp(
         packageName: String,
         eventUptimeMillis: Long = SystemClock.uptimeMillis()
@@ -3132,817 +2033,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             eventUptimeMillis = eventUptimeMillis
         )
     }
-
-    private fun routeWebsiteBlockByHierarchy(
-        browserPackageName: String,
-        browserWindowId: Int,
-        blockedCandidate: String,
-        detectionEventUptimeMillis: Long
-    ) {
-        val token = browserInspectionCoordinator.currentToken(browserPackageName) ?: return
-        if (token.windowId != browserWindowId) return
-        if (!isPomodoroStrictActive) {
-            val resolution = WebsiteProtectionHierarchyPolicy.resolve(
-                candidate = blockedCandidate,
-                passwordRules = passwordWebsiteDomainSet,
-                strongerRules = strongerWebsiteDomainSet
-            )
-            if (resolution.owner == WebsiteProtectionHierarchyPolicy.Owner.PASSWORD) {
-                stopWebsiteTracking()
-                launchBlockNotice(
-                    blockedPackage = null,
-                    blockedDomain = WebsiteBlocker.displayRule(
-                        resolution.matchedRule ?: blockedCandidate
-                    ),
-                    eventUptimeMillis = detectionEventUptimeMillis,
-                    isCurrent = { browserInspectionCoordinator.isCurrent(token, requireLatestSequence = true) }
-                )
-                return
-            }
-            if (resolution.nextStep == WebsiteProtectionHierarchyPolicy.NextStep.ALLOW) {
-                stopWebsiteTracking()
-                return
-            }
-        }
-
-        // HARD ownership (or strict Pomodoro) uses the existing opaque-curtain +
-        // safe-browser redirect pipeline. NONE/ALLOW has already returned above.
-        blockWebsite(
-            browserPackageName = browserPackageName,
-            browserWindowId = browserWindowId,
-            blockedCandidate = blockedCandidate,
-            detectionEventUptimeMillis = detectionEventUptimeMillis
-        )
-    }
-
-    private fun blockWebsite(
-        browserPackageName: String,
-        browserWindowId: Int = INVALID_BROWSER_WINDOW_ID,
-        blockedCandidate: String? = null,
-        detectionEventUptimeMillis: Long = 0L
-    ) {
-        val now = System.currentTimeMillis()
-        stopWebsiteTracking(now)
-        startWebsiteBlockTransition(
-            browserPackageName = browserPackageName,
-            browserWindowId = browserWindowId,
-            blockedCandidate = blockedCandidate,
-            detectionEventUptimeMillis = detectionEventUptimeMillis
-        )
-    }
-
-    private fun blockWebsiteApp(domain: String) {
-        stopWebsiteTracking()
-        launchBlockNotice(
-            blockedPackage = null,
-            blockedDomain = WebsiteBlocker.displayRule(domain)
-        )
-    }
-
-    private fun startWebsiteBlockTransition(
-        browserPackageName: String,
-        browserWindowId: Int = INVALID_BROWSER_WINDOW_ID,
-        blockedCandidate: String? = null,
-        detectionEventUptimeMillis: Long = 0L
-    ) {
-        val expectedWindowId = browserWindowId.takeIf { it >= 0 } ?: return
-        val inspectionGeneration = browserInspectionCoordinator.currentGeneration(
-            browserPackageName,
-            expectedWindowId
-        ) ?: return
-        val strict = isPomodoroStrictActive
-        val transitionId = websiteBlockTransitionCounter.incrementAndGet()
-        val transition = websiteBlockTransitionGuard.tryStart(
-            browserPackageName = browserPackageName,
-            transitionId = transitionId,
-            destination = if (strict) {
-                WebsiteRedirectionCoordinator.TerminalDestination.POMODORO
-            } else {
-                WebsiteRedirectionCoordinator.TerminalDestination.REDIRECT
-            },
-            expectedWindowId = expectedWindowId,
-            inspectionGeneration = inspectionGeneration,
-            blockedCandidate = blockedCandidate,
-            blockedRules = blockedWebsitesDomainSet,
-            detectionEventUptimeMillis = detectionEventUptimeMillis
-        ) ?: return
-        val stateMachine = WebsiteRedirectionCoordinator.Session(strict = strict)
-        stateMachine.begin()
-        val curtainGeneration = showWebsiteBlockPresentation(blockedCandidate)
-        if (curtainGeneration <= 0L ||
-            !websiteBlockTransitionGuard.markCurtainGeneration(
-                browserPackageName = browserPackageName,
-                transitionId = transitionId,
-                curtainGeneration = curtainGeneration
-            )
-        ) {
-            websiteBlockTransitionGuard.finish(browserPackageName, transitionId)
-            return
-        }
-        awaitingSafeSurfaceGeneration = curtainGeneration
-        val curtainShownAtUptimeMillis = SystemClock.uptimeMillis()
-
-        scope.launch(Dispatchers.Main.immediate) {
-            var outcome: WebsiteRedirectionCoordinator.Outcome? = null
-            var activePolicy: WebsiteTabNeutralizationPolicy? = null
-            try {
-                outcome = WebsiteRedirectionCoordinator.execute(
-                    session = stateMachine,
-                    adapter = object : WebsiteRedirectionCoordinator.Adapter {
-                        override suspend fun awaitPresentationFrame(): Boolean {
-                            awaitNextWebsiteRedirectFrame()
-                            return transitionOwnsCurtain(transition)
-                        }
-
-                        override fun ownsProtection(): Boolean = transitionOwnsCurtain(transition)
-
-                        override fun mayAttemptRedirect(): Boolean =
-                            transitionOwnsCurtain(transition) &&
-                                !WebsiteRedirectDestinationStore.currentConflictsWith(
-                                    blockedWebsitesDomainSet
-                                )
-
-                        override suspend fun prepareSameTabRedirect(attemptNumber: Int): Boolean {
-                            if (!curtainReadyForTransition(transition)) return false
-                            val policy = WebsiteTabNeutralizationPolicy(
-                                browserPackageName = browserPackageName,
-                                expectedWindowId = transition.expectedWindowId
-                            )
-                            val phaseStartedAtUptimeMillis = SystemClock.uptimeMillis()
-                            val setRequestedAt = websiteTreeWorker.run {
-                                prepareSafeAddressBar(
-                                    browserPackageName = browserPackageName,
-                                    expectedWindowId = transition.expectedWindowId,
-                                    policy = policy,
-                                    transition = transition,
-                                    phaseStartedAtUptimeMillis = phaseStartedAtUptimeMillis
-                                )
-                            }
-                            if (setRequestedAt <= 0L || !curtainReadyForTransition(transition)) {
-                                activePolicy = null
-                                return false
-                            }
-                            policy.markSafeAddressSet(setRequestedAt)
-                            activePolicy = policy
-                            return true
-                        }
-
-                        override suspend fun submitSameTabRedirect(attemptNumber: Int): Boolean {
-                            val policy = activePolicy ?: return false
-                            if (!transitionOwnsCurtain(transition)) return false
-                            val submitRequestedAt = websiteTreeWorker.run {
-                                submitSafeAddressBar(
-                                    browserPackageName = browserPackageName,
-                                    expectedWindowId = transition.expectedWindowId,
-                                    policy = policy,
-                                    transition = transition
-                                )
-                            }
-                            if (submitRequestedAt <= 0L || !transitionOwnsCurtain(transition)) {
-                                return false
-                            }
-                            policy.markRedirectRequested()
-                            return true
-                        }
-
-                        override suspend fun restoreBlockedSurfaceForRetry(): Boolean {
-                            activePolicy = null
-                            return restoreBlockedSurfaceAfterAddressEdit(transition)
-                        }
-
-                        override suspend fun beforeRetry(nextAttemptNumber: Int) {
-                            FocusGuardLogger.log(
-                                "A11y",
-                                "Repetindo redirecionamento seguro na mesma aba de " +
-                                    "$browserPackageName (tentativa $nextAttemptNumber)"
-                            )
-                            delay(WEBSITE_ADDRESS_BAR_ACTION_RETRY_MILLIS)
-                        }
-
-                        override suspend fun awaitRedirectConfirmation(): Boolean =
-                            withTimeoutOrNull(WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS) {
-                                while (transitionOwnsCurtain(transition)) {
-                                    if (transition.safeRedirectConfirmed.isCompleted) {
-                                        return@withTimeoutOrNull true
-                                    }
-                                    // Event delivery can be delayed/lost on Fenix. Keep the
-                                    // fallback inside this same timeout instead of creating a
-                                    // second confirmation wait in the submit layer.
-                                    if (curtainReadyForTransition(transition) &&
-                                        websiteTreeWorker.run {
-                                            confirmSafeRedirectFromFreshBrowserSurface(transition)
-                                        }
-                                    ) {
-                                        return@withTimeoutOrNull true
-                                    }
-                                    delay(WEBSITE_REDIRECT_SURFACE_SETTLE_MILLIS)
-                                }
-                                false
-                            } == true
-
-                        override suspend fun requestExternalBrowserRedirect(): Boolean =
-                            requestSafeRedirectThroughBrowserIntent(transition)
-
-                        override suspend fun completeStrictDestination(): Boolean =
-                            completeStrictWebsiteDestination(
-                                transition = transition,
-                                curtainGeneration = curtainGeneration
-                            )
-
-                        override suspend fun releasePresentation() {
-                            releaseWebsiteCurtainAfterMinimumNotice(
-                                curtainGeneration = curtainGeneration,
-                                curtainShownAtUptimeMillis = curtainShownAtUptimeMillis
-                            )
-                        }
-
-                        override fun failClosed() {
-                            FocusGuardLogger.log(
-                                "A11y",
-                                "Redirecionamento seguro não pôde ser certificado para " +
-                                    "$browserPackageName (API ${Build.VERSION.SDK_INT}); " +
-                                    "bloqueando fail-closed"
-                            )
-                            failClosedWebsiteTransition(transition)
-                        }
-                    }
-                )
-            } catch (cancellation: CancellationException) {
-                outcome = WebsiteRedirectionCoordinator.Outcome.ABORTED
-                throw cancellation
-            } finally {
-                finishWebsiteTransition(transition, outcome)
-            }
-        }
-    }
-
-
-    /**
-     * Normal website block presentation. This stays an Accessibility overlay so
-     * the browser remains the active window while the same-tab redirect is being
-     * executed. A foreground Activity is reserved for terminal fail-closed paths.
-     */
-    private fun showWebsiteBlockPresentation(blockedCandidate: String?): Long {
-        val generation = showInstantBlockCurtain(mode = CurtainMode.WEBSITE_BLOCK_NOTICE)
-        renewInstantCurtainFailsafe(WebsiteRedirectionPlan.CURTAIN_FAILSAFE_MILLIS)
-        val displayTarget = blockedCandidate
-            ?.takeIf(String::isNotBlank)
-            ?.let { candidate ->
-                WebsiteBlocker.extractDomain(candidate)
-                    .ifBlank { WebsiteBlocker.displayRule(candidate) }
-            }
-        instantBlockCurtainMessage?.apply {
-            text = if (displayTarget.isNullOrBlank()) {
-                getString(R.string.website_block_overlay_message_generic)
-            } else {
-                getString(R.string.website_block_overlay_message, displayTarget)
-            }
-            visibility = View.VISIBLE
-        }
-        return generation
-    }
-
-    private suspend fun releaseWebsiteCurtainAfterMinimumNotice(
-        curtainGeneration: Long,
-        curtainShownAtUptimeMillis: Long
-    ) {
-        val visibleFor = SystemClock.uptimeMillis() - curtainShownAtUptimeMillis
-        val remaining = WEBSITE_MIN_BLOCK_NOTICE_MILLIS - visibleFor
-        if (remaining > 0L) delay(remaining)
-        dismissInstantBlockCurtain(curtainGeneration)
-    }
-
-    private suspend fun awaitNextWebsiteRedirectFrame() {
-        suspendCancellableCoroutine<Unit> { continuation ->
-            val choreographer = Choreographer.getInstance()
-            val callback = Choreographer.FrameCallback {
-                if (continuation.isActive) continuation.resume(Unit)
-            }
-            continuation.invokeOnCancellation {
-                choreographer.removeFrameCallback(callback)
-            }
-            choreographer.postFrameCallback(callback)
-        }
-    }
-
-    private fun performTransitionBack(transition: WebsiteBlockTransitionHandle): Boolean {
-        if (!curtainReadyForTransition(transition)) return false
-        val accepted = performGlobalAction(GLOBAL_ACTION_BACK)
-        return curtainReadyForTransition(transition) && accepted
-    }
-
-    private suspend fun restoreBlockedSurfaceAfterAddressEdit(
-        transition: WebsiteBlockTransitionHandle
-    ): Boolean {
-        if (!curtainReadyForTransition(transition)) return false
-        if (transition.activatedAddressViewId == null && transition.editorAddressViewId == null) return true
-        if (transition.safeRedirectConfirmed.isCompleted ||
-            websiteTreeWorker.run { confirmSafeRedirectFromFreshBrowserSurface(transition) }
-        ) return false
-        if (!curtainReadyForTransition(transition)) return false
-
-        // BACK is allowed only while the exact safe URL is still being edited.
-        // If submission already navigated away from the blocked page, going BACK
-        // would resurrect that blocked page from Firefox history.
-        val https = isVerifiedHttpsHandler(transition.browserPackageName)
-        val editorRoot = activeBrowserRoot(
-            transition.browserPackageName,
-            transition.expectedWindowId
-        ) ?: return false
-        val safeRedirectStillEditing = try {
-            AddressBarRedirectionActions.hasFocusedAddressEditor(
-                editorRoot,
-                transition.browserPackageName,
-                transition.expectedWindowId,
-                https,
-                ::isSafeRedirectSurface
-            )
-        } finally { recycleSafely(editorRoot) }
-        if (!curtainReadyForTransition(transition)) return false
-
-        val blockedSurfaceStillCurrent = if (safeRedirectStillEditing) {
-            false
-        } else {
-            websiteTreeWorker.run { currentBrowserSurfaceMatchesBlockedTransition(transition) }
-        }
-        if (!curtainReadyForTransition(transition)) return false
-
-        when (websiteRestoreDecision(
-            safeRedirectStillEditing = safeRedirectStillEditing,
-            blockedSurfaceStillCurrent = blockedSurfaceStillCurrent
-        )) {
-            WebsiteRestoreDecision.RETRY_CURRENT_BLOCKED_SURFACE -> {
-                transition.activatedAddressViewId = null
-                transition.editorAddressViewId = null
-                return true
-            }
-            WebsiteRestoreDecision.KEEP_CURRENT_SURFACE -> {
-                transition.activatedAddressViewId = null
-                transition.editorAddressViewId = null
-                return false
-            }
-            WebsiteRestoreDecision.BACK_TO_BLOCKED_SURFACE -> Unit
-        }
-
-        if (transition.safeRedirectConfirmed.isCompleted ||
-            websiteTreeWorker.run { confirmSafeRedirectFromFreshBrowserSurface(transition) }
-        ) return false
-        if (!curtainReadyForTransition(transition)) return false
-        if (!performTransitionBack(transition)) return false
-        delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
-        if (!curtainReadyForTransition(transition)) return false
-        val restored = websiteTreeWorker.run {
-            currentBrowserSurfaceMatchesBlockedTransition(transition)
-        }
-        if (!curtainReadyForTransition(transition)) return false
-        transition.activatedAddressViewId = null
-        transition.editorAddressViewId = null
-        return restored
-    }
-
-    private suspend fun restoreBlockedSurfaceForSafeIntentFallback(
-        transition: WebsiteBlockTransitionHandle
-    ): Boolean {
-        if (!curtainReadyForTransition(transition)) return false
-        if (transition.activatedAddressViewId != null ||
-            transition.editorAddressViewId != null
-        ) {
-            if (!performTransitionBack(transition)) return false
-            delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
-            if (!curtainReadyForTransition(transition)) return false
-        }
-        val restored = websiteTreeWorker.run {
-            currentBrowserSurfaceMatchesBlockedTransition(transition)
-        }
-        if (!curtainReadyForTransition(transition)) return false
-        transition.activatedAddressViewId = null
-        transition.editorAddressViewId = null
-        return restored
-    }
-
-    private suspend fun requestSafeRedirectThroughBrowserIntent(
-        transition: WebsiteBlockTransitionHandle
-    ): Boolean {
-        val browserPackageName = transition.browserPackageName
-        if (!WebsiteRedirectionPlan.ALLOW_EXTERNAL_BROWSER_INTENT_FALLBACK ||
-            !supportsCapabilityBasedIntentRedirectFallback(
-                knownBrowser = browserPackageName in knownBrowserPackages,
-                verifiedHttpsHandler = isVerifiedHttpsHandler(browserPackageName)
-            ) ||
-            !transitionOwnsCurtain(transition)
-        ) return false
-
-        // Match 601f93e: the external request is allowed only after the original
-        // blocked surface has been restored and re-certified in the same window.
-        if (!restoreBlockedSurfaceForSafeIntentFallback(transition) ||
-            !curtainReadyForTransition(transition)
-        ) return false
-
-        val requestedAt = SystemClock.uptimeMillis()
-        if (!websiteBlockTransitionGuard.markSanitizationRequested(
-                browserPackageName = browserPackageName,
-                transitionId = transition.id,
-                requestedAtUptimeMillis = requestedAt
-            )
-        ) return false
-
-        return withContext(Dispatchers.Main.immediate) {
-            if (!transitionOwnsCurtain(transition)) return@withContext false
-            runCatching {
-                startActivity(createSafeBrowserRedirectIntent(browserPackageName))
-                true
-            }.getOrElse { error ->
-                if (transitionOwnsCurtain(transition)) {
-                    FocusGuardLogger.logError(
-                        "A11y",
-                        "Falha ao solicitar redirecionamento seguro no navegador",
-                        error
-                    )
-                }
-                false
-            }
-        }
-    }
-
-    private suspend fun completeStrictWebsiteDestination(
-        transition: WebsiteBlockTransitionHandle,
-        curtainGeneration: Long
-    ): Boolean {
-        if (!curtainReadyForTransition(transition)) return false
-        val requestedAt = SystemClock.uptimeMillis()
-        if (!websiteBlockTransitionGuard.markDestinationRequested(
-                browserPackageName = transition.browserPackageName,
-                transitionId = transition.id,
-                requestedAtUptimeMillis = requestedAt
-            ) || !launchPomodoroLockForWebsiteTransition(curtainGeneration, transition)
-        ) return false
-        return withTimeoutOrNull(WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS) {
-            transition.destinationConfirmed.await()
-            true
-        } == true
-    }
-
-    private suspend fun prepareSafeAddressBar(
-        browserPackageName: String,
-        expectedWindowId: Int,
-        policy: WebsiteTabNeutralizationPolicy,
-        transition: WebsiteBlockTransitionHandle,
-        phaseStartedAtUptimeMillis: Long
-    ): Long {
-        if (!curtainReadyForTransition(transition)) return 0L
-        val https = isVerifiedHttpsHandler(browserPackageName)
-        val clickFirst = BrowserUiCapabilityPolicy.prefersClickAddressBarActivation(browserPackageName)
-        val activations = if (clickFirst) listOf(BrowserUiCapabilityPolicy.NodeAction.CLICK, BrowserUiCapabilityPolicy.NodeAction.FOCUS)
-            else listOf(BrowserUiCapabilityPolicy.NodeAction.FOCUS, BrowserUiCapabilityPolicy.NodeAction.CLICK)
-        var activated = false
-        for (action in activations) {
-            if (!curtainReadyForTransition(transition)) return 0L
-            val root = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
-            val result = try {
-                if (!policy.mayActivateBlockedAddressBar(browserPackageName, root.windowId,
-                        phaseStartedAtUptimeMillis, transition.latestWindowTransitionEventUptimeMillis) ||
-                    (!activated && !rootStillShowsDetectedBlockedTarget(root, transition)) ||
-                    BrowserSurfaceInspector.inspect(root, browserPackageName) == BrowserSurfaceInspector.Surface.NATIVE_PANEL
-                ) return 0L
-                AddressBarRedirectionActions.activate(
-                    root, browserPackageName, expectedWindowId, action, https,
-                    isCurrent = { curtainReadyForTransition(transition) }
-                )
-            } finally { recycleSafely(root) }
-            if (!curtainReadyForTransition(transition)) return 0L
-            if (result.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L
-            activated = activated || result.accepted
-            if (result.accepted) transition.activatedAddressViewId = result.selectedViewId
-            val deadline = SystemClock.uptimeMillis() +
-                websiteAddressBarActionTimeoutMillis(browserPackageName)
-            var editorReady = false
-            while (curtainReadyForTransition(transition) && SystemClock.uptimeMillis() <= deadline) {
-                if (!curtainReadyForTransition(transition)) return 0L
-                delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
-                if (!curtainReadyForTransition(transition)) return 0L
-                val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: continue
-                editorReady = try {
-                    AddressBarRedirectionActions.hasFocusedAddressEditor(fresh, browserPackageName, expectedWindowId, https)
-                } finally { recycleSafely(fresh) }
-                if (editorReady) break
-            }
-            if (!editorReady) continue // Accepted focus/click without an editor is not success.
-            val writes = (listOfNotNull(BrowserCompatibilityStore.preferredWriteMethod(browserPackageName)) +
-                listOf(BrowserWriteMethod.SET_TEXT, BrowserWriteMethod.PASTE)).distinct()
-            for (method in writes) {
-                if (!curtainReadyForTransition(transition)) return 0L
-                if (method == BrowserWriteMethod.PASTE) {
-                    val selectionRoot = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
-                    val selection = try {
-                        AddressBarRedirectionActions.selectAll(
-                            selectionRoot, browserPackageName, expectedWindowId, https,
-                            isCurrent = { curtainReadyForTransition(transition) }
-                        )
-                    } finally { recycleSafely(selectionRoot) }
-                    if (selection.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L
-                    if (!selection.accepted) continue // Never append the safe URL to existing text.
-                    if (!curtainReadyForTransition(transition)) return 0L
-                    delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
-                    if (!curtainReadyForTransition(transition)) return 0L
-                }
-                val editRoot = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
-                val written = try {
-                    if (!curtainReadyForTransition(transition)) return 0L
-                    if (!policy.mayTouchBlockedTab(browserPackageName, editRoot.windowId) ||
-                        !editorSurfaceBelongsToTransitionOrSafeDestination(editRoot, transition)
-                    ) return 0L
-                    when (method) {
-                        BrowserWriteMethod.SET_TEXT -> AddressBarRedirectionActions.setText(
-                            editRoot, browserPackageName, expectedWindowId, WebsiteRedirectDestination.current.url, https,
-                            isCurrent = { curtainReadyForTransition(transition) }
-                        )
-                        BrowserWriteMethod.PASTE -> ClipboardPasteFallback.pasteSafely(WebsiteRedirectDestination.current.url) {
-                            AddressBarRedirectionActions.paste(
-                                editRoot, browserPackageName, expectedWindowId, https,
-                                isCurrent = { curtainReadyForTransition(transition) }
-                            )
-                        }
-                    }
-                } finally { recycleSafely(editRoot) }
-                if (!curtainReadyForTransition(transition)) return 0L
-                if (written.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L
-                val writeDeadline = SystemClock.uptimeMillis() +
-                    websiteAddressBarActionTimeoutMillis(browserPackageName)
-                while (curtainReadyForTransition(transition) && SystemClock.uptimeMillis() <= writeDeadline) {
-                    if (!curtainReadyForTransition(transition)) return 0L
-                    delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
-                    if (!curtainReadyForTransition(transition)) return 0L
-                    val fresh = activeBrowserRoot(browserPackageName, expectedWindowId) ?: continue
-                    val verified = try {
-                        AddressBarRedirectionActions.hasCertifiedAddressEditor(fresh, browserPackageName,
-                            expectedWindowId, https, ::isSafeRedirectSurface)
-                    } finally { recycleSafely(fresh) }
-                    if (verified) {
-                        if (!curtainReadyForTransition(transition)) return 0L
-                        transition.editorAddressViewId = written.selectedViewId
-                        BrowserCompatibilityStore.recordActivationSuccess(browserPackageName, result.selectedViewId,
-                            if (action == BrowserUiCapabilityPolicy.NodeAction.CLICK) BrowserActivationMethod.CLICK else BrowserActivationMethod.FOCUS)
-                        BrowserCompatibilityStore.recordWriteSuccess(browserPackageName, written.selectedViewId, method, WebsiteRedirectDestination.current.url)
-                        // The submission epoch starts from a positively re-read safe editor,
-                        // not from the earlier mutation request.
-                        return SystemClock.uptimeMillis()
-                    }
-                }
-            }
-        }
-        return 0L
-    }
-
-    private fun editorSurfaceBelongsToTransitionOrSafeDestination(
-        root: AccessibilityNodeInfo,
-        transition: WebsiteBlockTransitionHandle
-    ): Boolean {
-        if (!transitionWindowIsCurrent(transition)) return false
-        val https = isVerifiedHttpsHandler(transition.browserPackageName)
-        val currentAddress = WebsiteBlocker.extractAddressBarTextFromRoot(
-            root,
-            transition.browserPackageName,
-            https
-        ) ?: WebsiteBlocker.extractUrlFromRoot(
-            root,
-            transition.browserPackageName,
-            https
-        )
-        if (!transitionWindowIsCurrent(transition) || currentAddress.isNullOrBlank()) return false
-        if (isSafeRedirectSurface(currentAddress)) return true
-        val detected = transition.blockedCandidate?.takeIf(String::isNotBlank) ?: return false
-        val detectedRule = WebsiteBlocker.findMatchingRule(detected, transition.blockedRules) ?: return false
-        return WebsiteBlocker.findMatchingRule(currentAddress, transition.blockedRules) == detectedRule
-    }
-
-    private suspend fun submitSafeAddressBar(
-        browserPackageName: String,
-        expectedWindowId: Int,
-        policy: WebsiteTabNeutralizationPolicy,
-        transition: WebsiteBlockTransitionHandle
-    ): Long {
-        if (!curtainReadyForTransition(transition)) return 0L
-        val https = isVerifiedHttpsHandler(browserPackageName)
-        val methods = (listOfNotNull(BrowserCompatibilityStore.preferredSubmitMethod(browserPackageName)) +
-            listOf(BrowserSubmitMethod.IME_ENTER, BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION,
-                BrowserSubmitMethod.CERTIFIED_GO_BUTTON)).distinct()
-        for (method in methods) {
-            if (method == BrowserSubmitMethod.IME_ENTER &&
-                !canUseCertifiableImeSubmit(Build.VERSION.SDK_INT)
-            ) continue
-            if (!curtainReadyForTransition(transition)) return 0L
-            val root = activeBrowserRoot(browserPackageName, expectedWindowId) ?: return 0L
-            val submittedAt = SystemClock.uptimeMillis()
-            val submitted = try {
-                if (!policy.maySubmitSafeAddress(
-                        browserPackageName,
-                        root.windowId,
-                        transition.latestWindowTransitionEventUptimeMillis
-                    ) ||
-                    !AddressBarRedirectionActions.hasCertifiedAddressEditor(
-                        root, browserPackageName, expectedWindowId, https, ::isSafeRedirectSurface
-                    )
-                ) return 0L
-                when (method) {
-                    BrowserSubmitMethod.IME_ENTER -> AddressBarRedirectionActions.submitImeEnter(
-                        root, browserPackageName, expectedWindowId, ::isSafeRedirectSurface, https,
-                        isCurrent = { transitionOwnsCurtain(transition) }
-                    )
-                    BrowserSubmitMethod.ANNOUNCED_EDITOR_ACTION ->
-                        AddressBarRedirectionActions.submitAnnouncedEditorAction(
-                            root, browserPackageName, expectedWindowId, ::isSafeRedirectSurface, https,
-                            isCurrent = { transitionOwnsCurtain(transition) }
-                        )
-                    BrowserSubmitMethod.CERTIFIED_GO_BUTTON ->
-                        AddressBarRedirectionActions.clickCertifiedGoButton(
-                            root, browserPackageName, expectedWindowId,
-                            isCurrent = { transitionOwnsCurtain(transition) }
-                        )
-                }
-            } finally {
-                recycleSafely(root)
-            }
-
-            if (!transitionOwnsCurtain(transition)) return 0L
-            if (submitted.status == AddressBarRedirectionActions.Status.AMBIGUOUS) return 0L
-            if (!submitted.accepted) {
-                if (!curtainReadyForTransition(transition)) return 0L
-                delay(WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS)
-                continue
-            }
-
-            BrowserCompatibilityStore.recordSubmitAccepted(
-                browserPackageName,
-                submitted.selectedViewId,
-                method
-            )
-            if (!websiteBlockTransitionGuard.markSanitizationRequested(
-                    browserPackageName = browserPackageName,
-                    transitionId = transition.id,
-                    requestedAtUptimeMillis = submittedAt
-                )
-            ) return 0L
-            return submittedAt
-        }
-        return 0L
-    }
-
-    private suspend fun confirmSafeRedirectFromFreshBrowserSurface(
-        transition: WebsiteBlockTransitionHandle
-    ): Boolean {
-        if (!curtainReadyForTransition(transition) ||
-            !transition.sanitizationRequested
-        ) return false
-
-        repeat(2) { pass ->
-            val root = activeBrowserRoot(
-                transition.browserPackageName,
-                transition.expectedWindowId
-            ) ?: return false
-            val stableSafeSurface = try {
-                val identification = WebsiteIdentificationEngine.identifyFromRoot(
-                    root,
-                    transition.browserPackageName,
-                    transition.expectedWindowId,
-                    isVerifiedHttpsHandler(transition.browserPackageName),
-                    isCurrent = { transitionWindowIsCurrent(transition) }
-                )
-                val session = BrowserInspectionSessionStore.sessionFor(
-                    root,
-                    transition.browserPackageName
-                )
-                isSafeRedirectSurface(identification.bestCandidate) &&
-                    (session.surface ?: BrowserSurfaceInspector.inspect(
-                        root,
-                        transition.browserPackageName
-                    )) == BrowserSurfaceInspector.Surface.WEB_CONTENT &&
-                    !session.focusedAddressEditor
-            } finally { recycleSafely(root) }
-            if (!stableSafeSurface || !curtainReadyForTransition(transition)) return false
-            if (pass == 0) {
-                delay(WEBSITE_REDIRECT_SURFACE_SETTLE_MILLIS)
-                if (!curtainReadyForTransition(transition)) return false
-            }
-        }
-
-        val confirmed = websiteBlockTransitionGuard.confirmRedirectFromStableCurrentSurface(
-            browserPackageName = transition.browserPackageName,
-            windowId = transition.expectedWindowId,
-            observedAtUptimeMillis = SystemClock.uptimeMillis()
-        )
-        return confirmed
-    }
-
-    private fun transitionWindowIsCurrent(transition: WebsiteBlockTransitionHandle): Boolean =
-        websiteBlockTransitionGuard.activeTransition(transition.browserPackageName)?.id == transition.id &&
-            browserInspectionCoordinator.isCurrentWindow(
-                transition.browserPackageName, transition.expectedWindowId, transition.inspectionGeneration
-            )
-
-    private fun transitionOwnsCurtain(transition: WebsiteBlockTransitionHandle): Boolean =
-        websiteBlockTransitionGuard.activeTransition(transition.browserPackageName)?.id == transition.id &&
-            curtainReadyForTabAction(
-                attached = instantBlockCurtainAttached,
-                visible = instantBlockCurtainVisible,
-                currentGeneration = instantBlockCurtainGeneration,
-                expectedGeneration = transition.curtainGeneration
-            )
-
-    private fun curtainReadyForTransition(transition: WebsiteBlockTransitionHandle): Boolean =
-        transitionWindowIsCurrent(transition) && transitionOwnsCurtain(transition)
-
-    private fun retireStaleWebsiteTransitions() {
-        websiteBlockTransitionGuard.activeBrowserPackages().forEach { packageName ->
-            val transition = websiteBlockTransitionGuard.activeTransition(packageName) ?: return@forEach
-            // A same-tab navigation can invalidate the Accessibility window. Keep the
-            // curtain fail-closed while this transition still owns its generation.
-            if (!transition.handedOff && !transition.destinationRequested &&
-                !transitionWindowIsCurrent(transition) &&
-                !transitionOwnsCurtain(transition)
-            ) finishWebsiteTransition(transition)
-        }
-    }
-
-    private fun finishWebsiteTransition(
-        transition: WebsiteBlockTransitionHandle,
-        outcome: WebsiteRedirectionCoordinator.Outcome? = null
-    ) {
-        val current = transitionWindowIsCurrent(transition)
-        if (!websiteBlockTransitionGuard.finish(transition.browserPackageName, transition.id)) return
-
-        val redirectConfirmed = transition.safeRedirectConfirmed.isCompleted
-        if (redirectConfirmed) {
-            BrowserCompatibilityStore.recordNavigationConfirmed(transition.browserPackageName)
-        }
-        when (outcome) {
-            WebsiteRedirectionCoordinator.Outcome.FAIL_CLOSED -> {
-                if (!redirectConfirmed) {
-                    BrowserCompatibilityStore.recordRedirectionFailure(transition.browserPackageName)
-                }
-            }
-            WebsiteRedirectionCoordinator.Outcome.ABORTED,
-            WebsiteRedirectionCoordinator.Outcome.REDIRECT_CONFIRMED,
-            WebsiteRedirectionCoordinator.Outcome.STRICT_DESTINATION_CONFIRMED -> Unit
-            null -> {
-                if (current && !redirectConfirmed) {
-                    BrowserCompatibilityStore.recordRedirectionFailure(transition.browserPackageName)
-                }
-            }
-        }
-        BrowserCompatibilityStore.finishRedirection(transition.browserPackageName)
-        if (!current && !transition.handedOff && !transition.destinationRequested) {
-            dismissInstantBlockCurtain(transition.curtainGeneration)
-        }
-    }
-
-    private fun rootStillShowsDetectedBlockedTarget(
-        root: AccessibilityNodeInfo,
-        transition: WebsiteBlockTransitionHandle
-    ): Boolean {
-        if (!transitionWindowIsCurrent(transition)) return false
-        val currentAddress = WebsiteIdentificationEngine.identifyFromRoot(
-            root, transition.browserPackageName, transition.expectedWindowId,
-            isVerifiedHttpsHandler(transition.browserPackageName),
-            isCurrent = { transitionWindowIsCurrent(transition) }
-        ).bestCandidate
-        if (!transitionWindowIsCurrent(transition)) return false
-        return detectedBrowserTargetStillCurrent(
-            blockedCandidate = transition.blockedCandidate,
-            currentAddress = currentAddress,
-            blockedRules = transition.blockedRules,
-            detectionEventUptimeMillis = transition.detectionEventUptimeMillis,
-            latestObservedEventUptimeMillis = transition.latestObservedEventUptimeMillis
-        )
-    }
-
-    private fun launchPomodoroLockForWebsiteTransition(
-        curtainGeneration: Long,
-        transition: WebsiteBlockTransitionHandle
-    ): Boolean {
-        if (!curtainReadyForTransition(transition)) return false
-        return runCatching {
-            if (!curtainReadyForTransition(transition)) return false
-            startActivity(
-                Intent(this, PomodoroLockActivity::class.java).apply {
-                    addFlags(
-                        Intent.FLAG_ACTIVITY_NEW_TASK or
-                            Intent.FLAG_ACTIVITY_SINGLE_TOP or
-                            Intent.FLAG_ACTIVITY_CLEAR_TOP
-                    )
-                    putExtra(EXTRA_CURTAIN_GENERATION, curtainGeneration)
-                }
-            )
-            true
-        }.getOrElse { error ->
-            FocusGuardLogger.logError(
-                "A11y",
-                "Falha ao abrir bloqueio Pomodoro após dispensar site",
-                error
-            )
-            false
-        }
-    }
-
     private fun evictBlockedAppFromForeground(forceLauncherFallback: Boolean = false) {
         val globalHomeAccepted = performGlobalAction(GLOBAL_ACTION_HOME)
         if (!shouldLaunchBlockedAppEvictionFallback(
@@ -4061,13 +2151,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         curtain.isFocusable = true
         curtain.isFocusableInTouchMode = true
         curtain.setOnTouchListener { _, _ -> instantBlockCurtainVisible }
-        curtain.setOnKeyListener { _, keyCode, _ ->
-            shouldConsumeWebsiteCurtainKey(
-                curtainVisible = instantBlockCurtainVisible,
-                websiteCurtain = instantBlockCurtainMode == CurtainMode.WEBSITE_BLOCK_NOTICE,
-                keyCode = keyCode
-            )
-        }
         instantBlockCurtain = curtain
         instantBlockCurtainLayoutParams = WindowManager.LayoutParams(
             WindowManager.LayoutParams.MATCH_PARENT,
@@ -4146,19 +2229,14 @@ class BlockingAccessibilityService : AccessibilityService() {
             }
         }
 
-        val websiteCurtain = mode == CurtainMode.WEBSITE_BLOCK_NOTICE
         params.alpha = 1f
-        params.flags = visibleOverlayFlags(params.flags, focusable = websiteCurtain)
+        params.flags = visibleOverlayFlags(params.flags, focusable = false)
         val curtain = instantBlockCurtain ?: return
         val manager = windowManager ?: return
         runCatching {
             manager.updateViewLayout(curtain, params)
             instantBlockCurtainVisible = true
-            if (websiteCurtain) {
-                curtain.requestFocus()
-            } else {
-                curtain.clearFocus()
-            }
+            curtain.clearFocus()
         }.onFailure { error ->
             FocusGuardLogger.logError(
                 "A11y",
@@ -4273,8 +2351,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     private fun hasUnsafeVisibleWindow(): Boolean {
-        val blockedTargets = blockedAppsSet + focusModeBlockedAppsSet +
-            websiteBlockTransitionGuard.activeBrowserPackages()
+        val blockedTargets = blockedAppsSet + focusModeBlockedAppsSet
         val protectSettings = instantBlockCurtainMode == CurtainMode.SELF_PROTECTION
         val protectedSettingsPackages = SettingsInterceptionPolicy.settingsPackages +
             SettingsInterceptionPolicy.packageInstallerPackages
@@ -4414,22 +2491,14 @@ class BlockingAccessibilityService : AccessibilityService() {
         else database.sessionAppCrossRefDao().getAppsForSessions(ids)
     }
 
-    private suspend fun getSitesForSessions(ids: List<Int>): List<String> {
-        return if (ids.isEmpty()) emptyList()
-        else database.sessionWebsiteCrossRefDao().getWebsitesForSessions(ids)
-    }
-
     private fun recycleSafely(node: AccessibilityNodeInfo?) {
         if (node == null) return
         runCatching { node.recycle() }
     }
 
     override fun onDestroy() {
-        browserInspectionCoordinator.invalidate()
-        browserRecoveryCoordinator.clear()
         accessibilityServiceConnected = false
-        stopWebsiteTracking()
-        websiteBlockTransitionGuard.clear()
+        siteBlockEngine.onDestroy()
         mainHandler.removeCallbacks(protectionCurtainDismiss)
         protectionActionUntilElapsed = 0L
         protectedPowerMenuController?.destroy()
@@ -4461,13 +2530,6 @@ class BlockingAccessibilityService : AccessibilityService() {
     }
 
     companion object {
-        private const val INVALID_BROWSER_WINDOW_ID = -1
-        private const val WEBSITE_ADDRESS_BAR_FOCUS_SETTLE_MILLIS = 48L
-        private const val WEBSITE_ADDRESS_BAR_ACTION_RETRY_MILLIS = 32L
-        private const val WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS = 360L
-        private const val WEBSITE_FIREFOX_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS = 800L
-        private const val WEBSITE_REDIRECT_SURFACE_SETTLE_MILLIS = 120L
-        internal const val WEBSITE_MIN_BLOCK_NOTICE_MILLIS = 1_000L
         /**
          * How long a relevant click keeps intercepting follow-up events.
          *
@@ -4487,8 +2549,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal const val UNSAFE_WINDOW_RECHECK_MILLIS = 240L
         private const val SLOW_ACCESSIBILITY_CALLBACK_MILLIS = 250L
         private const val SLOW_CALLBACK_LOG_INTERVAL_MILLIS = 5_000L
-        private const val UNKNOWN_BROWSER_DISCOVERY_RETRY_MILLIS = 750L
-        private const val MAX_BROWSER_DISCOVERY_MISSES = 32
         internal const val EVENT_NOTIFICATION_TIMEOUT_MILLIS = 0L
         /**
          * Event types that can trigger settings interception.
@@ -4511,17 +2571,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
             AccessibilityEvent.TYPE_VIEW_CLICKED
         )
-        // Events whose source can expose an address bar before a root/window walk.
-        // Zero notification timeout means Android delivers them without batching.
-        private val immediateBrowserBlockEventTypes = setOf(
-            AccessibilityEvent.TYPE_VIEW_TEXT_CHANGED,
-            AccessibilityEvent.TYPE_VIEW_FOCUSED,
-            AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED,
-            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
-            AccessibilityEvent.TYPE_WINDOWS_CHANGED
-        )
-        internal const val WEBSITE_DESTINATION_CONFIRM_TIMEOUT_MILLIS =
-            WebsiteRedirectionPlan.DESTINATION_CONFIRM_TIMEOUT_MILLIS
         internal const val STRICT_BLOCK_NOTICE_DURATION_MILLIS = 1_000L
         const val ACTION_REFRESH_BLOCKING = "com.focusguard.ACTION_REFRESH_BLOCKING"
         internal const val ACTION_DEV_RELINQUISH_ACCESSIBILITY =
@@ -4533,9 +2582,6 @@ class BlockingAccessibilityService : AccessibilityService() {
         const val EXTRA_CURTAIN_GENERATION = "CURTAIN_GENERATION"
         internal const val EXTRA_BLOCKING_SNAPSHOT_PRESENT = "BLOCKING_SNAPSHOT_PRESENT"
         internal const val EXTRA_BLOCKED_APPS_SNAPSHOT = "BLOCKED_APPS_SNAPSHOT"
-        internal const val EXTRA_BLOCKED_SITES_SNAPSHOT = "BLOCKED_SITES_SNAPSHOT"
-        internal const val EXTRA_PASSWORD_SITES_SNAPSHOT = "PASSWORD_SITES_SNAPSHOT"
-        internal const val EXTRA_STRONGER_SITES_SNAPSHOT = "STRONGER_SITES_SNAPSHOT"
         internal const val EXTRA_BLOCKING_ACTIVE_SNAPSHOT = "BLOCKING_ACTIVE_SNAPSHOT"
         internal const val EXTRA_STRICT_POMODORO_SNAPSHOT = "STRICT_POMODORO_SNAPSHOT"
 
@@ -4549,171 +2595,11 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal fun settingsInterceptionEventTypesForTest(): Set<Int> =
             settingsInterceptionEventTypes
 
-        internal fun immediateBrowserBlockEventTypesForTest(): Set<Int> =
-            immediateBrowserBlockEventTypes
-
-
         internal fun shouldApplyStrictPomodoroToWindow(
             strictActive: Boolean,
             isWindowTransition: Boolean,
             isBrowserWindow: Boolean
         ): Boolean = strictActive && isWindowTransition && !isBrowserWindow
-
-        internal fun immediateWebsiteBlockTarget(
-            addressText: String?,
-            url: String?,
-            blockedRules: Collection<String>
-        ): String? {
-            val rules = WebsiteBlocker.normalizeRules(blockedRules)
-            if (rules.isEmpty()) return null
-
-            val pornographyActive = rules.any(WebsiteBlocker::isPornographyRule)
-            if (pornographyActive &&
-                !addressText.isNullOrBlank() &&
-                WebsiteBlocker.isPornographySearchInput(addressText)
-            ) {
-                return PredefinedWebsites.PORNOGRAPHY_RULE
-            }
-
-            val candidate = url?.takeIf(String::isNotBlank)
-                ?: addressText?.let(WebsiteBlocker::extractUrlCandidate)
-                ?: return null
-            val matchingRule = WebsiteBlocker.findMatchingRule(candidate, rules)
-                ?: return null
-            return if (WebsiteBlocker.isPornographyRule(matchingRule)) {
-                matchingRule
-            } else {
-                WebsiteBlocker.extractDomain(candidate)
-                    .ifBlank { WebsiteBlocker.displayRule(matchingRule) }
-            }
-        }
-
-        internal fun isSafeRedirectSurface(urlOrAddress: String?): Boolean =
-            WebsiteRedirectDestination.current.matchesSurface(urlOrAddress)
-
-        internal fun supportsCapabilityBasedIntentRedirectFallback(
-            knownBrowser: Boolean,
-            verifiedHttpsHandler: Boolean
-        ): Boolean = knownBrowser || verifiedHttpsHandler
-
-        internal fun createSafeBrowserRedirectIntent(browserPackageName: String): Intent {
-            require(browserPackageName.isNotBlank())
-            return Intent(
-                Intent.ACTION_VIEW,
-                Uri.parse(WebsiteRedirectDestination.current.url)
-            ).apply {
-                addCategory(Intent.CATEGORY_BROWSABLE)
-                setPackage(browserPackageName)
-                addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TOP or
-                        Intent.FLAG_ACTIVITY_SINGLE_TOP
-                )
-            }
-        }
-
-        internal fun curtainReadyForTabAction(
-            attached: Boolean,
-            visible: Boolean,
-            currentGeneration: Long,
-            expectedGeneration: Long
-        ): Boolean = attached && visible && expectedGeneration > 0L &&
-            currentGeneration == expectedGeneration
-
-        internal fun detectedBrowserTargetStillCurrent(
-            blockedCandidate: String?,
-            currentAddress: String?,
-            blockedRules: Collection<String>,
-            detectionEventUptimeMillis: Long,
-            latestObservedEventUptimeMillis: Long
-        ): Boolean {
-            if (detectionEventUptimeMillis <= 0L ||
-                latestObservedEventUptimeMillis < detectionEventUptimeMillis
-            ) return false
-            val rules = WebsiteBlocker.normalizeRules(blockedRules)
-            val candidate = blockedCandidate?.takeIf(String::isNotBlank) ?: return false
-            val current = currentAddress?.takeIf(String::isNotBlank) ?: return false
-            val candidateRule = WebsiteBlocker.findMatchingRule(candidate, rules) ?: return false
-            val currentRule = WebsiteBlocker.findMatchingRule(current, rules) ?: return false
-            if (candidateRule != currentRule) return false
-            val candidateDomain = WebsiteBlocker.extractDomain(candidate)
-            val currentDomain = WebsiteBlocker.extractDomain(current)
-            if (candidateDomain.isNotBlank() && currentDomain.isNotBlank() &&
-                candidateDomain != currentDomain
-            ) return false
-            return browserTargetIdentity(candidate) == browserTargetIdentity(current)
-        }
-
-        private fun browserTargetIdentity(value: String): String {
-            val candidate = WebsiteBlocker.extractUrlCandidate(value)
-                ?: return value.trim().lowercase(Locale.ROOT)
-            val withScheme = if ("://" in candidate) candidate else "https://$candidate"
-            val uri = runCatching { Uri.parse(withScheme) }.getOrNull()
-                ?: return candidate.trim().lowercase(Locale.ROOT)
-            return buildString {
-                append(uri.host?.lowercase(Locale.ROOT).orEmpty())
-                append(uri.encodedPath.orEmpty().ifBlank { "/" })
-                uri.encodedQuery?.let { append('?').append(it) }
-                uri.encodedFragment?.let { append('#').append(it) }
-            }
-        }
-
-
-        internal fun shouldStartWebsiteIdentityRecovery(
-            websiteIdentified: Boolean,
-            addressBarObservable: Boolean,
-            focusedAddressEditor: Boolean
-        ): Boolean = !websiteIdentified &&
-            (!addressBarObservable || !focusedAddressEditor)
-
-        internal fun mayOpenDestinationAfterSanitization(
-            safeRedirectConfirmed: Boolean
-        ): Boolean = safeRedirectConfirmed
-
-        internal fun afterSafeAddressSet(
-            accepted: Boolean
-        ): WebsiteSanitizationDecision = if (accepted) {
-            WebsiteSanitizationDecision.SUBMIT_ADDRESS_BAR
-        } else {
-            WebsiteSanitizationDecision.ABORT_REDIRECT
-        }
-
-        internal fun afterSafeAddressSubmit(
-            accepted: Boolean
-        ): WebsiteSanitizationDecision = if (accepted) {
-            WebsiteSanitizationDecision.AWAIT_REDIRECT_CONFIRMATION
-        } else {
-            WebsiteSanitizationDecision.ABORT_REDIRECT
-        }
-
-        internal fun isRedirectNavigationEvidenceEvent(eventType: Int): Boolean =
-            eventType == AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED ||
-                eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-                eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
-
-        internal fun isWindowOrTabTransitionEvent(eventType: Int): Boolean =
-            eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
-                eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
-
-        internal fun canUseCertifiableImeSubmit(apiLevel: Int): Boolean =
-            BrowserUiCapabilityPolicy.canUseImeEnter(apiLevel)
-
-        internal fun websiteAddressBarActionTimeoutMillis(
-            browserPackageName: String
-        ): Long = if (BrowserUiCapabilityPolicy.isFirefoxPackage(browserPackageName)) {
-            WEBSITE_FIREFOX_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS
-        } else {
-            WEBSITE_ADDRESS_BAR_ACTION_TIMEOUT_MILLIS
-        }
-
-        internal fun websiteRestoreDecision(
-            safeRedirectStillEditing: Boolean,
-            blockedSurfaceStillCurrent: Boolean
-        ): WebsiteRestoreDecision = when {
-            safeRedirectStillEditing -> WebsiteRestoreDecision.BACK_TO_BLOCKED_SURFACE
-            blockedSurfaceStillCurrent -> WebsiteRestoreDecision.RETRY_CURRENT_BLOCKED_SURFACE
-            else -> WebsiteRestoreDecision.KEEP_CURRENT_SURFACE
-        }
 
         internal fun settingsTransitionGuardMillisForTest(): Long =
             SETTINGS_TRANSITION_GUARD_MILLIS
@@ -4819,28 +2705,6 @@ class BlockingAccessibilityService : AccessibilityService() {
             }
         }
 
-        internal fun shouldConsumeWebsiteCurtainKey(
-            curtainVisible: Boolean,
-            websiteCurtain: Boolean,
-            keyCode: Int
-        ): Boolean {
-            if (!curtainVisible || !websiteCurtain) return false
-            return keyCode !in setOf(
-                KeyEvent.KEYCODE_VOLUME_UP,
-                KeyEvent.KEYCODE_VOLUME_DOWN,
-                KeyEvent.KEYCODE_VOLUME_MUTE,
-                KeyEvent.KEYCODE_POWER,
-                KeyEvent.KEYCODE_CAMERA,
-                KeyEvent.KEYCODE_HEADSETHOOK,
-                KeyEvent.KEYCODE_MEDIA_PLAY,
-                KeyEvent.KEYCODE_MEDIA_PAUSE,
-                KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE,
-                KeyEvent.KEYCODE_MEDIA_NEXT,
-                KeyEvent.KEYCODE_MEDIA_PREVIOUS,
-                KeyEvent.KEYCODE_MEDIA_STOP
-            )
-        }
-
         /**
          * The opaque accessibility curtain already prevents interaction with the
          * blocked app while BlockNoticeActivity is coming forward. Evicting to
@@ -4866,21 +2730,15 @@ class BlockingAccessibilityService : AccessibilityService() {
         internal fun createRefreshBlockingIntent(
             context: Context,
             blockedApps: Collection<String>,
-            blockedSites: Collection<String>,
             blockingActive: Boolean,
-            strictPomodoro: Boolean,
-            passwordSites: Collection<String> = emptyList(),
-            strongerSites: Collection<String> = emptyList()
+            strictPomodoro: Boolean
         ): Intent {
             val normalizedApps = blockedApps.filter(String::isNotBlank).distinct()
-            val normalizedSites = WebsiteBlocker.normalizeRules(blockedSites)
-            val normalizedPasswordSites = WebsiteBlocker.normalizeRules(passwordSites)
-            val normalizedStrongerSites = WebsiteBlocker.normalizeRules(strongerSites)
             SelfProtectionStateStore.setSnapshot(
                 context = context,
                 armed = blockingActive,
                 blockedApps = normalizedApps,
-                blockedSites = normalizedSites,
+                blockedSites = emptyList(),
                 strictPomodoro = strictPomodoro
             )
 
@@ -4890,18 +2748,6 @@ class BlockingAccessibilityService : AccessibilityService() {
                 putStringArrayListExtra(
                     EXTRA_BLOCKED_APPS_SNAPSHOT,
                     ArrayList(normalizedApps)
-                )
-                putStringArrayListExtra(
-                    EXTRA_BLOCKED_SITES_SNAPSHOT,
-                    ArrayList(normalizedSites)
-                )
-                putStringArrayListExtra(
-                    EXTRA_PASSWORD_SITES_SNAPSHOT,
-                    ArrayList(normalizedPasswordSites)
-                )
-                putStringArrayListExtra(
-                    EXTRA_STRONGER_SITES_SNAPSHOT,
-                    ArrayList(normalizedStrongerSites)
                 )
                 putExtra(EXTRA_BLOCKING_ACTIVE_SNAPSHOT, blockingActive)
                 putExtra(EXTRA_STRICT_POMODORO_SNAPSHOT, strictPomodoro)

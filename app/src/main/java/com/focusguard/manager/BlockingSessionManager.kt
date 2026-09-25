@@ -1405,15 +1405,12 @@ class BlockingSessionManager @Inject constructor(
                 } else {
                     getAppsForSessions(enforcingIds)
                 }
-                val sessionSites = getSitesForSessions(enforcingIds)
-                val passwordSessionSites = getSitesForSessions(passwordSessionIds)
                 val passwordSessionApps = getAppsForSessions(passwordSessionIds)
                 val strongerSessionApps = if (strictPomodoro) {
                     sessionApps
                 } else {
                     getAppsForSessions(strongerSessionIds)
                 }
-                val strongerSessionSites = getSitesForSessions(strongerSessionIds)
 
                 val activeAppLimits = database.appUsageLimitDao().getAllActiveLimitsStatic()
                 val limitApps = getExceededAppLimits(
@@ -1422,30 +1419,17 @@ class BlockingSessionManager @Inject constructor(
                     now = now
                 )
 
-                val activeWebsiteLimits = database.websiteUsageLimitDao().getAllStatic()
-                    .filter { it.isEnabled }
-                val adultFilterEnabled = AuthManager.isAdultFilterConfigured(context)
-                val policyExpirations = (
-                    activeAppLimits.mapNotNull { limit ->
-                        if (limit.lockMode.equals("TIME", ignoreCase = true)) {
-                            limit.lockUntilTimestamp?.takeIf { it > now }
-                        } else null
-                    } + activeWebsiteLimits.mapNotNull { limit ->
-                        if (limit.lockMode.equals("TIME", ignoreCase = true)) {
-                            limit.lockUntilTimestamp?.takeIf { it > now }
-                        } else null
-                    }
-                )
-                val nextDailyReset = if (
-                    activeAppLimits.isNotEmpty() || activeWebsiteLimits.isNotEmpty()
-                ) {
+                val policyExpirations = activeAppLimits.mapNotNull { limit ->
+                    if (limit.lockMode.equals("TIME", ignoreCase = true)) {
+                        limit.lockUntilTimestamp?.takeIf { it > now }
+                    } else null
+                }
+                val nextDailyReset = if (activeAppLimits.isNotEmpty()) {
                     BlockingScheduleCalculator.nextLocalMidnight(now)
                 } else null
                 val nextReconciliation = if (
                     activeSessions.isNotEmpty() ||
                     activeAppLimits.isNotEmpty() ||
-                    activeWebsiteLimits.isNotEmpty() ||
-                    adultFilterEnabled ||
                     focusModeSession != null
                 ) {
                     now + POLICY_RECONCILIATION_INTERVAL_MILLIS
@@ -1461,36 +1445,15 @@ class BlockingSessionManager @Inject constructor(
                         ),
                     nowMillis = now
                 )
-                val limitSites = getBlockingWebsiteLimitRules(activeWebsiteLimits, now)
-
-                // O filtro adulto global entra aqui, e não só dentro de
-                // enforceWebsiteRestrictions: esta lista também vira o snapshot
-                // enviado ao AccessibilityService, que substitui o conjunto
-                // vigente e adia o próximo refresh. Sem a regra, o serviço
-                // passava a janela inteira até a próxima recarga sem bloquear
-                // pornografia — e num aparelho sem Device Owner ele é a única
-                // camada que sobra.
-                val adultFilterRules = if (adultFilterEnabled) {
-                    listOf(PredefinedWebsites.PORNOGRAPHY_RULE)
-                } else {
-                    emptyList()
+                // O bloqueio de sites é todo do SiteBlockEngine (com.focusguard.sitesblocker).
+                // As políticas antigas de sites (URLBlocklist do Chrome/Edge e o DNS da
+                // categoria Pornografia) são sempre desfeitas aqui.
+                PasswordTargetAccessGrant.updateStrongerWebsiteRules(emptyList())
+                deviceOwnerManager.setPornographyCategoryActive(false)
+                if (AuthManager.isAdultFilterConfigured(context)) {
+                    AuthManager.disableAdultFilterForDevelopmentExit(context)
+                    deviceOwnerManager.clearAdultDns()
                 }
-
-                // Publish website ownership before deriving associated native-app
-                // packages. A PASSWORD visit grant for the same site must not hide
-                // a TIME/limit rule from that derivation.
-                val strongerWebsiteRules = WebsiteBlocker.normalizeRules(
-                    strongerSessionSites + limitSites + adultFilterRules
-                )
-                PasswordTargetAccessGrant.updateStrongerWebsiteRules(strongerWebsiteRules)
-
-                val sitesToBlock = (sessionSites + limitSites + adultFilterRules)
-                    .map(WebsiteBlocker::normalizeRule)
-                    .filter { it.isNotBlank() }
-                    .distinct()
-                val pornographyCategoryActive =
-                    WebsiteBlocker.containsPornographyRule(sitesToBlock)
-                deviceOwnerManager.setPornographyCategoryActive(pornographyCategoryActive)
                 // A Focus Mode allowlist is an explicit temporary override:
                 // phone, SMS and the apps chosen for that session must remain
                 // fully launchable even if another FocusGuard rule also names them.
@@ -1539,17 +1502,13 @@ class BlockingSessionManager @Inject constructor(
                     allowedSystemApps = deviceOwnerAppsToSuspend.toSet()
                 )
 
-                if (sitesToBlock.isEmpty() && !adultFilterEnabled) {
-                    deviceOwnerManager.clearWebsiteRestrictions()
-                } else {
-                    deviceOwnerManager.enforceWebsiteRestrictions(sitesToBlock)
-                }
+                deviceOwnerManager.clearWebsiteRestrictions()
 
                 val selfProtectionRequired = shouldArmSelfProtection(
                     hasEnforcingSessions = enforcingSessions.isNotEmpty(),
                     hasBlockedApps = appsToBlock.isNotEmpty(),
-                    hasBlockedSites = sitesToBlock.isNotEmpty(),
-                    adultFilterEnabled = adultFilterEnabled,
+                    hasBlockedSites = false,
+                    adultFilterEnabled = false,
                     focusModeActive = focusModeSession != null
                 ) || activeTimeCommitment
                 if (selfProtectionRequired) {
@@ -1581,11 +1540,8 @@ class BlockingSessionManager @Inject constructor(
                     BlockingAccessibilityService.createRefreshBlockingIntent(
                         context = context,
                         blockedApps = accessibilityAppsToBlock,
-                        blockedSites = sitesToBlock,
                         blockingActive = selfProtectionRequired,
-                        strictPomodoro = strictPomodoro,
-                        passwordSites = passwordSessionSites,
-                        strongerSites = strongerWebsiteRules
+                        strictPomodoro = strictPomodoro
                     )
                 )
         }
