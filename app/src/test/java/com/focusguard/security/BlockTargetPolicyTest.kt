@@ -27,11 +27,8 @@ class BlockTargetPolicyTest {
     }
 
     @Test
-    fun `daily periods and pomodoro take apps and sites but never keywords`() {
-        listOf(
-            BlockTargetPolicy.forSessionType("TIME", continuousTime = false),
-            BlockTargetPolicy.forSessionType("POMODORO")
-        ).forEach { kinds ->
+    fun `daily periods take apps and sites but never keywords`() {
+        listOf(BlockTargetPolicy.forSessionType("TIME", continuousTime = false)).forEach { kinds ->
             assertThat(kinds.apps).isTrue()
             assertThat(kinds.websites).isTrue()
             assertThat(kinds.keywords).isFalse()

@@ -5,8 +5,7 @@ import com.focusguard.utils.WebsiteBlocker
 /**
  * What each kind of protection is allowed to target.
  *
- *  - **Password block**, **daily limit**, **daily periods** and **Pomodoro**: apps and
- *    sites.
+ *  - **Password block**, **daily limit** and **daily periods**: apps and sites.
  *  - **Block without password by time** (continuous TIME block): apps, sites and words.
  *    It is the only block that takes keyword rules.
  *
@@ -43,7 +42,7 @@ object BlockTargetPolicy {
      */
     fun forSessionType(sessionType: String, continuousTime: Boolean = true): Kinds =
         when (sessionType.uppercase()) {
-            SESSION_TYPE_PASSWORD, SESSION_TYPE_POMODORO -> APPS_AND_WEBSITES
+            SESSION_TYPE_PASSWORD -> APPS_AND_WEBSITES
             SESSION_TYPE_TIME ->
                 if (continuousTime) APPS_WEBSITES_AND_KEYWORDS else APPS_AND_WEBSITES
             else -> APPS_ONLY
