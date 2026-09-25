@@ -28,6 +28,10 @@ import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.WorkspacePremium
+import androidx.compose.runtime.collectAsState
+import com.focusguard.monetization.PremiumManager
+import com.focusguard.ui.compose.components.PremiumDialog
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -104,6 +108,10 @@ fun SettingsScreen(
     var showRevokeCredential by remember { mutableStateOf(false) }
     var showDeveloperMode by remember { mutableStateOf(false) }
     var revocationWorking by remember { mutableStateOf(false) }
+    var showPremium by remember { mutableStateOf(false) }
+    val isPremium by PremiumManager.isPremiumFlow.collectAsState(
+        initial = PremiumManager.isPremium(context)
+    )
 
     val masterPasswordLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult()
@@ -232,6 +240,13 @@ fun SettingsScreen(
                 onClick = onCreatorInstagramClick
             )
             SettingsItem(
+                Icons.Default.WorkspacePremium,
+                "Modo Premium",
+                if (isPremium) "Ativo: sem anúncios" else "Sem anúncios: compre ou use um código",
+                iconTint = Color(0xFFF5C451),
+                onClick = { showPremium = true }
+            )
+            SettingsItem(
                 Icons.Default.Build,
                 stringResource(R.string.settings_dev_mode_title),
                 stringResource(R.string.settings_dev_mode_subtitle),
@@ -246,6 +261,10 @@ fun SettingsScreen(
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
             )
         }
+    }
+
+    if (showPremium) {
+        PremiumDialog(onDismiss = { showPremium = false })
     }
 
     if (showRevokeConfirmation) {

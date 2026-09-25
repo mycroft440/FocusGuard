@@ -93,6 +93,9 @@ class MainActivity : AppCompatActivity() {
 
         // Inicia UMP, Mobile Ads e o buffer oficial de banners já na abertura.
         // Assim as telas com banner normalmente consomem um anúncio já pronto.
+        // Carrega o Premium (e restaura a compra) antes dos anúncios: com ele ativo,
+        // nenhum anúncio é iniciado.
+        com.focusguard.monetization.PremiumManager.initialize(this)
         FocusGuardAds.warmUp(this)
 
         // PomodoroManager ainda usa o singleton legado.

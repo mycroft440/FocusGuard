@@ -10,6 +10,7 @@
 
 [versions]
 googleMobileAds = "1.4.0"
+playBilling = "7.1.1"
 googleUmp = "4.0.0"
 # ─── Build tools ───────────────────────────────────────────────────────────
 agp = "8.11.1"
@@ -71,6 +72,7 @@ truth = "1.4.4"
 
 [libraries]
 google-mobile-ads = { module = "com.google.android.libraries.ads.mobile.sdk:ads-mobile-sdk", version.ref = "googleMobileAds" }
+play-billing = { module = "com.android.billingclient:billing-ktx", version.ref = "playBilling" }
 google-user-messaging-platform = { module = "com.google.android.ump:user-messaging-platform", version.ref = "googleUmp" }
 # ─── AndroidX Core ─────────────────────────────────────────────────────────
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "androidxCore" }

@@ -60,6 +60,7 @@ import com.focusguard.security.ProtectedSettingsResetWindow
 import com.focusguard.security.ProtectionHierarchy
 import com.focusguard.security.SettingsInterceptionPolicy
 import com.focusguard.security.SelfProtectionStateStore
+import com.focusguard.security.UnknownSourcesInterceptionPolicy
 import com.focusguard.security.UsageAccessPausePolicy
 import com.focusguard.sitesblocker.BrowserProfiles
 import com.focusguard.sitesblocker.SiteBlockEngine
@@ -285,6 +286,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         ManagedSelfProtectionPolicy.deviceAdminNodeSearchTerms
 
     private var pendingSettingsProtectionUntilElapsed = 0L
+    private var lastUnknownSourcesBlockElapsed = 0L
 
     private val packageReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -701,6 +703,14 @@ class BlockingAccessibilityService : AccessibilityService() {
                         eventDeliveredAtUptimeMillis
                     )
                 ) return
+            }
+
+            // Bloqueio de fontes desconhecidas (Segurança extra): fecha as telas que
+            // concedem "Instalar apps desconhecidos", sem precisar de Device Owner.
+            if (directPackage in settingsPackages &&
+                handleUnknownSourcesInterception(event, directPackage)
+            ) {
+                return
             }
 
             val eligibleForInterception = event.eventType in settingsInterceptionEventTypes
@@ -1362,6 +1372,54 @@ class BlockingAccessibilityService : AccessibilityService() {
             holdUntilSafeSurface = true
         )
         launchMasterRemovalGate(MasterRemovalActivity.Target.APP_INFO, generation)
+        return true
+    }
+
+    private fun handleUnknownSourcesInterception(
+        event: AccessibilityEvent,
+        packageName: String
+    ): Boolean {
+        if (event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
+            event.eventType != AccessibilityEvent.TYPE_WINDOW_CONTENT_CHANGED
+        ) return false
+        if (!com.focusguard.admin.UnknownSourcesSecurityManager
+                .isAccessibilityBlockEnabled(this)
+        ) return false
+
+        var matched = UnknownSourcesInterceptionPolicy.matchesClass(event.className) ||
+            UnknownSourcesInterceptionPolicy.matchesText(directEventTextValues(event))
+        // O título da página nem sempre vem no evento (Configurações abre a tela como
+        // fragmento). Só a troca de janela procura o título na árvore.
+        if (!matched && event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val root = rootInActiveWindow
+            matched = try {
+                root != null && root.packageName?.toString() == packageName &&
+                    UnknownSourcesInterceptionPolicy.nodeSearchTerms.any { term ->
+                        val nodes = runCatching {
+                            root.findAccessibilityNodeInfosByText(term)
+                        }.getOrNull().orEmpty()
+                        val found = nodes.any { node ->
+                            node.text?.let(UnknownSourcesInterceptionPolicy::matchesText) == true
+                        }
+                        nodes.forEach(::recycleSafely)
+                        found
+                    }
+            } finally {
+                recycleSafely(root)
+            }
+        }
+        if (!matched) return false
+
+        val now = SystemClock.elapsedRealtime()
+        if (now - lastUnknownSourcesBlockElapsed < UNKNOWN_SOURCES_BLOCK_DEBOUNCE_MILLIS) {
+            return true
+        }
+        lastUnknownSourcesBlockElapsed = now
+        performGlobalAction(GLOBAL_ACTION_BACK)
+        performGlobalAction(GLOBAL_ACTION_HOME)
+        showToastThrottled(
+            "Instalação de apps de fontes desconhecidas bloqueada pelo HardBlock."
+        )
         return true
     }
 
@@ -2869,6 +2927,7 @@ class BlockingAccessibilityService : AccessibilityService() {
          */
         private const val SETTINGS_TRANSITION_GUARD_MILLIS = 2_000L
         private const val SELF_PROTECTION_ACTION_DEBOUNCE_MILLIS = 2_500L
+        private const val UNKNOWN_SOURCES_BLOCK_DEBOUNCE_MILLIS = 800L
         private const val SELF_PROTECTION_NOTICE_DURATION_MILLIS = 1_200L
         private const val INSTANT_CURTAIN_FAILSAFE_MILLIS = 5_000L
         internal const val FAILSAFE_EVACUATION_HOLD_MILLIS = 450L

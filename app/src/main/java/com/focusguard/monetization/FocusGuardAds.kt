@@ -73,6 +73,7 @@ object FocusGuardAds {
      * primeiro warmUp(ComponentActivity).
      */
     fun warmUp(context: Context) {
+        if (PremiumManager.isPremium(context)) return
         FocusGuardLogger.log("Ads", "Warm-up aguardando a primeira Activity para validar consentimento")
     }
 
@@ -83,6 +84,7 @@ object FocusGuardAds {
      * depois que uma tela consome um BannerAd. Nenhum AdView invisível é mantido.
      */
     fun warmUp(activity: ComponentActivity) {
+        if (PremiumManager.isPremium(activity)) return
         if (activity.isFinishing || activity.isDestroyed) return
 
         // Caminho rápido recomendado pela UMP: se a decisão salva numa sessão
@@ -496,6 +498,7 @@ object FocusGuardAds {
      * a reserva à fila para uma futura tentativa.
      */
     fun showPendingPomodoroCompletion(activity: ComponentActivity) {
+        if (PremiumManager.isPremium(activity)) return
         if (activity.isFinishing || activity.isDestroyed ||
             !activity.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
         ) return

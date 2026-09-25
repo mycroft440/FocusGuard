@@ -107,7 +107,8 @@ fun MainScreen(
                             )
                         }
 
-                        IconButton(
+                        // O menu (configurações, criador, premium) fica só na tela inicial.
+                        if (selectedTab == 1) IconButton(
                             onClick = onSettingsClick,
                             modifier = Modifier
                                 .align(Alignment.CenterEnd)
@@ -174,20 +175,6 @@ fun MainScreen(
                             2 -> pomodoroContent()
                             4 -> focusModeContent()
                             5 -> ForumScreen(profile = profile)
-                        }
-                    }
-
-                    if (usesFullHeightContent) {
-                        IconButton(
-                            onClick = onSettingsClick,
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(top = 4.dp, end = 12.dp)
-                                .semantics {
-                                    contentDescription = settingsContentDescription
-                                }
-                        ) {
-                            TopBarProfileGlyph(profile = profile)
                         }
                     }
                 }
