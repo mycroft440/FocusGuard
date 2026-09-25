@@ -55,6 +55,7 @@ import com.focusguard.accessibility.website.redirection.WebsiteTabNeutralization
 import com.focusguard.MainActivity
 import com.focusguard.R
 import com.focusguard.admin.DeviceOwnerManager
+import com.focusguard.admin.UnknownSourcesSecurityManager
 import com.focusguard.data.PredefinedWebsites
 import com.focusguard.database.AppDatabase
 import com.focusguard.database.BlockSession
@@ -79,6 +80,7 @@ import com.focusguard.security.ProtectedSettingsResetWindow
 import com.focusguard.security.ProtectionHierarchy
 import com.focusguard.security.SettingsInterceptionPolicy
 import com.focusguard.security.SelfProtectionStateStore
+import com.focusguard.security.UnknownSourcesInterceptionPolicy
 import com.focusguard.security.UsageAccessPausePolicy
 import com.focusguard.ui.BlockNoticeActivity
 import com.focusguard.ui.MasterRemovalActivity
@@ -145,6 +147,7 @@ class BlockingAccessibilityService : AccessibilityService() {
     private lateinit var database: AppDatabase
     private lateinit var sessionManager: BlockingSessionManager
     private lateinit var deviceOwnerManager: DeviceOwnerManager
+    private lateinit var unknownSourcesSecurityManager: UnknownSourcesSecurityManager
 
     private val serviceJob = SupervisorJob()
     private val scope = CoroutineScope(serviceJob + Dispatchers.IO)
@@ -423,6 +426,7 @@ class BlockingAccessibilityService : AccessibilityService() {
         database = AppDatabase.getDatabase(this)
         sessionManager = BlockingSessionManager.getInstance(this)
         deviceOwnerManager = DeviceOwnerManager.getInstance(this)
+        unknownSourcesSecurityManager = UnknownSourcesSecurityManager.getInstance(this)
         deviceOwnerActiveCached = deviceOwnerManager.isDeviceOwnerActive()
         refreshSynchronousProtectionState()
         usageStatsManager = getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
@@ -1686,7 +1690,9 @@ class BlockingAccessibilityService : AccessibilityService() {
         }
 
     private fun isSelfProtectionEngagedNow(): Boolean =
-        isBlockingSessionActive || focusModeSessionActive
+        isBlockingSessionActive ||
+            focusModeSessionActive ||
+            unknownSourcesSecurityManager.isAccessibilityFallbackEnabled(deviceOwnerActiveCached)
 
     private fun handleStrictPomodoro(packageName: String, className: String) {
         if (packageName.isBlank() || packageName == this.packageName || packageName in phonePackages) {
@@ -1736,6 +1742,26 @@ class BlockingAccessibilityService : AccessibilityService() {
         // credential (or the day-15 window) authorized removal. Do not block
         // the Android-owned confirmation screen during that short hand-off.
         if (AuthenticatedRemovalWindow.isActive(this)) return false
+
+        if (unknownSourcesSecurityManager.isAccessibilityFallbackEnabled(deviceOwnerActiveCached) &&
+            packageName in SettingsInterceptionPolicy.settingsPackages
+        ) {
+            val className = event.className?.toString().orEmpty()
+            val unknownSourcesTarget =
+                UnknownSourcesInterceptionPolicy.classTargetsUnknownSources(className) ||
+                    UnknownSourcesInterceptionPolicy.textTargetsUnknownSources(
+                        eventTextValues(event)
+                    )
+            if (unknownSourcesTarget) {
+                executeProtectionAction(
+                    eventTimeUptimeMillis = event.eventTime,
+                    eventDeliveredAtUptimeMillis = eventDeliveredAtUptimeMillis,
+                    eventDetectedAtNanos = eventDetectedAtNanos,
+                    forceLauncherFallback = true
+                )
+                return true
+            }
+        }
 
         // A proteção contra a própria remoção vale em dois casos. O mais forte é
         // o Device Owner blindado. O outro é o modo consumidor: sem Device Owner,
